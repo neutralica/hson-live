@@ -194,7 +194,7 @@ LiveTree's CSS remains recognizably CSS. Dynamic property values can be created 
 
 LiveMap provides mutable, revisioned application state over canonical Hson graphs. It supports both data and document state, including multiple named data/document libraries coordinated under one LiveMap controlling atomic mutation, observation, Schema governance, capture/recovery, and canonical commit history.
 
-`hsonLiveMap.create()` creates an empty, fully initialized registry at revision 0. Its capture can be restored, and rendering requires a document library. `hsonLiveMap.fromLibraries({})` creates the same empty state. `map.lib.add(...)` admits libraries later.
+`hsonLiveMap.create()` creates an empty, fully initialized registry at revision 0. Its capture can be restored, and rendering requires a document library. `hsonLiveMap.fromLibraries({})` creates the same empty state. `map.addLibraries(...)` admits libraries later.
 
 `ANY_DATA` and `ANY_DOCUMENT` are ordinary broad Schemas, equivalent to `<type "data">` and `<type "document">`. Data libraries admit object, array, string, number, boolean, and null roots. A string data input is JSON source text, so use `data: '"hello"'` for a string root.
 

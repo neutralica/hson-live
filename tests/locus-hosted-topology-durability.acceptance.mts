@@ -44,7 +44,7 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
   const emptyDigest = locus.registryDigest;
   const emitted: number[] = [];
   const stop = locus.on_commit((commit) => emitted.push(commit.rev));
-  assert.throws(() => map.lib.add({ bypass: { data: 0 } }), /Locus authority|controlled|managed/i);
+  assert.throws(() => map.addLibraries({ bypass: { data: 0 } }), /Locus authority|controlled|managed/i);
   assert.equal(map.rev, 0);
 
   const addA = await locus.add_libraries_internal({ A: { data: { count: 0 } } });
@@ -151,7 +151,7 @@ await case_("prepared topology stays invisible while the durable append is pendi
   assert.equal(map.rev, 0);
   assert.equal(locus.registryDigest, digest);
   assert.throws(() => map.lib("held"), /Unknown/);
-  assert.throws(() => map.lib.add({ bypass: { data: 2 } }), /Locus authority|controlled|managed/i);
+  assert.throws(() => map.addLibraries({ bypass: { data: 2 } }), /Locus authority|controlled|managed/i);
   adapter.release.resolve();
   await pending;
   assert.equal(map.rev, 1);

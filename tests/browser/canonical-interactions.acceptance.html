@@ -74,7 +74,7 @@
     button.dispatchEvent(passive);
 
     const runtimeMap = hsonLiveMap.create();
-    const runtimeCommit = runtimeMap.lib.add({ runtimePage: { document: Hson.document`<main "browser"/>` },
+    const runtimeCommit = runtimeMap.addLibraries({ runtimePage: { document: Hson.document`<main "browser"/>` },
       runtimeData: { data: true } });
     const runtimeReplica = hsonLiveMap.create();
     runtimeReplica.replay(runtimeCommit);

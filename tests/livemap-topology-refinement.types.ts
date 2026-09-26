@@ -5,33 +5,41 @@ const initialState = { count: 0 };
 const schema = Hson.schema`<type "data" content <count "number">>`;
 
 const map = hsonLiveMap.create();
-hsonLiveMap.addLibraries(map, { home: { document: mainShell } });
+const commit = map.addLibraries({ home: { document: mainShell } });
+void commit.operations;
 map.lib("home").css.stylesheet("body { margin: 0; }");
-hsonLiveMap.addLibraries(map, { state: { data: initialState, schema } });
-map.lib("home").css;
-const preciseSchema: HsonSchema = map.lib("state").schema.get();
-void preciseSchema;
+map.addLibraries({ state: { data: initialState, schema } });
+// @ts-expect-error Dynamically admitted libraries still require mode narrowing for data operations.
 map.lib("state").snap();
+// @ts-expect-error Admission is an operation on LiveMap, not its selector.
+map.lib.add({ next: { data: 1 } });
+// @ts-expect-error The factory does not admit libraries on an existing map.
+hsonLiveMap.addLibraries(map, { next: { data: 1 } });
+
+const known = hsonLiveMap.fromLibraries({
+  home: { document: mainShell },
+  state: { data: initialState, schema },
+});
+known.lib("home").css;
+const preciseSchema: HsonSchema = known.lib("state").schema.get();
+void preciseSchema;
+known.lib("state").snap();
 // @ts-expect-error Known data roots do not expose document CSS.
-map.lib("state").css;
+known.lib("state").css;
 // @ts-expect-error A document location is not the document-library root.
-map.lib("home").at([0]).css;
+known.lib("home").at([0]).css;
 // @ts-expect-error A statically known name cannot be admitted twice.
-hsonLiveMap.addLibraries(map, { home: { data: initialState } });
+known.addLibraries({ home: { data: initialState } });
+known.addLibraries({ extra: { data: initialState } });
 
 declare const dynamicName: string;
-const dynamicMap = hsonLiveMap.create();
-hsonLiveMap.addLibraries(dynamicMap, { [dynamicName]: { document: mainShell } });
-// @ts-expect-error A computed string name cannot make every library a document.
-dynamicMap.lib("unrelated").css;
-
 const constructedDynamic = hsonLiveMap.fromLibraries({ [dynamicName]: { document: mainShell } });
-// @ts-expect-error Construction from a computed string name cannot claim every document.
 constructedDynamic.lib("unrelated").css;
+// @ts-expect-error A computed string name cannot make every library a document.
+constructedDynamic.lib("unrelated").document;
 
 declare const typedSchema: HsonSchema<Readonly<{ count: number }>, "data">;
-const typedMap = hsonLiveMap.create();
-hsonLiveMap.addLibraries(typedMap, { exact: { data: { count: 1 }, schema: typedSchema } });
+const typedMap = hsonLiveMap.fromLibraries({ exact: { data: { count: 1 }, schema: typedSchema } });
 typedMap.lib("exact").at(["count"]).replace(2);
-// @ts-expect-error The admitted Schema preserves the numeric data path.
+// @ts-expect-error The construction Schema preserves the numeric data path.
 typedMap.lib("exact").at(["count"]).replace("wrong");

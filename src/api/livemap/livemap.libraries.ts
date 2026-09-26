@@ -320,34 +320,35 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     return facade;
   };
 
-  const lib = Object.freeze(Object.assign((name: string) => selected(name), {
-    add: (inputs: LiveMapDefinitions): LiveMapCommit => {
-      const additions = Object.entries(inputs).map(([name, value]) => Object.freeze({
-        name, input: must_library_input(name, value),
-      }));
-      for (const { name } of additions) {
-        if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
+  const addLibraries = (inputs: LiveMapDefinitions): LiveMapCommit => {
+    const additions = Object.entries(inputs).map(([name, value]) => Object.freeze({
+      name, input: must_library_input(name, value),
+    }));
+    for (const { name } of additions) {
+      if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
+    }
+    const commit = aggregate.addLibraries(additions.map(({ name, input }) => Object.freeze({
+      name,
+      root: library_root(input),
+      hsonSchema: input.schema,
+      family: "data" in input ? "data" as const : "document" as const,
+    })), (identities) => {
+      for (let index = 0; index < additions.length; index += 1) {
+        const definition = additions[index];
+        const identity = identities[index];
+        if (definition === undefined || identity === undefined) throw new Error("LiveMap admission lost a Library identity.");
+        add(definition.name, definition.input, identity);
       }
-      const commit = aggregate.addLibraries(additions.map(({ name, input }) => Object.freeze({
-        name,
-        root: library_root(input),
-        hsonSchema: input.schema,
-        family: "data" in input ? "data" as const : "document" as const,
-      })), (identities) => {
-        for (let index = 0; index < additions.length; index += 1) {
-          const definition = additions[index];
-          const identity = identities[index];
-          if (definition === undefined || identity === undefined) throw new Error("LiveMap admission lost a Library identity.");
-          add(definition.name, definition.input, identity);
-        }
-      });
-      return public_commit(commit);
-    },
-  }));
+    });
+    return public_commit(commit);
+  };
+
+  const lib = Object.freeze((name: string) => selected(name));
 
   const libraries = Object.freeze({
     get rev() { return aggregate.inspect().revision; },
     lib,
+    addLibraries,
     replay: (commit: LiveMapCommit): LiveMapCommit => {
       if (commit.kind !== "map" || !commit.changed || commit.prevRev !== aggregate.inspect().revision
         || commit.rev !== commit.prevRev + 1 || commit.operations.length !== 1) {
@@ -367,7 +368,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       if (operation === undefined || !is_library_add_operation(operation) || operation.operation.libraries.length === 0) {
         throw new Error("LiveMap topology replay requires a library-add operation.");
       }
-      return lib.add(topology_definitions(operation));
+      return addLibraries(topology_definitions(operation));
     },
     capture: () => aggregate.captureLibraries(),
     restore: (snapshot: LiveMapSnapshot) => {
@@ -731,6 +732,9 @@ function make_data_library(
     at: library_at as LiveMapDataLibrary["at"],
     schema: Object.freeze({ get: () => library.input.schema }),
   };
+  Object.defineProperty(facade, "css", {
+    get: () => { throw new Error(`LiveMap Library ${JSON.stringify(library.name)} is a data Library; document CSS is unavailable.`); },
+  });
   const selected = Object.freeze(facade);
   register_livemap_projected_identity_api(selected, make_livemap_projected_identity_api(
     () => selected,

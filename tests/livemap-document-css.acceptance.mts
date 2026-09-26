@@ -23,7 +23,7 @@ if (dynamic.mode === "document") {
   assert.equal(dynamic.css.snapshot(), "");
   dynamic.css.stylesheet("");
 }
-assert.equal("css" in data, false);
+assert.throws(() => map.lib("data" as string).css, /data Library; document CSS is unavailable/);
 assert.equal("css" in page.at([]), false);
 assert.equal("global" in page.css, false);
 assert.equal(page.css.snapshot(), "");
@@ -138,10 +138,18 @@ assert.throws(() => dangerous.render("page"), (error: unknown) =>
   error instanceof Error && error.cause instanceof Error && /closing sentinel/.test(error.cause.message));
 
 const addMap = hsonLiveMap.create();
-addMap.lib.add({ page: { document: "<html <head/> <body/>/>" } });
+addMap.addLibraries({ page: { document: "<html <head/> <body/>/>" } });
 const added = addMap.lib("page");
 assert.equal(added.mode, "document");
 if (added.mode === "document") assert.equal(added.css.snapshot(), "");
+const addedCommits: Array<ReturnType<typeof addMap.addLibraries>> = [];
+addMap.commits.observe((commit) => { addedCommits.push(commit); });
+addMap.lib("page").css.stylesheet("body { margin: 0; }");
+assert.equal(addMap.rev, 2);
+assert.equal(addedCommits.length, 1);
+assert.equal(addedCommits[0]?.operations.some((entry) =>
+  "domain" in entry.operation && entry.operation.domain === "css"), true);
+assert.match(addMap.render("page"), /body\{[^}]*margin:0;/);
 const worker = await new Promise<Readonly<{ capture: ReturnType<typeof map.capture>; css: string; html: string }>>((resolve, reject) => {
   const instance = repository_typescript_worker(new URL("./fixtures/livemap-document-css.worker.mts", import.meta.url));
   instance.once("message", resolve);

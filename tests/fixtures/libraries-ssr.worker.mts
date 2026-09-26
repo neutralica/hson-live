@@ -16,7 +16,7 @@ const installed = install_libraries_snapshot(result.bootstrap).map;
 const state = installed.lib("state");
 if (state.mode === "document") throw new Error("Expected installed data Library.");
 const runtime = hsonLiveMap.create();
-const runtimeCommit = runtime.lib.add({ runtimePage: { document: Hson.document`<main "worker"/>` },
+const runtimeCommit = runtime.addLibraries({ runtimePage: { document: Hson.document`<main "worker"/>` },
   runtimeData: { data: true } });
 const runtimeReplay = hsonLiveMap.create();
 runtimeReplay.replay(runtimeCommit);

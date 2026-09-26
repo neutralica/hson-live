@@ -1,4 +1,4 @@
-import type { LiveMap, LiveMapSnapshot } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapDefinitions } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
   LocusOptions,
@@ -7,7 +7,8 @@ import type {
   PersistentLocusOptions,
 } from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { encode_hosted_root, LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT } from "../livemap/livemap.hosted.js";
+import { node_to_json_value } from "../livemap/livemap.editor.js";
+import { HsonSchema } from "../schema/hson-schema.js";
 import type { HostedAggregateCommit } from "../livemap/livemap.hosted.js";
 import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 import {
@@ -175,17 +176,20 @@ export async function create_persistent_registry_locus<
       `Hosted registry topology requires complete deployment exposure: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   }
   if (restoredCheckpoint.registry.digest !== initial.registryDigest) {
-    const libraries: LiveMapSnapshot["libraries"] = restoredCheckpoint.registry.libraries.map((entry, index) => {
+    const definitions: Record<string, LiveMapDefinitions[string]> = Object.create(null);
+    for (const [index, entry] of restoredCheckpoint.registry.libraries.entries()) {
+      if (entry.scope === "hson-internal" || originalNames.some((candidate) => candidate.name === entry.name)) continue;
       const root = restoredCheckpoint.libraries[index];
       if (root?.name !== entry.name) throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
         "Restored topology root order is invalid.");
-      return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema,
-        schemaDigest: entry.schemaDigest, root: encode_hosted_root(root.root) });
-    });
-    const snapshot: LiveMapSnapshot = Object.freeze({ format: LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
-      revision: restoredCheckpoint.revision, registry: restoredCheckpoint.registry,
-      registryDigest: restoredCheckpoint.registry.digest, libraries: Object.freeze(libraries) });
-    options.map.restore(snapshot);
+      const schema = HsonSchema.fromHson(entry.schema);
+      if (entry.mode === "document") definitions[entry.name] = { document: root.root, schema };
+      else {
+        const value = node_to_json_value(root.root);
+        definitions[entry.name] = { data: typeof value === "string" ? JSON.stringify(value) : value, schema };
+      }
+    }
+    options.map.addLibraries(definitions);
   }
   // Rebind the durable authority fence and begin a fresh local identity epoch.
   internal_livemap_aggregate_authority(options.map).installSemanticCheckpoint(restoredCheckpoint);

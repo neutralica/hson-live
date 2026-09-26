@@ -25,7 +25,7 @@ void projectedAcquisitionIsPublic;
 void capture.libraries;
 const empty = hsonLiveMap.create();
 void empty.capture();
-const added = empty.lib.add({ runtimePage: { document: Hson.document`<main/>` }, runtimeState: { data: 1 } });
+const added = empty.addLibraries({ runtimePage: { document: Hson.document`<main/>` }, runtimeState: { data: 1 } });
 void added.operations;
 const runtimePage = empty.lib("runtimePage");
 if (runtimePage.mode === "document") void runtimePage.document.root();

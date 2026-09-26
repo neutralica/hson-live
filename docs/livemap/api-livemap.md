@@ -24,7 +24,7 @@ const map = hsonLiveMap.fromLibraries({
 
 ```ts
 const map = hsonLiveMap.create();
-const commit = map.lib.add({
+const commit = map.addLibraries({
   page: { document: Hson.document`<main "Hello"/>` },
   state: { data: { count: 0 }, schema: StateSchema },
 });
@@ -32,9 +32,9 @@ const commit = map.lib.add({
 map.render("page");
 ```
 
-`lib.add(definitions: LiveMapDefinitions): LiveMapCommit` accepts one keyed batch. Each entry must state `data` or `document`; there is no inferred kind. The whole batch is validated before installation. One accepted batch advances `map.rev` once and publishes one map commit containing a portable `library-add` operation with the ordered names, modes, Schemas, and roots. A failed batch leaves state, identity accounting, revision, and observers unchanged. `lib.add({})` returns an unchanged commit and publishes nothing. `fromLibraries(...)` uses the same input grammar but establishes initial state at revision 0.
+`addLibraries(definitions: LiveMapDefinitions): LiveMapCommit` accepts one keyed batch. Each entry must state `data` or `document`; there is no inferred kind. The whole batch is validated before installation. One accepted batch advances `map.rev` once and publishes one map commit containing a portable `library-add` operation with the ordered names, modes, Schemas, and roots. A failed batch leaves state, identity accounting, revision, and observers unchanged. `addLibraries({})` returns an unchanged commit and publishes nothing. `fromLibraries(...)` uses the same input grammar but establishes initial state at revision 0.
 
-Known construction-time names keep their precise selected types. A name learned at runtime selects a safe data/document handle union; inspect `mode` before kind-specific operations. Unknown names fail at runtime.
+Known construction-time names keep their precise selected types. A name learned at runtime selects a dynamic facade: document CSS is available through `.css` and checks the actual library mode when accessed. Other kind-specific operations require a `mode` check. Unknown names fail at lookup.
 
 ## Selection and reads
 
@@ -81,7 +81,7 @@ const snapshot = map.capture();
 map.restore(snapshot);
 ```
 
-`capture()` returns a detached `LiveMapSnapshot` of the complete ordered registry at one revision. It includes Schema sources and digests, exact encoded roots, and each document library's portable stylesheet record, including the explicit empty record. Data libraries have no CSS field. It omits generated QUIDs, identity epochs, and issued ledgers. `restore(snapshot)` validates and replaces the complete local topology, including restoring an earlier topology; removed or replaced library handles become stale. `install_libraries_snapshot(snapshot)` creates a separate local map from a portable snapshot. `map.replay(commit)` applies one portable local `library-add` or CSS commit at its recorded base revision. The local snapshot shape changed in Phase A2; older pre-A2 development snapshots are not read.
+`capture()` returns a detached `LiveMapSnapshot` of the complete ordered registry at one revision. It includes Schema sources and digests, exact encoded roots, and each document library's portable stylesheet record, including the explicit empty record. Data libraries have no CSS field. It omits generated QUIDs, identity epochs, and issued ledgers. `restore(snapshot)` requires the map's current library topology and rejects incompatible snapshots before mutation. `install_libraries_snapshot(snapshot)` creates a separate local map from a portable snapshot. `map.replay(commit)` applies one portable local `library-add` or CSS commit at its recorded base revision. The local snapshot shape changed in Phase A2; older pre-A2 development snapshots are not read.
 
 The selected document library's `capture()` supports local document-specific identity categories. It is a library observation, not a separate LiveMap authority. The map-wide snapshot is the portable registry reconstruction surface.
 

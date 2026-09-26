@@ -12,7 +12,7 @@ known.lib("state").document;
 known.lib("page").snap();
 
 const dynamic = hsonLiveMap.create();
-dynamic.lib.add({ page: { document: Hson.document`<main/>` }, state: { data: 0 } });
+dynamic.addLibraries({ page: { document: Hson.document`<main/>` }, state: { data: 0 } });
 dynamic.commits.observe((commit) => {
   const admittedOrMutatedName: string | undefined = commit.operations[0]?.library;
   void admittedOrMutatedName;
@@ -23,4 +23,4 @@ else selected.snap();
 // @ts-expect-error Kind-specific operations require narrowing on dynamic selection.
 selected.document.root();
 // @ts-expect-error The compressed form has no runtime kind evidence.
-dynamic.lib.add({ compressed: Hson.document`<main/>` });
+dynamic.addLibraries({ compressed: Hson.document`<main/>` });

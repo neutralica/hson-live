@@ -185,7 +185,7 @@ const topologyLocal = topologyClient.lib("preferences");
 const topologyReplica = create_echo_aggregate_replica_capability_internal(topologyClient);
 let topologyCommit: HostedAggregateCommit | undefined;
 sourceAggregate.observe((commit) => { topologyCommit = commit.hosted; });
-topologySource.lib.add({ visible: { data: { value: 1 } }, hidden: { data: { secret: "PURE_HIDDEN_SENTINEL" } } });
+topologySource.addLibraries({ visible: { data: { value: 1 } }, hidden: { data: { secret: "PURE_HIDDEN_SENTINEL" } } });
 const afterTopology = sourceAggregate.captureHosted();
 const visiblePolicy = make_locus_hosted_projection_policy(afterTopology.registry, afterTopology.authority,
   [{ library: "visible", exposure: "client-public" }, { library: "hidden", exposure: "server-private" }],

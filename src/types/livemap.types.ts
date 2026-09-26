@@ -1552,10 +1552,12 @@ type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
             : LiveMapDocumentLibrary<HsonNode, TLibrary, typeof import("../api/schema/hson-schema.js").ANY_DOCUMENT>
           : never;
 
-/** Schema-neutral selection when a name was admitted after construction. */
+/** Document-root capabilities dispatched and guarded by the selected runtime mode. */
+type LiveMapDynamicDocumentCapabilities = Pick<LiveMapDocumentLibrary, "css">;
+
+/** Schema-neutral selection for names whose mode is not statically established. */
 export type LiveMapDynamicLibrary =
-  | LiveMapDataLibrary
-  | LiveMapDocumentLibrary;
+  (LiveMapDataLibrary | LiveMapDocumentLibrary) & LiveMapDynamicDocumentCapabilities;
 
 /** The single global observer surface for a local multi-library LiveMap. */
 export type LiveMapRegistryCommitObserverApi<TLibrary extends string = string> = Readonly<{
@@ -1578,7 +1580,6 @@ type LiveMapLibrarySelector<TMap> = {
     name: TLibrary,
   ): LiveMapLibraryFacadeForInput<LiveMapKnownDefinitions<LiveMapReceiverDefinitions<TMap>>[TLibrary], TLibrary>;
   (name: string): LiveMapDynamicLibrary;
-  readonly add: (definitions: LiveMapDefinitions) => LiveMapCommit;
 };
 
 /**
@@ -1589,6 +1590,11 @@ export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
   readonly [liveMapLibrariesType]: TLibraries;
   readonly rev: number;
   readonly lib: LiveMapLibrarySelector<this>;
+  /** Admit one atomic batch of new libraries into this map's registry. */
+  addLibraries<const TDefinitions extends LiveMapDefinitions>(
+    definitions: TDefinitions & (Extract<keyof LiveMapKnownDefinitions<TDefinitions>, keyof LiveMapKnownDefinitions<TLibraries>> extends never
+      ? unknown : never),
+  ): LiveMapCommit;
   /** Replay one portable local library-add commit at its recorded base revision. */
   replay: (commit: LiveMapCommit) => LiveMapCommit;
   /** Capture one detached semantic snapshot of the complete public and hidden registry. */
