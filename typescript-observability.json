@@ -11,6 +11,7 @@
     { "path": "tests/entrypoints/browser/tsconfig.json", "role": "primary", "authority": "check:entrypoints" },
     { "path": "tests/fixtures/hson-schema-mvp/tsconfig.json", "role": "primary", "authority": "check:schema-consumers" },
     { "path": "tests/fixtures/hson-schema-document/tsconfig.json", "role": "primary", "authority": "check:schema-consumers" },
+    { "path": "tests/fixtures/hson-schema-compiler-project/tsconfig.json", "role": "primary", "authority": "test:hson-schema-compiler-project" },
     { "path": "editors/vscode-hson/tests/fixtures/declarative-schema/tsconfig.json", "role": "primary", "authority": "npm --prefix editors/vscode-hson run test:integration" },
 
     { "path": "editors/vscode-hson/tsconfig.plugin.json", "role": "subordinate", "authority": "check:editor" },

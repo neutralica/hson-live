@@ -20,6 +20,7 @@
     "../src/_refactor/**/*",
     "./fixtures/hson-schema-mvp/**/*",
     "./fixtures/hson-schema-document/**/*",
+    "./fixtures/hson-schema-compiler-project/**/*",
     "./entrypoints/**/*",
     "./historical/**/*",
     "./runtime-probes/**/*"

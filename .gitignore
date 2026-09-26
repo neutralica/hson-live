@@ -2,6 +2,9 @@
 node_modules/
 tmp/
 
+# experimental Hson compiler inputs (tool-owned project state)
+.hson/
+
 # vite caches
 **/.vite/
 

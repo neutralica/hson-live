@@ -1,0 +1,5 @@
+{
+  "name": "hson-compiler-project-fixture",
+  "type": "module",
+  "imports": { "#config": "./support/config.js" }
+}

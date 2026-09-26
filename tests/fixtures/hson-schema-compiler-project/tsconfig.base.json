@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@support/*": ["./support/*"],
+      "hson-live": ["../../../dist/index.d.ts"],
+      "hson-live/hson": ["../../../dist/hson-authoring.d.ts"]
+    },
+    "rootDir": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./authored.tsbuildinfo",
+    "outDir": "./out"
+  }
+}

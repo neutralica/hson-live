@@ -8,26 +8,26 @@ import * as ts from "typescript";
 import type { CompiledHsonSchema } from "../src/internal/hson-schema/compiler.ts";
 
 const packagedRuntime = existsSync(new URL("../dist/internal/hson-schema/compiler.js", import.meta.url))
-  && existsSync(new URL("../dist/internal/hson-schema/generated-evidence.js", import.meta.url));
+  && existsSync(new URL("../dist/internal/hson-schema/generated-evidence.js", import.meta.url))
+  && existsSync(new URL("../dist/internal/hson-schema/source-transformation.js", import.meta.url));
 const runtimeBase = packagedRuntime ? "../dist" : "../src";
 const { is_official_hson_package_binding } = await import(`${runtimeBase}/internal/embedded-hson/discover-hson-tagged-templates.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/embedded-hson/discover-hson-tagged-templates.ts");
 const { compile_hson_schema, HSON_SCHEMA_MVP_COMPATIBILITY_VERSION } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
 const { generate_hson_schema_evidence } = await import(`${runtimeBase}/internal/hson-schema/generated-evidence.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/generated-evidence.ts");
+const { apply_generated_schema_associations, generated_exports_block, generated_exports_block_from_source, remove_generated_exports_block, schema_type_association, unwrap_tagged_schema } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
 const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
 const { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } = await import(`${runtimeBase}/internal/canonical-schema/evaluate.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/evaluate.ts");
 const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hson-source-provenance/parse-hson-with-provenance.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-source-provenance/parse-hson-with-provenance.ts");
 const { resolve_projected_schema_issue_source } = await import(`${runtimeBase}/internal/projected-schema-source-lowering/projected-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/projected-schema-source-lowering/projected-schema-source-lowering.ts");
 const { resolve_document_schema_issue_source } = await import(`${runtimeBase}/internal/document-schema-source-lowering/document-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/document-schema-source-lowering/document-schema-source-lowering.ts");
 
-type Mode = "generate" | "verify" | "check" | "build" | "watch";
+type Mode = "generate" | "verify" | "check" | "build" | "watch" | "experimental-project";
 type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.VariableStatement; declaration: ts.VariableDeclaration; tagged: ts.TaggedTemplateExpression; name: string; source: string; compiled: CompiledHsonSchema }>;
 type Artifact = Readonly<{ path: string; content: string; metadataPath: string; metadata: string; reexport: string; schemaAssociation: string; generatedBytes: number; proofNodeCount: number }>;
 type Diagnostic = Readonly<{ file?: string; start?: number; message: string }>;
 type Overlay = Readonly<{ file: string; start: number; end: number; text: string }>;
 type CycleSummary = Readonly<{ schemas: number; updates: number; inputs: readonly string[] }>;
 
-const GENERATED_EXPORTS_START = "// @hson-schema generated type exports";
-const GENERATED_EXPORTS_END = "// @hson-schema end generated type exports";
 let configInputs: readonly string[] = Object.freeze([]);
 
 const args = process.argv.slice(2);
@@ -35,10 +35,35 @@ const mode = (args[0] ?? "verify") as Mode;
 const projectArg = value_after("--project") ?? "tsconfig.json";
 const projectPath = resolve(projectArg);
 const librarySourceRoot = resolve(fileURLToPath(new URL("../src/", import.meta.url)));
-if (!["generate", "verify", "check", "build", "watch"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
+if (!["generate", "verify", "check", "build", "watch", "experimental-project"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
 
 if (mode === "watch") run_watch();
-else try { run_cycle(mode); } catch (error) { console.error(error_message(error)); process.exitCode = 1; }
+else try {
+  if (mode === "experimental-project") await run_experimental_project();
+  else run_cycle(mode);
+} catch (error) { console.error(error_message(error)); process.exitCode = 1; }
+
+/** Phase 1 opt-in only: leave the legacy commands and watcher on their existing path. */
+async function run_experimental_project(): Promise<void> {
+  const config = read_config(projectPath);
+  const program = ts.createProgram(config.fileNames, config.options);
+  const checker = program.getTypeChecker();
+  const schemas = discover_schemas(program, checker);
+  reject_schema_reexports(program, checker, schemas);
+  require_schema_compiler_options(config, schemas.length);
+  const diagnostics: Diagnostic[] = [];
+  const analysis = analyze_static_hson(program, checker, schemas, diagnostics);
+  if (diagnostics.length > 0) report_and_fail(diagnostics);
+  const { generate_schema_compiler_project } = await import(`${runtimeBase}/internal/hson-schema/compiler-project.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler-project.ts");
+  const generated = generate_schema_compiler_project(projectPath, config, program, schemas, analysis.overlays);
+  console.log(JSON.stringify({ hsonSchema: "experimental-project", ...generated }));
+}
+
+function require_schema_compiler_options(config: ts.ParsedCommandLine, schemas: number): void {
+  if (schemas > 0 && (config.options.strict !== true || config.options.exactOptionalPropertyTypes !== true || config.options.noUncheckedIndexedAccess !== true)) {
+    fail("Hson Schema requires strict, exactOptionalPropertyTypes, and noUncheckedIndexedAccess to be true.");
+  }
+}
 
 function run_watch(): void {
   console.log(`Hson Schema watch: checking ${projectPath}.`);
@@ -74,7 +99,7 @@ function run_watch(): void {
   process.once("SIGTERM", () => stop("SIGTERM"));
 }
 
-function run_cycle(selected: Exclude<Mode, "watch">): CycleSummary {
+function run_cycle(selected: Exclude<Mode, "watch" | "experimental-project">): CycleSummary {
   const started = performance.now();
   const config = read_config(projectPath);
   const coldStart = performance.now();
@@ -82,9 +107,7 @@ function run_cycle(selected: Exclude<Mode, "watch">): CycleSummary {
   const checker = program.getTypeChecker();
   const schemaDeclarations = discover_schemas(program, checker);
   reject_schema_reexports(program, checker, schemaDeclarations);
-  if (schemaDeclarations.length > 0 && (config.options.strict !== true || config.options.exactOptionalPropertyTypes !== true || config.options.noUncheckedIndexedAccess !== true)) {
-    fail("Hson Schema requires strict, exactOptionalPropertyTypes, and noUncheckedIndexedAccess to be true.");
-  }
+  require_schema_compiler_options(config, schemaDeclarations.length);
   const artifacts = schemaDeclarations.map(make_artifact);
   const diagnostics: Diagnostic[] = [];
   let updates = reconcile_generated_lifecycle(config, schemaDeclarations, artifacts, selected, diagnostics);
@@ -189,9 +212,7 @@ function make_artifact(schema: SchemaDeclaration): Artifact {
   const content = evidence.declaration, metadata = evidence.metadata;
   const runtimeExtension = extension === ".mts" ? ".mjs" : extension === ".cts" ? ".cjs" : ".js";
   const generatedSpecifier = `./${stem.slice(stem.lastIndexOf(sep) + 1)}.${schema.name}.hson-schema.generated${runtimeExtension}`;
-  const evidenceName = `__${schema.name}Evidence`;
-  const reexport = `import type { Evidence as ${evidenceName} } from ${JSON.stringify(generatedSpecifier)};`;
-  const schemaAssociation = `__HsonSchema<${evidenceName}["value"], ${evidenceName}["mode"], ${evidenceName}["identity"]>`;
+  const { reexport, schemaAssociation } = schema_type_association(schema.name, generatedSpecifier);
   return Object.freeze({ path: artifactPath, content, metadataPath: `${stem}.${schema.name}.hson-schema.generated.json`, metadata, reexport, schemaAssociation, generatedBytes: evidence.generatedBytes, proofNodeCount: evidence.proofNodeCount });
 }
 
@@ -312,11 +333,12 @@ function verify_artifact(schema: SchemaDeclaration, artifact: Artifact, diagnost
   }
 }
 
+// Legacy migration machinery: only the original generate/watch path may write authored source.
 function reconcile_generated_lifecycle(
   config: ts.ParsedCommandLine,
   schemas: readonly SchemaDeclaration[],
   artifacts: readonly Artifact[],
-  selected: Exclude<Mode, "watch">,
+  selected: Exclude<Mode, "watch" | "experimental-project">,
   diagnostics: Diagnostic[],
 ): number {
   let updates = 0;
@@ -365,50 +387,6 @@ function reconcile_generated_lifecycle(
   return updates;
 }
 
-function apply_generated_schema_associations(
-  source: string,
-  associations: readonly Readonly<{ declaration: ts.VariableDeclaration; text: string }>[],
-): string {
-  let output = source;
-  for (const association of [...associations].sort((left, right) => (
-    (right.declaration.type?.getStart() ?? right.declaration.name.getEnd()) - (left.declaration.type?.getStart() ?? left.declaration.name.getEnd())
-  ))) {
-    const initializer = association.declaration.initializer;
-    const tagged = initializer === undefined ? undefined : unwrap_tagged_schema(initializer);
-    if (initializer !== undefined && tagged !== undefined) {
-      const replacement = `(${tagged.getText()} as unknown as ${association.text})`;
-      output = output.slice(0, initializer.getStart()) + replacement + output.slice(initializer.getEnd());
-    }
-    const annotation = association.declaration.type;
-    if (annotation === undefined) {
-      const position = association.declaration.name.getEnd();
-      output = output.slice(0, position) + `: ${association.text}` + output.slice(position);
-    } else {
-      output = output.slice(0, annotation.getStart()) + association.text + output.slice(annotation.getEnd());
-    }
-  }
-  return output;
-}
-
-function generated_exports_block(exports: readonly string[]): string {
-  if (exports.length === 0) return "";
-  return `${GENERATED_EXPORTS_START}\nimport type { HsonSchema as __HsonSchema } from "hson-live";\n${[...exports].sort().join("\n")}\n${GENERATED_EXPORTS_END}\n`;
-}
-
-function generated_exports_block_from_source(source: string): string {
-  const start = source.indexOf(GENERATED_EXPORTS_START);
-  if (start < 0) return "";
-  const end = source.indexOf(GENERATED_EXPORTS_END, start);
-  if (end >= 0) return source.slice(start, end + GENERATED_EXPORTS_END.length + (source[end + GENERATED_EXPORTS_END.length] === "\n" ? 1 : 0));
-  const legacy = source.slice(start).match(/^\/\/ @hson-schema generated type exports\n(?:export type \{[^\n]+\} from [^\n]+;\n?)*/)?.[0];
-  return legacy ?? "";
-}
-
-function remove_generated_exports_block(source: string): string {
-  const block = generated_exports_block_from_source(source);
-  return block === "" ? source : source.replace(block, "");
-}
-
 function generated_artifact_paths(_config: ts.ParsedCommandLine): readonly string[] {
   const output: string[] = [];
   const visit = (path: string): void => {
@@ -453,11 +431,6 @@ function is_official_hson_member_tag(node: ts.TaggedTemplateExpression, member: 
     && node.tag.name.text === member
     && ts.isIdentifier(node.tag.expression)
     && official_binding(node.tag.expression, "Hson", checker);
-}
-function unwrap_tagged_schema(node: ts.Expression): ts.TaggedTemplateExpression | undefined {
-  if (ts.isTaggedTemplateExpression(node)) return node;
-  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node)) return unwrap_tagged_schema(node.expression);
-  return undefined;
 }
 function raw_template(node: ts.NoSubstitutionTemplateLiteral, sourceFile: ts.SourceFile): string { const text = node.getText(sourceFile); return text.slice(1, -1); }
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
