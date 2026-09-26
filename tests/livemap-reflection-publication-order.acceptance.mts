@@ -30,6 +30,14 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 });
 
 const testEvents = create_test_event_emitter("mirror.livemap-publication-order");
+const observerReports: unknown[] = [];
+const reportingGlobal = globalThis as typeof globalThis & { reportError?: (error: unknown) => void };
+const originalReportError = reportingGlobal.reportError;
+reportingGlobal.reportError = error => { observerReports.push(error); };
+process.once("exit", () => {
+  if (originalReportError === undefined) Reflect.deleteProperty(reportingGlobal, "reportError");
+  else reportingGlobal.reportError = originalReportError;
+});
 let checks = 0;
 function check(name: string, run: () => void): void {
 
@@ -461,5 +469,6 @@ check("data maps share watch-before-observer publication without a Reflection ph
 });
 
 assert.equal(checks, 25);
+assert.ok(observerReports.length >= 10, "throwing observer coverage must exercise the reporting seam");
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");

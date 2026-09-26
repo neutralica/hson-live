@@ -4,6 +4,7 @@ import type {
   LiveMapCommitObserver,
   LiveMapDisposer,
 } from "../../types/livemap.types.js";
+import { deliver_livemap_observers } from "./livemap.observer-delivery.js";
 
 /** Closure-local commit publication shared by projected and document maps. */
 export function make_livemap_commit_observer_hub<TOp extends LiveMapAnyOp>(): LiveMapCommitObserverHub<TOp> {
@@ -24,14 +25,14 @@ export function make_livemap_commit_observer_hub<TOp extends LiveMapAnyOp>(): Li
       const prepare = prepareNextObservation;
       prepareNextObservation = undefined;
       prepare?.(observation);
-      emit_isolated([...observers], observation);
+      deliver_livemap_observers(observers, observer => observer(observation), "commit");
     },
     emitSnapshot: (revision) => {
       const observation = Object.freeze({ kind: "snapshot" as const, origin: "snapshot" as const, revision });
       const prepare = prepareNextObservation;
       prepareNextObservation = undefined;
       prepare?.(observation);
-      emit_isolated([...observers], observation);
+      deliver_livemap_observers(observers, observer => observer(observation), "snapshot");
     },
     prepareObservation: (prepare) => {
       if (prepareNextObservation !== undefined) {
@@ -40,26 +41,6 @@ export function make_livemap_commit_observer_hub<TOp extends LiveMapAnyOp>(): Li
       prepareNextObservation = prepare;
     },
   });
-}
-
-/** Run one observer snapshot completely, then preserve the first callback failure. */
-function emit_isolated<TOp extends LiveMapAnyOp>(
-  observers: readonly LiveMapCommitObserver<TOp>[],
-  observation: Parameters<LiveMapCommitObserver<TOp>>[0],
-): void {
-  let firstFailure: unknown;
-  let failed = false;
-  for (const observer of observers) {
-    try {
-      observer(observation);
-    } catch (error) {
-      if (!failed) {
-        firstFailure = error;
-        failed = true;
-      }
-    }
-  }
-  if (failed) throw firstFailure;
 }
 
 export type LiveMapCommitObserverHub<TOp extends LiveMapAnyOp> = Readonly<{

@@ -155,6 +155,20 @@ export function refinedHomeLibrary() {
   return refined.lib("home");
 }
 
+const publicRefined = hsonLiveMap.fromLibraries({
+  home: { document: '<main id="hero" <section "body"/>/>' },
+  second: { document: '<main id="hero" <section "other"/>/>' },
+});
+publicRefined.lib("home").schema.use(PageSchema);
+publicRefined.lib("second").schema.use(PageSchema);
+export const refinedHome = publicRefined.lib("home");
+export const refinedSecond = publicRefined.lib("second");
+export const refinedTitle = publicRefined.lib("home").at([0, 0]);
+export function getRefinedTitle() {
+  publicRefined.lib("home").schema.use(PageSchema);
+  return publicRefined.lib("home").at([0, 0]);
+}
+
 // Existing static-literal validation is reused for generated inputs as well.
 const authored: HsonData<typeof RecordSchema> = Hson.data`<name "Ada" age 3 status "ready" choice "left" flags [true] pair ["x", 1]>`;
 const authoredDocument: HsonDocument<typeof slideSchema> = Hson.document`<main/>`;

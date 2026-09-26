@@ -77,7 +77,7 @@ The selected data library exposes handles via `at(path)`. A handle can read, wat
 
 Document libraries expose `document.content`, `document.attrs`, `document.flags`, and logical document locations. Mutations use path request targets and are validated before publication. Mirror can bind a selected document library and follow its accepted commits into LiveTree and browser state.
 
-`map.commits.observe(listener)` observes map-wide accepted transitions. Each transition carries one global revision and named library operations. Reads, no-ops, and failed writes do not publish a changed commit. A selected document library also has a document commit observer for document consumers.
+`map.commits.observe(listener)` observes map-wide accepted transitions. Each transition carries one global revision and named library operations. Reads, no-ops, and failed writes do not publish a changed commit. A selected document library also has a document commit observer for document consumers. Listener failures are isolated after acceptance, every listener still receives a fair attempt, and failures are sent to the platform uncaught-error reporter (`reportError`, with an asynchronous uncaught fallback on older runtimes).
 
 ## Capture and rendering
 

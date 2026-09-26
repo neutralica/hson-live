@@ -123,7 +123,24 @@ check("post-hoc attachment proof is compiler-view only", () => {
   const declaration = readFileSync(join(project, "out/consumer.d.ts"), "utf8");
   assert.doesNotMatch(declaration, /__hson_assert_library_schema|\.hson\//);
   assert.match(declaration, /refinedHomeLibrary\(\): import\("hson-live"\)\.LiveMapDocumentLibrary</);
+  assert.match(declaration, /refinedHome: import\("hson-live"\)\.LiveMapDocumentLibrary/);
+  assert.match(declaration, /refinedSecond: import\("hson-live"\)\.LiveMapDocumentLibrary/);
+  assert.match(declaration, /refinedTitle: import\("hson-live"\)\.LiveMapDocumentLocation/);
+  assert.match(declaration, /getRefinedTitle\(\): import\("hson-live"\)\.LiveMapDocumentLocation/);
+  assert.doesNotMatch(declaration, /dist\/types|liveMapLibrarySchemaRefinementsType|__hson/);
   rmSync(join(project, "out"), { recursive: true, force: true });
+});
+
+check("flow-refined exported map bindings fail with an intentional tooling diagnostic", () => {
+  const other = prepare("unsupported-exported-map");
+  writeFileSync(join(other, "flow-map.ts"), `import { Hson, hsonLiveMap } from "hson-live";
+export const S = Hson.schema\`<type "data" content <value "number">>\`;
+export const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 } } });
+map.lib("state").schema.use(S);
+`);
+  succeed(generate(other));
+  const current = verify_schema_compiler_project(join(other, "tsconfig.json"));
+  assert.throws(() => check_schema_project(join(other, "tsconfig.json"), current, false), /HSON_SCHEMA_FLOW_REFINED_EXPORTED_MAP_UNSUPPORTED/);
 });
 
 check("evidence is exactly the existing generator output and runtime tags remain unchanged", () => {
@@ -235,6 +252,19 @@ check("invalid Schema compilation never falls back to rewriting source", () => {
   assert.match(result.stderr, /Schema root/);
   assert.deepEqual(snapshot(other), original);
   assert.equal(existsSync(join(other, ".hson/compiler-input/tsconfig.json/tsconfig.json")), true);
+});
+
+check("CLI duplicate Schema names withdraw all ambiguous evidence", () => {
+  const other = prepare("duplicate-schema");
+  writeFileSync(join(other, "duplicate.ts"), `import { Hson } from "hson-live";
+export const S = Hson.schema\`<type "data" content <a "string">\`;
+export const S = Hson.schema\`<type "data" content <b "number">\`;
+`);
+  const result = generate(other);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Duplicate Schema declaration S; precise evidence withdrawn/);
+  const evidenceRoot = join(other, ".hson/compiler-input/tsconfig.json/evidence/duplicate.ts");
+  assert.equal(existsSync(evidenceRoot), false);
 });
 
 check("ordinary authored TypeScript errors remain stock compiler errors", () => {

@@ -23,16 +23,6 @@ async function diagnosticsFor(
     .filter((diagnostic) => diagnostic.source === "Hson");
 }
 
-async function schemaEvidenceDiagnostics(uri: vscode.Uri, count: number): Promise<readonly vscode.Diagnostic[]> {
-  const timeout = Date.now() + 5_000;
-  while (Date.now() < timeout) {
-    const diagnostics = vscode.languages.getDiagnostics(uri).filter(diagnostic => diagnostic.source === "Hson Schema" && String(diagnostic.code).startsWith("HSON_SCHEMA_GENERATED_EVIDENCE_"));
-    if (diagnostics.length === count) return diagnostics;
-    await new Promise(resolveWait => setTimeout(resolveWait, 50));
-  }
-  return vscode.languages.getDiagnostics(uri).filter(diagnostic => diagnostic.source === "Hson Schema" && String(diagnostic.code).startsWith("HSON_SCHEMA_GENERATED_EVIDENCE_"));
-}
-
 async function waitFor(condition: () => boolean | Promise<boolean>, label: string, timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!await condition()) {
@@ -50,7 +40,7 @@ async function runSchemaConsumer(workspace: string): Promise<void> {
   const write = async (uri: vscode.Uri, text: string): Promise<void> => vscode.workspace.fs.writeFile(uri, Buffer.from(text));
   const originalSource = await read(source);
   const initialDocument = await vscode.workspace.openTextDocument(source);
-  assert.equal((await schemaEvidenceDiagnostics(initialDocument.uri, 0)).length, 0, "Editor typing must not require generated files");
+  assert.match(initialDocument.getText(), /Hson\.schema/, "Editor opened authored Schema source");
   let leaveWatchForDisposal = false;
   try {
     await vscode.commands.executeCommand("hson.generateSchemaTypes", source);
@@ -63,7 +53,6 @@ async function runSchemaConsumer(workspace: string): Promise<void> {
     for (const relativeFile of schemaFiles) {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, relativeFile)));
       assert.match(document.getText(), /Hson.schema/, `${relativeFile} remains authored Schema source`);
-      assert.equal((await schemaEvidenceDiagnostics(document.uri, 0)).length, 0, `${relativeFile} evidence is not current`);
       const ref = document.getText().indexOf('<ref "');
       if (ref >= 0) {
         assert.ok((await localSchemaCompletions(document, ref + 6)).length > 0, `${relativeFile} generated generic declaration was not discovered for completion`);
@@ -76,7 +65,6 @@ async function runSchemaConsumer(workspace: string): Promise<void> {
       invalidate.replace(document.uri, new vscode.Range(document.positionAt(typeMember), document.positionAt(typeMember + 4)), "thing");
       assert.equal(await vscode.workspace.applyEdit(invalidate), true);
       await waitFor(() => vscode.languages.getDiagnostics(document.uri).some(diagnostic => diagnostic.source === "Hson Schema" && diagnostic.code === "INVALID_ROOT"), `${relativeFile} generated generic declaration was not discovered for local diagnostics`);
-      assert.equal((await schemaEvidenceDiagnostics(document.uri, 0)).length, 0);
       const restore = new vscode.WorkspaceEdit();
       restore.replace(document.uri, new vscode.Range(document.positionAt(typeMember), document.positionAt(typeMember + 5)), "type");
       assert.equal(await vscode.workspace.applyEdit(restore), true);
@@ -85,7 +73,6 @@ async function runSchemaConsumer(workspace: string): Promise<void> {
     }
     const sourceDocument = await vscode.workspace.openTextDocument(source);
     assert.equal(sourceDocument.getText(), originalSource, "Generate changed authored source");
-    assert.equal((await schemaEvidenceDiagnostics(sourceDocument.uri, 0)).length, 0);
     const originalArtifact = await read(artifact);
     const originalMetadata = await read(metadata);
     const openArtifact = await vscode.workspace.openTextDocument(artifact);

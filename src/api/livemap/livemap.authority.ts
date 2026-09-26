@@ -1,6 +1,8 @@
 import type { LiveMapAnyOp, LiveMapCoreCommit, LiveMapRootMode } from "../../types/livemap.types.js";
 import type { LiveMapAggregateCommit } from "./livemap.library.js";
+import { report_livemap_observer_failure } from "./livemap.observer-delivery.js";
 
+/** Compatibility parameter; accepted notifications are always isolated. */
 export type LiveMapTransitionNotificationPolicy = "propagate" | "isolate";
 
 /** Opaque prepared map-authority transition. @internal */
@@ -15,7 +17,6 @@ export type PreparedLiveMapAuthorityTransition = Readonly<{
 /** Internal acceptance result retaining the non-serializable aggregate commit. @internal */
 export type LiveMapAuthorityTransitionAcceptance = Readonly<{
   commit: LiveMapAggregateCommit;
-  notificationFailureCount: number;
 }>;
 
 export type LiveMapTransitionErrorCode =
@@ -151,11 +152,11 @@ export function make_livemap_transition_controller(
 
   function acceptAuthority(
     transition: PreparedLiveMapAuthorityTransition,
-    policy: LiveMapTransitionNotificationPolicy = "isolate",
+    _policy: LiveMapTransitionNotificationPolicy = "isolate",
     afterInstall?: () => void,
   ): LiveMapAuthorityTransitionAcceptance {
     const record = authority_record_for(transition);
-    return accept_record(record, "LiveMap authority", policy, transition, afterInstall);
+    return accept_record(record, "LiveMap authority", transition, afterInstall);
   }
 
   function reserveAuthority(transition: PreparedLiveMapAuthorityTransition): () => void {
@@ -172,10 +173,9 @@ export function make_livemap_transition_controller(
   function accept_record<TCommit extends Readonly<{ changed: boolean }>>(
     record: AuthorityTransitionRecord<TCommit>,
     label: string,
-    policy: LiveMapTransitionNotificationPolicy,
     transition?: PreparedLiveMapAuthorityTransition,
     afterInstall?: () => void,
-  ): Readonly<{ commit: TCommit; notificationFailureCount: number }> {
+  ): Readonly<{ commit: TCommit }> {
     if (record.state === "accepted") {
       throw new LiveMapTransitionError("LIVEMAP_TRANSITION_ALREADY_ACCEPTED", `Prepared ${label} transition was already accepted.`);
     }
@@ -200,15 +200,11 @@ export function make_livemap_transition_controller(
     }
     record.state = "accepted";
     if (record.commit.changed) afterInstall?.();
-    let notificationFailureCount = 0;
     if (record.commit.changed) {
-      if (policy === "propagate") record.notify(record.commit);
-      else {
-        try { record.notify(record.commit); }
-        catch { notificationFailureCount = 1; }
-      }
+      try { record.notify(record.commit); }
+      catch (cause) { report_livemap_observer_failure("transition", cause); }
     }
-    return Object.freeze({ commit: record.commit, notificationFailureCount });
+    return Object.freeze({ commit: record.commit });
   }
 
   function discardAuthority(transition: PreparedLiveMapAuthorityTransition): void {

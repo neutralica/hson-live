@@ -132,6 +132,25 @@ check("invalid and unterminated unsaved Schemas withdraw proof and recover witho
   assert.equal(app.errors("consumer.ts").length, 3, messages(app.errors("consumer.ts")));
 });
 
+check("duplicate unsaved Schema names withdraw all ambiguous evidence and recover", () => {
+  const single = 'import { Hson } from "hson-live";\nexport const S = Hson.schema`<type "data" content <a "string">>`;\n';
+  const duplicate = `${single}export const S = Hson.schema\`<type "data" content <b "number">\`;\n`;
+  const test = project("duplicate-live", {
+    "schema.ts": single,
+    "consumer.ts": 'import { type SchemaType } from "hson-live"; import { S } from "./schema.js"; declare const value: SchemaType<typeof S>; const a: string = value.a;\n',
+  });
+  assert.equal(test.errors("consumer.ts").length, 0, messages(test.errors("consumer.ts")));
+  assert.ok(test.service.getProgram()?.getSourceFiles().some(file => file.fileName.endsWith("S.hson-schema.generated.ts")));
+  test.edit("schema.ts", duplicate);
+  assert.ok(test.errors("schema.ts").some(error => error.code === 2451), messages(test.errors("schema.ts")));
+  assert.ok(test.errors("consumer.ts").some(error => error.code === 18046), messages(test.errors("consumer.ts")));
+  assert.ok(!test.service.getProgram()?.getSourceFiles().some(file => file.fileName.endsWith("S.hson-schema.generated.ts")));
+  test.edit("schema.ts", single);
+  assert.equal(test.errors("consumer.ts").length, 0, messages(test.errors("consumer.ts")));
+  assert.ok(test.service.getProgram()?.getSourceFiles().some(file => file.fileName.endsWith("S.hson-schema.generated.ts")));
+  test.service.dispose();
+});
+
 check("edits before, between and after declarations update all position mappings", () => {
   const updated = producer.replace('// before', '// more text before\r\n// before').replace('// between', '// extra between\r\n// between').replace('const after:', '// after too\r\nconst after:');
   app.edit("schema.ts", updated);
@@ -220,6 +239,33 @@ check("unsaved direct Schema attachment refines immediately and stale proofs are
   test.edit("index.ts", attached.replace('content "string"', 'content <'));
   assert.ok(test.errors("index.ts").length > 0, "Invalid unsaved Schema text must withdraw attachment evidence.");
   test.service.dispose();
+});
+
+check("unbraced attachment proofs stay in their authored control-flow owner", () => {
+  const declaration = 'export const Page = Hson.schema`<type "document" tag "main" content "string">`;';
+  const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\n';
+  const map = 'const map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\n';
+  const use = 'map.lib("home").schema.use(Page);';
+  const after = 'const exact: typeof Page = map.lib("home").schema.get();\n';
+  const cases = {
+    if: `declare const condition: boolean;\nif (condition)\n  ${use}\n${after}`,
+    ifElse: `declare const condition: boolean;\nif (condition)\n  ${use}\nelse\n  void 0;\n${after}`,
+    while: `declare const condition: boolean;\nwhile (condition)\n  ${use}\n${after}`,
+    for: `for (let index = 0; index < 1; index += 1)\n  ${use}\n${after}`,
+    nested: `declare const a: boolean, b: boolean;\nif (a)\n  if (b)\n    ${use}\n  else\n    void 0;\n${after}`,
+  };
+  for (const [name, control] of Object.entries(cases)) {
+    const test = project(`attachment-${name}`, { "index.ts": `${prefix}${declaration}\n${map}${control}` });
+    assert.equal(test.service.getSyntacticDiagnostics(test.file("index.ts")).length, 0, name);
+    assert.ok(test.errors("index.ts").some(error => error.code === 2322), `${name}\n${messages(test.errors("index.ts"))}`);
+    const generated = test.service.getProgram()?.getSourceFile(test.file("index.ts"))?.text ?? "";
+    assert.match(generated, /\{map\.lib\("home"\)\.schema\.use\(Page\);\n__hson_assert_library_schema/);
+    test.service.dispose();
+  }
+  const labeled = project("attachment-label", { "index.ts": `${prefix}${declaration}\n${map}label:\n  ${use}\n${after}` });
+  assert.equal(labeled.service.getSyntacticDiagnostics(labeled.file("index.ts")).length, 0);
+  assert.equal(labeled.errors("index.ts").length, 0, messages(labeled.errors("index.ts")));
+  labeled.service.dispose();
 });
 
 check("Phase 1 precision fixture passes entirely through the in-memory view", () => {

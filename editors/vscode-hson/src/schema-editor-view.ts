@@ -5,7 +5,7 @@ import { generate_hson_schema_evidence } from "../../../src/internal/hson-schema
 import { library_schema_attachment_plan, schema_association_edits, schema_source_plan, unwrap_tagged_schema, type PreciseSchemaFact, type SchemaSourceEdit } from "../../../src/internal/hson-schema/source-transformation.js";
 import { compile_hson_schema } from "../../../src/internal/hson-schema/compiler.js";
 import { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-mapping.js";
-import { is_official_hson_package_binding } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
 
 type Snapshot = Readonly<{ text: string; snapshot: ts.IScriptSnapshot; version: string }>;
 type SourceView = Snapshot & Readonly<{ mapping: SchemaSourceMapping; source: ts.SourceFile; generatedNames: readonly string[] }>;
@@ -60,19 +60,14 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     const nextLabels = new Map<string, string>();
     const checker = program.getTypeChecker();
     const schemaFacts: PreciseSchemaFact[] = [];
+    const discoveries = new Map<string, ReturnType<typeof discover_hson_schema_declarations>>();
     for (const candidate of program.getSourceFiles()) {
       if (candidate.isDeclarationFile || program.isSourceFileFromExternalLibrary(candidate)
         || !/\.[cm]?tsx?$/.test(candidate.fileName) || candidate.fileName.includes(".hson-schema.generated.")) continue;
-      for (const statement of candidate.statements) {
-        if (!typescript.isVariableStatement(statement)
-          || (statement.declarationList.flags & typescript.NodeFlags.Const) === 0
-          || statement.declarationList.declarations.length !== 1) continue;
-        const declaration = statement.declarationList.declarations[0];
-        if (declaration === undefined || !typescript.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
-        const tag = unwrap_tagged_schema(declaration.initializer);
-        if (tag === undefined || !typescript.isPropertyAccessExpression(tag.tag) || tag.tag.name.text !== "schema"
-          || !typescript.isIdentifier(tag.tag.expression) || !is_official_hson_package_binding(tag.tag.expression, "Hson", checker, true)
-          || !typescript.isNoSubstitutionTemplateLiteral(tag.template) || tag.template.isUnterminated) continue;
+      const found = discover_hson_schema_declarations(typescript, candidate, checker);
+      discoveries.set(canonical(candidate.fileName), found);
+      for (const { declaration, tagged: tag, eligible } of found) {
+        if (!eligible || !typescript.isNoSubstitutionTemplateLiteral(tag.template)) continue;
         const compiled = compile_hson_schema(tag.template.getText(candidate).slice(1, -1));
         if (!compiled.ok) continue;
         const mode = compiled.value.semantic.kind === "document" || compiled.value.semantic.kind === "document-element"
@@ -85,6 +80,8 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
         || !/\.[cm]?tsx?$/.test(source.fileName) || source.fileName.includes(".hson-schema.generated.")) continue;
       const schemas: { declaration: ts.VariableDeclaration; name: string; specifier: string }[] = [];
       const broad: SchemaSourceEdit[] = [];
+      const eligible = new Map((discoveries.get(canonical(source.fileName)) ?? [])
+        .filter(item => item.eligible).map(item => [item.declaration, item]));
       for (const statement of source.statements) {
         if (!typescript.isVariableStatement(statement)) continue;
         const supported = (statement.declarationList.flags & typescript.NodeFlags.Const) !== 0 && statement.declarationList.declarations.length === 1;
@@ -94,8 +91,7 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
           const legacy = declaration.type !== undefined && typescript.isTypeReferenceNode(declaration.type)
             && typescript.isIdentifier(declaration.type.typeName) && declaration.type.typeName.text === "__HsonSchema";
           let valid = false;
-          if (supported && tag !== undefined && typescript.isPropertyAccessExpression(tag.tag) && tag.tag.name.text === "schema"
-            && typescript.isIdentifier(tag.tag.expression) && is_official_hson_package_binding(tag.tag.expression, "Hson", checker, true)
+          if (supported && tag !== undefined && eligible.has(declaration)
             && typescript.isNoSubstitutionTemplateLiteral(tag.template) && !tag.template.isUnterminated) {
             try {
               const name = declaration.name.text;

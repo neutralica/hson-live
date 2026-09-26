@@ -54,7 +54,7 @@ Available editor commands include:
 - **Hson: Stop Schema Watch**
 - **Hson: Check Schemas**
 
-Direct `Hson.data` and `Hson.document` assignments to `HsonData<typeof Schema>` or `HsonDocument<typeof Schema>` gain proof after Schema-aware validation. Dynamic values can be certified with `schema.certify(...)`, while LiveMap state can be governed through `map.schema.use(...)`.
+Direct `Hson.data` and `Hson.document` assignments to `HsonData<typeof Schema>` or `HsonDocument<typeof Schema>` gain proof after Schema-aware validation. Dynamic values can be certified with `schema.certify(...)`, while named LiveMap state can be governed through `map.lib("name").schema.use(...)`.
 
 ## Local applications
 

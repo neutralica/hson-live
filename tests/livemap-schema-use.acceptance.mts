@@ -17,6 +17,14 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 });
 
 const events = create_test_event_emitter("livemap.schema-use");
+const observerReports: unknown[] = [];
+const reportingGlobal = globalThis as typeof globalThis & { reportError?: (error: unknown) => void };
+const originalReportError = reportingGlobal.reportError;
+reportingGlobal.reportError = error => { observerReports.push(error); };
+process.once("exit", () => {
+  if (originalReportError === undefined) Reflect.deleteProperty(reportingGlobal, "reportError");
+  else reportingGlobal.reportError = originalReportError;
+});
 let checks = 0;
 function check(name: string, run: () => void): void {
   events.case_begin(name, name);
@@ -114,11 +122,77 @@ check("accepted observer failures do not turn success into a thrown rejection", 
   let later = 0;
   map.commits.observe(() => { throw new Error("observer failed after acceptance"); });
   map.commits.observe(() => { later += 1; });
+  const beforeReports = observerReports.length;
   const commit = map.lib("state").schema.use(StateSchema);
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 1);
   assert.equal(map.lib("state").schema.get(), StateSchema);
   assert.equal(later, 1);
+  assert.equal(observerReports.length, beforeReports + 1);
+  assert.match(String((observerReports.at(-1) as Error | undefined)?.cause), /observer failed after acceptance/);
+});
+
+check("restore and authority-position observers are fair, isolated, and reported", () => {
+  const source = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
+  source.lib("state").at(["count"]).set(2);
+  const target = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
+  const authority = internal_livemap_aggregate_authority(target);
+  const delivered: string[] = [];
+  authority.observeRestore(() => { delivered.push("restore-1"); throw new Error("restore observer"); });
+  authority.observeRestore(() => { delivered.push("restore-2"); });
+  authority.observeAuthorityPosition(() => { delivered.push("position-1"); throw new Error("position observer"); });
+  authority.observeAuthorityPosition(() => { delivered.push("position-2"); });
+  const beforeReports = observerReports.length;
+  target.restore(source.capture());
+  assert.equal(target.lib("state").snap(["count"]), 2);
+  assert.deepEqual(delivered, ["restore-1", "restore-2", "position-1", "position-2"]);
+  assert.equal(observerReports.length, beforeReports + 2);
+});
+
+check("portable Schema-use replay rejects tampering and revision mismatch atomically", () => {
+  const source = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+  const commit = source.lib("page").schema.use(SlideSchema);
+  const reject = (candidate: unknown, root = "<main/>") => {
+    const target = hsonLiveMap.fromLibraries({ page: { document: root } });
+    const before = target.capture();
+    assert.throws(() => target.replay(candidate as never));
+    assert.deepEqual(target.capture(), before);
+  };
+  const operation = commit.operations[0];
+  assert.ok(operation && "kind" in operation.operation && operation.operation.kind === "library-schema-use");
+  reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, previousSchemaDigest: "0".repeat(64) } }] });
+  reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: `${SlideSchema.toHson()} ` } }] });
+  reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: StateSchema.toHson() } }] });
+  reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: OtherSlideSchema.toHson() } }] });
+  reject({ ...commit, prevRev: 1, rev: 2 });
+});
+
+check("Schema attachment preserves retained facades, locations, identity epoch, CSS, and unrelated libraries", () => {
+  const map = hsonLiveMap.fromLibraries({
+    page: { document: '<main title="before"/> ' },
+    state: { data: { count: 1 } },
+  });
+  const page = map.lib("page");
+  const location = page.at([]);
+  const locationBefore = location.snap();
+  page.css.stylesheet("main { color: red; }");
+  const css = page.css.snapshot();
+  const root = page.root();
+  const state = map.lib("state");
+  const stateRoot = state.root();
+  const epoch = internal_livemap_aggregate_authority(map).identityEpoch();
+  const owner = epoch.owner;
+  const generation = epoch.current();
+  page.schema.use(SlideSchema);
+  assert.equal(map.lib("page"), page);
+  assert.deepEqual(page.root(), root);
+  assert.deepEqual(location.snap(), locationBefore);
+  assert.equal(page.css.snapshot(), css);
+  assert.equal(map.lib("state"), state);
+  assert.deepEqual(state.root(), stateRoot);
+  assert.equal(state.snap(["count"]), 1);
+  assert.equal(epoch.owner, owner);
+  assert.equal(epoch.current(), generation);
 });
 
 check("Locus-managed authority rejects synchronous attachment", () => {

@@ -12,6 +12,16 @@ export type LibrarySchemaAttachmentFact = Readonly<{
   mode: "data" | "document";
 }>;
 
+type DirectStatementOwner =
+  | ts.IfStatement
+  | ts.ForStatement
+  | ts.ForInStatement
+  | ts.ForOfStatement
+  | ts.WhileStatement
+  | ts.DoStatement
+  | ts.LabeledStatement
+  | ts.WithStatement;
+
 // Split markers keep source-scanning migration tools from treating this helper as a legacy producer.
 export const GENERATED_EXPORTS_START = "// @hson-schema" + " generated type exports";
 export const GENERATED_EXPORTS_END = "// @hson-schema" + " end generated type exports";
@@ -109,10 +119,17 @@ export function library_schema_attachment_plan(
       const recognized = recognize_library_schema_attachment(node.expression, checker, facts, hsonLiveMapSymbols);
       if (recognized !== undefined) {
         attachments.push({ statement: node, ...recognized });
-        edits.push({
-          start: node.getEnd(), end: node.getEnd(),
-          text: `\n${helper}(${recognized.map.getText(source)}, ${recognized.library.getText(source)}, ${recognized.schema.getText(source)});`,
-        });
+        const proof = `${helper}(${recognized.map.getText(source)}, ${recognized.library.getText(source)}, ${recognized.schema.getText(source)});`;
+        const owner = direct_statement_owner(node);
+        if (owner === undefined) {
+          edits.push({ start: node.getEnd(), end: node.getEnd(), text: `\n${proof}` });
+        } else {
+          // A direct control-flow child must remain in that exact branch. Bracing
+          // the generated view avoids both unconditional proof and dangling-else
+          // syntax while leaving authored bytes and runtime emission untouched.
+          edits.push({ start: node.getStart(source), end: node.getStart(source), text: "{" });
+          edits.push({ start: node.getEnd(), end: node.getEnd(), text: `\n${proof}\n}` });
+        }
       }
     }
     ts.forEachChild(node, visit);
@@ -125,6 +142,16 @@ export function library_schema_attachment_plan(
     text: `\ndeclare function ${helper}<TMap extends object, TLibrary extends import("hson-live").LiveMapKnownNames<TMap>, TSchema extends import("hson-live").HsonSchema>(map: TMap, library: TLibrary, schema: TSchema): asserts map is import("hson-live").LiveMapWithLibrarySchema<TMap, TLibrary, TSchema>;\n`,
   });
   return { edits, generatedNames: [helper], attachments };
+}
+
+function direct_statement_owner(statement: ts.ExpressionStatement): DirectStatementOwner | undefined {
+  const parent = statement.parent;
+  if (ts.isIfStatement(parent) && (parent.thenStatement === statement || parent.elseStatement === statement)) return parent;
+  if ((ts.isForStatement(parent) || ts.isForInStatement(parent) || ts.isForOfStatement(parent)
+      || ts.isWhileStatement(parent) || ts.isDoStatement(parent) || ts.isWithStatement(parent))
+    && parent.statement === statement) return parent;
+  if (ts.isLabeledStatement(parent) && parent.statement === statement) return parent;
+  return undefined;
 }
 
 function recognize_library_schema_attachment(

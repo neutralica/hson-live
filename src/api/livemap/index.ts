@@ -80,6 +80,7 @@ export type {
   LiveMapLibraryScalarPathHandle,
   LiveMapDataLibrary,
   LiveMapDocumentLibrary,
+  LiveMapDocumentLocation,
   LiveMapRegistryCommitObserverApi,
   LiveMap,
   LiveMapWithLibrarySchema,

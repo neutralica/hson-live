@@ -1,13 +1,10 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
 
 import { encode_canonical_schema_graph_hson } from "../canonical-schema/encode-hson.js";
 import { compile_hson_schema, HSON_SCHEMA_MVP_COMPATIBILITY_VERSION, type CompiledHsonSchema } from "./compiler.js";
 import { generate_hson_schema_types } from "./generate-types.js";
 
-export type HsonSchemaEvidenceState = "missing" | "current" | "stale" | "invalid" | "error";
 export type GeneratedHsonSchemaEvidence = Readonly<{ compiled: CompiledHsonSchema; declaration: string; metadata: string; generatedBytes: number; proofNodeCount: number }>;
-export type InspectedHsonSchemaEvidence = Readonly<{ state: HsonSchemaEvidenceState; message?: string }>;
 
 export function generate_hson_schema_evidence(schemaName: string, source: string, declarationIdentity: string): GeneratedHsonSchemaEvidence {
   const compiled = compile_hson_schema(source);
@@ -24,18 +21,6 @@ export function generate_hson_schema_evidence(schemaName: string, source: string
   const graphHson = encode_canonical_schema_graph_hson(compiled.value.graph);
   const metadata = `${JSON.stringify({ compatibilityVersion: HSON_SCHEMA_MVP_COMPATIBILITY_VERSION, declarationIdentity, sourceDigest: digest(source), semanticGraphDigest: digest(graphHson), generatedDeclarationDigest: digest(declaration), graphHson }, null, 2)}\n`;
   return Object.freeze({ compiled: compiled.value, declaration, metadata, generatedBytes: Buffer.byteLength(declaration), proofNodeCount: generated.proofNodeCount });
-}
-
-export function inspect_hson_schema_evidence(schemaName: string, source: string, declarationIdentity: string, declarationPath: string, metadataPath: string): InspectedHsonSchemaEvidence {
-  if (!existsSync(declarationPath) || !existsSync(metadataPath)) return Object.freeze({ state: "missing" });
-  try {
-    const expected = generate_hson_schema_evidence(schemaName, source, declarationIdentity);
-    const actualDeclaration = readFileSync(declarationPath, "utf8"), actualMetadata = readFileSync(metadataPath, "utf8");
-    try { JSON.parse(actualMetadata); } catch { return Object.freeze({ state: "invalid", message: "Generated freshness evidence is not valid JSON." }); }
-    return actualDeclaration === expected.declaration && actualMetadata === expected.metadata ? Object.freeze({ state: "current" }) : Object.freeze({ state: "stale" });
-  } catch (error) {
-    return Object.freeze({ state: "error", message: error instanceof Error ? error.message : String(error) });
-  }
 }
 
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }

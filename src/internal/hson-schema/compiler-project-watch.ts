@@ -194,12 +194,6 @@ function existing(project: string, publishing = false) {
   return { current, legacy, selector, stamp: JSON.stringify([current?.text, selector, legacy.map(entry => [entry.root, entry.text])]) };
 }
 
-/** Kept for internal callers of the previous selector validator; new projects have a manifest boundary. */
-export function check_selector(_projectRoot: string, _outputRoot: string, project: string): string | undefined {
-  const state = existing(resolve(project));
-  return state.current?.text ?? state.selector;
-}
-
 function current_manifest(text: string): Manifest {
   const parsed = JSON.parse(text);
   const { contentDigest, ...contents } = parsed;

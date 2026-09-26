@@ -91,6 +91,7 @@ import { make_livemap_object_api } from "./livemap.handle-object.js";
 import type { LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
 import type { LiveMapSemanticCheckpoint } from "./livemap.internal.js";
 import type { PreparedLiveMapAuthorityTransition } from "./livemap.authority.js";
+import { deliver_livemap_observers } from "./livemap.observer-delivery.js";
 
 type NamedLibrary = Readonly<{
   name: string;
@@ -511,9 +512,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       }
       void retired;
       for (const facade of retiredFacades) {
-        for (const listener of [...(CLIENT_LIBRARY_RETIREMENT.get(facade) ?? [])]) {
-          try { listener(); } catch { /* Retired resource observers cannot roll back accepted topology. */ }
-        }
+        deliver_livemap_observers([...(CLIENT_LIBRARY_RETIREMENT.get(facade) ?? [])], listener => listener(), "library-retirement");
       }
     });
   });
@@ -900,10 +899,6 @@ function make_document_library(
     overlay: () => aggregate.documentOverlay(library.identity),
     commits: document_commits,
     identityEpoch: aggregate.identityEpoch(),
-    getDocumentSchema: () => aggregate.librarySchema(library.identity),
-    useDocumentSchema: () => {
-      throw new Error("Named LiveMap document Library schema is fixed at construction.");
-    },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: import("./livemap.document.mutation.js").PreparedDocumentMutation<TOp>) =>
       aggregate.commitDocumentMutation(library.identity, candidate),
     acquireLocalIdentity: (path: import("../../types/livemap.types.js").LiveMapDocumentPath, quid: string, participant?: import("./livemap.runtime-identity.js").LiveMapRuntimeIdentityParticipant) =>

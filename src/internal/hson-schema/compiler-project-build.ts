@@ -20,7 +20,16 @@ export function check_schema_project(projectPath: string, current: Current, emit
   const readGenerated = ts.readConfigFile(current.project, snapshot.readFile);
   const generated = ts.parseJsonConfigFileContent(readGenerated.config, snapshot.host, dirname(current.project), undefined, current.project);
   diagnostics([...(readGenerated.error ? [readGenerated.error] : []), ...generated.errors]);
-  const program = ts.createProgram(generated.fileNames, generated.options, snapshot.compilerHost(generated.options));
+  const baseProgram = ts.createProgram(generated.fileNames, generated.options, snapshot.compilerHost(generated.options));
+  const declarationEnabled = authored.options.declaration || authored.options.composite || authored.options.emitDeclarationOnly;
+  const origins = current.manifest.sources.flatMap((record: SourceRecord) => record.schemas.map(schema => ({
+    source: join(current.selected, record.generated), name: schema.name, evidence: join(current.selected, schema.evidence),
+  })));
+  const views = declarationEnabled ? schema_declaration_views(baseProgram, origins) : new Map<string, { text: string; edits: readonly SchemaSourceEdit[] }>();
+  const checkHost = snapshot.compilerHost(generated.options);
+  const checkRead = checkHost.readFile;
+  checkHost.readFile = path => views.get(resolve(path))?.text ?? checkRead(path);
+  const program = views.size === 0 ? baseProgram : ts.createProgram(generated.fileNames, generated.options, checkHost);
   diagnostics(ts.getPreEmitDiagnostics(program));
   if (!emit) { assert_current(); return; }
   if (authored.options.outFile) throw new Error("Hson Schema split emission does not support outFile bundles.");
@@ -44,8 +53,8 @@ export function check_schema_project(projectPath: string, current: Current, emit
       if (result.emitSkipped) throw new Error(`Runtime emission was skipped: ${file.fileName}`);
     }
   }
-  if (authored.options.declaration || authored.options.composite || authored.options.emitDeclarationOnly) {
-    emit_declarations(projectPath, current, authored, generated, program, snapshot, add);
+  if (declarationEnabled) {
+    emit_declarations(projectPath, current, authored, generated, program, views, snapshot, add);
   }
   // All outputs are prepared before touching output files. Both graphs must still belong
   // to the same selected source revision, including dependency and configuration reads.
@@ -57,11 +66,11 @@ export function check_schema_project(projectPath: string, current: Current, emit
 }
 
 function emit_declarations(projectPath: string, current: Current, authored: ts.ParsedCommandLine, generated: ts.ParsedCommandLine, precise: ts.Program,
-  snapshot: SchemaProjectSnapshot, add: (path: string, text: string) => void): void {
+  views: ReadonlyMap<string, { text: string; edits: readonly SchemaSourceEdit[] }>, snapshot: SchemaProjectSnapshot,
+  add: (path: string, text: string) => void): void {
   const records: readonly SourceRecord[] = current.manifest.sources;
   const root = dirname(projectPath);
   const origins = records.flatMap(record => record.schemas.map(schema => ({ source: join(current.selected, record.generated), name: schema.name, evidence: join(current.selected, schema.evidence) })));
-  const views = schema_declaration_views(precise, origins);
   const options: ts.CompilerOptions = { ...generated.options, noEmit: false, declaration: true, emitDeclarationOnly: true, declarationMap: authored.options.declarationMap ?? false,
     stripInternal: authored.options.stripInternal ?? false, noEmitOnError: true, rootDir: current.selected, outDir: join(current.selected, "unused-output") };
   const host = snapshot.compilerHost(options);

@@ -1,5 +1,3 @@
-import type { HsonSchema } from "../transform/transform.types.js";
-
 export type DocumentAttrValueEvidence<
   TValue,
   TOptional extends boolean,
@@ -17,9 +15,4 @@ export type DocumentAttrsEvidence<
   kind: "attrs";
   shape: TShape;
   exact: TExact;
-}>;
-
-export type InternalDocumentSchemaController = Readonly<{
-  getDocumentSchema: () => HsonSchema | undefined;
-  useDocumentSchema: (schema: HsonSchema) => void;
 }>;

@@ -1400,7 +1400,7 @@ type LiveMapLibraryDocumentFlagsApi<TLibrary extends string> = LiveMapDocumentFl
     LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
 }>;
 
-type LiveMapLibraryDocumentLocation<
+type LiveMapLibraryDocumentLocationInternal<
   TLibrary extends string,
   TValue = InternalDocumentLegacyEndpoint,
   TDescriptor = unknown,
@@ -1426,16 +1426,16 @@ interface LiveMapLibraryDocumentLocationBase<
     >] extends [never]
       ? never
       : unknown),
-  ): LiveMapLibraryDocumentLocation<
+  ): LiveMapLibraryDocumentLocationInternal<
     TLibrary,
     InternalDocumentDescriptorEndpoint<
       InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
     >,
     InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
   >;
-  id: (value: string) => LiveMapLibraryDocumentLocation<TLibrary> | undefined;
+  id: (value: string) => LiveMapLibraryDocumentLocationInternal<TLibrary> | undefined;
   kind: () => "missing" | "root" | "element" | "text";
-  present: () => LiveMapLibraryDocumentLocation<TLibrary, Exclude<TValue, undefined>, TDescriptor> | undefined;
+  present: () => LiveMapLibraryDocumentLocationInternal<TLibrary, Exclude<TValue, undefined>, TDescriptor> | undefined;
   asElement: () => LiveMapLibraryDocumentElementLocation<TLibrary, TValue, TDescriptor> | undefined;
   asRoot: () => LiveMapLibraryDocumentRootLocation<TLibrary, TValue, TDescriptor> | undefined;
   asText: () => LiveMapLibraryDocumentTextLocation<TLibrary, TValue, TDescriptor> | undefined;
@@ -1518,6 +1518,20 @@ type LiveMapLibraryDocumentRootLocation<
 > = Readonly<LiveMapLibraryDocumentLocationBase<TLibrary, TValue, TDescriptor>
   & LiveMapLibraryDocumentContentCapabilities<TLibrary, TDescriptor>>;
 
+/**
+ * A public, nameable logical endpoint selected from one document Library.
+ * This alias is the declaration-safe representation returned by `.at()`.
+ */
+export type LiveMapDocumentLocation<
+  TEvidence = HsonNode,
+  TLibrary extends string = string,
+  TPath extends readonly number[] = readonly number[],
+> = LiveMapLibraryDocumentLocationInternal<
+  TLibrary,
+  InternalDocumentLogicalPathEndpoint<TEvidence, TPath>,
+  InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
+>;
+
 /** One selected named document authority. Its writes retain the map-global commit envelope. */
 export type LiveMapDocumentLibrary<
   TEvidence = unknown,
@@ -1532,17 +1546,13 @@ export type LiveMapDocumentLibrary<
     path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]
       ? never
       : unknown),
-  ): LiveMapLibraryDocumentLocation<
-    TLibrary,
-    InternalDocumentLogicalPathEndpoint<TEvidence, TPath>,
-    InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
-  >;
+  ): LiveMapDocumentLocation<TEvidence, TLibrary, TPath>;
   proxy: <const TPath extends readonly number[] = []>(
     path?: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]
       ? never
       : unknown),
   ) => Readonly<{
-    readonly $_: LiveMapLibraryDocumentLocation<
+    readonly $_: LiveMapLibraryDocumentLocationInternal<
       TLibrary,
       InternalDocumentDescriptorEndpoint<InternalDocumentLogicalPathDescriptor<TEvidence, TPath>>,
       InternalDocumentLogicalPathDescriptor<TEvidence, TPath>

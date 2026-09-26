@@ -56,6 +56,7 @@ import {
   resolve_value_node
 } from "./livemap.editor.js";
 import { LiveMapDocumentMutationError, LiveMapProjectedMutationError, LiveMapReplayError, LiveMapRevError } from "./livemap.error.js";
+import { deliver_livemap_observers, report_livemap_observer_failure } from "./livemap.observer-delivery.js";
 import { must_live_path, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import {
   assert_hosted_libraries_snapshot_shape,
@@ -236,8 +237,6 @@ function make_livemap_registry_engine(
     publicationQueue.push(publish);
     if (publishing) return;
     publishing = true;
-    let firstFailure: unknown;
-    let failed = false;
     try {
       while (publicationCursor < publicationQueue.length) {
         const next = publicationQueue[publicationCursor];
@@ -246,10 +245,7 @@ function make_livemap_registry_engine(
         try {
           next();
         } catch (error) {
-          if (!failed) {
-            firstFailure = error;
-            failed = true;
-          }
+          report_livemap_observer_failure("publication", error);
         }
       }
     } finally {
@@ -257,7 +253,6 @@ function make_livemap_registry_engine(
       publicationCursor = 0;
       publishing = false;
     }
-    if (failed) throw firstFailure;
   };
 
   type AggregateDataCandidate = {
@@ -308,7 +303,7 @@ function make_livemap_registry_engine(
   const preparedSystemRoots = new WeakMap<import("./livemap.authority.js").PreparedLiveMapAuthorityTransition, HsonNode | undefined>();
   const aggregatePositionObservers: Array<(revision: number) => void> = [];
   const publishAuthorityPosition = (revision = mapRevision): void => {
-    for (const observer of [...aggregatePositionObservers]) observer(revision);
+    deliver_livemap_observers(aggregatePositionObservers, observer => observer(revision), "authority-position");
   };
   const aggregateRestoreObservers: Array<(event: Readonly<{
     previousRevision: number;
@@ -1190,40 +1185,28 @@ function make_livemap_registry_engine(
         enqueuePublication(() => {
           aggregateAcceptedTransitions += 1;
           aggregatePublications += 1;
-          for (const watch of [...aggregateWatches]) {
-            if (require_library(watch.library).mode === "document") continue;
+          deliver_livemap_observers(aggregateWatches, watch => {
+            if (require_library(watch.library).mode === "document") return;
             if (!acceptedCommit.operations.some((operation) => (
               operation.target.library === watch.library && paths_overlap(watch.path, operation.target.path)
-            ))) continue;
+            ))) return;
             watch.listener(aggregate_snap(watch.library, watch.path));
-          }
-          for (const feed of [...aggregateFeeds]) {
-            if (require_library(feed.library).mode === "document") continue;
+          }, "watch");
+          deliver_livemap_observers(aggregateFeeds, feed => {
+            if (require_library(feed.library).mode === "document") return;
             const operations = acceptedCommit.operations.filter((operation) => (
               operation.target.library === feed.library && paths_overlap(feed.path, operation.target.path)
             ));
-            if (operations.length === 0) continue;
+            if (operations.length === 0) return;
             feed.listener(Object.freeze({
               commit: acceptedCommit,
               path: feed.path,
               operations: Object.freeze(operations),
               value: aggregate_snap(feed.library, feed.path),
             }));
-          }
-          let firstObserverFailure: unknown;
-          let observerFailed = false;
-          for (const observer of [...aggregateObservers]) {
-            try {
-              observer(acceptedCommit);
-            } catch (error) {
-              if (!observerFailed) {
-                firstObserverFailure = error;
-                observerFailed = true;
-              }
-            }
-          }
+          }, "feed");
+          deliver_livemap_observers(aggregateObservers, observer => observer(acceptedCommit), "commit");
           publishAuthorityPosition(acceptedCommit.rev);
-          if (observerFailed) throw firstObserverFailure;
         });
       },
     });
@@ -1481,13 +1464,8 @@ function make_livemap_registry_engine(
       notify: (acceptedCommit) => enqueuePublication(() => {
         aggregateAcceptedTransitions += 1;
         aggregatePublications += 1;
-        let firstFailure: unknown;
-        for (const observer of [...aggregateObservers]) {
-          try { observer(acceptedCommit); }
-          catch (error) { firstFailure ??= error; }
-        }
+        deliver_livemap_observers(aggregateObservers, observer => observer(acceptedCommit), "commit");
         publishAuthorityPosition(acceptedCommit.rev);
-        if (firstFailure !== undefined) throw firstFailure;
       }),
     });
     return Object.freeze({ transition, identities: Object.freeze(prepared.map(({ state }) => state.identity)) });
@@ -1577,12 +1555,8 @@ function make_livemap_registry_engine(
       notify: (accepted) => enqueuePublication(() => {
         aggregateAcceptedTransitions += 1;
         aggregatePublications += 1;
-        let firstFailure: unknown;
-        for (const observer of [...aggregateObservers]) {
-          try { observer(accepted); } catch (error) { firstFailure ??= error; }
-        }
+        deliver_livemap_observers(aggregateObservers, observer => observer(accepted), "commit");
         publishAuthorityPosition(accepted.rev);
-        if (firstFailure !== undefined) throw firstFailure;
       }),
     });
     return transitionController.acceptAuthority(prepared).commit;
@@ -1623,12 +1597,8 @@ function make_livemap_registry_engine(
       notify: (accepted) => enqueuePublication(() => {
         aggregateAcceptedTransitions += 1;
         aggregatePublications += 1;
-        let firstFailure: unknown;
-        for (const observer of [...aggregateObservers]) {
-          try { observer(accepted); } catch (error) { firstFailure ??= error; }
-        }
+        deliver_livemap_observers(aggregateObservers, observer => observer(accepted), "commit");
         publishAuthorityPosition(accepted.rev);
-        if (firstFailure !== undefined) throw firstFailure;
       }),
     });
     return transitionController.acceptAuthority(prepared).commit;
@@ -1824,7 +1794,7 @@ function make_livemap_registry_engine(
       continuity: "new-epoch" as const,
     });
     enqueuePublication(() => {
-      for (const observer of [...aggregateRestoreObservers]) observer(event);
+      deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
       publishAuthorityPosition();
     });
   }
@@ -1937,7 +1907,7 @@ function make_livemap_registry_engine(
     const event = Object.freeze({ previousRevision, revision: mapRevision, libraries: restored,
       changedLibraries, continuity: "new-epoch" as const });
     enqueuePublication(() => {
-      for (const observer of [...aggregateRestoreObservers]) observer(event);
+      deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
       publishAuthorityPosition();
     });
   }
@@ -2105,7 +2075,7 @@ function make_livemap_registry_engine(
       continuity,
     });
     enqueuePublication(() => {
-      for (const observer of [...aggregateRestoreObservers]) observer(event);
+      deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
       publishAuthorityPosition();
     });
   }
@@ -2287,7 +2257,7 @@ function make_livemap_registry_engine(
       continuity: "same-epoch" as const,
     });
     enqueuePublication(() => {
-      for (const observer of [...aggregateRestoreObservers]) observer(event);
+      deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
       publishAuthorityPosition();
     });
   }
@@ -2487,7 +2457,7 @@ function make_livemap_registry_engine(
         libraries: Object.freeze(libraryRegistry.all().map((library) => library.identity)),
         changedLibraries: Object.freeze([]), continuity });
       enqueuePublication(() => {
-        for (const observer of [...aggregateRestoreObservers]) observer(event);
+        deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
         publishAuthorityPosition();
       });
     },

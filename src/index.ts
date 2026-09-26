@@ -125,6 +125,7 @@ export type {
   LiveMapDataLibrary,
   LiveMapDataLibraryInput,
   LiveMapDocumentLibrary,
+  LiveMapDocumentLocation,
   LiveMapDocumentLibraryInput,
   LiveMapInput,
   LiveMapLibraryInput,

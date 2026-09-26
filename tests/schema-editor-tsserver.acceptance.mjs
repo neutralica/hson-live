@@ -108,6 +108,14 @@ try {
     const definitions = await request("definition", { file: file("consumer.ts"), ...location(consumer, consumer.indexOf("typeof Slide") + 7) });
     assert.deepEqual(definitions[0].start, location(shifted, shifted.indexOf("Slide =")));
   });
+  await check("unsaved duplicate Schema names withdraw all proof and repair without restart", async () => {
+    const duplicate = `${schema}\nexport const Thing = Hson.schema\`<type "data" content <other "number">>\`;\n`;
+    await edit(duplicate);
+    assert.ok((await diagnostics("schema.ts")).some(error => error.code === 2451));
+    assert.ok((await diagnostics("consumer.ts")).some(error => error.code === 18046));
+    await edit(schema);
+    assert.equal((await diagnostics("consumer.ts")).length, 3);
+  });
   await check("unsaved Schema attachment refines immediately and removal withdraws the proof", async () => {
     const withoutAttachment = consumer.replace('map.lib("home").schema.use(Page);\n', "");
     await editConsumer(withoutAttachment);

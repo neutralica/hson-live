@@ -19,6 +19,16 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       if (mode !== undefined && ts.isLiteralTypeNode(mode) && ts.isStringLiteral(mode.literal)
         && (mode.literal.text === "data" || mode.literal.text === "document")) {
         preciseSchemas.push({ declaration, mode: mode.literal.text });
+      } else {
+        const declarationType = checker.getTypeAtLocation(declaration);
+        const arguments_ = declarationType.aliasTypeArguments
+          ?? ((declarationType.flags & ts.TypeFlags.Object) && (declarationType as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference
+            ? checker.getTypeArguments(declarationType as ts.TypeReference) : undefined);
+        const resolvedMode = arguments_?.[1];
+        if (resolvedMode !== undefined && (resolvedMode.flags & ts.TypeFlags.StringLiteral) !== 0) {
+          const value = (resolvedMode as ts.StringLiteralType).value;
+          if (value === "data" || value === "document") preciseSchemas.push({ declaration, mode: value });
+        }
       }
       names.set(checker.getTypeAtLocation(declaration), { evidence: origin.evidence });
       const value = declaration.type.typeArguments?.[0], identity = declaration.type.typeArguments?.[2];
@@ -134,14 +144,106 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       const rendered = render(type, node);
       if (rendered.changed) edits.push({ start: position, end: position, text: `: ${printer.printNode(ts.EmitHint.Unspecified, rendered.node, source)}` });
     };
-    const refinedLibraryReturn = (node: ts.FunctionDeclaration | ts.MethodDeclaration | ts.GetAccessorDeclaration): string | undefined => {
+    const selectedLibrary = (expression: ts.Expression): Readonly<{
+      map: ts.Identifier; library: ts.StringLiteral; facade: ts.CallExpression;
+    }> | undefined => {
+      if (!ts.isCallExpression(expression)
+        || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "lib"
+        || !ts.isIdentifier(expression.expression.expression) || expression.arguments.length !== 1
+        || !ts.isStringLiteral(expression.arguments[0])) return undefined;
+      return { map: expression.expression.expression, library: expression.arguments[0], facade: expression };
+    };
+    const matchingAttachment = (
+      selected: Readonly<{ map: ts.Identifier; library: ts.StringLiteral; facade: ts.CallExpression }>,
+      container: ts.Node,
+      before: number,
+    ): Readonly<{ schema: ts.Identifier; mode?: "data" | "document" }> | undefined => {
+      for (let index = attachments.length - 1; index >= 0; index -= 1) {
+        const fact = attachments[index];
+        if (fact !== undefined && fact.statement.parent === container && fact.statement.getEnd() < before
+          && checker.getSymbolAtLocation(fact.map) === checker.getSymbolAtLocation(selected.map)
+          && fact.library.text === selected.library.text) return fact;
+      }
+      const statements = ts.isSourceFile(container) || ts.isBlock(container) ? container.statements : undefined;
+      if (statements !== undefined) for (let index = statements.length - 1; index >= 0; index -= 1) {
+        const statement = statements[index];
+        if (statement === undefined || statement.getEnd() >= before || !ts.isExpressionStatement(statement)
+          || !ts.isCallExpression(statement.expression) || !ts.isIdentifier(statement.expression.expression)
+          || !statement.expression.expression.text.startsWith("__hson_assert_library_schema")
+          || statement.expression.arguments.length !== 3) continue;
+        const [map, library, schema] = statement.expression.arguments;
+        if (map === undefined || !ts.isIdentifier(map)
+          || checker.getSymbolAtLocation(map) !== checker.getSymbolAtLocation(selected.map)
+          || library === undefined || !ts.isStringLiteral(library) || library.text !== selected.library.text
+          || schema === undefined || !ts.isIdentifier(schema)) continue;
+        return { schema };
+      }
+      return undefined;
+    };
+    const selectedMode = (selected: Readonly<{ facade: ts.CallExpression }>): "data" | "document" | undefined => {
+      const property = checker.getPropertyOfType(checker.getTypeAtLocation(selected.facade), "mode");
+      if (property === undefined) return undefined;
+      const mode = checker.getTypeOfSymbolAtLocation(property, selected.facade);
+      return (mode.flags & ts.TypeFlags.StringLiteral) !== 0
+        && ((mode as ts.StringLiteralType).value === "data" || (mode as ts.StringLiteralType).value === "document")
+        ? (mode as ts.StringLiteralType).value as "data" | "document" : undefined;
+    };
+    const selectionCarriesSchema = (
+      selected: Readonly<{ facade: ts.CallExpression }>,
+      schema: ts.Identifier,
+    ): boolean => {
+      const facade = checker.getTypeAtLocation(selected.facade);
+      const schemaProperty = checker.getPropertyOfType(facade, "schema");
+      if (schemaProperty === undefined) return false;
+      const schemaFacade = checker.getTypeOfSymbolAtLocation(schemaProperty, selected.facade);
+      const getProperty = checker.getPropertyOfType(schemaFacade, "get");
+      if (getProperty === undefined) return false;
+      const signature = checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(getProperty, selected.facade), ts.SignatureKind.Call)[0];
+      if (signature === undefined) return false;
+      const current = checker.getReturnTypeOfSignature(signature);
+      const requested = checker.getTypeAtLocation(schema);
+      return checker.isTypeAssignableTo(current, requested) && checker.isTypeAssignableTo(requested, current);
+    };
+    const refinedLibraryType = (expression: ts.Expression, container: ts.Node, before: number): string | undefined => {
+      const selected = selectedLibrary(expression);
+      if (selected === undefined) return undefined;
+      const attachment = matchingAttachment(selected, container, before);
+      if (attachment === undefined || !selectionCarriesSchema(selected, attachment.schema)) return undefined;
+      const modeName = attachment.mode ?? selectedMode(selected);
+      if (modeName === undefined) return undefined;
+      const facade = modeName === "document" ? "LiveMapDocumentLibrary" : "LiveMapDataLibrary";
+      const schema = attachment.schema.getText(source);
+      return `import("hson-live").${facade}<import("hson-live").SchemaType<typeof ${schema}>, ${JSON.stringify(selected.library.text)}, typeof ${schema}>`;
+    };
+    const refinedEndpointType = (expression: ts.Expression, container: ts.Node, before: number): string | undefined => {
+      if (!ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression)
+        || expression.expression.name.text !== "at" || expression.arguments.length !== 1) return undefined;
+      const selected = selectedLibrary(expression.expression.expression);
+      if (selected === undefined) return undefined;
+      const attachment = matchingAttachment(selected, container, before);
+      const path = expression.arguments[0];
+      if (attachment === undefined || !selectionCarriesSchema(selected, attachment.schema)
+        || (attachment.mode ?? selectedMode(selected)) !== "document" || path === undefined) return undefined;
+      const pathNode = checker.typeToTypeNode(checker.getTypeAtLocation(path), path,
+        ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.UseAliasDefinedOutsideCurrentScope);
+      if (pathNode === undefined) return undefined;
+      const schema = attachment.schema.getText(source);
+      return `import("hson-live").LiveMapDocumentLocation<import("hson-live").SchemaType<typeof ${schema}>, ${JSON.stringify(selected.library.text)}, ${printer.printNode(ts.EmitHint.Unspecified, pathNode, source)}>`;
+    };
+    const targetedExpressionType = (expression: ts.Expression, container: ts.Node, before: number): string | undefined => {
+      return refinedLibraryType(expression, container, before) ?? refinedEndpointType(expression, container, before);
+    };
+    const refinedReturnType = (node: ts.FunctionDeclaration | ts.MethodDeclaration | ts.GetAccessorDeclaration): string | undefined => {
       const body = node.body;
       if (body === undefined || !ts.isBlock(body)) return undefined;
       const returns = body.statements.filter(ts.isReturnStatement);
       if (returns.length !== 1) return undefined;
       const returned = returns[0];
       const expression = returned?.expression;
-      if (returned === undefined || expression === undefined || !ts.isCallExpression(expression)
+      if (returned === undefined || expression === undefined) return undefined;
+      const targeted = targetedExpressionType(expression, body, returned.getStart(source));
+      if (targeted !== undefined) return targeted;
+      if (!ts.isCallExpression(expression)
         || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "lib"
         || !ts.isIdentifier(expression.expression.expression) || expression.arguments.length !== 1
         || !ts.isStringLiteral(expression.arguments[0])) return undefined;
@@ -175,13 +277,36 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       const schema = schemaNode.getText(source);
       return `import("hson-live").${facade}<import("hson-live").SchemaType<typeof ${schema}>, ${JSON.stringify(library.text)}, typeof ${schema}>`;
     };
+    const flowRefinedExportedMap = (node: ts.VariableDeclaration): boolean => {
+      if (!ts.isIdentifier(node.name) || node.parent.parent.parent !== source) return false;
+      const symbol = checker.getSymbolAtLocation(node.name);
+      if (attachments.some(fact => fact.statement.parent === source && fact.statement.getStart(source) > node.getEnd()
+        && checker.getSymbolAtLocation(fact.map) === symbol)) return true;
+      return source.statements.some(statement => statement.getStart(source) > node.getEnd()
+        && ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)
+        && ts.isIdentifier(statement.expression.expression)
+        && statement.expression.expression.text.startsWith("__hson_assert_library_schema")
+        && statement.expression.arguments[0] !== undefined
+        && ts.isIdentifier(statement.expression.arguments[0])
+        && checker.getSymbolAtLocation(statement.expression.arguments[0]) === symbol);
+    };
     const visit = (node: ts.Node): void => {
-      if ((ts.isVariableDeclaration(node) || ts.isPropertyDeclaration(node)) && node.type === undefined && node.initializer !== undefined && publicDeclaration(node)) annotate(checker.getTypeAtLocation(node), node, ts.isPropertyDeclaration(node) ? (node.questionToken ?? node.exclamationToken ?? node.name).getEnd() : node.name.getEnd());
+      if ((ts.isVariableDeclaration(node) || ts.isPropertyDeclaration(node)) && node.type === undefined && node.initializer !== undefined && publicDeclaration(node)) {
+        if (ts.isVariableDeclaration(node) && flowRefinedExportedMap(node)) {
+          throw new Error(`HSON_SCHEMA_FLOW_REFINED_EXPORTED_MAP_UNSUPPORTED: exported map ${node.name.getText(source)} is tightened after initialization; export a refined Library or endpoint facade instead.`);
+        }
+        const statement = ts.isVariableDeclaration(node) && ts.isVariableStatement(node.parent.parent) ? node.parent.parent : undefined;
+        const targeted = statement === undefined ? undefined
+          : targetedExpressionType(node.initializer, statement.parent, statement.getStart(source));
+        const position = ts.isPropertyDeclaration(node) ? (node.questionToken ?? node.exclamationToken ?? node.name).getEnd() : node.name.getEnd();
+        if (targeted !== undefined) edits.push({ start: position, end: position, text: `: ${targeted}` });
+        else annotate(checker.getTypeAtLocation(node), node, position);
+      }
       if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node)) && node.body !== undefined && node.type === undefined && publicDeclaration(node)) {
         const signature = checker.getSignatureFromDeclaration(node);
         const closing = node.getChildren(source).find(child => child.kind === ts.SyntaxKind.CloseParenToken);
         if (signature !== undefined && closing !== undefined) {
-          const targeted = refinedLibraryReturn(node);
+          const targeted = refinedReturnType(node);
           if (targeted !== undefined) edits.push({ start: closing.getEnd(), end: closing.getEnd(), text: `: ${targeted}` });
           else annotate(checker.getReturnTypeOfSignature(signature), node, closing.getEnd());
         }

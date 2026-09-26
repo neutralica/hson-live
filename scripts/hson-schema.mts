@@ -12,6 +12,7 @@ const runtimeBase = packagedRuntime ? "../dist" : "../src";
 const { is_official_hson_package_binding } = await import(`${runtimeBase}/internal/embedded-hson/discover-hson-tagged-templates.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/embedded-hson/discover-hson-tagged-templates.ts");
 const { compile_hson_schema } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
 const { schema_association_edits, unwrap_tagged_schema, legacy_import_block_edit, library_schema_attachment_plan } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
+const { discover_hson_schema_declarations } = await import(`${runtimeBase}/internal/hson-schema/schema-discovery.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-discovery.ts");
 const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
 const { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } = await import(`${runtimeBase}/internal/canonical-schema/evaluate.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/evaluate.ts");
 const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hson-source-provenance/parse-hson-with-provenance.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-source-provenance/parse-hson-with-provenance.ts");
@@ -124,33 +125,27 @@ function discover_schemas(program: ts.Program, checker: ts.TypeChecker, diagnost
   const output: SchemaDeclaration[] = [];
   for (const sourceFile of program.getSourceFiles()) {
     if (sourceFile.isDeclarationFile || sourceFile.fileName.startsWith(`${librarySourceRoot}${sep}`) || sourceFile.fileName.includes(`${sep}node_modules${sep}`) || sourceFile.fileName.includes(".hson-schema.generated.")) continue;
-    const counts = new Map<string, number>();
-    if (diagnostics !== undefined) for (const statement of sourceFile.statements) if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) if (ts.isIdentifier(declaration.name)) counts.set(declaration.name.text, (counts.get(declaration.name.text) ?? 0) + 1);
-    }
-    for (const statement of sourceFile.statements) {
-      if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
-      const declaration = statement.declarationList.declarations[0];
-      if (declaration === undefined || !ts.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
-      const tagged = unwrap_tagged_schema(declaration.initializer);
-      if (tagged === undefined || !is_official_hson_member_tag(tagged, "schema", checker)) continue;
-      if ((counts.get(declaration.name.text) ?? 0) > 1) {
-        diagnostics?.push({ file: sourceFile.fileName, message: `Duplicate Schema declaration ${declaration.name.text}; precise evidence withdrawn.` });
+    const reportedDuplicates = new Set<string>();
+    for (const discovered of discover_hson_schema_declarations(ts, sourceFile, checker)) {
+      const { statement, declaration, tagged, name } = discovered;
+      if (discovered.ambiguous) {
+        if (!reportedDuplicates.has(name)) diagnostics?.push({ file: sourceFile.fileName, message: `Duplicate Schema declaration ${name}; precise evidence withdrawn.` });
+        reportedDuplicates.add(name);
         continue;
       }
-      if (!ts.isNoSubstitutionTemplateLiteral(tagged.template) || tagged.template.isUnterminated) {
-        const message = `${sourceFile.fileName}: ${declaration.name.text} must use a complete substitution-free official Hson.schema tagged template.`;
+      if (!discovered.complete || !ts.isNoSubstitutionTemplateLiteral(tagged.template)) {
+        const message = `${sourceFile.fileName}: ${name} must use a complete substitution-free official Hson.schema tagged template.`;
         if (diagnostics === undefined) throw new Error(message);
         diagnostics.push({ message }); continue;
       }
       const source = raw_template(tagged.template, sourceFile);
       const compiled = compile_hson_schema(source);
       if (!compiled.ok) {
-        const message = `${sourceFile.fileName}: ${declaration.name.text}: ${compiled.issues.map((issue) => issue.message).join(" ")}`;
+        const message = `${sourceFile.fileName}: ${name}: ${compiled.issues.map((issue) => issue.message).join(" ")}`;
         if (diagnostics === undefined) throw new Error(message);
         diagnostics.push({ message }); continue;
       }
-      output.push(Object.freeze({ sourceFile, statement, declaration, tagged, name: declaration.name.text, source, compiled: compiled.value }));
+      output.push(Object.freeze({ sourceFile, statement, declaration, tagged, name, source, compiled: compiled.value }));
     }
   }
   return output;
@@ -250,6 +245,7 @@ function is_official_hson_member_tag(node: ts.TaggedTemplateExpression, member: 
     && ts.isIdentifier(node.tag.expression)
     && official_binding(node.tag.expression, "Hson", checker);
 }
+
 function raw_template(node: ts.NoSubstitutionTemplateLiteral, sourceFile: ts.SourceFile): string { const text = node.getText(sourceFile); return text.slice(1, -1); }
 function value_after(flag: string): string | undefined { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; }
 function fail(message: string): never { throw new Error(message); }
