@@ -1,5 +1,9 @@
 # Experimental Schema compiler inputs — Phase 1
 
+> Historical phase contract. The supported default commands and publishing contract
+> are now described in [Phase 4](./hson-schema-compiler-project-phase-4.md).
+
+
 This is an opt-in, checking-only foundation. It does not switch `generate`,
 `verify`, `check`, `build`, or `watch` to a new workflow, and does not change the
 VS Code extension. Those commands temporarily retain the legacy source writer.

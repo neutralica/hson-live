@@ -1,5 +1,9 @@
 # Hson Schema generated-project watch (Phase 3)
 
+> Historical phase contract. The supported default commands and publishing contract
+> are now described in [Phase 4](./hson-schema-compiler-project-phase-4.md).
+
+
 Opt in using:
 
 ```sh

@@ -17,6 +17,7 @@ run_command_test_case({
   cwd: repositoryRoot,
   commands: [
     { command: "npm", args: ["run", "build"] },
+    { command: process.execPath, args: ["--import=tsx", "scripts/hson-schema.mts", "generate", "--project", "tests/fixtures/hson-schema-mvp/tsconfig.json"] },
     {
       command: process.execPath,
       args: [

@@ -3,12 +3,11 @@ import ts from "typescript";
 export type SchemaSourceEdit = Readonly<{ start: number; end: number; text: string }>;
 export type SchemaSourceAssociation = Readonly<{ declaration: ts.VariableDeclaration; text: string }>;
 
-// Keep marker literals split so the legacy project's textual block scan cannot
-// mistake the helper's own source for a generated association block.
+// Split markers keep source-scanning migration tools from treating this helper as a legacy producer.
 export const GENERATED_EXPORTS_START = "// @hson-schema" + " generated type exports";
 export const GENERATED_EXPORTS_END = "// @hson-schema" + " end generated type exports";
 
-/** One association model for the legacy writer and generated compiler inputs. */
+/** Association planning for generated compiler inputs and in-memory editor views. */
 export function schema_type_association(
   name: string,
   specifier: string,
@@ -103,10 +102,6 @@ export function apply_source_edits(source: string, edits: readonly SchemaSourceE
   return output;
 }
 
-export function apply_generated_schema_associations(source: string, associations: readonly SchemaSourceAssociation[]): string {
-  return apply_source_edits(source, schema_association_edits(associations));
-}
-
 export function generated_exports_block(exports: readonly string[], schemaTypeName = "__HsonSchema"): string {
   if (exports.length === 0) return "";
   return `${GENERATED_EXPORTS_START}\nimport type { HsonSchema as ${schemaTypeName} } from "hson-live";\n${[...exports].sort().join("\n")}\n${GENERATED_EXPORTS_END}\n`;
@@ -119,9 +114,4 @@ export function generated_exports_block_from_source(source: string): string {
   if (end >= 0) return source.slice(start, end + GENERATED_EXPORTS_END.length + (source[end + GENERATED_EXPORTS_END.length] === "\n" ? 1 : 0));
   const legacy = source.slice(start).match(/^\/\/ @hson-schema generated type exports\n(?:export type \{[^\n]+\} from [^\n]+;\n?)*/)?.[0];
   return legacy ?? "";
-}
-
-export function remove_generated_exports_block(source: string): string {
-  const block = generated_exports_block_from_source(source);
-  return block === "" ? source : source.replace(block, "");
 }

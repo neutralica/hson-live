@@ -56,6 +56,33 @@ export class SchemaProjectSnapshot {
       getDirectories: this.getDirectories, realpath: this.realpath, readDirectory: this.readDirectory });
     return host;
   }
+  records(): readonly (readonly [string, unknown])[] {
+    return [...this.observations].map(([key, { value }]) => [key, value] as const);
+  }
+  /** Replay the exact captured filesystem queries; verification never generates files. */
+  static matches(records: readonly (readonly [string, unknown])[]): boolean {
+    const snapshot = new SchemaProjectSnapshot();
+    for (const [key, expected] of records) {
+      let actual: unknown;
+      if (key.startsWith("[")) {
+        const [kind, path, extensions, excludes, includes, depth] = JSON.parse(key);
+        if (kind !== "glob") throw new Error("Unknown Hson snapshot query.");
+        actual = snapshot.readDirectory(path, extensions, excludes, includes, depth);
+      } else {
+        const colon = key.indexOf(":"), kind = key.slice(0, colon), path = key.slice(colon + 1);
+        switch (kind) {
+          case "text": snapshot.readFile(path); actual = snapshot.observations.get(key)?.value; break;
+          case "file": actual = snapshot.fileExists(path); break;
+          case "directory": actual = snapshot.directoryExists(path); break;
+          case "directories": actual = snapshot.getDirectories(path); break;
+          case "realpath": actual = snapshot.realpath(path); break;
+          default: throw new Error("Unknown Hson snapshot query.");
+        }
+      }
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) return false;
+    }
+    return snapshot.isCurrent();
+  }
   fingerprint(): string {
     return createHash("sha256").update(JSON.stringify([...this.observations].map(([key, { value }]) => [key, value])
       .sort(([a], [b]) => String(a).localeCompare(String(b))))).digest("hex");

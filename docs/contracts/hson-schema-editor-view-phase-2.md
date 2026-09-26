@@ -1,5 +1,9 @@
 # Schema editor compiler view — Phase 2
 
+> Historical phase contract. The supported default commands and publishing contract
+> are now described in [Phase 4](./hson-schema-compiler-project-phase-4.md).
+
+
 The TypeScript server plugin now supplies the Schema compiler view in memory.
 The authored module keeps its filename and editor text. No producer, sidecar,
 manifest, or `.hson/compiler-input` project is written by this integration.

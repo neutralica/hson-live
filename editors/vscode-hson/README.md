@@ -123,3 +123,5 @@ After updating the installed extension, run **Developer: Reload Window** when re
 ## Development
 
 Extension implementation, packaging, integration-test, appearance-authority, and regression-suite documentation is maintained with the extension source.
+
+Schema Generate and Watch now publish immutable compiler projects under `.hson/`; they never inject imports or annotations into authored TypeScript. The TypeScript plugin continues to use current unsaved in-memory views. For legacy cleanup and publishing see the library’s [Phase 4 contract](../../docs/contracts/hson-schema-compiler-project-phase-4.md).

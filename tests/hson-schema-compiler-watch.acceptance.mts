@@ -56,7 +56,8 @@ await check("finite project adoption preserves old files and unchanged errors st
   try {
     const seeded = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "experimental-project", "--project", config], { encoding: "utf8", timeout: 60_000 });
     assert.equal(seeded.status, 0, seeded.stdout + seeded.stderr);
-    const oldSource = join(quiet, ".hson/compiler-input/tsconfig.json/sources/source.ts");
+    const seed = JSON.parse(seeded.stdout.trim());
+    const oldSource = join(dirname(seed.manifest), "sources/source.ts");
     const oldBytes = readFileSync(oldSource);
     await watcher.poll(); await watcher.poll(); await watcher.poll();
     assert.deepEqual(emitted, ["prepared", "current"]);
@@ -65,8 +66,7 @@ await check("finite project adoption preserves old files and unchanged errors st
     assert.deepEqual(emitted, ["prepared", "current", "prepared", "current"]);
     assert.deepEqual(readFileSync(oldSource), oldBytes);
     const refused = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "experimental-project", "--project", config], { encoding: "utf8", timeout: 60_000 });
-    assert.notEqual(refused.status, 0);
-    assert.match(refused.stderr, /unowned\/edited/);
+    assert.equal(refused.status, 0, refused.stderr);
   } finally { watcher.stop(); rmSync(quiet, { recursive: true, force: true }); }
 });
 const authored = new Map<string, Buffer>();
@@ -105,7 +105,7 @@ const selector = join(output, "tsconfig.json");
 type Event = { state: string; revision: string; project: string; manifest: string; diagnostics: string[]; schemas: number };
 let beforePublish: ((event: Event) => void) | undefined;
 let stderr = "";
-const child = spawn(process.execPath, [join(root, "dist/hson-schema.mjs"), "experimental-project", "--project", join(project, "tsconfig.json"), "--watch"], {
+const child = spawn(process.execPath, [join(root, "dist/hson-schema.mjs"), "watch", "--project", join(project, "tsconfig.json")], {
   cwd: root, env: { ...process.env, HSON_SCHEMA_WATCH_TEST_BARRIER: "1" }, stdio: ["ignore", "pipe", "pipe", "ipc"],
 });
 assert.ok(child.stdout && child.stderr);

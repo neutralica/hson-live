@@ -467,13 +467,16 @@ const dynamic = CounterSchema.certify(data);
 const portableDefinition = CounterSchema.toHson(); // HsonSchemaData string
 ```
 
-The `hson-schema` CLI generates Schema-specific evidence and validates direct authored assignments such as `proved`. Ordinary TypeScript alone keeps a tag's result unproved. Use `Hson.document.fromNode` and `Hson.document.toNode` to cross the exact document graph boundary. Admit application state with `hsonLiveMap.fromLibraries({ name: { data, schema } })` or `{ name: { document, schema } }`.
+The `hson-schema` CLI leaves authored files byte-identical, generates Schema-specific evidence in tool-owned `.hson/` compiler projects, and validates direct authored assignments such as `proved`. Ordinary TypeScript alone keeps a tag's result unproved. Use `Hson.document.fromNode` and `Hson.document.toNode` to cross the exact document graph boundary. Admit application state with `hsonLiveMap.fromLibraries({ name: { data, schema } })` or `{ name: { document, schema } }`.
 
 ```sh
 hson-schema generate --project tsconfig.json
 hson-schema watch --project tsconfig.json
 hson-schema check --project tsconfig.json
+hson-schema build --project tsconfig.json
 ```
+
+`verify` checks saved generated state without regenerating. `build` emits runtime JavaScript from authored inputs and precise declarations with package-owned evidence. See [Schema workflow, publishing and explicit legacy migration](docs/contracts/hson-schema-compiler-project-phase-4.md).
 
 Use subsystem entrypoints when working directly with lower-level APIs. Node-specific entrypoints such as `hson-live/livehost/node` and `hson-live/locus/node` belong in Node runtimes, not browser or Worker bundles.
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -51,9 +51,14 @@ writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOpt
 
 const run = (mode: "generate" | "verify" | "check" | "build") => spawnSync(process.execPath, ["--import=tsx", "scripts/hson-schema.mts", mode, "--project", config], { cwd: root, encoding: "utf8" });
 
+function selected(): string { const entry = join(project, ".hson/compiler-input/tsconfig.json/tsconfig.json"); return dirname(resolve(dirname(entry), JSON.parse(readFileSync(entry, "utf8")).extends)); }
+function evidence(name: string): string { const match = /^(.*)\.([^.]+)\.hson-schema\.generated\.(ts|json)$/.exec(name)!; return join(selected(), "evidence", `${match[1]}.ts`, `${match[2]}.hson-schema.generated.${match[3]}`); }
+function published(name: string): string { const match = /^(.*)\.([^.]+)\.hson-schema\.generated\.d\.ts$/.exec(name)!; return join(project, "out/internal/hson-schema", `${match[1]}.ts`, `${match[2]}.hson-schema.generated.d.ts`); }
+function generated_source(path: string): string { return readFileSync(join(selected(), "sources", path.slice(project.length + 1)), "utf8"); }
+
 check("generation and extension-independent authoritative check pass", () => { assert.equal(run("generate").status, 0); const result = run("check"); assert.equal(result.status, 0, result.stdout + result.stderr); });
 check("plain local static form gains real Type and Hson symbols without certification", () => {
-  const source = readFileSync(localStatic, "utf8");
+  const source = generated_source(localStatic);
   assert.match(source, /import type \{ Evidence as __SchemaTestEvidence \} from/);
   assert.match(source, /HsonData<typeof SchemaTest>/);
   assert.doesNotMatch(source, /Hson\.certify|\.validate/);
@@ -72,7 +77,7 @@ check("downstream parsing and HsonSchema semantic diagnostics remain distinct", 
   writeFileSync(localStatic, original);
   assert.equal(run("generate").status, 0);
 });
-check("official symbol resolution accepts renamed direct imports", () => assert.match(readFileSync(aliasSchema, "utf8"), /Evidence as __AliasSchemaEvidence/));
+check("official symbol resolution accepts renamed direct imports", () => assert.match(generated_source(aliasSchema), /Evidence as __AliasSchemaEvidence/));
 check("local files with official-looking basenames cannot generate Schema proof", () => {
   const fakeIndex = join(project, "index.ts");
   const fakeAuthoring = join(project, "hson-authoring.ts");
@@ -80,60 +85,60 @@ check("local files with official-looking basenames cannot generate Schema proof"
   writeFileSync(fakeIndex, "export const Hson = { schema: String.raw, data: String.raw };\n");
   writeFileSync(fakeAuthoring, "export const Hson = { schema: String.raw, data: String.raw };\n");
   writeFileSync(fakeConsumer, 'import { Hson as A } from "./index.js"; import { Hson as B } from "./hson-authoring.js"; export const FakeA = A.schema`<type "data" content "number">`; export const FakeB = B.schema`<type "data" content "number">`;\n');
-  const result = run("verify");
+  const result = run("generate");
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.equal(existsSync(join(project, "lookalike.FakeA.hson-schema.generated.ts")), false);
-  assert.equal(existsSync(join(project, "lookalike.FakeB.hson-schema.generated.ts")), false);
-  unlinkSync(fakeConsumer); unlinkSync(fakeAuthoring); unlinkSync(fakeIndex);
+  assert.equal(existsSync(evidence("lookalike.FakeA.hson-schema.generated.ts")), false);
+  assert.equal(existsSync(evidence("lookalike.FakeB.hson-schema.generated.ts")), false);
+  unlinkSync(fakeConsumer); unlinkSync(fakeAuthoring); unlinkSync(fakeIndex); assert.equal(run("generate").status, 0);
 });
 check("declaration emit preserves module reexport and private proof carrier", () => {
   const result = run("build");
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(readFileSync(join(project, "out/producer.d.ts"), "utf8"), /__UserSchemaEvidence\["identity"\]/);
-  const generated = readFileSync(join(project, "out/producer.UserSchema.hson-schema.generated.d.ts"), "utf8");
+  const generated = readFileSync(published("producer.UserSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(generated, /private readonly __hsonSchemaProof/); assert.match(generated, /export type Evidence/); assert.match(generated, /declare const __Identity: unique symbol/); assert.doesNotMatch(generated, /UserSchemaType|UserSchemaHson/);
   assert.match(generated, /M3AlphabetR0Proof/);
-  assert.match(readFileSync(join(project, "producer.UserSchema.hson-schema.generated.json"), "utf8"), /string-repertoire/);
-  const recursiveGenerated = readFileSync(join(project, "out/producer.TreeSchema.hson-schema.generated.d.ts"), "utf8");
+  assert.match(readFileSync(evidence("producer.UserSchema.hson-schema.generated.json"), "utf8"), /string-repertoire/);
+  const recursiveGenerated = readFileSync(published("producer.TreeSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(recursiveGenerated, /type __TreeSchemaDefinition0/); assert.match(recursiveGenerated, /ReadonlyArray<__TreeSchemaDefinition0>/); assert.match(recursiveGenerated, /private readonly __hsonSchemaProof/);
-  const finiteGenerated = readFileSync(join(project, "out/producer.FiniteSchema.hson-schema.generated.d.ts"), "utf8");
+  const finiteGenerated = readFileSync(published("producer.FiniteSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(finiteGenerated, /"lobby"[^;]+"ready"[^;]+"playing"[^;]+"finished"/);
   assert.match(finiteGenerated, /"player1"[^;]+"player2"[^;]+null/);
   assert.match(finiteGenerated, /U0ZeroProof/); assert.match(finiteGenerated, /U1ZeroProof/);
-  const documentGenerated = readFileSync(join(project, "out/document-schema.PageSchema.hson-schema.generated.d.ts"), "utf8");
+  const documentGenerated = readFileSync(published("document-schema.PageSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(documentGenerated, /readonly \$_tag: "main"/); assert.match(documentGenerated, /readonly \$_tag: "section"/); assert.match(documentGenerated, /readonly hidden\?: "hidden"/);
-  const repeatGenerated = readFileSync(join(project, "out/document-schema.RepeatSchema.hson-schema.generated.d.ts"), "utf8");
+  const repeatGenerated = readFileSync(published("document-schema.RepeatSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(repeatGenerated, /readonly \$_tag: "item"/); assert.match(repeatGenerated, /readonly \[[^\]]+, [^\]]+\]/); assert.match(repeatGenerated, /private readonly __hsonSchemaProof/);
-  const documentSequenceGenerated = readFileSync(join(project, "out/document-schema.DocumentSequenceSchema.hson-schema.generated.d.ts"), "utf8");
+  const documentSequenceGenerated = readFileSync(published("document-schema.DocumentSequenceSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(documentSequenceGenerated, /readonly \$_tag: "_hson_root"/); assert.match(documentSequenceGenerated, /readonly \$_tag: "item"/);
 });
 check("retired generated Value evidence fails freshness", () => {
-  const artifact = join(project, "producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
+  const artifact = evidence("producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
   writeFileSync(artifact, original.replace("export type Evidence", "export type StaleEvidence"));
   assert.notEqual(run("verify").status, 0);
   writeFileSync(artifact, original);
 });
 check("edited generated declaration fails closed", () => {
-  const artifact = join(project, "producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
+  const artifact = evidence("producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
   writeFileSync(artifact, `${original}\n// stale edit\n`); assert.notEqual(run("verify").status, 0); writeFileSync(artifact, original);
 });
 check("prior analyzer compatibility evidence fails freshness", () => {
-  const artifact = join(project, "producer.UserSchema.hson-schema.generated.json"), original = readFileSync(artifact, "utf8");
+  const artifact = evidence("producer.UserSchema.hson-schema.generated.json"), original = readFileSync(artifact, "utf8");
   writeFileSync(artifact, original.replace("hson-schema-mvp-10", "hson-schema-mvp-9"));
   assert.notEqual(run("verify").status, 0);
   writeFileSync(artifact, original);
 });
 check("missing generated evidence fails closed", () => {
-  const artifact = join(project, "producer.UserSchema.hson-schema.generated.json"), original = readFileSync(artifact, "utf8");
+  const artifact = evidence("producer.UserSchema.hson-schema.generated.json"), original = readFileSync(artifact, "utf8");
   unlinkSync(artifact); assert.notEqual(run("verify").status, 0); writeFileSync(artifact, original);
 });
 check("Schema edit without regeneration fails closed", () => {
   const original = readFileSync(producer, "utf8"); writeFileSync(producer, original.replace('age <number <int true min 0 under 130>>', 'age "string"'));
-  assert.notEqual(run("verify").status, 0); writeFileSync(producer, original);
+  assert.notEqual(run("verify").status, 0); writeFileSync(producer, original); assert.equal(run("generate").status, 0);
 });
 check("invalid static Hson fails with no extension", () => {
   const original = readFileSync(consumer, "utf8"); writeFileSync(consumer, original.replace("age 37", 'age "37"'));
-  const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy UserSchema/); writeFileSync(consumer, original);
+  const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy UserSchema/); writeFileSync(consumer, original); assert.equal(run("generate").status, 0);
 });
 check("finite exact-domain static Hson rejects outside literals", () => {
   const original = readFileSync(consumer, "utf8");
@@ -142,9 +147,9 @@ check("finite exact-domain static Hson rejects outside literals", () => {
     original.replace('turn null', 'turn "player3"'),
   ]) {
     writeFileSync(consumer, changed);
-    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy FiniteSchema/);
+    const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy FiniteSchema/);
   }
-  writeFileSync(consumer, original);
+  writeFileSync(consumer, original); assert.equal(run("generate").status, 0);
 });
 check("nested recursive and referenced-refinement failures map through the static analyzer", () => {
   const original = readFileSync(consumer, "utf8");
@@ -154,23 +159,23 @@ check("nested recursive and referenced-refinement failures map through the stati
     '<value "root" age 2 children [<value "leaf" age "0" children []>]>',
   ]) {
     writeFileSync(consumer, original.replace('<value "root" age 2 children [<value "leaf" age 0 children []>]>', candidate));
-    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy TreeSchema/);
+    const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy TreeSchema/);
   }
-  writeFileSync(consumer, original);
+  writeFileSync(consumer, original); assert.equal(run("generate").status, 0);
 });
 check("stale and renamed local refs fail immediately", () => {
   const original = readFileSync(producer, "utf8");
   writeFileSync(producer, original.replace('children <array <ref "Tree">>', 'children <array <ref "Missing">>'));
-  const stale = run("verify"); assert.notEqual(stale.status, 0); assert.match(stale.stdout + stale.stderr, /Unknown local Schema definition/);
+  const stale = run("generate"); assert.notEqual(stale.status, 0); assert.match(stale.stdout + stale.stderr, /Unknown local Schema definition/);
   writeFileSync(producer, original.replace('Tree <content', 'Branch <content'));
-  const renamed = run("verify"); assert.notEqual(renamed.status, 0); assert.match(renamed.stdout + renamed.stderr, /Unknown local Schema definition/);
-  writeFileSync(producer, original);
+  const renamed = run("generate"); assert.notEqual(renamed.status, 0); assert.match(renamed.stdout + renamed.stderr, /Unknown local Schema definition/);
+  writeFileSync(producer, original); assert.equal(run("generate").status, 0);
 });
 check("source freshness detects a definition rename even when all refs preserve graph semantics", () => {
   const original = readFileSync(producer, "utf8");
   writeFileSync(producer, original.replace(' Tree <content', ' Branch <content').replaceAll('ref "Tree"', 'ref "Branch"'));
-  const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /Stale or edited/);
-  writeFileSync(producer, original);
+  const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /Stale generated/);
+  writeFileSync(producer, original); assert.equal(run("generate").status, 0);
 });
 check("definition bodies, ref targets, recursion topology, and root refs all participate in freshness", () => {
   const original = readFileSync(producer, "utf8");
@@ -181,9 +186,9 @@ check("definition bodies, ref targets, recursion topology, and root refs all par
   ]) {
     assert.notEqual(changed, original);
     writeFileSync(producer, changed);
-    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /Stale or edited/);
+    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /Stale generated/);
   }
-  writeFileSync(producer, original);
+  writeFileSync(producer, original); assert.equal(run("generate").status, 0);
 });
 check("mutation-heavy freshness cases restore a current generated baseline", () => {
   const result = run("verify");
@@ -206,9 +211,9 @@ check("every refinement family fails invalid static authored Hson without the ex
     '<name "Ada" age 37 code "ID-7" key "abc" values [1, 2, 3]>',
   ]) {
     writeFileSync(consumer, original.replace(valid, candidate));
-    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy UserSchema/);
+    const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy UserSchema/);
   }
-  writeFileSync(consumer, original);
+  writeFileSync(consumer, original); assert.equal(run("generate").status, 0);
 });
 check("document static Hson rejects wrong tag, attrs, content order, and cardinality with no extension", () => {
   const original = readFileSync(documentConsumer, "utf8");
@@ -223,9 +228,9 @@ check("document static Hson rejects wrong tag, attrs, content order, and cardina
     ['<main id=hero <header/> <section "body"/>/>', '<main id=hero <header/> <section "body"/> <section "extra"/>/>'],
   ] as const) {
     writeFileSync(documentConsumer, original.replace(from, to));
-    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy PageSchema/);
+    const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy PageSchema/);
   }
-  writeFileSync(documentConsumer, original);
+  writeFileSync(documentConsumer, original); assert.equal(run("generate").status, 0);
 });
 check("static repeated Hson enforces exact count, child shape, and referenced refinements", () => {
   const original = readFileSync(documentConsumer, "utf8");
@@ -239,18 +244,18 @@ check("static repeated Hson enforces exact count, child shape, and referenced re
     '<list <item/> <item code=ok-two/>/>',
   ]) {
     writeFileSync(documentConsumer, original.replace(valid, candidate));
-    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy RepeatSchema/);
+    const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy RepeatSchema/);
   }
-  writeFileSync(documentConsumer, original);
+  writeFileSync(documentConsumer, original); assert.equal(run("generate").status, 0);
 });
 check("static document sequence Hson enforces multi-root cardinality and item shape", () => {
   const original = readFileSync(documentConsumer, "utf8");
   const valid = '<item/><item/>';
   for (const candidate of ['<item/>', '<item/><item/><item/>', '<item/><wrong/>']) {
     writeFileSync(documentConsumer, original.replace(valid, candidate));
-    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy DocumentSequenceSchema/);
+    const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy DocumentSequenceSchema/);
   }
-  writeFileSync(documentConsumer, original);
+  writeFileSync(documentConsumer, original); assert.equal(run("generate").status, 0);
 });
 check("repeat body, count, and repeated ref target participate in freshness", () => {
   const original = readFileSync(documentSchema, "utf8");
@@ -279,43 +284,43 @@ check("retired attrs exact closure spelling fails closed", () => {
 });
 check("static interpolation fails closed", () => {
   const original = readFileSync(consumer, "utf8"); writeFileSync(consumer, original.replace('Hson.data`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>`', 'Hson.data`<name "Ada" age ${37} code "ID-7" key "abc" values [0, -0]>`'));
-  const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /substitution-free/); writeFileSync(consumer, original);
+  const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /substitution-free/); writeFileSync(consumer, original); assert.equal(run("generate").status, 0);
 });
 check("wrong Schema-bound validation association fails closed", () => {
   const original = readFileSync(consumer, "utf8");
   writeFileSync(consumer, `${original}\nimport { AliasSchema } from "./alias-schema.js";\nconst wrong: HsonData<typeof AliasSchema> = UserSchema.certify(Hson.data\`<name "Ada" age 37 code "ID-7" key "abc" values [1]>\`); void wrong;\n`);
-  const result = run("check"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /not assignable/); writeFileSync(consumer, original);
+  assert.equal(run("generate").status, 0); const result = run("check"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /not assignable/); writeFileSync(consumer, original); assert.equal(run("generate").status, 0);
 });
 check("deletion and rename remove stale artifacts and managed bindings", () => {
   const original = readFileSync(localStatic, "utf8");
-  const oldArtifact = join(project, "local-static.SchemaTest.hson-schema.generated.ts");
+  const oldArtifact = evidence("local-static.SchemaTest.hson-schema.generated.ts");
   writeFileSync(localStatic, 'import { Hson, type HsonSchema } from "hson-live"; void Hson; type Keep = HsonSchema; void (0 as unknown as Keep);\n');
   assert.notEqual(run("verify").status, 0);
   assert.equal(run("generate").status, 0);
   assert.equal(readFileSync(localStatic, "utf8").includes("@hson-schema"), false);
-  assert.equal(existsSync(oldArtifact), false);
+  assert.equal(existsSync(evidence("local-static.SchemaTest.hson-schema.generated.ts")), false);
   writeFileSync(localStatic, original.replaceAll("SchemaTest", "RenamedSchema"));
   assert.equal(run("generate").status, 0);
-  assert.equal(existsSync(oldArtifact), false);
-  assert.equal(existsSync(join(project, "local-static.RenamedSchema.hson-schema.generated.ts")), true);
+  assert.equal(existsSync(evidence("local-static.SchemaTest.hson-schema.generated.ts")), false);
+  assert.equal(existsSync(evidence("local-static.RenamedSchema.hson-schema.generated.ts")), true);
   writeFileSync(localStatic, original);
   assert.equal(run("generate").status, 0);
 });
 check("physical producer deletion, file rename, exclusion, and restoration reconcile only owned evidence", () => {
   const lifecycle = join(project, "lifecycle.ts"), renamedLifecycle = join(project, "lifecycle-renamed.ts");
   const authored = 'import { Hson, type HsonSchema } from "hson-live";\nexport const LifecycleSchema: HsonSchema = Hson.schema`<type "data" content <ok "boolean">>`;\n';
-  const artifact = join(project, "lifecycle.LifecycleSchema.hson-schema.generated.ts");
-  const metadata = join(project, "lifecycle.LifecycleSchema.hson-schema.generated.json");
-  writeFileSync(lifecycle, authored); assert.equal(run("generate").status, 0); assert.ok(existsSync(artifact) && existsSync(metadata));
-  unlinkSync(lifecycle); assert.equal(run("generate").status, 0); assert.equal(existsSync(artifact), false); assert.equal(existsSync(metadata), false);
-  writeFileSync(lifecycle, authored); assert.equal(run("generate").status, 0); assert.ok(existsSync(artifact));
+  const artifact = evidence("lifecycle.LifecycleSchema.hson-schema.generated.ts");
+  const metadata = evidence("lifecycle.LifecycleSchema.hson-schema.generated.json");
+  writeFileSync(lifecycle, authored); assert.equal(run("generate").status, 0); assert.ok(existsSync(evidence("lifecycle.LifecycleSchema.hson-schema.generated.ts")) && existsSync(evidence("lifecycle.LifecycleSchema.hson-schema.generated.json")));
+  unlinkSync(lifecycle); assert.equal(run("generate").status, 0); assert.equal(existsSync(evidence("lifecycle.LifecycleSchema.hson-schema.generated.ts")), false); assert.equal(existsSync(evidence("lifecycle.LifecycleSchema.hson-schema.generated.json")), false);
+  writeFileSync(lifecycle, authored); assert.equal(run("generate").status, 0); assert.ok(existsSync(evidence("lifecycle.LifecycleSchema.hson-schema.generated.ts")));
   renameSync(lifecycle, renamedLifecycle); assert.equal(run("generate").status, 0);
-  const renamedArtifact = join(project, "lifecycle-renamed.LifecycleSchema.hson-schema.generated.ts");
-  assert.equal(existsSync(artifact), false); assert.ok(existsSync(renamedArtifact));
+  const renamedArtifact = evidence("lifecycle-renamed.LifecycleSchema.hson-schema.generated.ts");
+  assert.equal(existsSync(evidence("lifecycle.LifecycleSchema.hson-schema.generated.ts")), false); assert.ok(existsSync(evidence("lifecycle-renamed.LifecycleSchema.hson-schema.generated.ts")));
   const originalConfig = readFileSync(config, "utf8");
   writeFileSync(config, JSON.stringify({ ...JSON.parse(originalConfig), exclude: ["./lifecycle-renamed.ts"] }, null, 2));
-  assert.equal(run("generate").status, 0); assert.equal(existsSync(renamedArtifact), false);
-  writeFileSync(config, originalConfig); assert.equal(run("generate").status, 0); assert.ok(existsSync(renamedArtifact));
+  assert.equal(run("generate").status, 0); assert.equal(existsSync(evidence("lifecycle-renamed.LifecycleSchema.hson-schema.generated.ts")), false);
+  writeFileSync(config, originalConfig); assert.equal(run("generate").status, 0); assert.ok(existsSync(evidence("lifecycle-renamed.LifecycleSchema.hson-schema.generated.ts")));
   unlinkSync(renamedLifecycle); assert.equal(run("generate").status, 0);
 });
 

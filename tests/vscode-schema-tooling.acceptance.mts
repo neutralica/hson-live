@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
-import { discover_schema_project, resolve_workspace_hson_schema_tool } from "../editors/vscode-hson/src/schema-tooling.ts";
+import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_watch_output_state } from "../editors/vscode-hson/src/schema-tooling.ts";
 
 let checks = 0;
 function check(name: string, body: () => void): void { body(); console.log(`ok ${++checks} - ${name}`); }
+
+check("extension interprets current invalid/repaired JSON watch revisions", () => {
+  assert.equal(schema_watch_output_state('{"hsonSchema":"watch","state":"current","diagnostics":["invalid Schema"]}'), "error");
+  assert.equal(schema_watch_output_state('{"hsonSchema":"watch","state":"current","diagnostics":[]}'), "watching");
+  assert.equal(schema_watch_output_state('{"hsonSchema":"watch","state":"discarded"}'), undefined);
+});
 
 const root = resolve(".");
 mkdirSync(join(root, "tmp"), { recursive: true });
@@ -48,7 +54,7 @@ check("packed consumer Generate creates Schema evidence linked to the public sym
   const generated = run("generate");
   assert.equal(generated.status, 0, generated.stdout + generated.stderr + generated.error?.message);
   const text = readFileSync(source, "utf8");
-  assert.match(text, /__UserSchemaEvidence/); assert.doesNotMatch(text, /UserSchemaType|UserSchemaHson/);
+  assert.doesNotMatch(text, /__UserSchemaEvidence/); assert.doesNotMatch(text, /UserSchemaType|UserSchemaHson/);
   const checked = run("check");
   assert.equal(checked.status, 0, checked.stdout + checked.stderr + checked.error?.message);
 });
@@ -64,30 +70,36 @@ const waitFor = async (condition: () => boolean, label: string): Promise<void> =
     await new Promise(resolveWait => setTimeout(resolveWait, 50));
   }
 };
+process.once("exit", () => watcher.kill("SIGTERM"));
 const original = readFileSync(source, "utf8");
-const artifact = join(project, "schema.UserSchema.hson-schema.generated.ts");
-await waitFor(() => watchOutput.includes(`Hson Schema watch: checking ${config}.`) && watchOutput.includes("Hson Schema watch: current; 1 Schema;"), "watch did not report its project and initial current state");
+function artifact(name: string): string {
+  const selector = join(project, ".hson/compiler-input/tsconfig.json/tsconfig.json");
+  const selected = dirname(resolve(dirname(selector), JSON.parse(readFileSync(selector, "utf8")).extends));
+  return join(selected, "evidence/schema.ts", `${name}.hson-schema.generated.ts`);
+}
+function current(text: string, error = false): boolean { return text.split(/\r?\n/).some(line => { try { const event = JSON.parse(line); return event.state === "current" && Array.isArray(event.diagnostics) && (error ? event.diagnostics.length > 0 : event.diagnostics.length === 0); } catch { return false; } }); }
+await waitFor(() => current(watchOutput), "watch did not report its project and initial current state");
 const beforeCandidateError = watchOutput.length;
 writeFileSync(candidate, readFileSync(candidate, "utf8").replace('name "Ada"', "name 1"));
-await waitFor(() => watchOutput.slice(beforeCandidateError).includes("Hson Schema watch: stale/error;"), "watch did not react to an invalid separate Schema-bound candidate without a literal HsonSchema name");
+await waitFor(() => current(watchOutput.slice(beforeCandidateError), true), "watch did not react to an invalid separate Schema-bound candidate without a literal HsonSchema name");
 const beforeCandidateRecovery = watchOutput.length;
 writeFileSync(candidate, readFileSync(candidate, "utf8").replace("name 1", 'name "Ada"'));
-await waitFor(() => watchOutput.slice(beforeCandidateRecovery).includes("Hson Schema watch: current; 1 Schema;"), "watch did not recover after correcting the separate Schema-bound candidate");
+await waitFor(() => current(watchOutput.slice(beforeCandidateRecovery)), "watch did not recover after correcting the separate Schema-bound candidate");
 const beforeConfigCycle = watchOutput.length;
 writeFileSync(baseConfig, readFileSync(baseConfig, "utf8").replace('"forceConsistentCasingInFileNames": false', '"forceConsistentCasingInFileNames": true'));
-await waitFor(() => watchOutput.slice(beforeConfigCycle).includes("Hson Schema watch: current; 1 Schema;"), "watch did not react to the extended project configuration");
+await waitFor(() => current(watchOutput.slice(beforeConfigCycle)), "watch did not react to the extended project configuration");
 writeFileSync(source, original.replace('name "string"', 'name "string" age <optional "number">'));
-await waitFor(() => existsSync(artifact) && /readonly age\?:/.test(readFileSync(artifact, "utf8")), "watch did not regenerate valid Schema evidence");
+await waitFor(() => existsSync(artifact("UserSchema")) && /readonly age\?:/.test(readFileSync(artifact("UserSchema"), "utf8")), "watch did not regenerate valid Schema evidence");
 const beforeError = watchOutput.length;
 writeFileSync(source, readFileSync(source, "utf8").replace('age <optional "number">', "age <broken"));
-await waitFor(() => watchOutput.slice(beforeError).includes("Hson Schema watch: stale/error;"), "watch did not surface an invalid Schema");
+await waitFor(() => current(watchOutput.slice(beforeError), true), "watch did not surface an invalid Schema");
 const beforeRecovery = watchOutput.length;
 writeFileSync(source, readFileSync(source, "utf8").replace("age <broken", 'age <optional "number">'));
-await waitFor(() => watchOutput.slice(beforeRecovery).includes("Hson Schema watch: current; 1 Schema;"), "watch did not recover after correcting the Schema");
+await waitFor(() => current(watchOutput.slice(beforeRecovery)), "watch did not recover after correcting the Schema");
 writeFileSync(source, readFileSync(source, "utf8").replaceAll("UserSchema", "AccountSchema"));
 writeFileSync(candidate, readFileSync(candidate, "utf8").replaceAll("UserSchema", "AccountSchema"));
-const renamedArtifact = join(project, "schema.AccountSchema.hson-schema.generated.ts");
-await waitFor(() => existsSync(renamedArtifact) && !existsSync(artifact) && !readFileSync(source, "utf8").includes("UserSchema"), "watch did not reconcile renamed Schema evidence");
+
+await waitFor(() => existsSync(artifact("AccountSchema")) && !existsSync(artifact("UserSchema")) && !readFileSync(source, "utf8").includes("UserSchema"), "watch did not reconcile renamed Schema evidence");
 const stopped = new Promise<number | null>(resolveStopped => watcher.once("close", code => resolveStopped(code)));
 watcher.kill("SIGTERM");
 assert.equal(await stopped, 0, watchOutput);

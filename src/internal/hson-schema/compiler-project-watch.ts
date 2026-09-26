@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
-import { generate_schema_compiler_project, validate_schema_project_ownership } from "./compiler-project.js";
+import { generate_schema_compiler_project, validate_schema_project_ownership, SCHEMA_PROJECT_COMPATIBILITY } from "./compiler-project.js";
 import { ObsoleteSchemaProject, SchemaProjectSnapshot } from "./project-snapshot.js";
 
-type Analysis = Readonly<{
+export type Analysis = Readonly<{
   schemas: Parameters<typeof generate_schema_compiler_project>[3];
   overlays: Parameters<typeof generate_schema_compiler_project>[4];
   diagnostics: readonly string[];
@@ -102,7 +102,7 @@ export function create_schema_compiler_project_watch(
   return { poll, stop: () => { stopped = true; } };
 }
 
-function check_selector(projectRoot: string, outputRoot: string, project: string): string | undefined {
+export function check_selector(projectRoot: string, outputRoot: string, project: string): string | undefined {
   const path = join(outputRoot, "tsconfig.json");
   no_symlinks(projectRoot, path);
   if (!existsSync(path)) return undefined;
@@ -113,7 +113,9 @@ function check_selector(projectRoot: string, outputRoot: string, project: string
     && /^\.\/revisions\/revision-[A-Za-z0-9]+\/tsconfig\.json$/.test(parsed.extends)) {
     const selected = dirname(resolve(outputRoot, parsed.extends));
     validate_schema_project_ownership(projectRoot, selected, basename(project));
-    if (hash(readFileSync(join(selected, "manifest.json"))) !== parsed.$hsonSchema.manifestDigest) throw new Error("Edited Hson compiler-project manifest.");
+    const manifest = readFileSync(join(selected, "manifest.json"));
+    if (hash(manifest) !== parsed.$hsonSchema.manifestDigest) throw new Error("Edited Hson compiler-project manifest.");
+    if (JSON.parse(manifest.toString("utf8")).revision !== parsed.$hsonSchema.revision) throw new Error("Inconsistent Hson compiler-project selector revision.");
   } else {
     // A Phase 1 project can be adopted only when its manifest owns its unchanged selector.
     validate_schema_project_ownership(projectRoot, outputRoot, basename(project));
@@ -146,3 +148,20 @@ function no_symlinks(root: string, path: string): void {
 }
 function hash(value: string | Buffer): string { return createHash("sha256").update(value).digest("hex"); }
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null; }
+
+/** Validate ownership, compatibility and captured input observations without publishing. */
+export function verify_schema_compiler_project(projectPath: string) {
+  projectPath = resolve(projectPath);
+  const root = dirname(projectPath);
+  const output = join(root, ".hson", "compiler-input", basename(projectPath));
+  const content = check_selector(root, output, projectPath);
+  if (content === undefined) throw new Error("Missing generated Hson project. Run hson-schema generate.");
+  const selector = JSON.parse(content);
+  if (selector.$hsonSchema?.owner !== SELECTOR_OWNER) throw new Error("Legacy generated project. Run hson-schema generate.");
+  const selected = dirname(resolve(output, selector.extends));
+  const manifest = JSON.parse(readFileSync(join(selected, "manifest.json"), "utf8"));
+  if (manifest.compatibility !== SCHEMA_PROJECT_COMPATIBILITY) throw new Error("Incompatible generated Hson project. Run hson-schema generate with current tooling.");
+  if (!Array.isArray(manifest.observations) || !SchemaProjectSnapshot.matches(manifest.observations)) throw new Error("Stale generated Hson project. Run hson-schema generate.");
+  if (manifest.diagnostics?.length) throw new Error(manifest.diagnostics.join("\n"));
+  return { project: join(output, "tsconfig.json"), selected, manifest };
+}

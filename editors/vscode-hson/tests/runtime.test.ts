@@ -61,6 +61,8 @@ check("Schema watch lifecycle output maps to truthful extension states", () => {
   assert.equal(schema_watch_output_state("Hson Schema watch: current; 4 Schemas; 2 artifacts updated; watching."), "watching");
   assert.equal(schema_watch_output_state("Hson Schema watch: stale/error; invalid Schema"), "error");
   assert.equal(schema_watch_output_state('{"hsonSchema":"generate"}'), undefined);
+  assert.equal(schema_watch_output_state('{"hsonSchema":"watch","state":"current","diagnostics":[]}'), "watching");
+  assert.equal(schema_watch_output_state('{"hsonSchema":"watch","state":"current","diagnostics":["invalid Schema"]}'), "error");
 });
 
 function diagnose(
