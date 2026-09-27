@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, create_echo, create_locus } from "../src/index.ts";
+import { Hson, hsonLiveMap, create_echo } from "../src/index.ts";
+import { hsonEcho } from "../src/api/echo/index.ts";
+import { hsonLocus } from "../src/api/locus/index.ts";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { create_echo_endpoint_internal } from "../src/api/echo/echo.endpoint.ts";
 import type { LocusClientMessage, LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -38,12 +41,24 @@ function last<TType extends LocusClientMessage["type"]>(
   return message as Extract<LocusClientMessage, { type: TType }>;
 }
 
-function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketLike }> {
+function socket_pair(holdReplies = false): Readonly<{
+  client: LocusSocketLike;
+  server: LocusSocketLike;
+  serverSent: readonly string[];
+  flushReplies: () => void;
+}> {
   const clientMessages = new Set<(raw: string) => void>();
   const serverMessages = new Set<(raw: string) => void>();
   const clientCloses = new Set<() => void>();
   const serverCloses = new Set<() => void>();
+  const serverSent: string[] = [];
+  const pending: string[] = [];
   return Object.freeze({
+    serverSent,
+    flushReplies() {
+      holdReplies = false;
+      for (const raw of pending.splice(0)) for (const listener of [...clientMessages]) listener(raw);
+    },
     client: Object.freeze({
       send(raw: string) { for (const listener of [...serverMessages]) listener(raw); },
       close() { for (const listener of [...clientCloses]) listener(); },
@@ -51,13 +66,78 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
       onClose(listener: () => void) { clientCloses.add(listener); return () => clientCloses.delete(listener); },
     }),
     server: Object.freeze({
-      send(raw: string) { for (const listener of [...clientMessages]) listener(raw); },
+      send(raw: string) {
+        serverSent.push(raw);
+        if (holdReplies) pending.push(raw);
+        else for (const listener of [...clientMessages]) listener(raw);
+      },
       close() { for (const listener of [...serverCloses]) listener(); },
       onMessage(listener: (raw: string) => void) { serverMessages.add(listener); return () => serverMessages.delete(listener); },
       onClose(listener: () => void) { serverCloses.add(listener); return () => serverCloses.delete(listener); },
     }),
   });
 }
+
+async function bounded<T>(promise: PromiseLike<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([promise, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Endpoint operation did not settle.")), 1_000);
+    })]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+await check("public endpoint-only Echo accepts the actual hosted Locus reply and can act", async () => {
+  const map = hsonLiveMap.fromLibraries({
+    state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` },
+  });
+  let actions = 0;
+  const locus = hsonLocus.create({
+    map,
+    exposure: [{ library: "state", exposure: "client-public" }],
+    defaultProjection: { libraries: ["state"] },
+    actions: { probe() { actions += 1; } },
+  });
+  const pair = socket_pair(true);
+  const detach = locus.connect(pair.server);
+  const echo = hsonEcho.create({ socket: pair.client });
+  try {
+    assert.equal(echo.session.status, "idle");
+    echo.connect();
+    const creating = bounded(echo.session.create());
+    assert.equal(echo.session.status, "creating");
+    assert.equal(echo.session.credential, undefined);
+    // Inspect only: flushReplies forwards the original encoder output byte for byte.
+    const wire = pair.serverSent.map((raw) => JSON.parse(raw)).find((reply) => reply.type === "session-created");
+    assert.ok(wire);
+    assert.equal(wire.format, LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT);
+    pair.flushReplies();
+    const session = await creating;
+    assert.equal(echo.session.status, "attached");
+    assert.equal(typeof wire.sessionId, "string");
+    assert.ok(wire.sessionId.length > 0);
+    assert.equal(typeof wire.credential, "string");
+    assert.ok(wire.credential.length > 0);
+    assert.deepEqual(session, {
+      sessionId: wire.sessionId, epoch: 1, logicalMapId: locus.logicalMapId,
+      incarnationId: locus.incarnationId, reattached: false,
+    });
+    assert.equal(echo.session.sessionId, wire.sessionId);
+    assert.equal(echo.session.credential, wire.credential);
+    assert.equal(echo.session.epoch, 1);
+    assert.equal(echo.session.logicalMapId, locus.logicalMapId);
+    assert.equal(echo.session.incarnationId, locus.incarnationId);
+    assert.equal("map" in echo, false);
+    assert.equal((await bounded(echo.action("probe"))).type, "ack");
+    assert.equal(actions, 1);
+  } finally {
+    echo.dispose();
+    detach();
+    locus.dispose();
+  }
+});
 
 await check("untyped Echo construction rejects incomplete replica capability pairs", () => {
   const pair = socket_pair();

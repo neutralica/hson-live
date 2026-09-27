@@ -7,6 +7,7 @@ import type {
   LocusDisposer,
   LocusSocketLike,
 } from "../../types/locus.types.js";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import {
   decode_hson_data_internal,
   encode_hson_data_internal,
@@ -429,5 +430,8 @@ export function create_echo_endpoint_connection_internal<
 export function create_endpoint_echo_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: EchoOptions<undefined>): Echo<undefined, TActions> {
-  return create_echo_endpoint_connection_internal<TActions>(options).echo;
+  return create_echo_endpoint_connection_internal<TActions>({
+    ...options,
+    endpointMessageFormat: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+  }).echo;
 }

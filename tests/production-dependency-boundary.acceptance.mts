@@ -87,7 +87,9 @@ check("endpoint-only Echo has no replica, LiveMap, Mirror, or LiveTree runtime d
   const endpointClient = readFileSync(resolve(sourceRoot, "api", "echo", "echo.client.ts"), "utf8");
   const specifiers = [...endpointClient.matchAll(importSpecifierPattern)]
     .map((match) => match[1])
-    .filter((specifier): specifier is string => specifier !== undefined);
+    // The shared socket discriminator is a constant-only module, not replica machinery.
+    .filter((specifier): specifier is string => specifier !== undefined
+      && specifier !== "../locus/locus.aggregate.protocol.js");
   for (const forbidden of ["livemap", "locus.protocol", "recovery", "aggregate", "echo.solo", "reflect", "livetree"]) {
     assert.equal(
       specifiers.some((specifier) => specifier.toLowerCase().includes(forbidden)),

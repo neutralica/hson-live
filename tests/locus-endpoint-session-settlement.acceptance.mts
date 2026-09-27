@@ -65,13 +65,60 @@ function aggregate_message(message: Record<string, unknown>): Record<string, unk
   return { ...message, format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT };
 }
 
+const malformedCreated: Array<readonly [string, (reply: Record<string, unknown>) => void]> = [
+  ["missing format", (reply) => { delete reply.format; }],
+  ["wrong format", (reply) => { reply.format = "unrecognized"; }],
+  ["stale format", (reply) => { reply.format = "hson-locus-hosted-aggregate-message-v7"; }],
+  ["invalid format type", (reply) => { reply.format = 8; }],
+  ["extra field", (reply) => { reply.extra = true; }],
+];
+for (const field of ["id", "sessionId", "credential", "epoch", "logicalMapId", "incarnationId"]) {
+  malformedCreated.push([`missing ${field}`, (reply) => { delete reply[field]; }]);
+  malformedCreated.push([`invalid ${field} type`, (reply) => { reply[field] = {}; }]);
+}
+for (const epoch of [-1, 1.5, "1", null]) {
+  malformedCreated.push([`invalid epoch ${JSON.stringify(epoch)}`, (reply) => { reply.epoch = epoch; }]);
+}
+for (const [name, corrupt] of malformedCreated) {
+  await check(`public endpoint rejects hosted session-created with ${name}`, async () => {
+    const pair = controlled_socket();
+    const echo = hsonEcho.create({ socket: pair.socket });
+    echo.connect();
+    const pending = echo.session.create();
+    let settled = false;
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    try {
+      const reply = aggregate_message({
+        type: "session-created", id: last_sent(pair, "session-create").id,
+        sessionId: "malformed-session", credential: "malformed-credential", epoch: 1,
+        logicalMapId: "malformed-map", incarnationId: "malformed-incarnation",
+      });
+      corrupt(reply);
+      pair.deliver(reply);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(settled, false);
+      assert.equal(echo.session.status, "creating");
+      assert.equal(echo.session.sessionId, undefined);
+      assert.equal(echo.session.credential, undefined);
+      assert.equal(echo.session.epoch, undefined);
+      assert.equal(echo.session.logicalMapId, undefined);
+      assert.equal(echo.session.incarnationId, undefined);
+    } finally {
+      echo.dispose();
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(settled, true, "disposal settles the rejected reply waiter");
+    await assert.rejects(pending, /disconnected/i);
+  });
+}
+
 await check("solo fencing rejects and clears a pending session waiter while stale completion stays inert", async () => {
   const pair = controlled_socket();
   const echo = hsonEcho.create({ socket: pair.socket, session: {} });
   echo.connect();
   const created = echo.session.create();
   const createRequest = last_sent(pair, "session-create");
-  pair.deliver({
+  pair.deliver(aggregate_message({
     type: "session-created",
     id: createRequest.id,
     sessionId: "solo-session",
@@ -79,24 +126,24 @@ await check("solo fencing rejects and clears a pending session waiter while stal
     epoch: 1,
     logicalMapId: "solo-map",
     incarnationId: "solo-incarnation",
-  });
+  }));
   await created;
 
   const goodbye = echo.session.goodbye();
   const goodbyeRequest = last_sent(pair, "session-goodbye");
-  pair.deliver({
+  pair.deliver(aggregate_message({
     type: "session-fenced",
     sessionId: "solo-session",
     epoch: 1,
     code: "LOCUS_SESSION_ATTACHMENT_FENCED",
-  });
+  }));
   await assert.rejects(goodbye, (error: unknown) => error instanceof Error && /fenced/i.test(error.message));
 
   const replacement = echo.session.reattach();
   const replacementRequest = last_sent(pair, "session-attach");
-  pair.deliver({ type: "session-ended", id: goodbyeRequest.id, sessionId: "solo-session", epoch: 1 });
+  pair.deliver(aggregate_message({ type: "session-ended", id: goodbyeRequest.id, sessionId: "solo-session", epoch: 1 }));
   assert.equal(echo.session.status, "attaching");
-  pair.deliver({ type: "session-attached", id: replacementRequest.id, sessionId: "solo-session", epoch: 2, logicalMapId: "solo-map", incarnationId: "solo-incarnation" });
+  pair.deliver(aggregate_message({ type: "session-attached", id: replacementRequest.id, sessionId: "solo-session", epoch: 2, logicalMapId: "solo-map", incarnationId: "solo-incarnation" }));
   assert.equal((await replacement).epoch, 2);
   assert.equal(echo.session.status, "attached");
   echo.dispose();
