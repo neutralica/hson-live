@@ -123,9 +123,7 @@ export const FORBID_TAGS_HARD: Set<string> = new Set([
  * Security:
  *   - Rejects javascript:, vbscript:, and other
  *     scriptable / dangerous schemes by default.
- *   - Used both:
- *       - directly in `set_attrs_safe`, and
- *       - indirectly via DOMPurify’s ALLOWED_URI_REGEXP.
+ *   - Used by the sanitizer hooks and DOMPurify’s ALLOWED_URI_REGEXP.
  ***********************************************/
 export const ALLOWED_URI_REGEX: RegExp =
   /^(?:https?:|mailto:|tel:|data:image\/)/i;
@@ -301,9 +299,8 @@ function discoverHsonMetadataAttrs(
  *     rather than a full HTML document.
  *
  * @param html  Raw, potentially untrusted HTML input.
- * @returns     A sanitized HTML string suitable for safe
- *              insertion via `mount_html_safe` or similar
- *              inert-parse pipelines.
+ * @returns     A sanitized HTML string suitable for a controlled
+ *              inert-parse pipeline.
  ***********************************************/
 /** Resolve one sanitizer whose DOM implementation is bound to exactly one window. */
 export function make_sanitizer(targetWindow: Window): SanitizerLike {

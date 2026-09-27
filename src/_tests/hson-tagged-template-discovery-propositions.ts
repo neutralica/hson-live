@@ -15,8 +15,6 @@ export const HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS = Object.freeze([
   "nested, multiline, and complex substitution expressions remain opaque exact ranges",
   "an unrelated recoverable parser error does not suppress a valid later template",
   "parser damage overlapping imports or tagged templates is omitted",
-  "LF integration discovers, parses, and maps primary plus related declaration evidence",
-  "CRLF integration maps multiple original-host templates independently",
   "substituted discoveries remain segregated from authoritative Hson parsing",
 ] as const);
 

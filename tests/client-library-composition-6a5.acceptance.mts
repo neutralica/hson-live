@@ -8,7 +8,6 @@ import { encode_hosted_root, hosted_sha256, make_portable_aggregate_commit, make
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { acquire_livemap_document_identity } from "../src/api/livemap/livemap.document.identity-handle.ts";
 import { validate_livemap_document_admission } from "../src/api/livemap/livemap.document.capture.ts";
-import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { project_authority_snapshot, authority_projection_as_client_composition_internal } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
@@ -184,9 +183,6 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   ]), /authority/i);
   assert.equal(ui.at(["value"]).snap(), 1);
   assert.equal(state.at(["value"]).snap(), 0);
-  assert.throws(() => link_livemap(ui as never, state as never, { path: ["value"] }), /ownership/i);
-  assert.throws(() => link_livemap(state as never, ui as never, { path: ["value"] }), /ownership/i);
-
   const projectedMirror = hsonMirror(page);
   const localMirror = hsonMirror(panel);
   const localTree = localMirror.tree.node;

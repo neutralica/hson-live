@@ -41,15 +41,14 @@ The reconciliation matrices use these source keys. Each key identifies the nontr
 | **DI** | [`livemap.document.identity.ts`](../../src/api/livemap/livemap.document.identity.ts): `reconcile_livemap_document_identity_overlay`, `replace_livemap_document_identity_overlay_effects` | Sparse document QUID/path index and derived effects |
 | **PI** | [`livemap.projected.identity.ts`](../../src/api/livemap/livemap.projected.identity.ts): `reconcile_livemap_projected_identity_overlay`, `transform_path`, `transform_rename`, `transform_move`, `transform_splice` | Sparse data identity reconciliation |
 | **IE** | [`livemap.identity-epoch.ts`](../../src/api/livemap/livemap.identity-epoch.ts): `stage_livemap_identity_epoch`, `retain_livemap_identity_epoch`; [`livemap.document.capture.ts`](../../src/api/livemap/livemap.document.capture.ts): `validate_livemap_document_admission` | Same-owner-epoch lifetime and exact capture provenance |
-| **LOC** | [`livemap.document.location.ts`](../../src/api/livemap/livemap.document.location.ts); [`livemap.watch.ts`](../../src/api/livemap/livemap.watch.ts): `make_livemap_watch_hub`; [`livemap.feed.ts`](../../src/api/livemap/livemap.feed.ts): `make_livemap_feed_hub` | Fixed-location handles, watches, and feeds |
-| **LINK** | [`livemap.link.ts`](../../src/api/livemap/livemap.link.ts): `apply_projected_link_event`, `apply_link_event` | Propagation and conflict/fallback policy |
+| **LOC** | [`livemap.document.location.ts`](../../src/api/livemap/livemap.document.location.ts); [`livemap.core.ts`](../../src/api/livemap/livemap.core.ts): aggregate `watch`/`feed`; [`livemap.libraries.ts`](../../src/api/livemap/livemap.libraries.ts): public location facades | Fixed-location handles, watches, and feeds |
 | **RD** | [`reflect.document.ts`](../../src/api/reflect/reflect.document.ts): `preflight_identity_operations`, `consume_identity_effects`, `reconcile_correspondence_incrementally`, `apply_observation` | Linked document correspondence and revision tracking |
 | **RS** | [`reflect.document.structure.ts`](../../src/api/reflect/reflect.document.structure.ts): `plan_document_structural_transaction`, `plan_document_root_structural_transaction`, `plan_replacement`, `apply_document_structural_transaction` | Exact projection continuity, shadow planning, DOM application, cleanup |
 | **RC** | [`reflect.collection.ts`](../../src/api/reflect/reflect.collection.ts): `onCommit`, `applyNested`, `update`, `shouldUpdateSurvivor` | Application-keyed collection projection |
 | **LT-B** | [`document-binding-state.ts`](../../src/api/livetree/lifecycle/document-binding-state.ts); [`reflect.document.ts`](../../src/api/reflect/reflect.document.ts) | Linked LiveTree delegation and structural mutation rejection |
 | **LT-S** | [`livetree.ts`](../../src/api/livetree/livetree.ts): `detach`, `detachContents`, `remove`, `empty`; [`appends.ts`](../../src/api/livetree/methods/appends.ts) | Standalone exact-tree mutation and reattachment |
 | **LT-Q** | [`tree-selector.ts`](../../src/api/livetree/creation/tree-selector.ts); [`search.ts`](../../src/api/livetree/methods/search.ts) | Snapshot selections and current-graph queries |
-| **BIND** | [`livetree.bind.ts`](../../src/api/livetree/methods/livetree.bind.ts); [`livemap.bridge-bindings.ts`](../../src/api/livemap/livemap.bridge-bindings.ts) | Location-bound value bindings and owner-scoped disposal |
+| **BIND** | [`livetree.bind.ts`](../../src/api/livetree/methods/livetree.bind.ts) | Location-bound value bindings and owner-scoped disposal |
 | **RES** | [`dispose-node.ts`](../../src/api/livetree/utils/dispose-node.ts): `dispose_node_deep`; [`runtime-detach.ts`](../../src/api/livetree/lifecycle/runtime-detach.ts): `unmount_node_preserving_runtime`; [`lifecycle-registry.ts`](../../src/api/livetree/managers/lifecycle-registry.ts); [`livetree-runtime.ts`](../../src/api/livetree/runtime/livetree-runtime.ts) | Exact runtime lifecycle, resources, listener/CSS ownership |
 | **HH** | [`livehost.authority.ts`](../../src/api/livehost/livehost.authority.ts): `make_livehost_exclusive_authority`; [`livehost.history.ts`](../../src/api/livehost/livehost.history.ts): `ingest` | Host staging, acceptance, history ordering |
 | **HC** | [`livehost.client.ts`](../../src/api/livehost/livehost.client.ts): `apply_commit`, `install_snapshot`; [`livehost.protocol.ts`](../../src/api/livehost/livehost.protocol.ts): `replay_livehost_document_commit_compat` | Client mirror revision and application |
@@ -82,7 +81,7 @@ The reconciliation matrices use these source keys. Each key identifies the nontr
 
 | Category | Existing mechanisms | Replacement | Move/rename | Termination |
 |---|---|---|---|---|
-| Location-attached | `map.at(path)`, document logical locations, feeds/watches, stores, bridge bindings | Relationship survives at the coordinate and observes the new occupant/value | Relationship remains at the old coordinate; it does not follow the subject | Explicit disposer or owning LiveTree disposal |
+| Location-attached | `map.at(path)`, document logical locations, feeds/watches, and LiveTree bindings | Relationship survives at the coordinate and observes the new occupant/value | Relationship remains at the old coordinate; it does not follow the subject | Explicit disposer or owning LiveTree disposal |
 | Subject-attached | Sparse data/document identity handles; Reflection QUID correspondence when present | Fresh/no-QUID replacement retires; deliberate active same-QUID replacement may preserve the one active lifetime | Path is rewritten and lifetime remains active | Delete/replacement or owner-epoch fence retires permanently |
 | Exact-runtime-attached | LiveTree/Hson node, DOM node, selector member handle, listener/CSS/resource owner | Reflection may reuse only an already active compatible same-QUID/tag projection; otherwise disposes and replaces | Ordinary same-subject move preserves exact objects/resources | `dispose_node_deep`, runtime disposal, or binding disposal; equal bytes cannot reconstruct it |
 | Application-key-attached | `reflect_collection` record selected by caller key | Same key reuses a rendered branch and calls update; key change removes/creates | Reordering moves the rendered branch | Projection/source disposal or key removal |
@@ -96,7 +95,6 @@ The reconciliation matrices use these source keys. Each key identifies the nontr
 | **DI** document overlay | yes | sparse prior index | incoming operation subtree; diagnostic scan checks result | no | Derived index/effects |
 | **PI** data overlay | yes | sparse prior index | candidate data graph receives reconciled metadata | no | Derived index |
 | **LOC** watches/feeds | overlap only | prior published value | yes, re-read after install | no | Fixed-location re-resolution |
-| **LINK** | yes | target previous state | source event's resulting value | no | Propagation policy; semantic intent matters |
 | **RD / RS** | yes | prior correspondence/projected tree | yes, used as canonical convergence proof | yes | Runtime relation and lifecycle policy |
 | **RC** | yes for targeting | keyed prior records | yes, re-read source items | exact view branches | Application-keyed projection policy |
 | **LT-Q** | no | current exact graph only | current graph | yes | Snapshot selection/current query |
@@ -145,7 +143,7 @@ Legend: **owns** = owns canonical semantics; **independent** = independently int
 | Object set/replace/delete | N/A as data reducer | Current runtime query only | **BIND location** result update | Destination owner unchanged unless binding rerenders/removes it | **HC delegates** commit; **HR** revision-only | **PI** is the only subject transform in this vocabulary |
 | Object rename | N/A | Snapshot members do not follow canonical subjects | Old source path remains old coordinate | No transfer decision | **HC delegates**; semantic rename preserved on wire/history | Concept overlaps **DP**, but mixed-key and destination semantics differ |
 | Array set/replace | N/A | Current query/snapshot exact handles | Fixed index | Renderer/Reflection decides cleanup | **HC delegates** | No duplicate canonical reducer |
-| Array insert/delete/splice | Local append/remove APIs are unrelated canonical authority | Existing selector handles remain exact; membership snapshot does not update | Fixed indexes re-resolve | **RES** only when a runtime consumer removes exact output | **HC delegates**; **HR** does not classify indexes | **PI**, **RC**, and **LINK** all use operations for different outputs/policy |
+| Array insert/delete/splice | Local append/remove APIs are unrelated canonical authority | Existing selector handles remain exact; membership snapshot does not update | Fixed indexes re-resolve | **RES** only when a runtime consumer removes exact output | **HC delegates**; **HR** does not classify indexes | **PI** and **RC** use operations for different outputs/policy |
 | Array move | Local detach+append can preserve exact runtime object, but it is runtime-only | Exact selector member survives if same node | Fixed index does not follow | Resources remain on exact node in standalone/Reflection move | **HC delegates** | Move math appears in **PI** and **DP**; **RS** moves shadow object rather than returning a path |
 | Document subtree replacement | Standalone replacement is local append/empty policy, not a commit consumer | Old exact handle becomes disposed if Reflection terminally replaces it | Owner-bound cleanups fire with disposed tree | **RS/RES** preserve only active compatible reuse; otherwise drain old subtree | **HC delegates**; persisted/recovery codecs preserve graph payload only | **LM-D** and **RS** both execute operation shape but with different state/output |
 | Document subtree deletion | `remove` is terminal; `detach` is distinct | Deleted exact member handle becomes disposed | Owner-bound bindings dispose | **RES terminal cleanup** | **HC delegates** | **DP/DI** path effect shared with **RD**; no duplicate path algorithm |
@@ -213,7 +211,6 @@ The shared policy-free part is already **DP**. The remaining repetition is a seq
 
 ### 4.4 Commit-aware facilities that are not equivalent reconcilers
 
-- **LINK** independently inspects rename/move/delete/splice to choose propagation or whole-scope replacement fallback. It consumes the source's resulting value and the target's prior value. It does not maintain identity continuity.
 - **RC** uses path overlap for targeting, then reconciles by caller-supplied application keys and exact rendered branches. Its “same subject” is an application key, not a QUID or canonical node.
 - **LOC/BIND** use the commit only to decide whether to re-read a fixed coordinate. They intentionally discard subject motion.
 - **HC/HR** classify revision/order/recovery, then delegate structural meaning to LiveMap.
@@ -275,12 +272,12 @@ The viable document kernel already exists as **DP**:
 
 It should remain internal and document-specific.
 
-A broader candidate would have to accept both document graph operations and data operations or invent an intermediate operation algebra. It would replace little beyond **PI**'s four small transform functions, while **RS**, **RC**, **LINK**, **LOC**, and **HC** would still need their current policy. The extraction thresholds fail as follows:
+A broader candidate would have to accept both document graph operations and data operations or invent an intermediate operation algebra. It would replace little beyond **PI**'s four small transform functions, while **RS**, **RC**, **LOC**, and **HC** would still need their current policy. The extraction thresholds fail as follows:
 
 | Threshold | Result |
 |---|---|
 | Two equivalent production consumers | Met only for document paths, already served by **DP**; not met for data identity vocabulary |
-| Policy-free separation | Possible for arithmetic, not for Reflection/collection/link decisions |
+| Policy-free separation | Possible for arithmetic, not for Reflection/collection decisions |
 | One authoritative vocabulary | Not met across document graph and data operations |
 | Deletes existing interpretation | Too little deletion; most switches remain |
 | Cross-consumer identical tests | Existing document tests already prove **DP** consumers; cross-domain outputs are intentionally different |
@@ -426,7 +423,7 @@ Specifically:
 
 1. Retain **DP** as the document-specific internal shared path-transition kernel for **DI** and **RD**.
 2. Keep **PI** private to data identity unless a second production consumer needs the same mixed-key rename/move/splice classification.
-3. Keep Reflection shadow planning, collection key reconciliation, link propagation, bindings, LiveTree cleanup, and LiveHost recovery policy in their current owning subsystems.
+3. Keep Reflection shadow planning, collection key reconciliation, bindings, LiveTree cleanup, and LiveHost recovery policy in their current owning subsystems.
 4. Do not introduce a semantic graph object, registry, bus, serialized relation store, universal endpoint, or fourth subsystem.
 5. Before any future change to publication ordering or same-QUID replacement, add the two focused characterization cases identified above. Do not treat those tests as authorization to alter public semantics.
 

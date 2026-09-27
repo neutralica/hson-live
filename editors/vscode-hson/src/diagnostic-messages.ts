@@ -1,4 +1,4 @@
-import type { SchemaStatus } from "./trusted-schema-client.js";
+type SchemaStatus = "off" | "waiting" | "current-valid" | "current-invalid" | "stale" | "ambiguous" | "unavailable" | "runtime-failed";
 
 // Editor-owned wording only. Selection, validation, evidence and range mapping
 // stay with their existing owners. Stable export names are catalog review IDs.

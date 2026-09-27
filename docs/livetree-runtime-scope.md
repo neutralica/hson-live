@@ -38,7 +38,6 @@ The process-global registry is implemented by
 - `lifecycle-registry.ts` owns the strong owner-QUID disposable and
   disposable-kind tables.
 - `livetree.bind.ts` registers binding subscriptions.
-- `livemap.bridge-bindings.ts` registers LiveMap-to-LiveTree bridge cleanup.
 - `listener-builder.ts` registers listener cleanup.
 - `make-events.ts` registers tree-event handlers.
 - `make-canvas-api.ts` registers resize-observer cleanup.
@@ -196,7 +195,7 @@ Deferred to the approved pre-SSR sidecar:
   `transform/constructors/construct-output-2.ts`.
 - materialization profiler module activation state.
 - ambient document assumptions in transform query/body constructors,
-  `livetree.facade.ts`, `safe-mount.safe.ts`,
+  `livetree.facade.ts`,
   LiveInspect active-element lookup, text-node helper fallbacks, inline
   document-root style inspection, and default canvas DPR.
 - `CssManager.api()` truly global stylesheet policy across multiple runtime
@@ -209,7 +208,7 @@ These items remain explicitly deferred until the pre-SSR sidecar.
 
 The following module-level `Set`s are immutable lookup tables and are not
 runtime state: canonical QUID alphabet, HTML/SVG tag tables, VSN/leaf tags,
-parser allow/deny tables, safe-mount attribute/tag tables, protocol action/code
+parser allow/deny tables, protocol action/code
 tables, CSS pseudo keys, proxy reserved keys, and serializer raw-text tags.
 
 ## Implemented internal model
@@ -334,6 +333,6 @@ their established destruction semantics.
 
 Category C remains intentionally bounded to the items recorded above:
 Locus counters and authority ownership, transform sanitizer injection,
-materialization profiling state, and remaining ambient query/body, safe-mount,
+materialization profiling state, and remaining ambient query/body,
 inspection, style-read, and canvas defaults. None indexes or cleans up active
 LiveTree QUID ownership after this phase.

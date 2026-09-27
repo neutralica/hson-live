@@ -57,12 +57,10 @@ check("actual /hson export resolves to the narrow authoring module", () => asser
 check("authoring does not traverse aggregate or full LiveMap core", () => assert.ok(narrow.parsed.every(path => !/(?:dist\/hson\.js|livemap\.core\.js|\/livetree\/|\/livehost\/|\/locus\/|\/reflect\/|\/inspect\/)/.test(path))));
 check("authoring has no browser or external parser dependencies", () => assert.ok(narrow.parsed.every(path => !/(?:node_modules|transform\.browser|\/safety\/)/.test(path))));
 check("tree-shaken authoring retains no mutation history or session machinery", () => assert.ok(narrow.inputs.every(path => !/livemap\.(?:mutation|replay|history|session|store|install)/.test(path))));
-// The Hson Schema compiler uses source provenance for exact authored diagnostics,
-// and the validators use issue-presentation's semantic sidecar. No capture,
-// provider, lifecycle, protocol, or generated source-map module may join them.
+// The Hson Schema compiler uses source provenance for exact authored diagnostics.
+// No retired capture, provider, lifecycle, or protocol module may join it.
 check("D5 tooling never enters the ordinary authoring graph", () => assert.ok(narrow.parsed.every(path =>
   !/trusted-schema-diagnostics|embedded-hson|source-provenance/.test(path)
-  || path.endsWith("trusted-schema-diagnostics/issue-presentation.js")
   || path.endsWith("hson-source-provenance/hson-source-provenance.js")
   || path.endsWith("hson-source-provenance/parse-hson-with-provenance.js"))));
 check("D6 completion query/provider machinery never enters production Hson", () => assert.ok(narrow.parsed.every(path => !/schema-completion|completion-source|vscode-hson/.test(path))));

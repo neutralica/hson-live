@@ -3,9 +3,6 @@
 `tests/tsconfig.json` strictly type-checks the maintained TypeScript acceptance
 tests (`.mts` and `.ts`) together with current library source.
 
-The former solo Locus `.mjs` protocol probes are under `tests/historical/solo-locus/runtime-probes/`.
-They record retired wire behavior and are excluded from current acceptance.
-
 Executable suites are the test authority. Each suite keeps its literal
 `suiteMetadata` beside the executable cases and emits real case begin/end
 events plus exactly one final terminal event through `test-events.mjs`.

@@ -2,14 +2,11 @@
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-import { TransformError } from "../src/core/errors.ts";
-import { hson } from "../src/hson.ts";
 import {
   discover_hson_tagged_templates,
   type HsonTaggedTemplateDiscoveryResult,
 } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
 import { read_embedded_hson_body } from "../src/internal/embedded-hson/embedded-hson-source.ts";
-import { map_transform_error_to_embedded_source } from "../src/internal/embedded-hson/map-transform-error.ts";
 import {
   HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS,
   type HsonTaggedTemplateDiscoveryProposition,
@@ -48,10 +45,6 @@ function check(name: HsonTaggedTemplateDiscoveryProposition, body: () => void): 
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function validate(source: string): void {
-  hson.fromHson(source).toNode();
-}
-
 function discover(
   hostText: string,
   fileName = "/workspace/fixture.ts",
@@ -61,17 +54,6 @@ function discover(
 
 function bodySlices(result: HsonTaggedTemplateDiscoveryResult): readonly string[] {
   return result.sources.map(read_embedded_hson_body);
-}
-
-function captureTransformError(body: () => unknown): TransformError {
-  let observed: TransformError | undefined;
-  assert.throws(body, (cause) => {
-    if (!(cause instanceof TransformError)) return false;
-    observed = cause;
-    return true;
-  });
-  if (observed === undefined) throw new Error("expected TransformError");
-  return observed;
 }
 
 check("official root and hson entrypoints are recognized in source order", () => {
@@ -248,42 +230,6 @@ check("parser damage overlapping imports or tagged templates is omitted", () => 
   const damagedTemplate = 'import { Hson } from "hson-live";\nHson.canonical`unterminated';
   assert.deepEqual(discover(damagedImport), { sources: [], interpolated: [] });
   assert.deepEqual(discover(damagedTemplate), { sources: [], interpolated: [] });
-});
-
-check("LF integration discovers, parses, and maps primary plus related declaration evidence", () => {
-  const hostText = 'import { Hson } from "hson-live";\nconst value = Hson.canonical`\n<a 1 a 2>\n`;';
-  const result = discover(hostText);
-  const source = result.sources[0];
-  assert.ok(source);
-  const body = read_embedded_hson_body(source);
-  const error = captureTransformError(() => validate(body));
-  const mapped = map_transform_error_to_embedded_source(error, source);
-  assert.equal(mapped.status, "mapped");
-  if (mapped.status !== "mapped") return;
-  assert.equal(hostText.slice(mapped.range.start, mapped.range.end), "a");
-  assert.equal(mapped.related[0]?.role, "first-declaration");
-  const related = mapped.related[0]?.mapping;
-  assert.equal(related?.status, "mapped");
-  assert.equal(related?.status === "mapped" ? hostText.slice(related.range.start, related.range.end) : "", "a");
-});
-
-check("CRLF integration maps multiple original-host templates independently", () => {
-  const hostText = [
-    'import { Hson as h } from "hson-live";',
-    "const first = h.canonical`+1`;",
-    "const second = h.canonical`01`;",
-  ].join("\r\n");
-  const result = discover(hostText);
-  assert.deepEqual(bodySlices(result), ["+1", "01"]);
-  const source = result.sources[1];
-  assert.ok(source);
-  const error = captureTransformError(() => validate(read_embedded_hson_body(source)));
-  const mapped = map_transform_error_to_embedded_source(error, source);
-  assert.equal(mapped.status, "mapped");
-  if (mapped.status === "mapped") {
-    assert.equal(mapped.start.line, 3);
-    assert.equal(hostText.slice(mapped.range.start, mapped.range.end), "1");
-  }
 });
 
 check("substituted discoveries remain segregated from authoritative Hson parsing", () => {

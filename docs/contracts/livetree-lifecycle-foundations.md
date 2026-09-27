@@ -61,9 +61,6 @@ not expose callbacks or mutable registry state.
 
 Resource audit decisions:
 
-- `createMutationGate()` is currently dormant: it has no LiveTree integration
-  or call sites. It remains a manually scoped utility in this patch rather than
-  gaining a speculative owner parameter.
 - CssManager's requestAnimationFrame is one finite, coalesced manager-level
   stylesheet flush. It does not retain or call a LiveTree. QUID cleanup removes
   the disposed tree's rules before that flush runs, and manager reset/sync paths
