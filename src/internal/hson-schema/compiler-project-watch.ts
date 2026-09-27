@@ -1,6 +1,7 @@
+import { has_legacy_schema_project_layout, LEGACY_SCHEMA_LAYOUT_REQUIRED } from "./legacy-project-layout.js";
 import { requires_schema_migration, SCHEMA_MIGRATION_REQUIRED } from "./legacy-detection.js";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import ts from "typescript";
 import { generate_schema_compiler_project, validate_schema_project_ownership, read_owned_files, assert_no_symlinks, SCHEMA_PROJECT_COMPATIBILITY, type SourceRecord } from "./compiler-project.js";
@@ -41,6 +42,7 @@ export function create_schema_compiler_project_watch(
     let staging: string | undefined;
     let stagedFiles: readonly { path: string }[] = [];
     try {
+      if (has_legacy_schema_project_layout(projectPath)) throw new Error(LEGACY_SCHEMA_LAYOUT_REQUIRED);
       if (previous?.isCurrent() || reused !== undefined && SchemaProjectSnapshot.matches(reused.observations)) return;
       const prior = existing(projectPath);
       if (prior.current !== undefined) {
@@ -104,7 +106,6 @@ export function create_schema_compiler_project_watch(
         const latest = existing(projectPath, true);
         if (latest.stamp !== prior.stamp) throw new Error("Hson compiler project changed during preparation. Retry generation.");
         const replaceable = new Set(latest.current?.files.map(file => file.path) ?? []);
-        if (latest.selector !== undefined) replaceable.add("tsconfig.json");
         for (const file of candidate.files) {
           const destination = join(outputRoot, file.path);
           assert_no_symlinks(projectRoot, destination);
@@ -124,8 +125,6 @@ export function create_schema_compiler_project_watch(
         }
         // Every final-path compiler input is in place before the manifest is committed.
         renameSync(manifest_path(staging), manifest_path(outputRoot));
-        for (const old of latest.legacy) remove_owned(projectPath, old, false);
-        if (latest.legacy.length > 0) prune_empty(join(outputRoot, "revisions"));
         for (const old of latest.current?.files ?? []) prune_empty(dirname(join(outputRoot, old.path)), outputRoot);
         unlinkSync(pending);
       } catch (error) {
@@ -157,6 +156,7 @@ export function create_schema_compiler_project_watch(
 
 function available(project: string): void {
   const root = output_root(project);
+  if (has_legacy_schema_project_layout(project)) throw new Error(LEGACY_SCHEMA_LAYOUT_REQUIRED);
   assert_no_symlinks(dirname(project), join(root, PENDING));
   if (existsSync(join(root, PENDING))) throw new Error(`Hson compiler publication is incomplete or in progress: ${join(root, PENDING)}. Retry after the publisher finishes. If interrupted, inspect its staging directory and restore the manifest-owned files before retrying; do not delete unowned files.`);
 }
@@ -171,37 +171,18 @@ function owned(project: string, root: string, partial = false): Owned {
 function existing(project: string, publishing = false) {
   const root = output_root(project);
   if (!publishing) available(project);
+  else if (has_legacy_schema_project_layout(project)) throw new Error(LEGACY_SCHEMA_LAYOUT_REQUIRED);
   assert_no_symlinks(dirname(project), manifest_path(root));
   assert_no_symlinks(dirname(project), join(root, "tsconfig.json"));
   const current = existsSync(manifest_path(root)) ? owned(project, root) : undefined;
-  const legacy: Owned[] = [];
-  let selector: string | undefined;
-  if (current === undefined && existsSync(join(root, "tsconfig.json"))) {
-    selector = readFileSync(join(root, "tsconfig.json"), "utf8");
-    const parsed = JSON.parse(selector);
-    if (parsed.$hsonSchema?.owner !== "hson-schema-compiler-selector-v1" || parsed.$hsonSchema.project !== project
-      || typeof parsed.extends !== "string" || !/^\.\/revisions\/revision-[A-Za-z0-9]+\/tsconfig\.json$/.test(parsed.extends)) {
-      throw new Error(`Refusing to replace unowned Hson compiler project: ${root}`);
-    }
-    const selected = owned(project, dirname(resolve(root, parsed.extends)));
-    if (hash(selected.text) !== parsed.$hsonSchema.manifestDigest || JSON.parse(selected.text).revision !== parsed.$hsonSchema.revision) throw new Error("Edited Hson compiler-project manifest or selector.");
-    const revisions = join(root, "revisions");
-    assert_no_symlinks(dirname(project), revisions);
-    for (const name of readdirSync(revisions).sort()) {
-      if (!name.startsWith("revision-")) continue; // Unrelated neighbors stay where they are.
-      const directory = join(revisions, name);
-      assert_no_symlinks(dirname(project), directory);
-      if (!existsSync(manifest_path(directory))) throw new Error(`Cannot migrate unrecognized revision ${directory}. Inspect and relocate ambiguous material before retrying generation.`);
-      legacy.push(owned(project, directory));
-    }
-  }
-  return { current, legacy, selector, stamp: JSON.stringify([current?.text, selector, legacy.map(entry => [entry.root, entry.text])]) };
+  if (current === undefined && existsSync(join(root, "tsconfig.json"))) throw new Error(`Refusing to replace unowned Hson compiler project: ${root}`);
+  return { current, stamp: current?.text };
 }
 
 function current_manifest(text: string): Manifest {
   const parsed = JSON.parse(text);
   const { contentDigest, ...contents } = parsed;
-  if (contentDigest !== hash(JSON.stringify(contents))) throw new Error("Edited or legacy Hson compiler-project manifest. Run generate with current tooling for a legacy project.");
+  if (contentDigest !== hash(JSON.stringify(contents))) throw new Error("Edited Hson compiler-project manifest. Restore the manifest-owned state before regeneration.");
   if (typeof parsed.compatibility !== "string" || typeof parsed.publication !== "string" || typeof parsed.revision !== "string"
     || !Array.isArray(parsed.observations) || !Array.isArray(parsed.sources) || !Array.isArray(parsed.diagnostics)) throw new Error("Invalid Hson compiler-project manifest.");
   return parsed;
@@ -219,7 +200,7 @@ function capture_current(projectPath: string, afterCaptureFile?: (file: string) 
   const root = output_root(projectPath), path = manifest_path(root);
   available(projectPath);
   assert_no_symlinks(dirname(projectPath), path);
-  if (!existsSync(path)) throw new Error("Missing or legacy generated Hson project. Run hson-schema generate.");
+  if (!existsSync(path)) throw new Error("Missing generated Hson project. Run hson-schema generate.");
   const text = readFileSync(path, "utf8");
   const manifest = current_manifest(text);
   if (manifest.compatibility !== SCHEMA_PROJECT_COMPATIBILITY) throw new Error("Incompatible generated Hson project. Run hson-schema generate with current tooling.");
@@ -242,6 +223,7 @@ function capture_current(projectPath: string, afterCaptureFile?: (file: string) 
 
 /** Read-only verification also accepts no mixed generated state. Invalid source is reported separately from completeness. */
 export function verify_schema_compiler_project(projectPath: string) {
+  available(resolve(projectPath));
   const config = ts.getParsedCommandLineOfConfigFile(projectPath, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: diagnostic => { throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")); } });
   if (config !== undefined) {
     const program = ts.createProgram(config.fileNames, config.options);

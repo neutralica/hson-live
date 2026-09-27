@@ -1,18 +1,23 @@
+import { has_legacy_schema_project_layout, LEGACY_SCHEMA_LAYOUT_REQUIRED } from "./legacy-project-layout.js";
+import { assert_no_symlinks, read_owned_files, validate_schema_project_ownership } from "./compiler-project.js";
 import { legacy_schema_import, legacy_evidence_import } from "./legacy-detection.js";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, extname, join, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import ts from "typescript";
 import { apply_source_edits, GENERATED_EXPORTS_START, GENERATED_EXPORTS_END, type SchemaSourceEdit } from "./source-transformation.js";
 
 /** Explicit migration only. Removal preserves all bytes outside proven generated syntax. */
 export function migrate_schema_associations(project: string, write: boolean) {
-  const root = dirname(resolve(project));
+  project = resolve(project);
+  const root = dirname(project);
   const read = ts.readConfigFile(project, ts.sys.readFile);
   const config = ts.parseJsonConfigFileContent(read.config, ts.sys, root);
   if (read.error || config.errors.length) throw new Error("Cannot migrate a project with invalid configuration.");
   const changes = new Map<string, { before: Buffer; after?: string }>();
   const refused: string[] = [];
+  const obsolete = legacy_project_cleanup(project);
+  for (const [path, before] of obsolete.files) changes.set(path, { before });
   for (const path of config.fileNames) {
     if (!/\.[cm]?tsx?$/.test(path) || path.includes(".hson-schema.generated.")) continue;
     const before = readFileSync(path), text = before.toString("utf8");
@@ -50,10 +55,16 @@ export function migrate_schema_associations(project: string, write: boolean) {
   // One ambiguous source blocks this operation, including removal of its still-referenced sidecars.
   if (refused.length) throw new Error(`Legacy migration refused; no files changed:\n${refused.join("\n")}`);
   if (write) {
-    for (const [path, change] of changes) if (lstatSync(path).isSymbolicLink() || !readFileSync(path).equals(change.before)) throw new Error(`Migration input changed: ${path}`);
+    const latest = legacy_project_cleanup(project);
+    if (latest.membership !== obsolete.membership || latest.files.size !== obsolete.files.size) throw new Error("Legacy compiler-project cleanup inputs changed; retry migration.");
+    for (const [path, change] of changes) {
+      assert_no_symlinks(root, path);
+      if (!lstatSync(path).isFile() || !readFileSync(path).equals(change.before)) throw new Error(`Migration input changed: ${path}`);
+    }
     for (const [path, change] of changes) if (change.after === undefined) unlinkSync(path); else writeFileSync(path, change.after);
+    for (const path of obsolete.files.keys()) prune_legacy_directories(dirname(path), obsolete.root);
   }
-  return { hsonSchema: "migrate", applied: write, changes: [...changes].map(([path, change]) => ({ path, operation: change.after === undefined ? "remove-owned-artifact" : "remove-legacy-syntax" })), note: "Original formatting and overwritten local annotations cannot be recovered. Only recognized generated syntax is removed." };
+  return { hsonSchema: "migrate", applied: write, changes: [...changes].map(([path, change]) => ({ path, operation: change.after === undefined ? "remove-owned-artifact" : "remove-legacy-syntax" })), note: "Original formatting and overwritten local annotations cannot be recovered. Only recognized generated syntax and proven-owned obsolete artifacts are removed. Run hson-schema generate after cleanup." };
 }
 
 function clean_source(path: string, text: string): string {
@@ -101,4 +112,60 @@ function clean_source(path: string, text: string): string {
   };
   visit(remaining);
   return result;
+}
+
+/** The former automatic adopter's selector and ownership checks run only during migration. */
+function legacy_project_cleanup(project: string) {
+  const root = join(dirname(project), ".hson", "compiler-input", basename(project));
+  const files = new Map<string, Buffer>();
+  if (!has_legacy_schema_project_layout(project)) return { root, files, membership: "" };
+  try {
+    for (const name of ["manifest.json", ".publishing.json"]) {
+      assert_no_symlinks(dirname(project), join(root, name));
+      if (existsSync(join(root, name))) throw new Error("Mixed current/legacy or interrupted publication; inspect and restore ownership before migration.");
+    }
+    const selector = join(root, "tsconfig.json"), revisions = join(root, "revisions");
+    assert_no_symlinks(dirname(project), selector);
+    assert_no_symlinks(dirname(project), revisions);
+    if (!lstatSync(selector).isFile()) throw new Error("Missing or invalid legacy selector.");
+    const selectorBytes = readFileSync(selector), parsed = JSON.parse(selectorBytes.toString("utf8"));
+    if (parsed.$hsonSchema?.owner !== "hson-schema-compiler-selector-v1" || parsed.$hsonSchema.project !== project
+      || typeof parsed.extends !== "string" || !/^\.\/revisions\/revision-[A-Za-z0-9]+\/tsconfig\.json$/.test(parsed.extends)) throw new Error("Unrecognized legacy selector or wrong project identity.");
+    const names = readdirSync(revisions).sort();
+    const selected = dirname(resolve(root, parsed.extends));
+    for (const name of names) {
+      if (!name.startsWith("revision-")) continue; // Preserve unrelated neighbors.
+      const directory = join(revisions, name), manifest = join(directory, "manifest.json");
+      assert_no_symlinks(dirname(project), manifest);
+      if (!existsSync(manifest) || !lstatSync(manifest).isFile()) throw new Error(`Unrecognized or incomplete revision ${directory}; inspect and relocate ambiguous material before retrying migration.`);
+      const bytes = readFileSync(manifest), value = JSON.parse(bytes.toString("utf8"));
+      validate_schema_project_ownership(dirname(project), directory, basename(project));
+      const owned = read_owned_files(directory, manifest, basename(project));
+      if (!owned.some(file => file.path === "tsconfig.json")) throw new Error(`Missing owned revision configuration: ${directory}`);
+      if (directory === selected && (createHash("sha256").update(bytes).digest("hex") !== parsed.$hsonSchema.manifestDigest
+        || value.revision !== parsed.$hsonSchema.revision)) throw new Error("Edited Hson compiler-project manifest or selector.");
+      for (const file of owned) {
+        const path = join(directory, file.path), content = readFileSync(path);
+        if (createHash("sha256").update(content).digest("hex") !== file.digest) throw new Error(`Edited legacy cleanup input: ${path}`);
+        files.set(path, content);
+      }
+      files.set(manifest, bytes);
+    }
+    if (!files.has(join(selected, "manifest.json"))) throw new Error("Missing selected legacy revision.");
+    files.set(selector, selectorBytes);
+    return { root, files, membership: JSON.stringify(names) };
+  } catch (error) {
+    throw new Error(`${LEGACY_SCHEMA_LAYOUT_REQUIRED} Cleanup refused; no files changed. ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function prune_legacy_directories(path: string, boundary: string): void {
+  while (path !== boundary) {
+    try { rmdirSync(path); }
+    catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && ["ENOENT", "ENOTEMPTY", "EEXIST"].includes(String(error.code))) return;
+      throw error;
+    }
+    path = dirname(path);
+  }
 }

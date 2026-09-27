@@ -36,8 +36,8 @@ if (args.includes("--help") || mode === ("--help" as Mode)) {
   check: verify, then precisely check the generated compiler project
   build: verify/check, then emit authored runtime and precise declarations from one revision
   watch: replace current compiler inputs; emit current JSON events; authoring errors are recoverable
-  Normal workflows require current direct source. Legacy source/evidence requires migrate.
-  migrate: preview recognized legacy association/artifact cleanup; --write applies it`);
+  Normal workflows require current direct source. Legacy source/evidence or compiler layouts require migrate.
+  migrate: preview recognized legacy source/artifact and compiler-layout cleanup; --write applies it`);
 } else try {
   if (!["generate", "verify", "check", "build", "watch", "migrate"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
   if (mode === "migrate") {

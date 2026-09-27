@@ -226,7 +226,7 @@ check("a first run refuses existing unowned destinations", () => {
   const original = snapshot(other, false);
   const result = generate(other);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /JSON|Unexpected|ownership/);
+  assert.match(result.stderr, /unowned Hson compiler project/);
   assert.deepEqual(snapshot(other, false), original);
 });
 
@@ -368,40 +368,131 @@ check("symlink and unowned final destinations are refused before any current rep
   unlinkSync(destination); unlinkSync(extra); succeed(generate(project));
 });
 
-check("old selected and retired revisions migrate once, preserving neighbors and refusing edited history", () => {
-  const other = prepare("revision-migration"); succeed(generate(other));
-  const target = join(other, ".hson/compiler-input/tsconfig.json");
-  const originalSources = snapshot(other);
-  const current = JSON.parse(readFileSync(join(target, "manifest.json"), "utf8"));
-  const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
-  for (const name of ["revision-oldA", "revision-oldB"]) {
-    const retired = join(target, "revisions", name); mkdirSync(retired, { recursive: true });
-    const files = current.files.map((file: { path: string }) => {
-      const text = readFileSync(join(target, file.path), "utf8").split(target).join(retired);
-      mkdirSync(dirname(join(retired, file.path)), { recursive: true }); writeFileSync(join(retired, file.path), text);
-      return { path: file.path, digest: digest(text) };
-    });
-    const { publication: _publication, contentDigest: _integrity, ...old } = current;
-    writeFileSync(join(retired, "manifest.json"), JSON.stringify({ ...old, compatibility: current.compatibility.replace("compiler-project-5", "compiler-project-4"), files }));
-  }
-  for (const directory of ["sources", "evidence"]) rmSync(join(target, directory), { recursive: true });
-  unlinkSync(join(target, "manifest.json"));
-  const selected = join(target, "revisions/revision-oldB");
-  writeFileSync(join(target, "tsconfig.json"), JSON.stringify({ extends: "./revisions/revision-oldB/tsconfig.json", $hsonSchema: { owner: "hson-schema-compiler-selector-v1", project: join(other, "tsconfig.json"), revision: current.revision, manifestDigest: digest(readFileSync(join(selected, "manifest.json"))) } }));
-  const edited = join(target, "revisions/revision-oldA/sources/schema.ts"), bytes = readFileSync(edited);
-  writeFileSync(edited, "edited generated source");
-  const protectedState = snapshot(target, false);
-  assert.notEqual(generate(other).status, 0); assert.deepEqual(snapshot(target, false), protectedState);
-  writeFileSync(edited, bytes);
-  writeFileSync(join(selected, "notes.txt"), "user notes");
-  mkdirSync(join(selected, "empty-user-directory"));
-  succeed(generate(other));
-  assert.equal(existsSync(join(target, "revisions/revision-oldA")), false);
-  assert.deepEqual(readdirSync(selected).sort(), ["empty-user-directory", "notes.txt"]);
-  assert.equal(readFileSync(join(selected, "notes.txt"), "utf8"), "user notes");
-  succeed(stock_check(join(target, "tsconfig.json")));
-  const after = snapshot(target, false); succeed(generate(other)); assert.deepEqual(snapshot(target, false), after);
-  assert.deepEqual(snapshot(other), originalSources);
+// Legacy generated state is a migration fixture; current source is always authoritative.
+const oldProject = join(temporary, "revision-migration"); mkdirSync(oldProject);
+writeFileSync(join(oldProject, "package.json"), '{"type":"module"}');
+writeFileSync(join(oldProject, "schema.ts"), 'import { Hson } from "hson-live";\n// keep authored source\nexport const S = Hson.schema`<type "data" content <value "string">>`;\n');
+writeFileSync(join(oldProject, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true,
+  target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], declaration: true, outDir: "out",
+  paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")] } }, files: ["schema.ts"] }));
+succeed(generate(oldProject));
+const legacyRoot = join(oldProject, ".hson/compiler-input/tsconfig.json");
+const oldAuthored = snapshot(oldProject);
+const currentState = JSON.parse(readFileSync(join(legacyRoot, "manifest.json"), "utf8"));
+const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+const expectedCleanup: string[] = [join(legacyRoot, "tsconfig.json")];
+for (const name of ["revision-oldA", "revision-oldB"]) {
+  const retired = join(legacyRoot, "revisions", name); mkdirSync(retired, { recursive: true });
+  const files = currentState.files.map((file: { path: string }) => {
+    const text = readFileSync(join(legacyRoot, file.path), "utf8").split(legacyRoot).join(retired);
+    mkdirSync(dirname(join(retired, file.path)), { recursive: true }); writeFileSync(join(retired, file.path), text);
+    expectedCleanup.push(join(retired, file.path));
+    return { path: file.path, digest: digest(text) };
+  });
+  const { publication: _publication, contentDigest: _integrity, ...old } = currentState;
+  writeFileSync(join(retired, "manifest.json"), JSON.stringify({ ...old, compatibility: "compiler-project-4/obsolete", files }));
+  expectedCleanup.push(join(retired, "manifest.json"));
+}
+for (const directory of ["sources", "evidence"]) rmSync(join(legacyRoot, directory), { recursive: true });
+unlinkSync(join(legacyRoot, "manifest.json"));
+const selectedLegacy = join(legacyRoot, "revisions/revision-oldB");
+const selectorPath = join(legacyRoot, "tsconfig.json");
+writeFileSync(selectorPath, JSON.stringify({ extends: "./revisions/revision-oldB/tsconfig.json", $hsonSchema: {
+  owner: "hson-schema-compiler-selector-v1", project: join(oldProject, "tsconfig.json"), revision: currentState.revision,
+  manifestDigest: digest(readFileSync(join(selectedLegacy, "manifest.json"))) } }));
+writeFileSync(join(selectedLegacy, "notes.txt"), "user notes");
+writeFileSync(join(selectedLegacy, "sources/notes.txt"), "nested user notes");
+mkdirSync(join(selectedLegacy, "empty-user-directory"));
+mkdirSync(join(legacyRoot, "revisions/user-directory"));
+writeFileSync(join(legacyRoot, "revisions/user-directory/notes.txt"), "unrelated neighbor");
+function legacyCommand(mode: string, args: string[] = []) {
+  return spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), mode, "--project", join(oldProject, "tsconfig.json"), ...args], { encoding: "utf8", timeout: 30_000 });
+}
+for (const mode of ["generate", "watch", "verify", "check", "build"]) check(`${mode} requires migration for immutable revisions without adopting or writing`, () => {
+  const before = snapshot(oldProject, false), result = legacyCommand(mode);
+  assert.notEqual(result.status, 0); assert.equal(result.error, undefined);
+  assert.match(result.stderr, /Legacy Hson compiler-project layout detected.*migrate.*--write/);
+  assert.deepEqual(snapshot(oldProject, false), before);
+});
+check("legacy layout preview lists exactly owned selector and revision files without writing", () => {
+  const before = snapshot(oldProject, false), result = legacyCommand("migrate"); succeed(result);
+  const preview = JSON.parse(result.stdout);
+  assert.equal(preview.applied, false);
+  assert.deepEqual(preview.changes.map((change: { path: string }) => change.path).sort(), expectedCleanup.sort());
+  assert.ok(preview.changes.every((change: { operation: string }) => change.operation === "remove-owned-artifact"));
+  assert.deepEqual(snapshot(oldProject, false), before);
+});
+function refuseLegacy(name: string, change: () => () => void): void {
+  check(`legacy cleanup refuses ${name} before any write`, () => {
+    const restore = change();
+    try {
+      const before = snapshot(oldProject, false);
+      for (const args of [[], ["--write"]]) {
+        const result = legacyCommand("migrate", args); assert.notEqual(result.status, 0, result.stdout);
+        assert.match(result.stderr, /refused|symlink|changed/i);
+        assert.deepEqual(snapshot(oldProject, false), before);
+      }
+      const normal = legacyCommand("generate"); assert.notEqual(normal.status, 0);
+      assert.match(normal.stderr, /Legacy Hson compiler-project layout|symlink/);
+      assert.deepEqual(snapshot(oldProject, false), before);
+    } finally { restore(); }
+  });
+}
+function editLegacy(path: string, edit: (text: string) => string): () => void {
+  const before = readFileSync(path); writeFileSync(path, edit(before.toString("utf8"))); return () => writeFileSync(path, before);
+}
+const retiredManifest = join(legacyRoot, "revisions/revision-oldA/manifest.json");
+const retiredSource = join(legacyRoot, "revisions/revision-oldA/sources/schema.ts");
+refuseLegacy("edited owned source", () => editLegacy(retiredSource, text => text + "\n// edited"));
+refuseLegacy("file digest mismatch", () => editLegacy(retiredManifest, text => { const value = JSON.parse(text); value.files[0].digest = "0".repeat(64); return JSON.stringify(value); }));
+refuseLegacy("selector manifest digest mismatch", () => editLegacy(selectorPath, text => { const value = JSON.parse(text); value.$hsonSchema.manifestDigest = "0".repeat(64); return JSON.stringify(value); }));
+refuseLegacy("selector revision mismatch", () => editLegacy(selectorPath, text => { const value = JSON.parse(text); value.$hsonSchema.revision = "wrong"; return JSON.stringify(value); }));
+refuseLegacy("wrong selector project identity", () => editLegacy(selectorPath, text => { const value = JSON.parse(text); value.$hsonSchema.project = join(oldProject, "other.json"); return JSON.stringify(value); }));
+refuseLegacy("wrong revision project identity", () => editLegacy(retiredManifest, text => { const value = JSON.parse(text); value.project = "other.json"; return JSON.stringify(value); }));
+refuseLegacy("selector escape path", () => editLegacy(selectorPath, text => { const value = JSON.parse(text); value.extends = "../outside/tsconfig.json"; return JSON.stringify(value); }));
+refuseLegacy("owned manifest escape path", () => editLegacy(retiredManifest, text => { const value = JSON.parse(text); value.files[0].path = "../outside.ts"; return JSON.stringify(value); }));
+const missingLegacyInputs: readonly [string, string][] = [["missing owned file", retiredSource], ["missing manifest", retiredManifest], ["missing selector", selectorPath]];
+for (const [name, path] of missingLegacyInputs) {
+  refuseLegacy(name, () => { const before = readFileSync(path); unlinkSync(path); return () => writeFileSync(path, before); });
+}
+const linkedLegacyInputs: readonly [string, string][] = [["owned file symlink", retiredSource], ["manifest symlink", retiredManifest], ["selector symlink", selectorPath]];
+for (const [name, path] of linkedLegacyInputs) {
+  refuseLegacy(name, () => {
+    const before = readFileSync(path); unlinkSync(path); symlinkSync(join(oldProject, "schema.ts"), path);
+    return () => { unlinkSync(path); writeFileSync(path, before); };
+  });
+}
+refuseLegacy("dangling revision symlink", () => {
+  const path = join(legacyRoot, "revisions/revision-dangling"); symlinkSync(join(oldProject, "missing"), path);
+  return () => unlinkSync(path);
+});
+refuseLegacy("ambiguous revision neighbor", () => {
+  const path = join(legacyRoot, "revisions/revision-unknown"); mkdirSync(path); writeFileSync(join(path, "notes.txt"), "unknown");
+  return () => rmSync(path, { recursive: true });
+});
+refuseLegacy("mixed current and old state", () => {
+  const path = join(legacyRoot, "manifest.json"); writeFileSync(path, JSON.stringify(currentState)); return () => unlinkSync(path);
+});
+refuseLegacy("interrupted publication", () => {
+  const path = join(legacyRoot, ".publishing.json"); writeFileSync(path, "{}"); return () => unlinkSync(path);
+});
+refuseLegacy("ambiguous authored legacy syntax alongside old state", () => editLegacy(join(oldProject, "schema.ts"), text => text + "// @hson-schema generated type exports\n"));
+check("explicit cleanup preserves neighbors and authored bytes, then current generate/check/build succeeds", () => {
+  succeed(legacyCommand("migrate", ["--write"]));
+  for (const path of expectedCleanup) assert.equal(existsSync(path), false, path);
+  assert.equal(existsSync(join(legacyRoot, "revisions/revision-oldA")), false);
+  assert.deepEqual(readdirSync(selectedLegacy).sort(), ["empty-user-directory", "notes.txt", "sources"]);
+  assert.equal(readFileSync(join(selectedLegacy, "sources/notes.txt"), "utf8"), "nested user notes");
+  assert.equal(readFileSync(join(selectedLegacy, "notes.txt"), "utf8"), "user notes");
+  assert.equal(readFileSync(join(legacyRoot, "revisions/user-directory/notes.txt"), "utf8"), "unrelated neighbor");
+  assert.deepEqual(snapshot(oldProject), oldAuthored);
+  const preview = legacyCommand("migrate"); succeed(preview); assert.deepEqual(JSON.parse(preview.stdout).changes, []);
+  for (const mode of ["generate", "verify", "check", "build"]) succeed(legacyCommand(mode));
+  succeed(stock_check(join(legacyRoot, "tsconfig.json")));
+  assert.equal(JSON.parse(readFileSync(join(legacyRoot, "manifest.json"), "utf8")).compatibility, currentState.compatibility);
+  const after = snapshot(legacyRoot, false); succeed(legacyCommand("generate")); assert.deepEqual(snapshot(legacyRoot, false), after);
+  const currentPreview = legacyCommand("migrate"); succeed(currentPreview); assert.deepEqual(JSON.parse(currentPreview.stdout).changes, []);
+  for (const [path, bytes] of oldAuthored) assert.deepEqual(readFileSync(join(oldProject, path)), bytes);
 });
 
 events.terminal("pass");

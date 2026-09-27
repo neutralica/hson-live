@@ -73,6 +73,23 @@ await check("unchanged invalid state is reused across watcher startup", async ()
     assert.notEqual(refused.status, 0); // Reused invalid diagnostics remain honest.
   } finally { watcher.stop(); rmSync(quiet, { recursive: true, force: true }); }
 });
+await check("unchanged live watch rejects legacy state introduced after current publication", async () => {
+  const directory = mkdtempSync(join(root, "tmp/schema-layout-fence-"));
+  const config = join(directory, "tsconfig.json"), output = join(directory, ".hson/compiler-input/tsconfig.json");
+  writeFileSync(config, JSON.stringify({ compilerOptions: { types: [] }, files: ["source.ts"] }));
+  writeFileSync(join(directory, "source.ts"), "export const value = 1;");
+  const watch = create_schema_compiler_project_watch(config, () => ({ schemas: [], overlays: [], diagnostics: [] }), () => {});
+  try {
+    await watch.poll();
+    const before = readFileSync(join(output, "manifest.json"));
+    const revision = join(output, "revisions/revision-old"); mkdirSync(revision, { recursive: true });
+    writeFileSync(join(revision, "manifest.json"), "{}");
+    await assert.rejects(watch.poll(), /Legacy Hson compiler-project layout detected.*migrate/);
+    assert.throws(() => verify_schema_compiler_project(config), /Legacy Hson compiler-project layout detected.*migrate/);
+    assert.deepEqual(readFileSync(join(output, "manifest.json")), before);
+    assert.equal(readFileSync(join(revision, "manifest.json"), "utf8"), "{}");
+  } finally { watch.stop(); rmSync(directory, { recursive: true, force: true }); }
+});
 await check("interrupted replacement cannot be verified or reused as current proof", async () => {
   const directory = mkdtempSync(join(root, "tmp/schema-interrupted-"));
   const config = join(directory, "tsconfig.json"), source = join(directory, "source.ts");

@@ -52,9 +52,13 @@ are required.
 
 Changed membership removes obsolete owned sources, evidence and metadata. Invalid
 Schemas withdraw current precision, and repair restores it. Unowned neighbors,
-edited files and symlink destinations are protected. Existing known revision
-layouts are adopted during normal generation after ownership validation; uncertain
-material causes an actionable refusal. Normal operation retains no old revisions.
+edited files and symlink destinations are protected. Obsolete immutable revision
+layouts require explicit `hson-schema migrate` preview and `migrate --write` cleanup,
+followed by `generate` (or `watch`) to regenerate current state from authored inputs.
+Normal generate/watch/verify/check/build report migration-required without adopting
+or deleting old state. Cleanup validates project identity, selector and manifest
+ownership, digests and symlinks; ambiguous or edited state is refused before any
+write. Unowned neighbors are preserved. Normal operation retains no old revisions.
 `.hson/` is ignored development state, not committed or published; CI generates it.
 
 The extension's live compiler view requires neither colocated evidence nor saved
