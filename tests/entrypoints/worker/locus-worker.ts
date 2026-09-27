@@ -1,5 +1,5 @@
 import { create_browser_locus_socket, create_locus, hsonLocus,
-  type LocusSocketLike, type Locus } from "hson-live/locus";
+  type LocusSocketLike, type Locus, type LocusSessionId, type AuthorityProjectionSnapshot } from "hson-live/locus";
 import { hsonLiveMap } from "hson-live/livemap";
 import { Hson } from "hson-live/hson";
 
@@ -11,5 +11,10 @@ void socket;
 const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
 const locus: Locus<typeof map> = create_locus({ map, exposure: [{ library: "page", exposure: "client-public" }] });
 void [locus, hsonLocus];
+declare const sessionId: LocusSessionId;
+const snapshot: AuthorityProjectionSnapshot = locus.captureClient(sessionId);
+void hsonLiveMap.fromClientSnapshot({ authority: snapshot, localLibraries: {} });
+// @ts-expect-error Session IDs remain strings.
+locus.captureClient(1);
 // @ts-expect-error A bare map cannot become a hosted Locus.
 create_locus({ map: hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } }) });

@@ -11,6 +11,8 @@ import type {
   Locus,
   LocusActionContext,
   LocusOptions,
+  LocusSessionId,
+  AuthorityProjectionSnapshot,
 } from "../../types/locus.types.js";
 import { alias_locus_remote_action_admission_internal } from "./locus.remote-action.internal.js";
 import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
@@ -178,21 +180,27 @@ export function create_registry_locus_internal<
     return Object.assign(stop, { emitEvent: () => {} }) as LocusConnection;
   };
 
+  function with_client_capture<TResult>(sessionId: LocusSessionId,
+    consume: (snapshot: AuthorityProjectionSnapshot) => TResult): TResult {
+    if (disposed || typeof sessionId !== "string" || sessionId.length === 0) throw new LocusProjectionUnavailableError();
+    const effective = authority.sessions.projection(sessionId);
+    if (effective === undefined) throw new LocusProjectionUnavailableError();
+    const projected = capture_selected_authority_projection_snapshot(options.map, effective);
+    const result = consume(projected);
+    // Synchronous revocation observers can fence capture or rendering while it is built.
+    if (authority.sessions.projection(sessionId) !== effective) throw new LocusProjectionUnavailableError();
+    return result;
+  }
+
   const locus = Object.freeze({
     map: options.map,
     lib: Object.freeze({ add: (definitions: import("../../types/livemap.types.js").LiveMapDefinitions,
       admission?: Readonly<{ exposure?: Readonly<Record<string, import("../../types/locus.types.js").LocusLibraryExposure>> }>) =>
       authority.add_libraries(definitions, admission?.exposure) }),
-    cut: (sessionId: string, document?: string) => {
-      if (disposed || typeof sessionId !== "string" || sessionId.length === 0) throw new LocusProjectionUnavailableError();
-      const effective = authority.sessions.projection(sessionId);
-      if (effective === undefined) throw new LocusProjectionUnavailableError();
-      const projected = capture_selected_authority_projection_snapshot(options.map, effective);
-      const cut = cut_hosted_projection(projected, document);
-      // Synchronous revocation observers can fence a cut while it is built.
-      if (authority.sessions.projection(sessionId) !== effective) throw new LocusProjectionUnavailableError();
-      return cut;
-    },
+    captureClient: (sessionId: LocusSessionId): AuthorityProjectionSnapshot =>
+      with_client_capture(sessionId, (snapshot) => snapshot),
+    cut: (sessionId: LocusSessionId, document?: string) =>
+      with_client_capture(sessionId, (snapshot) => cut_hosted_projection(snapshot, document)),
     logicalMapId: authority.logicalMapId,
     incarnationId: authority.incarnationId,
     get rev() { return authority.rev; },

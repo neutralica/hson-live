@@ -38,6 +38,8 @@ An activation error is reconciled by reading the exact active checkpoint identit
 
 ## Hosted cut and client state
 
+`locus.captureClient(sessionId)` returns the session's current authorized `AuthorityProjectionSnapshot` as portable client state, without rendering or sending it. It supports data-only, document-only, and mixed projections; `htmlDocument` may be `null`. Compose it with `hsonLiveMap.fromClientSnapshot({ authority: snapshot, localLibraries: {} })` before attaching Echo. Attached and disconnected retained sessions are available; unknown, expired, revoked, or disposed sessions reject with `LOCUS_PROJECTION_UNAVAILABLE`. Capture is fenced against a session projection change.
+
 After a session is established, `locus.cut(sessionId, document?)` produces an object-owned authorized cut. Its `html` and `data` (`AuthorityProjectionSnapshot`) come from one coherent authority revision and the session's current effective projection. It rejects a revoked session and any private, unselected, wrong-kind, or otherwise unauthorized document choice without naming hidden libraries. A zero-argument cut needs an authorized `htmlDocument`; no first-document fallback exists.
 
 The application owns the HTML shell, routing, headers, CSP, asset tags, and bootstrap placement. `new Response(cut.html)` is valid when no browser continuation is needed. When continuation is needed, encode the projected state from that same cut with the hosted SSR bootstrap v3 `hosted-projection` contract. Local SSR still uses its separate version 2 contract.

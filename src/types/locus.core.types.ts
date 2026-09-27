@@ -497,6 +497,8 @@ export type Locus<
   dispose: LocusDisposer;
   /** Capture HTML and projected authority state for one already-authorized session. */
   cut: (sessionId: LocusSessionId, document?: string) => import("../api/ssr/ssr.types.js").HostedLibrariesDocumentCut;
+  /** Capture portable authorized client state without rendering or sending it. */
+  captureClient: (sessionId: LocusSessionId) => import("./locus.projection.types.js").AuthorityProjectionSnapshot;
 }>;
 
 /** Opaque durable-record port for a fixed hosted Library registry. */
