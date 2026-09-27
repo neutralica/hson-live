@@ -58,19 +58,13 @@ function discover_schema_syntax(fileName: string, text: string): readonly Schema
     if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
     const declaration = statement.declarationList.declarations[0];
     if (declaration === undefined || !ts.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
-    const initializer = unwrap_tagged_schema(declaration.initializer);
+    const initializer = ts.isTaggedTemplateExpression(declaration.initializer) ? declaration.initializer : undefined;
     if (initializer === undefined || !ts.isPropertyAccessExpression(initializer.tag) || initializer.tag.name.text !== "schema" || !ts.isIdentifier(initializer.tag.expression) || !ts.isNoSubstitutionTemplateLiteral(initializer.template)) continue;
     const tagSymbol = checker.getSymbolAtLocation(initializer.tag.expression);
     if (tagSymbol === undefined || !hsonBindings.has(tagSymbol)) continue;
     output.push(Object.freeze({ declaration, template: initializer.template, sourceFile }));
   }
   return Object.freeze(output);
-}
-
-function unwrap_tagged_schema(node: ts.Expression): ts.TaggedTemplateExpression | undefined {
-  if (ts.isTaggedTemplateExpression(node)) return node;
-  if (ts.isAsExpression(node) || ts.isParenthesizedExpression(node)) return unwrap_tagged_schema(node.expression);
-  return undefined;
 }
 
 function supported_import_symbols(sourceFile: ts.SourceFile, checker: ts.TypeChecker, importedName: "Hson", allowTypeOnly: boolean): ReadonlySet<ts.Symbol> {

@@ -13,11 +13,19 @@ model in memory, including current unsaved text and authored source mappings.
 | `watch --project tsconfig.json` | Continuously replace current generated state, recovering from ordinary authoring errors. Infrastructure and ownership failures terminate. |
 | `migrate --project tsconfig.json` | Preview explicit legacy cleanup. `--write` applies recognized syntax removal and digest-verified colocated artifact removal. Ambiguity refuses the operation before any write. |
 
-`experimental-project` is a compatibility alias for `generate`; its `--watch`
-option delegates to normal `watch`. There is no separate experimental writer.
 Run `generate` before `verify`, `check` or `build` after editing saved inputs.
 Stock `tsc -p .hson/compiler-input/tsconfig.json/tsconfig.json` also checks the
 current view, but cannot independently verify its freshness.
+
+Normal workflows accept current direct `Hson.schema` authored source only. Recognized
+legacy annotations, assertions, generated import/marker blocks, or colocated evidence
+produce a migration-required error and receive no generated or virtual proof. Run
+`hson-schema migrate` to preview cleanup, then `hson-schema migrate --write` to apply
+it. Normal commands never clean up authored source automatically.
+
+Watch emits the current JSON protocol. The extension expects the current workspace
+CLI; plain-text Watch output and mixed-version interoperability are unsupported.
+Compiler-project compatibility is version 6; regenerate state from earlier tooling.
 
 ## Generated ownership
 

@@ -6,8 +6,8 @@ import type {
   LiveMapDocumentLibrary, LiveMapDataLibrary,
   HsonSchema,
 } from "hson-live";
-import { SameShapeOneSchema, SameShapeTwoSchema, UserSchema } from "./fixtures/hson-schema-mvp/producer.js";
-import { PageSchema } from "./fixtures/hson-schema-document/producer.js";
+import { SameShapeOneSchema, SameShapeTwoSchema, UserSchema } from "./fixtures/hson-schema-mvp/out/producer.js";
+import { PageSchema } from "./fixtures/hson-schema-document/out/producer.js";
 
 declare const canonical: HsonCanonical;
 declare const unproved: HsonData;

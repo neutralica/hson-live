@@ -5,115 +5,9 @@ import { parse_hson_with_provenance } from "../../../src/internal/hson-source-pr
 import { projected_value_from_hson_node } from "../../../src/core/projected-value-graph.js";
 import { is_official_hson_package_binding } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { generate_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
-import { local_hson_schema_declarations } from "./hson-schema-local.js";
-import { dirname, relative, sep } from "node:path";
-import { createHash } from "node:crypto";
 
 export type VerifiedSchemaAssignmentRange = Readonly<{ start: number; end: number }>;
 type SchemaAssociation = Readonly<{ declaration: ts.VariableDeclaration; compiled: CompiledHsonSchema; mode: "data" | "document" }>;
-
-/** Keep the producer's generated assertion out of the live program while its evidence is stale. */
-export function mask_stale_schema_producer_evidence(
-  typescript: typeof ts,
-  fileName: string,
-  source: string,
-  projectPath: string,
-  readCurrentFile: (path: string) => string | undefined,
-  compilerOptions?: ts.CompilerOptions,
-): string {
-  const records = new Map(local_hson_schema_declarations(source, fileName).map(record => [record.name, record]));
-  const options = compilerOptions ?? (() => {
-    const config = typescript.readConfigFile(projectPath, readCurrentFile);
-    return config.error === undefined
-      ? typescript.parseJsonConfigFileContent(config.config, typescript.sys, dirname(projectPath), undefined, projectPath).options
-      : undefined;
-  })();
-  const host = options === undefined ? undefined : typescript.createCompilerHost({ ...options, noEmit: true, skipLibCheck: true }, true);
-  if (host !== undefined) {
-    host.fileExists = path => readCurrentFile(path) !== undefined;
-    host.readFile = readCurrentFile;
-    host.getSourceFile = (path, languageVersion) => {
-      const contents = path === fileName ? source : readCurrentFile(path);
-      return contents === undefined ? undefined : typescript.createSourceFile(path, contents, languageVersion, true);
-    };
-  }
-  const program = host === undefined ? undefined : typescript.createProgram([fileName], { ...options, noEmit: true, skipLibCheck: true }, host);
-  const file = program?.getSourceFile(fileName) ?? typescript.createSourceFile(fileName, source, typescript.ScriptTarget.Latest, true);
-  const checker = program?.getTypeChecker();
-  const edits: { start: number; end: number }[] = [];
-  for (const statement of file.statements) {
-    if (!typescript.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (!typescript.isIdentifier(declaration.name)) continue;
-      const recordType = declaration.type;
-      if (recordType === undefined || !typescript.isTypeReferenceNode(recordType) || !typescript.isIdentifier(recordType.typeName)
-        || recordType.typeName.text !== "__HsonSchema") continue;
-      const record = records.get(declaration.name.text);
-      const stem = fileName.replace(/\.[cm]?tsx?$/, "");
-      const artifactPath = `${stem}.${declaration.name.text}.hson-schema.generated.ts`;
-      const metadataPath = `${stem}.${declaration.name.text}.hson-schema.generated.json`;
-      const identity = `${relative(dirname(projectPath), fileName).split(sep).join("/")}#${declaration.name.text}`;
-      let current = false;
-      if (record !== undefined && checker !== undefined) try {
-        const initializer = declaration.initializer;
-        const tagged = initializer === undefined ? undefined : unwrap_tagged_schema(typescript, initializer);
-        if (tagged === undefined || !is_official_member_tag(typescript, checker, tagged, "schema")) throw new Error("Untrusted Hson binding.");
-        const evidence = generate_hson_schema_evidence(record.name, record.template, identity);
-        current = readCurrentFile(artifactPath) === evidence.declaration && readCurrentFile(metadataPath) === evidence.metadata;
-      } catch { /* Invalid or incomplete live Schema text has no proof. */ }
-      if (current) continue;
-      edits.push({ start: recordType.getStart(file), end: recordType.getEnd() });
-      const visit = (node: ts.Node): void => {
-        if (typescript.isAsExpression(node) && typescript.isTypeReferenceNode(node.type)
-          && typescript.isIdentifier(node.type.typeName) && node.type.typeName.text === "__HsonSchema") {
-          edits.push({ start: node.type.getStart(file), end: node.type.getEnd() });
-        }
-        typescript.forEachChild(node, visit);
-      };
-      if (declaration.initializer !== undefined) visit(declaration.initializer);
-    }
-  }
-  let masked = source;
-  for (const edit of edits.sort((a, b) => b.start - a.start)) {
-    const replacement = "__HsonSchema".padEnd(edit.end - edit.start, " ");
-    masked = masked.slice(0, edit.start) + replacement + masked.slice(edit.end);
-  }
-  return masked;
-}
-
-/** Install a source-length-preserving producer overlay for the live TypeScript program. */
-export function install_live_schema_proof_mask(
-  typescript: typeof ts,
-  host: ts.LanguageServiceHost,
-  projectPath: string,
-): void {
-  const originalSnapshot = host.getScriptSnapshot.bind(host);
-  const originalVersion = host.getScriptVersion.bind(host);
-  const currentText = (path: string): string | undefined => {
-    const snapshot = originalSnapshot(path);
-    return snapshot === undefined ? typescript.sys.readFile(path) : snapshot.getText(0, snapshot.getLength());
-  };
-  const effectiveText = (fileName: string): string | undefined => {
-    const source = currentText(fileName);
-    return source === undefined || !source.includes("__HsonSchema") ? source
-      : mask_stale_schema_producer_evidence(typescript, fileName, source, projectPath, currentText, host.getCompilationSettings());
-  };
-  host.getScriptSnapshot = (fileName): ts.IScriptSnapshot | undefined => {
-    const original = originalSnapshot(fileName);
-    if (original === undefined) return undefined;
-    const source = original.getText(0, original.getLength());
-    if (!source.includes("__HsonSchema")) return original;
-    const masked = effectiveText(fileName);
-    return masked === undefined || masked === source ? original : typescript.ScriptSnapshot.fromString(masked);
-  };
-  host.getScriptVersion = (fileName): string => {
-    const base = originalVersion(fileName);
-    const source = currentText(fileName);
-    if (source === undefined || !source.includes("__HsonSchema")) return base;
-    const effective = effectiveText(fileName);
-    return `${base}:hson-proof:${createHash("sha256").update(effective ?? "").digest("hex")}`;
-  };
-}
 
 /** Facts safe for editor diagnostic filtering; this never changes TypeScript types. */
 export function verified_schema_assignment_ranges(
@@ -171,7 +65,8 @@ function resolve_schema_association(
   const compiled = compile_hson_schema(source);
   if (!compiled.ok) return undefined;
   const expected = generate_hson_schema_evidence(declaration.name.text, source, "editor-assignment").declaration;
-  const artifactPath = evidenceFile?.(producer.fileName, declaration.name.text) ?? `${producer.fileName.replace(/\.[cm]?ts$/, "")}.${declaration.name.text}.hson-schema.generated.ts`;
+  const artifactPath = evidenceFile?.(producer.fileName, declaration.name.text);
+  if (artifactPath === undefined) return undefined;
   const artifact = program.getSourceFile(artifactPath);
   if (artifact?.text !== expected) return undefined;
   const mode = compiled.value.semantic.kind === "document" || compiled.value.semantic.kind === "document-element" ? "document" : "data";

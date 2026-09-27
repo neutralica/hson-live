@@ -1,9 +1,9 @@
 import { ANY_DOCUMENT, Hson, hsonLiveMap, type HsonDocument, type HsonSchema } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
-import type { Evidence as PageEvidence } from "./fixtures/hson-schema-document/producer.PageSchema.hson-schema.generated.ts";
-import type { Evidence as AnyDocumentEvidence } from "./fixtures/hson-schema-document/producer.AnyDocumentSchema.hson-schema.generated.ts";
-import type { Evidence as MainDocumentEvidence } from "./fixtures/hson-schema-document/producer.MainDocumentSchema.hson-schema.generated.ts";
+import type { Evidence as PageEvidence } from "./fixtures/hson-schema-document/out/internal/hson-schema/producer.ts/PageSchema.hson-schema.generated.js";
+import type { Evidence as AnyDocumentEvidence } from "./fixtures/hson-schema-document/out/internal/hson-schema/producer.ts/AnyDocumentSchema.hson-schema.generated.js";
+import type { Evidence as MainDocumentEvidence } from "./fixtures/hson-schema-document/out/internal/hson-schema/producer.ts/MainDocumentSchema.hson-schema.generated.js";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends
   (<T>() => T extends B ? 1 : 2) ? true : false;

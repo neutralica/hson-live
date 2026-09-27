@@ -33,6 +33,9 @@ function pass(result: ReturnType<typeof run>): void { assert.equal(result.status
 function preserve(): void { for (const [path, bytes] of authored) assert.deepEqual(readFileSync(join(project, path)), bytes, path); }
 const stable = join(project, ".hson/compiler-input/tsconfig.json/tsconfig.json");
 function selected(): string { return dirname(stable); }
+check("retired CLI alias is unsupported", () => {
+  const result = run("experimental-project"); assert.notEqual(result.status, 0); assert.match(result.stderr, /Unknown Hson Schema mode/);
+});
 check("missing verification fails without generating or modifying source", () => { const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stderr, /Missing/); preserve(); });
 for (const mode of ["generate", "verify", "check", "build"]) check(`${mode} preserves BOM, CRLF, comments, spacing, annotations and missing newline`, () => { pass(run(mode)); preserve(); });
 check("published selected state is checkable by stock TypeScript", () => {
@@ -116,15 +119,22 @@ check("explicit legacy migration previews, safely removes known syntax and refus
   const type = '__HsonSchema<__LegacyEvidence["value"], __LegacyEvidence["mode"], __LegacyEvidence["identity"]>';
   const text = `\uFEFF// user comment\r\nimport { Hson } from "hson-live";\r\nexport const Legacy: ${type} = (Hson.schema\`${schema}\` as unknown as ${type});\r\n// @hson-schema generated type exports\r\nimport type { HsonSchema as __HsonSchema } from "hson-live";\r\nimport type { Evidence as __LegacyEvidence } from "./legacy.Legacy.hson-schema.generated.js";\r\n// @hson-schema end generated type exports`;
   writeFileSync(join(project, "legacy.ts"), text);
-  // Missing old colocated files do not require destructive migration to check current source.
-  pass(run("generate")); pass(run("check"));
+  for (const mode of ["generate", "verify", "check", "build"]) {
+    const result = run(mode); assert.notEqual(result.status, 0);
+    assert.match(result.stdout + result.stderr, /Legacy Hson Schema.*migrate/);
+  }
   assert.equal(readFileSync(join(project, "legacy.ts"), "utf8"), text);
   writeFileSync(join(project, "legacy.Legacy.hson-schema.generated.ts"), evidence.declaration);
   writeFileSync(join(project, "legacy.Legacy.hson-schema.generated.json"), evidence.metadata);
-  pass(run("generate")); pass(run("build"));
-  assert.ok(!files(join(project, "dist")).some(path => path.endsWith("legacy.Legacy.hson-schema.generated.js")));
+  const direct = `import { Hson } from "hson-live"; export const Legacy = Hson.schema\`${schema}\`;`;
+  writeFileSync(join(project, "legacy.ts"), direct);
+  for (const mode of ["generate", "verify", "check", "build"]) {
+    const result = run(mode); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /Legacy Hson Schema.*migrate/);
+    assert.equal(readFileSync(join(project, "legacy.ts"), "utf8"), direct);
+  }
+  writeFileSync(join(project, "legacy.ts"), text);
   writeFileSync(join(project, "legacy.Legacy.hson-schema.generated.ts"), "this is edited invalid TypeScript !!!");
-  pass(run("generate")); pass(run("check"));
+  assert.notEqual(run("generate").status, 0);
   assert.notEqual(run("migrate", ["--write"]).status, 0);
   assert.equal(readFileSync(join(project, "legacy.ts"), "utf8"), text);
   writeFileSync(join(project, "legacy.Legacy.hson-schema.generated.ts"), evidence.declaration);
@@ -136,7 +146,7 @@ check("explicit legacy migration previews, safely removes known syntax and refus
   const clean = readFileSync(join(project, "legacy.ts"), "utf8");
   assert.equal(clean, `\uFEFF// user comment\r\nimport { Hson } from "hson-live";\r\nexport const Legacy = Hson.schema\`${schema}\`;\r\n`);
   assert.ok(!files(project).includes(join(project, "legacy.Legacy.hson-schema.generated.ts")));
-  pass(run("generate")); pass(run("check")); preserve();
+  pass(run("generate")); pass(run("check")); pass(run("build")); preserve();
 });
 events.terminal("pass");
 console.log(JSON.stringify({ hsonSchemaCutover: "passed", checks, typescript: ts.version }));

@@ -5,6 +5,7 @@ import ts from "typescript";
 import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
 import { SchemaSourceMapping } from "../src/internal/hson-schema/source-mapping.ts";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
+import { requires_schema_migration } from "../src/internal/hson-schema/legacy-detection.ts";
 import { local_hson_schema_diagnostics } from "../editors/vscode-hson/src/hson-schema-local.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -186,18 +187,46 @@ check("the diagnostic boundary suppresses generated-only spans while preserving 
   } finally { app.underlying.getSemanticDiagnostics = original; }
 });
 
-check("legacy associations cannot retain stale proof and fake Hson bindings never acquire evidence", () => {
-  const legacyPath = join(root, "tests/fixtures/hson-schema-mvp/producer.ts");
-  const legacy = readFileSync(legacyPath, "utf8");
-  const test = project("legacy-view", { "producer.ts": legacy, "consumer.ts": 'import { type SchemaType } from "hson-live"; import { UserSchema } from "./producer.js"; declare const value: SchemaType<typeof UserSchema>; const name: string = value.name;' });
-  assert.equal(test.errors("consumer.ts").length, 0);
-  test.edit("producer.ts", legacy.replace('name "string"', 'name "number"'));
-  assert.ok(test.errors("consumer.ts").some(error => error.code === 2322));
-  test.edit("producer.ts", legacy.replace('name "string"', 'name "broken"'));
-  assert.ok(test.errors("consumer.ts").some(error => error.code === 18046));
-  test.edit("producer.ts", legacy.replace("const UserSchema", "let UserSchema"));
-  assert.ok(test.errors("consumer.ts").some(error => error.code === 18046), "An unsupported declaration form must not retain legacy proof.");
-  test.edit("producer.ts", legacy); assert.equal(test.errors("consumer.ts").length, 0); test.service.dispose();
+check("migration preflight recognizes generated syntax without interpreting string contents or current evidence", () => {
+  const snippets = [
+    '// @hson-schema generated type exports\n',
+    'import type { HsonSchema as __HsonSchema } from "hson-live";',
+    'import type { Evidence as __SEvidence } from "./schema.S.hson-schema.generated.js";',
+    'declare const S: __HsonSchema<unknown>;',
+    'const S = (Hson.schema`<type "data">` as unknown as __HsonSchema<unknown>);',
+  ];
+  for (const text of snippets) assert.equal(requires_schema_migration(ts.createSourceFile(app.file("legacy.ts"), text, ts.ScriptTarget.Latest, true), app.file("tsconfig.json")), true, text);
+  const literal = 'const description = "// @hson-schema generated type exports";';
+  assert.equal(requires_schema_migration(ts.createSourceFile(app.file("current.ts"), literal, ts.ScriptTarget.Latest, true), app.file("tsconfig.json")), false);
+  assert.equal(requires_schema_migration(ts.createSourceFile(app.file(".hson/editor-evidence/schema.ts"), snippets.join("\n"), ts.ScriptTarget.Latest, true), app.file("tsconfig.json")), false);
+});
+
+check("legacy source and colocated evidence require migration without editor proof or writes", () => {
+  const schema = '<type "data" content <name "string">>';
+  const type = '__HsonSchema<__SEvidence["value"], __SEvidence["mode"], __SEvidence["identity"]>';
+  const legacy = `import { Hson } from "hson-live"; export const S: ${type} = (Hson.schema\`${schema}\` as unknown as ${type});
+// @hson-schema generated type exports
+import type { HsonSchema as __HsonSchema } from "hson-live";
+import type { Evidence as __SEvidence } from "./schema.S.hson-schema.generated.js";
+// @hson-schema end generated type exports`;
+  const test = project("legacy-view", { "schema.ts": legacy });
+  const before = bytes(test.directory);
+  assert.match(messages(test.errors("schema.ts")), /Legacy Hson Schema.*migrate/);
+  assert.ok(test.errors("schema.ts").some(error => error.code === 2307), "Legacy missing imports are not suppressed");
+  assert.equal(test.service.getProgram()?.getSourceFile(test.file("schema.ts"))?.text, legacy);
+  assert.ok(!test.service.getProgram()?.getSourceFiles().some(file => file.fileName.includes("/editor-evidence/")));
+  assert.deepEqual(bytes(test.directory), before);
+  const direct = `import { Hson } from "hson-live"; export const S = Hson.schema\`${schema}\`;`;
+  const generated = generate_hson_schema_evidence("S", schema, "schema.ts#S");
+  test.edit("schema.ts", direct);
+  writeFileSync(test.file("schema.S.hson-schema.generated.ts"), generated.declaration);
+  writeFileSync(test.file("schema.S.hson-schema.generated.json"), generated.metadata);
+  assert.match(messages(test.errors("schema.ts")), /Legacy Hson Schema.*migrate/);
+  assert.ok(!test.service.getProgram()?.getSourceFiles().some(file => file.fileName.includes("/editor-evidence/")));
+  rmSync(test.file("schema.S.hson-schema.generated.ts")); rmSync(test.file("schema.S.hson-schema.generated.json"));
+  assert.equal(test.errors("schema.ts").length, 0);
+  assert.ok(test.service.getProgram()?.getSourceFiles().some(file => file.fileName.includes("/editor-evidence/")));
+  test.service.dispose();
   const fake = project("fake-view", { "schema.ts": 'const Hson = { schema: String.raw }; export const S = Hson.schema`<type "data">`;' });
   assert.equal(fake.errors("schema.ts").length, 0);
   assert.ok(!fake.service.getProgram()?.getSourceFiles().some(file => file.fileName.includes("/editor-evidence/"))); fake.service.dispose();

@@ -11,7 +11,7 @@ const packagedRuntime = import.meta.url.endsWith(".mjs") && existsSync(new URL("
 const runtimeBase = packagedRuntime ? "../dist" : "../src";
 const { is_official_hson_package_binding } = await import(`${runtimeBase}/internal/embedded-hson/discover-hson-tagged-templates.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/embedded-hson/discover-hson-tagged-templates.ts");
 const { compile_hson_schema } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
-const { schema_association_edits, unwrap_tagged_schema, legacy_import_block_edit, library_schema_attachment_plan } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
+const { library_schema_attachment_plan } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
 const { discover_hson_schema_declarations } = await import(`${runtimeBase}/internal/hson-schema/schema-discovery.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-discovery.ts");
 const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
 const { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } = await import(`${runtimeBase}/internal/canonical-schema/evaluate.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/evaluate.ts");
@@ -19,7 +19,7 @@ const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hso
 const { resolve_projected_schema_issue_source } = await import(`${runtimeBase}/internal/projected-schema-source-lowering/projected-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/projected-schema-source-lowering/projected-schema-source-lowering.ts");
 const { resolve_document_schema_issue_source } = await import(`${runtimeBase}/internal/document-schema-source-lowering/document-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/document-schema-source-lowering/document-schema-source-lowering.ts");
 
-type Mode = "generate" | "verify" | "check" | "build" | "watch" | "experimental-project" | "migrate";
+type Mode = "generate" | "verify" | "check" | "build" | "watch" | "migrate";
 type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.VariableStatement; declaration: ts.VariableDeclaration; tagged: ts.TaggedTemplateExpression; name: string; source: string; compiled: CompiledHsonSchema }>;
 type Diagnostic = Readonly<{ file?: string; start?: number; message: string }>;
 type Overlay = Readonly<{ file: string; start: number; end: number; text: string }>;
@@ -35,16 +35,16 @@ if (args.includes("--help") || mode === ("--help" as Mode)) {
   verify: read-only ownership, compatibility and freshness verification
   check: verify, then precisely check the generated compiler project
   build: verify/check, then emit authored runtime and precise declarations from one revision
-  watch: replace current compiler inputs; authoring errors are recoverable
-  migrate: preview recognized legacy association/artifact cleanup; --write applies it
-  experimental-project [--watch]: compatibility alias for generate/watch`);
+  watch: replace current compiler inputs; emit current JSON events; authoring errors are recoverable
+  Normal workflows require current direct source. Legacy source/evidence requires migrate.
+  migrate: preview recognized legacy association/artifact cleanup; --write applies it`);
 } else try {
-  if (!["generate", "verify", "check", "build", "watch", "experimental-project", "migrate"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
+  if (!["generate", "verify", "check", "build", "watch", "migrate"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
   if (mode === "migrate") {
     const { migrate_schema_associations } = await import(`${runtimeBase}/internal/hson-schema/legacy-migration.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/legacy-migration.ts");
     console.log(JSON.stringify(migrate_schema_associations(projectPath, args.includes("--write"))));
-  } else if (mode === "watch" || mode === "experimental-project" && args.includes("--watch")) await run_project(true);
-  else if (mode === "generate" || mode === "experimental-project") await run_project(false);
+  } else if (mode === "watch") await run_project(true);
+  else if (mode === "generate") await run_project(false);
   else {
     const { verify_schema_compiler_project } = await import(`${runtimeBase}/internal/hson-schema/compiler-project-watch.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler-project-watch.ts");
     const current = verify_schema_compiler_project(projectPath);
@@ -62,7 +62,7 @@ async function run_project(watch: boolean): Promise<void> {
   let issues: readonly string[] = [];
   const watcher = create_schema_compiler_project_watch(projectPath, (config, program, configDiagnostics) => {
     const checker = program.getTypeChecker();
-    const diagnostics: Diagnostic[] = [...configDiagnostics, ...program.getOptionsDiagnostics(), ...program.getSyntacticDiagnostics().filter(d => !d.file?.fileName.includes(".hson-schema.generated."))].map(d => ({ message: format_ts_diagnostic(d) }));
+    const diagnostics: Diagnostic[] = [...configDiagnostics, ...program.getOptionsDiagnostics(), ...program.getSyntacticDiagnostics()].map(d => ({ message: format_ts_diagnostic(d) }));
     let schemas = discover_schemas(program, checker, diagnostics);
     try { require_schema_compiler_options(config, schemas.length); reject_schema_reexports(program, checker, schemas); }
     catch (error) { diagnostics.push({ message: error_message(error) }); schemas = []; }
@@ -74,25 +74,10 @@ async function run_project(watch: boolean): Promise<void> {
       if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)) continue;
       attachments.push(...library_schema_attachment_plan(source, checker, attachmentFacts).edits.map(edit => ({ file: source.fileName, ...edit })));
     }
-    const valid = new Set(schemas.map(schema => schema.declaration));
-    const broad: Overlay[] = [];
-    for (const source of program.getSourceFiles()) {
-      if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)) continue;
-      for (const statement of source.statements) if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
-        if (!valid.has(declaration) && declaration.type !== undefined && ts.isTypeReferenceNode(declaration.type)
-          && ts.isIdentifier(declaration.type.typeName) && declaration.type.typeName.text === "__HsonSchema") {
-          broad.push(...schema_association_edits([{ declaration, text: 'import("hson-live").HsonSchema' }]).map(edit => ({ file: source.fileName, ...edit })));
-        }
-      }
-    }
-    // Native diagnostics catch temporary missing imports too; generated precision replaces ordinary broad-tag diagnostics.
-    const missingImports = program.getSemanticDiagnostics().filter(d => {
-      if (![2307, 2792, 7016].includes(d.code) || d.file?.fileName.includes(".hson-schema.generated.")) return false;
-      const legacy = d.file === undefined ? undefined : legacy_import_block_edit(d.file);
-      return legacy === undefined || d.start === undefined || d.start < legacy.start || d.start >= legacy.end;
-    });
+    // Generated precision replaces ordinary broad-tag diagnostics; missing imports remain errors.
+    const missingImports = program.getSemanticDiagnostics().filter(d => [2307, 2792, 7016].includes(d.code));
     diagnostics.push(...missingImports.map(d => ({ message: format_ts_diagnostic(d) })));
-    return { schemas, overlays: [...analysis.overlays, ...broad, ...attachments], diagnostics: diagnostics.map(d => `${d.file ?? ""}${d.file === undefined ? "" : ": "}${d.message}`) };
+    return { schemas, overlays: [...analysis.overlays, ...attachments], diagnostics: diagnostics.map(d => `${d.file ?? ""}${d.file === undefined ? "" : ": "}${d.message}`) };
   }, event => {
     if (event.state === "current") { published = true; issues = event.diagnostics ?? []; }
     if (event.state !== "prepared") console.log(JSON.stringify({ hsonSchema: watch ? "watch" : "generate", ...event }));
@@ -124,7 +109,7 @@ function require_schema_compiler_options(config: ts.ParsedCommandLine, schemas: 
 function discover_schemas(program: ts.Program, checker: ts.TypeChecker, diagnostics?: Diagnostic[]): SchemaDeclaration[] {
   const output: SchemaDeclaration[] = [];
   for (const sourceFile of program.getSourceFiles()) {
-    if (sourceFile.isDeclarationFile || sourceFile.fileName.startsWith(`${librarySourceRoot}${sep}`) || sourceFile.fileName.includes(`${sep}node_modules${sep}`) || sourceFile.fileName.includes(".hson-schema.generated.")) continue;
+    if (sourceFile.isDeclarationFile || sourceFile.fileName.startsWith(`${librarySourceRoot}${sep}`) || sourceFile.fileName.includes(`${sep}node_modules${sep}`)) continue;
     const reportedDuplicates = new Set<string>();
     for (const discovered of discover_hson_schema_declarations(ts, sourceFile, checker)) {
       const { statement, declaration, tagged, name } = discovered;
@@ -175,7 +160,7 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
   const overlays: Overlay[] = [];
   const byDeclaration = new Map<ts.Declaration, SchemaDeclaration>(schemas.map((schema) => [schema.declaration, schema]));
   for (const sourceFile of program.getSourceFiles()) {
-    if (sourceFile.isDeclarationFile || sourceFile.fileName.includes(`${sep}node_modules${sep}`) || sourceFile.fileName.includes(".hson-schema.generated.")) continue;
+    if (sourceFile.isDeclarationFile || sourceFile.fileName.includes(`${sep}node_modules${sep}`)) continue;
     for (const statement of sourceFile.statements) {
       if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
       const declaration = statement.declarationList.declarations[0];

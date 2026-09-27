@@ -1,3 +1,4 @@
+import { legacy_schema_import, legacy_evidence_import } from "./legacy-detection.js";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
@@ -69,8 +70,8 @@ function clean_source(path: string, text: string): string {
     const bindings = statement.importClause.namedBindings;
     if (bindings === undefined || !ts.isNamedImports(bindings) || bindings.elements.length !== 1) throw new Error("Ambiguous legacy import.");
     const binding = bindings.elements[0]!;
-    if (binding.propertyName?.text === "HsonSchema" && binding.name.text === "__HsonSchema" && statement.moduleSpecifier.text === "hson-live" && schemaAlias === undefined) schemaAlias = binding.name.text;
-    else if (binding.propertyName?.text === "Evidence" && /^__[\w$]+Evidence$/.test(binding.name.text) && /^\.\/[^/]+\.hson-schema\.generated\.[cm]?js$/.test(statement.moduleSpecifier.text)) aliases.set(binding.name.text, statement.moduleSpecifier.text);
+    if (legacy_schema_import(binding, statement.moduleSpecifier.text) && schemaAlias === undefined) schemaAlias = binding.name.text;
+    else if (legacy_evidence_import(binding, statement.moduleSpecifier.text)) aliases.set(binding.name.text, statement.moduleSpecifier.text);
     else throw new Error("Unrecognized generated import.");
   }
   if (schemaAlias === undefined || !aliases.size || /\/\*|\/\//.test(block)) throw new Error("Unrecognized or commented legacy block.");

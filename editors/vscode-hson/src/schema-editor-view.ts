@@ -1,8 +1,9 @@
+import { requires_schema_migration, SCHEMA_MIGRATION_REQUIRED } from "../../../src/internal/hson-schema/legacy-detection.js";
 import type ts from "typescript";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { generate_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
-import { library_schema_attachment_plan, schema_association_edits, schema_source_plan, unwrap_tagged_schema, type PreciseSchemaFact, type SchemaSourceEdit } from "../../../src/internal/hson-schema/source-transformation.js";
+import { library_schema_attachment_plan, schema_source_plan, type PreciseSchemaFact } from "../../../src/internal/hson-schema/source-transformation.js";
 import { compile_hson_schema } from "../../../src/internal/hson-schema/compiler.js";
 import { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-mapping.js";
 import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
@@ -35,6 +36,7 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
   const authoredService = typescript.createLanguageService(original);
   let previous: ts.Program | undefined;
   let revision = 0;
+  let migration = new Map<string, ts.SourceFile>();
   let sources = new Map<string, SourceView>();
   let evidence = new Map<string, Snapshot>();
   let evidenceByDeclaration = new Map<string, string>();
@@ -53,7 +55,12 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
 
   const refresh = (): void => {
     const program = authoredService.getProgram();
-    if (program === previous || program === undefined) return;
+    if (program === undefined) return;
+    const nextMigration = new Map(program.getSourceFiles().filter(source => !program.isSourceFileFromExternalLibrary(source)
+      && requires_schema_migration(source, projectPath, original.readFile, original.readDirectory ?? typescript.sys.readDirectory)).map(source => [canonical(source.fileName), source]));
+    const migrationChanged = nextMigration.size !== migration.size || [...nextMigration.keys()].some(file => !migration.has(file));
+    migration = nextMigration;
+    if (program === previous && !migrationChanged) return;
     const nextSources = new Map<string, SourceView>();
     const nextEvidence = new Map<string, Snapshot>();
     const nextDeclarations = new Map<string, string>();
@@ -63,7 +70,8 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     const discoveries = new Map<string, ReturnType<typeof discover_hson_schema_declarations>>();
     for (const candidate of program.getSourceFiles()) {
       if (candidate.isDeclarationFile || program.isSourceFileFromExternalLibrary(candidate)
-        || !/\.[cm]?tsx?$/.test(candidate.fileName) || candidate.fileName.includes(".hson-schema.generated.")) continue;
+        || !/\.[cm]?tsx?$/.test(candidate.fileName) || candidate.fileName.split(sep).includes(".hson")) continue;
+      if (migration.has(canonical(candidate.fileName))) continue;
       const found = discover_hson_schema_declarations(typescript, candidate, checker);
       discoveries.set(canonical(candidate.fileName), found);
       for (const { declaration, tagged: tag, eligible } of found) {
@@ -77,9 +85,9 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     }
     for (const source of program.getSourceFiles()) {
       if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)
-        || !/\.[cm]?tsx?$/.test(source.fileName) || source.fileName.includes(".hson-schema.generated.")) continue;
+        || !/\.[cm]?tsx?$/.test(source.fileName) || source.fileName.split(sep).includes(".hson")) continue;
+      if (migration.has(canonical(source.fileName))) continue;
       const schemas: { declaration: ts.VariableDeclaration; name: string; specifier: string }[] = [];
-      const broad: SchemaSourceEdit[] = [];
       const eligible = new Map((discoveries.get(canonical(source.fileName)) ?? [])
         .filter(item => item.eligible).map(item => [item.declaration, item]));
       for (const statement of source.statements) {
@@ -87,10 +95,7 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
         const supported = (statement.declarationList.flags & typescript.NodeFlags.Const) !== 0 && statement.declarationList.declarations.length === 1;
         for (const declaration of statement.declarationList.declarations) {
           if (!typescript.isIdentifier(declaration.name)) continue;
-          const tag = declaration.initializer === undefined ? undefined : unwrap_tagged_schema(declaration.initializer);
-          const legacy = declaration.type !== undefined && typescript.isTypeReferenceNode(declaration.type)
-            && typescript.isIdentifier(declaration.type.typeName) && declaration.type.typeName.text === "__HsonSchema";
-          let valid = false;
+          const tag = declaration.initializer !== undefined && typescript.isTaggedTemplateExpression(declaration.initializer) ? declaration.initializer : undefined;
           if (supported && tag !== undefined && eligible.has(declaration)
             && typescript.isNoSubstitutionTemplateLiteral(tag.template) && !tag.template.isUnterminated) {
             try {
@@ -104,16 +109,14 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
               nextLabels.set(file.replace(/\.[cm]?ts$/, ""), `${relative(dirname(projectPath), source.fileName).split(sep).join("/")}#${name}`);
               const runtime = file.replace(/\.mts$/, ".mjs").replace(/\.cts$/, ".cjs").replace(/\.ts$/, ".js");
               schemas.push({ declaration, name, specifier: `./${relative(dirname(source.fileName), runtime).split(sep).join("/")}` });
-              valid = true;
             } catch { /* Partial/invalid editor text owns no precise evidence. */ }
           }
-          if (!valid && legacy) broad.push(...schema_association_edits([{ declaration, text: 'import("hson-live").HsonSchema' }]));
         }
       }
       const attachments = library_schema_attachment_plan(source, checker, schemaFacts);
-      if (schemas.length === 0 && broad.length === 0 && attachments.edits.length === 0) continue;
+      if (schemas.length === 0 && attachments.edits.length === 0) continue;
       const plan = schema_source_plan(source, schemas);
-      const edits = [...plan.edits, ...broad, ...attachments.edits];
+      const edits = [...plan.edits, ...attachments.edits];
       const mapping = new SchemaSourceMapping(source.text, edits);
       const key = canonical(source.fileName);
       nextSources.set(key, { ...snapshot(mapping.text, sources.get(key)), mapping, source,
@@ -147,6 +150,11 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
 
   return {
     refresh,
+    migration_diagnostics: (file: string): ts.Diagnostic[] => {
+      const source = migration.get(canonical(file));
+      return source === undefined ? [] : [{ file: source, start: 0, length: 0, category: typescript.DiagnosticCategory.Error,
+        code: 95001, source: "hson-schema", messageText: SCHEMA_MIGRATION_REQUIRED }];
+    },
     dispose: () => { for (const file of evidence.keys()) registerEvidence?.(file, undefined); authoredService.dispose(); },
     authoredService,
     mapping: (file: string) => sources.get(canonical(file))?.mapping,

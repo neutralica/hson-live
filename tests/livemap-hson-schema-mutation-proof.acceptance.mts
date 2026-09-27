@@ -2,7 +2,7 @@ import type { SchemaType } from "hson-live";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform } from "hson-live";
 import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
-import { TreeSchema, UserSchema } from "./fixtures/hson-schema-mvp/producer.ts";
+import { TreeSchema, UserSchema } from "./fixtures/hson-schema-mvp/out/producer.js";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({

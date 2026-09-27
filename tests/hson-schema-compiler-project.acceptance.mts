@@ -5,7 +5,10 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { dirname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
-import { unwrap_tagged_schema } from "../src/internal/hson-schema/source-transformation.ts";
+function unwrap_tagged_schema(node: ts.Expression): ts.TaggedTemplateExpression | undefined {
+  if (ts.isTaggedTemplateExpression(node)) return node;
+  return ts.isAsExpression(node) || ts.isParenthesizedExpression(node) ? unwrap_tagged_schema(node.expression) : undefined;
+}
 import { capture_schema_compiler_project, verify_schema_compiler_project } from "../src/internal/hson-schema/compiler-project-watch.ts";
 import { check_schema_project } from "../src/internal/hson-schema/compiler-project-build.ts";
 import { SchemaProjectSnapshot } from "../src/internal/hson-schema/project-snapshot.ts";
@@ -68,7 +71,7 @@ function snapshot(directory: string, excludeGenerated = true): Map<string, Buffe
 }
 
 function generate(project: string) {
-  return spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "experimental-project", "--project", join(project, "tsconfig.json")], { cwd: root, encoding: "utf8", timeout: 120_000 });
+  return spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "generate", "--project", join(project, "tsconfig.json")], { cwd: root, encoding: "utf8", timeout: 120_000 });
 }
 function succeed(result: ReturnType<typeof generate>): void { assert.equal(result.status, 0, result.stdout + result.stderr + (result.error?.message ?? "")); }
 function stock_check(project: string, extra: readonly string[] = []) {
@@ -87,7 +90,7 @@ type Manifest = Readonly<{
 }>;
 const manifest = (): Manifest => JSON.parse(readFileSync(join(output, "manifest.json"), "utf8"));
 
-check("packaged compatibility CLI generates a complete compiler project without touching authored bytes", () => {
+check("packaged current CLI generates a complete compiler project without touching authored bytes", () => {
   const result = generate(project);
   succeed(result);
   const summary = JSON.parse(result.stdout.trim());
@@ -297,18 +300,18 @@ check("inherited paths without baseUrl and explicit external declaration roots r
   assert.deepEqual(snapshot(other), original);
 });
 
-check("existing Schema fixtures use the same evidence and transformation without rewriting their legacy source", () => {
-  const legacy = join(temporary, "legacy");
-  cpSync(join(root, "tests/fixtures/hson-schema-mvp"), legacy, { recursive: true, filter: path => !path.split(sep).includes(".hson") });
-  const configPath = join(legacy, "tsconfig.json");
+check("existing Schema fixtures use the same evidence and transformation without rewriting current authored source", () => {
+  const fixture = join(temporary, "fixture");
+  cpSync(join(root, "tests/fixtures/hson-schema-mvp"), fixture, { recursive: true, filter: path => !path.split(sep).includes(".hson") });
+  const configPath = join(fixture, "tsconfig.json");
   const config = JSON.parse(readFileSync(configPath, "utf8"));
   config.compilerOptions.paths["hson-live"] = [join(root, "dist/index.d.ts")];
   config.compilerOptions.paths["hson-live/hson"] = [join(root, "dist/hson-authoring.d.ts")];
   writeFileSync(configPath, JSON.stringify(config));
-  const original = snapshot(legacy);
-  succeed(generate(legacy));
-  succeed(stock_check(join(legacy, ".hson/compiler-input/tsconfig.json/tsconfig.json")));
-  assert.deepEqual(snapshot(legacy), original);
+  const original = snapshot(fixture);
+  succeed(generate(fixture));
+  succeed(stock_check(join(fixture, ".hson/compiler-input/tsconfig.json/tsconfig.json")));
+  assert.deepEqual(snapshot(fixture), original);
 });
 
 

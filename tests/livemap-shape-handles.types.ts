@@ -1,6 +1,6 @@
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import type { LiveMapDocumentLibrary, LivePath } from "../src/types/livemap.types.ts";
-import type { Evidence as GeneratedPageEvidence } from "./fixtures/hson-schema-document/producer.PageSchema.hson-schema.generated.ts";
+import type { Evidence as GeneratedPageEvidence } from "./fixtures/hson-schema-document/out/internal/hson-schema/producer.ts/PageSchema.hson-schema.generated.js";
 
 type ShapeState = Readonly<{
   object: Readonly<{ value: number }>;

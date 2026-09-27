@@ -1,7 +1,7 @@
 # Hson Schema generated-project watch
 
 The current default workflow is described in [Phase 4](./hson-schema-compiler-project-phase-4.md).
-`experimental-project --watch` is a compatibility alias for normal `watch`.
+Watch integration consumes the current JSON protocol from the workspace CLI.
 
 ## Current-state publication
 

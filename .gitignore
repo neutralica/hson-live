@@ -2,7 +2,7 @@
 node_modules/
 tmp/
 
-# experimental Hson compiler inputs (tool-owned project state)
+# Hson compiler inputs (tool-owned project state)
 .hson/
 
 # vite caches
@@ -38,4 +38,5 @@ _archive/
 *.tgz
 
 # generated schema & types
+tests/fixtures/hson-schema-mvp/out/
 tests/fixtures/hson-schema-document/out/

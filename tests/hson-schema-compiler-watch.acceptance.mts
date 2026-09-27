@@ -1,3 +1,4 @@
+import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
@@ -68,7 +69,7 @@ await check("unchanged invalid state is reused across watcher startup", async ()
     try { await restarted.poll(); await restarted.poll(); } finally { restarted.stop(); }
     assert.equal(emitted.at(-1), "current");
     assert.deepEqual(readFileSync(currentManifest), currentBytes);
-    const refused = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "experimental-project", "--project", config], { encoding: "utf8", timeout: 60_000 });
+    const refused = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "generate", "--project", config], { encoding: "utf8", timeout: 60_000 });
     assert.notEqual(refused.status, 0); // Reused invalid diagnostics remain honest.
   } finally { watcher.stop(); rmSync(quiet, { recursive: true, force: true }); }
 });
@@ -195,6 +196,16 @@ try {
   });
   await check("repairing that same file restores precise stock TypeScript value and nominal identity", async () => {
     write("schema.ts", valid()); current = await next(); assert.deepEqual(names(current), ["B", "S", "Twin"], JSON.stringify(current)); passes(); preserve();
+  });
+  await check("JSON watch withdraws proof for legacy markers and colocated evidence, then recovers", async () => {
+    write("schema.ts", valid() + "// @hson-schema generated type exports\n");
+    current = await next(); assert.equal(current.schemas, 0); assert.match(current.diagnostics.join("\n"), /Legacy Hson Schema.*migrate/); preserve();
+    write("schema.ts", valid()); current = await next(); passes();
+    const evidence = generate_hson_schema_evidence("S", '<type "data" content <value <exact "a">>>', "schema.ts#S");
+    // Metadata alone is not a TypeScript root; the preflight must observe sidecar membership.
+    write("schema.S.hson-schema.generated.json", evidence.metadata);
+    current = await next(); assert.equal(current.schemas, 0); assert.match(current.diagnostics.join("\n"), /Legacy Hson Schema.*migrate/); preserve();
+    remove("schema.S.hson-schema.generated.json"); current = await next(); passes(); preserve();
   });
   await check("invalidating one declaration removes stale proof while preserving independent evidence", async () => {
     write("schema.ts", imports + 'export const S = Hson.schema`<props <`;\n' + schema("Twin") + schema("B", "b"));

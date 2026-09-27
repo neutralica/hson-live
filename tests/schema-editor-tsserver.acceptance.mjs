@@ -124,6 +124,16 @@ try {
     await editConsumer(consumer);
     assert.equal((await diagnostics("consumer.ts")).length, 3);
   });
+  await check("legacy unsaved source reports migration-required without suppressing native errors", async () => {
+    const legacy = `${schema}\n// @hson-schema generated type exports\nimport type { HsonSchema as __HsonSchema } from "hson-live";\nimport type { Evidence as __ThingEvidence } from "./schema.Thing.hson-schema.generated.js";\n// @hson-schema end generated type exports`;
+    await edit(legacy);
+    const errors = await diagnostics("schema.ts");
+    assert.ok(errors.some(error => error.code === 95001 && /migrate/.test(error.text)), JSON.stringify(errors));
+    assert.ok(errors.some(error => error.code === 2307), JSON.stringify(errors));
+    assert.ok((await diagnostics("consumer.ts")).some(error => error.code === 18046));
+    await edit(schema);
+    assert.equal((await diagnostics("consumer.ts")).length, 3);
+  });
   await check("real tsserver never writes authored source or generated evidence to disk", async () => {
     for (const [name, original] of originals) assert.deepEqual(readFileSync(file(name)), original);
     assert.equal(existsSync(file(".hson")), false);

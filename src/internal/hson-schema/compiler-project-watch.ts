@@ -1,3 +1,4 @@
+import { requires_schema_migration, SCHEMA_MIGRATION_REQUIRED } from "./legacy-detection.js";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -69,7 +70,10 @@ export function create_schema_compiler_project_watch(
           directory = parent;
         }
       }
-      const analysis = analyze(config, program, configDiagnostics);
+      const legacy = program.getSourceFiles().filter(source => !program.isSourceFileFromExternalLibrary(source)
+        && requires_schema_migration(source, projectPath, snapshot.readFile, snapshot.readDirectory));
+      const analysis: Analysis = legacy.length ? { schemas: [], overlays: [], diagnostics: legacy.map(source => `${source.fileName}: ${SCHEMA_MIGRATION_REQUIRED}`) }
+        : analyze(config, program, configDiagnostics);
       if (!snapshot.isCurrent()) throw new ObsoleteSchemaProject();
       assert_no_symlinks(projectRoot, outputRoot);
       mkdirSync(outputRoot, { recursive: true });
@@ -238,6 +242,12 @@ function capture_current(projectPath: string, afterCaptureFile?: (file: string) 
 
 /** Read-only verification also accepts no mixed generated state. Invalid source is reported separately from completeness. */
 export function verify_schema_compiler_project(projectPath: string) {
+  const config = ts.getParsedCommandLineOfConfigFile(projectPath, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: diagnostic => { throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")); } });
+  if (config !== undefined) {
+    const program = ts.createProgram(config.fileNames, config.options);
+    for (const source of program.getSourceFiles()) if (!program.isSourceFileFromExternalLibrary(source)
+      && requires_schema_migration(source, projectPath)) throw new Error(`${source.fileName}: ${SCHEMA_MIGRATION_REQUIRED}`);
+  }
   const current = capture_schema_compiler_project(projectPath);
   if (current.manifest.diagnostics.length) throw new Error(current.manifest.diagnostics.join("\n"));
   return current;

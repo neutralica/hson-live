@@ -1,6 +1,5 @@
 import type ts from "typescript";
 import { is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
-import { unwrap_tagged_schema } from "./source-transformation.js";
 
 export type DiscoveredHsonSchemaDeclaration = Readonly<{
   sourceFile: ts.SourceFile;
@@ -39,7 +38,7 @@ export function discover_hson_schema_declarations(
       || statement.declarationList.declarations.length !== 1) continue;
     const declaration = statement.declarationList.declarations[0];
     if (declaration === undefined || !typescript.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
-    const tagged = unwrap_tagged_schema(declaration.initializer);
+    const tagged = typescript.isTaggedTemplateExpression(declaration.initializer) ? declaration.initializer : undefined;
     if (tagged === undefined || !typescript.isPropertyAccessExpression(tagged.tag) || tagged.tag.name.text !== "schema"
       || !typescript.isIdentifier(tagged.tag.expression)
       || !is_official_hson_package_binding(tagged.tag.expression, "Hson", checker, true)) continue;

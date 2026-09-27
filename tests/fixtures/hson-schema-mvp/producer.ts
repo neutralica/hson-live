@@ -1,8 +1,8 @@
 import { Hson } from "hson-live";
 
-export const AnyDataSchema: __HsonSchema<__AnyDataSchemaEvidence["value"], __AnyDataSchemaEvidence["mode"], __AnyDataSchemaEvidence["identity"]> = (Hson.schema`<type "data">` as unknown as __HsonSchema<__AnyDataSchemaEvidence["value"], __AnyDataSchemaEvidence["mode"], __AnyDataSchemaEvidence["identity"]>);
+export const AnyDataSchema = Hson.schema`<type "data">`;
 
-export const UserSchema: __HsonSchema<__UserSchemaEvidence["value"], __UserSchemaEvidence["mode"], __UserSchemaEvidence["identity"]> = (Hson.schema`
+export const UserSchema = Hson.schema`
   <type "data" content <
     name "string"
     nickname <optional "string">
@@ -27,9 +27,9 @@ export const UserSchema: __HsonSchema<__UserSchemaEvidence["value"], __UserSchem
       <content <kind <exact "admin"> level "number">>
     ]>
   >>
-` as unknown as __HsonSchema<__UserSchemaEvidence["value"], __UserSchemaEvidence["mode"], __UserSchemaEvidence["identity"]>);
+`;
 
-export const TreeSchema: __HsonSchema<__TreeSchemaEvidence["value"], __TreeSchemaEvidence["mode"], __TreeSchemaEvidence["identity"]> = (Hson.schema`
+export const TreeSchema = Hson.schema`
   <
     type "data"
     defs <
@@ -38,21 +38,21 @@ export const TreeSchema: __HsonSchema<__TreeSchemaEvidence["value"], __TreeSchem
     >
     content <ref "Tree">
   >
-` as unknown as __HsonSchema<__TreeSchemaEvidence["value"], __TreeSchemaEvidence["mode"], __TreeSchemaEvidence["identity"]>);
+`;
 
-export const ReuseSchema: __HsonSchema<__ReuseSchemaEvidence["value"], __ReuseSchemaEvidence["mode"], __ReuseSchemaEvidence["identity"]> = (Hson.schema`
+export const ReuseSchema = Hson.schema`
   <
     type "data"
     defs <Left <content <value "string">> Right <content <value "string">>>
     content <content <left <ref "Left"> right <ref "Right"> again <ref "Left">>>
   >
-` as unknown as __HsonSchema<__ReuseSchemaEvidence["value"], __ReuseSchemaEvidence["mode"], __ReuseSchemaEvidence["identity"]>);
+`;
 
-export const InteractionFieldsSchema: __HsonSchema<__InteractionFieldsSchemaEvidence["value"], __InteractionFieldsSchemaEvidence["mode"], __InteractionFieldsSchemaEvidence["identity"]> = (Hson.schema`
+export const InteractionFieldsSchema = Hson.schema`
   <type "data" content <args "any" payload "any">>
-` as unknown as __HsonSchema<__InteractionFieldsSchemaEvidence["value"], __InteractionFieldsSchemaEvidence["mode"], __InteractionFieldsSchemaEvidence["identity"]>);
+`;
 
-export const RelationalUniqueSchema: __HsonSchema<__RelationalUniqueSchemaEvidence["value"], __RelationalUniqueSchemaEvidence["mode"], __RelationalUniqueSchemaEvidence["identity"]> = (Hson.schema`
+export const RelationalUniqueSchema = Hson.schema`
   <type "data" content <cells <array <
     content <content <position "string" body "string">>
     unique <by "position" cases [
@@ -61,19 +61,7 @@ export const RelationalUniqueSchema: __HsonSchema<__RelationalUniqueSchemaEviden
       ["top-half", ["TL", "TR"]]
     ]>
   >>>>
-` as unknown as __HsonSchema<__RelationalUniqueSchemaEvidence["value"], __RelationalUniqueSchemaEvidence["mode"], __RelationalUniqueSchemaEvidence["identity"]>);
+`;
 
-export const SameShapeOneSchema: __HsonSchema<__SameShapeOneSchemaEvidence["value"], __SameShapeOneSchemaEvidence["mode"], __SameShapeOneSchemaEvidence["identity"]> = (Hson.schema`<type "data" content <name "string">>` as unknown as __HsonSchema<__SameShapeOneSchemaEvidence["value"], __SameShapeOneSchemaEvidence["mode"], __SameShapeOneSchemaEvidence["identity"]>);
-export const SameShapeTwoSchema: __HsonSchema<__SameShapeTwoSchemaEvidence["value"], __SameShapeTwoSchemaEvidence["mode"], __SameShapeTwoSchemaEvidence["identity"]> = (Hson.schema`<type "data" content <name "string">>` as unknown as __HsonSchema<__SameShapeTwoSchemaEvidence["value"], __SameShapeTwoSchemaEvidence["mode"], __SameShapeTwoSchemaEvidence["identity"]>);
-
-// @hson-schema generated type exports
-import type { HsonSchema as __HsonSchema } from "hson-live";
-import type { Evidence as __AnyDataSchemaEvidence } from "./producer.AnyDataSchema.hson-schema.generated.js";
-import type { Evidence as __InteractionFieldsSchemaEvidence } from "./producer.InteractionFieldsSchema.hson-schema.generated.js";
-import type { Evidence as __RelationalUniqueSchemaEvidence } from "./producer.RelationalUniqueSchema.hson-schema.generated.js";
-import type { Evidence as __ReuseSchemaEvidence } from "./producer.ReuseSchema.hson-schema.generated.js";
-import type { Evidence as __SameShapeOneSchemaEvidence } from "./producer.SameShapeOneSchema.hson-schema.generated.js";
-import type { Evidence as __SameShapeTwoSchemaEvidence } from "./producer.SameShapeTwoSchema.hson-schema.generated.js";
-import type { Evidence as __TreeSchemaEvidence } from "./producer.TreeSchema.hson-schema.generated.js";
-import type { Evidence as __UserSchemaEvidence } from "./producer.UserSchema.hson-schema.generated.js";
-// @hson-schema end generated type exports
+export const SameShapeOneSchema = Hson.schema`<type "data" content <name "string">>`;
+export const SameShapeTwoSchema = Hson.schema`<type "data" content <name "string">>`;

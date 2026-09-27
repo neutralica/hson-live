@@ -56,11 +56,8 @@ check("Schema tooling resolves only an installed workspace hson-live executable"
 });
 
 check("Schema watch lifecycle output maps to truthful extension states", () => {
-  assert.equal(schema_watch_output_state("Hson Schema watch: checking /workspace/tsconfig.json."), "starting");
-  assert.equal(schema_watch_output_state("Hson Schema watch: checking changes."), "starting");
-  assert.equal(schema_watch_output_state("Hson Schema watch: current; 4 Schemas; 2 artifacts updated; watching."), "watching");
-  assert.equal(schema_watch_output_state("Hson Schema watch: stale/error; invalid Schema"), "error");
   assert.equal(schema_watch_output_state('{"hsonSchema":"generate"}'), undefined);
+  assert.equal(schema_watch_output_state("Hson Schema watch: current; watching."), undefined);
   assert.equal(schema_watch_output_state('{"hsonSchema":"watch","state":"current","diagnostics":[]}'), "watching");
   assert.equal(schema_watch_output_state('{"hsonSchema":"watch","state":"current","diagnostics":["invalid Schema"]}'), "error");
 });

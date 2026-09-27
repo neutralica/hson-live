@@ -478,6 +478,8 @@ hson-schema build --project tsconfig.json
 
 `verify` checks saved generated state without regenerating. `build` emits runtime JavaScript from authored inputs and precise declarations with package-owned evidence. See [Schema workflow, publishing and explicit legacy migration](docs/contracts/hson-schema-compiler-project-phase-4.md).
 
+Normal Schema workflows support current direct `Hson.schema` source and current `.hson/` or virtual evidence. Legacy rewritten source and authored-tree colocated evidence require explicit cleanup: run `hson-schema migrate` to preview, then `hson-schema migrate --write` to apply it. Watch integration uses only the current JSON protocol from the workspace CLI.
+
 Use subsystem entrypoints when working directly with lower-level APIs. Node-specific entrypoints such as `hson-live/livehost/node` and `hson-live/locus/node` belong in Node runtimes, not browser or Worker bundles.
 
 The built package exports are the supported integration boundary; consumers should not import from `hson-live/src`.

@@ -37,6 +37,8 @@ export const UserSchema = Hson.schema`
 
 The extension uses current `Hson.schema` editor text and an in-memory compiler view for diagnostics, precise typing, completion, hover, definitions, references, and rename support. Unsaved edits do not require colocated evidence files or saved `.hson` output.
 
+Normal Schema workflows support current direct `Hson.schema` source and current `.hson/` or virtual evidence. Legacy rewritten source and authored-tree colocated evidence require explicit cleanup: run `hson-schema migrate` to preview, then `hson-schema migrate --write` to apply it. Watch integration uses only the current JSON protocol from the workspace CLI.
+
 For example, `<ref "…">` completion is scoped to the current Schema declaration's `defs`, and navigation follows those semantic references rather than matching text alone.
 
 Schema types can be generated and checked from VS Code or the package CLI:

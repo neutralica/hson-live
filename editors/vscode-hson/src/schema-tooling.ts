@@ -59,15 +59,12 @@ export function schema_tool_arguments(tool: ResolvedSchemaTool, mode: "generate"
   return Object.freeze([tool.executable, mode, "--project", project]);
 }
 
-/** Maps shared CLI lifecycle events (including older installed CLI lines) to extension status state. */
+/** Maps current JSON CLI lifecycle events to extension status state. */
 export function schema_watch_output_state(line: string): SchemaWatchOutputState | undefined {
   try {
     const event: unknown = JSON.parse(line);
     if (is_record(event) && event.hsonSchema === "watch" && event.state === "current") return Array.isArray(event.diagnostics) && event.diagnostics.length ? "error" : "watching";
-  } catch { /* Older CLI output is plain text. */ }
-  if (line.startsWith("Hson Schema watch: checking")) return "starting";
-  if (line.startsWith("Hson Schema watch: current;")) return "watching";
-  if (line.startsWith("Hson Schema watch: stale/error;")) return "error";
+  } catch { /* Non-protocol output has no status. */ }
   return undefined;
 }
 

@@ -39,19 +39,13 @@ export function schema_type_association(
   };
 }
 
-export function unwrap_tagged_schema(node: ts.Expression): ts.TaggedTemplateExpression | undefined {
-  if (ts.isTaggedTemplateExpression(node)) return node;
-  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node)) return unwrap_tagged_schema(node.expression);
-  return undefined;
-}
-
 /** Edits use UTF-16 offsets in the original TypeScript SourceFile text. */
 export function schema_association_edits(associations: readonly SchemaSourceAssociation[]): readonly SchemaSourceEdit[] {
   const edits: SchemaSourceEdit[] = [];
   for (const association of associations) {
     const { declaration, text } = association;
     const initializer = declaration.initializer;
-    const tagged = initializer === undefined ? undefined : unwrap_tagged_schema(initializer);
+    const tagged = initializer !== undefined && ts.isTaggedTemplateExpression(initializer) ? initializer : undefined;
     if (initializer !== undefined && tagged !== undefined) {
       // Keep the authored tag as a copied segment so editor positions map exactly.
       edits.push({ start: initializer.getStart(), end: tagged.getStart(), text: "(" });
@@ -88,8 +82,6 @@ export function schema_source_plan(source: ts.SourceFile, schemas: readonly Read
     return { declaration: schema.declaration, text: association.schemaAssociation };
   });
   const edits = [...schema_association_edits(associations)];
-  const legacy = legacy_import_block_edit(source);
-  if (legacy !== undefined) edits.push(legacy);
   if (imports.length > 0) edits.push({ start: source.text.length, end: source.text.length, text: `\n${generated_exports_block(imports, schemaTypeName)}` });
   return { edits, generatedNames };
 }
@@ -240,22 +232,6 @@ function property_name(name: ts.PropertyName | undefined): string | undefined {
   return name !== undefined && (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) ? name.text : undefined;
 }
 
-export function legacy_import_block_edit(source: ts.SourceFile): SchemaSourceEdit | undefined {
-  for (const statement of source.statements) {
-    if (!ts.isImportDeclaration(statement) || !statement.importClause?.isTypeOnly
-      || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "hson-live") continue;
-    const bindings = statement.importClause.namedBindings;
-    if (bindings === undefined || !ts.isNamedImports(bindings)
-      || !bindings.elements.some(binding => binding.name.text === "__HsonSchema" && binding.propertyName?.text === "HsonSchema")) continue;
-    for (const comment of ts.getLeadingCommentRanges(source.text, statement.getFullStart()) ?? []) {
-      if (source.text.slice(comment.pos, comment.end) !== GENERATED_EXPORTS_START) continue;
-      const block = generated_exports_block_from_source(source.text.slice(comment.pos));
-      if (comment.pos + block.length >= statement.getEnd()) return { start: comment.pos, end: comment.pos + block.length, text: "" };
-    }
-  }
-  return undefined;
-}
-
 export function apply_source_edits(source: string, edits: readonly SchemaSourceEdit[]): string {
   let output = source;
   let boundary = source.length;
@@ -270,13 +246,4 @@ export function apply_source_edits(source: string, edits: readonly SchemaSourceE
 export function generated_exports_block(exports: readonly string[], schemaTypeName = "__HsonSchema"): string {
   if (exports.length === 0) return "";
   return `${GENERATED_EXPORTS_START}\nimport type { HsonSchema as ${schemaTypeName} } from "hson-live";\n${[...exports].sort().join("\n")}\n${GENERATED_EXPORTS_END}\n`;
-}
-
-export function generated_exports_block_from_source(source: string): string {
-  const start = source.indexOf(GENERATED_EXPORTS_START);
-  if (start < 0) return "";
-  const end = source.indexOf(GENERATED_EXPORTS_END, start);
-  if (end >= 0) return source.slice(start, end + GENERATED_EXPORTS_END.length + (source[end + GENERATED_EXPORTS_END.length] === "\n" ? 1 : 0));
-  const legacy = source.slice(start).match(/^\/\/ @hson-schema generated type exports\n(?:export type \{[^\n]+\} from [^\n]+;\n?)*/)?.[0];
-  return legacy ?? "";
 }
