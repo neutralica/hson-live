@@ -168,6 +168,12 @@ export function create_locus_hosted_aggregate_internal(
       aggregate.discard(transition);
       throw new Error("Hosted map-authority transition did not produce exact replay evidence.");
     }
+    if (transition.commit.changed === false) {
+      // Consume the token with normal validity checks, without preparing or
+      // publishing an authority revision that did not occur.
+      aggregate.accept(transition);
+      return hosted;
+    }
     const gateInput = Object.freeze({ transition, commit: hosted,
       baseRevision: transition.baseRevision, nextRevision: transition.nextRevision });
     let releaseReservation: (() => void) | undefined;
