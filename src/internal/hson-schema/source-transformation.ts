@@ -22,7 +22,7 @@ type DirectStatementOwner =
   | ts.LabeledStatement
   | ts.WithStatement;
 
-// Split markers keep source-scanning migration tools from treating this helper as a legacy producer.
+// Delimit generated compiler-view imports. Authored sources are never rewritten.
 export const GENERATED_EXPORTS_START = "// @hson-schema" + " generated type exports";
 export const GENERATED_EXPORTS_END = "// @hson-schema" + " end generated type exports";
 

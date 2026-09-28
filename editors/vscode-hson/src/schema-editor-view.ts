@@ -1,4 +1,3 @@
-import { requires_schema_migration, SCHEMA_MIGRATION_REQUIRED } from "../../../src/internal/hson-schema/legacy-detection.js";
 import type ts from "typescript";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
@@ -37,7 +36,6 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
   const authoredService = typescript.createLanguageService(original);
   let previous: ts.Program | undefined;
   let revision = 0;
-  let migration = new Map<string, ts.SourceFile>();
   let sources = new Map<string, SourceView>();
   let evidence = new Map<string, Snapshot>();
   let evidenceByDeclaration = new Map<string, string>();
@@ -58,12 +56,8 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
   const refresh = (): void => {
     const program = authoredService.getProgram();
     if (program === undefined) return;
-    const nextMigration = new Map(program.getSourceFiles().filter(source => !program.isSourceFileFromExternalLibrary(source)
-      && requires_schema_migration(source, projectPath, original.readFile, original.readDirectory ?? typescript.sys.readDirectory)).map(source => [canonical(source.fileName), source]));
-    const migrationChanged = nextMigration.size !== migration.size || [...nextMigration.keys()].some(file => !migration.has(file));
-    migration = nextMigration;
-    if (program === previous && !migrationChanged) return;
-    candidateDiagnostics = static_schema_candidate_diagnostics(typescript, program).filter(diagnostic => !migration.has(canonical(diagnostic.file)));
+    if (program === previous) return;
+    candidateDiagnostics = static_schema_candidate_diagnostics(typescript, program);
     const nextSources = new Map<string, SourceView>();
     const nextEvidence = new Map<string, Snapshot>();
     const nextDeclarations = new Map<string, string>();
@@ -74,7 +68,6 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     for (const candidate of program.getSourceFiles()) {
       if (candidate.isDeclarationFile || program.isSourceFileFromExternalLibrary(candidate)
         || !/\.[cm]?tsx?$/.test(candidate.fileName) || candidate.fileName.split(sep).includes(".hson")) continue;
-      if (migration.has(canonical(candidate.fileName))) continue;
       const found = discover_hson_schema_declarations(typescript, candidate, checker);
       discoveries.set(canonical(candidate.fileName), found);
       for (const { declaration, tagged: tag, eligible } of found) {
@@ -89,7 +82,6 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     for (const source of program.getSourceFiles()) {
       if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)
         || !/\.[cm]?tsx?$/.test(source.fileName) || source.fileName.split(sep).includes(".hson")) continue;
-      if (migration.has(canonical(source.fileName))) continue;
       const schemas: { declaration: ts.VariableDeclaration; name: string; specifier: string }[] = [];
       const eligible = new Map((discoveries.get(canonical(source.fileName)) ?? [])
         .filter(item => item.eligible).map(item => [item.declaration, item]));
@@ -157,11 +149,6 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
       file: authoredService.getProgram()?.getSourceFile(file), start: diagnostic.start, length: Math.max(1, diagnostic.end - diagnostic.start),
       category: typescript.DiagnosticCategory.Error, code: 95002, source: "hson-schema", messageText: diagnostic.message,
     })),
-    migration_diagnostics: (file: string): ts.Diagnostic[] => {
-      const source = migration.get(canonical(file));
-      return source === undefined ? [] : [{ file: source, start: 0, length: 0, category: typescript.DiagnosticCategory.Error,
-        code: 95001, source: "hson-schema", messageText: SCHEMA_MIGRATION_REQUIRED }];
-    },
     dispose: () => { for (const file of evidence.keys()) registerEvidence?.(file, undefined); authoredService.dispose(); },
     authoredService,
     mapping: (file: string) => sources.get(canonical(file))?.mapping,

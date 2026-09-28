@@ -6,7 +6,6 @@ import type { HsonSourceProvenance, HsonSourceRange } from "../hson-source-prove
 import {
   CANONICAL_SCHEMA_FORMAT,
   CANONICAL_SCHEMA_FORMAT_LIMITS,
-  CANONICAL_SCHEMA_VERSION,
   type CanonicalSchemaGraph,
   type CanonicalSchemaNode,
   type CanonicalRefinementRule,
@@ -21,7 +20,6 @@ import type { HsonSemanticPrimitive } from "../../core/types.js";
 import { resolve_projected_hson_location } from "../../api/livemap/livemap.editor.js";
 import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
 
-export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-10" as const;
 /** Data-root order is shared by validation and editor introspection. */
 export const HSON_SCHEMA_DATA_ROOT_ORDER = ["type", "defs", "content"] as const;
 
@@ -394,7 +392,7 @@ function decode_refinements(domain: "number" | "string" | "array" | "tuple", inp
       else refinements.push(Object.freeze({ member: member as "min" | "max" | "over" | "under", rule: Object.freeze({ kind: member === "min" || member === "over" ? "number-lower-bound" : "number-upper-bound", value, inclusive: member === "min" || member === "max" }) }));
     } else if (member === "prefix" || member === "suffix" || member === "contains") {
       if (typeof value !== "string") issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], `\`${member}\` requires one literal string.`);
-      else refinements.push(Object.freeze({ member, rule: Object.freeze({ kind: "string-pattern", dialect: "literal-string-v1", mode: member, pattern: value }) }));
+      else refinements.push(Object.freeze({ member, rule: Object.freeze({ kind: "string-pattern", dialect: "literal-string", mode: member, pattern: value }) }));
     } else if (member === "alphabet") {
       if (typeof value !== "string") issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], "`alphabet` requires one literal string.");
       else if (has_duplicate_string_units(value)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], "`alphabet` must not contain duplicate string-iteration units.");
@@ -728,7 +726,7 @@ function lower_hson_schema_semantic_with_sources(root: HsonSchemaSemanticNode, d
     const documentRoot = reserve(root);
     const content = lowerDocumentContent(root.content, root);
     nodes[documentRoot] = { kind: "document-root", content };
-    return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { documentRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
+    return { graph: { format: CANONICAL_SCHEMA_FORMAT, capabilities: { documentRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
   }
   if (root.kind === "document-element") {
     const documentRoot = reserve(root);
@@ -736,10 +734,10 @@ function lower_hson_schema_semantic_with_sources(root: HsonSchemaSemanticNode, d
     const item = lowerDocumentElement(root);
     nodes[content] = { kind: "document-sequence", items: Object.freeze([item]) };
     nodes[documentRoot] = { kind: "document-root", content };
-    return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { documentRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
+    return { graph: { format: CANONICAL_SCHEMA_FORMAT, capabilities: { documentRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
   }
   const projectedRoot = lower(root);
-  return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
+  return { graph: { format: CANONICAL_SCHEMA_FORMAT, capabilities: { projectedRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
 }
 
 function validate_reference_capabilities(root: HsonSchemaSemanticNode | undefined, definitions: readonly HsonSchemaDefinition[], uses: readonly HsonSchemaReferenceUse[], issues: HsonSchemaIssue[]): void {
@@ -1077,7 +1075,7 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   const optionalAttrs = optional(documentAny);
   nodes[document] = { kind: "projected-object", exact: false, properties: [["type", documentType], ["tag", tag], ["content", optionalDocumentContent], ["attrs", optionalAttrs], ["defs", optionalDefinitions]] };
   nodes[root] = { kind: "projected-union", choices: [data, document] };
-  const result = verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes });
+  const result = verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, capabilities: { projectedRoot: 0 }, nodes });
   if (!result.ok) throw new Error(result.issues.map((entry) => entry.message).join(" "));
   return result.graph;
 }

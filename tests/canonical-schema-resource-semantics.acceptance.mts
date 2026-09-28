@@ -8,7 +8,6 @@ import {
 import {
   CANONICAL_SCHEMA_FORMAT,
   CANONICAL_SCHEMA_FORMAT_LIMITS,
-  CANONICAL_SCHEMA_VERSION,
   type CanonicalSchemaGraph,
 } from "../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../src/internal/canonical-schema/verify.ts";
@@ -41,12 +40,12 @@ const verified = (graph: CanonicalSchemaGraph) => {
   if (!result.ok) assert.fail(JSON.stringify(result.issues));
   return result.graph;
 };
-const projected = (nodes: CanonicalSchemaGraph["nodes"]) => verified({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes });
+const projected = (nodes: CanonicalSchemaGraph["nodes"]) => verified({ format: CANONICAL_SCHEMA_FORMAT, capabilities: { projectedRoot: 0 }, nodes });
 const exhausted = (result: Readonly<{ issues: readonly Readonly<{ evidence: Readonly<{ kind: string }> }>[] }>) => result.issues[0]?.evidence.kind === "resource-limit";
 
 check("format node-count limit rejects deterministically", () => {
   const nodes = Array.from({ length: CANONICAL_SCHEMA_FORMAT_LIMITS.maxGraphNodes + 1 }, () => Object.freeze({ kind: "projected-any" as const }));
-  const result = verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes });
+  const result = verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, capabilities: { projectedRoot: 0 }, nodes });
   assert.equal(result.ok, false);
   if (!result.ok) assert.match(result.issues[0]?.message ?? "", /format limit/);
 });
@@ -74,7 +73,6 @@ check("issue accumulation has an independent budget", () => {
 check("document content traversal has an independent budget", () => {
   const graph = verified({
     format: CANONICAL_SCHEMA_FORMAT,
-    version: CANONICAL_SCHEMA_VERSION,
     capabilities: { documentRoot: 0 },
     nodes: [{ kind: "document-root", content: 1 }, { kind: "document-repeat", item: 2 }, { kind: "document-text" }],
   });

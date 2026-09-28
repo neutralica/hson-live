@@ -2,7 +2,6 @@ import type { OrderedProjectedValue } from "../../core/ordered-projected-value.j
 import type { HsonSemanticPrimitive } from "../../core/types.js";
 
 export const CANONICAL_SCHEMA_FORMAT = "hson-canonical-schema" as const;
-export const CANONICAL_SCHEMA_VERSION = 3 as const;
 
 /** Canonical graph limits. Format and evaluator limits are intentionally separate. */
 export const CANONICAL_SCHEMA_FORMAT_LIMITS = Object.freeze({
@@ -51,7 +50,7 @@ export type CanonicalRefinementRule =
   | Readonly<{
     kind: "string-pattern";
     /** Portable literal matching only; no host RegExp semantics participate. */
-    dialect: "literal-string-v1";
+    dialect: "literal-string";
     mode: "full" | "prefix" | "suffix" | "contains";
     pattern: string;
   }>
@@ -118,7 +117,6 @@ export type CanonicalSchemaNode = CanonicalProjectedSchemaNode | CanonicalDocume
 
 export type CanonicalSchemaGraph = Readonly<{
   format: typeof CANONICAL_SCHEMA_FORMAT;
-  version: typeof CANONICAL_SCHEMA_VERSION;
   capabilities: CanonicalSchemaCapabilities;
   nodes: readonly CanonicalSchemaNode[];
   semanticDiagnosticMetadata?: CanonicalSchemaSemanticDiagnosticMetadata;

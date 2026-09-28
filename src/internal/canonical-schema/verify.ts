@@ -6,7 +6,6 @@ import {
   CANONICAL_CAPABILITY_KEYS,
   CANONICAL_SCHEMA_FORMAT,
   CANONICAL_SCHEMA_FORMAT_LIMITS,
-  CANONICAL_SCHEMA_VERSION,
   type CanonicalCapabilityKey,
   type CanonicalDocumentAttrProperty,
   type CanonicalRefinementRule,
@@ -37,9 +36,8 @@ export function verify_canonical_schema_graph(input: unknown): CanonicalGraphVer
     fail([], "Canonical Schema graph must be an object.");
     return invalid(issues);
   }
-  exact_fields(input, ["format", "version", "capabilities", "nodes", "semanticDiagnosticMetadata", "documentationMetadata"], [], fail);
+  exact_fields(input, ["format", "capabilities", "nodes", "semanticDiagnosticMetadata", "documentationMetadata"], [], fail);
   if (input.format !== CANONICAL_SCHEMA_FORMAT) fail(["format"], "Unsupported Canonical Schema format.");
-  if (input.version !== CANONICAL_SCHEMA_VERSION) fail(["version"], "Unsupported Canonical Schema version.");
   if (!is_record(input.capabilities)) fail(["capabilities"], "Capabilities must be an object.");
   if (!Array.isArray(input.nodes)) fail(["nodes"], "Nodes must be an array.");
   if (!is_record(input.capabilities) || !Array.isArray(input.nodes)) return invalid(issues);
@@ -212,7 +210,7 @@ function verify_refinement(value: unknown, path: readonly (string | number)[], f
     verify_length_bounds(rule, path, fail);
   } else if (rule.kind === "string-pattern") {
     exact_fields(rule, ["kind", "dialect", "mode", "pattern"], path, fail);
-    if (rule.dialect !== "literal-string-v1") fail([...path, "dialect"], "Unsupported deterministic pattern dialect.");
+    if (rule.dialect !== "literal-string") fail([...path, "dialect"], "Unsupported deterministic pattern dialect.");
     if (!["full", "prefix", "suffix", "contains"].includes(String(rule.mode))) fail([...path, "mode"], "Unsupported deterministic pattern mode.");
     if (typeof rule.pattern !== "string") fail([...path, "pattern"], "Pattern must be a string.");
   } else if (rule.kind === "string-repertoire") {

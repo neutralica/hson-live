@@ -21,7 +21,6 @@ type LiteralWire =
 export function encode_canonical_schema_graph_hson(graph: VerifiedCanonicalSchemaGraph): string {
   const machine = {
     format: graph.format,
-    version: graph.version,
     capabilities: graph.capabilities,
     nodes: graph.nodes.map((node) => node.kind === "projected-literal"
       ? { ...node, values: node.values.map(literal_to_wire) }

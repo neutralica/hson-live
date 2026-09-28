@@ -20,7 +20,7 @@ const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hso
 const { resolve_projected_schema_issue_source } = await import(`${runtimeBase}/internal/projected-schema-source-lowering/projected-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/projected-schema-source-lowering/projected-schema-source-lowering.ts");
 const { resolve_document_schema_issue_source } = await import(`${runtimeBase}/internal/document-schema-source-lowering/document-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/document-schema-source-lowering/document-schema-source-lowering.ts");
 
-type Mode = "generate" | "verify" | "check" | "build" | "watch" | "migrate";
+type Mode = "generate" | "verify" | "check" | "build" | "watch";
 type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.VariableStatement; declaration: ts.VariableDeclaration; tagged: ts.TaggedTemplateExpression; name: string; source: string; compiled: CompiledHsonSchema }>;
 type Diagnostic = Readonly<{ file?: string; start?: number; message: string }>;
 type Overlay = Readonly<{ file: string; start: number; end: number; text: string }>;
@@ -31,20 +31,16 @@ const projectArg = value_after("--project") ?? "tsconfig.json";
 const projectPath = resolve(projectArg);
 const librarySourceRoot = resolve(fileURLToPath(new URL("../src/", import.meta.url)));
 if (args.includes("--help") || mode === ("--help" as Mode)) {
-  console.log(`hson-schema <generate|verify|check|build|watch|migrate> --project tsconfig.json
+  console.log(`hson-schema <generate|verify|check|build|watch> --project tsconfig.json
   generate: publish current compiler inputs; authored source is untouched
-  verify: read-only ownership, compatibility and freshness verification
+  verify: read-only ownership, integrity and freshness verification
   check: verify, then precisely check the generated compiler project
   build: verify/check, then emit authored runtime and precise declarations from one revision
   watch: replace current compiler inputs; emit current JSON events; authoring errors are recoverable
-  Normal workflows require current direct source. Legacy source/evidence or compiler layouts require migrate.
-  migrate: preview recognized legacy source/artifact and compiler-layout cleanup; --write applies it`);
+  Stale generated state requires generate; unsupported artifacts must be removed and regenerated.`);
 } else try {
-  if (!["generate", "verify", "check", "build", "watch", "migrate"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
-  if (mode === "migrate") {
-    const { migrate_schema_associations } = await import(`${runtimeBase}/internal/hson-schema/legacy-migration.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/legacy-migration.ts");
-    console.log(JSON.stringify(migrate_schema_associations(projectPath, args.includes("--write"))));
-  } else if (mode === "watch") await run_project(true);
+  if (!["generate", "verify", "check", "build", "watch"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
+  if (mode === "watch") await run_project(true);
   else if (mode === "generate") await run_project(false);
   else {
     const { verify_schema_compiler_project } = await import(`${runtimeBase}/internal/hson-schema/compiler-project-watch.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler-project-watch.ts");

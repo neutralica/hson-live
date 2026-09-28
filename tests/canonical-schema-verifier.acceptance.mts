@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { admit_projected_value } from "../src/core/projected-value-admission.ts";
-import { CANONICAL_SCHEMA_FORMAT, CANONICAL_SCHEMA_VERSION } from "../src/internal/canonical-schema/graph.ts";
+import { CANONICAL_SCHEMA_FORMAT } from "../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../src/internal/canonical-schema/verify.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -26,7 +26,7 @@ const check = (name: string, run: () => void): void => {
     testEvents.terminal("fail");
     throw error;
   } console.log(`ok ${++checks} - ${name}`); };
-const graph = (capabilities: Record<string, number>, nodes: unknown[], extra: Record<string, unknown> = {}) => ({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities, nodes, ...extra });
+const graph = (capabilities: Record<string, number>, nodes: unknown[], extra: Record<string, unknown> = {}) => ({ format: CANONICAL_SCHEMA_FORMAT, capabilities, nodes, ...extra });
 const accepted = (value: unknown): void => assert.equal(verify_canonical_schema_graph(value).ok, true);
 const rejected = (value: unknown, pattern?: RegExp): void => {
   const result = verify_canonical_schema_graph(value); assert.equal(result.ok, false);
@@ -39,8 +39,6 @@ check("minimal document graph verifies", () => accepted(graph(
   [{ kind: "document-root", content: 1 }, { kind: "document-sequence", items: [2] }, { kind: "document-element", content: 3 }, { kind: "document-broad-content" }],
 )));
 check("format is exact", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), format: "other" }, /format/i));
-check("version is supported", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), version: CANONICAL_SCHEMA_VERSION + 1 }, /version/i));
-check("prior canonical graph versions are stale", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), version: CANONICAL_SCHEMA_VERSION - 1 }, /version/i));
 check("unknown envelope fields reject", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), surprise: true }, /Unknown field/));
 check("at least one capability is required", () => rejected(graph({}, [{ kind: "projected-string" }]), /capability/i));
 check("capability refs are in range", () => rejected(graph({ projectedRoot: 2 }, [{ kind: "projected-string" }]), /out of range/));
@@ -92,7 +90,7 @@ check("configured unique rejects canonical non-array bases", () => {
     { kind: "projected-tuple", items: [] },
   ]) rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule }, base]), /projected array Schema/);
 });
-check("closed deterministic pattern refinement verifies", () => accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-pattern", dialect: "literal-string-v1", mode: "prefix", pattern: "id_" } }, { kind: "projected-string" }])));
+check("closed deterministic pattern refinement verifies", () => accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-pattern", dialect: "literal-string", mode: "prefix", pattern: "id_" } }, { kind: "projected-string" }])));
 check("closed string repertoire refinement verifies, including an empty repertoire", () => {
   accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-repertoire", repertoire: "a😀e\u0301\n" } }, { kind: "projected-string" }]));
   accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-repertoire", repertoire: "" } }, { kind: "projected-string" }]));

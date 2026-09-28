@@ -14,11 +14,7 @@ manifest.json
 tsconfig.json
 ```
 
-The original Phase 3 implementation retained immutable revision directories behind
-an atomic selector. That was an implementation tradeoff, not the product contract;
-retained history is no longer normal generated state.
-
-Watch and finite generation first validate existing ownership, compatibility and
+Watch and finite generation first validate existing ownership, tooling freshness and
 persisted filesystem observations. Unchanged valid **or invalid** input reuses the
 same publication, including across process restarts. No files or timestamps change.
 A startup current event still reports the saved diagnostics to command consumers.
@@ -50,18 +46,11 @@ Unlisted files and directories remain untouched; only empty ancestors of removed
 owned files are pruned. Candidate disposal uses its own ownership inventory, even
 when preparation stopped after only some files were written.
 
-Normal generation/watch automatically recognizes the old selector owner and
-validates the selected manifest digest and every recognized revision's owned files.
-It regenerates the current repository, then removes those old owned payloads.
-Unowned neighbors remain at their existing paths; directories containing them stay.
-Edited or ambiguous old revisions fail with their path and an inspection instruction.
-There is no ongoing history collector and no additional cleanup command.
-
 ## Readers and coherent capture
 
 Stock `tsc -p .hson/compiler-input/tsconfig.json/tsconfig.json` can check quiescent
 output. An external reader racing Watch is not guaranteed an indefinitely available
-old generation. Two directory slots or a symlink exchange would not provide that
+earlier publication. Two directory slots or a symlink exchange would not provide that
 multi-file reader guarantee either.
 
 Hson verify/check/build read a complete manifest, capture all its owned files,
@@ -91,5 +80,5 @@ is never rewritten, formatted or executed by this workflow.
 
 The project, watch and cutover acceptance suites cover unchanged reuse, restart,
 source/config/package/membership changes, invalid/repair transitions, coherent
-capture races, interrupted publication, ownership, old-layout adoption and unchanged
+capture races, interrupted publication, ownership, tooling freshness and unchanged
 authored bytes. Phase 2 tests independently cover unsaved live compiler views.

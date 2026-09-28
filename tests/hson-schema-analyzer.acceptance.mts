@@ -122,9 +122,9 @@ check("edited generated declaration fails closed", () => {
   const artifact = evidence("producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
   writeFileSync(artifact, `${original}\n// stale edit\n`); assert.notEqual(run("verify").status, 0); writeFileSync(artifact, original);
 });
-check("prior analyzer compatibility evidence fails freshness", () => {
+check("edited generated metadata fails integrity", () => {
   const artifact = evidence("producer.UserSchema.hson-schema.generated.json"), original = readFileSync(artifact, "utf8");
-  writeFileSync(artifact, original.replace("hson-schema-mvp-10", "hson-schema-mvp-9"));
+  writeFileSync(artifact, `${original}\n`);
   assert.notEqual(run("verify").status, 0);
   writeFileSync(artifact, original);
 });

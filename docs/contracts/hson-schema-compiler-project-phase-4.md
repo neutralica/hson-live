@@ -7,32 +7,40 @@ model in memory, including current unsaved text and authored source mappings.
 | Command | Responsibility |
 | --- | --- |
 | `generate --project tsconfig.json` | Reuse unchanged input or capture source/config/dependencies and publish one complete current compiler repository. Invalid Schemas publish current unproved state and return failure. |
-| `verify --project tsconfig.json` | Read-only verification of ownership, tooling compatibility and every captured filesystem observation. Missing, stale, edited or invalid state fails. No repair occurs. |
+| `verify --project tsconfig.json` | Read-only verification of ownership, tooling freshness and every captured filesystem observation. Missing, stale, edited or invalid state fails. No repair occurs. |
 | `check --project tsconfig.json` | Verify current generated state, then run precise TypeScript checking. Generation includes Schema semantic and static Hson validation. |
 | `build --project tsconfig.json` | Verify/check; emit configured runtime JavaScript from captured authored inputs and configured declarations from the precise compiler view. Both graphs must still match the same captured revision before writing output. |
 | `watch --project tsconfig.json` | Continuously replace current generated state, recovering from ordinary authoring errors. Infrastructure and ownership failures terminate. |
-| `migrate --project tsconfig.json` | Preview explicit legacy cleanup. `--write` applies recognized syntax removal and digest-verified colocated artifact removal. Ambiguity refuses the operation before any write. |
 
 Run `generate` before `verify`, `check` or `build` after editing saved inputs.
 Stock `tsc -p .hson/compiler-input/tsconfig.json/tsconfig.json` also checks the
 current view, but cannot independently verify its freshness.
 
-Normal workflows accept current direct `Hson.schema` authored source only. Recognized
-legacy annotations, assertions, generated import/marker blocks, or colocated evidence
-produce a migration-required error and receive no generated or virtual proof. Run
-`hson-schema migrate` to preview cleanup, then `hson-schema migrate --write` to apply
-it. Normal commands never clean up authored source automatically.
+Normal workflows use direct `Hson.schema` authored source. Unsupported generated
+state must be removed and regenerated; authored source is never cleaned up by the CLI.
+Watch emits the current JSON protocol consumed by the extension's workspace CLI.
 
-Watch emits the current JSON protocol. The extension expects the current workspace
-CLI; plain-text Watch output and mixed-version interoperability are unsupported.
-Compiler-project compatibility is version 6; regenerate state from earlier tooling.
+## Tooling freshness
+
+The manifest's `toolingFingerprint` is SHA-256 over the shipped Schema CLI's
+transitive source dependencies and their emitted implementations when present,
+CLI build script, library compiler configuration,
+and external TypeScript version. Relative paths and content digests are sorted;
+timestamps and installation paths do not affect identity. Source and compiled
+invocations use the same shipped inputs. There is no manually maintained Schema
+or compiler-project generation number.
+
+Reuse requires the current tooling fingerprint, unchanged filesystem observations,
+valid ownership, and intact generated files. `generate` regenerates intact owned
+state when tooling changes; `verify`, `check` and `build` require regeneration.
+A running watcher must restart when its tooling changes to load the new implementation.
 
 ## Generated ownership
 
 `.hson/compiler-input/<config filename>/` contains `sources/`, `evidence/`,
 `manifest.json` and `tsconfig.json`. It is current generated state, not history.
 The manifest records owned paths and digests, source mappings, input observations,
-diagnostics, tooling compatibility and a publication identity. An unchanged valid
+diagnostics, tooling freshness and a publication identity. An unchanged valid
 or invalid project reuses its publication without generated filesystem churn.
 
 Candidates are prepared in transient staging, with final-path compiler validation.
@@ -52,13 +60,10 @@ are required.
 
 Changed membership removes obsolete owned sources, evidence and metadata. Invalid
 Schemas withdraw current precision, and repair restores it. Unowned neighbors,
-edited files and symlink destinations are protected. Obsolete immutable revision
-layouts require explicit `hson-schema migrate` preview and `migrate --write` cleanup,
-followed by `generate` (or `watch`) to regenerate current state from authored inputs.
-Normal generate/watch/verify/check/build report migration-required without adopting
-or deleting old state. Cleanup validates project identity, selector and manifest
-ownership, digests and symlinks; ambiguous or edited state is refused before any
-write. Unowned neighbors are preserved. Normal operation retains no old revisions.
+edited files and symlink destinations are protected. Ownership discriminators are
+`hson-schema-compiler-input` and `hson-schema-publication`, without numbered lineage.
+Unsupported artifacts are disposable development state and must be removed before
+regeneration; tooling never adopts unowned state.
 `.hson/` is ignored development state, not committed or published; CI generates it.
 
 The extension's live compiler view requires neither colocated evidence nor saved
@@ -95,27 +100,13 @@ layouts that change under mirroring remain unsupported. Split emission rejects
 `outFile` bundles. A missing declaration dependency closure fails rather than
 publishing a reference to development files.
 
-## Legacy migration
-
-Normal generation/check/watch can read recognized old associations into the compiler
-view but never update or remove them in authored files. The explicit migration
-command removes only structurally recognized annotations, assertions and marked
-imports, preserving all other bytes. It cannot recover formatting or local type
-annotations already overwritten by older tooling. Comments inside removed syntax,
-edited/unrecognized blocks, remaining alias uses, UTF-16 cleanup and edited artifact
-digests require manual review. Such cases fail without changing files.
-
-The repository retains explicit legacy fixtures for compatibility regression.
-Colocated evidence is otherwise obsolete and is excluded from current checking and runtime emission. Source-write helper/lifecycle machinery
-is removed; only explicit migration can edit legacy authored syntax.
-
 ## Validation and deferred work
 
 The cutover suite checks normal command source bytes, stock checking, freshness,
 separate runtime output, declaration helpers/objects, package consumers, private
-proofs and nominal identity, map paths, legacy refusal/cleanup and default watch.
+proofs and nominal identity, map paths, tooling/TypeScript freshness and default watch.
 Phase 1/2/3 suites continue to cover compiler, editor and current-state watcher behavior.
 The pre-commit hook still runs `npm run check`; normal build/check scripts now use
-the generated workflow, so the hook no longer invokes the legacy writer.
+the generated workflow.
 
 Extension runner UX, broader reexport policy and bundler redesign remain separate work.

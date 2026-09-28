@@ -61,9 +61,8 @@ type, never TypeScript `any`. Canonical Hson equality continues to distinguish
 sort or normalize either form.
 
 The expression lowers directly to the existing canonical `projected-any` node.
-The current Canonical Schema graph version is 3. The authored-language and
-generated-evidence compatibility token is `hson-schema-mvp-10`; evidence
-generated under earlier tokens is stale.
+Canonical Schema graphs have one unversioned current shape. Generated compiler
+projects use content-derived tooling identity and input observations for freshness.
 
 This local canonical-data support does not resolve generic Echo/Locus action
 payload fidelity. Negative zero, object-member-order/dedupe equivalence, and
@@ -104,9 +103,8 @@ unit and its zero-based iteration-unit index; the index does not become a
 `LivePath` segment and user-facing expected text does not expose the complete
 repertoire.
 
-The current Canonical Schema graph format is version 3 and the Hson Schema
-compatibility token is `hson-schema-mvp-10`. Generated declarations and
-freshness evidence from older tokens must be regenerated.
+Generated declarations and evidence require regeneration when relevant tooling or
+inputs change.
 
 ## Array uniqueness
 

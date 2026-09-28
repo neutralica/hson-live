@@ -4,7 +4,6 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
-import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "hson-schema-cutover", title: "Hson Schema default cutover and publishing", category: "Tooling", runtime: "node", tags: Object.freeze(["hson-schema", "typescript", "source-integrity", "publishing"]) });
 const events = create_test_event_emitter("hson-schema-cutover");
@@ -41,19 +40,19 @@ for (const mode of ["generate", "verify", "check", "build"]) check(`${mode} pres
 check("published selected state is checkable by stock TypeScript", () => {
   pass(spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "-p", stable], { encoding: "utf8" }));
 });
-check("source and config edits fail read-only freshness; incompatible tooling fails clearly", () => {
-  const selector = readFileSync(stable);
+check("source and config edits fail read-only freshness; stale tooling fails clearly", () => {
+  const generatedConfigBytes = readFileSync(stable);
   writeFileSync(join(project, "helper.ts"), `${authored.get("helper.ts")!.toString()}\n// changed`);
-  const stale = run("verify"); assert.notEqual(stale.status, 0); assert.match(stale.stderr, /Stale/); assert.deepEqual(readFileSync(stable), selector);
+  const stale = run("verify"); assert.notEqual(stale.status, 0); assert.match(stale.stderr, /Stale/); assert.deepEqual(readFileSync(stable), generatedConfigBytes);
   writeFileSync(join(project, "helper.ts"), authored.get("helper.ts")!);
   const prior = readFileSync(config); writeFileSync(config, `${prior.toString()}\n`); assert.notEqual(run("verify").status, 0); writeFileSync(config, prior);
-  // Integrity and compatibility are independent checks.
+  // Integrity and tooling freshness are independent checks.
   const manifest = join(selected(), "manifest.json"), original = readFileSync(manifest);
   const { contentDigest: _digest, ...incompatible } = JSON.parse(original.toString());
-  incompatible.compatibility = "compiler-project-0";
+  incompatible.toolingFingerprint = "0".repeat(64);
   writeFileSync(manifest, JSON.stringify({ ...incompatible, contentDigest: createHash("sha256").update(JSON.stringify(incompatible)).digest("hex") }));
-  const mismatch = run("verify"); assert.notEqual(mismatch.status, 0); assert.match(mismatch.stderr, /Incompatible/);
-  writeFileSync(manifest, original); writeFileSync(stable, selector);
+  const mismatch = run("verify"); assert.notEqual(mismatch.status, 0); assert.match(mismatch.stderr, /Stale Hson compiler tooling/);
+  writeFileSync(manifest, original); writeFileSync(stable, generatedConfigBytes);
   pass(run("verify")); preserve();
 });
 function files(directory: string): string[] { return readdirSync(directory, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(directory, entry.name)) : [join(directory, entry.name)]); }
@@ -113,40 +112,6 @@ child.on('exit', code=>{clearTimeout(timer); if(code!==0||count!==2||failed)proc
   pass(result);
   assert.deepEqual(readFileSync(join(project, "schema.ts")), Buffer.concat([original, Buffer.from('\r\n// current edit')]));
   writeFileSync(join(project, "schema.ts"), original); pass(run("generate")); preserve();
-});
-check("explicit legacy migration previews, safely removes known syntax and refuses ambiguous edits", () => {
-  const evidence = generate_hson_schema_evidence("Legacy", schema, "legacy.ts#Legacy");
-  const type = '__HsonSchema<__LegacyEvidence["value"], __LegacyEvidence["mode"], __LegacyEvidence["identity"]>';
-  const text = `\uFEFF// user comment\r\nimport { Hson } from "hson-live";\r\nexport const Legacy: ${type} = (Hson.schema\`${schema}\` as unknown as ${type});\r\n// @hson-schema generated type exports\r\nimport type { HsonSchema as __HsonSchema } from "hson-live";\r\nimport type { Evidence as __LegacyEvidence } from "./legacy.Legacy.hson-schema.generated.js";\r\n// @hson-schema end generated type exports`;
-  writeFileSync(join(project, "legacy.ts"), text);
-  for (const mode of ["generate", "verify", "check", "build"]) {
-    const result = run(mode); assert.notEqual(result.status, 0);
-    assert.match(result.stdout + result.stderr, /Legacy Hson Schema.*migrate/);
-  }
-  assert.equal(readFileSync(join(project, "legacy.ts"), "utf8"), text);
-  writeFileSync(join(project, "legacy.Legacy.hson-schema.generated.ts"), evidence.declaration);
-  writeFileSync(join(project, "legacy.Legacy.hson-schema.generated.json"), evidence.metadata);
-  const direct = `import { Hson } from "hson-live"; export const Legacy = Hson.schema\`${schema}\`;`;
-  writeFileSync(join(project, "legacy.ts"), direct);
-  for (const mode of ["generate", "verify", "check", "build"]) {
-    const result = run(mode); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /Legacy Hson Schema.*migrate/);
-    assert.equal(readFileSync(join(project, "legacy.ts"), "utf8"), direct);
-  }
-  writeFileSync(join(project, "legacy.ts"), text);
-  writeFileSync(join(project, "legacy.Legacy.hson-schema.generated.ts"), "this is edited invalid TypeScript !!!");
-  assert.notEqual(run("generate").status, 0);
-  assert.notEqual(run("migrate", ["--write"]).status, 0);
-  assert.equal(readFileSync(join(project, "legacy.ts"), "utf8"), text);
-  writeFileSync(join(project, "legacy.Legacy.hson-schema.generated.ts"), evidence.declaration);
-  pass(run("migrate")); assert.equal(readFileSync(join(project, "legacy.ts"), "utf8"), text);
-  writeFileSync(join(project, "legacy.ts"), text.replace('as unknown', 'as /* user */ unknown'));
-  assert.notEqual(run("migrate", ["--write"]).status, 0);
-  assert.match(readFileSync(join(project, "legacy.ts"), "utf8"), /user/);
-  writeFileSync(join(project, "legacy.ts"), text); pass(run("migrate", ["--write"]));
-  const clean = readFileSync(join(project, "legacy.ts"), "utf8");
-  assert.equal(clean, `\uFEFF// user comment\r\nimport { Hson } from "hson-live";\r\nexport const Legacy = Hson.schema\`${schema}\`;\r\n`);
-  assert.ok(!files(project).includes(join(project, "legacy.Legacy.hson-schema.generated.ts")));
-  pass(run("generate")); pass(run("check")); pass(run("build")); preserve();
 });
 events.terminal("pass");
 console.log(JSON.stringify({ hsonSchemaCutover: "passed", checks, typescript: ts.version }));

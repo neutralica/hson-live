@@ -37,7 +37,7 @@ export const UserSchema = Hson.schema`
 
 The extension uses current `Hson.schema` editor text and an in-memory compiler view for diagnostics, precise typing, completion, hover, definitions, references, and rename support. Unsaved edits do not require colocated evidence files or saved `.hson` output.
 
-Normal Schema workflows support current direct `Hson.schema` source and current `.hson/` or virtual evidence. Legacy rewritten source and authored-tree colocated evidence require explicit cleanup: run `hson-schema migrate` to preview, then `hson-schema migrate --write` to apply it. Watch integration uses only the current JSON protocol from the workspace CLI.
+Normal Schema workflows use direct `Hson.schema` source and current `.hson/` or virtual evidence. Stale owned state requires regeneration. Unsupported generated artifacts must be removed before regeneration. Watch integration uses the current JSON protocol from the workspace CLI.
 
 For example, `<ref "…">` completion is scoped to the current Schema declaration's `defs`, and navigation follows those semantic references rather than matching text alone.
 
@@ -128,4 +128,4 @@ After updating the installed extension, run **Developer: Reload Window** when re
 
 Extension implementation, packaging, integration-test, appearance-authority, and regression-suite documentation is maintained with the extension source.
 
-Schema Generate and Watch now maintain one current compiler repository per project under `.hson/`; they never inject imports or annotations into authored TypeScript. The TypeScript plugin continues to use current unsaved in-memory views. For legacy cleanup and publishing see the library’s [Phase 4 contract](../../docs/contracts/hson-schema-compiler-project-phase-4.md).
+Schema Generate and Watch now maintain one current compiler repository per project under `.hson/`; they never inject imports or annotations into authored TypeScript. The TypeScript plugin continues to use current unsaved in-memory views. For current ownership, freshness and publishing see the library’s [Phase 4 contract](../../docs/contracts/hson-schema-compiler-project-phase-4.md).

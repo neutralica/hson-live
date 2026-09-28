@@ -1,5 +1,10 @@
 # Canonical Schema Phase 2 — shadow authority
 
+> Historical design record. The current supported workflow is described in
+> [Schema compiler workflow](../contracts/hson-schema-compiler-project-phase-4.md).
+> Retired layouts and generation labels below are not current supported behavior.
+
+
 Phase 2 uses closed-data finalization. Existing builder operations construct the
 current immutable semantic nodes exactly once. At the end of `schema.define`, a
 private compatibility bridge lowers those already-produced nodes, verifies the

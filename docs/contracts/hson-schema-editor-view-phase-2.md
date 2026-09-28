@@ -1,5 +1,10 @@
 # Schema editor compiler view — Phase 2
 
+> Historical design record. The current supported workflow is described in
+> [Schema compiler workflow](../contracts/hson-schema-compiler-project-phase-4.md).
+> Retired layouts and generation labels below are not current supported behavior.
+
+
 > Historical phase contract. The supported default commands and publishing contract
 > are now described in [Phase 4](./hson-schema-compiler-project-phase-4.md).
 

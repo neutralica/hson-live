@@ -3,10 +3,10 @@ import { Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.
 import { HsonSchemaError } from "../src/api/livemap/livemap.error.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
-import { compile_hson_schema, HSON_SCHEMA_MVP_COMPATIBILITY_VERSION } from "../src/internal/hson-schema/compiler.ts";
+import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { decode_canonical_schema_graph_hson, encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
-import { CANONICAL_SCHEMA_FORMAT, CANONICAL_SCHEMA_FORMAT_LIMITS, CANONICAL_SCHEMA_VERSION } from "../src/internal/canonical-schema/graph.ts";
+import { CANONICAL_SCHEMA_FORMAT, CANONICAL_SCHEMA_FORMAT_LIMITS } from "../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../src/internal/canonical-schema/verify.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -151,9 +151,7 @@ check("configured unique compiler rejects every malformed closed relation shape"
   }
 });
 
-check("canonical verifier, graph version, compatibility token, and round-trip close the rule", () => {
-  assert.equal(CANONICAL_SCHEMA_VERSION, 3);
-  assert.equal(HSON_SCHEMA_MVP_COMPATIBILITY_VERSION, "hson-schema-mvp-10");
+check("canonical verifier and round-trip close the rule", () => {
   const compiled = compile_hson_schema(DecksSchema.toHson());
   assert.equal(compiled.ok, true);
   if (!compiled.ok) return;
@@ -164,7 +162,7 @@ check("canonical verifier, graph version, compatibility token, and round-trip cl
   const generated = generate_hson_schema_types("Relational", compiled.value.semantic, compiled.value.definitions).declarations;
   assert.match(generated, /UniqueR0Proof/);
   assert.doesNotMatch(generated, /top-left|top-right|TL|TR/);
-  const verifiesRule = (rule: unknown) => verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes: [{ kind: "projected-refinement", base: 1, rule }, { kind: "projected-array" }] }).ok;
+  const verifiesRule = (rule: unknown) => verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, capabilities: { projectedRoot: 0 }, nodes: [{ kind: "projected-refinement", base: 1, rule }, { kind: "projected-array" }] }).ok;
   for (const rule of [
     { kind: "array-unique-by-cases", by: "_hson_private", cases: [] },
     { kind: "array-unique-by-cases", by: "position", cases: "bad" },
@@ -176,7 +174,7 @@ check("canonical verifier, graph version, compatibility token, and round-trip cl
     { kind: "array-unique-by-cases", by: "position", cases: [], extra: true },
   ]) assert.equal(verifiesRule(rule), false);
   const tooManyCases = Array.from({ length: CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueCases + 1 }, (_, index) => [String(index), []]);
-  assert.equal(verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes: [{ kind: "projected-refinement", base: 1, rule: { kind: "array-unique-by-cases", by: "position", cases: tooManyCases } }, { kind: "projected-array" }] }).ok, false);
+  assert.equal(verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, capabilities: { projectedRoot: 0 }, nodes: [{ kind: "projected-refinement", base: 1, rule: { kind: "array-unique-by-cases", by: "position", cases: tooManyCases } }, { kind: "projected-array" }] }).ok, false);
   const signed = compile_hson_schema(Hson.canonical`<type "data" content <items <array <content <content <value "any">> unique <by "value" cases [[0, [-0]], [-0, [0]]]>>>>>`);
   assert.equal(signed.ok, true);
   if (signed.ok) {

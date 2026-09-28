@@ -1,10 +1,11 @@
-import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
 import { create_schema_compiler_project_watch, verify_schema_compiler_project } from "../src/internal/hson-schema/compiler-project-watch.ts";
+import { schema_tooling_fingerprint } from "../src/internal/hson-schema/tooling-fingerprint.ts";
 import { SchemaProjectSnapshot } from "../src/internal/hson-schema/project-snapshot.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -73,23 +74,6 @@ await check("unchanged invalid state is reused across watcher startup", async ()
     assert.notEqual(refused.status, 0); // Reused invalid diagnostics remain honest.
   } finally { watcher.stop(); rmSync(quiet, { recursive: true, force: true }); }
 });
-await check("unchanged live watch rejects legacy state introduced after current publication", async () => {
-  const directory = mkdtempSync(join(root, "tmp/schema-layout-fence-"));
-  const config = join(directory, "tsconfig.json"), output = join(directory, ".hson/compiler-input/tsconfig.json");
-  writeFileSync(config, JSON.stringify({ compilerOptions: { types: [] }, files: ["source.ts"] }));
-  writeFileSync(join(directory, "source.ts"), "export const value = 1;");
-  const watch = create_schema_compiler_project_watch(config, () => ({ schemas: [], overlays: [], diagnostics: [] }), () => {});
-  try {
-    await watch.poll();
-    const before = readFileSync(join(output, "manifest.json"));
-    const revision = join(output, "revisions/revision-old"); mkdirSync(revision, { recursive: true });
-    writeFileSync(join(revision, "manifest.json"), "{}");
-    await assert.rejects(watch.poll(), /Legacy Hson compiler-project layout detected.*migrate/);
-    assert.throws(() => verify_schema_compiler_project(config), /Legacy Hson compiler-project layout detected.*migrate/);
-    assert.deepEqual(readFileSync(join(output, "manifest.json")), before);
-    assert.equal(readFileSync(join(revision, "manifest.json"), "utf8"), "{}");
-  } finally { watch.stop(); rmSync(directory, { recursive: true, force: true }); }
-});
 await check("interrupted replacement cannot be verified or reused as current proof", async () => {
   const directory = mkdtempSync(join(root, "tmp/schema-interrupted-"));
   const config = join(directory, "tsconfig.json"), source = join(directory, "source.ts");
@@ -128,6 +112,82 @@ await check("unchanged valid watch restarts reuse exactly the same publication",
     }
     assert.equal(analyses, 1);
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+await check("tooling identity follows transitive implementation, build inputs and external TypeScript", () => {
+  const tooling = join(project, "tooling");
+  mkdirSync(join(tooling, "scripts"), { recursive: true });
+  cpSync(join(root, "src"), join(tooling, "src"), { recursive: true });
+  cpSync(join(root, "dist"), join(tooling, "dist"), { recursive: true });
+  for (const file of ["scripts/hson-schema.mts", "scripts/build-hson-schema-cli.mjs", "tsconfig.json"]) cpSync(join(root, file), join(tooling, file));
+  const current = schema_tooling_fingerprint(tooling);
+  assert.equal(current, schema_tooling_fingerprint(root), "installation path does not affect identity");
+  assert.equal(current, schema_tooling_fingerprint(tooling));
+  for (const file of ["src/internal/hson-schema/compiler.ts", "src/internal/canonical-schema/verify.ts", "dist/internal/hson-schema/compiler.js", "scripts/hson-schema.mts", "scripts/build-hson-schema-cli.mjs", "tsconfig.json"]) {
+    const path = join(tooling, file), before = readFileSync(path);
+    writeFileSync(path, Buffer.concat([before, Buffer.from("\n// tooling edit\n")]));
+    assert.notEqual(schema_tooling_fingerprint(tooling), current, file);
+    writeFileSync(path, before);
+  }
+  writeFileSync(join(tooling, "unrelated.txt"), "not a tooling dependency");
+  assert.equal(schema_tooling_fingerprint(tooling), current);
+  assert.notEqual(schema_tooling_fingerprint(tooling, `${ts.version}-different`), current);
+});
+await check("tooling edits withdraw a prepared watch publication and require restart", async () => {
+  const tooling = join(project, "tooling");
+  const modulePath = join(tooling, "src/internal/hson-schema/compiler-project-watch.ts");
+  const { create_schema_compiler_project_watch: createWatch, verify_schema_compiler_project: verifyProject } = await import(modulePath);
+  const directory = join(project, "tooling-watch"); mkdirSync(directory);
+  const config = join(directory, "tsconfig.json");
+  writeFileSync(config, JSON.stringify({ compilerOptions: { types: [] }, files: ["source.ts"] }));
+  writeFileSync(join(directory, "source.ts"), "export const value = 1;");
+  const implementation = join(tooling, "src/internal/hson-schema/compiler.ts");
+  const before = readFileSync(implementation), states: string[] = [];
+  const watcher = createWatch(config, () => ({ schemas: [], overlays: [], diagnostics: [] }), (event: { state: string }) => states.push(event.state), async () => {
+    writeFileSync(implementation, Buffer.concat([before, Buffer.from("\n// changed tooling\n")]));
+  });
+  try {
+    await watcher.poll(); assert.deepEqual(states, ["prepared", "discarded"]);
+    assert.equal(existsSync(join(directory, ".hson/compiler-input/tsconfig.json/manifest.json")), false);
+    await assert.rejects(watcher.poll(), /tooling changed while running.*Restart/);
+    const generated = spawnSync(process.execPath, ["--import=tsx", join(tooling, "scripts/hson-schema.mts"), "generate", "--project", config], { encoding: "utf8", timeout: 60_000 });
+    assert.equal(generated.status, 0, generated.stdout + generated.stderr);
+    const manifest = JSON.parse(readFileSync(join(directory, ".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
+    assert.equal(manifest.toolingFingerprint, schema_tooling_fingerprint(tooling));
+    assert.throws(() => verifyProject(config), /tooling changed while running.*Restart/);
+  } finally { watcher.stop(); writeFileSync(implementation, before); }
+});
+await check("stale tooling and external TypeScript identities require ordinary regeneration", async () => {
+  const directory = join(project, "freshness"); mkdirSync(directory);
+  const config = join(directory, "tsconfig.json");
+  writeFileSync(config, JSON.stringify({ compilerOptions: { types: [] }, files: ["source.ts"] }));
+  writeFileSync(join(directory, "source.ts"), "export const value = 1;");
+  let analyses = 0;
+  const watch = create_schema_compiler_project_watch(config, () => { analyses++; return { schemas: [], overlays: [], diagnostics: [] }; }, () => {});
+  const path = join(directory, ".hson/compiler-input/tsconfig.json/manifest.json");
+  const edit = (field: string, value: string): void => {
+    const { contentDigest: _digest, ...contents } = JSON.parse(readFileSync(path, "utf8"));
+    contents[field] = value;
+    writeFileSync(path, JSON.stringify({ ...contents, contentDigest: createHash("sha256").update(JSON.stringify(contents)).digest("hex") }));
+  };
+  try {
+    await watch.poll(); await watch.poll(); assert.equal(analyses, 1);
+    for (const identity of [createHash("sha256").update("different tooling contents").digest("hex"), schema_tooling_fingerprint(root, `${ts.version}-different`)]) {
+      edit("toolingFingerprint", identity);
+      assert.throws(() => verify_schema_compiler_project(config), /Stale Hson compiler tooling/);
+      await watch.poll(); assert.equal(verify_schema_compiler_project(config).manifest.toolingFingerprint, schema_tooling_fingerprint());
+    }
+    assert.equal(analyses, 3);
+    const original = readFileSync(path);
+    edit("owner", "unowned-project");
+    await assert.rejects(watch.poll(), /ownership/);
+    assert.notDeepEqual(readFileSync(path), original);
+    writeFileSync(path, original);
+    const source = join(directory, ".hson/compiler-input/tsconfig.json/sources/source.ts");
+    const before = readFileSync(source); writeFileSync(source, "user edit");
+    await assert.rejects(watch.poll(), /Unowned\/edited/);
+    assert.equal(readFileSync(source, "utf8"), "user edit");
+    writeFileSync(source, before); await watch.poll(); assert.equal(analyses, 3);
+  } finally { watch.stop(); }
 });
 const authored = new Map<string, Buffer>();
 function write(path: string, text: string): void {
@@ -214,16 +274,6 @@ try {
   await check("repairing that same file restores precise stock TypeScript value and nominal identity", async () => {
     write("schema.ts", valid()); current = await next(); assert.deepEqual(names(current), ["B", "S", "Twin"], JSON.stringify(current)); passes(); preserve();
   });
-  await check("JSON watch withdraws proof for legacy markers and colocated evidence, then recovers", async () => {
-    write("schema.ts", valid() + "// @hson-schema generated type exports\n");
-    current = await next(); assert.equal(current.schemas, 0); assert.match(current.diagnostics.join("\n"), /Legacy Hson Schema.*migrate/); preserve();
-    write("schema.ts", valid()); current = await next(); passes();
-    const evidence = generate_hson_schema_evidence("S", '<type "data" content <value <exact "a">>>', "schema.ts#S");
-    // Metadata alone is not a TypeScript root; the preflight must observe sidecar membership.
-    write("schema.S.hson-schema.generated.json", evidence.metadata);
-    current = await next(); assert.equal(current.schemas, 0); assert.match(current.diagnostics.join("\n"), /Legacy Hson Schema.*migrate/); preserve();
-    remove("schema.S.hson-schema.generated.json"); current = await next(); passes(); preserve();
-  });
   await check("invalidating one declaration removes stale proof while preserving independent evidence", async () => {
     write("schema.ts", imports + 'export const S = Hson.schema`<props <`;\n' + schema("Twin") + schema("B", "b"));
     current = await next(); assert.deepEqual(names(current), ["B", "Twin"]); assert.ok(current.diagnostics.length);
@@ -241,7 +291,7 @@ try {
     assert.ok(!state.files.some((file: { path: string }) => file.path.startsWith("evidence/new.ts/") || file.path === "sources/new.ts"));
     assert.ok(state.files.some((file: { path: string }) => file.path.startsWith("evidence/moved/new.ts/"))); passes(); preserve();
   });
-  await check("source deletion removes its files from the selected revision", async () => {
+  await check("source deletion removes its files from the current publication", async () => {
     remove("moved/new.ts"); current = await next(); assert.ok(!names(current).includes("New")); passes(); preserve();
   });
   await check("independent export rename and removal reconcile evidence", async () => {
@@ -291,7 +341,7 @@ void changed; void wrong;
     current = await next(); passes(); preserve();
     remove("precision.ts"); current = await next(); passes(); preserve();
   });
-  await check("direct certification failures publish authored locations and recover in the next watch generation", async () => {
+  await check("direct certification failures publish authored locations and recover in the next watch publication", async () => {
     const candidate = (value: string) => `${imports}import { S } from "./schema.js";\nconst page = Hson.data\`<value "${value}">\`;\nS.certify(page);\n`;
     write("candidate.ts", candidate("wrong"));
     current = await next();
@@ -308,7 +358,7 @@ void changed; void wrong;
     write("package.json", '{"type":"commonjs"}'); current = await next(); passes(); preserve();
     write("package.json", '{"type":"module"}'); current = await next(); passes(); preserve();
   });
-  await check("prepared obsolete generation is discarded and cannot replace the newer saved revision", async () => {
+  await check("prepared obsolete publication is discarded and cannot replace the newer saved revision", async () => {
     const oldSelector = readFileSync(selector, "utf8");
     let staleManifest: string | undefined;
     beforePublish = event => {

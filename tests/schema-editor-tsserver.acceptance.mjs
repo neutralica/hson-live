@@ -124,16 +124,6 @@ try {
     await editConsumer(consumer);
     assert.equal((await diagnostics("consumer.ts")).length, 3);
   });
-  await check("legacy unsaved source reports migration-required without suppressing native errors", async () => {
-    const legacy = `${schema}\n// @hson-schema generated type exports\nimport type { HsonSchema as __HsonSchema } from "hson-live";\nimport type { Evidence as __ThingEvidence } from "./schema.Thing.hson-schema.generated.js";\n// @hson-schema end generated type exports`;
-    await edit(legacy);
-    const errors = await diagnostics("schema.ts");
-    assert.ok(errors.some(error => error.code === 95001 && /migrate/.test(error.text)), JSON.stringify(errors));
-    assert.ok(errors.some(error => error.code === 2307), JSON.stringify(errors));
-    assert.ok((await diagnostics("consumer.ts")).some(error => error.code === 18046));
-    await edit(schema);
-    assert.equal((await diagnostics("consumer.ts")).length, 3);
-  });
   await check("bundled diagnostics underline authored static candidates and clear on unsaved repair", async () => {
     const text = 'import { Hson, hsonLiveMap } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;\nconst bad = Hson.document`<html <body/>/>`;\nS.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<html <body/> <head/>/>`, schema: S } });\n';
     await editConsumer(text);
