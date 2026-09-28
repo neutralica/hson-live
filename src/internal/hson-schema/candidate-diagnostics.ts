@@ -2,18 +2,14 @@ import type ts from "typescript";
 import { discover_hson_schema_declarations } from "./schema-discovery.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
-import { parse_hson_with_provenance } from "../hson-source-provenance/parse-hson-with-provenance.js";
-import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
-import { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
-import { resolve_document_schema_issue_source } from "../document-schema-source-lowering/document-schema-source-lowering.js";
-import { resolve_projected_schema_issue_source } from "../projected-schema-source-lowering/projected-schema-source-lowering.js";
+import { evaluate_static_schema_candidate, type StaticSchemaCandidate } from "./candidate-evaluation.js";
+import { resolve_immutable_schema } from "./schema-identity.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
-import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { library_schema_attachment_plan, type PreciseSchemaFact } from "./source-transformation.js";
 
 export type StaticSchemaDiagnostic = Readonly<{ file: string; start: number; end: number; code: string; message: string }>;
-type Schema = Readonly<{ name: string; compiled: CompiledHsonSchema }>;
-type Candidate = Readonly<{ node: ts.Expression; source: string; bodyStart: number }> | Readonly<{ node: ts.Expression; json: unknown }>;
+type Schema = Readonly<{ declaration: ts.VariableDeclaration; name: string; compiled: CompiledHsonSchema }>;
+type Candidate = StaticSchemaCandidate & Readonly<{ node: ts.Expression; bodyStart?: number }>;
 
 /** Pure preflight over authored ASTs. Unknown expressions withdraw the entire proof. */
 export function static_schema_candidate_diagnostics(typescript: typeof ts, program: ts.Program): readonly StaticSchemaDiagnostic[] {
@@ -24,7 +20,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   for (const source of sources) for (const found of discover_hson_schema_declarations(typescript, source, checker)) {
     if (!found.eligible || !typescript.isNoSubstitutionTemplateLiteral(found.tagged.template)) continue;
     const compiled = compile_hson_schema(found.tagged.template.getText(source).slice(1, -1));
-    if (compiled.ok) schemas.set(found.declaration, { name: found.name, compiled: compiled.value });
+    if (compiled.ok) schemas.set(found.declaration, { declaration: found.declaration, name: found.name, compiled: compiled.value });
   }
   const declaration = (node: ts.Identifier): ts.VariableDeclaration | undefined => {
     let symbol = typescript.isShorthandPropertyAssignment(node.parent) ? checker.getShorthandAssignmentValueSymbol(node.parent) : checker.getSymbolAtLocation(node);
@@ -36,16 +32,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   };
   const unwrap = (node: ts.Expression): ts.Expression => typescript.isParenthesizedExpression(node) || typescript.isAsExpression(node) || typescript.isSatisfiesExpression(node)
     ? unwrap(node.expression) : node;
-  const schema = (input: ts.Expression, seen = new Set<ts.Declaration>()): Schema | undefined => {
-    const node = unwrap(input);
-    if (!typescript.isIdentifier(node)) return undefined;
-    const found = declaration(node);
-    if (found === undefined || seen.has(found)) return undefined;
-    const precise = schemas.get(found);
-    if (precise !== undefined) return precise;
-    seen.add(found);
-    return found.initializer === undefined ? undefined : schema(found.initializer, seen);
-  };
+  const schema = (input: ts.Expression): Schema | undefined => resolve_immutable_schema(typescript, checker, input, found => schemas.get(found));
   const candidates = (input: ts.Expression, family: "certify" | "document" | "data", seen = new Set<ts.Declaration>(), depth = 0): readonly Candidate[] | undefined => {
     if (depth > 16) return undefined;
     const node = unwrap(input);
@@ -79,11 +66,11 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       && typescript.isIdentifier(node.tag.expression) && is_official_hson_package_binding(node.tag.expression, "Hson", checker, true)
       && ["document", "data", "canonical"].includes(node.tag.name.text)
       && typescript.isNoSubstitutionTemplateLiteral(node.template) && !node.template.isUnterminated) {
-      return [{ node, source: node.template.getText(node.getSourceFile()).slice(1, -1), bodyStart: node.template.getStart() + 1 }];
+      return [{ node, source: node.template.getText(node.getSourceFile()).slice(1, -1), family: node.tag.name.text === "document" ? "document" : node.tag.name.text === "canonical" ? "canonical" : "data", bodyStart: node.template.getStart() + 1 }];
     }
     if (family === "document" && (typescript.isStringLiteral(node) || typescript.isNoSubstitutionTemplateLiteral(node))) {
       // Escaped JS strings have no direct raw-Hson correspondence; anchor on the expression.
-      return [{ node, source: node.text, bodyStart: -1 }];
+      return [{ node, source: node.text, family: "document", bodyStart: -1 }];
     }
     if (family === "data") {
       const value = json_literal(node, typescript);
@@ -96,21 +83,28 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     return undefined;
   };
   const output: StaticSchemaDiagnostic[] = [];
+  const reported = new Set<string>();
   const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data"): void => {
     if (contract === undefined) return;
     const possible = candidates(input, family);
     if (possible === undefined || possible.length === 0) return;
-    const failures = possible.map(candidate => candidate_failure(contract.compiled, candidate));
+    const failures = possible.map(candidate => evaluate_static_schema_candidate(contract.compiled, candidate));
     // A valid branch, opaque branch or malformed Hson belongs to runtime/authoring diagnostics.
-    if (failures.some(failure => failure === undefined)) return;
+    if (failures.some(failure => failure.kind !== "invalid")) return;
     const first = failures[0];
-    if (first === undefined) return;
+    if (first?.kind !== "invalid") return;
     const candidate = possible[0]!;
     const local = possible.length === 1 && candidate.node.getSourceFile() === input.getSourceFile();
     const node = local ? candidate.node : input;
-    const range = local && "source" in candidate && candidate.bodyStart >= 0 && first.range !== undefined
+    const range = local && "source" in candidate && candidate.bodyStart !== undefined && candidate.bodyStart >= 0 && first.range !== undefined
       ? { start: candidate.bodyStart + first.range.start, end: candidate.bodyStart + first.range.end }
       : { start: node.getStart(), end: node.getEnd() };
+    // Key the underlying proof, not its wording or chosen display anchor.
+    const identity = (entry: ts.Node) => [entry.getSourceFile().fileName, entry.getStart(), entry.getEnd()];
+    const key = JSON.stringify([identity(contract.declaration), possible.map(entry => identity(entry.node)),
+      first.issue.code, first.issue.schemaNode, first.issue.path, first.issue.attributeName, first.issue.evidence]);
+    if (reported.has(key)) return;
+    reported.add(key);
     output.push({ file: node.getSourceFile().fileName, ...range, code: first.issue.code,
       message: `Static Hson does not satisfy ${contract.name}: ${issue_detail(first.issue)}${possible.length > 1 ? " (all static alternatives fail)." : "."}` });
   };
@@ -146,6 +140,26 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       const definition = initial === undefined ? undefined : object_fields(initial, typescript)?.get(attachment.library.text);
       if (definition !== undefined) validateDefinition(definition, schema(attachment.schema));
     }
+    // Annotation relationships retain the direct, official, substitution-free
+    // initializer boundary used to establish compiler/editor assignment proof.
+    for (const statement of source.statements) {
+      if (!typescript.isVariableStatement(statement) || (statement.declarationList.flags & typescript.NodeFlags.Const) === 0
+        || statement.declarationList.declarations.length !== 1) continue;
+      const found = statement.declarationList.declarations[0];
+      if (found?.type === undefined || found.initializer === undefined || !typescript.isTypeReferenceNode(found.type)
+        || !typescript.isIdentifier(found.type.typeName) || found.type.typeArguments?.length !== 1) continue;
+      const name = found.type.typeName.text;
+      const family = name === "HsonData" ? "data" : name === "HsonDocument" ? "document" : undefined;
+      const query = found.type.typeArguments[0];
+      if (family === undefined || !is_official_hson_package_binding(found.type.typeName, family === "data" ? "HsonData" : "HsonDocument", checker, true)
+        || query === undefined || !typescript.isTypeQueryNode(query) || !typescript.isIdentifier(query.exprName)) continue;
+      const initializer = found.initializer;
+      if (!typescript.isTaggedTemplateExpression(initializer) || !typescript.isPropertyAccessExpression(initializer.tag)
+        || initializer.tag.name.text !== family || !typescript.isIdentifier(initializer.tag.expression)
+        || !is_official_hson_package_binding(initializer.tag.expression, "Hson", checker, true)
+        || !typescript.isNoSubstitutionTemplateLiteral(initializer.template) || initializer.template.isUnterminated) continue;
+      report(schema(query.exprName), initializer, "certify");
+    }
     const visit = (node: ts.Node): void => {
       if (typescript.isCallExpression(node) && typescript.isPropertyAccessExpression(node.expression)) {
         if (node.expression.name.text === "certify" && node.arguments.length === 1) report(schema(node.expression.expression), node.arguments[0]!, "certify");
@@ -156,25 +170,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     };
     visit(source);
   }
-  // Repeated relationships can point at the same immutable candidate.
-  return [...new Map(output.map(diagnostic => [JSON.stringify(diagnostic), diagnostic])).values()];
-}
-
-/** The same canonical evaluator and provenance lowering as runtime/annotated checking. */
-function candidate_failure(compiled: CompiledHsonSchema, candidate: Candidate) {
-  try {
-    const document = compiled.semantic.kind === "document" || compiled.semantic.kind === "document-element";
-    const parsed = "source" in candidate ? parse_hson_with_provenance(candidate.source, { allowTopLevelDocumentText: document }) : undefined;
-    const result = document && parsed !== undefined
-      ? evaluate_canonical_document_schema(compiled.graph, parsed.value)
-      : evaluate_canonical_projected_schema(compiled.graph, "json" in candidate ? admit_projected_value(candidate.json) : projected_value_from_hson_node(parsed!.value));
-    const issue = result.ok ? undefined : result.issues[0];
-    if (issue === undefined || issue.evidence.kind === "resource-limit" || issue.code === "INVALID_SCHEMA") return undefined;
-    const resolution = parsed === undefined ? undefined : document
-      ? resolve_document_schema_issue_source(parsed.value, "document", parsed.provenance, issue)
-      : resolve_projected_schema_issue_source(parsed.value, parsed.provenance, issue);
-    return { issue, range: resolution === undefined || resolution.kind === "unresolved" ? undefined : resolution.range };
-  } catch { return undefined; }
+  return output;
 }
 
 function issue_detail(issue: CanonicalGraphIssue): string {

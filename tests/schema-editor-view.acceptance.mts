@@ -313,7 +313,7 @@ hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
   }
   assert.ok(errors.some(error => source.slice(error.start, error.start! + error.length!).includes('body')), errors.map(error => source.slice(error.start, error.start! + error.length!)).join("\n"));
   const config = test.file("tsconfig.json");
-  writeFileSync(config, JSON.stringify({ compilerOptions: test.options, files: [test.file("index.ts")] }));
+  writeFileSync(config, JSON.stringify({ compilerOptions: { ...test.options, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext" }, files: [test.file("index.ts")] }));
   const generated = spawnSync(process.execPath, ["--import=tsx", "scripts/hson-schema.mts", "generate", "--project", config], { cwd: root, encoding: "utf8" });
   assert.notEqual(generated.status, 0);
   const manifest = JSON.parse(readFileSync(test.file(".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
@@ -337,6 +337,10 @@ hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
     ['S.certify(condition ? bad : getPage());', 0],
     ['S.certify(await Promise.resolve(bad));', 0],
     ['const D = Hson.schema`<type "data" content <name "string">>`; D.certify(Hson.data`<name 42>`);', 1],
+    ['const A = S; hsonLiveMap.fromLibraries({ page: { document: bad, schema: A } });', 1],
+    ['const A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.lib("page").schema.use(A);', 1],
+    ['let A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.lib("page").schema.use(A);', 0],
+    ['const D = Hson.schema`<type "data" content <name "string">>`; const A = D; const map = hsonLiveMap.fromLibraries({ state: { data: { name: 42 } } }); map.lib("state").schema.use(A);', 1],
     ['const D = Hson.schema`<type "data" content <name "string">>`; hsonLiveMap.fromLibraries({ data: { data: \'{"name":42}\', schema: D } });', 1],
     ['const D = Hson.schema`<type "data" content <name "string">>`; const data = condition ? { name: 42 } : { name: 7 }; Reflect.set(data, "name", "Ada"); hsonLiveMap.fromLibraries({ state: { data, schema: D } });', 0],
   ];
@@ -356,6 +360,78 @@ hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
   assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: bad, schema: runtime } }), /Schema validation failed/);
   const map = hsonLiveMap.fromLibraries({ page: { document: bad } });
   assert.throws(() => Reflect.apply(map.lib("page").schema.use, undefined, [runtime]), /Schema validation failed/);
+});
+
+check("annotation proof, certification, aliases and generated diagnostics converge", () => {
+  const source = `import { Hson, hsonLiveMap, type HsonData, type HsonDocument } from "hson-live";
+const Text = Hson.schema\`<type "document" content "string">\`;
+const text: HsonDocument<typeof Text> = Hson.document\`"hello"\`;
+Text.certify(text);
+const Page = Hson.schema\`<type "document" tag "main" content "string">\`;
+const document: HsonDocument<typeof Page> = Hson.document\`<main "hello"/>\`;
+Page.certify(document);
+const S = Hson.schema\`<type "data" content <name "string">>\`;
+const A = S;
+const bad: HsonData<typeof A> = Hson.data\`<name 42>\`;
+S.certify(bad); A.certify(bad);
+const PageAlias = Page;
+const invalidMap = hsonLiveMap.fromLibraries({ page: { document: '<aside "hello"/>' } });
+invalidMap.lib("page").schema.use(PageAlias);
+const map = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>' } });
+map.lib("page").schema.use(PageAlias);
+const exact: typeof Page = map.lib("page").schema.get();
+const snap: string = map.lib("page").at([0]).snap();
+const unrelated: number = "wrong";
+`;
+  const test = project("candidate-convergence", { "index.ts": source });
+  const errors = test.errors("index.ts");
+  const schemaErrors = errors.filter(error => error.code === 95002);
+  assert.equal(schemaErrors.length, 2, messages(errors));
+  assert.equal(schemaErrors.filter(error => String(error.messageText).includes("does not satisfy S")).length, 1);
+  assert.equal(errors.filter(error => error.code === 2322).length, 1, messages(errors));
+  assert.equal(errors.find(error => error.code === 2322)?.start, source.indexOf("unrelated:"));
+  assert.ok(!errors.some(error => (error.start ?? -1) === source.indexOf("text:") || (error.start ?? -1) === source.indexOf("document:")));
+  const config = test.file("tsconfig.json");
+  writeFileSync(config, JSON.stringify({ compilerOptions: { ...test.options, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext" }, files: [test.file("index.ts")] }));
+  const generate = () => spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "generate", "--project", config], { cwd: root, encoding: "utf8" });
+  assert.notEqual(generate().status, 0);
+  const manifest = JSON.parse(readFileSync(test.file(".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
+  const candidateErrors: string[] = manifest.diagnostics.filter((message: string) => message.includes("Static Hson does not satisfy"));
+  assert.equal(candidateErrors.length, 2, candidateErrors.join("\n"));
+  for (const error of schemaErrors) {
+    const location = error.file!.getLineAndCharacterOfPosition(error.start!);
+    assert.ok(candidateErrors.includes(`${test.file("index.ts")}:${location.line + 1}:${location.character + 1}: ${error.messageText}`));
+  }
+  const valid = source.replace("<name 42>", '<name "Ada">').replace("<aside", "<main").replace('const unrelated: number = "wrong";', 'const unrelated: number = 42;');
+  writeFileSync(test.file("index.ts"), valid); test.edit("index.ts", valid);
+  assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
+  const regenerated = generate();
+  assert.equal(regenerated.status, 0, regenerated.stdout + regenerated.stderr);
+  const checked = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "check", "--project", config], { cwd: root, encoding: "utf8" });
+  assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+  test.edit("index.ts", valid + '\nconst Wrong = Hson.schema`<type "data" content <name "number">>`; Wrong.certify(bad);');
+  assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 1, "Distinct Schema identity must retain its own failure");
+  test.edit("index.ts", valid.replace('Hson.document`"hello"`', 'Hson.data`"hello"`'));
+  assert.ok(test.errors("index.ts").some(error => error.code === 2322), "Wrong-family assignment errors remain visible");
+  test.service.dispose();
+});
+
+check("document issue ranges follow canonical candidate item paths", () => {
+  const prefix = 'import { Hson } from "hson-live";\n';
+  const cases: readonly [string, string, string][] = [
+    ['<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>', '<html <head/>/>', '/>'],
+    ['<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>', '<html <body/> <head/>/>', 'body'],
+    ['<type "document" tag "main">', '<aside/>', 'aside'],
+    ['<type "document" content <sequence «<tag "head">, <tag "body">»>>', '<head/> <aside/>', 'aside'],
+  ];
+  for (const [index, [schema, candidate, expected]] of cases.entries()) {
+    const source = `${prefix}const S = Hson.schema\`${schema}\`; S.certify(Hson.document\`${candidate}\`);`;
+    const test = project(`document-ranges-${index}`, { "index.ts": source });
+    const errors = test.errors("index.ts").filter(error => error.code === 95002);
+    assert.equal(errors.length, 1, messages(errors));
+    assert.equal(source.slice(errors[0]!.start, errors[0]!.start! + errors[0]!.length!), expected);
+    test.service.dispose();
+  }
 });
 
 check("editor operations never change disk bytes or materialize a generated project", () => {

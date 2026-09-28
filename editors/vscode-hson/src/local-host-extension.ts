@@ -13,7 +13,7 @@ type ManagedProject = Readonly<{
   controller: LocalHostController;
 }>;
 
-type BuildWork = { revision: number; processed: number; cancelled: boolean; enabled: boolean; failed: boolean; timer?: ReturnType<typeof setTimeout>; child?: ChildProcess; active?: Promise<void>; build?: Promise<void> };
+type BuildWork = { revision: number; processed: number; cancelled: boolean; enabled: boolean; failed: boolean; timer?: ReturnType<typeof setTimeout>; child?: ChildProcess; active?: Promise<void>; build?: Promise<void>; buildRevision?: number };
 
 export class LocalHostExtensionManager implements vscode.Disposable {
   readonly #context: vscode.ExtensionContext;
@@ -69,7 +69,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
       }
       this.#work(folder).cancelled = false;
       const revision = this.#work(folder).revision;
-      await this.#build(folder);
+      await this.#build(folder, revision);
       if (this.#work(folder).revision !== revision) return false;
       const project = await resolve_local_host_project(folder.uri.fsPath, folder.uri.toString(), this.#settings(folder));
       if (this.#work(folder).revision !== revision) return false;
@@ -104,7 +104,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
       this.#work(folder).cancelled = false;
       this.#work(folder).enabled = true;
       const revision = this.#work(folder).revision;
-      await this.#build(folder);
+      await this.#build(folder, revision);
       if (this.#work(folder).revision !== revision) return;
       const project = await resolve_local_host_project(folder.uri.fsPath, folder.uri.toString(), this.#settings(folder));
       if (this.#work(folder).revision !== revision) return;
@@ -209,7 +209,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
       if (work.cancelled || !work.enabled) return;
       try {
         const completed = await build_then_restart(
-          () => this.#build(folder),
+          () => this.#build(folder, revision),
           () => !work.cancelled && work.revision === revision,
           async () => {
             const project = await resolve_local_host_project(folder.uri.fsPath, folder.uri.toString(), this.#settings(folder));
@@ -237,11 +237,18 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     }
   }
 
-  async #build(folder: vscode.WorkspaceFolder): Promise<void> {
+  async #build(folder: vscode.WorkspaceFolder, revision: number): Promise<void> {
     const command = vscode.workspace.getConfiguration("hson.localHost", folder.uri).get<string>("buildCommand", "").trim();
     if (command === "") return;
     const work = this.#work(folder);
-    if (work.build !== undefined) return work.build;
+    while (work.build !== undefined) {
+      if (work.buildRevision === revision) return work.build;
+      // An older build is never evidence for this save. Serialize, then build
+      // again unless a still newer save or Stop has superseded this request.
+      try { await work.build; } catch { /* The old request owns its failure. */ }
+      if (work.cancelled || work.revision !== revision) return;
+    }
+    if (work.cancelled || work.revision !== revision) return;
     this.#output.appendLine(`[${folder.name}:build] ${command}`);
     const build = new Promise<void>((resolveBuild, rejectBuild) => {
       const child = spawn(command, { cwd: folder.uri.fsPath, shell: true, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
@@ -259,6 +266,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
       child.once("close", code => finish(code === 0 ? undefined : new Error(`Local App build failed (exit ${code ?? "unknown"}). See Hson Local App Output.`)));
     });
     work.build = build;
+    work.buildRevision = revision;
     try { await build; } finally { if (work.build === build) work.build = undefined; }
   }
 

@@ -68,7 +68,7 @@ export function create_schema_language_service(typescript: typeof ts, service: t
     view.refresh();
     const result = service.getSemanticDiagnostics(file);
     const program = service.getProgram();
-    return [...diagnostics(program === undefined ? result : filter_verified_schema_assignment_diagnostics(result, verified_schema_assignment_ranges(typescript, program, file, view.evidence_file))), ...view.candidate_diagnostics(file)];
+    return [...diagnostics(program === undefined ? result : filter_verified_schema_assignment_diagnostics(result, verified_schema_assignment_ranges(typescript, program, file, view.evidence_file, true))), ...view.candidate_diagnostics(file)];
   };
   proxy.getSyntacticDiagnostics = file => { view.refresh(); return diagnostics(service.getSyntacticDiagnostics(file)); };
   proxy.getSuggestionDiagnostics = file => { view.refresh(); return diagnostics(service.getSuggestionDiagnostics(file)); };

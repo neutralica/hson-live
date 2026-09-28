@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import Module from "node:module";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type * as vscode from "vscode";
 import { hson_status_presentation } from "../src/hson-status.js";
@@ -16,7 +15,9 @@ async function main(): Promise<void> {
   tracker.willSave("one", true); assert.equal(tracker.formattingAllowed("one"), true); assert.equal(tracker.didSave("one"), true);
   assert.equal(tracker.didSave("one"), false);
   tracker.willSave("one", true); tracker.willSave("one", false); assert.equal(tracker.didSave("one"), false);
-  const root = mkdtempSync(join(tmpdir(), "hson-save-recovery-"));
+  const temporary = resolve(__dirname, "../../../tmp");
+  mkdirSync(temporary, { recursive: true });
+  const root = mkdtempSync(join(temporary, "hson-save-recovery-"));
   mkdirSync(join(root, "dist")); mkdirSync(join(root, "src")); mkdirSync(join(root, "node_modules"));
   symlinkSync(resolve(__dirname, "../../.."), join(root, "node_modules", "hson-live"), "dir");
   const uri = (path: string): vscode.Uri => ({ scheme: "file", fsPath: path, path, toString: () => `file://${path}` }) as vscode.Uri;
@@ -33,12 +34,18 @@ async function main(): Promise<void> {
   const disposable = { dispose() {} };
   let buildFails = false;
   let buildDelay = 0;
+  let buildCommand: string | undefined;
+  let buildCommandReads = 0;
   const settings: Record<string, unknown> = { entry: "dist/app.mjs", applicationExport: "application", nodeExecutable: process.execPath, port: 0, restartOnSave: true, sourceDirectory: "src" };
   const api = {
     TextDocumentSaveReason: { Manual: 1, AfterDelay: 2, FocusOut: 3 },
     workspace: {
       isTrusted: true, workspaceFolders: [folder], getWorkspaceFolder: () => folder,
-      getConfiguration: () => ({ get: (key: string, fallback: unknown) => key === "buildCommand" ? `"${process.execPath}" -e "setTimeout(()=>process.exit(${buildFails ? 1 : 0}),${buildDelay})"` : settings[key] ?? fallback }),
+      getConfiguration: () => ({ get: (key: string, fallback: unknown) => {
+        if (key !== "buildCommand") return settings[key] ?? fallback;
+        buildCommandReads++;
+        return buildCommand ?? `"${process.execPath}" -e "setTimeout(()=>process.exit(${buildFails ? 1 : 0}),${buildDelay})"`;
+      } }),
       onWillSaveTextDocument: (listener: typeof willSave) => { willSave = listener; return disposable; },
       onDidSaveTextDocument: (listener: typeof didSave) => { didSave = listener; return disposable; },
       onDidCloseTextDocument: () => disposable, onDidChangeConfiguration: () => disposable, onDidChangeWorkspaceFolders: () => disposable,
@@ -72,6 +79,39 @@ async function main(): Promise<void> {
     }
   };
   try {
+    // The build snapshots source before an explicit filesystem barrier. The
+    // actual runner must serve the latest revision after the barrier opens.
+    const builder = join(root, "build.mjs");
+    writeFileSync(builder, `import { readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
+const revision = readFileSync("src/app.ts", "utf8");
+appendFileSync("builds.txt", "start " + revision + "\\n");
+writeFileSync("started.txt", revision);
+while (!existsSync("release.txt")) await new Promise(resolve => setTimeout(resolve, 10));
+writeFileSync("dist/app.mjs", 'export const application = { name: "revision-" + ' + JSON.stringify(revision) + ', requests: [{ method: "GET", path: "/revision", handle() { return new Response(' + JSON.stringify(revision) + '); } }], dispose() {} };');
+appendFileSync("builds.txt", "finish " + revision + "\\n");`);
+    buildCommand = `"${process.execPath}" "${builder}"`;
+    for (const revisions of [["A", "B"], ["A2", "B2", "C2"]]) {
+      rmSync(join(root, "release.txt"), { force: true });
+      rmSync(join(root, "started.txt"), { force: true });
+      writeFileSync(join(root, "builds.txt"), "");
+      writeFileSync(document.uri.fsPath, revisions[0]!);
+      const initialReads = buildCommandReads;
+      const initialStart = manager.start(folder.uri);
+      await waitFor(() => { try { return readFileSync(join(root, "started.txt"), "utf8") === revisions[0]; } catch { return false; } });
+      writeFileSync(document.uri.fsPath, revisions[1]!); save(1);
+      await waitFor(() => buildCommandReads >= initialReads + 2);
+      for (const revision of revisions.slice(2)) { writeFileSync(document.uri.fsPath, revision); save(1); }
+      writeFileSync(join(root, "release.txt"), "release");
+      assert.equal(await initialStart, false, "Superseded initial build must not start");
+      await waitFor(() => states.at(-1) === "running");
+      assert.ok(manager.currentUrl);
+      const response = await fetch(new URL("/revision", manager.currentUrl));
+      assert.equal(await response.text(), revisions.at(-1), "The running controller must serve the newest saved revision");
+      assert.deepEqual(readFileSync(join(root, "builds.txt"), "utf8").trim().split("\n"), [`start ${revisions[0]}`, `finish ${revisions[0]}`, `start ${revisions.at(-1)}`, `finish ${revisions.at(-1)}`], "Serialize and coalesce builds to the newest pending revision");
+      await manager.stop(folder.uri);
+    }
+    buildCommand = undefined;
+    writeFileSync(app, valid);
     assert.equal(await manager.start(folder.uri), true);
     assert.equal(states.at(-1), "running");
     const beforeAutoSave = output.length;

@@ -125,9 +125,11 @@ try {
     assert.equal((await diagnostics("consumer.ts")).length, 3);
   });
   await check("bundled diagnostics underline authored static candidates and clear on unsaved repair", async () => {
-    const text = 'import { Hson, hsonLiveMap } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;\nconst bad = Hson.document`<html <body/>/>`;\nS.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<html <body/> <head/>/>`, schema: S } });\n';
+    const text = 'import { Hson, hsonLiveMap, type HsonDocument } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;\nconst bad: HsonDocument<typeof S> = Hson.document`<html <body/>/>`;\nS.certify(bad); S.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<html <body/> <head/>/>`, schema: S } });\n';
     await editConsumer(text);
-    const errors = (await diagnostics("consumer.ts")).filter(error => error.code === 95002);
+    const all = await diagnostics("consumer.ts");
+    assert.ok(!all.some(error => error.code === 2322), JSON.stringify(all));
+    const errors = all.filter(error => error.code === 95002);
     assert.equal(errors.length, 2, JSON.stringify(errors));
     assert.ok(errors.some(error => /missing required/.test(error.text)), JSON.stringify(errors));
     assert.ok(errors.some(error => /wrong tag/.test(error.text)), JSON.stringify(errors));

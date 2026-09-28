@@ -327,9 +327,12 @@ try {
     write("base.json", JSON.stringify({ ...base, include: ["./*.ts"] })); current = await next(); passes(); preserve();
   });
   await check("static proof overlays, document mode and refinement evidence share the existing compiler", async () => {
-    write("precision.ts", `import { Hson, type HsonData, type SchemaType } from "hson-live";
+    write("precision.ts", `import { Hson, type HsonData, type HsonDocument, type SchemaType } from "hson-live";
 export const Refined = Hson.schema\`<type "data" content <age <number <int true min 0>>>>\`;
 export const Document = Hson.schema\`<type "document">\`;
+export const Text = Hson.schema\`<type "document" content "string">\`;
+const text: HsonDocument<typeof Text> = Hson.document\`"hello"\`;
+Text.certify(text);
 const data: HsonData<typeof Refined> = Hson.data\`<age 4>\`;
 declare const value: SchemaType<typeof Refined>;
 // @ts-expect-error arithmetic erases the private refinement proof
@@ -342,7 +345,7 @@ void changed; void wrong;
     remove("precision.ts"); current = await next(); passes(); preserve();
   });
   await check("direct certification failures publish authored locations and recover in the next watch publication", async () => {
-    const candidate = (value: string) => `${imports}import { S } from "./schema.js";\nconst page = Hson.data\`<value "${value}">\`;\nS.certify(page);\n`;
+    const candidate = (value: string) => `${imports}import { S } from "./schema.js"; import type { HsonData } from "hson-live";\nconst page: HsonData<typeof S> = Hson.data\`<value "${value}">\`;\nS.certify(page); S.certify(page);\n`;
     write("candidate.ts", candidate("wrong"));
     current = await next();
     assert.equal(current.diagnostics.length, 1);
@@ -351,6 +354,12 @@ void changed; void wrong;
     assert.deepEqual(manifest(current).diagnostics, current.diagnostics);
     preserve();
     write("candidate.ts", candidate("a"));
+    current = await next(); assert.deepEqual(current.diagnostics, []); passes(); preserve();
+    const previousSchema = readFileSync(join(project, "schema.ts"), "utf8");
+    write("schema.ts", imports + schema("S", "changed") + schema("Twin") + schema("B", "b"));
+    current = await next(); assert.equal(current.diagnostics.length, 1);
+    assert.match(current.diagnostics[0]!, /expected.*changed.*received.*a/);
+    write("schema.ts", previousSchema);
     current = await next(); assert.deepEqual(current.diagnostics, []); passes(); preserve();
     remove("candidate.ts"); current = await next(); passes(); preserve();
   });

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { resolve_immutable_schema } from "./schema-identity.js";
 import { read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
 
 export type SchemaSourceEdit = Readonly<{ start: number; end: number; text: string }>;
@@ -177,9 +178,7 @@ function schema_fact(
   checker: ts.TypeChecker,
   schemas: ReadonlyMap<ts.Declaration, PreciseSchemaFact>,
 ): PreciseSchemaFact | undefined {
-  let symbol = checker.getSymbolAtLocation(identifier);
-  if (symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-  return symbol?.declarations?.map(declaration => schemas.get(declaration)).find((fact): fact is PreciseSchemaFact => fact !== undefined);
+  return resolve_immutable_schema(ts, checker, identifier, declaration => schemas.get(declaration));
 }
 
 function tightening_admission(

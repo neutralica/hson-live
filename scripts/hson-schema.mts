@@ -14,11 +14,8 @@ const { compile_hson_schema } = await import(`${runtimeBase}/internal/hson-schem
 const { library_schema_attachment_plan } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
 const { discover_hson_schema_declarations } = await import(`${runtimeBase}/internal/hson-schema/schema-discovery.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-discovery.ts");
 const { static_schema_candidate_diagnostics } = await import(`${runtimeBase}/internal/hson-schema/candidate-diagnostics.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/candidate-diagnostics.ts");
-const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
-const { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } = await import(`${runtimeBase}/internal/canonical-schema/evaluate.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/evaluate.ts");
-const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hson-source-provenance/parse-hson-with-provenance.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-source-provenance/parse-hson-with-provenance.ts");
-const { resolve_projected_schema_issue_source } = await import(`${runtimeBase}/internal/projected-schema-source-lowering/projected-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/projected-schema-source-lowering/projected-schema-source-lowering.ts");
-const { resolve_document_schema_issue_source } = await import(`${runtimeBase}/internal/document-schema-source-lowering/document-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/document-schema-source-lowering/document-schema-source-lowering.ts");
+const { evaluate_static_schema_candidate } = await import(`${runtimeBase}/internal/hson-schema/candidate-evaluation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/candidate-evaluation.ts");
+const { resolve_immutable_schema } = await import(`${runtimeBase}/internal/hson-schema/schema-identity.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-identity.ts");
 
 type Mode = "generate" | "verify" | "check" | "build" | "watch";
 type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.VariableStatement; declaration: ts.VariableDeclaration; tagged: ts.TaggedTemplateExpression; name: string; source: string; compiled: CompiledHsonSchema }>;
@@ -171,9 +168,7 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
       if ((typeName !== "HsonData" && typeName !== "HsonDocument") || !official_binding(declaration.type.typeName, typeName, checker) || declaration.type.typeArguments?.length !== 1 || declaration.initializer === undefined) continue;
       const schemaReference = declaration.type.typeArguments[0];
       if (schemaReference === undefined || !ts.isTypeQueryNode(schemaReference) || !ts.isIdentifier(schemaReference.exprName)) continue;
-      let schemaSymbol = checker.getSymbolAtLocation(schemaReference.exprName);
-      if (schemaSymbol !== undefined && (schemaSymbol.flags & ts.SymbolFlags.Alias) !== 0) schemaSymbol = checker.getAliasedSymbol(schemaSymbol);
-      const schema = schemaSymbol?.declarations?.map(item => byDeclaration.get(item)).find((item): item is SchemaDeclaration => item !== undefined);
+      const schema = resolve_immutable_schema(ts, checker, schemaReference.exprName, item => byDeclaration.get(item));
       if (schema === undefined) continue;
       if (schema_mode(schema) !== (typeName === "HsonData" ? "data" : "document")) {
         diagnostics.push({ file: sourceFile.fileName, start: declaration.type.getStart(), message: `Schema mode does not match ${typeName}.` });
@@ -184,9 +179,12 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
           diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: `Schema-bound ${typeName} requires a direct substitution-free official semantic Hson tag.` });
           continue;
         }
-        const before = diagnostics.length;
-        validate_candidate(schema, raw_template(declaration.initializer.template, sourceFile), sourceFile, declaration.initializer, diagnostics);
-        if (diagnostics.length !== before) continue;
+        const evaluated = evaluate_static_schema_candidate(schema.compiled, { source: raw_template(declaration.initializer.template, sourceFile), family: typeName === "HsonData" ? "data" : "document" });
+        if (evaluated.kind !== "valid") {
+          // Semantic failures are reported once by shared relationship analysis.
+          if (evaluated.kind === "unknown" && evaluated.error !== undefined) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: evaluated.error });
+          continue;
+        }
         overlays.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(sourceFile), end: declaration.initializer.getEnd(), text: `(${declaration.initializer.getText(sourceFile)} as unknown as ${declaration.type.getText(sourceFile)})` });
         count += 1;
         if (schema.compiled.semantic.kind === "document") documentCount += 1;
@@ -201,25 +199,6 @@ function format_ts_diagnostic(diagnostic: ts.Diagnostic): string {
   if (diagnostic.file === undefined || diagnostic.start === undefined) return message;
   const position = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
   return `${diagnostic.file.fileName}:${position.line + 1}:${position.character + 1}: ${message}`;
-}
-
-function validate_candidate(schema: SchemaDeclaration, source: string, sourceFile: ts.SourceFile, node: ts.Node, diagnostics: Diagnostic[]): void {
-  try {
-    const parsed = parse_hson_with_provenance(source);
-    const result = schema.compiled.semantic.kind === "document"
-      ? evaluate_canonical_document_schema(schema.compiled.graph, parsed.value)
-      : evaluate_canonical_projected_schema(schema.compiled.graph, projected_value_from_hson_node(parsed.value));
-    if (!result.ok) {
-      const first = result.issues[0];
-      const resolution = first === undefined ? undefined : schema.compiled.semantic.kind === "document"
-        ? resolve_document_schema_issue_source(parsed.value, "document", parsed.provenance, first)
-        : resolve_projected_schema_issue_source(parsed.value, parsed.provenance, first);
-      const relativeStart = resolution === undefined || resolution.kind === "unresolved" ? 0 : resolution.range.start;
-      diagnostics.push({ file: sourceFile.fileName, start: (ts.isTaggedTemplateExpression(node) ? node.template.getStart() : node.getStart()) + 1 + relativeStart, message: `Static Hson does not satisfy ${schema.name}: ${first?.code ?? "validation failed"} at ${first?.path.join(".") || "root"}.` });
-    }
-  } catch (error) {
-    diagnostics.push({ file: sourceFile.fileName, start: node.getStart(), message: error instanceof Error ? error.message : "Invalid static Hson." });
-  }
 }
 
 function official_binding(identifier: ts.Identifier, expected: "Hson" | "HsonData" | "HsonDocument", checker: ts.TypeChecker): boolean {

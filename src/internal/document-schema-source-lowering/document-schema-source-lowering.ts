@@ -1,12 +1,6 @@
-import { STR_TAG } from "../../core/constants.js";
+import { STR_TAG, ELEM_TAG, ROOT_TAG } from "../../core/constants.js";
 import type { HsonNode } from "../../core/types.js";
-import {
-  InternalDocumentTraversalError,
-  resolve_internal_document_location,
-  type InternalDocumentLogicalEdge,
-  type InternalDocumentLogicalResolution,
-  type InternalDocumentPhysicalAssociation,
-} from "../../api/livemap/livemap.document.logical.js";
+import { is_Node } from "../../core/node-guards.js";
 import type { HsonSchemaIssue } from "../../api/livemap/livemap.error.js";
 import type { LiveMapDocumentMode, LivePath } from "../../types/livemap.types.js";
 import type {
@@ -41,12 +35,12 @@ export type DocumentSchemaSourceResolution =
 type DocumentSchemaSourceIssue = Pick<HsonSchemaIssue, "code" | "path" | "attributeName">;
 
 /**
- * Lower one document-Schema issue through the canonical logical document
- * resolver and onto immutable authored-Hson provenance.
+ * Lower canonical evaluator paths (including the document item index) onto
+ * the exact parsed root used to bind authored-Hson provenance.
  */
 export function resolve_document_schema_issue_source(
   root: HsonNode,
-  mode: LiveMapDocumentMode,
+  _mode: LiveMapDocumentMode,
   provenance: HsonSourceProvenance,
   issue: DocumentSchemaSourceIssue,
 ): DocumentSchemaSourceResolution {
@@ -54,21 +48,25 @@ export function resolve_document_schema_issue_source(
   if (numericPath === undefined) return unresolved(issue.path);
 
   if (issue.attributeName !== undefined) {
-    return resolve_attribute_issue(root, mode, provenance, issue, numericPath, issue.attributeName);
+    return resolve_attribute_issue(root, provenance, issue, numericPath, issue.attributeName);
   }
   if (issue.code === "MISSING_REQUIRED") {
-    return resolve_missing_anchor(root, mode, provenance, issue, numericPath);
+    return resolve_missing_anchor(root, provenance, issue, numericPath);
   }
 
-  const resolution = resolve_logical(root, mode, numericPath);
+  const resolution = resolve_candidate_location(root, numericPath);
   if (resolution === undefined) return unresolved(issue.path);
-  const physicalPath = provenance_path(mode, resolution.physical);
-  if (physicalPath === undefined) return unresolved(issue.path);
+  const physicalPath = resolution.physical;
 
-  if (resolution.kind === "node" && resolution.value.$_tag === STR_TAG) {
+  if (resolution.value.$_tag === STR_TAG) {
     const payloadPath = Object.freeze([...physicalPath, 0]);
     const value = node_range(provenance, payloadPath, "value");
     if (value !== undefined) return exact(issue.path, payloadPath, "value", value);
+  }
+
+  if (issue.code === "INVALID_LITERAL") {
+    const name = node_range(provenance, physicalPath, "name");
+    if (name !== undefined) return exact(issue.path, physicalPath, "name", name);
   }
 
   const coverage = node_range(provenance, physicalPath, "coverage");
@@ -78,16 +76,14 @@ export function resolve_document_schema_issue_source(
 
 function resolve_attribute_issue(
   root: HsonNode,
-  mode: LiveMapDocumentMode,
   provenance: HsonSourceProvenance,
   issue: DocumentSchemaSourceIssue,
   numericPath: readonly number[],
   attributeName: string,
 ): DocumentSchemaSourceResolution {
-  const owner = resolve_logical(root, mode, numericPath);
+  const owner = resolve_candidate_location(root, numericPath);
   if (owner === undefined) return unresolved(issue.path);
-  const ownerPath = provenance_path(mode, owner.physical);
-  if (ownerPath === undefined) return unresolved(issue.path);
+  const ownerPath = owner.physical;
 
   if (issue.code === "MISSING_REQUIRED") {
     return anchor_to_node(provenance, issue.path, issue.path, ownerPath);
@@ -119,17 +115,15 @@ function resolve_attribute_issue(
 
 function resolve_missing_anchor(
   root: HsonNode,
-  mode: LiveMapDocumentMode,
   provenance: HsonSourceProvenance,
   issue: DocumentSchemaSourceIssue,
   numericPath: readonly number[],
 ): DocumentSchemaSourceResolution {
   if (numericPath.length === 0) return unresolved(issue.path);
   const parentPath = Object.freeze([...numericPath.slice(0, -1)]);
-  const parent = resolve_logical(root, mode, parentPath);
+  const parent = resolve_candidate_location(root, parentPath);
   if (parent === undefined) return unresolved(issue.path);
-  const physicalPath = provenance_path(mode, parent.physical);
-  if (physicalPath === undefined) return unresolved(issue.path);
+  const physicalPath = parent.physical;
   return anchor_to_node(provenance, issue.path, parentPath, physicalPath);
 }
 
@@ -155,33 +149,32 @@ function anchor_to_node(
   return unresolved(issuePath);
 }
 
-function resolve_logical(
-  root: HsonNode,
-  mode: LiveMapDocumentMode,
-  path: readonly number[],
-): InternalDocumentLogicalResolution | undefined {
-  const edges: InternalDocumentLogicalEdge[] = path.map((index) => ({ kind: "content", index }));
-  try {
-    return resolve_internal_document_location(root, mode, edges);
-  } catch (cause) {
-    if (cause instanceof InternalDocumentTraversalError) return undefined;
-    throw cause;
-  }
-}
+type CandidateLocation = Readonly<{ value: HsonNode; physical: HsonSourcePath }>;
 
-function provenance_path(
-  mode: LiveMapDocumentMode,
-  physical: InternalDocumentPhysicalAssociation,
-): HsonSourcePath | undefined {
-  const path = physical.kind === "direct" || physical.kind === "carrier"
-    ? physical.path
-    : physical.kind === "facet"
-      ? physical.ownerPath
-      : physical.reason === "empty-element-content"
-        ? physical.ownerPath
-        : undefined;
-  if (path === undefined) return undefined;
-  return Object.freeze([0, ...path]);
+function resolve_candidate_location(root: HsonNode, path: readonly number[]): CandidateLocation | undefined {
+  let value = root;
+  const physical: number[] = [];
+  if (path.length === 0) return { value, physical: Object.freeze(physical) };
+  if (value.$_tag === ROOT_TAG && value.$_content.length === 1 && is_Node(value.$_content[0]) && value.$_content[0].$_tag === ELEM_TAG) {
+    value = value.$_content[0]; physical.push(0);
+  }
+  for (let depth = 0; depth < path.length; depth++) {
+    const index = path[depth]!;
+    if (depth === 0 && value.$_tag !== ELEM_TAG && value.$_tag !== ROOT_TAG) {
+      // An ordinary element is itself the sole document item.
+      if (index !== 0) return undefined;
+      continue;
+    }
+    if (depth > 0) {
+      const cluster = value.$_content[0];
+      if (value.$_content.length !== 1 || !is_Node(cluster) || cluster.$_tag !== ELEM_TAG) return undefined;
+      value = cluster; physical.push(0);
+    }
+    const child = value.$_content[index];
+    if (!is_Node(child)) return undefined;
+    value = child; physical.push(index);
+  }
+  return { value, physical: Object.freeze(physical) };
 }
 
 function node_range(

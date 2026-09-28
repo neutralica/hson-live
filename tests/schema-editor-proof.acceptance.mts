@@ -72,7 +72,13 @@ const invalidRelationalUnique = program_for(mvpConfig, new Map([[mvpConsumer, co
 assert.equal(verified_schema_assignment_ranges(ts, invalidRelationalUnique, mvpConsumer).length, 3);
 assert.equal(filtered_schema_assignment_errors(invalidRelationalUnique, mvpConsumer).length, 1);
 
-console.log(JSON.stringify({ schemaEditorProofAcceptance: "ok", checks: 19 }));
+const failedRange = [{ start: 10, end: 15, failed: true as const }];
+const schemaProof: ts.DiagnosticMessageChain = { messageText: "Types of property '[HSON_SCHEMA_PROOF]' are incompatible.", category: ts.DiagnosticCategory.Error, code: 2326 };
+const assignment = (messageText: string | ts.DiagnosticMessageChain): ts.Diagnostic => ({ file: undefined, start: 10, length: 3, category: ts.DiagnosticCategory.Error, code: 2322, messageText });
+assert.equal(filter_verified_schema_assignment_diagnostics([assignment(schemaProof)], failedRange).length, 0);
+assert.equal(filter_verified_schema_assignment_diagnostics([assignment("Unrelated assignment failure")], failedRange).length, 1);
+assert.equal(filter_verified_schema_assignment_diagnostics([assignment({ messageText: "Assignment failure", category: ts.DiagnosticCategory.Error, code: 2322, next: [schemaProof, { messageText: "Property other is incompatible", category: ts.DiagnosticCategory.Error, code: 2326 }] })], failedRange).length, 1);
+console.log(JSON.stringify({ schemaEditorProofAcceptance: "ok", checks: 22 }));
 
 function program_for(configPath: string, replacements: ReadonlyMap<string, string>): ts.Program {
   const read = ts.readConfigFile(configPath, ts.sys.readFile);
