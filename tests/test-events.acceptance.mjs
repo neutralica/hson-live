@@ -26,7 +26,6 @@ try {
 const records = writes.map((line) => {
   assert.equal(line.startsWith(HSON_TEST_EVENT_PREFIX), true);
   const record = JSON.parse(line.slice(HSON_TEST_EVENT_PREFIX.length));
-  assert.equal("version" in record, false);
   assert.equal("observedChecks" in record, false);
   assert.equal("expectedChecks" in record, false);
   return record;
@@ -95,5 +94,5 @@ assert.deepEqual(
   failingRecords.map((record) => [record.t, record.status].filter((value) => value !== undefined)),
   [["case_begin"], ["diagnostic"], ["case_end", "fail"], ["terminal", "fail"]],
 );
-assert.equal(failingRecords.every((record) => !("count" in record) && !("version" in record)), true);
+assert.equal(failingRecords.every((record) => !("count" in record)), true);
 console.log("test event emitter acceptance passed");

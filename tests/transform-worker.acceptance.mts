@@ -231,10 +231,10 @@ check("untrusted Worker parsing rejects metadata duplicates before htmlparser2",
 
 check("untrusted Worker parsing rejects both authored private transit domains", () => {
   for (const source of [
-    `<main _hson_meta_attr_v2_71756964="${Q1}"/>`,
-    `<main _HSON_META_ATTR_V2_authored="value"/>`,
-    `<main _hson_attr_transit_v1_613a62="value"/>`,
-    `<main _HSON_ATTR_TRANSIT_V1_authored="value"/>`,
+    `<main _hson_meta_attr_71756964="${Q1}"/>`,
+    `<main _HSON_META_ATTR_authored="value"/>`,
+    `<main _hson_attr_transit_613a62="value"/>`,
+    `<main _HSON_ATTR_TRANSIT_authored="value"/>`,
   ]) {
     assert.throws(
       () => hsonTransform.fromUntrustedHtml(source),

@@ -25,8 +25,6 @@ import type {
 } from "./ssr-bootstrap.types.js";
 
 const FORMAT = "hson-ssr-bootstrap" as const;
-const LOCAL_VERSION = 3 as const;
-const HOSTED_PROJECTION_VERSION = 3 as const;
 const DEFAULT_MAX_ENCODED_BYTES = 96 * 1_024 * 1_024;
 const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const BASE64URL_INPUT_CHUNK_BYTES = 24 * 1_024;
@@ -77,7 +75,6 @@ export function encode_ssr_bootstrap(
     const normalized = normalize_bootstrap(bootstrap);
     const json = canonical_json({
       format: FORMAT,
-      version: normalized.kind === "hosted-projection" ? HOSTED_PROJECTION_VERSION : LOCAL_VERSION,
       kind: normalized.kind,
       payload: normalized.payload,
     });
@@ -139,15 +136,12 @@ export function decode_ssr_bootstrap(
   let envelope: Record<string, unknown>;
   try {
     envelope = record(parsed);
-    exact_keys(envelope, ["format", "version", "kind", "payload"]);
+    exact_keys(envelope, ["format", "kind", "payload"]);
   } catch (cause) {
     throw error("decode", "SSR_BOOTSTRAP_PAYLOAD_INVALID", "SSR bootstrap envelope fields are invalid.", cause);
   }
   if (envelope.format !== FORMAT) throw error("decode", "SSR_BOOTSTRAP_FORMAT_UNSUPPORTED", "SSR bootstrap format is unsupported.");
   if (!is_kind(envelope.kind)) throw error("decode", "SSR_BOOTSTRAP_KIND_UNSUPPORTED", "SSR bootstrap kind is unsupported.");
-  if (envelope.version !== (envelope.kind === "hosted-projection" ? HOSTED_PROJECTION_VERSION : LOCAL_VERSION)) {
-    throw error("decode", "SSR_BOOTSTRAP_VERSION_UNSUPPORTED", "SSR bootstrap version is unsupported.");
-  }
 
   let decoded: DecodedSsrBootstrap;
   try { decoded = decode_payload(envelope.kind, envelope.payload); }
@@ -159,7 +153,6 @@ export function decode_ssr_bootstrap(
   try {
     canonical = compare_canonical_json_text({
       format: FORMAT,
-      version: decoded.kind === "hosted-projection" ? HOSTED_PROJECTION_VERSION : LOCAL_VERSION,
       kind: decoded.kind,
       payload: decoded.kind === "hosted-projection" ? decoded.bootstrap : normalize_bootstrap(decoded.bootstrap).payload,
     }, json);
@@ -171,12 +164,12 @@ export function decode_ssr_bootstrap(
 
 function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapKind; payload: unknown }> {
   if (!is_record(bootstrap)) throw new TypeError("Bootstrap must be an object.");
-  if (bootstrap.format === "hson-authority-projection-snapshot-v2") {
+  if (bootstrap.format === "hson-authority-projection-snapshot") {
     return { kind: "hosted-projection", payload: admit_authority_projection_snapshot(bootstrap) };
   }
   if (bootstrap.format === "hson-livemap-libraries-snapshot") {
     if (Object.hasOwn(bootstrap, "authority")) {
-      throw new TypeError("Legacy complete hosted Libraries bootstrap is retired.");
+      throw new TypeError("Local Libraries continuation state must not include authority state.");
     }
     const local = bootstrap as LocalLibrariesContinuationSnapshot;
     assert_local_libraries_snapshot_shape(local);

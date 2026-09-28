@@ -208,19 +208,19 @@ await check("actual socket aggregate bootstrap establishes one projected QUID-fr
   assert.equal(data_library(attached.client.map!, "colors").snap(["accent"]), "#000");
   const sent = attached.pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>);
   assert.equal(sent.some((message) => message.type === "hello"), false);
-  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-message-v8");
+  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-message");
   assert.equal((sent.find((message) => message.type === "recovery-snapshot")?.snapshot as { format: string }).format,
-    "hson-authority-projection-snapshot-v2");
+    "hson-authority-projection-snapshot");
   assert.equal(attached.pair.serverSent.some((raw) => raw.includes("issuedQuids") || raw.includes("identityEpoch")), false);
   server.dispose();
 });
 
-await check("retired hosted client socket format rejects", async () => {
+await check("a commit or wire discriminator cannot identify a hosted socket message", async () => {
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(make_map()), map: make_map() });
   const pair = socket_pair();
   server.connect(pair.server);
   pair.before_server_delivery((message) => message.type === "recovery-snapshot"
-    ? { ...message, format: "hson-locus-hosted-client-commit-v1" }
+    ? { ...message, format: "hson-locus-live-projected-client-wire" }
     : message);
   const endpoint = create_echo_socket_client_internal({
     socket: pair.client,
@@ -380,7 +380,7 @@ await check("aggregate action rejects generated QUID content before authority ad
     library: "page",
     target: { kind: "path", path: [0] },
     index: 0,
-    content: { format: "hson-graph-portable-v1", payload: exact.payload },
+    content: { format: "hson-graph-portable", payload: exact.payload },
   });
   assert.equal(result.type, "error");
   assert.deepEqual(internal_livemap_aggregate_authority(map).captureHosted(), before);

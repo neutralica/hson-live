@@ -75,7 +75,7 @@ for (const strategy of ["replay", "snapshot"] as const) {
   assert.equal("document" in globalThis, false);
   assert.equal(snapshot.htmlDocument, null);
   assert.equal("html" in snapshot, false);
-  assert.equal(snapshot.format, "hson-authority-projection-snapshot-v2");
+  assert.equal(snapshot.format, "hson-authority-projection-snapshot");
   assert.equal(snapshot.revision, 1);
   assert.deepEqual(snapshot.authority, { logicalMapId: locus.logicalMapId, incarnationId: locus.incarnationId });
   assert.deepEqual(snapshot.libraries.map((entry) => entry.name), ["visible"]);

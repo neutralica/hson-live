@@ -154,7 +154,7 @@ check("failed admission leaves revision, registry, observers and identity alone"
   child.$_meta = { quid: "000009111" };
   const bad: unknown[] = [
     { existing: { data: 2 } },
-    { "@hson/canonical-interactions/v1": { data: {} } },
+    { "@hson/canonical-interactions": { data: {} } },
     { invalid: { data: undefined } },
     { wrong: { data: 1, schema: ANY_DOCUMENT } },
     { wrong: { document: "<main/>", schema: ANY_DATA } },

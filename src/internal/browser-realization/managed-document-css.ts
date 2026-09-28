@@ -30,7 +30,7 @@ export function plan_managed_document_css(plan: BrowserRealizationPlan, css: str
   }
   const derivedStyle: BrowserRealizationNode = Object.freeze({
     kind: "wrapper", path: "managed-document-css", namespace: "html", localName: "style",
-    attrs: Object.freeze([{ name: MANAGED_DOCUMENT_CSS_MARKER, value: "v1" }]),
+    attrs: Object.freeze([{ name: MANAGED_DOCUMENT_CSS_MARKER, value: "managed" }]),
     children: Object.freeze([{ kind: "text" as const, path: "managed-document-css.text", value: css,
       parserContext: "rawtext" as const }]),
     childTarget: "element", parserContext: "ordinary",

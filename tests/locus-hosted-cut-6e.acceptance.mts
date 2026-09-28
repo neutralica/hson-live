@@ -96,7 +96,7 @@ assert.equal(rendered.html, cut.html);
 assert.equal(rendered.bootstrap.projectionDigest, cut.projectionDigest);
 const wire = encode_ssr_bootstrap(cut.data);
 const raw = Buffer.from(wire, "base64url").toString("utf8");
-assert.equal(JSON.parse(raw).version, 3);
+assert.deepEqual(Object.keys(JSON.parse(raw)).sort(), ["format", "kind", "payload"]);
 assert.equal(JSON.parse(raw).kind, "hosted-projection");
 const decoded = decode_ssr_bootstrap(wire);
 assert.equal(decoded.kind, "hosted-projection");

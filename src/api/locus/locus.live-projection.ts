@@ -10,8 +10,8 @@ import { interaction_schema_internal, project_interaction_state_internal } from 
 import type { LocusEffectiveProjection } from "./locus.projection.js";
 
 /** Session-projected commit contract for visible authority effects. */
-export const LOCUS_LIVE_PROJECTED_COMMIT_FORMAT = "hson-locus-live-projected-client-commit-v4" as const;
-export const LOCUS_LIVE_PROJECTED_WIRE_FORMAT = "hson-locus-live-projected-client-wire-v4" as const;
+export const LOCUS_LIVE_PROJECTED_COMMIT_FORMAT = "hson-locus-live-projected-client-commit" as const;
+export const LOCUS_LIVE_PROJECTED_WIRE_FORMAT = "hson-locus-live-projected-client-wire" as const;
 
 export type LocusLiveProjectedCommit = Readonly<{
   format: typeof LOCUS_LIVE_PROJECTED_COMMIT_FORMAT;
@@ -53,7 +53,7 @@ function exact_record(value: unknown, keys: readonly string[]): Record<string, u
   return result;
 }
 
-/** Admit the versioned live envelope before handing operations to LiveMap's full codec. */
+/** Admit the current live envelope before handing operations to LiveMap's full codec. */
 export function decode_locus_live_projected_envelope_internal(
   input: unknown,
   expected: Readonly<{ logicalMapId: string; incarnationId: string; registryDigest: string }>,
@@ -76,7 +76,7 @@ export function decode_locus_live_projected_envelope_internal(
     || (!topology && commit.registryDigest !== expected.registryDigest)) {
     throw new Error("Projected live commit fence is incompatible.");
   }
-  return Object.freeze({ ...commit, format: "hson-portable-aggregate-commit-v2" }) as PortableAggregateCommit;
+  return Object.freeze({ ...commit, format: "hson-portable-aggregate-commit" }) as PortableAggregateCommit;
 }
 
 /** Pure per-revision projection. Later replay can supply the same before/after cuts. */

@@ -120,12 +120,12 @@ try {
   const cssMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
   cssMap.lib("page").css.sel("body").set.margin("0");
   const cssRoot = new DOMParser().parseFromString(cssMap.render("page"), "text/html").documentElement;
-  const cssStyle = cssRoot.querySelector('style[data-hson-managed-document-css="v1"]');
+  const cssStyle = cssRoot.querySelector('style[data-hson-managed-document-css="managed"]');
   const cssBefore = cssStyle.textContent;
   const cssObserver = new MutationObserver(() => {});
   cssObserver.observe(cssRoot, { subtree: true, childList: true, characterData: true, attributes: true });
   const cssContinuation = continue_document({ map: cssMap, document: cssMap.lib("page"), root: cssRoot });
-  check("CSS continuation adopts existing managed style without a write", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+  check("CSS continuation adopts existing managed style without a write", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssStyle.textContent === cssBefore && cssObserver.takeRecords().length === 0);
   cssObserver.disconnect();
   const cssBeforeGlobalRev = cssMap.rev;
@@ -144,7 +144,7 @@ try {
   check("bound rule removal is one semantic map transition", cssMap.rev === cssRemoveRev + 1
     && !cssMap.lib("page").css.get("sel:body")?.includes("padding"));
   cssMap.lib("page").css.stylesheet("body { color: blue; }");
-  check("page CSS updates adopted style and bound reads", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+  check("page CSS updates adopted style and bound reads", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssStyle.textContent === cssMap.lib("page").css.snapshot()
     && cssContinuation.tree.css.global.list().includes("stylesheet:1"));
   const ingressRev = cssMap.rev;
@@ -159,14 +159,14 @@ try {
     && cssContinuation.tree.css.global.atProperty.has("--phase")
     && cssContinuation.tree.css.global.keyframes.has("phase"));
   cssMap.restore(cssCapture);
-  check("restore converges the same managed style", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+  check("restore converges the same managed style", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssStyle.textContent === cssMap.lib("page").css.snapshot()
     && !cssContinuation.tree.css.global.keyframes.has("phase"));
   cssMap.lib("page").css.clearAll();
   check("clearAll removes empty managed realization", cssRoot.querySelector('style[data-hson-managed-document-css]') === null
     && cssContinuation.tree.css.global.list().length === 0);
   cssMap.lib("page").css.sel("body").set.margin("1px");
-  check("CSS added after an empty state creates one managed realization", cssRoot.querySelectorAll('style[data-hson-managed-document-css="v1"]').length === 1
+  check("CSS added after an empty state creates one managed realization", cssRoot.querySelectorAll('style[data-hson-managed-document-css="managed"]').length === 1
     && cssRoot.querySelector('style[data-hson-managed-document-css]').textContent === cssMap.lib("page").css.snapshot());
   cssContinuation.dispose();
   const reboundLocalStyle = cssRoot.querySelector('style[data-hson-managed-document-css]');
@@ -198,18 +198,18 @@ try {
   };
   rejectCss("missing managed style fails adoption", (root) => root.querySelector('style[data-hson-managed-document-css]').remove());
   rejectCss("duplicate managed style fails adoption", (root) => root.querySelector("head").appendChild(root.querySelector('style[data-hson-managed-document-css]').cloneNode(true)));
-  rejectCss("wrong marker fails adoption", (root) => root.querySelector("style").setAttribute("data-hson-managed-document-css", "v2"));
+  rejectCss("wrong marker fails adoption", (root) => root.querySelector("style").setAttribute("data-hson-managed-document-css", "unowned"));
   rejectCss("wrong style location fails adoption", (root) => root.querySelector("body").appendChild(root.querySelector("style")));
   rejectCss("wrong CSS text fails adoption", (root) => { root.querySelector("style").textContent = "body{color:blue;}"; });
   rejectCss("extra forged managed style fails adoption", (root) => {
     const forged = root.ownerDocument.createElement("style");
-    forged.setAttribute("data-hson-managed-document-css", "v1");
+    forged.setAttribute("data-hson-managed-document-css", "managed");
     root.querySelector("body").appendChild(forged);
   });
   const emptyCssMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
   const staleRoot = new DOMParser().parseFromString(emptyCssMap.render("page"), "text/html").documentElement;
   const stale = staleRoot.ownerDocument.createElement("style");
-  stale.setAttribute("data-hson-managed-document-css", "v1");
+  stale.setAttribute("data-hson-managed-document-css", "managed");
   staleRoot.querySelector("head").appendChild(stale);
   let staleFailure;
   try { continue_document({ map: emptyCssMap, root: staleRoot }); } catch (cause) { staleFailure = cause; }
@@ -218,7 +218,7 @@ try {
   const emptyStartRoot = new DOMParser().parseFromString(emptyCssMap.render("page"), "text/html").documentElement;
   const emptyStartContinuation = continue_document({ map: emptyCssMap, root: emptyStartRoot });
   emptyCssMap.lib("page").css.sel("body").set.color("green");
-  check("first post-continuation CSS commit creates managed style", emptyStartRoot.querySelectorAll('style[data-hson-managed-document-css="v1"]').length === 1
+  check("first post-continuation CSS commit creates managed style", emptyStartRoot.querySelectorAll('style[data-hson-managed-document-css="managed"]').length === 1
     && emptyStartRoot.querySelector("style").textContent === emptyCssMap.lib("page").css.snapshot());
   emptyStartContinuation.dispose();
 
@@ -316,13 +316,13 @@ try {
   const librariesButton = librariesRoot.firstElementChild;
   const decodedHostedLibraries = decode_ssr_bootstrap(state.encoded.libraries);
   check("browser hosted Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHostedLibraries.bootstrap) === state.encoded.libraries);
-  check("hosted carrier is the projected v4 family", decodedHostedLibraries.kind === "hosted-projection");
+  check("hosted carrier is the projected hosted family", decodedHostedLibraries.kind === "hosted-projection");
   const librariesMap = hson.liveMap.fromClientSnapshot({ authority: decodedHostedLibraries.bootstrap, localLibraries: {} });
   check("aggregate client map starts at its local revision", librariesMap.rev === 0);
   check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.revision === state.libraries.bootstrap.revision);
   check("aggregate install restores included Libraries", librariesMap.lib("admin").mode === "document" && librariesMap.lib("state").mode !== "document");
   let hiddenUnavailable = false;
-  try { librariesMap.lib("@hson/canonical-interactions/v1"); } catch { hiddenUnavailable = true; }
+  try { librariesMap.lib("@hson/canonical-interactions"); } catch { hiddenUnavailable = true; }
   check("hidden interaction Library remains unavailable", hiddenUnavailable);
   const librariesSocket = create_browser_locus_socket(state.librariesSocketUrl);
   await librariesSocket.ready;
@@ -377,7 +377,7 @@ try {
   document.body.appendChild(cssFrame);
   await new Promise((resolve) => { cssFrame.onload = resolve; cssFrame.srcdoc = state.cssCut.html; });
   const hostedCssRoot = cssFrame.contentDocument.documentElement;
-  const hostedStyle = hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]');
+  const hostedStyle = hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]');
   const hostedTarget = hostedCssRoot.querySelector("#hosted-css-target");
   check("hosted CSS cut styles a browser without JavaScript", hostedStyle !== null
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(1, 2, 3)");
@@ -393,12 +393,12 @@ try {
   await cssEcho.session.reattach();
   const cssContinued = await continue_hosted_document({ echo: cssEcho, authority: cssBootstrap.bootstrap,
     document: cssEcho.map.lib("page"), root: hostedCssRoot });
-  check("hosted CSS replay updates adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+  check("hosted CSS replay updates adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(4, 5, 6)");
   const authoredCssRev = cssClientMap.rev;
   await cssContinued.tree.async.css.global.sel("#hosted-css-target").setProp("color", "rgb(10, 11, 12)");
   check("hosted async CSS authoring converges through Echo", cssClientMap.rev === authoredCssRev + 1
-    && hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+    && hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(10, 11, 12)");
   const cssTargetTree = cssContinued.tree.find.must.byTag("p");
   cssTargetTree.css.set.opacity(0.7);
@@ -408,13 +408,13 @@ try {
   for (let attempt = 0; attempt < 50 && cssFrame.contentWindow.getComputedStyle(hostedTarget).color !== "rgb(7, 8, 9)"; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  check("later authority CSS mutation updates the same adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+  check("later authority CSS mutation updates the same adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(7, 8, 9)");
   await cssContinued.tree.async.css.global.clearAll();
   check("hosted CSS clear removes the managed realization", hostedCssRoot.querySelector('style[data-hson-managed-document-css]') === null
     && cssEcho.map.lib("page").css.snapshot() === "");
   await cssContinued.tree.async.css.global.stylesheet("/* RAW_SOURCE_SENTINEL */ #hosted-css-target { color: rgb(13, 14, 15) !important; }");
-  const recreatedStyle = hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]');
+  const recreatedStyle = hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]');
   check("hosted stylesheet ingress realizes one parsed semantic style", recreatedStyle !== null
     && hostedCssRoot.querySelectorAll('style[data-hson-managed-document-css]').length === 1
     && !cssEcho.map.lib("page").css.snapshot().includes("RAW_SOURCE_SENTINEL")

@@ -17,7 +17,7 @@ export type OperatorResult = Readonly<{
 }>;
 export type DeterministicLiveMapOperator = Readonly<{
   id: string;
-  reproductionId: `livemap-operator-v1/${string}`;
+  reproductionId: `livemap-operator/${string}`;
   group: OperatorGroup;
   name: string;
   rule: string;
@@ -49,7 +49,7 @@ export function operator(
   id: string, group: OperatorGroup, name: string, rule: string,
   applicability: string, expected: OperatorClassification, run: () => OperatorResult,
 ): DeterministicLiveMapOperator {
-  return Object.freeze({ id, reproductionId: `livemap-operator-v1/${id}`, group, name, rule, applicability, expected, run });
+  return Object.freeze({ id, reproductionId: `livemap-operator/${id}`, group, name, rule, applicability, expected, run });
 }
 export function own_record(entries: readonly (readonly [string, unknown])[], prototype: object | null = Object.prototype): Record<string, JsonValue> {
   const value = Object.create(prototype) as Record<string, JsonValue>;
@@ -144,7 +144,7 @@ export function assert_operator(operator: DeterministicLiveMapOperator): Operato
   const second = operator.run();
   assert.equal(first.classification, operator.expected);
   assert.deepEqual(second, first);
-  assert.equal(operator.reproductionId, `livemap-operator-v1/${operator.id}`);
+  assert.equal(operator.reproductionId, `livemap-operator/${operator.id}`);
   assert.notEqual(operator.applicability.length, 0);
   return first;
 }

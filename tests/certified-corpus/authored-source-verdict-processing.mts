@@ -319,7 +319,6 @@ export function processCurrentWorksheet(): ProcessedWorksheet {
 
 export function renderLedger(processed: ProcessedWorksheet): string {
   const ledger = {
-    schemaVersion: 2,
     artifactKind: "authored-hson-source-verdict-ledger",
     scope: "amendment-aware human-reviewed authored-language membership only",
     inputBinding: {

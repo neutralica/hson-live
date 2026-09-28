@@ -164,12 +164,12 @@ check("Transform HTML egress omits protected QUID metadata", () => {
     `<button data-_index="ordinary" data-_quid="application" data-kind="action" id="save"></button>`,
   );
   assert.equal(occurrences(wire, "hson:quid="), 0);
-  assert.doesNotMatch(wire, /_hson_meta_attr_v2_/);
+  assert.doesNotMatch(wire, /_hson_meta_attr_/);
 
   const arrayWire = hson.fromJson([{}]).toHtml().serialize();
   assert.match(arrayWire, /hson:index="0"/);
   assert.doesNotMatch(arrayWire, /data-_index/);
-  assert.doesNotMatch(arrayWire, /_hson_meta_attr_v2_/);
+  assert.doesNotMatch(arrayWire, /_hson_meta_attr_/);
 });
 
 check("HTML egress rejects malformed and VSN-hosted identity", () => {

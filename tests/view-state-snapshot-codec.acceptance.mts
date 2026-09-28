@@ -237,7 +237,6 @@ check("exact codec round-trips nested identity but public restore rejects those 
   ));
   const { encoded, decoded } = round_trip(capture);
   assert.equal(encoded.format, "view-state");
-  assert.equal(Object.hasOwn(encoded, "formatVersion"), false);
   assert.notEqual(decoded.root.$_content[0], capture.root.$_content[0]);
 
   const schema = Hson.schema`<type "document" tag "aside" content "empty">`;
@@ -528,14 +527,14 @@ check("non-finite numbers are rejected with sanitized controlled errors", () => 
   }
 });
 
-check("unknown formats and removed generation fields reject before payload parsing", () => {
+check("unknown formats and unexpected fields reject before payload parsing", () => {
   expect_codec_error(
-    () => decode_view_state_snapshot(unsafe_encoding({ format: "other", formatVersion: 2, payload: "secret <" })),
+    () => decode_view_state_snapshot(unsafe_encoding({ format: "other", payload: "secret <" })),
     "VIEW_STATE_SNAPSHOT_FORMAT_UNKNOWN",
     "secret",
   );
   expect_codec_error(
-    () => decode_view_state_snapshot(unsafe_encoding({ format: "view-state", formatVersion: 1, payload: "secret <" })),
+    () => decode_view_state_snapshot(unsafe_encoding({ format: "view-state", extra: true, payload: "secret <" })),
     "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
     "secret",
   );
@@ -553,10 +552,6 @@ check("syntax and explicit representation failures remain classified and sanitiz
 
   expect_codec_error(
     () => decode_view_state_snapshot(encoding_with_payload({ ...base, unexpected: true })),
-    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
-  );
-  expect_codec_error(
-    () => decode_view_state_snapshot(encoding_with_payload({ ...base, captureVersion: 2 })),
     "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
   );
   expect_codec_error(

@@ -60,7 +60,7 @@ export function bind_document_css_tree(
         node.nodeType === 1 && (node as Element).localName === "head");
       if (head === undefined) throw new Error("Document CSS realization lost its explicit head.");
       style = head.ownerDocument.createElement("style");
-      style.setAttribute(MANAGED_DOCUMENT_CSS_MARKER, "v1");
+      style.setAttribute(MANAGED_DOCUMENT_CSS_MARKER, "managed");
       style.textContent = next;
       const runtimeHost = Array.from(head.childNodes).find(is_runtime_infrastructure);
       head.insertBefore(style, runtimeHost ?? null);

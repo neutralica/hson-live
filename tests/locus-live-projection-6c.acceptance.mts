@@ -176,7 +176,7 @@ const visibleInteraction = deliver(observed);
 assert.equal(visibleInteraction.a.kind, "commit");
 assert.equal(visibleInteraction.b.kind, "progress");
 if (visibleInteraction.a.kind === "commit") {
-  assert.deepEqual(visibleInteraction.a.commit.operations.map((entry) => entry.library), ["@hson/canonical-interactions/v1"]);
+  assert.deepEqual(visibleInteraction.a.commit.operations.map((entry) => entry.library), ["@hson/canonical-interactions"]);
   assert.ok(JSON.stringify(visibleInteraction.a).includes("VISIBLE_INTERACTION_SENTINEL"));
 }
 observed = undefined;
@@ -241,9 +241,9 @@ if (atomicA.kind === "commit") {
     registryDigest: atomicA.commit.registryDigest, commit: atomicA.commit };
   const priorRev = clientA.rev;
   const priorValue = dataA.snap(["value"]);
-  const oldVersion = JSON.parse(JSON.stringify(wire));
-  oldVersion.commit.format = "hson-portable-aggregate-commit-v2";
-  assert.throws(() => decode_locus_live_projected_envelope_internal(oldVersion, {
+  const wrongRole = JSON.parse(JSON.stringify(wire));
+  wrongRole.commit.format = "hson-portable-aggregate-commit";
+  assert.throws(() => decode_locus_live_projected_envelope_internal(wrongRole, {
     ...selectedA.authority, registryDigest: atomicA.commit.registryDigest,
   }));
   const hostile = JSON.parse(JSON.stringify(wire));

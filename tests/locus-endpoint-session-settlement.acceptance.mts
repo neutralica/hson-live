@@ -68,7 +68,7 @@ function aggregate_message(message: Record<string, unknown>): Record<string, unk
 const malformedCreated: Array<readonly [string, (reply: Record<string, unknown>) => void]> = [
   ["missing format", (reply) => { delete reply.format; }],
   ["wrong format", (reply) => { reply.format = "unrecognized"; }],
-  ["stale format", (reply) => { reply.format = "hson-locus-hosted-aggregate-message-v7"; }],
+  ["invalid format", (reply) => { reply.format = "unknown-message-format"; }],
   ["invalid format type", (reply) => { reply.format = 8; }],
   ["extra field", (reply) => { reply.extra = true; }],
 ];

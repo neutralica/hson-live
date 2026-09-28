@@ -47,8 +47,8 @@ async function host(adapter: MemoryCheckpointAdapter, logicalMapId: string) {
 
 function active(adapter: MemoryCheckpointAdapter, id: string): LocusHostedAggregatePersistedManifest {
   const checkpoint = adapter.state(id)?.checkpoint;
-  assert.equal(checkpoint?.format, "hson-locus-durable-aggregate-checkpoint-v3");
-  if (checkpoint?.format !== "hson-locus-durable-aggregate-checkpoint-v3") throw new Error("Expected v2 checkpoint.");
+  assert.equal(checkpoint?.format, "hson-locus-durable-aggregate-checkpoint");
+  if (checkpoint?.format !== "hson-locus-durable-aggregate-checkpoint") throw new Error("Expected a durable aggregate checkpoint.");
   return checkpoint;
 }
 
@@ -56,18 +56,6 @@ async function case_(name: string, run: () => Promise<void>) {
   await run();
   process.stdout.write(`ok - ${name}\n`);
 }
-
-await case_("v1 checkpoint rejects as unsupported", async () => {
-  const adapter = new MemoryCheckpointAdapter();
-  const map = make_map();
-  const authority = internal_livemap_aggregate_authority(map);
-  authority.setInitialHostedAuthority({ logicalMapId: "z3b-v1", incarnationId: "z3b-v1-inc" });
-  const old = { format: "hson-locus-durable-aggregate-checkpoint-v1", logicalMapId: "z3b-v1",
-    incarnationId: "z3b-v1-inc", mapKind: "hosted-aggregate", registryDigest: authority.captureHosted().registryDigest,
-    rev: 0, snapshot: authority.captureHosted() };
-  adapter.seed("z3b-v1", { checkpoint: old, commits: [] } as unknown as import("../src/api/locus/locus.aggregate.persistence.ts").LocusHostedAggregatePersistedState);
-  await assert.rejects(() => host(adapter, "z3b-v1"), /invalid/i);
-});
 
 await case_("empty authority checkpoint restores without a placeholder library", async () => {
   const adapter = new MemoryCheckpointAdapter();
@@ -159,7 +147,7 @@ await case_("two data and two document libraries retain system interactions and 
   assert.equal(restored.map.lib("pageA").mode, "document");
   assert.ok(JSON.stringify(restored.map.lib("pageB").root()).includes("continued"));
   const authority = internal_livemap_aggregate_authority(restored.map);
-  const system = authority.systemState("@hson/canonical-interactions/v1");
+  const system = authority.systemState("@hson/canonical-interactions");
   assert.ok(system);
   assert.ok(JSON.stringify(authority.systemRoot(system)).includes("z3b-click"));
   restored.dispose();
@@ -288,9 +276,9 @@ await case_("missing and corrupt chunks, bad descriptors, schema and tail gaps f
   await mutateManifest((copy) => { copy.rev += 1; });
   await mutateManifest((copy) => { copy.registry.libraries[0].schemaDigest = "0".repeat(64); });
   const gap = structuredClone(valid) as any;
-  gap.commits = [{ format: "hson-locus-durable-aggregate-record-v2", logicalMapId: id,
+  gap.commits = [{ format: "hson-locus-durable-aggregate-record", logicalMapId: id,
     incarnationId: manifest.incarnationId, mapKind: "hosted-aggregate", registryDigest: manifest.registryDigest,
-    commit: { format: "hson-livemap-durable-commit-v2", authority: { logicalMapId: id,
+    commit: { format: "hson-livemap-durable-commit", authority: { logicalMapId: id,
       incarnationId: manifest.incarnationId }, registryDigest: manifest.registryDigest,
       prevRev: manifest.rev + 1, rev: manifest.rev + 2, operations: [] } }];
   adapter.seed(id, gap);

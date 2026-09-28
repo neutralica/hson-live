@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 
-import { LOCAL_HOST_PROTOCOL_VERSION, parse_local_host_stop_request, type LocalHostChildMessage } from "./local-host-protocol.js";
+import { parse_local_host_stop_request, type LocalHostChildMessage } from "./local-host-protocol.js";
 
 type RunnerConfig = Readonly<{
   projectId: string;
@@ -43,7 +43,7 @@ function send(message: LocalHostChildMessage): void {
 function fail(phase: Extract<LocalHostChildMessage, { type: "failure" }>["phase"], error: unknown): void {
   if (finished) return;
   const message = error instanceof Error ? error.stack ?? error.message : String(error);
-  send({ protocolVersion: LOCAL_HOST_PROTOCOL_VERSION, type: "failure", projectId: config?.projectId ?? "unknown", phase, message });
+  send({ type: "failure", projectId: config?.projectId ?? "unknown", phase, message });
   process.exitCode = 1;
 }
 
@@ -69,7 +69,7 @@ function shutdown(): Promise<void> {
       fail("shutdown", error);
     } finally {
       finished = true;
-      if (config !== undefined) send({ protocolVersion: LOCAL_HOST_PROTOCOL_VERSION, type: "stopped", projectId: config.projectId });
+      if (config !== undefined) send({ type: "stopped", projectId: config.projectId });
       if (process.connected) process.disconnect?.();
       setImmediate(() => process.exit(process.exitCode ?? 0));
     }
@@ -87,7 +87,7 @@ process.once("unhandledRejection", error => { fail("runtime", error); request_st
 
 async function main(): Promise<void> {
   config = parse_config(process.argv[2]);
-  send({ protocolVersion: LOCAL_HOST_PROTOCOL_VERSION, type: "starting", projectId: config.projectId, applicationEntry: config.applicationEntry, nodeVersion: process.versions.node });
+  send({ type: "starting", projectId: config.projectId, applicationEntry: config.applicationEntry, nodeVersion: process.versions.node });
 
   let liveHostNode: LiveHostNodeModule;
   try {
@@ -120,13 +120,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  send({ protocolVersion: LOCAL_HOST_PROTOCOL_VERSION, type: "hello", projectId: config.projectId, applicationNames: applications.map(application => application.name), hsonLiveVersion: config.hsonLiveVersion, nodeVersion: process.versions.node });
+  send({ type: "hello", projectId: config.projectId, applicationNames: applications.map(application => application.name), hsonLiveVersion: config.hsonLiveVersion, nodeVersion: process.versions.node });
   if (stopping) return;
   try {
     applicationOwnership = "host";
     host = await liveHostNode.start_node_application_host({ host: "127.0.0.1", port: config.port, applications });
     if (stopping) return;
-    send({ protocolVersion: LOCAL_HOST_PROTOCOL_VERSION, type: "ready", projectId: config.projectId, httpUrl: host.httpUrl, port: host.port });
+    send({ type: "ready", projectId: config.projectId, httpUrl: host.httpUrl, port: host.port });
   } catch (error) {
     applicationOwnership = "none";
     fail("hosting", is_record(error) && error.code === "EADDRINUSE"

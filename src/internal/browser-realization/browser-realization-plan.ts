@@ -63,7 +63,6 @@ export type BrowserRealizationNode =
   | BrowserRealizationWrapper;
 
 export type BrowserRealizationPlan = Readonly<{
-  version: 1;
   fingerprint: string;
   parentNamespace: BrowserNamespace;
   parserClosure: "not-required" | "verified";
@@ -172,7 +171,7 @@ const SVG_HTML_BREAKOUT_STARTS = new Set([
 const SCOPE_BOUNDARIES = new Set(["applet", "caption", "html", "marquee", "object", "table", "td", "th", "template"]);
 const BUTTON_SCOPE_BOUNDARIES = new Set([...SCOPE_BOUNDARIES, "button"]);
 const LIST_ITEM_SCOPE_BOUNDARIES = new Set([...SCOPE_BOUNDARIES, "ol", "ul"]);
-const RAWTEXT_HOSTS_OUTSIDE_VERSION_ONE = new Set(["iframe", "noembed", "noframes", "xmp"]);
+const UNSUPPORTED_RAWTEXT_HOSTS = new Set(["iframe", "noembed", "noframes", "xmp"]);
 
 const TABLE_DIRECT_ALLOWED = new Set([
   "caption", "colgroup", "thead", "tbody", "tfoot", "tr", "script", "style", "template",
@@ -195,7 +194,6 @@ export function plan_browser_realization(
   const fingerprint = browser_realization_fingerprint(value, parentNamespace);
   const roots = plan_atoms(flatten_value(value, "0"), parentNamespace, "ordinary", fingerprint, undefined, capability);
   const plan: BrowserRealizationPlan = Object.freeze({
-    version: 1,
     fingerprint,
     parentNamespace,
     parserClosure: capability === "ssr" ? "verified" : "not-required",
@@ -344,13 +342,13 @@ function plan_atomic(
 ): BrowserRealizationNode[] {
   for (const atom of atoms) {
     if (atom.kind === "element-atom") {
-      throw incompatible("parser-atomic elements cannot contain canonical element cuts in version one", atom.path);
+      throw incompatible("parser-atomic elements cannot contain canonical element cuts", atom.path);
     }
   }
   const texts = atoms.filter((atom): atom is TextAtom => atom.kind === "text-atom");
   if (texts.length === 0) return [];
   if (texts.length !== 1) {
-    throw incompatible("parser-atomic content supports at most one canonical text leaf in version one", texts[1]?.path ?? "0");
+    throw incompatible("parser-atomic content supports at most one canonical text leaf", texts[1]?.path ?? "0");
   }
   const text = texts[0]!;
   if (text.value === "") {
@@ -452,7 +450,7 @@ function validate_document_structure(
 
 type ParserElement = BrowserRealizationElement | BrowserRealizationWrapper;
 
-/** Verify the deliberately conservative version-one HTML-parser-stable domain. @internal */
+/** Verify the conservative HTML-parser-stable domain. @internal */
 export function assert_browser_realization_parser_closed(plan: BrowserRealizationPlan): void {
   for (const root of plan.roots) {
     if (root.kind !== "element" && root.kind !== "wrapper") continue;
@@ -518,7 +516,7 @@ function validate_parser_element(
   validate_table_family_parent(name, parentName, element.path);
 
   if (name === "image" || name === "math" || name === "frameset" || name === "frame" || name === "isindex" || name === "keygen") {
-    throw incompatible(`<${name}> has parser-special namespace or token handling outside version one`, element.path);
+    throw incompatible(`<${name}> has parser-special namespace or token handling outside the supported domain`, element.path);
   }
   if (name === "plaintext") {
     throw incompatible("<plaintext> cannot be closed by HTML source", element.path);
@@ -526,8 +524,8 @@ function validate_parser_element(
   if (name === "noscript") {
     throw incompatible("<noscript> parsing depends on the native scripting flag", element.path);
   }
-  if (RAWTEXT_HOSTS_OUTSIDE_VERSION_ONE.has(name) && element.children.length !== 0) {
-    throw incompatible(`<${name}> parser-atomic content is outside version-one shared-run support`, element.path);
+  if (UNSUPPORTED_RAWTEXT_HOSTS.has(name) && element.children.length !== 0) {
+    throw incompatible(`<${name}> parser-atomic content is outside supported shared-run content`, element.path);
   }
 
   if (P_IMPLIED_END_STARTS.has(name) && has_scoped_ancestor(ancestors, "p", BUTTON_SCOPE_BOUNDARIES)) {
@@ -702,7 +700,7 @@ function marker_node(
   return Object.freeze({
     kind: "marker",
     markerKind: kind,
-    value: `hson-boundary:v1:${fingerprint}:${markerName}:${ordinal}`,
+    value: `hson-boundary:${fingerprint}:${markerName}:${ordinal}`,
     path,
     ...(canonicalNode === undefined ? {} : { canonicalNode }),
   });

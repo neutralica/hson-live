@@ -90,7 +90,7 @@ try {
   assert.equal(property("display"), "grid");
   assert.equal(property("color"), "rgb(0, 0, 255)");
   const { nodeIds: managed } = await send("DOM.querySelectorAll", {
-    nodeId: root.nodeId, selector: "style[data-hson-managed-document-css='v1']",
+    nodeId: root.nodeId, selector: "style[data-hson-managed-document-css='managed']",
   });
   assert.equal(managed.length, 1);
   console.log("Document CSS native Chrome/no-JavaScript acceptance passed.");

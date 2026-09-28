@@ -317,7 +317,6 @@ export async function packageCurrentSource(options) {
     const source = await sourceInputAuthority(extensionRoot, await sourceMapsFromVsix(temporaryVsix));
     const git = await gitIdentity(repositoryRoot, runner);
     const authority = {
-      schemaVersion: 1,
       extension: { id: EXTENSION_ID, version: expectedManifest.version },
       source: { ...git, ...source },
       package: {

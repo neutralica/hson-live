@@ -195,7 +195,7 @@ assert.equal(echoA.snap(["value"]), "SMALL_A_AFTER_REJECTION");
 echo.dispose();
 server.dispose();
 
-// A versioned projected frame is checked before accepting the authority write.
+// A projected frame is checked before accepting the authority write.
 const probeMap = hsonLiveMap.fromLibraries({ A: { data: { value: "A0" }, schema: Schema } });
 const probe = internal_livemap_aggregate_authority(probeMap);
 const probeInitial = probe.captureHosted();

@@ -80,7 +80,7 @@ function exact_managed_style(root: Element, css: string): HTMLStyleElement | und
   const style = marked[0];
   if (style === undefined) return undefined;
   if (style.localName !== "style" || style.namespaceURI !== "http://www.w3.org/1999/xhtml"
-    || style.getAttribute(MANAGED_DOCUMENT_CSS_MARKER) !== "v1") {
+    || style.getAttribute(MANAGED_DOCUMENT_CSS_MARKER) !== "managed") {
     throw new Error("Managed document style marker is invalid.");
   }
   if (style.textContent !== css) throw new Error("Managed document style text does not match the selected document Library.");

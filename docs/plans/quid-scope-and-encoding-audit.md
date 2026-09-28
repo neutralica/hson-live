@@ -1,5 +1,11 @@
 # QUID scope and encoding forensic audit
 
+> Historical audit/plan record. Numbered-format and compatibility recommendations
+> below are superseded by the pre-epoch hard cut: current Hson-owned formats use
+> one unversioned identity, with no generation negotiation or migration. This
+> record is not current format guidance. See [the public API](../public-api.md).
+
+
 Date: 2026-08-02
 
 Audit mode: source-only, read-only investigation; no builds, tests, generators, formatters, or repository-mutating commands were run.

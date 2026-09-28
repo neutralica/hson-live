@@ -1,5 +1,4 @@
 {
-  "schemaVersion": 2,
   "artifactKind": "authored-hson-source-verdict-ledger",
   "scope": "amendment-aware human-reviewed authored-language membership only",
   "inputBinding": {

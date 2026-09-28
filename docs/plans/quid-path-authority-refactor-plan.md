@@ -1,5 +1,11 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
+> Historical audit/plan record. Numbered-format and compatibility recommendations
+> below are superseded by the pre-epoch hard cut: current Hson-owned formats use
+> one unversioned identity, with no generation negotiation or migration. This
+> record is not current format guidance. See [the public API](../public-api.md).
+
+
 Status: Units 0 through 7, Unit 2, reflected prerequisites 10R-A/10R-B, and public Unit 10 implemented and executable; later-unit architecture remains a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional Hson Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.

@@ -51,10 +51,10 @@ import { canonical_portable_document_css_op } from "../../internal/css/portable-
 export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
 export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit" as const;
 export const LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT = "hson-livemap-libraries-snapshot" as const;
-export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op-v2" as const;
-export const HOSTED_CLIENT_GRAPH_OP_FORMAT = "hson-hosted-client-graph-op-v1" as const;
-export const PORTABLE_AGGREGATE_COMMIT_FORMAT = "hson-portable-aggregate-commit-v2" as const;
-export const PORTABLE_AGGREGATE_SNAPSHOT_FORMAT = "hson-portable-aggregate-snapshot-v2" as const;
+export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op" as const;
+export const HOSTED_CLIENT_GRAPH_OP_FORMAT = "hson-hosted-client-graph-op" as const;
+export const PORTABLE_AGGREGATE_COMMIT_FORMAT = "hson-portable-aggregate-commit" as const;
+export const PORTABLE_AGGREGATE_SNAPSHOT_FORMAT = "hson-portable-aggregate-snapshot" as const;
 export const HOSTED_ROOT_FORMAT = "hson-exact-value" as const;
 
 export const HOSTED_MAX_LIBRARIES = 1_024;

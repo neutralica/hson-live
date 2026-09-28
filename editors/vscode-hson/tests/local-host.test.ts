@@ -9,7 +9,7 @@ import type { ChildProcess } from "node:child_process";
 import { LocalHostController } from "../src/local-host-controller.js";
 import { local_app_quick_pick_actions, local_host_command_availability, type LocalHostProjectPresentation } from "../src/local-host-presentation.js";
 import { is_supported_livehost_node_runtime, local_host_start_blocker, resolve_local_host_project, type ResolvedLocalHostProject } from "../src/local-host-project.js";
-import { is_loopback_local_host_url, LOCAL_HOST_PROTOCOL_VERSION, local_host_stop_request, parse_local_host_child_message, parse_local_host_stop_request } from "../src/local-host-protocol.js";
+import { is_loopback_local_host_url, local_host_stop_request, parse_local_host_child_message, parse_local_host_stop_request } from "../src/local-host-protocol.js";
 
 let checks = 0;
 async function check(name: string, body: () => void | Promise<void>): Promise<void> {
@@ -62,9 +62,9 @@ const project = (projectId: string): ResolvedLocalHostProject => Object.freeze({
   hsonLiveVersion: "3.5.0",
 });
 
-const starting = (id: string) => ({ protocolVersion: LOCAL_HOST_PROTOCOL_VERSION, type: "starting", projectId: id, applicationEntry: "/workspace/app.mjs", nodeVersion: "22.20.0" } as const);
-const hello = (id: string) => ({ protocolVersion: LOCAL_HOST_PROTOCOL_VERSION, type: "hello", projectId: id, applicationNames: ["app"], hsonLiveVersion: "3.5.0", nodeVersion: "22.20.0" } as const);
-const ready = (id: string, port = 43123) => ({ protocolVersion: LOCAL_HOST_PROTOCOL_VERSION, type: "ready", projectId: id, httpUrl: `http://127.0.0.1:${port}`, port } as const);
+const starting = (id: string) => ({ type: "starting", projectId: id, applicationEntry: "/workspace/app.mjs", nodeVersion: "22.20.0" } as const);
+const hello = (id: string) => ({ type: "hello", projectId: id, applicationNames: ["app"], hsonLiveVersion: "3.5.0", nodeVersion: "22.20.0" } as const);
+const ready = (id: string, port = 43123) => ({ type: "ready", projectId: id, httpUrl: `http://127.0.0.1:${port}`, port } as const);
 const handshake = (child: FakeChild, id: string, port = 43123): void => {
   child.message(starting(id)); child.message(hello(id)); child.message(ready(id, port));
 };
@@ -76,15 +76,18 @@ function fakeHsonPackage(root: string, version: string): void {
 }
 
 async function main(): Promise<void> {
-await check("protocol v1 validates every child and stop DTO", () => {
+await check("current IPC shapes validate every child and stop DTO", () => {
   assert.deepEqual(parse_local_host_stop_request(local_host_stop_request()), local_host_stop_request());
-  for (const message of [starting("a"), hello("a"), ready("a"), { protocolVersion: 1, type: "failure", projectId: "a", phase: "hosting", message: "no" }, { protocolVersion: 1, type: "stopped", projectId: "a" }]) {
+  for (const message of [starting("a"), hello("a"), ready("a"), { type: "failure", projectId: "a", phase: "hosting", message: "no" }, { type: "stopped", projectId: "a" }]) {
     assert.deepEqual(parse_local_host_child_message(message), message);
   }
-  assert.equal(parse_local_host_child_message({ ...ready("a"), protocolVersion: 2 }), undefined);
   assert.equal(parse_local_host_child_message({ ...ready("a"), httpUrl: "http://example.com:43123" }), undefined);
   assert.equal(parse_local_host_child_message({ ...ready("a"), port: 0 }), undefined);
-  assert.equal(parse_local_host_stop_request({ protocolVersion: 1, type: "restart" }), undefined);
+  assert.equal(parse_local_host_stop_request({ type: "restart" }), undefined);
+  for (const invalid of [null, [], { ...ready("a"), extra: true }, { ...hello("a"), applicationNames: [] }, { ...starting("a"), projectId: "" }, { type: "unknown" }]) {
+    assert.equal(parse_local_host_child_message(invalid), undefined);
+  }
+  assert.equal(parse_local_host_stop_request({ type: "stop", extra: true }), undefined);
   assert.equal(is_loopback_local_host_url("http://127.0.0.1:80", 80), true);
   assert.equal(is_loopback_local_host_url("https://127.0.0.1:443", 443), true);
   assert.equal(is_loopback_local_host_url("http://127.0.0.1", 81), false);
@@ -238,7 +241,7 @@ await check("failed live child is closed before its replacement launches", async
   const controller = new LocalHostController("failed-restart", { runnerPath: "/runner", launch: () => children[launches++] as unknown as ChildProcess });
   const first = controller.start(project("failed-restart"));
   firstChild.message(starting("failed-restart"));
-  firstChild.message({ protocolVersion: 1, type: "failure", projectId: "failed-restart", phase: "application", message: "broken" });
+  firstChild.message({ type: "failure", projectId: "failed-restart", phase: "application", message: "broken" });
   await assert.rejects(first, /broken/);
   const replacement = controller.start(project("failed-restart"));
   assert.equal(launches, 1);

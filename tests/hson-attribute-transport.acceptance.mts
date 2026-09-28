@@ -26,8 +26,8 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 });
 
 const Q1 = "000000001";
-const ORDINARY_PRIVATE = "_hson_attr_transit_v1_613a62";
-const METADATA_PRIVATE = "_hson_meta_attr_v2_71756964";
+const ORDINARY_PRIVATE = "_hson_attr_transit_613a62";
+const METADATA_PRIVATE = "_hson_meta_attr_71756964";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -198,9 +198,9 @@ check("ordinary transit codec is deterministic, injective, and UTF-8 reversible"
   assert.equal(ordinary_attr_transit_name("a:b"), colon);
   assert.equal(decode_ordinary_attr_transit_name(colon), "a:b");
   assert.equal(decode_ordinary_attr_transit_name(ordinary_attr_transit_name("xmlish:name")), "xmlish:name");
-  assert.equal(decode_ordinary_attr_transit_name("_hson_attr_transit_v1_"), undefined);
-  assert.equal(decode_ordinary_attr_transit_name("_hson_attr_transit_v1_0"), undefined);
-  assert.equal(decode_ordinary_attr_transit_name("_hson_attr_transit_v1_GG"), undefined);
+  assert.equal(decode_ordinary_attr_transit_name("_hson_attr_transit_"), undefined);
+  assert.equal(decode_ordinary_attr_transit_name("_hson_attr_transit_0"), undefined);
+  assert.equal(decode_ordinary_attr_transit_name("_hson_attr_transit_GG"), undefined);
 });
 
 check("browser and Worker preserve distinct colonized and lookalike ordinary names", () => {
@@ -241,8 +241,8 @@ check("invalid canonical ordinary names reject instead of being renamed", () => 
 check("authored private names reject in browser, Worker, and direct Element ingress", () => {
   for (const privateName of [
     ORDINARY_PRIVATE,
-    "_hson_attr_transit_v1_bad",
-    "_HSON_ATTR_TRANSIT_V1_613a62",
+    "_hson_attr_transit_bad",
+    "_HSON_ATTR_TRANSIT_613a62",
     METADATA_PRIVATE,
   ]) {
     assert_rejects_both(
@@ -392,8 +392,8 @@ check("transport-sensitive attrs satisfy parse/serialize/parse closure", () => {
   for (const parse of [worker, browser]) {
     const first = parse(source);
     const wire = serialize_html(first);
-    assert.equal(wire.includes("_hson_attr_transit_v1_"), false);
-    assert.equal(wire.includes("_hson_meta_attr_v2_"), false);
+    assert.equal(wire.includes("_hson_attr_transit_"), false);
+    assert.equal(wire.includes("_hson_meta_attr_"), false);
     const second = parse(wire);
     assert_canonical_oracle_graph_equal({
       launcher: "hson.attribute-transport",
@@ -430,8 +430,8 @@ check("reserved text boundaries decode intentionally across both trusted string 
   assert_rejects_both('<main><!--hson-text--></main>', /malformed reserved Hson text boundary/);
   assert_worker_browser_equal(
     "browser-boundary-is-not-transform-text",
-    worker('<main><!--hson-boundary:v1:plan:between:0-->a</main>'),
-    browser('<main><!--hson-boundary:v1:plan:between:0-->a</main>'),
+    worker('<main><!--hson-boundary:plan:between:0-->a</main>'),
+    browser('<main><!--hson-boundary:plan:between:0-->a</main>'),
   );
   const dangling = `<main/><!--`;
   assert_worker_browser_equal(

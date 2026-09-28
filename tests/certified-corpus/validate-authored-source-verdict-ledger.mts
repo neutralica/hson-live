@@ -70,7 +70,7 @@ check("reviewer notes remain associated through ID migration", () => {
 check("ledger contains deterministic current records and full provenance mapping", () => {
   const ledgerCases = ledger.cases as Array<Record<string, unknown>>;
   const migrations = ledger.caseIdMigrations as Array<Record<string, unknown>>;
-  assert.equal(ledger.schemaVersion, 2);
+  assert.equal(ledger.artifactKind, "authored-hson-source-verdict-ledger");
   assert.deepEqual(ledgerCases.map((entry) => entry.caseId), processed.cases.map((entry) => entry.caseId));
   assert.deepEqual(migrations, processed.caseIdMigrations);
   assert.equal(committedLedger, renderLedger(processed));

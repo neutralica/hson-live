@@ -167,7 +167,7 @@ comments, separator whitespace, malformed or wrong-plan Hson boundary markers,
 and any other unplanned child are mismatches rather than tolerated decoration.
 
 In ordinary content, adjacent non-empty canonical leaves retain separate native
-`Text` objects through versioned, plan-bound `hson-boundary` comments. An empty
+`Text` objects through plan-bound `hson-boundary` comments. An empty
 canonical leaf is evidence-only: its Hson boundary marker maps the canonical
 leaf without pretending an empty native `Text` exists. These comments are
 inert and layout-free in the supported browser contract, but remain observable
@@ -175,7 +175,7 @@ through raw `childNodes`. They are reproducible realization scaffolding, never
 canonical Hson/LiveMap nodes, never transport `_hson_*` carriers, and never
 QUID-bearing identity.
 
-`textarea`, `title`, `style`, and `script` are parser-atomic in version one.
+`textarea`, `title`, `style`, and `script` are parser-atomic.
 They support zero canonical leaves or one compatible non-empty text leaf.
 Explicit empty leaves, multiple leaves, textarea-leading LF, RAWTEXT CR, parser
 closing sentinels, NUL, and lone surrogates reject deterministically before SSR

@@ -1,6 +1,4 @@
-// readme-v2.md 16SEP2026
-
-# Hson / hson-live v3.4 
+# Hson / hson-live
 
 ---
 

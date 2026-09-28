@@ -1,5 +1,10 @@
 # Canonical Hson digests v1 — design checkpoint
 
+> Historical, unimplemented design proposal. Its numbered byte grammars and
+> identifiers are retired and are not current Hson formats or implementation guidance.
+> This file is not consumed by current tooling or tests.
+
+
 > Historical design record: references to `noQuid` and QUID-bearing ordinary
 > Transform output describe the pre-Phase-2 contract. Current portable
 > Transform omits generated QUIDs by default and has no `noQuid` option.

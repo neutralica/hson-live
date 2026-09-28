@@ -107,7 +107,7 @@ const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries, doc
 // @ts-expect-error Local Libraries registries do not expose hosted cuts.
 libraries.cut();
 declare const librariesAuthority: import("hson-live/locus").Locus;
-declare const hostedLibrariesSnapshot: { format: "hson-livemap-client-snapshot-v1" };
+declare const hostedLibrariesSnapshot: { format: "hson-portable-aggregate-snapshot" };
 // @ts-expect-error Complete hosted Libraries state is retired from SSR encoding.
 const encodedHostedLibraries = encode_ssr_bootstrap(hostedLibrariesSnapshot);
 void encodedHostedLibraries;
@@ -203,7 +203,7 @@ hson.liveMap.schema.validate(standaloneSchema, "37");
 hson.liveMap.schema.check(standaloneSchema, standaloneCanonical);
 void narrowStandaloneCanonical;
 // @ts-expect-error The D1 wire protocol is not a public value.
-import { TRUSTED_SCHEMA_DIAGNOSTICS_PROTOCOL_VERSION } from "hson-live";
+import { schema_tooling_fingerprint } from "hson-live";
 // @ts-expect-error The runtime host is not a public API.
 import { TrustedSchemaDiagnosticRuntime } from "hson-live/hson";
 // @ts-expect-error Process supervision is not a library facade.

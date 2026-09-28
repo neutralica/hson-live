@@ -171,7 +171,7 @@ A capture must remain stable after later map mutations.
 
 `payload` is the exact ordered representation and preserves `-0`. `root`
 preserves the detached canonical graph. Malformed current transport, a
-`formatVersion` field, or an old `{ rev, value }` capture rejects; there is no
+unexpected envelope field, or incomplete capture rejects; there is no
 compatibility fallback.
 
 A capture is observed state. It is not itself a mutation request.

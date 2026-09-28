@@ -124,4 +124,4 @@ stale, without changing authority revision.
 `EchoRecovery` has no `onChange` observation member. Echo has no topology-aware
 `subscribe`/`unsubscribe`, public `seq`, or `onEvent` surface.
 
-Hosted SSR continuation decodes the version 3 `hosted-projection` carrier, composes client-local libraries separately, constructs Echo over that composed map, and calls `continue_hosted_document` with the decoded authority projection.
+Hosted SSR continuation decodes the `hosted-projection` carrier, composes client-local libraries separately, constructs Echo over that composed map, and calls `continue_hosted_document` with the decoded authority projection.

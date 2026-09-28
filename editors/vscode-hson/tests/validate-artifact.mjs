@@ -64,7 +64,7 @@ assert.match(extensionBundle, /LocalHostController = class/);
 assert.equal((extensionBundle.match(/createStatusBarItem\(/g) ?? []).length, 1);
 assert.match(extensionBundle, /Hson Extension\s+Schema:/);
 assert.doesNotMatch(extensionBundle, /hson\.schemaToolActions|hson\.localHostActions/);
-assert.match(localHostRunner, /LOCAL_HOST_PROTOCOL_VERSION/);
+assert.match(localHostRunner, /parse_local_host_stop_request/);
 assert.doesNotMatch(localHostRunner, /start_node_application_host\(options\)/);
 assert.ok(JSON.parse(localHostRunnerMap).sources.some(source => source.endsWith("/local-host-runner.ts")));
 assert.ok(manifest.contributes.semanticTokenTypes.some(type => type.id === "hsonType"));

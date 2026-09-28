@@ -34,7 +34,7 @@ const button = () => {
 };
 function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string, readonly number[]> {
   const authority = internal_livemap_aggregate_authority(map);
-  const system = authority.systemState("@hson/canonical-interactions/v1");
+  const system = authority.systemState("@hson/canonical-interactions");
   if (system === undefined) throw new Error("Missing interaction state.");
   const value = materialize_projected_value(projected_value_from_hson_node(authority.systemRoot(system)));
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid interaction state.");
@@ -101,7 +101,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   });
   enable_interactions(map);
   const authority = internal_livemap_aggregate_authority(map);
-  const system = authority.systemState("@hson/canonical-interactions/v1");
+  const system = authority.systemState("@hson/canonical-interactions");
   if (system === undefined) throw new Error("Missing interaction system.");
   const beforeSchemaFailure = map.rev;
   assert.throws(() => authority.commit([{

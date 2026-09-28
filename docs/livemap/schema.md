@@ -138,7 +138,7 @@ Here `morning-hour` plus `single-0930` rejects because both contribute
 validation metadata only. It does not add keys to, reorder, or otherwise
 transform candidate data.
 
-V1 `by` is exactly one ordinary direct data-object member name. Every item must
+`by` is exactly one ordinary direct data-object member name. Every item must
 be a data object, must own that member, and the selected value must be an exact
 Hson primitive: string, finite number, boolean, or null. The selected value
 must match one case row; an unmapped value fails candidate validation. Case

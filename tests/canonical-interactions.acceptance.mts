@@ -140,7 +140,7 @@ await check("hidden storage is aggregate state but not public selection", () => 
   assert.equal(aggregate.inspect().libraries.length, 2);
   const snapshot = aggregate.captureHosted();
   assert.equal(snapshot.registry.libraries.filter((entry) => entry.scope === "hson-internal").length, 1);
-  assert.throws(() => map.lib("@hson/canonical-interactions/v1" as "state"), /Unknown/);
+  assert.throws(() => map.lib("@hson/canonical-interactions" as "state"), /Unknown/);
   let publicOperations: readonly unknown[] | undefined;
   const stop = map.commits.observe((commit) => { publicOperations = commit.operations; });
   add_interaction(map, local("a", "run"));

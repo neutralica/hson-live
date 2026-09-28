@@ -1,4 +1,4 @@
-LiveTree Contracts (v1) (19MAR2026)
+LiveTree Contracts (19MAR2026)
 
 - find.* → never throws, returns empty/undefined
 - must.* → throws on failure

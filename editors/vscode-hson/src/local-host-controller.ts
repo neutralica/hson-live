@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
-import { LOCAL_HOST_PROTOCOL_VERSION, local_host_stop_request, parse_local_host_child_message, type LocalHostChildMessage } from "./local-host-protocol.js";
+import { local_host_stop_request, parse_local_host_child_message, type LocalHostChildMessage } from "./local-host-protocol.js";
 import type { ResolvedLocalHostProject } from "./local-host-project.js";
 
 export type LocalHostState = "stopped" | "starting" | "running" | "stopping" | "failed";
@@ -107,16 +107,7 @@ export class LocalHostController {
         if (!this.#isCurrent(child, generation)) return;
         const message = parse_local_host_child_message(value);
         if (message === undefined) {
-          const suppliedVersion = is_record(value) ? value.protocolVersion : undefined;
-          const detail = suppliedVersion !== undefined && suppliedVersion !== LOCAL_HOST_PROTOCOL_VERSION
-            ? `Incompatible Hson local-host protocol ${String(suppliedVersion)}; expected ${LOCAL_HOST_PROTOCOL_VERSION}.`
-            : "Rejected an invalid Hson local-host child message.";
-          this.#options.output("lifecycle", `${detail}\n`);
-          if (suppliedVersion !== undefined && suppliedVersion !== LOCAL_HOST_PROTOCOL_VERSION) {
-            this.#setSnapshot({ state: "failed", projectId: this.projectId, failure: detail });
-            settleFailure(detail);
-            void this.#terminateCurrent(child, generation);
-          }
+          this.#options.output("lifecycle", "Rejected an invalid Hson local-host child message.\n");
           return;
         }
         if (message.projectId !== this.projectId) {
@@ -210,7 +201,7 @@ export class LocalHostController {
       if (this.#snapshot.state !== "starting" || this.#handshakePhase !== "starting") return this.#rejectSequence(message.type);
       this.#handshakePhase = "hello";
       this.#setSnapshot({ ...this.#snapshot, nodeVersion: message.nodeVersion, hsonLiveVersion: message.hsonLiveVersion, applicationNames: message.applicationNames });
-      this.#options.output("lifecycle", `Handshake: protocol ${message.protocolVersion}; hson-live ${message.hsonLiveVersion}; applications ${message.applicationNames.join(", ")}.\n`);
+      this.#options.output("lifecycle", `Handshake: hson-live ${message.hsonLiveVersion}; applications ${message.applicationNames.join(", ")}.\n`);
     } else if (message.type === "ready") {
       if (this.#snapshot.state !== "starting" || this.#handshakePhase !== "hello") return this.#rejectSequence(message.type);
       this.#handshakePhase = "ready";
@@ -301,8 +292,4 @@ export function launch_local_host_child(project: ResolvedLocalHostProject, runne
 
 function error_message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function is_record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

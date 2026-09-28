@@ -219,7 +219,7 @@ export function locus_projection_contract_digest(
   systemFeatures: readonly LocusProjectionSystemFeature[],
   writableDocuments: readonly string[],
 ): string {
-  return hosted_sha256(JSON.stringify({ format: "locus-effective-projection-v1", authority,
+  return hosted_sha256(JSON.stringify({ format: "locus-effective-projection", authority,
     libraries: libraries.map((entry) => ({ name: entry.name, mode: entry.mode, schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec })),
     htmlDocument, systemFeatures, writableDocuments,
   }));

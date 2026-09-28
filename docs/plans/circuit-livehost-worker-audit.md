@@ -1,5 +1,11 @@
 # Hson diagnostic circuit and LiveHost worker audit
 
+> Historical audit/plan record. Numbered-format and compatibility recommendations
+> below are superseded by the pre-epoch hard cut: current Hson-owned formats use
+> one unversioned identity, with no generation negotiation or migration. This
+> record is not current format guidance. See [the public API](../public-api.md).
+
+
 Status: read-only architecture and efficiency audit; no implementation is included.
 
 Audit basis:

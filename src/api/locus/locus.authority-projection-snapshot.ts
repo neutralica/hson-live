@@ -58,7 +58,7 @@ export function advance_client_projection_identity_internal(
   clientProjectionIdentity.set(map, Object.freeze({ digest: nextDigest, incarnationId }));
 }
 
-export const AUTHORITY_PROJECTION_SNAPSHOT_FORMAT: "hson-authority-projection-snapshot-v2" = "hson-authority-projection-snapshot-v2";
+export const AUTHORITY_PROJECTION_SNAPSHOT_FORMAT: "hson-authority-projection-snapshot" = "hson-authority-projection-snapshot";
 
 type Root = Readonly<{ format: "hson-exact-value"; payload: string }>;
 type AuthorityProjectionLibrary = AuthorityProjectionSnapshot["libraries"][number];
@@ -286,6 +286,6 @@ export function authority_projection_as_client_composition_internal(input: Autho
     name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, mode: "data-object", schema: systemSchema.toHson(),
     schemaDigest: hosted_sha256(systemSchema.toHson()), root: snapshot.system.interactions,
   }));
-  return Object.freeze({ format: "hson-portable-aggregate-snapshot-v2", authority: snapshot.authority,
+  return Object.freeze({ format: "hson-portable-aggregate-snapshot", authority: snapshot.authority,
     revision: snapshot.revision, registry, registryDigest: registry.digest, libraries: Object.freeze(libraries) });
 }

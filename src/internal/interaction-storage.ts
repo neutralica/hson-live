@@ -1,7 +1,7 @@
 import type { LiveMapSystemIdentity } from "../api/livemap/livemap.system.js";
 import type { OrderedProjectedValue } from "../core/ordered-projected-value.js";
 
-export const INTERACTION_RESERVED_LIBRARY_KEY = "@hson/canonical-interactions/v1";
+export const INTERACTION_RESERVED_LIBRARY_KEY = "@hson/canonical-interactions";
 export const INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME = INTERACTION_RESERVED_LIBRARY_KEY;
 
 type InteractionDraftCapability = Readonly<{

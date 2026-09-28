@@ -14,7 +14,7 @@ export type LocusProjectionSystemFeature = "interactions";
 
 /** Portable authority half of a composed client LiveMap; local libraries are separate. */
 export type AuthorityProjectionSnapshot = Readonly<{
-  format: "hson-authority-projection-snapshot-v2";
+  format: "hson-authority-projection-snapshot";
   authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
   revision: number;
   projectionDigest: string;

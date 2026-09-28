@@ -379,7 +379,6 @@ check("exact graph decoding canonicalizes valid permutations and rejects malform
     throw new Error("Expected exact value representation record.");
   }
   assert.equal(Object.hasOwn(representation, "valueKind"), true);
-  assert.equal(Object.hasOwn(representation, "valueVersion"), false);
   const decoded = decode_exact_hson_value(payload);
   assert.ok(is_Node(decoded));
   assert.deepEqual(payload_tags(decoded), ["a", "b"]);
@@ -392,7 +391,7 @@ check("exact graph decoding canonicalizes valid permutations and rejects malform
   assert.ok(is_Node(locusDecoded));
   assert.deepEqual(payload_tags(locusDecoded), ["a", "b"]);
   assert.throws(() => decode_exact_hson_value(
-    hson.fromJson({ ...representation, valueVersion: 2 }).toHson().noBreak().serialize(),
+    hson.fromJson({ ...representation, unexpectedField: true }).toHson().noBreak().serialize(),
   ));
   assert.throws(() =>
     decode_exact_hson_value(

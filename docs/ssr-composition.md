@@ -6,7 +6,7 @@
 whole local map. It captures once, renders the detached selected document, and
 returns local continuation data. A Libraries map may infer its sole
 document; multiple local documents require a name. Local SSR uses
-`hson-ssr-bootstrap` version 2 (`document` or `libraries`). This local contract
+`hson-ssr-bootstrap` with kind `libraries`. This local contract
 has no hosted projection policy.
 
 ## Session-projected hosted rendering
@@ -41,12 +41,11 @@ that same cut. A bare authority or recovery planner is not a hosted render
 source. The selected document root is decoded from the detached projected
 snapshot, so later authority mutations do not alter an existing cut.
 
-The projected hosted carrier is `hson-ssr-bootstrap` version 3 with kind
+The projected hosted carrier is `hson-ssr-bootstrap` with kind
 `hosted-projection`. Its payload is an admitted
-`hson-authority-projection-snapshot-v1`. The encoder and decoder reject the
-older complete hosted `hosted-document` and `hosted-libraries` version 2
-families. Local version 2 remains distinct. The live projected commit/wire
-use v3 and the hosted socket uses v7.
+`hson-authority-projection-snapshot`. Local continuation uses the distinct `libraries` payload family. The projected
+commit, projected wire, and hosted socket each retain their own unversioned format
+identity. Bootstrap envelopes contain `format`, `kind`, and `payload`.
 
 An application can send `cut.html` alone. If it sends a state carrier, it must
 place the encoding of **that cut's** `data` beside the HTML. The application

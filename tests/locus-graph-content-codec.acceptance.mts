@@ -6,6 +6,8 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import { is_Node } from "../src/core/node-guards.ts";
 import {
   decode_locus_graph_content,
+  decode_locus_portable_graph_content,
+  encode_locus_portable_graph_content,
   encode_locus_graph_content,
   LocusGraphContentCodecError,
 } from "../src/api/locus/locus.graph-content-codec.ts";
@@ -43,7 +45,7 @@ function expect_rejection(value: unknown, code: string): void {
   );
 }
 
-check("exact graph payload round-trips nested nodes, typed attributes, structured style, and persisted QUIDs", () => {
+check("exact graph payload round-trips nested nodes, typed attributes, structured style, and runtime QUIDs", () => {
   const source = detach_hson_root_value(parse_hson_exact_runtime(
     `<main @000000001 <input @000000002 checked=false/>/>`,
   ));
@@ -61,6 +63,14 @@ check("exact graph payload round-trips nested nodes, typed attributes, structure
   assert.equal(encoded.format, "hson-graph");
   assert.equal(JSON.stringify(encoded).includes("$_tag"), false);
   assert.match(encoded.payload, /000000001/);
+  const portable = encode_locus_portable_graph_content(source);
+  assert.equal(portable.format, "hson-graph-portable");
+  assert.doesNotMatch(portable.payload, /@00000000/);
+  assert.ok(is_Node(decode_locus_portable_graph_content(portable)));
+  assert.throws(() => decode_locus_graph_content(portable), /format is unknown/);
+  assert.throws(() => decode_locus_portable_graph_content(encoded), /format is unknown/);
+  assert.throws(() => decode_locus_portable_graph_content({ ...portable, payload: encoded.payload }), /content is invalid/);
+
 });
 
 check("canonical primitives round-trip without JSON-node projection", () => {
@@ -81,17 +91,13 @@ check("multiNodeDocument and empty-multiNodeDocument roots retain exact structur
   }
 });
 
-check("strict envelopes reject missing, extra, removed-version, and malformed Hson fields", () => {
+check("strict envelopes reject missing, extra, and malformed Hson fields", () => {
   expect_rejection(
     { format: "hson-graph" },
     "LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID",
   );
   expect_rejection(
     { format: "hson-graph", payload: "", extra: true },
-    "LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID",
-  );
-  expect_rejection(
-    { format: "hson-graph", formatVersion: 2, payload: "" },
     "LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID",
   );
   expect_rejection(
@@ -104,7 +110,7 @@ check("strict envelopes reject missing, extra, removed-version, and malformed Hs
   );
 });
 
-check("duplicate persisted QUIDs and structurally invalid canonical nodes are rejected", () => {
+check("duplicate runtime QUIDs and structurally invalid canonical nodes are rejected", () => {
   const valid = encode_locus_graph_content(
     detach_hson_root_value(parse_hson_exact_runtime(`<main @000000001 <p @000000002/>/>`)),
   );

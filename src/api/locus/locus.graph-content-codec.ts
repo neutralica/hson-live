@@ -3,6 +3,7 @@ import { scan_hson_node_quids } from "../../core/hson-node-quid.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type { LiveMapDocumentContent } from "../../types/livemap.types.js";
+/** Exact runtime graph content preserves local identity; it is not portable action content. */
 export type LocusEncodedGraphContent = Readonly<{ format: "hson-graph"; payload: string }>;
 import {
   decode_exact_hson_value,
@@ -13,7 +14,7 @@ import { clone_hson_graph_without_quids } from "../livemap/livemap.document.capt
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 
 const FORMAT = "hson-graph" as const;
-const PORTABLE_FORMAT = "hson-graph-portable-v1" as const;
+const PORTABLE_FORMAT = "hson-graph-portable" as const;
 
 /** Client action content is a document value, never a runtime identity claim. */
 export type LocusPortableGraphContent = Readonly<{

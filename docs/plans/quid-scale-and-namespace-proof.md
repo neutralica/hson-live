@@ -1,5 +1,11 @@
 # Unit 12 — QUID scale and namespace proof
 
+> Historical audit/plan record. Numbered-format and compatibility recommendations
+> below are superseded by the pre-epoch hard cut: current Hson-owned formats use
+> one unversioned identity, with no generation negotiation or migration. This
+> record is not current format guidance. See [the public API](../public-api.md).
+
+
 Measured on 2026-08-11 with Node v22.20.0 on darwin-arm64. Timings and heap
 figures below are medians of three fresh `node --expose-gc` processes. The
 reproducible manual harness is [`benchmarks/quid-scale.mjs`](../../benchmarks/quid-scale.mjs).

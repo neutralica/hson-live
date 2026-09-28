@@ -69,7 +69,6 @@ Actions provide natural points for:
 * authorization;
 * validation;
 * domain logging;
-* versioning;
 * rate limiting;
 * application-specific errors.
 
@@ -86,7 +85,7 @@ The host may reject proposals because they are:
 * inconsistent with current state;
 * schema-invalid;
 * unauthorized;
-* unsupported by the current protocol version.
+* unsupported by the current message contract.
 
 The client must not treat local proposal success as canonical success until acknowledged by the host.
 
@@ -185,7 +184,7 @@ Retention policy is an implementation and deployment concern, but observable beh
 * replay available;
 * replay unavailable, snapshot required;
 * session expired;
-* protocol version incompatible.
+* message contract invalid.
 
 Clients must not assume indefinite log retention.
 
@@ -221,18 +220,10 @@ A rejection should identify:
 
 Internal stack traces and implementation objects must not become protocol payloads by default.
 
-Protocol versioning
+Message admission
 
-Protocol messages must have an explicit version strategy before compatibility matters.
-
-Versioning may be attached to:
-
-* the connection handshake;
-* individual envelopes;
-* schema identifiers;
-* action namespaces.
-
-Unknown message kinds or unsupported versions must be rejected deliberately.
+Each current representation has one unversioned format identity. Unknown message
+kinds, wrong format identities, and malformed payloads are rejected deliberately.
 
 Transport independence
 

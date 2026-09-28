@@ -113,7 +113,7 @@ function remove_item(): Extract<LiveMapGraphOp, Readonly<{ op: "remove-content" 
 
 function interaction_paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): readonly number[][] {
   const authority = internal_livemap_aggregate_authority(map);
-  const system = authority.systemState("@hson/canonical-interactions/v1");
+  const system = authority.systemState("@hson/canonical-interactions");
   if (system === undefined) throw new Error("Missing transactional interaction state.");
   const value = materialize_projected_value(projected_value_from_hson_node(authority.systemRoot(system)));
   if (typeof value !== "object" || value === null || Array.isArray(value) || !Array.isArray(value.descriptors)) {
@@ -148,8 +148,8 @@ await check("initial durable aggregate cut and atomic cross-library tail omit ge
   const initial = adapter.state("h4-global-cut")!;
   assert.equal(initial.checkpoint.mapKind, "hosted-aggregate");
   if (initial.checkpoint.mapKind !== "hosted-aggregate") throw new Error("Expected aggregate checkpoint.");
-  assert.equal(initial.checkpoint.format, "hson-locus-durable-aggregate-checkpoint-v3");
-  if (initial.checkpoint.format !== "hson-locus-durable-aggregate-checkpoint-v3") throw new Error("Expected v2 checkpoint.");
+  assert.equal(initial.checkpoint.format, "hson-locus-durable-aggregate-checkpoint");
+  if (initial.checkpoint.format !== "hson-locus-durable-aggregate-checkpoint") throw new Error("Expected a durable aggregate checkpoint.");
   assert.equal(initial.checkpoint.registry.format, "hson-hosted-registry");
   assert.equal(initial.checkpoint.logicalMapId.startsWith("h1-"), false);
   assert.equal(initial.checkpoint.incarnationId.startsWith("h1-"), false);
@@ -170,7 +170,7 @@ await check("initial durable aggregate cut and atomic cross-library tail omit ge
   const tail = persisted.commits[0]!;
   assert.equal(tail.mapKind, "hosted-aggregate");
   if (tail.mapKind !== "hosted-aggregate") throw new Error("Expected aggregate tail.");
-  assert.equal(tail.commit.format, "hson-livemap-durable-commit-v2");
+  assert.equal(tail.commit.format, "hson-livemap-durable-commit");
   assert.equal(JSON.stringify(tail).includes(ACTIVE_QUID), false);
   assert.equal(JSON.stringify(tail).includes("ensure-quid"), false);
   assert.deepEqual(tail.commit.operations.map((operation) => operation.library), ["state", "colors", "page"]);
@@ -315,20 +315,6 @@ await check("local document and data identity leave durable checkpoint and histo
   await restored.checkpoint();
   assert.equal(adapter.state(restored.logicalMapId)?.checkpoint.rev, beforeRestartDemand.checkpoint.rev);
   restored.dispose();
-});
-
-await check("legacy exact aggregate checkpoint rejects before runtime construction", async () => {
-  const adapter = new MemoryPersistenceAdapter();
-  const map = make_map();
-  const host = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter, logicalMapId: "h4-legacy" });
-  const current = adapter.state("h4-legacy")!;
-  const old = structuredClone(current) as any;
-  old.checkpoint.format = "hson-locus-durable-aggregate-checkpoint-v1";
-  host.dispose();
-  await assert.rejects(
-    () => restore_persistent_locus_hosted_aggregate_internal("h4-legacy", old, { persistence: adapter }),
-    /invalid/i,
-  );
 });
 
 await check("fresh-runtime local identity follows movement and explicit replacement lineage after restart", async () => {

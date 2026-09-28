@@ -54,7 +54,7 @@ const rejectsSsr = (node: HsonNode, reason: RegExp): BrowserRealizationIncompati
   const plan = plan_browser_realization(canonical);
   const html = serialize_browser_realization(plan);
   assert.equal(serialize_browser_realization(plan), html);
-  assert.match(html, /^<p>a<!--hson-boundary:v1:/);
+  assert.match(html, /^<p>a<!--hson-boundary:/);
   assert.doesNotMatch(html, /_hson_(?:str|elem)/);
   assert.equal((html.match(/:boundary:/g) ?? []).length, 3);
   assert.equal((html.match(/:empty:/g) ?? []).length, 2);
@@ -188,7 +188,7 @@ for (const value of [
 
 {
   const pre = serialize_browser_realization(plan_browser_realization(element("pre", [leaf("\nX")])));
-  assert.match(pre, /^<pre><!--hson-boundary:v1:.*:pre-lf:0-->\nX<\/pre>$/);
+  assert.match(pre, /^<pre><!--hson-boundary:.*:pre-lf:0-->\nX<\/pre>$/);
 }
 
 for (const tag of ["textarea", "title", "style", "script"]) {
