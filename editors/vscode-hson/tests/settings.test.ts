@@ -131,7 +131,7 @@ check("Hson format-on-save is one resource setting enabled by default", () => {
   const setting = properties["hson.formatting.formatOnSave"];
   assert.equal(setting.default, true);
   assert.equal(setting.scope, "resource");
-  assert.equal(setting.markdownDescription, "Format recognized Hson authoring regions when a file is saved.");
+  assert.equal(setting.markdownDescription, "Format recognized Hson authoring regions on explicit Save or Save All. Auto-save does not format.");
 });
 check("no retired execution settings are advertised as restricted", () => assert.equal(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations, undefined));
 check("settings search targets this extension", () => assert.equal(HSON_SETTINGS_QUERY, "@ext:terminal-gothic.hson-language"));

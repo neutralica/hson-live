@@ -7,6 +7,7 @@ import { library_schema_attachment_plan, schema_source_plan, type PreciseSchemaF
 import { compile_hson_schema } from "../../../src/internal/hson-schema/compiler.js";
 import { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-mapping.js";
 import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
+import { static_schema_candidate_diagnostics, type StaticSchemaDiagnostic } from "../../../src/internal/hson-schema/candidate-diagnostics.js";
 
 type Snapshot = Readonly<{ text: string; snapshot: ts.IScriptSnapshot; version: string }>;
 type SourceView = Snapshot & Readonly<{ mapping: SchemaSourceMapping; source: ts.SourceFile; generatedNames: readonly string[] }>;
@@ -41,6 +42,7 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
   let evidence = new Map<string, Snapshot>();
   let evidenceByDeclaration = new Map<string, string>();
   let evidenceLabels = new Map<string, string>();
+  let candidateDiagnostics: readonly StaticSchemaDiagnostic[] = [];
   const canonical = (file: string): string => {
     const path = resolve(file);
     return host.useCaseSensitiveFileNames?.() === false ? path.toLowerCase() : path;
@@ -61,6 +63,7 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     const migrationChanged = nextMigration.size !== migration.size || [...nextMigration.keys()].some(file => !migration.has(file));
     migration = nextMigration;
     if (program === previous && !migrationChanged) return;
+    candidateDiagnostics = static_schema_candidate_diagnostics(typescript, program).filter(diagnostic => !migration.has(canonical(diagnostic.file)));
     const nextSources = new Map<string, SourceView>();
     const nextEvidence = new Map<string, Snapshot>();
     const nextDeclarations = new Map<string, string>();
@@ -150,6 +153,10 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
 
   return {
     refresh,
+    candidate_diagnostics: (file: string): ts.Diagnostic[] => candidateDiagnostics.filter(diagnostic => canonical(diagnostic.file) === canonical(file)).map(diagnostic => ({
+      file: authoredService.getProgram()?.getSourceFile(file), start: diagnostic.start, length: Math.max(1, diagnostic.end - diagnostic.start),
+      category: typescript.DiagnosticCategory.Error, code: 95002, source: "hson-schema", messageText: diagnostic.message,
+    })),
     migration_diagnostics: (file: string): ts.Diagnostic[] => {
       const source = migration.get(canonical(file));
       return source === undefined ? [] : [{ file: source, start: 0, length: 0, category: typescript.DiagnosticCategory.Error,

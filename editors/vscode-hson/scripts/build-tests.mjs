@@ -15,6 +15,7 @@ await build({
     structural: "tests/structural-editing.test.ts",
     "local-host": "tests/local-host.test.ts",
     "local-host-process": "tests/local-host-process.test.ts",
+    "local-host-extension": "tests/local-host-extension.test.ts",
     "development-actions": "tests/development-actions.test.ts",
     integration: "tests/integration/suite.ts",
     "baseline-integration": "tests/integration/baseline.ts",

@@ -35,6 +35,7 @@ import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_ke
 import { HSON_APPEARANCE, HSON_DOCUMENT_SELF_CLOSING_SLASH } from "./appearance.js";
 import { formatting_target_is_current } from "./formatting-target.js";
 import { LocalHostExtensionManager } from "./local-host-extension.js";
+import { ManualSaveTracker } from "./manual-save.js";
 import type { LocalHostState } from "./local-host-controller.js";
 import { HSON_TOOLTIP_COMMANDS, hson_quick_pick_actions, hson_status_presentation, hson_status_tooltip, type SchemaToolState } from "./hson-status.js";
 import { run_development_services, type DevelopmentService } from "./development-actions.js";
@@ -273,6 +274,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   updateStructuralContext();
 
+  const formattingSaves = new ManualSaveTracker();
   const structuralFormattingEdits = (
     document: vscode.TextDocument,
     options: vscode.FormattingOptions,
@@ -293,10 +295,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const markdownSelector: vscode.DocumentSelector = [{ language: "markdown", scheme: "file" }, { language: "markdown", scheme: "untitled" }];
   context.subscriptions.push(
     vscode.languages.registerDocumentFormattingEditProvider(markdownSelector, {
-      provideDocumentFormattingEdits: (document, options) => structuralFormattingEdits(document, options),
+      provideDocumentFormattingEdits: (document, options) => formattingSaves.formattingAllowed(document.uri.toString()) ? structuralFormattingEdits(document, options) : [],
     }),
     vscode.languages.registerDocumentRangeFormattingEditProvider(markdownSelector, {
-      provideDocumentRangeFormattingEdits: (document, range, options) => structuralFormattingEdits(document, options, range),
+      provideDocumentRangeFormattingEdits: (document, range, options) => formattingSaves.formattingAllowed(document.uri.toString()) ? structuralFormattingEdits(document, options, range) : [],
     }),
   );
   const formatStructuralRegions = async (scope: "document" | "selection"): Promise<void> => {
@@ -327,13 +329,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("hson.formatDocument", () => formatStructuralRegions("document")),
     vscode.commands.registerCommand("hson.formatSelection", () => formatStructuralRegions("selection")),
     vscode.workspace.onWillSaveTextDocument(event => {
-      if (structuralLanguage(event.document) === undefined
+      formattingSaves.willSave(event.document.uri.toString(), event.reason === vscode.TextDocumentSaveReason.Manual);
+      if (event.reason !== vscode.TextDocumentSaveReason.Manual || structuralLanguage(event.document) === undefined
         || !vscode.workspace.getConfiguration("hson.formatting", event.document).get<boolean>("formatOnSave", true)) return;
       let edits: readonly vscode.TextEdit[] = [];
       try { edits = structuralFormattingEdits(event.document, documentIndentation(event.document)); }
       catch { edits = []; }
       event.waitUntil(Promise.resolve(edits));
     }),
+    vscode.workspace.onDidSaveTextDocument(document => { formattingSaves.didSave(document.uri.toString()); }),
+    vscode.workspace.onDidCloseTextDocument(document => formattingSaves.forget(document.uri.toString())),
   );
   const collection = vscode.languages.createDiagnosticCollection("hson");
   const diagnosticsOutput = vscode.window.createOutputChannel("Hson Diagnostics");

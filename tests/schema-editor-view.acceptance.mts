@@ -7,6 +7,9 @@ import { SchemaSourceMapping } from "../src/internal/hson-schema/source-mapping.
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import { requires_schema_migration } from "../src/internal/hson-schema/legacy-detection.ts";
 import { local_hson_schema_diagnostics } from "../editors/vscode-hson/src/hson-schema-local.ts";
+import { Hson } from "../src/hson-authoring.ts";
+import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
+import { spawnSync } from "node:child_process";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "tooling.schema-editor-view", title: "Schema editor compiler view", category: "Tooling", runtime: "node", tags: Object.freeze(["schema", "editor", "typescript", "source-integrity"]) });
@@ -309,6 +312,96 @@ check("Phase 1 precision fixture passes entirely through the in-memory view", ()
   const slide = evidence?.find(file => file.fileName.endsWith("slideSchema.hson-schema.generated.ts"));
   assert.equal(slide?.text, generate_hson_schema_evidence("slideSchema", '\n<type "document">\n', "schema.ts#slideSchema").declaration);
   assert.deepEqual(bytes(exact.directory), before); exact.service.dispose();
+});
+
+check("direct certification and attachment diagnostics share authored compiler locations and runtime authority", () => {
+  const schema = '<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>';
+  const missing = '<html <body/>/>', order = '<html <body/> <head/>/>', valid = '<html <head/> <body/>/>';
+  const source = `import { Hson, hsonLiveMap, type HsonDocument } from "hson-live";
+export const Schema = Hson.schema\`${schema}\`;
+const badMissingHead = Hson.document\`${missing}\`;
+const badOrder = Hson.document\`${order}\`;
+const valid = Hson.document\`${valid}\`;
+const alias = badMissingHead;
+Schema.certify(alias);
+Schema.certify(badOrder);
+Schema.certify(valid);
+Schema.certify(Hson.document\`${missing}\`);
+declare function getPage(): HsonDocument;
+Schema.certify(getPage());
+declare const condition: boolean;
+Schema.certify(condition ? badMissingHead : valid);
+Schema.certify(condition ? badMissingHead : badOrder);
+hsonLiveMap.fromLibraries({ page: { document: badMissingHead, schema: Schema } });
+hsonLiveMap.fromLibraries({ page: { document: valid, schema: Schema } });
+const map = hsonLiveMap.fromLibraries({ page: { document: badOrder } });
+map.lib("page").schema.use(Schema);
+const mutated = hsonLiveMap.fromLibraries({ page: { document: badOrder } });
+getPage();
+mutated.lib("page").schema.use(Schema);
+export const Data = Hson.schema\`<type "data" content <name "string">>\`;
+hsonLiveMap.fromLibraries({ state: { data: { name: 42 }, schema: Data } });
+hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" }, schema: Data } });
+const knownData = { name: 42 };
+hsonLiveMap.fromLibraries({ state: { data: knownData, schema: Data } });
+const escapedData = { name: 42 }; getPage(); void escapedData;
+hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
+`;
+  const test = project("candidate-diagnostics", { "index.ts": source });
+  const errors = test.errors("index.ts").filter(error => error.code === 95002);
+  assert.equal(errors.length, 6, messages(errors));
+  assert.ok(errors.some(error => ts.flattenDiagnosticMessageText(error.messageText, "\n").includes("missing required")));
+  assert.ok(errors.some(error => ts.flattenDiagnosticMessageText(error.messageText, "\n").includes("wrong tag")));
+  for (const error of errors) {
+    assert.equal(error.file?.fileName, test.file("index.ts"));
+    assert.ok(error.start !== undefined && error.length && error.start + error.length <= source.length);
+    assert.ok(!ts.flattenDiagnosticMessageText(error.messageText, "\n").includes(".hson/"));
+  }
+  assert.ok(errors.some(error => source.slice(error.start, error.start! + error.length!).includes('body')), errors.map(error => source.slice(error.start, error.start! + error.length!)).join("\n"));
+  const config = test.file("tsconfig.json");
+  writeFileSync(config, JSON.stringify({ compilerOptions: test.options, files: [test.file("index.ts")] }));
+  const generated = spawnSync(process.execPath, ["--import=tsx", "scripts/hson-schema.mts", "generate", "--project", config], { cwd: root, encoding: "utf8" });
+  assert.notEqual(generated.status, 0);
+  const manifest = JSON.parse(readFileSync(test.file(".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
+  const candidateErrors: string[] = manifest.diagnostics.filter((message: string) => message.includes("Static Hson does not satisfy"));
+  assert.equal(candidateErrors.length, errors.length);
+  for (const error of errors) {
+    const location = error.file!.getLineAndCharacterOfPosition(error.start!);
+    assert.ok(candidateErrors.includes(`${test.file("index.ts")}:${location.line + 1}:${location.character + 1}: ${error.messageText}`));
+  }
+  test.edit("index.ts", source.replaceAll(missing, valid).replaceAll(order, valid).replaceAll('name: 42', 'name: "Ada"'));
+  assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 0);
+  const prefix = `import { Hson, hsonLiveMap, ANY_DOCUMENT, type HsonDocument } from "hson-live";\nconst S = Hson.schema\`${schema}\`;\nconst bad = Hson.document\`${missing}\`;\nconst good = Hson.document\`${valid}\`;\ndeclare const condition: boolean;\ndeclare function getPage(): HsonDocument;\n`;
+  const cases: readonly [string, number][] = [
+    ['hsonLiveMap.fromLibraries({ page: { document: bad, schema: S } });', 1],
+    ['hsonLiveMap.fromLibraries({ page: { document: good, schema: S } });', 0],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad, schema: ANY_DOCUMENT } }); map.lib("page").schema.use(S);', 1],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: good } }); map.lib("page").schema.use(S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); const alias = map; map.lib("page").schema.use(S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); getPage(); map.lib("page").schema.use(S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); declare const name: string; map.lib(name).schema.use(S);', 0],
+    ['S.certify(condition ? bad : getPage());', 0],
+    ['S.certify(await Promise.resolve(bad));', 0],
+    ['const D = Hson.schema`<type "data" content <name "string">>`; D.certify(Hson.data`<name 42>`);', 1],
+    ['const D = Hson.schema`<type "data" content <name "string">>`; hsonLiveMap.fromLibraries({ data: { data: \'{"name":42}\', schema: D } });', 1],
+    ['const D = Hson.schema`<type "data" content <name "string">>`; const data = condition ? { name: 42 } : { name: 7 }; Reflect.set(data, "name", "Ada"); hsonLiveMap.fromLibraries({ state: { data, schema: D } });', 0],
+  ];
+  for (const [body, expected] of cases) {
+    test.edit("index.ts", prefix + body);
+    const diagnostics = test.errors("index.ts").filter(error => error.code === 95002);
+    assert.equal(diagnostics.length, expected, `${body}\n${messages(diagnostics)}`);
+  }
+  test.edit("index.ts", prefix.replace(schema, '<type "document" content <') + cases[0][0]);
+  assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 0);
+  test.service.dispose();
+  const runtime = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;
+  const bad = Hson.document`<html <body/>/>`;
+  assert.throws(() => runtime.certify(bad), /Schema validation failed/);
+  assert.throws(() => runtime.certify(Hson.document`<html <body/> <head/>/>`), /Schema validation failed/);
+  assert.doesNotThrow(() => runtime.certify(Hson.document`<html <head/> <body/>/>`));
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: bad, schema: runtime } }), /Schema validation failed/);
+  const map = hsonLiveMap.fromLibraries({ page: { document: bad } });
+  assert.throws(() => Reflect.apply(map.lib("page").schema.use, undefined, [runtime]), /Schema validation failed/);
 });
 
 check("editor operations never change disk bytes or materialize a generated project", () => {

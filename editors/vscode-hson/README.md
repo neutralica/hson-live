@@ -58,6 +58,8 @@ Available editor commands include:
 
 Direct `Hson.data` and `Hson.document` assignments to `HsonData<typeof Schema>` or `HsonDocument<typeof Schema>` gain proof after Schema-aware validation. Dynamic values can be certified with `schema.certify(...)`, while named LiveMap state can be governed through `map.lib("name").schema.use(...)`.
 
+Direct certification and construction attachments also report definite static Schema mismatches in Problems and at authored candidate ranges. Complete literal Hson, immutable string aliases, and bounded alternatives are supported; all alternatives must fail before a diagnostic is issued. Data attachments support literal JSON material and unaliased, single-use literal objects. Post-hoc attachment checks require an immediately preceding direct construction. Calls, awaited values, mutations, escaped objects, and uncertain contents remain runtime-owned. Runtime validation is unchanged.
+
 ## Local applications
 
 The extension can run a real Hson application locally using the workspace's own Node runtime and installed `hson-live`.
@@ -98,7 +100,7 @@ The single Hson status item shows Schema and Local App state. Hover it for conte
 
 Local application hosting is development infrastructure, not an authentication boundary. The extension binds LiveHost Node to loopback and requires Workspace Trust, while the application remains responsible for its own authentication, authorization, and security policy. The extension supervises its local runner and LiveHost resources; additional processes created by application code remain application-owned and are not generically supervised by the extension.
 
-Build/watch remains project-owned. Set `buildCommand` to the project's existing build command to run it before Local App launch or restart. When `restartOnSave` is enabled, saving under `sourceDirectory` waits for that command to finish successfully before restarting the running app. A failed build leaves the current app running and reports the failure. The extension does not provide its own TypeScript executor, bundler, Vite process, or alternate Hson runtime. Browser opening uses VS Code's external URI handling and the system browser preference.
+Build/watch remains project-owned. Set `buildCommand` to the project's existing build command to run it before Local App launch or restart. When `restartOnSave` is enabled, an explicit Save or Save All under `sourceDirectory` waits for that command to finish successfully before restarting the app. Hson formatting also runs only on explicit saves; after-delay, focus-out, and window-change auto-save can update diagnostics without formatting or restarting. A failed build leaves the current app running and marks the latest generation failed. A failed import/startup keeps automatic retry enabled for the next manual save; Stop disables retry. Full failures remain in Hson Local App Output, with concise notifications and red status instead of stack-trace popups. Output opens only when requested. The extension does not provide its own TypeScript executor, bundler, Vite process, or alternate Hson runtime. Browser opening uses VS Code's external URI handling and the system browser preference.
 
 ## Install the local development build
 

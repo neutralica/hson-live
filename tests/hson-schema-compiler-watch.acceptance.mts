@@ -291,6 +291,19 @@ void changed; void wrong;
     current = await next(); passes(); preserve();
     remove("precision.ts"); current = await next(); passes(); preserve();
   });
+  await check("direct certification failures publish authored locations and recover in the next watch generation", async () => {
+    const candidate = (value: string) => `${imports}import { S } from "./schema.js";\nconst page = Hson.data\`<value "${value}">\`;\nS.certify(page);\n`;
+    write("candidate.ts", candidate("wrong"));
+    current = await next();
+    assert.equal(current.diagnostics.length, 1);
+    assert.match(current.diagnostics[0]!, /candidate\.ts:3:\d+: Static Hson does not satisfy S/);
+    assert.match(current.diagnostics[0]!, /expected.*a.*received.*wrong/);
+    assert.deepEqual(manifest(current).diagnostics, current.diagnostics);
+    preserve();
+    write("candidate.ts", candidate("a"));
+    current = await next(); assert.deepEqual(current.diagnostics, []); passes(); preserve();
+    remove("candidate.ts"); current = await next(); passes(); preserve();
+  });
   await check("package scope changes are observed", async () => {
     write("package.json", '{"type":"commonjs"}'); current = await next(); passes(); preserve();
     write("package.json", '{"type":"module"}'); current = await next(); passes(); preserve();

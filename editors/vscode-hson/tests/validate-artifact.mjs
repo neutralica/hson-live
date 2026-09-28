@@ -106,7 +106,7 @@ assert.deepEqual(configuration["hson.formatting.formatOnSave"], {
   scope: "resource",
   order: 10,
   title: "Format Hson on Save",
-  markdownDescription: "Format recognized Hson authoring regions when a file is saved.",
+  markdownDescription: "Format recognized Hson authoring regions on explicit Save or Save All. Auto-save does not format.",
 });
 const appearanceDefaults = { blue: "#00adf6", yellow: "#c9d100", pink: "#ff4a8c", green: "#39a500" };
 assert.deepEqual(Object.keys(appearanceDefaults).map(key => ({

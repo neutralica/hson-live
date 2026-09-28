@@ -13,6 +13,7 @@ const { is_official_hson_package_binding } = await import(`${runtimeBase}/intern
 const { compile_hson_schema } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
 const { library_schema_attachment_plan } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
 const { discover_hson_schema_declarations } = await import(`${runtimeBase}/internal/hson-schema/schema-discovery.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-discovery.ts");
+const { static_schema_candidate_diagnostics } = await import(`${runtimeBase}/internal/hson-schema/candidate-diagnostics.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/candidate-diagnostics.ts");
 const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
 const { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } = await import(`${runtimeBase}/internal/canonical-schema/evaluate.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/evaluate.ts");
 const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hson-source-provenance/parse-hson-with-provenance.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-source-provenance/parse-hson-with-provenance.ts");
@@ -68,6 +69,7 @@ async function run_project(watch: boolean): Promise<void> {
     catch (error) { diagnostics.push({ message: error_message(error) }); schemas = []; }
     if (configDiagnostics.length) schemas = [];
     const analysis = analyze_static_hson(program, checker, schemas, diagnostics);
+    diagnostics.push(...static_schema_candidate_diagnostics(ts, program));
     const attachmentFacts = schemas.map(schema => Object.freeze({ declaration: schema.declaration, mode: schema_mode(schema) }));
     const attachments: Overlay[] = [];
     for (const source of program.getSourceFiles()) {
@@ -77,7 +79,11 @@ async function run_project(watch: boolean): Promise<void> {
     // Generated precision replaces ordinary broad-tag diagnostics; missing imports remain errors.
     const missingImports = program.getSemanticDiagnostics().filter(d => [2307, 2792, 7016].includes(d.code));
     diagnostics.push(...missingImports.map(d => ({ message: format_ts_diagnostic(d) })));
-    return { schemas, overlays: [...analysis.overlays, ...attachments], diagnostics: diagnostics.map(d => `${d.file ?? ""}${d.file === undefined ? "" : ": "}${d.message}`) };
+    return { schemas, overlays: [...analysis.overlays, ...attachments], diagnostics: diagnostics.map(d => {
+      const source = d.file === undefined ? undefined : program.getSourceFile(d.file);
+      const position = source === undefined || d.start === undefined ? undefined : source.getLineAndCharacterOfPosition(d.start);
+      return `${d.file ?? ""}${d.file === undefined ? "" : position === undefined ? ": " : `:${position.line + 1}:${position.character + 1}: `}${d.message}`;
+    }) };
   }, event => {
     if (event.state === "current") { published = true; issues = event.diagnostics ?? []; }
     if (event.state !== "prepared") console.log(JSON.stringify({ hsonSchema: watch ? "watch" : "generate", ...event }));
@@ -213,7 +219,7 @@ function validate_candidate(schema: SchemaDeclaration, source: string, sourceFil
         ? resolve_document_schema_issue_source(parsed.value, "document", parsed.provenance, first)
         : resolve_projected_schema_issue_source(parsed.value, parsed.provenance, first);
       const relativeStart = resolution === undefined || resolution.kind === "unresolved" ? 0 : resolution.range.start;
-      diagnostics.push({ file: sourceFile.fileName, start: node.getStart() + 1 + relativeStart, message: `Static Hson does not satisfy ${schema.name}: ${first?.code ?? "validation failed"} at ${first?.path.join(".") || "root"}.` });
+      diagnostics.push({ file: sourceFile.fileName, start: (ts.isTaggedTemplateExpression(node) ? node.template.getStart() : node.getStart()) + 1 + relativeStart, message: `Static Hson does not satisfy ${schema.name}: ${first?.code ?? "validation failed"} at ${first?.path.join(".") || "root"}.` });
     }
   } catch (error) {
     diagnostics.push({ file: sourceFile.fileName, start: node.getStart(), message: error instanceof Error ? error.message : "Invalid static Hson." });
