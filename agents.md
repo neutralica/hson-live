@@ -3,6 +3,22 @@
 This repository contains the hson-live library.
 Agents must preserve API stability and runtime identity.
 
+## 0. README ownership
+
+`README.md` is human-owned.
+
+Agents must never:
+
+- edit `README.md`;
+- reformat `README.md`;
+- regenerate `README.md`;
+- stage changes to `README.md`;
+- include `README.md` in documentation sweeps or API-update passes.
+
+If implementation changes make `README.md` stale, report that fact at the end of the task and leave the file untouched.
+
+If `README.md` already has working-tree changes, treat them as user-owned and do not alter them.
+
 ## 1. Public API stability
 
 - Do NOT remove or rename public exports without explicit instruction.
