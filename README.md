@@ -69,14 +69,14 @@ This allows data and markup to pass through one explicit intermediate representa
 
 Hson can represent:
 
-• JSON objects and arrays
-• strings, numbers, booleans, and null
-• HTML, XML, and SVG elements
-• element attributes and eligible element metadata
-• ordered and mixed markup content
-• documents with zero, one, or many top-level nodes
-• namespaces and structural wrapper nodes
-• stable markup identity for live document nodes
+- JSON objects and arrays
+- strings, numbers, booleans, and null
+- HTML, XML, and SVG elements
+- element attributes and eligible element metadata
+- ordered and mixed markup content
+- documents with zero, one, or many top-level nodes
+- namespaces and structural wrapper nodes
+- stable markup identity for live document nodes
 
 Round trips are deterministic within each transformation contract.
 
@@ -87,12 +87,12 @@ Round trips are deterministic within each transformation contract.
 
 `hson-live`'s connected subsystems create and operate on `Hson` graphs as both data and markup, uniting two formerly non-interchangeable notations in one ecosystem. 
 
-• `hson.transform` - creates `Hson` graphs from JSON, HTML, XML, and SVG. Its transformer circuit is stable: normalized user data performs repeated round trips across formats without drift or distortion.
-• `hson.liveTree` - `Hson` -> DOM rendering pipeline. LiveTree maintains or tracks a canonical node graph containing `Hson` markup, then projects the document as HTML to the DOM. Mutation to the canonical `Hson` graph updates in realtime. 
-• `hson.liveMap` - a versatile application state machine that maintains the canonical `Hson` graph and controls mutation. LiveMap manages node graph mutation validated against TypeScript-compatible schema and tracks revision history, pushing changes to subscribers via commits.
- • `hson.liveHost` - the application/runtime boundary. LiveHost registers applications, dispatches exact request and connection routes, and provides the hosting contract. LiveHost Node is the implementation of the generic LiveHost, responsible for HTTP/WebSocket ingress, security/resource policy, transport adaptation, and process lifecycle.
-• `Locus` - a server-side canonical LiveMap authority. Locus governs one authoritative LiveMap/state domain and synchronizes replicas across client sessions. Locus decides and sequences graph mutation, coordinates persistence and authorization, retains accepted cacnonical history, and synchronizes client replicas (-> Echo).
-• `Echo` - a subjugated client endpoint; Echo is an unopinionated coordinator of commits from Locus to a client-side LiveMap replica. It tracks authoritative server-side state, sends client mutation intent to Locus, receives state changes back in the form of commits, and keeps its subordinate replica synchronized.
+- `hson.transform` - creates `Hson` graphs from JSON, HTML, XML, and SVG. Its transformer circuit is stable: normalized user data performs repeated round trips across formats without drift or distortion.
+- `hson.liveTree` - `Hson` -> DOM rendering pipeline. LiveTree maintains or tracks a canonical node graph containing `Hson` markup, then projects the document as HTML to the DOM. Mutation to the canonical `Hson` graph updates in realtime. 
+- `hson.liveMap` - a versatile application state machine that maintains the canonical `Hson` graph and controls mutation. LiveMap manages node graph mutation validated against TypeScript-compatible schema and tracks revision history, pushing changes to subscribers via commits.
+ - `hson.liveHost` - the application/runtime boundary. LiveHost registers applications, dispatches exact request and connection routes, and provides the hosting contract. LiveHost Node is the implementation of the generic LiveHost, responsible for HTTP/WebSocket ingress, security/resource policy, transport adaptation, and process lifecycle.
+- `Locus` - a server-side canonical LiveMap authority. Locus governs one authoritative LiveMap/state domain and synchronizes replicas across client sessions. Locus decides and sequences graph mutation, coordinates persistence and authorization, retains accepted cacnonical history, and synchronizes client replicas (-> Echo).
+- `Echo` - a subjugated client endpoint; Echo is an unopinionated coordinator of commits from Locus to a client-side LiveMap replica. It tracks authoritative server-side state, sends client mutation intent to Locus, receives state changes back in the form of commits, and keeps its subordinate replica synchronized.
 
 `hson-live` is flexible by design; its subsystems can be fully deployed, or composed modularly to fit various use cases. It fully supports no-js modes as a progressive default. 
 
@@ -310,20 +310,20 @@ A server-side Locus authority governs one LiveMap for a hosted application, orde
 
 Locus provides:
 
-• typed and validated actions;
-• action authorization;
-• canonical commit ordering;
-• bounded history;
-• resumable sessions;
-• path subscriptions;
-• transient connection events;
-• duplicate action-request handling;
-• snapshots and replay;
-• revision-gap detection;
-• recovery after disconnect;
-• document-state persistence contracts;
-• one-map bootstrap contribution; and
-• activity and quiescence observation.
+- typed and validated actions;
+- action authorization;
+- canonical commit ordering;
+- bounded history;
+- resumable sessions;
+- path subscriptions;
+- transient connection events;
+- duplicate action-request handling;
+- snapshots and replay;
+- revision-gap detection;
+- recovery after disconnect;
+- document-state persistence contracts;
+- one-map bootstrap contribution; and
+- activity and quiescence observation.
 
 The authority itself remains transport-independent. Locus communicates through a small transport-agnostic interface, and does not depend directly on Node, browser, or Cloudflare networking APIs.
 
