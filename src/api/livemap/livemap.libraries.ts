@@ -305,9 +305,6 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
   }));
   if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot);
 
-  function cut(options: LiveMapCutOptions & { html: string }): LiveMapHtmlCut;
-  function cut(options?: LiveMapCutOptions & { html?: undefined }): LiveMapCut;
-  function cut(options: LiveMapCutOptions): LiveMapCut | LiveMapHtmlCut;
   function cut(options: LiveMapCutOptions = {}): LiveMapCut | LiveMapHtmlCut {
     if (!is_record(options) || Object.keys(options).some(key => key !== "data" && key !== "documents" && key !== "html")) {
       throw new TypeError("LiveMap cut options must contain only data, documents, and html selections.");
@@ -726,8 +723,8 @@ function make_data_library(
   aggregate: ReturnType<typeof internal_livemap_aggregate_authority>,
   public_commit: (commit: LiveMapAggregateCommit) => LiveMapCommit,
 ): LiveMapDataLibrary {
-  const inspected = aggregate.inspect().libraries.find((entry) => entry.identity === library.identity);
-  if (inspected === undefined || !is_data_livemap_mode(inspected.mode)) {
+  const contract = aggregate.hostedRegistry().libraries.find((entry) => entry.name === library.name);
+  if (contract === undefined || contract.scope !== undefined || !is_data_livemap_mode(contract.mode)) {
     throw new Error(`LiveMap Library ${JSON.stringify(library.name)} is not a data Library.`);
   }
   const snap = (path: LivePath = []): JsonValue | undefined => aggregate.snap(library.identity, path);
@@ -825,7 +822,7 @@ function make_data_library(
   }
 
   const facade: LiveMapDataLibrary = {
-    mode: inspected.mode,
+    mode: contract.mode,
     get rev() { return aggregate.inspect().revision; },
     root: () => clone_node(aggregate.root(library.identity)),
     snap: library_snap,
@@ -879,8 +876,8 @@ function make_document_library(
   aggregate: ReturnType<typeof internal_livemap_aggregate_authority>,
   public_commit: (commit: LiveMapAggregateCommit) => LiveMapCommit,
 ): LiveMapDocumentLibrary {
-  const inspected = aggregate.inspect().libraries.find((entry) => entry.identity === library.identity);
-  if (inspected === undefined || inspected.mode !== "document") {
+  const contract = aggregate.hostedRegistry().libraries.find((entry) => entry.name === library.name);
+  if (contract === undefined || contract.scope !== undefined || contract.mode !== "document") {
     throw new Error(`LiveMap Library ${JSON.stringify(library.name)} is not a document Library.`);
   }
 
@@ -962,7 +959,6 @@ function make_document_library(
     overlay: () => aggregate.documentOverlay(library.identity),
     commits: document_commits,
     identityEpoch: aggregate.identityEpoch(),
-    captureContinuity: () => aggregate.documentCaptureContinuity(library.identity),
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: import("./livemap.document.mutation.js").PreparedDocumentMutation<TOp>) =>
       aggregate.commitDocumentMutation(library.identity, candidate),
     acquireLocalIdentity: (path: import("../../types/livemap.types.js").LiveMapDocumentPath, quid: string, participant?: import("./livemap.runtime-identity.js").LiveMapRuntimeIdentityParticipant) =>

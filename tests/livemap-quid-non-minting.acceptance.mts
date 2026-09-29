@@ -1,4 +1,4 @@
-import { capture_document } from "./helpers/document-capture.mts";
+import { capture_internal_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -85,7 +85,7 @@ check("portable registry capture and restore retain QUID absence", () => {
 
 check("view-state codec preserves QUID-free canonical content", () => {
   const source = plain();
-  const decoded = decode_view_state_snapshot(encode_view_state_snapshot(capture_document(source)));
+  const decoded = decode_view_state_snapshot(encode_view_state_snapshot(capture_internal_document(registry_for_document_library(source), "page")));
   assert.deepEqual(quids(decoded.root), []);
 });
 
@@ -111,7 +111,7 @@ check("sparse movement preserves only supplied QUIDs", () => {
 
 check("portable capture strips supplied sparse QUIDs without mutating source", () => {
   const map = sparse();
-  assert.deepEqual(quids(capture_document(map).root), []);
+  assert.deepEqual(quids(capture_internal_document(registry_for_document_library(map), "page").root), []);
   assert.deepEqual(quids(map.root()), [Q1, Q2]);
 });
 

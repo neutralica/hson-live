@@ -95,7 +95,6 @@ check("empty map admits a document and data atomically with top Schemas", () => 
     state: { data: { count: 0 }, schema: ANY_DATA } });
   assert.equal(explicit.capture().registry.digest, map.capture().registry.digest);
   assert.equal(document_html(map.lib("page")), "<main>Hello</main>");
-  assert.equal(document_html(map.lib("page")), "<main>Hello</main>");
   assert.notEqual(map.capture().registry.digest, before.registry.digest);
   assert.equal(map.capture().revision, 1);
   let emptyObservations = 0;

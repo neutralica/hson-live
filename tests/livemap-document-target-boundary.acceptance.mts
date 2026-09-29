@@ -1,4 +1,3 @@
-import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -72,16 +71,16 @@ check("accepted target paths are frozen and detached from caller arrays", () => 
 
 check("raw QUID target shape rejects before mutation", () => {
   const library = fixture();
-  const before = capture_document(library);
+  const before = { root: library.root(), rev: library.rev };
   assert.throws(() => library.document.attrs.set({ kind: "quid", quid: Q1 } as never, "bad", true));
-  assert.deepEqual(capture_document(library), before);
+  assert.deepEqual({ root: library.root(), rev: library.rev }, before);
 });
 
 check("invalid paths do not reroute through an existing QUID", () => {
   const library = fixture();
-  const before = capture_document(library);
+  const before = { root: library.root(), rev: library.rev };
   assert.throws(() => library.document.attrs.set({ kind: "path", path: [99] }, "bad", true));
-  assert.deepEqual(capture_document(library), before);
+  assert.deepEqual({ root: library.root(), rev: library.rev }, before);
   assert.deepEqual(livemap_document_identity_overlay_for(library.document).pathForQuid(Q1), [0]);
 });
 

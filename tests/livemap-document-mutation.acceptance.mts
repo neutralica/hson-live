@@ -1,4 +1,3 @@
-import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -82,10 +81,10 @@ check("drop, dropMany, clear, and replace keep exact attribute bags", () => {
 
 check("invalid attribute names and raw QUID targets reject atomically", () => {
   const map = fixture();
-  const before = capture_document(map);
+  const before = { root: map.root(), rev: map.rev };
   assert.throws(() => map.document.attrs.set(root, "bad name", "x"));
   assert.throws(() => map.document.attrs.set({ kind: "quid", quid: "000000001" } as never, "title", "x"));
-  assert.deepEqual(capture_document(map), before);
+  assert.deepEqual({ root: map.root(), rev: map.rev }, before);
 });
 
 check("content insertion accepts beginning, middle, and append under Schema", () => {
@@ -102,9 +101,9 @@ check("content replacement changes one slot and rejects off-Schema tags", () => 
   map.document.content.replace(carrier, 0, projected_element('<item id="new"/>'));
   assert.equal(map.document.attrs.get(item(0), "id"), "new");
   assert.equal(map.document.attrs.get(item(1), "id"), "b");
-  const before = capture_document(map);
+  const before = { root: map.root(), rev: map.rev };
   assert.throws(() => map.document.content.replace(carrier, 0, projected_element('<aside/>')));
-  assert.deepEqual(capture_document(map), before);
+  assert.deepEqual({ root: map.root(), rev: map.rev }, before);
 });
 
 check("content removal and final-position movement preserve surviving values", () => {
@@ -117,11 +116,11 @@ check("content removal and final-position movement preserve surviving values", (
 
 check("same-position move and failed indexes consume no revision", () => {
   const map = fixture();
-  const before = capture_document(map);
+  const before = { root: map.root(), rev: map.rev };
   const noop = map.document.content.move(carrier, 0, 0);
   assert.equal(noop.changed, false);
   assert.throws(() => map.document.content.move(carrier, 0, 99));
-  assert.deepEqual(capture_document(map), before);
+  assert.deepEqual({ root: map.root(), rev: map.rev }, before);
 });
 
 check("sparse document identity moves with a canonical item", () => {
@@ -133,9 +132,9 @@ check("sparse document identity moves with a canonical item", () => {
 
 check("incoming supplied QUID claims reject without partial mutation", () => {
   const map = fixture();
-  const before = capture_document(map);
+  const before = { root: map.root(), rev: map.rev };
   assert.throws(() => map.document.content.insert(carrier, 1, projected_element('<item @000000a02/>')));
-  assert.deepEqual(capture_document(map), before);
+  assert.deepEqual({ root: map.root(), rev: map.rev }, before);
 });
 
 check("sequential successful mutations each advance the global revision", () => {

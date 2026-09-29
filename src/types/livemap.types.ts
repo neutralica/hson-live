@@ -1646,10 +1646,9 @@ type LiveMapLibrarySelector<TMap> = [LiveMapEffectiveKnownNames<TMap>] extends [
       (name: string): LiveMapDynamicLibrary;
     };
 
-type LiveMapFamilyNames<TMap, TFamily extends "data" | "document"> =
-  [LiveMapEffectiveKnownNames<TMap>] extends [never] ? string : {
-    [TName in LiveMapEffectiveKnownNames<TMap>]: LiveMapEffectiveDefinitions<TMap>[TName] extends Readonly<Record<TFamily, unknown>> ? TName : never;
-  }[LiveMapEffectiveKnownNames<TMap>];
+type LiveMapKnownFamilyNames<TMap, TFamily extends "data" | "document"> = {
+  [TName in LiveMapEffectiveKnownNames<TMap>]: LiveMapEffectiveDefinitions<TMap>[TName] extends Readonly<Record<TFamily, unknown>> ? TName : never;
+}[LiveMapEffectiveKnownNames<TMap>];
 
 export type LiveMapCutOptions<TData extends string = string, TDocument extends string = string> = Readonly<{
   data?: readonly TData[];
@@ -1663,10 +1662,31 @@ export type LiveMapHtmlCut<TDocument extends string = string> = LiveMapCut & Rea
   document: TDocument;
 }>;
 
+/** Reject provably wrong families while leaving unknown runtime names to admission. */
+type LiveMapCutSelection<TMap, TOptions extends LiveMapCutOptions> =
+  [Extract<NonNullable<TOptions["data"]>[number], LiveMapKnownFamilyNames<TMap, "document">>
+    | Extract<NonNullable<TOptions["documents"]>[number], LiveMapKnownFamilyNames<TMap, "data">>
+    | Extract<TOptions["html"], LiveMapKnownFamilyNames<TMap, "data">>
+    | Exclude<keyof TOptions, keyof LiveMapCutOptions>] extends [never]
+    ? TOptions extends Readonly<{ documents: readonly (infer TDocument extends string)[] }>
+      ? string extends TDocument | Extract<TOptions["html"], string> ? unknown
+        : [Exclude<Extract<TOptions["html"], string>, TDocument>] extends [never] ? unknown : never
+      : unknown
+    : never;
+
+type LiveMapCutResult<TOptions extends LiveMapCutOptions> = TOptions extends unknown
+  ? "html" extends keyof TOptions
+    ? [Extract<TOptions["html"], string>] extends [never] ? LiveMapCut
+      : undefined extends TOptions["html"] ? LiveMapCut | LiveMapHtmlCut<Extract<TOptions["html"], string>>
+        : LiveMapHtmlCut<Extract<TOptions["html"], string>>
+    : LiveMapCut
+  : never;
+
 type LiveMapCutApi<TMap> = {
-  (options?: LiveMapCutOptions<LiveMapFamilyNames<TMap, "data">, LiveMapFamilyNames<TMap, "document">> & { html?: undefined }): LiveMapCut;
-  <const TDocument extends LiveMapFamilyNames<TMap, "document">>(options: LiveMapCutOptions<LiveMapFamilyNames<TMap, "data">, LiveMapFamilyNames<TMap, "document">> & { html: TDocument }): LiveMapHtmlCut<TDocument>;
-  (options: LiveMapCutOptions<LiveMapFamilyNames<TMap, "data">, LiveMapFamilyNames<TMap, "document">>): LiveMapCut | LiveMapHtmlCut;
+  (options?: undefined): LiveMapCut;
+  <const TOptions extends LiveMapCutOptions>(
+    options: TOptions & LiveMapCutSelection<TMap, NoInfer<TOptions>>,
+  ): LiveMapCutResult<TOptions>;
 };
 
 /**

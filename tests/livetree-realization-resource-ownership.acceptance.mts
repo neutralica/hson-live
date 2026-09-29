@@ -1,4 +1,3 @@
-import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import type { HsonNode } from "../src/core/types.ts";
@@ -198,7 +197,7 @@ await check("QUID-free local Mirror registration leaves graph, revision, publica
   const node = raw_node(binding.tree.node, []);
   const tree = _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
   const target = attach(node);
-  const beforeCapture = capture_document(map);
+  const beforeState = { root: map.root(), rev: map.rev };
   const beforeRevision = map.rev;
   let publications = 0;
   const stop = map.commits.observe(() => { publications += 1; });
@@ -210,7 +209,7 @@ await check("QUID-free local Mirror registration leaves graph, revision, publica
   assert.equal(node.$_meta?.quid, undefined);
   assert.equal(map.rev, beforeRevision);
   assert.equal(publications, 0);
-  assert.deepEqual(capture_document(map), beforeCapture);
+  assert.deepEqual({ root: map.root(), rev: map.rev }, beforeState);
 
   const acquired = tree.quid;
   assert.equal(typeof acquired, "string");

@@ -252,6 +252,26 @@ check("HTML selection is normalized once before detached state capture", () => {
   assert.equal(cut.html, "<main></main>");
 });
 
+check("runtime admissions and dynamic strings retain cut admission and reconstruction", () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: 1 }, page: { document: "<main/>" } });
+  map.addLibraries({ later: { document: "<aside/>" }, laterState: { data: 2 } });
+  const selected = map.cut({ data: ["laterState"], documents: ["later"], html: "later" });
+  const name: "later" = selected.document;
+  assert.equal(name, "later");
+  assert.equal(selected.html, "<aside></aside>");
+  assert.deepEqual(selected.libs.registry.libraries.map(entry => entry.name), ["later", "laterState"]);
+  assert.deepEqual(install_libraries_snapshot(selected.libs).map.cut().libs, selected.libs);
+  const documentName: string = "page";
+  const dataName: string = "laterState";
+  assert.equal(map.cut({ data: [dataName], documents: [documentName], html: documentName }).html, "<main></main>");
+  for (const invalid of ["missing", "state", INTERACTION_RESERVED_LIBRARY_KEY]) {
+    const dynamicName: string = invalid;
+    assert.throws(() => map.cut({ documents: [dynamicName], html: dynamicName }));
+  }
+  assert.throws(() => map.cut({ data: [documentName] }));
+  assert.equal(map.rev, 1);
+});
+
 check("interaction storage follows selected documents and preserves enabled-empty state", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: 1 }, page: { document: "<main <button/>/>" }, admin: { document: "<aside <button/>/>" } });
   assert.equal(map.cut({ data: [], documents: [] }).libs.libraries.length, 0);

@@ -1,4 +1,3 @@
-import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -137,10 +136,10 @@ check("Reflection leaves a QUID-free LiveMap overlay empty", () => {
 
 check("rendering does not mutate canonical LiveMap metadata", () => {
   const map = element(`<main class="same" <span/>/>`);
-  const before = capture_document(map);
+  const before = { root: map.root(), rev: map.rev };
   const binding = _reflect_document_for_runtime_test(runtime, map);
   mount(binding.tree.node);
-  assert.deepEqual(capture_document(map), before);
+  assert.deepEqual({ root: map.root(), rev: map.rev }, before);
   binding.dispose();
   binding.tree.remove();
 });

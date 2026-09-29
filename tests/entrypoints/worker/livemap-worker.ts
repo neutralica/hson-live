@@ -81,3 +81,37 @@ documentMap.cut({ data: ["page"] });
 map.cut({ documents: ["state"] });
 // @ts-expect-error Data libraries have no document rendering capability.
 state.render();
+
+const selections = hsonLiveMap.fromLibraries({
+  state: { data: 1 }, page: { document: "<main/>" }, admin: { document: "<aside/>" },
+});
+const known = selections.cut({ data: ["state"], documents: ["page"], html: "page" });
+const knownName: "page" = known.document;
+void knownName;
+// @ts-expect-error Known document names cannot select data, even alongside unknown names.
+selections.cut({ data: ["laterState", "page"] });
+// @ts-expect-error Known data names cannot select documents.
+selections.cut({ documents: ["state"] });
+// @ts-expect-error Known data names cannot select HTML.
+selections.cut({ html: "state" });
+// @ts-expect-error A literal HTML name must belong to the literal document selection.
+selections.cut({ documents: ["admin"], html: "page" });
+// @ts-expect-error Empty document selections cannot produce HTML.
+selections.cut({ documents: [], html: "page" });
+selections.addLibraries({ later: { document: "<section/>" }, laterState: { data: 2 } });
+const later = selections.cut({ data: ["laterState"], documents: ["later"], html: "later" });
+const laterName: "later" = later.document;
+void laterName;
+declare const dynamicName: string;
+const dynamic = selections.cut({ documents: [dynamicName], html: dynamicName });
+const dynamicResult: string = dynamic.document;
+void dynamicResult;
+const dynamicDocuments: string[] = [dynamicName];
+const dynamicSelection = selections.cut({ documents: dynamicDocuments, html: "page" });
+const preciseHtml: "page" = dynamicSelection.document;
+void preciseHtml;
+declare const optionalSelection: import("hson-live/livemap").LiveMapCutOptions;
+const optionalCut = selections.cut(optionalSelection);
+void optionalCut.libs;
+// @ts-expect-error Optional HTML does not guarantee an HTML result.
+void optionalCut.html;

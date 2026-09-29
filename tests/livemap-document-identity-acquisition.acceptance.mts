@@ -1,4 +1,4 @@
-import { capture_document } from "./helpers/document-capture.mts";
+import { capture_internal_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -145,7 +145,7 @@ check("portable capture leaves acquired identity in the source runtime", () => {
 check("view-state persistence excludes acquired runtime metadata", () => {
   const map = element(`<main/>`);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
-  const decoded = decode_view_state_snapshot(encode_view_state_snapshot(capture_document(map)));
+  const decoded = decode_view_state_snapshot(encode_view_state_snapshot(capture_internal_document(registry_for_document_library(map), "page")));
   const restored = document_from_node(decoded.root);
   assert.equal(restored.document.byQuid(quid!), undefined);
 });

@@ -23,15 +23,15 @@ The one-library example is an ordinary registry. `map.lib("page")` selects its d
 LiveMap registry
   ├── one global revision and commit stream
   ├── complete capture and restore
-  ├── local HTML rendering
+  ├── selective aggregate cuts
   └── named libraries
        ├── data: canonical values and typed paths
-       └── document: canonical content, attributes, identity, and paths
+       └── document: canonical content, attributes, identity, paths, and HTML rendering
 ```
 
 All accepted writes pass through the registry's atomic validation and commit boundary. Each changed transition advances one global revision and names the affected library in its commit. A failure leaves the prior canonical state and revision intact. Schema validation applies at initial admission, mutation, replay, and reconstruction.
 
-Library handles identify and access one selected root. They do not form separate authorities or renderers. A data library offers `snap()` and typed `at(path)` handles with scalar, object, and array operations. A document library offers canonical `root()`, logical `at(path)` locations, document content and attribute operations, QUID lookup, and document-specific observation.
+Library handles identify and access one selected root within the map's aggregate authority. A data library offers `snap()` and typed `at(path)` handles with scalar, object, and array operations. A document library owns `render()` and offers canonical `root()`, logical `at(path)` locations, document content and attribute operations, QUID lookup, and document-specific observation.
 
 Paths are portable coordinates: data paths contain object keys and array indexes; document paths contain numeric content indexes. Generated QUIDs are runtime-scoped continuity evidence. They are not durable application addresses. Public portable captures omit generated QUIDs and every portable admission surface rejects QUID claims from another runtime.
 

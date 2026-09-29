@@ -1,4 +1,3 @@
-import { capture_document } from "./helpers/document-capture.mts";
 import { element } from "./helpers/mirror-unit6.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
@@ -59,14 +58,12 @@ function errorCode(fn: () => unknown, code: string, operation?: string): void {
 }
 
 function assertNoReadEffects(map: LiveMapDocumentLibrary, fn: () => void): void {
-  const before = capture_document(map);
-  const beforeRoot = map.root();
+  const before = { root: map.root(), rev: map.rev };
   const observations: unknown[] = [];
   map.commits.observe((event) => observations.push(event));
   fn();
   assert.equal(map.rev, before.rev);
-  assert.deepEqual(capture_document(map), before);
-  assert.deepEqual(map.root(), beforeRoot);
+  assert.deepEqual({ root: map.root(), rev: map.rev }, before);
   assert.deepEqual(observations, []);
 }
 

@@ -1,4 +1,3 @@
-import { capture_document } from "./helpers/document-capture.mts";
 import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import {
@@ -202,8 +201,7 @@ check("named document locations keep relative content operations in their select
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
   assert.equal(node(page.at([]).at([1]).snap()).$_tag, "item");
   assert.equal(node(modal.at([0]).snap()).$_tag, "item");
-  const capture = capture_document(page);
-  assert.deepEqual([capture.rev, capture.root.$_tag], [1, "_hson_root"]);
+  assert.deepEqual([page.rev, page.root().$_tag], [1, "_hson_root"]);
 });
 
 check("Mirror binds one selected document Library and advances through unrelated global revisions", () => {

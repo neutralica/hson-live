@@ -1,4 +1,3 @@
-import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -77,12 +76,12 @@ check("replacement is visible to a later staged path write", () => {
 
 check("a later invalid operation leaves earlier staged writes unapplied", () => {
   const map = fixture();
-  const before = capture_document(map);
+  const before = { root: map.root(), rev: map.rev };
   assert.throws(() => commit(map, [
     { domain: "graph", op: "set-attr", target: item(0), name: "temp", value: true },
     { domain: "graph", op: "set-attr", target: item(99), name: "bad", value: true },
   ]));
-  assert.deepEqual(capture_document(map), before);
+  assert.deepEqual({ root: map.root(), rev: map.rev }, before);
 });
 
 check("one staged transaction publishes one global revision", () => {

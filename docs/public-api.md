@@ -225,7 +225,8 @@ or intrinsically require Echo. Runtime coverage: canonical-interactions tests.
 The **canonical Hson graph** is in-memory semantic structure. **Serialized
 Hson** and branded `HsonCanonical` are authored/transport text forms. Hson
 `.toHtml()` is Hson transport HTML, not parser-compatible SSR output.
-`BrowserRealizationHtml` comes only from SSR composition. A semantic bootstrap
+`BrowserRealizationHtml` comes from document-library rendering and local or hosted
+HTML cuts. A semantic bootstrap
 is a captured map/authority state; `EncodedSsrBootstrap` is its deterministic
 delivery encoding. Snapshot transferability is not built-in durable persistence.
 HTML and continuation data must come from the same captured cut; Libraries SSR also

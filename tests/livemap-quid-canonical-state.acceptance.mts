@@ -1,4 +1,4 @@
-import { capture_document } from "./helpers/document-capture.mts";
+import { capture_internal_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -66,7 +66,7 @@ check("portable registry capture strips supplied QUIDs without changing its sour
 
 check("portable document capture strips supplied QUIDs", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
-  assert.deepEqual(quids(capture_document(source).root), []);
+  assert.deepEqual(quids(capture_internal_document(registry_for_document_library(source), "page").root), []);
   assert.equal(source.document.byQuid(Q1)?.$_tag, "main");
 });
 
@@ -89,9 +89,9 @@ check("portable restore uses the captured registry revision", () => {
 
 check("view-state codec transfers only portable document state", () => {
   const source = element(`<main @${Q1}/>`);
-  const decoded = decode_view_state_snapshot(encode_view_state_snapshot(capture_document(source)));
+  const decoded = decode_view_state_snapshot(encode_view_state_snapshot(capture_internal_document(registry_for_document_library(source), "page")));
   assert.deepEqual(quids(decoded.root), []);
-  assert.deepEqual(decoded.root, capture_document(source).root);
+  assert.deepEqual(decoded.root, capture_internal_document(registry_for_document_library(source), "page").root);
 });
 
 check("ordinary Hson serialization omits runtime QUID claims", () => {
