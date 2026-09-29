@@ -11,10 +11,12 @@ void socket;
 const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
 const locus: Locus<typeof map> = create_locus({ map, exposure: [{ library: "page", exposure: "client-public" }] });
 void [locus, hsonLocus];
-declare const sessionId: LocusSessionId;
-const snapshot: AuthorityProjectionSnapshot = locus.captureClient(sessionId);
+const retained = await locus.session.create({ libraries: ["page"] });
+const snapshot: AuthorityProjectionSnapshot = retained.cut().libs;
 void hsonLiveMap.fromClientSnapshot({ authority: snapshot, localLibraries: {} });
-// @ts-expect-error Session IDs remain strings.
-locus.captureClient(1);
+// @ts-expect-error Retained cuts have no family narrowing.
+retained.cut({ data: [] });
+// @ts-expect-error The public plural namespace is retired.
+void locus.sessions;
 // @ts-expect-error A bare map cannot become a hosted Locus.
 create_locus({ map: hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } }) });

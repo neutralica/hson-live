@@ -85,7 +85,7 @@ Document libraries expose `document.content`, `document.attrs`, `document.flags`
 
 `map.lib("page").render()` returns browser-compatible HTML for that document and its managed CSS. It preserves authored structure and fragments without synthesizing a shell, and reads no unrelated libraries.
 
-`map.cut({ data?, documents?, html? })` transfers coherent selected state in `libs`. Omitted families select all application libraries; `[]` selects none. No HTML selection returns `{ libs }`; naming a selected document returns `{ libs, html, document }` from the same detached state. The subset registry includes its Schemas, digests, roots, CSS and source revision. Internal interactions follow selected documents automatically. Local continuation reconstructs the subset with `install_libraries_snapshot(libs)`. Hosted projection belongs to Locus: `locus.cut(sessionId, document?)` returns authorized projected state and HTML, and hosted continuation uses Echo's governed replica.
+`map.cut({ data?, documents?, html? })` transfers coherent selected state in `libs`. Omitted families select all application libraries; `[]` selects none. No HTML selection returns `{ libs }`; naming a selected document returns `{ libs, html, document }` from the same detached state. The subset registry includes its Schemas, digests, roots, CSS and source revision. Internal interactions follow selected documents automatically. Local continuation reconstructs the subset with `install_libraries_snapshot(libs)`. Hosted projection belongs to Locus: `session.cut({ html: document })` returns authorized projected state and HTML, and hosted continuation uses Echo's governed replica.
 
 ## Other layers
 

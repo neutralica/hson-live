@@ -6,7 +6,7 @@ import { plan_managed_document_css } from "./browser-realization/managed-documen
 import { decode_portable_document_stylesheet, render_portable_document_stylesheet } from "./css/portable-document-stylesheet.js";
 import { serialize_browser_realization } from "./browser-realization/browser-realization-serialize.js";
 import { DocumentSsrError } from "./document-cut.error.js";
-import { decode_hosted_root } from "../api/livemap/livemap.hosted.js";
+import { decode_hosted_root, HOSTED_MAX_SNAPSHOT_BYTES } from "../api/livemap/livemap.hosted.js";
 
 export function realize_document(root: HsonNode, css = ""): BrowserRealizationHtml {
   try {
@@ -27,9 +27,8 @@ export function realize_document(root: HsonNode, css = ""): BrowserRealizationHt
 /** Hosted client egress: both siblings are derived from the admitted session snapshot. */
 export function cut_hosted_projection(
   snapshot: AuthorityProjectionSnapshot,
-  requested?: string,
-): Readonly<{ html: BrowserRealizationHtml; data: AuthorityProjectionSnapshot; document: string; revision: number; projectionDigest: string }> {
-  const selected = requested ?? snapshot.htmlDocument;
+  selected: string,
+): Readonly<{ html: BrowserRealizationHtml; libs: AuthorityProjectionSnapshot; document: string }> {
   if (typeof selected !== "string") {
     throw new DocumentSsrError("select", "A session HTML document selection is required.");
   }
@@ -39,11 +38,10 @@ export function cut_hosted_projection(
   }
   let root: HsonNode;
   try {
-    root = decode_hosted_root(library.root);
+    root = decode_hosted_root(library.root, HOSTED_MAX_SNAPSHOT_BYTES);
   } catch (cause) {
     throw new DocumentSsrError("bootstrap", "The session document could not be decoded.", cause);
   }
   const css = render_portable_document_stylesheet(decode_portable_document_stylesheet(library.css));
-  return Object.freeze({ html: realize_document(root, css), data: snapshot, document: selected,
-    revision: snapshot.revision, projectionDigest: snapshot.projectionDigest });
+  return Object.freeze({ html: realize_document(root, css), libs: snapshot, document: selected });
 }

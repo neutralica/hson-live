@@ -15,7 +15,7 @@ import { Hson } from "hson-live/hson";
 import { hsonLiveMap, type LiveMap, type LiveMapDocumentLibrary } from "hson-live/livemap";
 import { create_locus, type LocusSocketLike } from "hson-live/locus";
 import { reflect_document } from "hson-live/mirror";
-import { decode_ssr_bootstrap, encode_ssr_bootstrap, render_hosted_document } from "hson-live/ssr";
+import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "hson-live/ssr";
 import { hsonTransform, type TransformOutput } from "hson-live/transform";
 import { hsonLiveTree, type ContentManager } from "hson-live/livetree";
 
@@ -62,8 +62,8 @@ const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(localSsr.libs));
 void decoded;
 void continue_document({ map: hostedMap, document: hostedMap.lib("page"), root });
 
-// @ts-expect-error Bare recovery authority has no authorized HTML projection.
-render_hosted_document({ authority });
+const retained = await hosted.session.create({ libraries: ["state", "page"] });
+void retained.cut({ html: "page" });
 // @ts-expect-error One-map hosted continuation is no longer a public client-egress path.
 void continue_hosted_document({ echo, root });
 

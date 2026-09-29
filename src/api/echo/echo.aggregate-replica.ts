@@ -472,7 +472,7 @@ function create_registry_echo_semantic_client_internal<
       throw new Error("Hosted projection change fence is incompatible.");
     }
     const nextDigest = locus_projection_contract_digest(Object.freeze({ logicalMapId: clientLogicalMapId, incarnationId }),
-      message.libraries, message.htmlDocument, message.systemFeatures, message.writableDocuments);
+      message.libraries, message.systemFeatures, message.writableDocuments);
     if (nextDigest !== message.projectionDigest) throw new Error("Hosted projection change digest is incompatible.");
     if (message.reconciliation !== undefined) {
       if (message.topology !== undefined || message.system !== undefined) {
@@ -485,7 +485,6 @@ function create_registry_echo_semantic_client_internal<
         || snapshot.revision !== authorityRev || snapshot.projectionDigest !== nextDigest
         || composition.registryDigest !== message.registryDigest
         || JSON.stringify(snapshot.libraries.map(({ root: _root, css: _css, ...entry }) => entry)) !== JSON.stringify(message.libraries)
-        || snapshot.htmlDocument !== message.htmlDocument
         || JSON.stringify(snapshot.systemFeatures) !== JSON.stringify(message.systemFeatures)
         || JSON.stringify(snapshot.writableDocuments) !== JSON.stringify(message.writableDocuments)) {
         throw new Error("Hosted projection reconciliation fence is incompatible.");
@@ -545,7 +544,7 @@ function create_registry_echo_semantic_client_internal<
           format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
           authority: Object.freeze({ logicalMapId: clientLogicalMapId, incarnationId }),
           revision: authorityRev, projectionDigest, libraries: Object.freeze([]),
-          htmlDocument: null, systemFeatures: Object.freeze([]), writableDocuments: Object.freeze([]), system: null,
+          systemFeatures: Object.freeze([]), writableDocuments: Object.freeze([]), system: null,
         }));
         const composition = authority_projection_as_client_composition_internal(empty);
         if (composition.registryDigest !== registryDigest) throw new Error("Empty projected topology fence is incompatible.");

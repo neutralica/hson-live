@@ -319,7 +319,7 @@ try {
   check("hosted carrier is the projected hosted family", decodedHostedLibraries.kind === "hosted-projection");
   const librariesMap = hson.liveMap.fromClientSnapshot({ authority: decodedHostedLibraries.bootstrap, localLibraries: {} });
   check("aggregate client map starts at its local revision", librariesMap.rev === 0);
-  check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.revision === state.libraries.bootstrap.revision);
+  check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.revision === state.libraries.libs.revision);
   check("aggregate install restores included Libraries", librariesMap.lib("admin").mode === "document" && librariesMap.lib("state").mode !== "document");
   let hiddenUnavailable = false;
   try { librariesMap.lib("@hson/canonical-interactions"); } catch { hiddenUnavailable = true; }
@@ -345,7 +345,7 @@ try {
     interactions: { local: { clicker: () => { interactionCalls += 1; } } },
   });
   check("aggregate recovery catches projected N up to N+1", librariesEcho.recovery.status === "caught_up"
-    && librariesEcho.recovery.lastAppliedRev === state.libraries.bootstrap.revision + 1 && librariesMap.rev === 1);
+    && librariesEcho.recovery.lastAppliedRev === state.libraries.libs.revision + 1 && librariesMap.rev === 1);
   check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
   check("other public document converges", librariesEcho.map.lib("admin").at([]).attrs.get("data-recovered") === "admin");
   check("data Library converges", librariesEcho.map.lib("state").snap(["count"]) === 1);
@@ -381,7 +381,7 @@ try {
   const hostedTarget = hostedCssRoot.querySelector("#hosted-css-target");
   check("hosted CSS cut styles a browser without JavaScript", hostedStyle !== null
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(1, 2, 3)");
-  const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut.bootstrap));
+  const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut.libs));
   const cssClientMap = hson.liveMap.fromClientSnapshot({ authority: cssBootstrap.bootstrap, localLibraries: {} });
   check("hosted CSS bootstrap contains document stylesheet", cssClientMap.lib("page").css.snapshot().includes("rgb(1, 2, 3)"));
   const cssBrowserSocket = create_browser_locus_socket(state.cssSocketUrl);

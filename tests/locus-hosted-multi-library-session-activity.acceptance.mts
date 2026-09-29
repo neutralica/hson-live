@@ -290,7 +290,7 @@ await check("disconnect retains one resumable session blocker until deterministi
   clock.advance(99);
   assert.equal(locus.activity.snapshot().retainedSessionCount, 1);
   clock.advance(1);
-  assert.equal(locus.sessions.debug().expiredSessionCount, 1);
+  assert.equal(locus.session.debug().expiredSessionCount, 1);
   assert.equal(locus.activity.snapshot().retainedSessionCount, 0);
   locus.dispose();
 });
@@ -345,7 +345,7 @@ await check("goodbye releases retained session activity exactly once", () => {
   locus.connect(socket.socket);
   create_session(socket);
   socket.message({ type: "session-goodbye", id: "goodbye-1" });
-  assert.equal(locus.sessions.debug().revokedSessionCount, 1);
+  assert.equal(locus.session.debug().revokedSessionCount, 1);
   assert.equal(locus.activity.snapshot().retainedSessionCount, 0);
   socket.close();
   locus.dispose();

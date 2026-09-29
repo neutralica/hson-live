@@ -44,7 +44,7 @@ const locus = hsonLocus.create({ map,
     { library: "privatePage", exposure: "server-private" },
     { library: "ungrantedPage", exposure: "client-public" },
   ],
-  defaultProjection: { libraries: ["page"], htmlDocument: "page" },
+  defaultProjection: { libraries: ["page"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ["page"] }),
 });
 const wire = pair();
@@ -65,10 +65,10 @@ const localCss = localPage.css.snapshot();
 const localRev = client.rev;
 const sessionId = echo.session.sessionId;
 if (sessionId === undefined) throw new Error("Missing Echo session.");
-const cut = locus.cut(sessionId, "page");
+const cut = locus.session.get(sessionId)!.cut({ html: "page" });
 assert.match(cut.html, /rgb\(1,2,3\)/);
-assert.deepEqual(cut.data.libraries.find((entry) => entry.name === "page")?.css, map.capture().libraries.find((entry) => entry.name === "page")?.css);
-assert.throws(() => hsonLiveMap.fromClientSnapshot({ authority: cut.data,
+assert.deepEqual(cut.libs.libraries.find((entry) => entry.name === "page")?.css, map.capture().libraries.find((entry) => entry.name === "page")?.css);
+assert.throws(() => hsonLiveMap.fromClientSnapshot({ authority: cut.libs,
   localLibraries: { page: { document: '<html <head/> <body/>/>' } } }), /collid|duplicat|conflict/i);
 for (const raw of [...wire.sent, JSON.stringify(cut)]) {
   assert.equal(raw.includes("PRIVATE_CSS_SENTINEL"), false);
@@ -113,8 +113,7 @@ assert.equal(recovered.outcome, "replay");
 assert.match(clientPage.css.snapshot(), /@keyframes pulse/);
 assert.equal(localPage.css.snapshot(), localCss);
 echo.disconnect(); detach();
-await locus.sessions.updateProjection(sessionId,
-  { libraries: ["page", "ungrantedPage"], htmlDocument: "page" }, { principalId: "alice" });
+await locus.session.get(sessionId)!.update({ libraries: ["page", "ungrantedPage"] }, { principalId: "alice" });
 detach = locus.connect(wire.server, { principalId: "alice" });
 assert.ok(["current", "snapshot"].includes((await echo.connect()).outcome));
 const expanded = client.lib("ungrantedPage");
@@ -122,8 +121,7 @@ if (expanded.mode !== "document") throw new Error("Expected expanded document.")
 assert.match(expanded.css.snapshot(), /UNGRANTED_CSS_SENTINEL/);
 assert.match(expanded.css.snapshot(), /UNGRANTED_LIVE_CSS_SENTINEL/);
 echo.disconnect(); detach();
-await locus.sessions.updateProjection(sessionId,
-  { libraries: ["ungrantedPage"], htmlDocument: "ungrantedPage" }, { principalId: "alice" });
+await locus.session.get(sessionId)!.update({ libraries: ["ungrantedPage"] }, { principalId: "alice" });
 detach = locus.connect(wire.server, { principalId: "alice" });
 assert.ok(["current", "snapshot"].includes((await echo.connect()).outcome));
 assert.throws(() => client.lib("page"), /Unknown/);
@@ -131,10 +129,9 @@ assert.throws(() => clientPage.css.snapshot());
 wire.deliver(live);
 assert.throws(() => client.lib("page"), /Unknown/);
 assert.equal(localPage.css.snapshot(), localCss);
-assert.throws(() => locus.cut(sessionId, "page"), /unavailable/);
+assert.throws(() => locus.session.get(sessionId)!.cut({ html: "page" }), /unavailable/);
 echo.disconnect(); detach();
-await locus.sessions.updateProjection(sessionId,
-  { libraries: ["page", "ungrantedPage"], htmlDocument: "page" }, { principalId: "alice" });
+await locus.session.get(sessionId)!.update({ libraries: ["page", "ungrantedPage"] }, { principalId: "alice" });
 detach = locus.connect(wire.server, { principalId: "alice" });
 assert.ok(["current", "snapshot"].includes((await echo.connect()).outcome));
 const regranted = client.lib("page");
@@ -186,7 +183,7 @@ fallbackPage.css.stylesheet("body { color: olive; }");
 fallbackHidden.css.stylesheet(".HIDDEN_FALLBACK_CSS_SENTINEL { color: red; }");
 const fallbackHost = create_locus_hosted_aggregate_socket_internal({ map: fallbackMap, maxHistoryBytes: 1,
   exposure: [{ library: "page", exposure: "client-public" }, { library: "hidden", exposure: "server-private" }],
-  defaultProjection: { libraries: ["page"], htmlDocument: "page" },
+  defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }) });
 const fallbackWire = pair();
 let stopFallback = fallbackHost.connect(fallbackWire.server);
@@ -222,7 +219,7 @@ if (restartPage.mode !== "document") throw new Error("Expected restart document.
 const restartOptions = {
   persistence: restartAdapter, logicalMapId: "hosted-css-restart",
   exposure: [{ library: "page", exposure: "client-public" as const }],
-  defaultProjection: { libraries: ["page"], htmlDocument: "page" },
+  defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 };
 const firstAuthority = await create_persistent_locus({ map: restartMap, ...restartOptions });

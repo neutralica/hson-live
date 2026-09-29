@@ -30,7 +30,7 @@ function pair() {
 const authority = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <p "Original"/>/>` } });
 const server = create_locus_hosted_aggregate_socket_internal({ map: authority,
   exposure: [{ library: "page", exposure: "client-public" }],
-  defaultProjection: { libraries: ["page"], htmlDocument: "page" },
+  defaultProjection: { libraries: ["page"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   maxHistoryBytes: 1,
 });
@@ -65,7 +65,7 @@ await server.mutate((draft) => {
   visible.at(["value"]).set(7);
 });
 await server.sessions.updateProjection(sessionId,
-  { libraries: ["page", "added", "batchVisible"], htmlDocument: "page" }, { principalId: "alice" });
+  { libraries: ["page", "added", "batchVisible"] }, { principalId: "alice" });
 const beforeFallback = wire.serverSent.length;
 detach = server.connect(wire.server, { principalId: "alice" });
 assert.equal((await echo.connect()).outcome, "snapshot");
@@ -92,7 +92,7 @@ const authorityMapRev = authority.rev;
 const clientRev = map.rev;
 const oldAdded = map.lib("added");
 const contraction = await server.sessions.updateProjection(sessionId,
-  { libraries: ["page"], htmlDocument: "page" });
+  { libraries: ["page"] });
 assert.equal(contraction.changed, true);
 assert.equal(contraction.authorityRev, authorityRev);
 assert.equal(server.rev, authorityRev);
@@ -108,7 +108,7 @@ assert.equal(mirror.tree.node, tree);
 process.stdout.write("ok - live contraction removes only projected authority state\n");
 
 const regrant = await server.sessions.updateProjection(sessionId,
-  { libraries: ["page", "added"], htmlDocument: "page" });
+  { libraries: ["page", "added"] });
 assert.equal(regrant.changed, true);
 const newAdded = map.lib("added");
 assert.notEqual(newAdded, oldAdded);
@@ -213,7 +213,7 @@ assert.ok(detachedSession);
 detachedEcho.disconnect();
 detachDetached();
 const revBeforeDetachedContraction = detachedServer.rev;
-await detachedServer.sessions.updateProjection(detachedSession, { libraries: [] }, { principalId: "alice" });
+await detachedServer.session.get(detachedSession)!.update({ libraries: [] }, { principalId: "alice" });
 detachDetached = detachedServer.connect(detachedWire.server, { principalId: "alice" });
 assert.equal((await detachedEcho.connect()).outcome, "snapshot");
 assert.equal(detachedEcho.map, detachedMap);
@@ -234,7 +234,7 @@ const cutAuthority = hsonLiveMap.fromLibraries({ firstPage: { document: Hson.doc
 const cutServer = hsonLocus.create({ map: cutAuthority,
   exposure: [{ library: "firstPage", exposure: "client-public" },
     { library: "secondPage", exposure: "client-public" }],
-  defaultProjection: { libraries: ["firstPage", "secondPage"], htmlDocument: "secondPage" },
+  defaultProjection: { libraries: ["firstPage", "secondPage"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
 const cutWire = pair();
@@ -244,14 +244,13 @@ const cutEcho = create_echo_socket_client_internal({ socket: cutWire.client,
 await cutEcho.connect();
 const cutSession = cutEcho.session.sessionId;
 assert.ok(cutSession);
-assert.match(cutServer.cut(cutSession).html, /Second/);
+assert.match(cutServer.session.get(cutSession)!.cut({ html: "secondPage" }).html, /Second/);
 const cutAuthorityRev = cutServer.rev;
-await cutServer.sessions.updateProjection(cutSession,
-  { libraries: ["firstPage"], htmlDocument: "firstPage" });
+await cutServer.session.get(cutSession)!.update({ libraries: ["firstPage"] });
 assert.equal(cutServer.rev, cutAuthorityRev);
-assert.match(cutServer.cut(cutSession).html, /First/);
-assert.throws(() => cutServer.cut(cutSession, "secondPage"), /unavailable|authorized/i);
-assert.equal(JSON.stringify(cutServer.cut(cutSession).data).includes("secondPage"), false);
+assert.match(cutServer.session.get(cutSession)!.cut({ html: "firstPage" }).html, /First/);
+assert.throws(() => cutServer.session.get(cutSession)!.cut({ html: "secondPage" }), /unavailable|authorized/i);
+assert.equal(JSON.stringify(cutServer.session.get(cutSession)!.cut({ html: "firstPage" }).libs).includes("secondPage"), false);
 assert.throws(() => cutEcho.map?.lib("secondPage"), /Unknown/);
 cutEcho.dispose();
 detachCut();
@@ -386,8 +385,7 @@ assert.ok(obsoleteCommitRaw);
 const interactionSession = interactionEcho.session.sessionId;
 assert.ok(interactionSession);
 const interactionStart = interactionWire.serverSent.length;
-await interactionServer.sessions.updateProjection(interactionSession,
-  { libraries: ["keep"], systemFeatures: ["interactions"] });
+await interactionServer.session.get(interactionSession)!.update({ libraries: ["keep"], systemFeatures: ["interactions"] });
 assert.equal(interactionMap.lib("keep"), keep);
 assert.equal(keepMirror.tree.node, keepTree);
 assert.equal(keepMirror.status, "active");

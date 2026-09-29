@@ -206,7 +206,8 @@ export type LocusHostedAggregateSocketServer<
   add_libraries: (definitions: LiveMapDefinitions, exposure?: Readonly<Record<string, LocusLibraryExposure>>) => Promise<void>;
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
-  sessions: Readonly<{ debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection, context?: LocusConnectionContext) => Promise<Readonly<{ changed: boolean; sequence: number; digest: string; authorityRev: number }>>; dispose: () => void }>;
+  create_session: (request: LocusRequestedProjection, options?: import("../../types/locus.types.js").LocusSessionCreateOptions) => Promise<LocusSessionId>;
+  sessions: Readonly<{ key: ReturnType<typeof make_locus_session_manager>["key"]; credential: ReturnType<typeof make_locus_session_manager>["credential"]; debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection, context?: LocusConnectionContext, expectedKey?: object) => Promise<Readonly<{ changed: boolean; sequence: number; digest: string; authorityRev: number }>>; dispose: () => void }>;
   actionRequests: Readonly<{ debug: ReturnType<typeof make_locus_action_dedupe_store>["debug"]; dispose: () => void }>;
   /** Ordered internal barrier used by persistence checkpointing. */
   run_exclusive: LocusHostedAggregate["run_exclusive"];
@@ -390,27 +391,62 @@ export function create_locus_hosted_aggregate_socket_internal<
     });
   }
 
+  // Server-created sessions have an attachment fence, but require no transport.
+  const serverSessionContexts = new Map<LocusSessionId, LocusConnectionContext | undefined>();
+  function create_session(request: LocusRequestedProjection,
+    creation: import("../../types/locus.types.js").LocusSessionCreateOptions = {}): Promise<LocusSessionId> {
+    if (typeof creation !== "object" || creation === null || Array.isArray(creation)
+      || Reflect.ownKeys(creation).some(key => key !== "resumable" && key !== "connection")
+      || (creation.resumable !== undefined && typeof creation.resumable !== "boolean")) {
+      return Promise.reject(new LocusProjectionUnavailableError());
+    }
+    const context = creation.connection === undefined ? undefined : Object.freeze({ ...creation.connection });
+    const resumable = creation.resumable ?? true;
+    return locus.run_exclusive(async () => {
+      if (disposed) throw new LocusProjectionUnavailableError();
+      const effective = await normalize_locus_effective_projection(projectionPolicy, request, context);
+      if (disposed) throw new LocusProjectionUnavailableError();
+      const sessionId = next_session_id();
+      const created = sessions.create(sessionId, resumable, Object.freeze({ fence: () => {} }),
+        () => { serverSessionContexts.delete(sessionId); }, () => 0, context, effective);
+      if (!created.ok || sessions.projection(sessionId) !== effective) throw new LocusProjectionUnavailableError();
+      serverSessionContexts.set(sessionId, context);
+      return sessionId;
+    });
+  }
+
   function update_projection(sessionId: LocusSessionId, request: LocusRequestedProjection,
-    context?: LocusConnectionContext): Promise<Readonly<{
+    context?: LocusConnectionContext, expectedKey?: object): Promise<Readonly<{
     changed: boolean; sequence: number; digest: string; authorityRev: number;
   }>> {
     return locus.run_exclusive(async () => {
-      if (disposed) throw new LocusProjectionUnavailableError();
+      if (disposed || (expectedKey !== undefined && sessions.key(sessionId) !== expectedKey)) throw new LocusProjectionUnavailableError();
       const connection = [...connections].find((candidate) => candidate.sessionId === sessionId
         && candidate.sessionEpoch !== undefined && candidate.live && !candidate.closed
         && !candidate.fenced && sessions.is_active(sessionId, candidate.sessionEpoch));
       const previous = sessions.projection(sessionId);
+      const retainedEpoch = sessions.epoch(sessionId);
+      const hasTransport = () => [...connections].some(candidate => candidate.sessionId === sessionId
+        && candidate.sessionEpoch !== undefined && !candidate.closed && !candidate.fenced
+        && sessions.is_active(sessionId, candidate.sessionEpoch));
+      const serverOwned = !hasTransport() && serverSessionContexts.has(sessionId);
+      const serverContext = serverSessionContexts.get(sessionId);
+      if (serverOwned && context !== undefined && context.principalId !== serverContext?.principalId) {
+        throw new LocusProjectionUnavailableError();
+      }
       const disconnected = connection === undefined && context !== undefined
         && sessions.disconnected_with_principal(sessionId, context);
-      if (previous === undefined || (!disconnected && (connection === undefined
+      if (previous === undefined || (!serverOwned && !disconnected && (connection === undefined
         || connection.effectiveProjection !== previous || connection.recoveryId === undefined
         || connection.sessionEpoch === undefined))) {
         throw new LocusProjectionUnavailableError();
       }
       const epoch = connection?.sessionEpoch;
-      const next = await normalize_locus_effective_projection(projectionPolicy, request, connection?.context ?? context);
-      if (sessions.projection(sessionId) !== previous
-        || (disconnected ? context === undefined || !sessions.disconnected_with_principal(sessionId, context)
+      const next = await normalize_locus_effective_projection(projectionPolicy, request, connection?.context ?? context ?? serverContext);
+      if (sessions.projection(sessionId) !== previous || sessions.epoch(sessionId) !== retainedEpoch
+        || (expectedKey !== undefined && sessions.key(sessionId) !== expectedKey)
+        || (serverOwned ? !serverSessionContexts.has(sessionId) || hasTransport()
+          : disconnected ? context === undefined || !sessions.disconnected_with_principal(sessionId, context)
           : connection === undefined || epoch === undefined || !attachment_current(connection, sessionId, epoch)
             || !connection.live || connection.effectiveProjection !== previous)) {
         throw new LocusProjectionUnavailableError();
@@ -423,7 +459,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       if (currentSequence === undefined) throw new LocusProjectionUnavailableError();
       if (next.digest === previous.digest) return Object.freeze({ changed: false, sequence: currentSequence,
         digest: previous.digest, authorityRev: locus.rev });
-      if (disconnected) {
+      if (disconnected || serverOwned) {
         const sequence = sessions.update_projection(sessionId, previous, next);
         return Object.freeze({ changed: true, sequence, digest: next.digest, authorityRev: locus.rev });
       }
@@ -443,7 +479,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         authorityRev: locus.rev, sequence: currentSequence + 1,
         previousDigest: previous.digest, projectionDigest: next.digest,
         registryDigest: projected_registry_digest(next),
-        libraries: next.libraries, htmlDocument: next.htmlDocument ?? null,
+        libraries: next.libraries,
         systemFeatures: next.systemFeatures, writableDocuments: next.writableDocuments,
         ...(reconcile ? { reconciliation: snapshot } : topology === undefined ? {} : { topology }),
         ...(!reconcile && added.some((entry) => entry.mode === "document") && snapshot.system !== null
@@ -752,7 +788,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         authorityRev: cut, sequence: projectionSequence,
         previousDigest: replayProjection.digest, projectionDigest: effective.digest,
         registryDigest: projectedRegistryDigest,
-        libraries: effective.libraries, htmlDocument: effective.htmlDocument ?? null,
+        libraries: effective.libraries,
         systemFeatures: effective.systemFeatures, writableDocuments: effective.writableDocuments,
         ...(reconcile ? { reconciliation: headSnapshot } : first === undefined ? {} : { topology: Object.freeze({ library: first.name,
           operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(additions) }) }) }),
@@ -1411,7 +1447,8 @@ export function create_locus_hosted_aggregate_socket_internal<
     add_libraries,
     dispatch_action: locus.dispatch_action,
     dispatch_message,
-    sessions: Object.freeze({ debug: sessions.debug, onChange: sessions.onChange, revoke: sessions.revoke,
+    create_session,
+    sessions: Object.freeze({ key: sessions.key, credential: sessions.credential, debug: sessions.debug, onChange: sessions.onChange, revoke: sessions.revoke,
       projection: sessions.projection, updateProjection: update_projection, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
     run_exclusive: locus.run_exclusive,

@@ -90,7 +90,7 @@ await check("the internal admission capability remains bound after the normal ag
   });
   const result = await admit_locus_remote_action_internal<TestActions>(locus, { message: message("facade", "held", 4) });
   assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result === undefined ? undefined : Hson.data.materialize(result.result), 4);
-  assert.equal(locus.sessions.debug().sessions.length, 0); assert.equal(locus.activity.snapshot().retainedSessionCount, 0); locus.dispose();
+  assert.equal(locus.session.debug().sessions.length, 0); assert.equal(locus.activity.snapshot().retainedSessionCount, 0); locus.dispose();
 });
 
 process.stdout.write(`1..${checks}\n`);

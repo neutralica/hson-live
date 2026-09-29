@@ -20,10 +20,8 @@ import {
   SsrBootstrapCodecError,
   encode_ssr_bootstrap,
   decode_ssr_bootstrap,
-  render_hosted_document,
   type BrowserRealizationHtml,
-  type HostedLibrariesDocumentSsr,
-  type HostedLibrariesDocumentCut,
+  type LocusSessionHtmlCut,
   type SsrBootstrapKind,
   type EncodedSsrBootstrap,
   type DecodedSsrBootstrap,
@@ -89,9 +87,6 @@ const ssrOptions: SsrBootstrapCodecOptions = { maxEncodedBytes: 1024 };
 void ssrKind;
 void ssrOptions;
 void SsrBootstrapCodecError;
-declare const ssrAuthority: unknown;
-// @ts-expect-error A bare authority cannot render hosted client HTML.
-render_hosted_document({ authority: ssrAuthority });
 const browserHtml: BrowserRealizationHtml = localSsr.html;
 // @ts-expect-error Arbitrary strings are not browser-realization HTML.
 const forgedBrowserHtml: BrowserRealizationHtml = "<main></main>";
@@ -108,14 +103,14 @@ declare const hostedLibrariesSnapshot: { format: "hson-portable-aggregate-snapsh
 // @ts-expect-error Complete hosted Libraries state is retired from SSR encoding.
 const encodedHostedLibraries = encode_ssr_bootstrap(hostedLibrariesSnapshot);
 void encodedHostedLibraries;
-const hostedLibrariesSsr: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority, sessionId: "authorized-session" });
-const hostedLibrariesCut: HostedLibrariesDocumentCut = librariesAuthority.cut("authorized-session");
-void hostedLibrariesCut.data;
+const hostedSession = await librariesAuthority.session.create({ libraries: ["page"] });
+const hostedLibrariesCut: LocusSessionHtmlCut = hostedSession.cut({ html: "page" });
+void hostedLibrariesCut.libs;
 const dataMap = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
 void dataMap.cut().libs;
 void installedLibraries.map;
 void librariesSsr.document;
-void hostedLibrariesSsr.document;
+void hostedLibrariesCut.document;
 // @ts-expect-error Continuation requires an explicit Element, never a selector.
 continue_document({ map: continuationRegistry, root: "main" });
 // @ts-expect-error Hosted authoritative dispatch is derived from Echo.
@@ -419,8 +414,8 @@ void soloLocus.dispatchAction;
 void multiLocus.dispatchAction;
 void multiLocus.lib.add({ runtimeState: { data: { count: 1 } } },
   { exposure: { runtimeState: "client-public" } });
-void multiLocus.sessions.updateProjection("session", { libraries: ["runtimeState"] });
-void multiLocus.sessions.updateProjection("session", { libraries: ["runtimeState"] },
+void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] });
+void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] },
   { principalId: "alice" });
 void soloConnection.emitEvent("event", null);
 void librariesConnection.emitEvent("event", null);

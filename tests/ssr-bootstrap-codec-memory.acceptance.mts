@@ -32,10 +32,7 @@ if (mode === "--child") {
     libraries.push({ ...contract, root: { format: "hson-exact-value" as const,
       payload: rootTemplate.replace('"xxx"', `"${"x".repeat(size)}"`) } });
   }
-  const bootstrap = { format: "hson-authority-projection-snapshot" as const, authority, revision: 0,
-    projectionDigest: locus_projection_contract_digest(authority, contracts, null, [], []),
-    libraries,
-    htmlDocument: null, systemFeatures: [], writableDocuments: [], system: null };
+  const bootstrap = { format: "hson-authority-projection-snapshot" as const, authority, revision: 0, projectionDigest: locus_projection_contract_digest(authority, contracts, [], []), libraries, systemFeatures: [], writableDocuments: [], system: null };
   globalThis.gc?.();
   const baselineRssMiB = process.memoryUsage().rss / MIB;
   const encoded = encode_ssr_bootstrap(bootstrap);

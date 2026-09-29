@@ -21,7 +21,7 @@ ANY_DATA ANY_DOCUMENT AsyncLiveTree AsyncLiveTreeAttrs AsyncLiveTreeClasslist As
 AuthorityProjectionSnapshot BinaryDecodeOptions BrowserRealizationHtml DataLiveMapMode DecodedSsrBootstrap DetachedLiveContent DocumentContinuation DocumentContinuationError
 DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsrError Echo EchoActionFn EchoActionPromise EchoActionRequest
 EchoActionStatusResult EchoOptions EchoRecoveryError EchoRetryActionFn EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions
-EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation HostedLibrariesDocumentCut HostedLibrariesDocumentSsr Hson HsonCanonical
+EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation LocusSessionApi LocusSession LocusSessionCreateOptions LocusSessionCut LocusSessionHtmlCut Hson HsonCanonical
 HsonData HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData HsonSchemaMutationCandidate InteractionActionDispatcher
 InteractionActivationOptions InteractionDescriptor InteractionFailure InteractionListener InteractionLocalBehavior InteractionLocalBehaviors LiveHost
 LiveHostApplication LiveHostApplicationContext LiveHostConnection LiveHostConnectionRoute LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
@@ -34,7 +34,7 @@ LocusDuplicateActionIdError LocusOptions LocusResult LocusSocketLike Mirror Sche
 SsrBootstrapKind TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource TreeSelector activate_interactions
 add_interaction continue_document continue_hosted_document create_echo create_livehost_locus_registry create_locus decode_ssr_bootstrap enable_interactions
 encode_ssr_bootstrap hson hsonCalc hsonEcho hsonLiveMap hsonLiveTree hsonLocus hsonMirror
-hsonTransform is_transform_error read_transform_error_details reflect_document remove_interaction render_hosted_document replace_interaction
+hsonTransform is_transform_error read_transform_error_details reflect_document remove_interaction replace_interaction
 `.trim().split(/\s+/).sort();
 
 const DIAGNOSTICS_EXPORTS = `
@@ -175,7 +175,7 @@ const ownerProofs = Object.freeze({
   "dist/api/echo/index.d.ts": ["EchoRecovery", "EchoRecoveryCursor", "EchoRecoveryOptions", "EchoRecoveryStrategy"],
   "dist/api/locus/index.d.ts": ["create_persistent_locus", "PersistentLocusOptions"],
   "dist/api/locus/node/index.d.ts": ["create_node_locus_socket", "NodeLocusSocketOptions"],
-  "dist/api/ssr/index.d.ts": ["render_hosted_document", "HostedLibrariesDocumentSsr"],
+  "dist/api/ssr/index.d.ts": ["BrowserRealizationHtml", "DocumentSsrError"],
   "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost"],
   "dist/api/livehost/node/index.d.ts": ["start_node_application_host", "NodeApplicationHostOptions"],
   "dist/diagnostics/index.d.ts": ["hsonInspect", "create_live_inspector", "LiveInspector", "create_live_trace_collector"],
@@ -187,7 +187,7 @@ await check("specialist contracts remain available from owning entrypoints", () 
     const actual = new Set(declaration_exports(file));
     for (const name of expected) {
       assert.equal(actual.has(name), true, `${name} must remain exported by ${file}`);
-      if (!["HsonDocument", "render_hosted_document", "HostedLibrariesDocumentSsr", "create_livehost_locus_registry", "LiveHost"].includes(name)) {
+      if (!["HsonDocument", "BrowserRealizationHtml", "DocumentSsrError", "create_livehost_locus_registry", "LiveHost"].includes(name)) {
         assert.equal(root.has(name), false, `${name} must not leak back into the root`);
       }
     }
@@ -279,7 +279,7 @@ await check("all retained overlapping runtime values preserve strict identity", 
     mirror: ["hsonMirror", "reflect_document", "DocumentMirrorError"],
     echo: ["hsonEcho", "create_echo", "EchoRecoveryError", "EchoSessionError"],
     locus: ["hsonLocus", "create_locus", "LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusAuthorityError"],
-    ssr: ["decode_ssr_bootstrap", "DocumentSsrError", "encode_ssr_bootstrap", "render_hosted_document", "SsrBootstrapCodecError"],
+    ssr: ["decode_ssr_bootstrap", "DocumentSsrError", "encode_ssr_bootstrap", "SsrBootstrapCodecError"],
     livehost: ["create_livehost_locus_registry"],
   } as const;
   for (const [owner, names] of Object.entries(overlap)) {

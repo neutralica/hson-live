@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, add_interaction, enable_interactions, encode_ssr_bootstrap,
-  decode_ssr_bootstrap, render_hosted_document, type HsonSchema } from "../src/index.ts";
+  decode_ssr_bootstrap, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
@@ -56,9 +56,7 @@ const socket: LocusSocketLike = {
   onClose() { return () => {}; },
 };
 const disconnect = locus.connect(socket);
-receive?.(JSON.stringify({ type: "session-create", id: "ssr", projection: {
-  libraries: ["permittedData"], htmlDocument: "page", systemFeatures: ["interactions"],
-} }));
+receive?.(JSON.stringify({ type: "session-create", id: "ssr", projection: { libraries: ["permittedData", "page"], systemFeatures: ["interactions"] } }));
 const created = serverSent.find((entry) => entry.type === "session-created");
 assert.ok(created && typeof created.sessionId === "string");
 const sessionId = created.sessionId;
@@ -74,34 +72,28 @@ receiveNoDefault?.(JSON.stringify({ type: "session-create", id: "no-default", pr
 const noDefaultCreated = noDefaultSent.find((entry) => entry.type === "session-created");
 assert.ok(noDefaultCreated && typeof noDefaultCreated.sessionId === "string");
 const noDefaultSessionId = noDefaultCreated.sessionId;
-assert.throws(() => locus.cut(noDefaultSessionId), /selection is required/i);
-const explicitCut = locus.cut(noDefaultSessionId, "page");
+assert.deepEqual(Object.keys(locus.session.get(noDefaultSessionId)!.cut()), ["libs"]);
+const explicitCut = locus.session.get(noDefaultSessionId)!.cut({ html: "page" });
 assert.ok(explicitCut.html.includes("PERMITTED_HTML_SENTINEL"));
 
-assert.throws(() => locus.cut(""), /projection is unavailable/i);
-assert.throws(() => locus.cut(sessionId, "privatePage"), /unavailable/i);
-assert.throws(() => locus.cut(sessionId, "unselectedPage"), /unavailable/i);
-assert.throws(() => locus.cut(sessionId, "permittedData"), /unavailable/i);
-const cut = locus.cut(sessionId);
-assert.notEqual(cut.projectionDigest, explicitCut.projectionDigest);
+assert.equal(locus.session.get(""), undefined);
+assert.throws(() => locus.session.get(sessionId)!.cut({ html: "privatePage" }), /unavailable/i);
+assert.throws(() => locus.session.get(sessionId)!.cut({ html: "unselectedPage" }), /unavailable/i);
+assert.throws(() => locus.session.get(sessionId)!.cut({ html: "permittedData" }), /unavailable/i);
+const cut = locus.session.get(sessionId)!.cut({ html: "page" });
+assert.notEqual(cut.libs.projectionDigest, explicitCut.libs.projectionDigest);
 assert.equal(cut.document, "page");
-assert.equal(cut.revision, cut.data.revision);
-assert.equal(cut.projectionDigest, cut.data.projectionDigest);
-assert.equal(cut.data.htmlDocument, "page");
 assert.ok(cut.html.includes("PERMITTED_HTML_SENTINEL"));
 assert.equal(cut.html.includes("hson:quid"), false);
-assert.equal(cut.data.libraries.some((entry) => entry.name === "permittedData"), true);
-const rendered = render_hosted_document({ authority: locus, sessionId });
-assert.equal(rendered.html, cut.html);
-assert.equal(rendered.bootstrap.projectionDigest, cut.projectionDigest);
-const wire = encode_ssr_bootstrap(cut.data);
+assert.equal(cut.libs.libraries.some((entry) => entry.name === "permittedData"), true);
+const wire = encode_ssr_bootstrap(cut.libs);
 const raw = Buffer.from(wire, "base64url").toString("utf8");
 assert.deepEqual(Object.keys(JSON.parse(raw)).sort(), ["format", "kind", "payload"]);
 assert.equal(JSON.parse(raw).kind, "hosted-projection");
 const decoded = decode_ssr_bootstrap(wire);
 assert.equal(decoded.kind, "hosted-projection");
 if (decoded.kind !== "hosted-projection") throw new Error("Expected projected SSR bootstrap.");
-assert.deepEqual(decoded.bootstrap, cut.data);
+assert.deepEqual(decoded.bootstrap, cut.libs);
 const wrongProjection = JSON.parse(raw);
 wrongProjection.payload.projectionDigest = "0".repeat(64);
 assert.throws(() => decode_ssr_bootstrap(Buffer.from(JSON.stringify(wrongProjection)).toString("base64url")), /payload is invalid/i);
@@ -127,10 +119,10 @@ assert.equal(raw.includes("CLIENT_LOCAL_SENTINEL"), false);
 const retained = JSON.stringify(cut);
 await locus.mutate((draft) => { const library = draft.lib("permittedData"); if ("at" in library) library.at(["value"]).set("AFTER_CUT_SENTINEL"); });
 assert.equal(JSON.stringify(cut), retained);
-assert.equal(cut.revision + 1, locus.rev);
-const next = locus.cut(sessionId);
-assert.equal(next.revision, locus.rev);
-assert.ok(JSON.stringify(next.data).includes("AFTER_CUT_SENTINEL"));
+assert.equal(cut.libs.revision + 1, locus.rev);
+const next = locus.session.get(sessionId)!.cut({ html: "page" });
+assert.equal(next.libs.revision, locus.rev);
+assert.ok(JSON.stringify(next.libs).includes("AFTER_CUT_SENTINEL"));
 assert.equal(next.html, cut.html);
 const serverListeners = new Set<(raw: string) => void>();
 const clientListeners = new Set<(raw: string) => void>();
@@ -149,10 +141,10 @@ disconnect();
 let stopServer = locus.connect(serverSocket);
 const echoClient = create_echo_socket_client_internal({ socket: clientSocket,
   map: client, session: { credential: created.credential as string } });
-assert.equal(echoClient.lastAppliedRev, cut.revision);
+assert.equal(echoClient.lastAppliedRev, cut.libs.revision);
 const firstRecovery = await echoClient.connect();
 assert.equal(firstRecovery.outcome, "replay");
-assert.equal(echoClient.lastAppliedRev, cut.revision + 1);
+assert.equal(echoClient.lastAppliedRev, cut.libs.revision + 1);
 assert.equal(client.rev, 1);
 assert.equal(client.lib("local").mode, "data-object");
 assert.ok(downstream.some((raw) => raw.includes("AFTER_CUT_SENTINEL")));
@@ -168,16 +160,16 @@ await locus.mutate((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL
 stopServer = locus.connect(serverSocket);
 const secondRecovery = await echoClient.connect();
 assert.equal(secondRecovery.outcome, "replay");
-assert.equal(echoClient.lastAppliedRev, cut.revision + 2);
+assert.equal(echoClient.lastAppliedRev, cut.libs.revision + 2);
 assert.equal(client.rev, 1);
 assert.equal(client.lib("local").mode, "data-object");
 assert.ok(downstream.some((raw) => raw.includes('"progress"')));
 assert.equal(downstream.join("\n").includes("PRIVATE_AFTER_DISCONNECT"), false);
 echoClient.dispose();
 stopServer();
-assert.equal(locus.revokeSession(sessionId), true);
-assert.throws(() => locus.cut(sessionId), /projection is unavailable/i);
-assert.throws(() => render_hosted_document({ authority: locus, sessionId }), /projection is unavailable/i);
+const capability = locus.session.get(sessionId)!;
+assert.equal(capability.revoke(), true);
+assert.throws(() => capability.cut(), /projection is unavailable/i);
 disconnectNoDefault();
 locus.dispose();
 
@@ -223,12 +215,10 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   }, close() {}, onMessage(listener) { createReceiver = listener; return () => { createReceiver = undefined; }; },
   onClose() { return () => {}; } };
   const stopCreation = fallbackLocus.connect(creationSocket);
-  createReceiver?.(JSON.stringify({ type: "session-create", id: "hostile-fallback-session", projection: {
-    libraries: ["permittedData"], htmlDocument: "page", systemFeatures: ["interactions"],
-  } }));
+  createReceiver?.(JSON.stringify({ type: "session-create", id: "hostile-fallback-session", projection: { libraries: ["permittedData", "page"], systemFeatures: ["interactions"] } }));
   assert.ok(credential && fallbackSessionId);
-  const ssr = fallbackLocus.cut(fallbackSessionId);
-  const browserMap = hsonLiveMap.fromClientSnapshot({ authority: ssr.data,
+  const ssr = fallbackLocus.session.get(fallbackSessionId)!.cut({ html: "page" });
+  const browserMap = hsonLiveMap.fromClientSnapshot({ authority: ssr.libs,
     localLibraries: { local: { data: { value: "CLIENT_LOCAL_SENTINEL" }, schema: Data } } });
   assert.equal(browserMap.rev, 0);
   stopCreation();
@@ -244,11 +234,11 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   let stopAuthority = fallbackLocus.connect(authoritySocket);
   const browser = create_echo_socket_client_internal({ socket: browserSocket, map: browserMap,
     session: { credential } });
-  assert.equal(browser.lastAppliedRev, ssr.revision);
+  assert.equal(browser.lastAppliedRev, ssr.libs.revision);
   assert.equal((await browser.connect()).outcome, "current");
   await fallbackLocus.mutate((draft) => { const permitted = draft.lib("permittedData");
     if ("at" in permitted) permitted.at(["value"]).set("PERMITTED_LIVE_SENTINEL"); });
-  assert.equal(browser.lastAppliedRev, ssr.revision + 1);
+  assert.equal(browser.lastAppliedRev, ssr.libs.revision + 1);
   const localLibrary = browserMap.lib("local");
   if (localLibrary.mode === "document") throw new Error("Expected local data library.");
   const localHandle = localLibrary.at(["value"]);
@@ -311,11 +301,11 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   receive?.(JSON.stringify({ type: "session-create", id: "one-library", projection: { libraries: ["page"] } }));
   if (sessionId === undefined || credential === undefined) throw new Error("One-library session was unavailable.");
   const selectedId: string = sessionId;
-  assert.throws(() => oneLocus.cut(selectedId), /selection is required/i);
-  const selected = oneLocus.cut(selectedId, "page");
+  assert.deepEqual(Object.keys(oneLocus.session.get(selectedId)!.cut()), ["libs"]);
+  const selected = oneLocus.session.get(selectedId)!.cut({ html: "page" });
   assert.ok(selected.html.includes("ONE_LIBRARY_HTML"));
-  assert.equal(selected.data.libraries.length, 1);
-  const oneBrowser = hsonLiveMap.fromClientSnapshot({ authority: selected.data, localLibraries: {} });
+  assert.equal(selected.libs.libraries.length, 1);
+  const oneBrowser = hsonLiveMap.fromClientSnapshot({ authority: selected.libs, localLibraries: {} });
   const onePairServer = new Set<(raw: string) => void>();
   const onePairClient = new Set<(raw: string) => void>();
   const browserSocket: LocusSocketLike = { send(raw) { for (const listener of onePairServer) listener(raw); }, close() {},

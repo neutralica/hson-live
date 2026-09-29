@@ -1,6 +1,5 @@
 import { Hson, hson, hsonLiveMap, hsonLocus, create_locus, create_echo,
-  continue_document, continue_hosted_document, render_hosted_document,
-  encode_ssr_bootstrap, decode_ssr_bootstrap, create_livehost_locus_registry,
+  continue_document, continue_hosted_document, encode_ssr_bootstrap, decode_ssr_bootstrap, create_livehost_locus_registry,
   type Locus, type LiveMap, type LiveMapDocumentLibrary } from "hson-live";
 import { create_browser_locus_socket, type LocusSocketLike } from "hson-live/locus";
 import { create_node_locus_socket } from "hson-live/locus/node";
@@ -15,8 +14,7 @@ const locus = create_locus({ map: registry, exposure: [{ library: "page", exposu
 const checked: Locus<typeof registry> = locus;
 void (0 as unknown as Locus | LiveMap);
 void [hson, hsonLocus, checked, create_echo, continue_document({ map: registry, root: element }),
-  continue_hosted_document, registry.cut({ html: "page" }), render_hosted_document,
-  encode_ssr_bootstrap, decode_ssr_bootstrap, create_livehost_locus_registry,
+  continue_hosted_document, registry.cut({ html: "page" }), encode_ssr_bootstrap, decode_ssr_bootstrap, create_livehost_locus_registry,
   create_browser_locus_socket, create_node_locus_socket, start_node_application_host, create_live_inspector, socket];
 // @ts-expect-error The one-map Locus bootstrap is retired.
 import { decode_locus_bootstrap } from "hson-live/locus";

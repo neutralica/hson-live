@@ -87,12 +87,12 @@ function socketPair(): Readonly<{
   const locus = hsonLocus.create({
     map: authority,
     exposure: test_public_exposure(authority),
-    defaultProjection: { libraries: ["page"], htmlDocument: "page", systemFeatures: ["interactions"] },
-    authorizeProjection: () => ({ libraries: ["page"], htmlDocument: "page", systemFeatures: ["interactions"] }),
+    defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
+    authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
     actions: { save: (_context, payload) => { handled = payload; } },
   });
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
-  const requested: LocusRequestedProjection = { libraries: ["page"], htmlDocument: "page", systemFeatures: ["interactions"] };
+  const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: ["interactions"] };
   const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
     test_public_exposure(authority), requested, () => requested);
   const effective = normalize_locus_effective_projection(policy, requested);
@@ -107,7 +107,7 @@ function socketPair(): Readonly<{
   const root = new FakeElement("main");
   const button = new FakeElement("button");
   root.appendChild(button);
-  const otherRequest: LocusRequestedProjection = { libraries: ["page"], htmlDocument: "page" };
+  const otherRequest: LocusRequestedProjection = { libraries: ["page"] };
   const otherPolicy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
     test_public_exposure(authority), otherRequest, () => otherRequest);
   const otherEffective = normalize_locus_effective_projection(otherPolicy, otherRequest);

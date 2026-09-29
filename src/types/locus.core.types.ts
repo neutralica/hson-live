@@ -273,17 +273,13 @@ export type LocusSessionLifecycleEvent =
     epoch: LocusConnectionEpoch;
   }>;
 
-export type LocusSessionInspector = Readonly<{
+export type LocusSessionApi = Readonly<{
   debug: () => LocusSessionDiagnostics;
   onChange: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
-  /** Reauthorize an attached session, or supply current context for a disconnected resumable session. */
-  updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection,
-    context?: LocusConnectionContext) => Promise<Readonly<{
-    changed: boolean;
-    sequence: number;
-    digest: string;
-    authorityRev: number;
-  }>>;
+  /** Authorize and retain a client scope without a transport. */
+  create: (scope: LocusRequestedProjection, options?: LocusSessionCreateOptions) => Promise<LocusSession>;
+  /** Obtain the same capability for a connection-created retained session. */
+  get: (sessionId: LocusSessionId) => LocusSession | undefined;
   dispose: LocusDisposer;
 }>;
 
@@ -473,6 +469,35 @@ export type Echo<
   recovery: EchoRecovery<TMap>;
 }> : Readonly<{}>);
 
+/** Creation context is server-owned; credentials remain separate bearer material. */
+export type LocusSessionCreateOptions = Readonly<{
+  resumable?: boolean;
+  connection?: LocusConnectionContext;
+}>;
+
+export type LocusSessionCut = Readonly<{
+  libs: import("./locus.projection.types.js").AuthorityProjectionSnapshot;
+}>;
+export type LocusSessionHtmlCut = LocusSessionCut & Readonly<{
+  html: import("../api/ssr/ssr.types.js").BrowserRealizationHtml;
+  document: string;
+}>;
+
+/** Stable server-side capability. Every operation resolves through its manager. */
+export type LocusSession = Readonly<{
+  /** Deliver separately to the client for reattachment; absent for ephemeral sessions. */
+  readonly credential: LocusSessionCredential | undefined;
+  cut: {
+    (options: Readonly<{ html: string }>): LocusSessionHtmlCut;
+    (options?: Readonly<{ html?: undefined }>): LocusSessionCut;
+    (options: Readonly<{ html?: string }>): LocusSessionCut | LocusSessionHtmlCut;
+  };
+  update: (scope: LocusRequestedProjection, context?: LocusConnectionContext) => Promise<Readonly<{
+    changed: boolean; sequence: number; digest: string; authorityRev: number;
+  }>>;
+  revoke: () => boolean;
+}>;
+
 /** Locus result for the fixed library-registry construction surface. */
 export type Locus<
   TMap extends LiveMap = LiveMap,
@@ -487,18 +512,12 @@ export type Locus<
     /** One durable authority topology transition; omitted exposure is server-private. */
     add: (definitions: LiveMapDefinitions, options?: Readonly<{ exposure?: Readonly<Record<string, LocusLibraryExposure>> }>) => Promise<void>;
   }>;
-  sessions: LocusSessionInspector;
+  session: LocusSessionApi;
   actionRequests: LocusActionDedupeInspector;
   mutate: (mutation: (draft: LocusMutationDraft<LocusInputs<TMap>>) => void | Promise<void>) => Promise<void>;
-  /** Fence and revoke an existing session when its read policy is withdrawn. */
-  revokeSession: (sessionId: LocusSessionId) => boolean;
   dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusClientActionResult>;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;
-  /** Capture HTML and projected authority state for one already-authorized session. */
-  cut: (sessionId: LocusSessionId, document?: string) => import("../api/ssr/ssr.types.js").HostedLibrariesDocumentCut;
-  /** Capture portable authorized client state without rendering or sending it. */
-  captureClient: (sessionId: LocusSessionId) => import("./locus.projection.types.js").AuthorityProjectionSnapshot;
 }>;
 
 /** Opaque durable-record port for a fixed hosted Library registry. */

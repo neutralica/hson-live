@@ -219,14 +219,12 @@ function decode_session_create_message(value: Readonly<Record<string, unknown>>)
   const input = value.projection;
   if (!is_record(input) || !Array.isArray(input.libraries)
     || input.libraries.some((name) => typeof name !== "string" || name.length === 0)
-    || (input.htmlDocument !== undefined && (typeof input.htmlDocument !== "string" || input.htmlDocument.length === 0))
     || (input.systemFeatures !== undefined && (!Array.isArray(input.systemFeatures)
       || input.systemFeatures.some((feature) => feature !== "interactions")))
-    || !has_exact_keys(input, ["libraries", ...(input.htmlDocument === undefined ? [] : ["htmlDocument"]),
+    || !has_exact_keys(input, ["libraries",
       ...(input.systemFeatures === undefined ? [] : ["systemFeatures"])])) return fail("Malformed Locus session-create message.");
   return ok({ type: "session-create", id, projection: {
     libraries: input.libraries,
-    ...(input.htmlDocument === undefined ? {} : { htmlDocument: input.htmlDocument }),
     ...(input.systemFeatures === undefined ? {} : { systemFeatures: input.systemFeatures }),
   } });
 }

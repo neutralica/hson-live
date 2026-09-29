@@ -1,5 +1,3 @@
-import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
-
 declare const BROWSER_REALIZATION_HTML: unique symbol;
 
 /**
@@ -10,21 +8,4 @@ declare const BROWSER_REALIZATION_HTML: unique symbol;
  */
 export type BrowserRealizationHtml = string & Readonly<{
   [BROWSER_REALIZATION_HTML]: true;
-}>;
-
-/** One selected document realization paired with its complete hosted Libraries cut. */
-export type HostedLibrariesDocumentSsr = Readonly<{
-  html: BrowserRealizationHtml;
-  bootstrap: AuthorityProjectionSnapshot;
-  document: string;
-  revision: number;
-  projectionDigest: string;
-}>;
-
-export type HostedLibrariesDocumentCut = Readonly<{
-  html: BrowserRealizationHtml;
-  data: AuthorityProjectionSnapshot;
-  document: string;
-  revision: number;
-  projectionDigest: string;
 }>;

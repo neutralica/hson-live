@@ -41,7 +41,7 @@ function require_map(client: Readonly<{ map: LiveMap | undefined }>): LiveMap {
 const authority = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <p "Existing"/>/>` } });
 const locus = hsonLocus.create({ map: authority,
   exposure: [{ library: "page", exposure: "client-public" }],
-  defaultProjection: { libraries: ["page"], htmlDocument: "page" },
+  defaultProjection: { libraries: ["page"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
 const wire = pair();
@@ -84,12 +84,8 @@ await locus.mutate((draft) => {
   hidden.at(["secret"]).set("PRIVATE_REPLAY_WRITE_SENTINEL");
 });
 const authorityRevBeforeProjection = locus.rev;
-await assert.rejects(locus.sessions.updateProjection(sessionId,
-  { libraries: ["page", "newState", "nextState"], htmlDocument: "page" },
-  { principalId: "mallory" }), /projection.*unavailable/i);
-const projection = await locus.sessions.updateProjection(sessionId,
-  { libraries: ["page", "newState", "nextState"], htmlDocument: "page" },
-  { principalId: "alice" });
+await assert.rejects(locus.session.get(sessionId)!.update({ libraries: ["page", "newState", "nextState"] }, { principalId: "mallory" }), /projection.*unavailable/i);
+const projection = await locus.session.get(sessionId)!.update({ libraries: ["page", "newState", "nextState"] }, { principalId: "alice" });
 assert.equal(projection.changed, true);
 assert.equal(projection.authorityRev, authorityRevBeforeProjection);
 assert.equal(authority.rev, authorityRevBeforeProjection);
@@ -154,8 +150,7 @@ currentEcho.disconnect();
 detachCurrent();
 const currentAuthorityRev = currentServer.rev;
 const currentMapRev = currentMap.rev;
-const currentGrant = await currentServer.sessions.updateProjection(currentSession,
-  { libraries: ["anchor", "later"] }, { principalId: "alice" });
+const currentGrant = await currentServer.session.get(currentSession)!.update({ libraries: ["anchor", "later"] }, { principalId: "alice" });
 assert.equal(currentGrant.authorityRev, currentAuthorityRev);
 detachCurrent = currentServer.connect(currentWire.server, { principalId: "alice" });
 assert.equal((await currentEcho.connect()).outcome, "current");
@@ -295,8 +290,7 @@ emptyEcho.disconnect();
 detachEmpty();
 await emptyServer.lib.add({ first: { data: { value: 7 } } },
   { exposure: { first: "client-public" } });
-await emptyServer.sessions.updateProjection(emptySession, { libraries: ["first"] },
-  { principalId: "alice" });
+await emptyServer.session.get(emptySession)!.update({ libraries: ["first"] }, { principalId: "alice" });
 detachEmpty = emptyServer.connect(emptyWire.server, { principalId: "alice" });
 assert.equal((await emptyEcho.connect()).outcome, "replay");
 const recoveredEmptyMap = require_map(emptyEcho);
@@ -313,7 +307,7 @@ const interactionAuthority = hsonLiveMap.fromLibraries({ basePage: { document: H
 enable_interactions(interactionAuthority);
 const interactionServer = hsonLocus.create({ map: interactionAuthority,
   exposure: [{ library: "basePage", exposure: "client-public" }],
-  defaultProjection: { libraries: ["basePage"], htmlDocument: "basePage", systemFeatures: ["interactions"] },
+  defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
     systemFeatures: requested.systemFeatures }),
 });
@@ -340,9 +334,7 @@ await interactionServer.mutate((draft) => add_interaction(draft, {
     missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
   kind: "browser-local", key: "RECOVERED_INTERACTION_SENTINEL", args: Hson.data.from(null),
 }));
-await interactionServer.sessions.updateProjection(interactionSession,
-  { libraries: ["basePage", "nextPage"], htmlDocument: "nextPage", systemFeatures: ["interactions"] },
-  { principalId: "alice" });
+await interactionServer.session.get(interactionSession)!.update({ libraries: ["basePage", "nextPage"], systemFeatures: ["interactions"] }, { principalId: "alice" });
 const beforeInteractionReplay = interactionWire.serverSent.length;
 detachInteraction = interactionServer.connect(interactionWire.server, { principalId: "alice" });
 assert.equal((await interactionEcho.connect()).outcome, "replay");

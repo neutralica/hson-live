@@ -88,14 +88,14 @@ for (const strategy of ["replay", "snapshot"] as const) {
     const sessionId = endpoint.session.sessionId;
     const credential = endpoint.session.credential;
     assert.ok(sessionId && credential);
-    const snapshot = locus.captureClient(sessionId);
+    const snapshot = locus.session.get(sessionId)!.cut().libs;
     const attachedSent = pair.sent.length;
     await noop(); // Regression: identical operation and authority state across attachment.
     await locus.mutate(draft => data_draft(draft, "game").at([]).replace({ ready: true }));
     await locus.mutate(draft => draft.lib("page").attrs.drop({ kind: "path", path: validate_document_path([0]) }, "missing"));
     await locus.mutate(draft => data_draft(draft, "private").at(["ready"]).set(true));
     assert.deepEqual(map.capture(), initial);
-    assert.deepEqual(locus.captureClient(sessionId), snapshot);
+    assert.deepEqual(locus.session.get(sessionId)!.cut().libs, snapshot);
     assert.deepEqual([map.rev, locus.rev, commits, feeds, pair.sent.length], [0, 0, 0, 0, attachedSent]);
 
     const client = hsonLiveMap.fromClientSnapshot({ authority: snapshot, localLibraries: {} });
@@ -112,7 +112,7 @@ for (const strategy of ["replay", "snapshot"] as const) {
       assert.deepEqual(echo.recovery.debug(), before);
       assert.equal(client.rev, 0);
       assert.equal(pair.sent.length, sent);
-      assert.deepEqual(await locus.sessions.updateProjection(sessionId, { libraries: ["game"] }), {
+      assert.deepEqual(await locus.session.get(sessionId)!.update({ libraries: ["game"] }), {
         changed: false, sequence: 0, digest: snapshot.projectionDigest, authorityRev: 0,
       });
       const action = await echo.action("noop");
@@ -138,10 +138,10 @@ for (const strategy of ["replay", "snapshot"] as const) {
       assert.equal(data(client, "game").snap(["ready"]), false);
 
       echo.disconnect(); detach();
-      const retained = locus.captureClient(sessionId);
+      const retained = locus.session.get(sessionId)!.cut().libs;
       const offlineSent = pair.sent.length;
       await locus.mutate(draft => data_draft(draft, "game").at(["ready"]).set(false));
-      assert.deepEqual(locus.captureClient(sessionId), retained);
+      assert.deepEqual(locus.session.get(sessionId)!.cut().libs, retained);
       assert.equal(pair.sent.length, offlineSent);
       await locus.mutate(draft => data_draft(draft, "game").at(["ready"]).set(true));
       assert.equal(locus.rev, 3);
@@ -155,15 +155,15 @@ for (const strategy of ["replay", "snapshot"] as const) {
       assert.equal(pair.messages("recovery-snapshot").length, strategy === "snapshot" ? 1 : 0);
       assert.deepEqual([commits, feeds], [3, 2]);
 
-      const empty = await locus.sessions.updateProjection(sessionId, { libraries: [] });
+      const empty = await locus.session.get(sessionId)!.update({ libraries: [] });
       assert.equal(empty.sequence, 1);
-      const emptySnapshot = locus.captureClient(sessionId);
+      const emptySnapshot = locus.session.get(sessionId)!.cut().libs;
       const emptySent = pair.sent.length;
       await noop();
       assert.equal(pair.sent.length, emptySent);
-      assert.deepEqual(locus.captureClient(sessionId), emptySnapshot);
+      assert.deepEqual(locus.session.get(sessionId)!.cut().libs, emptySnapshot);
       assert.equal(echo.recovery.lastAppliedRev, 3);
-      assert.deepEqual(await locus.sessions.updateProjection(sessionId, { libraries: [] }), {
+      assert.deepEqual(await locus.session.get(sessionId)!.update({ libraries: [] }), {
         changed: false, sequence: 1, digest: empty.digest, authorityRev: 3,
       });
     } finally { echo.dispose(); }

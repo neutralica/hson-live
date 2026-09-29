@@ -299,13 +299,13 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
     ...names.map((library) => ({ library, exposure: "server-private" as const }))];
   const id = "z3b-large";
   const locus = await create_persistent_locus({ map, persistence: adapter, logicalMapId: id, exposure,
-    defaultProjection: { libraries: ["public", "page"], htmlDocument: "page" },
-    authorizeProjection: () => ({ libraries: ["public", "page"], htmlDocument: "page" }) });
+    defaultProjection: { libraries: ["public", "page"] },
+    authorizeProjection: () => ({ libraries: ["public", "page"] }) });
   const authority = internal_livemap_aggregate_authority(map);
   const policy = make_locus_hosted_projection_policy(authority.hostedRegistry(), authority.hostedPosition().authority,
-    exposure, { libraries: ["public", "page"], htmlDocument: "page" },
-    () => ({ libraries: ["public", "page"], htmlDocument: "page" }));
-  const effective = normalize_locus_effective_projection(policy, { libraries: ["public", "page"], htmlDocument: "page" });
+    exposure, { libraries: ["public", "page"] },
+    () => ({ libraries: ["public", "page"] }));
+  const effective = normalize_locus_effective_projection(policy, { libraries: ["public", "page"] });
   if (effective instanceof Promise) throw new Error("Expected synchronous projection policy.");
   const initialProjection = capture_selected_authority_projection_snapshot(map, effective);
   const clientMap = hsonLiveMap.fromClientSnapshot({ authority: initialProjection, localLibraries: {} });
@@ -326,8 +326,8 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   locus.dispose();
   const restoredMap = hsonLiveMap.fromLibraries(inputs);
   const restored = await create_persistent_locus({ map: restoredMap, persistence: adapter, logicalMapId: id, exposure,
-    defaultProjection: { libraries: ["public", "page"], htmlDocument: "page" },
-    authorizeProjection: () => ({ libraries: ["public", "page"], htmlDocument: "page" }) });
+    defaultProjection: { libraries: ["public", "page"] },
+    authorizeProjection: () => ({ libraries: ["public", "page"] }) });
   assert.equal(restored.rev, count);
   assert.equal(restored.map, restoredMap);
   for (const name of names) {
@@ -347,9 +347,9 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   const sessionId = client.session.sessionId;
   assert.ok(sessionId);
-  const cut = restored.cut(sessionId, "page");
+  const cut = restored.session.get(sessionId)!.cut({ html: "page" });
   assert.ok(cut.html.length > 0);
-  assert.ok(JSON.stringify(cut.data).length < 1024 * 1024);
+  assert.ok(JSON.stringify(cut.libs).length < 1024 * 1024);
   assert.equal(pair.serverSent.join("\n").includes(value.slice(0, 1024)), false);
   client.dispose();
   restored.dispose();

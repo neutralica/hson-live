@@ -99,8 +99,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
       || projection.revision !== snapshot.revision
       || echo.recovery.lastAppliedRev !== snapshot.revision
       || snapshot.libraries.some((entry) => currentLibraries.get(entry.name)?.root.payload !== entry.root.payload)
-      || !snapshot.libraries.some((entry) => entry.name === selectedName && entry.mode === "document")
-      || (options.document === undefined && snapshot.htmlDocument !== selectedName)) {
+      || !snapshot.libraries.some((entry) => entry.name === selectedName && entry.mode === "document")) {
       throw new Error("Hosted continuation authority projection does not match its selected document.");
     }
     if (echo_document_authority_for(resolved.selected) === undefined) {

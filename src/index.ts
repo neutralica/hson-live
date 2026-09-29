@@ -70,15 +70,12 @@ export {
   decode_ssr_bootstrap,
   DocumentSsrError,
   encode_ssr_bootstrap,
-  render_hosted_document,
   SsrBootstrapCodecError,
 } from "./api/ssr/index.js";
 export type {
   BrowserRealizationHtml,
   DecodedSsrBootstrap,
   EncodedSsrBootstrap,
-  HostedLibrariesDocumentSsr,
-  HostedLibrariesDocumentCut,
   SsrBootstrapCodecOptions,
   SsrBootstrapKind,
 } from "./api/ssr/index.js";
@@ -176,6 +173,11 @@ export type {
   LocusActivityState,
   LocusConnection,
   Locus,
+  LocusSessionApi,
+  LocusSession,
+  LocusSessionCreateOptions,
+  LocusSessionCut,
+  LocusSessionHtmlCut,
   LocusActionContext,
   LocusActionHandler,
   LocusActions,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
-import { Hson, hsonLiveMap, render_hosted_document, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
 import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
@@ -25,7 +25,7 @@ const exposure = [{ library: "page", exposure: "client-public" as const },
   { library: "privateSignal", exposure: "server-private" as const }];
 assert.throws(() => aggregate.captureHosted(), /bound|limit|size|payload/i);
 const { locus } = create_registry_locus_internal({ map, exposure,
-  defaultProjection: { libraries: ["page"], htmlDocument: "page" },
+  defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 }, { maxHistoryBytes: 1 });
 
@@ -49,18 +49,14 @@ const initial = await echo.connect();
 assert.equal(initial.outcome, "snapshot");
 const session = sent.map((raw) => JSON.parse(raw)).find((message) => message.type === "session-created");
 assert.equal(typeof session?.sessionId, "string");
-const cut = locus.cut(session.sessionId);
-const rendered = render_hosted_document({ authority: locus, sessionId: session.sessionId });
-assert.equal(cut.revision, cut.data.revision);
-assert.equal(rendered.revision, cut.revision);
-assert.equal(rendered.html, cut.html);
+const cut = locus.session.get(session.sessionId)!.cut({ html: "page" });
 assert.match(cut.html, /PUBLIC_PAGE_SENTINEL/);
-const artifact = JSON.stringify(cut.data);
+const artifact = JSON.stringify(cut.libs);
 for (const hidden of ["PRIVATE_NAME_SENTINEL", "PRIVATE_ROOT_SENTINEL", "hson:quid", "issuedQuids", "registryDigest"]) {
   assert.equal(artifact.includes(hidden), false, hidden);
 }
 assert.match(artifact, /PUBLIC_PAGE_SENTINEL/);
-assert.equal(cut.data.libraries.length, 1);
+assert.equal(cut.libs.libraries.length, 1);
 const oldCut = JSON.stringify(cut);
 const local = echo.map?.lib("local");
 if (local === undefined || local.mode === "document") throw new Error("Local Library missing.");
@@ -71,9 +67,8 @@ localHandle.set("LOCAL_AFTER_DISCONNECT");
 await locus.mutate((draft) => { const page = draft.lib("page"); if ("attrs" in page) page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "PUBLIC_NEXT_SENTINEL"); });
 await locus.mutate((draft) => { const privateLib = draft.lib("privateSignal"); if ("at" in privateLib) privateLib.at(["value"]).set(`PRIVATE_SMALL_COMMIT_SENTINEL${"q".repeat(2 * 1024 * 1024)}`); });
 assert.equal(JSON.stringify(cut), oldCut);
-const nextCut = locus.cut(session.sessionId);
-assert.equal(nextCut.revision, locus.rev);
-assert.equal(nextCut.data.revision, locus.rev);
+const nextCut = locus.session.get(session.sessionId)!.cut({ html: "page" });
+assert.equal(nextCut.libs.revision, locus.rev);
 assert.match(nextCut.html, /PUBLIC_NEXT_SENTINEL/);
 detach = locus.connect(serverSocket);
 const recovered = await echo.connect();
@@ -149,7 +144,7 @@ const persistentMap = hsonLiveMap.fromLibraries({
 });
 const persistent = await create_persistent_locus({ map: persistentMap, persistence,
   exposure: [{ library: "page", exposure: "client-public" }, { library: "privateSignal", exposure: "server-private" }],
-  defaultProjection: { libraries: ["page"], htmlDocument: "page" },
+  defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
 await persistent.mutate((draft) => { const privateLib = draft.lib("privateSignal");

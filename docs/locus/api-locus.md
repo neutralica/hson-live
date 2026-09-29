@@ -20,7 +20,7 @@ Every application library needs one explicit `client-public` or `server-private`
 
 After construction, admit an atomic batch with `await locus.lib.add(definitions, { exposure })`. Definitions have the same `data` or `document` and optional `schema` fields as `map.addLibraries`. Exposure is a per-name object, for example `{ page: "client-public", credentials: "server-private" }`; omitted own entries default to `server-private`. Locus captures the batch's names and exposure before queuing durable admission, so later changes to the caller's definitions object cannot admit an unclassified name. Direct `map.addLibraries` on the managed authority remains fenced. A public classification only makes a name eligible; it never changes an existing session grant.
 
-`await locus.sessions.updateProjection(sessionId, request)` reauthorizes an attached session against current topology using that connection's current context and the ordinary `authorizeProjection` callback. For a disconnected resumable session, pass a current trusted connection context as the third argument, for example `await locus.sessions.updateProjection(sessionId, { libraries: ["page", "newPage"] }, { principalId: "alice" })`; Locus checks principal continuity before authorization. Requests name the desired libraries and optional document, system features, and write scope. Grants remain exact sets of names: an addition to the authority does not expand an old grant. The same operation may expand, contract, or replace the effective grant. Successful changes advance a session projection sequence and digest without creating an authority revision. Revoked library handles become stale, and a later grant produces new current handles.
+`await session.update({ libraries: ["page", "newPage"] })` reauthorizes a retained scope against current topology with the ordinary `authorizeProjection` callback. A connected session uses its attachment's current trusted context. A server-created session can use its creation context; an ordinary disconnected connection-created session requires current trusted context as the second argument, for example `{ principalId: "alice" }`. Principal continuity is enforced. Requests select libraries and system features; read and write grants come from the authorizer. Successful changes advance the session contract sequence and digest without creating an authority revision. Removed library handles become stale; a later grant produces new handles.
 
 `create_persistent_locus` uses the same registry ontology. Durable authority checkpoints remain complete and server-side; exposure is not serialized into them. After restart the application supplies classifications for every restored library, including runtime additions. Application code may read `locus.map` and private state for server work, and remains responsible for arbitrary HTML or `Response` values it writes itself.
 
@@ -38,11 +38,25 @@ An activation error is reconciled by reading the exact active checkpoint identit
 
 ## Hosted cut and client state
 
-`locus.captureClient(sessionId)` returns the session's current authorized `AuthorityProjectionSnapshot` as portable client state, without rendering or sending it. It supports data-only, document-only, and mixed projections; `htmlDocument` may be `null`. Compose it with `hsonLiveMap.fromClientSnapshot({ authority: snapshot, localLibraries: {} })` before attaching Echo. Attached and disconnected retained sessions are available; unknown, expired, revoked, or disposed sessions reject with `LOCUS_PROJECTION_UNAVAILABLE`. Capture is fenced against a session projection change.
+`locus.map` is the complete authoritative LiveMap, including private libraries. Use `locus.map.cut(...)` for authority state. A retained session represents one authorized client scope:
 
-After a session is established, `locus.cut(sessionId, document?)` produces an object-owned authorized cut. Its `html` and `data` (`AuthorityProjectionSnapshot`) come from one coherent authority revision and the session's current effective projection. It rejects a revoked session and any private, unselected, wrong-kind, or otherwise unauthorized document choice without naming hidden libraries. A zero-argument cut needs an authorized `htmlDocument`; no first-document fallback exists.
+```ts
+const session = await locus.session.create(
+  { libraries: ["page", "state"], systemFeatures: ["interactions"] },
+  { connection: { principalId: "alice" } },
+);
+const state = session.cut();                 // { libs }
+const response = session.cut({ html: "page" }); // { libs, html, document }
+const credential = session.credential;
+```
 
-The application owns the HTML shell, routing, headers, CSP, asset tags, and bootstrap placement. `new Response(cut.html)` is valid when no browser continuation is needed. When continuation is needed, encode the projected state from that same cut with the hosted SSR bootstrap `hosted-projection` contract. Local SSR uses the distinct `libraries` payload family.
+Creation requires no transport. It uses the same request, exposure, read authorizer, and system/write grant pipeline as connection-created sessions. Sessions are resumable by default; `{ resumable: false }` creates a session with no reattachment credential. Deliver the credential separately to the client, then pass it to Echo's `session: { credential }` configuration. Neither ordinary `libs` nor HTML carries bearer authority.
+
+`session.cut()` captures the complete current effective scope as `AuthorityProjectionSnapshot` in `libs`. Compose it with `hsonLiveMap.fromClientSnapshot({ authority: cut.libs, localLibraries: {} })`. HTML is optional and must explicitly select an already-included document. Unknown, private, unselected, and data-library selections reject without identifying hidden state. HTML uses the captured root and CSS from the same cut, within the 64 MiB aggregate snapshot bound; depth and node limits remain in force.
+
+The capability is stable through resumable disconnect, reattachment, and scope updates. Every operation validates with its owning manager. Revocation, expiry, goodbye, ephemeral release, or disposal makes cutting unavailable; a concurrent lifecycle or contract change fences the result. `session.revoke()` withdraws authority. `locus.session.get(id)` obtains the same capability for a connection-created session; IDs remain protocol routing keys. `locus.session.debug()`, `onChange(...)`, and `dispose()` manage aggregate session facilities.
+
+The application owns the HTML shell, routing, headers, CSP, asset tags, and bootstrap placement. `new Response(cut.html)` is valid when no browser continuation is needed. When continuation is needed, encode the `libs` from that same cut with the hosted SSR bootstrap `hosted-projection` contract. Local SSR uses the distinct `libraries` payload family.
 
 The browser composes client-local libraries separately with the authority projection. Echo starts `authorityRev` from the authority snapshot revision; its `map.rev` follows ordinary local LiveMap revisions. Hosted continuation checks projection identity, authority binding and revision, then adopts matching DOM before installing Mirror. It does not compare server-generated QUIDs.
 

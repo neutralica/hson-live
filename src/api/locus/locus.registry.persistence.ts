@@ -20,7 +20,6 @@ import {
 import { create_registry_locus_internal } from "./locus.registry.js";
 import { alias_locus_remote_action_admission_internal } from "./locus.remote-action.internal.js";
 import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
-import { alias_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 
 function commit_record(commit: HostedAggregateCommit): object {
@@ -132,7 +131,6 @@ async function persistent_view<
   })) as PersistentLocus<TMap, TActions>;
   alias_locus_remote_action_admission_internal(locus, runtime.locus);
   alias_locus_retained_action_status_internal(locus, runtime.locus);
-  alias_locus_libraries_snapshot_authority_internal(locus, runtime.locus);
   return locus;
 }
 

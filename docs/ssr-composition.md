@@ -29,62 +29,26 @@ absent storage. `install_libraries_snapshot(libs)` reconstructs a fresh local ma
 Local transfer uses `hson-ssr-bootstrap` with kind `libraries`. Snapshot root
 consumers use the aggregate 64 MiB bound, with unchanged depth and node limits.
 
-## Session-projected hosted rendering
+## Hosted session cuts
 
-A multi-library Locus stores the current effective projection for each authorized
-session. An explicit `locus.sessions.updateProjection` may expand it. Server application code uses the session ID to obtain one cut:
+`locus.map` contains complete authority state. `locus.session` owns retained client sessions; each returned capability represents one authorized scope.
 
 ```ts
-const cut = locus.cut(sessionId);
-const encoded = encode_ssr_bootstrap(cut.data);
-return new Response(cut.html, { headers: { "content-type": "text/html; charset=utf-8" } });
+const session = await locus.session.create(
+  { libraries: ["state", "page"] },
+  { connection: { principalId: "alice" } },
+);
+const cut = session.cut({ html: "page" });
+const encoded = encode_ssr_bootstrap(cut.libs);
+const credential = session.credential; // deliver separately for Echo reattachment
 ```
 
-`cut.html` and `cut.data` come from one coherent authority capture at
-`cut.revision`. `cut.data` is an `AuthorityProjectionSnapshot` with the same
-`revision` and `projectionDigest` as the cut. It contains the projected
-authority half only. Browser-owned client-local libraries are declared and
-composed separately with `hsonLiveMap.fromClientSnapshot({ authority:
-decoded.bootstrap, localLibraries })`. That construction starts at the normal
-local `map.rev`; Echo's `authorityRev` starts at the authority snapshot
-revision. The client does not use a server QUID to continue the DOM.
+Server-first creation uses real exposure and authorization filtering and needs no browser transport. A resumable session retains its logical scope and capability through disconnect and reattachment. `session.update(...)` reauthorizes changes; `session.revoke()` withdraws authority. Terminal sessions and manager disposal fence subsequent cuts.
 
-A zero-argument hosted cut has no session and fails. A session without a
-selected `htmlDocument` cannot render unless the server explicitly names a
-document included in that same effective projection. There is no first-document
-or all-public default. Private, unselected, and wrong-kind selections return a
-generic unavailable-document error. Only the selected document renders into
-HTML; other included projected libraries remain state only.
+`session.cut()` returns only `{ libs }`. Supplying `html` returns `{ libs, html, document }` and must name an included document library. It neither includes another library nor changes the retained contract. HTML uses the captured root and CSS, including legal roots larger than the generic 4 MiB codec default. There is no implicit HTML document selection.
 
-`render_hosted_document({ authority: locus, sessionId })` is a wrapper around
-that same cut. A bare authority or recovery planner is not a hosted render
-source. The selected document root is decoded from the detached projected
-snapshot, so later authority mutations do not alter an existing cut.
+Hosted `libs` is an admitted `hson-authority-projection-snapshot`, with authority/recovery identity and authorized system/write contract metadata. Encode it using the SSR codec's `hosted-projection` family. Local `map.cut().libs` uses the distinct `libraries` family. Credentials are absent from both transferred state and HTML and must be handed off independently.
 
-The projected hosted carrier is `hson-ssr-bootstrap` with kind
-`hosted-projection`. Its payload is an admitted
-`hson-authority-projection-snapshot`. Local continuation uses the distinct `libraries` payload family. The projected
-commit, projected wire, and hosted socket each retain their own unversioned format
-identity. Bootstrap envelopes contain `format`, `kind`, and `payload`.
+The browser composes `hsonLiveMap.fromClientSnapshot({ authority: decoded.bootstrap, localLibraries })`, creates Echo with the separate credential, and adopts the document through `continue_hosted_document`. Multiple documents require an explicit stable document handle. Continuation checks contract identity, authority revision and binding, captured roots, and Echo's cursor before adopting DOM and waiting for recovery.
 
-An application can send `cut.html` alone. If it sends a state carrier, it must
-place the encoding of **that cut's** `data` beside the HTML. The application
-owns the document shell, routing, asset tags, static CSS, headers, CSP, carrier
-placement, deployment adapter, and cache policy. A non-JavaScript script data
-block can hold the base64url carrier outside the canonical document root. The
-carrier is data, not executable code. `BrowserRealizationHtml` marks framework
-parser-compatible rendering; it does not claim sanitization or authentication.
-
-The framework omits server-private and unselected authority libraries from its
-own projected HTML, carrier, live replication, replay, and recovery paths.
-Application code can still deliberately copy private values into an authorized
-document or an arbitrary `Response`; the framework cannot prevent that.
-
-## Release status
-
-The session cut and projected SSR codec are implemented, including Node and
-Worker parity. Multi-library hosted continuation supplies the decoded projected
-authority snapshot to `continue_hosted_document`. Before DOM adoption, it checks
-the projection digest, authority binding, projected library roots, selected
-document, and authority revision against the composed client map and Echo
-cursor. The retired one-map capture and Node HTTP bootstrap helper are no longer public. The active hosted socket and continuation use the session-projected library registry.
+The application owns its shell, routing, asset tags, headers, CSP, and carrier placement. Encode this cut's `libs` beside this cut's HTML. Framework privacy filtering protects library scope; the application still controls the contents it authors into permitted libraries and arbitrary responses.

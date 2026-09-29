@@ -138,7 +138,7 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
 
 function decode_projection_change(value: Record<string, unknown>, id: string): LocusHostedProjectionChange {
   const fields = ["format", "type", "id", "logicalMapId", "incarnationId", "authorityRev", "sequence",
-    "previousDigest", "projectionDigest", "registryDigest", "libraries", "htmlDocument", "systemFeatures", "writableDocuments"];
+    "previousDigest", "projectionDigest", "registryDigest", "libraries", "systemFeatures", "writableDocuments"];
   const actual = Object.keys(value);
   if (actual.length < fields.length || actual.length > fields.length + 2
     || fields.some((field) => !Object.hasOwn(value, field))
@@ -176,11 +176,6 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
   });
   if (libraries.some((entry, index) => index > 0 && libraries[index - 1]!.name.localeCompare(entry.name) >= 0)) {
     throw new Error("Hosted projection Library order is malformed.");
-  }
-  const htmlDocument = value.htmlDocument;
-  if (htmlDocument !== null && (typeof htmlDocument !== "string"
-    || !libraries.some((entry) => entry.name === htmlDocument && entry.mode === "document"))) {
-    throw new Error("Hosted projection HTML selection is malformed.");
   }
   const systemFeatures: LocusProjectionSystemFeature[] = [];
   for (const feature of value.systemFeatures) {
@@ -240,7 +235,6 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
       || reconciliation.revision !== authorityRev || reconciliation.projectionDigest !== projectionDigest
       || composition.registryDigest !== registryDigest
       || JSON.stringify(reconciliation.libraries.map(({ root: _root, css: _css, ...entry }) => entry)) !== JSON.stringify(libraries)
-      || reconciliation.htmlDocument !== htmlDocument
       || JSON.stringify(reconciliation.systemFeatures) !== JSON.stringify(systemFeatures)
       || JSON.stringify(reconciliation.writableDocuments) !== JSON.stringify(writableDocuments)) {
       throw new Error("Hosted projection reconciliation contract is incompatible.");
@@ -248,7 +242,7 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
   }
   return Object.freeze({ type: "projection-change", id, logicalMapId, incarnationId, authorityRev,
     sequence, previousDigest, projectionDigest, registryDigest,
-    libraries: Object.freeze(libraries), htmlDocument, systemFeatures: Object.freeze(systemFeatures),
+    libraries: Object.freeze(libraries), systemFeatures: Object.freeze(systemFeatures),
     writableDocuments: Object.freeze(writableDocuments),
     ...(topology === undefined ? {} : { topology }), ...(system === undefined ? {} : { system }),
     ...(reconciliation === undefined ? {} : { reconciliation }),

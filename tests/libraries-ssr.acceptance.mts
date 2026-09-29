@@ -11,7 +11,6 @@ import {
   enable_interactions,
   hsonLiveMap,
   hsonLocus,
-  render_hosted_document,
   type HsonSchema,
 } from "../src/index.ts";
 import type { LocusSocketLike, Locus } from "../src/types/locus.types.ts";
@@ -68,7 +67,7 @@ function document(map: ReturnType<typeof install_libraries_snapshot>["map"], nam
   return selected;
 }
 
-function authorized_session<TMap extends import("../src/types/livemap.types.ts").LiveMap>(locus: Locus<TMap>, libraries: string[], htmlDocument?: string) {
+function authorized_session<TMap extends import("../src/types/livemap.types.ts").LiveMap>(locus: Locus<TMap>, libraries: string[]) {
   let receive: ((raw: string) => void) | undefined;
   let sessionId: string | undefined;
   const socket: LocusSocketLike = {
@@ -79,7 +78,7 @@ function authorized_session<TMap extends import("../src/types/livemap.types.ts")
   };
   const close = locus.connect(socket);
   receive?.(JSON.stringify({ type: "session-create", id: "ssr", projection: {
-    libraries, ...(htmlDocument === undefined ? {} : { htmlDocument }),
+    libraries,
   } }));
   if (sessionId === undefined) throw new Error("Session authorization failed.");
   return { sessionId, close };
@@ -340,15 +339,13 @@ check("hosted rendering preserves its fence and produces the existing aggregate 
   enable_interactions(map);
   const locus = hsonLocus.create({ exposure: test_public_exposure(map), map,
     authorizeProjection: () => ({ libraries: ["state", "page"] }) });
-  const session = authorized_session(locus, ["state"], "page");
-  const ssr = render_hosted_document({ authority: locus, sessionId: session.sessionId });
+  const session = authorized_session(locus, ["state", "page"]);
+  const ssr = locus.session.get(session.sessionId)!.cut({ html: "page" });
   assert.equal(ssr.document, "page");
-  assert.equal(ssr.bootstrap.authority.logicalMapId, locus.logicalMapId);
-  assert.equal(ssr.bootstrap.authority.incarnationId, locus.incarnationId);
-  const installed = hsonLiveMap.fromClientSnapshot({ authority: ssr.bootstrap, localLibraries: {} });
+  assert.equal(ssr.libs.authority.logicalMapId, locus.logicalMapId);
+  assert.equal(ssr.libs.authority.incarnationId, locus.incarnationId);
+  const installed = hsonLiveMap.fromClientSnapshot({ authority: ssr.libs, localLibraries: {} });
   assert.equal(installed.rev, 0);
-  assert.equal(ssr.revision, ssr.bootstrap.revision);
-  assert.equal(ssr.projectionDigest, ssr.bootstrap.projectionDigest);
   session.close();
   locus.dispose();
 });
@@ -376,11 +373,11 @@ check("HTML cut retains complete transferable state", () => {
   const hostedMap = hosted_map_fixture();
   const locus = hsonLocus.create({ exposure: test_public_exposure(hostedMap), map: hostedMap,
     authorizeProjection: () => ({ libraries: ["state", "page"] }) });
-  const session = authorized_session(locus, ["state"], "page");
-  const hosted = locus.cut(session.sessionId);
+  const session = authorized_session(locus, ["state", "page"]);
+  const hosted = locus.session.get(session.sessionId)!.cut({ html: "page" });
   assert.equal(hosted.document, "page");
-  assert.equal(hosted.data.libraries.some((entry) => entry.name === "state"), true);
-  assert.equal(typeof encode_ssr_bootstrap(hosted.data), "string");
+  assert.equal(hosted.libs.libraries.some((entry) => entry.name === "state"), true);
+  assert.equal(typeof encode_ssr_bootstrap(hosted.libs), "string");
   session.close();
   locus.dispose();
 });
@@ -392,12 +389,9 @@ check("Libraries rendering selection and hosted cuts preserve the aggregate fenc
   const locus = hsonLocus.create({ exposure: test_public_exposure(hostedMap), map: hostedMap,
     authorizeProjection: () => ({ libraries: ["page", "admin"] }) });
   const session = authorized_session(locus, ["page", "admin"]);
-  expect_phase("select", () => locus.cut(session.sessionId));
-  const cut = locus.cut(session.sessionId, "page");
-  const rendered = render_hosted_document({ authority: locus, sessionId: session.sessionId, document: "page" });
-  assert.deepEqual(cut, { html: rendered.html, data: rendered.bootstrap, document: "page",
-    revision: rendered.revision, projectionDigest: rendered.projectionDigest });
-  assert.equal(cut.data.revision, hostedMap.rev);
+  assert.deepEqual(Object.keys(locus.session.get(session.sessionId)!.cut()), ["libs"]);
+  const cut = locus.session.get(session.sessionId)!.cut({ html: "page" });
+  assert.equal(cut.libs.revision, hostedMap.rev);
   session.close();
   locus.dispose();
 });

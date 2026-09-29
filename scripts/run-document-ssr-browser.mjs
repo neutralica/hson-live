@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { Hson, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus, render_hosted_document } from "../dist/index.js";
+import { Hson, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus } from "../dist/index.js";
 import { parse_hson_exact_runtime } from "../dist/internal/exact-runtime-hson-codec.js";
 import { admit_exact_runtime_livemap_libraries } from "../dist/internal/exact-runtime-node-admission.js";
 
@@ -106,30 +106,20 @@ try {
       { library: "page", exposure: "client-public" },
       { library: "admin", exposure: "client-public" },
     ],
-    defaultProjection: { libraries: ["state", "admin"], htmlDocument: "page", systemFeatures: ["interactions"] },
+    defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] },
     authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }),
     actions: {
       "state.increment": (context) => context.mutate((draft) => draft.lib("state").at(["count"]).set(2)),
       "state.interaction": (context) => context.mutate((draft) => draft.lib("state").at(["count"]).set(5)),
     },
   });
-  const sessionSent = [];
-  let receiveSession;
-  const closeSession = librariesLocus.connect({
-    send(raw) { sessionSent.push(JSON.parse(raw)); }, close() {},
-    onMessage(listener) { receiveSession = listener; return () => { receiveSession = undefined; }; },
-    onClose() { return () => {}; },
-  });
-  receiveSession(JSON.stringify({ type: "session-create", id: "ssr" }));
-  const issued = sessionSent.find((message) => message.type === "session-created");
-  if (!issued) throw new Error("SSR session was not authorized.");
-  const libraries = render_hosted_document({ authority: librariesLocus, sessionId: issued.sessionId });
-  closeSession();
+  const retained = await librariesLocus.session.create({ libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] });
+  const libraries = retained.cut({ html: "page" });
   const encoded = Object.freeze({
     local: encode_ssr_bootstrap(local.libs),
     localLibraries: encode_ssr_bootstrap(localLibraries.libs),
     full: encode_ssr_bootstrap(full.libs),
-    libraries: encode_ssr_bootstrap(libraries.bootstrap),
+    libraries: encode_ssr_bootstrap(libraries.libs),
   });
   await librariesLocus.mutate((draft) => {
     draft.lib("state").at(["count"]).set(1);
@@ -156,21 +146,11 @@ try {
   cssMap.lib("page").css.sel("#hosted-css-target").set.color("rgb(1, 2, 3)");
   cssLocus = hsonLocus.create({ map: cssMap,
     exposure: [{ library: "page", exposure: "client-public" }],
-    defaultProjection: { libraries: ["page"], htmlDocument: "page" },
+    defaultProjection: { libraries: ["page"] },
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
   });
-  const cssSessionSent = [];
-  let receiveCssSession;
-  const closeCssSession = cssLocus.connect({
-    send(raw) { cssSessionSent.push(JSON.parse(raw)); }, close() {},
-    onMessage(listener) { receiveCssSession = listener; return () => { receiveCssSession = undefined; }; },
-    onClose() { return () => {}; },
-  });
-  receiveCssSession(JSON.stringify({ type: "session-create", id: "css-ssr" }));
-  const cssIssued = cssSessionSent.find((message) => message.type === "session-created");
-  if (!cssIssued) throw new Error("Styled SSR session was not authorized.");
-  const cssCut = render_hosted_document({ authority: cssLocus, sessionId: cssIssued.sessionId });
-  closeCssSession();
+  const cssSession = await cssLocus.session.create({ libraries: ["page"] });
+  const cssCut = cssSession.cut({ html: "page" });
   await cssLocus.mutate((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
     rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(4, 5, 6)"]] } }); });
   cssSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
@@ -193,8 +173,8 @@ try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/__state") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ local, localLibraries, full, libraries, librariesSocketUrl, credential: issued.credential,
-        cssCut, cssSocketUrl, cssCredential: cssIssued.credential, encoded }));
+      response.end(JSON.stringify({ local, localLibraries, full, libraries, librariesSocketUrl, credential: retained.credential,
+        cssCut, cssSocketUrl, cssCredential: cssSession.credential, encoded }));
       return;
     }
     if (url.pathname === "/__css-mutate") {
@@ -204,12 +184,12 @@ try {
       return;
     }
     if (url.pathname === "/__css-revoke") {
-      await cssLocus.sessions.updateProjection(cssIssued.sessionId, { libraries: [] });
+      await cssSession.update({ libraries: [] });
       response.writeHead(204).end();
       return;
     }
     if (url.pathname === "/__css-regrant") {
-      await cssLocus.sessions.updateProjection(cssIssued.sessionId, { libraries: ["page"], htmlDocument: "page" });
+      await cssSession.update({ libraries: ["page"] });
       response.writeHead(204).end();
       return;
     }

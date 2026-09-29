@@ -27,16 +27,14 @@ export type AuthorityProjectionSnapshot = Readonly<{
     root: Readonly<{ format: "hson-exact-value"; payload: string }>;
     css?: import("./document-css.types.js").DocumentCssRecord;
   }>[];
-  htmlDocument: string | null;
   systemFeatures: readonly LocusProjectionSystemFeature[];
   writableDocuments: readonly string[];
   system: Readonly<{ interactions: Readonly<{ format: "hson-exact-value"; payload: string }> }> | null;
 }>;
 
-/** An explicit request; selecting an HTML document also requests that library. */
+/** Libraries and system features requested for one authorized client scope. */
 export type LocusRequestedProjection = Readonly<{
   libraries: readonly string[];
-  htmlDocument?: string;
   systemFeatures?: readonly LocusProjectionSystemFeature[];
 }>;
 

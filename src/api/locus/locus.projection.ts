@@ -27,7 +27,6 @@ export type LocusProjectedLibraryContract = Readonly<Pick<HostedRegistryEntry, "
 export type LocusEffectiveProjection = Readonly<{
   authority: HostedAuthorityFence;
   libraries: readonly LocusProjectedLibraryContract[];
-  htmlDocument?: string;
   systemFeatures: readonly LocusProjectionSystemFeature[];
   writableDocuments: readonly string[];
   digest: string;
@@ -133,14 +132,13 @@ function normalize_features(input: unknown): readonly LocusProjectionSystemFeatu
 }
 
 function normalize_request(input: LocusRequestedProjection): LocusRequestedProjection {
-  if (typeof input !== "object" || input === null) throw new LocusProjectionUnavailableError();
-  const libraries = normalize_names(input.libraries);
-  if (input.htmlDocument !== undefined && (typeof input.htmlDocument !== "string" || input.htmlDocument.length === 0)) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)
+    || Reflect.ownKeys(input).some(key => key !== "libraries" && key !== "systemFeatures")) {
     throw new LocusProjectionUnavailableError();
   }
+  const libraries = normalize_names(input.libraries);
   return Object.freeze({
-    libraries: Object.freeze([...new Set([...libraries, ...(input.htmlDocument === undefined ? [] : [input.htmlDocument])])].sort()),
-    ...(input.htmlDocument === undefined ? {} : { htmlDocument: input.htmlDocument }),
+    libraries,
     systemFeatures: normalize_features(input.systemFeatures),
   });
 }
@@ -193,17 +191,13 @@ function materialize_effective_projection(
     })
     .sort((a, b) => a.name.localeCompare(b.name));
   const includedNames = new Set(included.map((entry) => entry.name));
-  if (requested.htmlDocument !== undefined && !included.some((entry) => entry.name === requested.htmlDocument && entry.mode === "document")) {
-    throw new LocusProjectionUnavailableError();
-  }
   const features = Object.freeze((requested.systemFeatures ?? []).filter((feature) => allowedFeatures.has(feature)
     && (feature !== "interactions" || policy.registry.libraries.some((entry) => entry.scope === "hson-internal"))));
   const writable = Object.freeze(included.filter((entry) => entry.mode === "document" && allowedWritable.has(entry.name)).map((entry) => entry.name));
   const authority = Object.freeze({ ...policy.authority });
   // The canonical digest input has no root, revision, policy, or excluded registry topology.
-  const digest = locus_projection_contract_digest(authority, included, requested.htmlDocument ?? null, features, writable);
+  const digest = locus_projection_contract_digest(authority, included, features, writable);
   return Object.freeze({ authority, libraries: Object.freeze(included),
-    ...(requested.htmlDocument === undefined ? {} : { htmlDocument: requested.htmlDocument }),
     systemFeatures: features, writableDocuments: writable, digest,
     includesLibrary: (name: string) => includedNames.has(name),
     canAuthorDocument: (name: string) => writable.includes(name),
@@ -215,12 +209,11 @@ function materialize_effective_projection(
 export function locus_projection_contract_digest(
   authority: HostedAuthorityFence,
   libraries: readonly LocusProjectedLibraryContract[],
-  htmlDocument: string | null,
   systemFeatures: readonly LocusProjectionSystemFeature[],
   writableDocuments: readonly string[],
 ): string {
   return hosted_sha256(JSON.stringify({ format: "locus-effective-projection", authority,
     libraries: libraries.map((entry) => ({ name: entry.name, mode: entry.mode, schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec })),
-    htmlDocument, systemFeatures, writableDocuments,
+    systemFeatures, writableDocuments,
   }));
 }

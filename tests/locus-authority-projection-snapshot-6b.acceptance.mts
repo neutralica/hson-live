@@ -43,8 +43,7 @@ const policy = make_locus_hosted_projection_policy(complete.registry, complete.a
   () => ({ libraries: ["allowedData", "allowedPage", "PRIVATE_NAME_SENTINEL", "hiddenDoc", "UNSELECTED_NAME_SENTINEL"],
     systemFeatures: ["interactions"], writableDocuments: ["allowedPage"] }));
 const effective = await normalize_locus_effective_projection(policy,
-  { libraries: ["allowedData", "allowedPage", "PRIVATE_NAME_SENTINEL", "hiddenDoc"],
-    htmlDocument: "allowedPage", systemFeatures: ["interactions"] });
+  { libraries: ["allowedData", "allowedPage", "PRIVATE_NAME_SENTINEL", "hiddenDoc"], systemFeatures: ["interactions"] });
 assert.deepEqual(effective.libraries.map((entry) => entry.name), ["allowedData", "allowedPage"]);
 const sessions = make_locus_session_manager();
 const created = sessions.create("projection-session", true, { fence() {} }, () => {}, () => 0, undefined, effective);
@@ -56,7 +55,6 @@ const decoded = decode_authority_projection_snapshot(encoded);
 assert.deepEqual(decoded, projected);
 assert.equal(decoded.revision, map.rev);
 assert.equal(decoded.projectionDigest, effective.digest);
-assert.equal(decoded.htmlDocument, "allowedPage");
 assert.deepEqual(decoded.writableDocuments, ["allowedPage"]);
 assert.deepEqual(decoded.libraries.map((entry) => entry.name), ["allowedData", "allowedPage"]);
 assert.equal(decoded.libraries[0]?.schema, DataSchema.toHson());

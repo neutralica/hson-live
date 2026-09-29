@@ -2,10 +2,10 @@ import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.intern
 import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { HsonSchemaData } from "../transform/transform.types.js";
 import type { AuthorityProjectionSnapshot, LocusProjectionSystemFeature } from "../../types/locus.projection.types.js";
-import type { HostedRegistry, HostedRegistryBinding } from "../livemap/livemap.hosted.js";
+import type { HostedRegistryEntry } from "../livemap/livemap.hosted.js";
 import type { LocusEffectiveProjection } from "./locus.projection.js";
 import { locus_projection_contract_digest } from "./locus.projection.js";
-import { assert_hosted_libraries_snapshot_shape, decode_hosted_root, encode_hosted_root, hosted_sha256, make_hosted_registry, HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
+import { assert_hosted_libraries_snapshot_shape, decode_hosted_root, encode_hosted_root, hosted_sha256, registry_from_entries, HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import { classify_live_root_mode } from "../livemap/livemap.document.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
@@ -110,7 +110,7 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
     if (admitted !== undefined) return admitted;
   }
   try {
-    const value = record(input, ["format", "authority", "revision", "projectionDigest", "libraries", "htmlDocument", "systemFeatures", "writableDocuments", "system"]);
+    const value = record(input, ["format", "authority", "revision", "projectionDigest", "libraries", "systemFeatures", "writableDocuments", "system"]);
     const revision = value.revision;
     if (value.format !== AUTHORITY_PROJECTION_SNAPSHOT_FORMAT || typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) return fail();
     const binding = record(value.authority, ["logicalMapId", "incarnationId"]);
@@ -138,8 +138,6 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
         ...(mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
     });
     if (libraries.some((entry, index) => index > 0 && libraries[index - 1]!.name.localeCompare(entry.name) >= 0)) return fail();
-    const htmlDocument = value.htmlDocument;
-    if (htmlDocument !== null && (typeof htmlDocument !== "string" || !libraries.some((entry) => entry.name === htmlDocument && entry.mode === "document"))) return fail();
     const systemFeatures: LocusProjectionSystemFeature[] = [];
     for (const feature of array(value.systemFeatures)) {
       if (feature !== "interactions" || systemFeatures.length > 0) return fail();
@@ -161,10 +159,10 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       system = Object.freeze({ interactions: validatedRoot });
     } else if (value.system !== null) return fail();
     const contract = libraries.map(({ root: _root, css: _css, ...entry }) => entry);
-    if (locus_projection_contract_digest(authority, contract, htmlDocument, systemFeatures, writableDocuments) !== digest) return fail();
+    if (locus_projection_contract_digest(authority, contract, systemFeatures, writableDocuments) !== digest) return fail();
     const snapshot: AuthorityProjectionSnapshot = Object.freeze({ format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
       authority, revision, projectionDigest: digest, libraries: Object.freeze(libraries),
-      htmlDocument, systemFeatures: Object.freeze(systemFeatures),
+      systemFeatures: Object.freeze(systemFeatures),
       writableDocuments: Object.freeze(writableDocuments), system });
     if (json_utf8_bytes(snapshot) > HOSTED_MAX_SNAPSHOT_BYTES) return fail();
     admittedSnapshots.set(snapshot, snapshot);
@@ -214,7 +212,7 @@ export function project_authority_snapshot(
     }
     return admit_authority_projection_snapshot(Object.freeze({ format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
       authority: effective.authority, revision: complete.revision, projectionDigest: effective.digest,
-      libraries, htmlDocument: effective.htmlDocument ?? null, systemFeatures: effective.systemFeatures,
+      libraries, systemFeatures: effective.systemFeatures,
       writableDocuments: effective.writableDocuments, system,
     }));
   } catch { return fail(); }
@@ -242,7 +240,7 @@ export function capture_selected_authority_projection_snapshot(
       HOSTED_MAX_SNAPSHOT_BYTES) });
     return admit_authority_projection_snapshot(Object.freeze({ format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
       authority: selected.authority, revision: selected.revision, projectionDigest: effective.digest,
-      libraries, htmlDocument: effective.htmlDocument ?? null, systemFeatures: effective.systemFeatures,
+      libraries, systemFeatures: effective.systemFeatures,
       writableDocuments: effective.writableDocuments, system,
     }));
   } catch { return fail(); }
@@ -264,20 +262,15 @@ export function capture_locus_session_authority_projection_snapshot(
 /** Runtime-only adapter for the existing Step 6A.5 ownership machinery. @internal */
 export function authority_projection_as_client_composition_internal(input: AuthorityProjectionSnapshot): PortableAggregateSnapshot {
   const snapshot = admit_authority_projection_snapshot(input);
-  const entries: HostedRegistryBinding[] = snapshot.libraries.map((entry) => ({ name: entry.name, mode: entry.mode, schema: HsonSchema.fromHson(entry.schema), identity: Object.freeze({}) }));
+  // Reuse LiveMap's authority-neutral subset registry builder. Admission has
+  // already validated these canonical contracts; no Schema resolver is needed.
+  const entries: HostedRegistryEntry[] = snapshot.libraries.map(({ root: _root, css: _css, ...entry }) => entry);
   const systemSchema = interaction_schema_internal();
-  if (snapshot.system !== null) entries.push({
-    name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
-    mode: "data-object",
-    schema: systemSchema,
-    identity: Object.freeze({}),
-    scope: "hson-internal",
-  });
-  // LiveMap's ordinary hosted registry is nonempty; an authority projection
-  // may legitimately have no entries while client-local declarations exist.
-  const emptyRegistry: HostedRegistry = Object.freeze({ format: "hson-hosted-registry", libraries: Object.freeze([]),
-    digest: hosted_sha256(JSON.stringify({ format: "hson-hosted-registry", libraries: [] })) });
-  const registry = entries.length === 0 ? emptyRegistry : make_hosted_registry(entries);
+  if (snapshot.system !== null) entries.push(Object.freeze({
+    name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, scope: "hson-internal", mode: "data-object", schema: systemSchema.toHson(),
+    schemaDigest: hosted_sha256(systemSchema.toHson()), rootCodec: "hson-exact-value",
+  }));
+  const registry = registry_from_entries(entries);
   const libraries = snapshot.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest, root: entry.root,
     ...(entry.mode === "document" ? { css: entry.css } : {}),

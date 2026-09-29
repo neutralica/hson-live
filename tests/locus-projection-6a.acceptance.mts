@@ -86,9 +86,8 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   const authorized = make_locus_hosted_projection_policy(base.registry, FENCE, EXPOSURE, undefined,
     ({ connection }) => grant(connection?.principalId));
   const alice = await normalize_locus_effective_projection(authorized,
-    { libraries: ["presentation", "credentials"], htmlDocument: "page", systemFeatures: ["interactions"] }, { principalId: "alice" });
+    { libraries: ["presentation", "credentials", "page"], systemFeatures: ["interactions"] }, { principalId: "alice" });
   assert.deepEqual(alice.libraries.map((entry) => entry.name), ["page", "presentation"]);
-  assert.equal(alice.htmlDocument, "page");
   assert.equal(alice.includesLibrary("credentials"), false);
   assert.equal(alice.canAuthorDocument("page"), true);
   assert.equal(alice.canAuthorDocument("presentation"), false);
@@ -103,24 +102,12 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   assert.deepEqual(anonymous.libraries, []);
   const empty = await normalize_locus_effective_projection(authorized, { libraries: [] }, { principalId: "alice" });
   assert.deepEqual(empty.libraries, []);
-  assert.equal(empty.htmlDocument, undefined);
   assert.deepEqual((await normalize_locus_effective_projection(authorized, undefined, { principalId: "alice" })).libraries, []);
   const configuredDefault = make_locus_hosted_projection_policy(base.registry, FENCE, EXPOSURE,
-    { libraries: ["presentation"], htmlDocument: "page" }, ({ connection }) => grant(connection?.principalId));
+    { libraries: ["presentation", "page"] }, ({ connection }) => grant(connection?.principalId));
   assert.deepEqual((await normalize_locus_effective_projection(configuredDefault, undefined, { principalId: "alice" }))
     .libraries.map((entry) => entry.name), ["page", "presentation"]);
 
-  const unavailable = [
-    { libraries: [], htmlDocument: "credentials" },
-    { libraries: [], htmlDocument: "unknown" },
-    { libraries: [], htmlDocument: "presentation" },
-  ];
-  for (const request of unavailable) {
-    await assert.rejects(async () => normalize_locus_effective_projection(authorized, request, { principalId: "alice" }),
-      (error: unknown) => error instanceof Error && error.message === "Requested client projection is unavailable.");
-  }
-  await assert.rejects(async () => normalize_locus_effective_projection(authorized,
-    { libraries: [], htmlDocument: "page" }, { principalId: "anonymous" }), /Requested client projection is unavailable/);
   const allPrivatePolicy = make_locus_hosted_projection_policy(base.registry, FENCE,
     EXPOSURE.map((entry) => ({ ...entry, exposure: "server-private" as const })), undefined, () => ({ libraries: ["page"] }));
   assert.deepEqual((await normalize_locus_effective_projection(allPrivatePolicy, { libraries: ["page"] })).libraries, []);
@@ -167,20 +154,6 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   const authority = map();
   const server = create_locus_hosted_aggregate_socket_internal({ map: authority, exposure: EXPOSURE,
     authorizeProjection: ({ connection }) => grant(connection?.principalId) });
-  const rejectedMessages: string[] = [];
-  for (const [index, principalId, htmlDocument] of [
-    ["private", "alice", "credentials"], ["unknown", "alice", "unknown"], ["unauthorized", "anonymous", "page"],
-  ]) {
-    const attempted = attachment(server, principalId);
-    await attempted.attached.operations.submit({ type: "session-create", id: index,
-      projection: { libraries: [], htmlDocument } });
-    const rejected = attempted.finite.find((entry) => entry.type === "session-rejected");
-    assert.ok(rejected && typeof rejected.message === "string");
-    rejectedMessages.push(`${rejected.code}:${rejected.message}`);
-    attempted.attached.close();
-  }
-  assert.equal(new Set(rejectedMessages).size, 1);
-  assert.equal(server.sessions.debug().activeSessionCount, 0);
   const first = attachment(server, "alice");
   await first.attached.operations.submit({ type: "session-create", id: "a", projection: { libraries: ["page"] } });
   const created = first.finite.find((entry) => entry.type === "session-created");

@@ -67,12 +67,12 @@ for (const encoded of wire.received.slice(beforeAdmissionWire)) {
 }
 const sessionId = echo.session.sessionId;
 assert.ok(sessionId);
-const rejected = await locus.sessions.updateProjection(sessionId, { libraries: ["base", "newPublic"] });
+const rejected = await locus.session.get(sessionId)!.update({ libraries: ["base", "newPublic"] });
 assert.equal(rejected.changed, false);
 assert.equal(clientMap.rev, beforeClientRev + 1);
 allowNew = true;
 const authorityMapRevBeforeProjection = authority.rev;
-const result = await locus.sessions.updateProjection(sessionId, { libraries: ["base", "newPublic", "page"], htmlDocument: "page" });
+const result = await locus.session.get(sessionId)!.update({ libraries: ["base", "newPublic", "page"] });
 assert.equal(result.changed, true);
 assert.equal(result.authorityRev, locus.rev);
 assert.equal(result.sequence, 1);
@@ -85,10 +85,10 @@ assert.equal(clientMap.lib("newPublic").mode, "data-object");
 assert.equal(client_library_source_internal(clientMap.lib("newPublic")), "authority-projected");
 assert.equal(clientMap.lib("page").mode, "document");
 assert.equal(wire.received.at(-1)?.includes("privateState"), false);
-const cut = locus.cut(sessionId);
+const cut = locus.session.get(sessionId)!.cut({ html: "page" });
 assert.match(cut.html, /RUNTIME_PAGE_SENTINEL/);
-assert.ok(JSON.stringify(cut.data).includes("newPublic"));
-assert.equal(JSON.stringify(cut.data).includes("PRIVATE_ROOT_SENTINEL"), false);
+assert.ok(JSON.stringify(cut.libs).includes("newPublic"));
+assert.equal(JSON.stringify(cut.libs).includes("PRIVATE_ROOT_SENTINEL"), false);
 await locus.mutate((draft) => {
   const library = draft.lib("newPublic");
   if (!("at" in library)) throw new Error("Expected data Library.");
@@ -104,7 +104,7 @@ assert.equal(echo.map, clientMap);
 const sessionWire = sockets();
 locus.connect(sessionWire.server);
 sessionWire.client.send(JSON.stringify({ type: "session-create", id: "new-session",
-  projection: { libraries: ["newPublic", "page"], htmlDocument: "page" } }));
+  projection: { libraries: ["newPublic", "page"] } }));
 assert.ok(sessionWire.received.some((raw) => JSON.parse(raw).type === "session-created"));
 sessionWire.client.send(JSON.stringify({ type: "recover", id: "new-recover", logicalMapId: locus.logicalMapId }));
 await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -137,7 +137,7 @@ const interactionMap = hsonLiveMap.fromLibraries({ basePage: { document: Hson.do
 enable_interactions(interactionMap);
 const interactionLocus = hsonLocus.create({ map: interactionMap,
   exposure: [{ library: "basePage", exposure: "client-public" }],
-  defaultProjection: { libraries: ["basePage"], htmlDocument: "basePage", systemFeatures: ["interactions"] },
+  defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }),
 });
 const interactionWire = sockets();
@@ -164,8 +164,7 @@ await interactionLocus.mutate((draft) => add_interaction(draft, {
 assert.equal(interactionWire.received.at(-1)?.includes("NEW_INTERACTION_SENTINEL"), false);
 const interactionSessionId = interactionEcho.session.sessionId;
 assert.ok(interactionSessionId);
-await interactionLocus.sessions.updateProjection(interactionSessionId,
-  { libraries: ["basePage", "nextPage"], htmlDocument: "nextPage", systemFeatures: ["interactions"] });
+await interactionLocus.session.get(interactionSessionId)!.update({ libraries: ["basePage", "nextPage"], systemFeatures: ["interactions"] });
 assert.equal(interactionEcho.map, interactionClientMap);
 assert.equal(interactionClientMap.lib("basePage"), initialPage);
 assert.equal(existingMirror.tree.node, existingTree);
@@ -176,7 +175,7 @@ if (nextPage.mode !== "document") throw new Error("Expected runtime document Lib
 const nextMirror = hsonMirror(nextPage);
 assert.ok(nextMirror.tree.node);
 assert.ok(interactionWire.received.at(-1)?.includes("NEW_INTERACTION_SENTINEL"));
-assert.match(interactionLocus.cut(interactionSessionId).html, /Next/);
+assert.match(interactionLocus.session.get(interactionSessionId)!.cut({ html: "nextPage" }).html, /Next/);
 interactionEcho.dispose();
 nextMirror.dispose();
 existingMirror.dispose();
@@ -203,7 +202,7 @@ const localShared = collisionClientMap.lib("shared");
 const localRev = collisionClientMap.rev;
 const collisionSessionId = collisionEcho.session.sessionId;
 assert.ok(collisionSessionId);
-await collisionLocus.sessions.updateProjection(collisionSessionId, { libraries: ["base", "shared"] });
+await collisionLocus.session.get(collisionSessionId)!.update({ libraries: ["base", "shared"] });
 assert.equal(collisionEcho.diagnostics().status, "failed");
 assert.equal(collisionClientMap.rev, localRev);
 assert.equal(collisionClientMap.lib("shared"), localShared);
@@ -238,10 +237,10 @@ await revokeEcho.connect();
 await revokeLocus.lib.add({ later: { data: { value: 2 } } }, { exposure: { later: "client-public" } });
 const revokeSessionId = revokeEcho.session.sessionId;
 assert.ok(revokeSessionId);
-const pendingUpdate = revokeLocus.sessions.updateProjection(revokeSessionId, { libraries: ["base", "later"] });
+const pendingUpdate = revokeLocus.session.get(revokeSessionId)!.update({ libraries: ["base", "later"] });
 await entered;
 assert.equal(sawCurrentContext, true);
-assert.equal(revokeLocus.revokeSession(revokeSessionId), true);
+assert.equal(revokeLocus.session.get(revokeSessionId)!.revoke(), true);
 releaseAuthorization();
 await assert.rejects(pendingUpdate, /projection.*unavailable/i);
 assert.equal(revokeWire.received.some((raw) => JSON.parse(raw).type === "projection-change"), false);

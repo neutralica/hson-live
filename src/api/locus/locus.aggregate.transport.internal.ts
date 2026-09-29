@@ -50,7 +50,6 @@ export type LocusHostedProjectionChange = Readonly<{
   projectionDigest: string;
   registryDigest: string;
   libraries: readonly LocusProjectedLibraryContract[];
-  htmlDocument: string | null;
   systemFeatures: readonly LocusProjectionSystemFeature[];
   writableDocuments: readonly string[];
   topology?: LiveMapLibraryAddOperation;

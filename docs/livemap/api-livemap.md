@@ -94,7 +94,7 @@ const all = map.cut(); // { libs }, both application families
 const dataOnly = map.cut({ documents: [] });
 const documentOnly = map.cut({ data: [], documents: ["page"] });
 const { html: ssrHtml, libs, document } = map.cut({ documents: ["page"], html: "page" });
-const hosted = locus.cut(sessionId, "page");
+const hosted = session.cut({ html: "page" });
 ```
 
 `map.lib("page").render()` returns `BrowserRealizationHtml` directly from that document root and stylesheet at one coherent position. It reads no unrelated library and reconstructs no map. Data libraries have no rendering capability. Browser realization preserves authored fragments and full document structure; a canonical document can still fail parser compatibility checks.
@@ -107,7 +107,7 @@ Cut types reject known construction-time names in the wrong family and provably 
 
 `libs` is a self-contained `LiveMapSnapshot` with only the selected library contracts and roots, consistent registry and Schema digests, CSS, and one source revision. It contains no local HTML selection field or generated QUIDs. Canonical interaction storage follows the selected document set automatically: omitted-document descriptors are removed, an enabled source retains an empty slot when no documents are selected, and an absent source stays absent. Empty application selections are valid. `install_libraries_snapshot(libs)` reconstructs the selected topology in a fresh runtime. Snapshot consumers use the 64 MiB aggregate byte bound while retaining the depth-256 and 100,000-node limits; ordinary exact-value operations keep their own limits.
 
-`locus.cut(...)` continues to produce an authorized hosted projection and HTML for one session.
+`session.cut(...)` continues to produce an authorized hosted projection and HTML for one session.
 
 Mirror binds a selected document library: `hsonMirror(map.lib("page"))`. Echo and Locus govern registry maps, including one-library maps. Each document library renders its own state; the map remains the aggregate authority.
 
