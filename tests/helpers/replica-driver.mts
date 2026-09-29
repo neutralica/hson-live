@@ -11,5 +11,6 @@ export function create_recovery_test_driver<TMap extends LiveMap>(options: Omit<
   let prepared: ReturnType<typeof create_lazy_replica_echo_internal<TMap>>;
   try { prepared = create_lazy_replica_echo_internal(options, management); }
   catch (cause) { management.release(); throw cause; }
-  return Object.freeze({ ...prepared.echo, session: prepared.rawSession, completeRecovery: prepared.complete });
+  return Object.freeze({ ...prepared.echo, session: prepared.rawSession, completeRecovery: prepared.complete,
+    awaitReconnect: () => prepared.echo.session.reattach() });
 }

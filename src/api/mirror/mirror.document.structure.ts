@@ -198,6 +198,7 @@ export function plan_document_root_structural_transaction(
   projectedRoot: HsonNode,
   canonicalFinalRoot: HsonNode,
   persistedQuidForExisting: PersistedQuidLookup,
+  preserveUnquiddedRootChild = false,
 ): DocumentStructuralPlan {
   const root = shadow_existing(projectedRoot, persistedQuidForExisting);
   const runtime = runtime_for_node(projectedRoot) ?? default_livetree_runtime();
@@ -207,7 +208,8 @@ export function plan_document_root_structural_transaction(
   };
   root.attrs = must_attrs(canonicalFinalRoot.$_attrs ?? {});
   root.content = canonicalFinalRoot.$_content.map((item, index) =>
-    plan_continuous_content(root, root.content[index], item, continuity));
+    plan_continuous_content(root, root.content[index], item, continuity,
+      preserveUnquiddedRootChild && index === 0));
 
   validate_shadow_against_canonical(root, canonicalFinalRoot);
   const oldNodes = new Set(collect_subtree_nodes(projectedRoot, "pre"));
@@ -350,6 +352,7 @@ function plan_continuous_content(
   current: ShadowContent | undefined,
   replacement: HsonNode | Primitive,
   continuity: ContinuityPlanningContext,
+  preserveUnquiddedPosition = false,
 ): ShadowContent {
   if (!is_Node(replacement)) return replacement;
 
@@ -363,7 +366,7 @@ function plan_continuous_content(
   if (continuous !== undefined && is_ordinary_element_node(continuous.node)) {
     if (replacementQuid === undefined) throw new Error("Continuous subject planning requires persisted identity.");
     if (continuous.node.$_tag === replacement.$_tag) {
-      return plan_compatible_subject(parent, continuous, replacement, continuity);
+      return plan_compatible_subject(parent, continuous, replacement, continuity, preserveUnquiddedPosition);
     }
     const transferred = shadow_fresh_continuous(replacement, parent, continuous, continuity);
     if (!is_shadow_node(transferred)) throw new Error("QUID lineage transfer target is not a node.");
@@ -373,6 +376,20 @@ function plan_continuous_content(
       to: transferred.node,
     }));
     return transferred;
+  }
+
+  if (preserveUnquiddedPosition && replacementQuid === undefined && is_shadow_node(current)
+    && is_ordinary_element_node(current.node) && is_ordinary_element_node(replacement)
+    && current.node.$_tag === replacement.$_tag
+    && current.node.$_meta?.[HSON_META_QUID] === undefined
+    && current.persistedQuid === undefined) {
+    // A borrowed SSR tree has no portable QUIDs. Snapshot convergence keeps
+    // compatible DOM subjects at their current ordered positions.
+    const shadow: ShadowNode = { node: current.node, fresh: false, parent,
+      attrs: must_attrs(replacement.$_attrs ?? {}), content: [] };
+    shadow.content = replacement.$_content.map((item, index) =>
+      plan_continuous_content(shadow, current.content[index], item, continuity, true));
+    return shadow;
   }
 
   if (is_shadow_node(current)
@@ -386,7 +403,7 @@ function plan_continuous_content(
       content: [],
     };
     shadow.content = replacement.$_content.map((item, index) =>
-      plan_continuous_content(shadow, current.content[index], item, continuity));
+      plan_continuous_content(shadow, current.content[index], item, continuity, preserveUnquiddedPosition));
     return shadow;
   }
 
@@ -403,6 +420,7 @@ function plan_compatible_subject(
   current: ShadowNode,
   replacement: HsonNode,
   continuity: ContinuityPlanningContext,
+  preserveUnquiddedPosition = false,
 ): ShadowNode {
   const quid = current.persistedQuid;
   if (quid === undefined) throw new Error("Compatible subject planning requires persisted identity.");
@@ -416,7 +434,7 @@ function plan_compatible_subject(
     content: [],
   };
   shadow.content = replacement.$_content.map((item, index) =>
-    plan_continuous_content(shadow, current.content[index], item, continuity));
+    plan_continuous_content(shadow, current.content[index], item, continuity, preserveUnquiddedPosition));
   return shadow;
 }
 

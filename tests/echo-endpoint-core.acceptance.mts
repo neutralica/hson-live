@@ -134,6 +134,7 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
     assert.equal(actions, 1);
   } finally {
     echo.dispose();
+    assert.equal(echo.session.credential, undefined);
     detach();
     locus.dispose();
   }

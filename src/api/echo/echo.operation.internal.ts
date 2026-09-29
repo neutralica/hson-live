@@ -10,12 +10,12 @@ import type {
 export type EchoFiniteOperationRequest<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = LocusClientActionMessage<TActions> | Extract<LocusClientMessage<TActions>, {
-  type: "action-status" | "session-create" | "session-attach" | "session-goodbye";
+  type: "action-status" | "session-create" | "session-attach" | "session-detach" | "session-goodbye";
 }>;
 
 /** @internal Typed authority and session-control outcomes. */
 export type EchoFiniteOperationOutcome = Extract<LocusServerMessage, {
-  type: "ack" | "error" | "action-status" | "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended";
+  type: "ack" | "error" | "action-status" | "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-detached" | "session-ended";
 }>;
 
 /**

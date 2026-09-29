@@ -243,6 +243,12 @@ export type LocusClientSessionGoodbyeMessage = Readonly<{
   id: LocusSessionRequestId;
 }>;
 
+/** Protocol-only nonrevoking release of the current transport attachment. */
+export type LocusClientSessionDetachMessage = Readonly<{
+  type: "session-detach";
+  id: LocusSessionRequestId;
+}>;
+
 export type LocusClientMessage<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > =
@@ -250,6 +256,7 @@ export type LocusClientMessage<
   | LocusClientActionStatusMessage
   | LocusClientSessionCreateMessage
   | LocusClientSessionAttachMessage
+  | LocusClientSessionDetachMessage
   | LocusClientSessionGoodbyeMessage;
 
 export type LocusServerEventMessage = Readonly<{
@@ -371,6 +378,14 @@ export type LocusServerSessionEndedMessage = Readonly<{
   epoch: LocusConnectionEpoch;
 }>;
 
+/** Protocol-only notice that the attachment entered disconnected grace. */
+export type LocusServerSessionDetachedMessage = Readonly<{
+  type: "session-detached";
+  id: LocusSessionRequestId;
+  sessionId: LocusSessionId;
+  epoch: LocusConnectionEpoch;
+}>;
+
 export type LocusServerMessage =
   | LocusServerEventMessage
   | LocusServerAckMessage
@@ -380,4 +395,5 @@ export type LocusServerMessage =
   | LocusServerSessionAttachedMessage
   | LocusServerSessionRejectedMessage
   | LocusServerSessionFencedMessage
+  | LocusServerSessionDetachedMessage
   | LocusServerSessionEndedMessage;

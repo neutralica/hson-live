@@ -44,7 +44,7 @@ type PendingStatus = Readonly<{
 
 type PendingSession = Readonly<{
   id: LocusSessionRequestId;
-  kind: "create" | "reattach" | "goodbye";
+  kind: "create" | "reattach" | "detach" | "goodbye";
   resolve: (result: EchoSessionResult | undefined) => void;
   reject: (error: Error) => void;
 }>;
@@ -54,7 +54,7 @@ export type EchoEndpointIdFactories = Readonly<{
   actionId?: () => LocusActionId;
   actionAttemptId?: () => LocusActionId;
   actionStatusId?: () => LocusActionStatusId;
-  sessionRequestId?: (kind: "create" | "reattach" | "goodbye") => LocusSessionRequestId;
+  sessionRequestId?: (kind: "create" | "reattach" | "detach" | "goodbye") => LocusSessionRequestId;
 }>;
 
 /** @internal */
@@ -69,6 +69,8 @@ export type EchoEndpointOptions<TActions extends LocusActionPayloads = LocusActi
   onAttachmentLost?: (reason: "disconnect" | "fenced" | "ended", error: Error) => void;
   operationLossError?: (reason: "disconnect" | "fenced" | "ended") => Error;
   onReadyChange?: () => void;
+  /** @internal Replica operations require synchronization in addition to attachment. */
+  additionalReady?: () => boolean;
 }>;
 
 /** @internal Common replica-independent Echo endpoint state and behavior. */
@@ -77,6 +79,8 @@ export type EchoEndpoint<TActions extends LocusActionPayloads = LocusActionPaylo
   readonly session: EchoSession;
   readonly connected: boolean;
   readonly ready: boolean;
+  /** @internal Release this transport's retained attachment without revocation. */
+  detachSession: () => Promise<void>;
   connect: () => void;
   disconnect: () => void;
   receive: (message: EchoEndpointServerMessage) => boolean;
@@ -114,11 +118,12 @@ function defaultSessionId(): LocusSessionRequestId {
 export function create_echo_endpoint_internal<TActions extends LocusActionPayloads = LocusActionPayloads>(
   options: EchoEndpointOptions<TActions>,
 ): EchoEndpoint<TActions> {
-  const clientId = options.clientId ?? make_echo_reload_safe_id("lhc");
-  const makeActionId = options.ids?.actionId ?? (() => make_echo_reload_safe_id("lha"));
-  const makeAttemptId = options.ids?.actionAttemptId ?? defaultAttemptId;
-  const makeStatusId = options.ids?.actionStatusId ?? defaultStatusId;
-  const makeSessionId = options.ids?.sessionRequestId ?? defaultSessionId;
+  const { credential: initialCredential, ...runtimeOptions } = options;
+  const clientId = runtimeOptions.clientId ?? make_echo_reload_safe_id("lhc");
+  const makeActionId = runtimeOptions.ids?.actionId ?? (() => make_echo_reload_safe_id("lha"));
+  const makeAttemptId = runtimeOptions.ids?.actionAttemptId ?? defaultAttemptId;
+  const makeStatusId = runtimeOptions.ids?.actionStatusId ?? defaultStatusId;
+  const makeSessionId = runtimeOptions.ids?.sessionRequestId ?? defaultSessionId;
   const pendingActions = new Map<LocusActionId, PendingAction>();
   const attemptsByRequest = new Map<LocusActionRequestId, LocusActionId[]>();
   const pendingStatuses = new Map<LocusActionStatusId, PendingStatus>();
@@ -129,7 +134,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   let sessionDisposed = false;
   let sessionStatus: EchoSessionStatus = "idle";
   let sessionId: string | undefined;
-  let credential = options.credential;
+  let credential = initialCredential;
   let sessionEpoch: number | undefined;
   let logicalMapId: string | undefined;
   let incarnationId: string | undefined;
@@ -142,11 +147,12 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   let stopOperationOutcomes: LocusDisposer | undefined;
 
   function isReady(): boolean {
-    return !disposed && connected && (!options.sessionRequired || sessionStatus === "attached");
+    return !disposed && connected && (!runtimeOptions.sessionRequired || sessionStatus === "attached")
+      && (runtimeOptions.additionalReady?.() ?? true);
   }
 
   function notifyReadyChange(): void {
-    options.onReadyChange?.();
+    runtimeOptions.onReadyChange?.();
     if (!isReady()) return;
     const waiters = [...readyWaiters];
     readyWaiters.clear();
@@ -184,7 +190,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
 
   function connect(): void {
     if (disposed) return;
-    stopOperationOutcomes ??= options.operations.onOutcome(receive);
+    stopOperationOutcomes ??= runtimeOptions.operations.onOutcome(receive);
     connected = true;
     notifyReadyChange();
   }
@@ -194,12 +200,12 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     connected = false;
     stopOperationOutcomes?.();
     stopOperationOutcomes = undefined;
-    const error = options.operationLossError?.("disconnect") ?? new LocusDisconnectedError();
+    const error = runtimeOptions.operationLossError?.("disconnect") ?? new LocusDisconnectedError();
     rejectEndpointOperations(error);
     rejectPendingSession(new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session transport disconnected."));
     if (sessionStatus === "attached") sessionStatus = "detached";
-    options.onAttachmentLost?.("disconnect", error);
-    options.onReadyChange?.();
+    runtimeOptions.onAttachmentLost?.("disconnect", error);
+    runtimeOptions.onReadyChange?.();
   }
 
   function receive(message: EchoEndpointServerMessage): boolean {
@@ -216,7 +222,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       return true;
     }
     if (message.type === "ack" || message.type === "error") {
-      if ("seq" in message) options.onSequence?.(message.seq);
+      if ("seq" in message) runtimeOptions.onSequence?.(message.seq);
       if (message.id === undefined) return true;
       let attemptId: LocusActionId | undefined;
       if (message.attemptId !== undefined) attemptId = message.attemptId;
@@ -245,7 +251,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       sessionFailure ??= Object.freeze({ code: message.code, message: message.message });
       sessionRejectionCount += 1;
       pending.reject(new EchoSessionError(message.code, message.message));
-      options.onReadyChange?.();
+      runtimeOptions.onReadyChange?.();
       return true;
     }
     if (message.type === "session-fenced") {
@@ -253,29 +259,38 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       sessionStatus = "detached";
       sessionFencingCount += 1;
       sessionFailure ??= Object.freeze({ code: message.code, message: "Locus session attachment was fenced." });
-      const disconnected = options.operationLossError?.("fenced") ?? new LocusDisconnectedError();
+      const disconnected = runtimeOptions.operationLossError?.("fenced") ?? new LocusDisconnectedError();
       rejectEndpointOperations(disconnected);
       rejectPendingSession(new EchoSessionError(message.code, "Locus session attachment was fenced."));
-      options.onAttachmentLost?.("fenced", disconnected);
-      options.onReadyChange?.();
+      runtimeOptions.onAttachmentLost?.("fenced", disconnected);
+      runtimeOptions.onReadyChange?.();
       return true;
     }
     if (sessionDisposed) return true;
     const pending = pendingSession;
     const expectedKind = message.type === "session-created" ? "create"
       : message.type === "session-attached" ? "reattach"
+        : message.type === "session-detached" ? "detach"
         : "goodbye";
     if (pending === undefined || pending.id !== message.id || pending.kind !== expectedKind) return true;
-    if (message.type === "session-ended" && (sessionId !== message.sessionId || sessionEpoch !== message.epoch)) return true;
+    if ((message.type === "session-ended" || message.type === "session-detached")
+      && (sessionId !== message.sessionId || sessionEpoch !== message.epoch)) return true;
     pendingSession = undefined;
+    if (message.type === "session-detached") {
+      sessionStatus = "detached";
+      pending.resolve(undefined);
+      runtimeOptions.onAttachmentLost?.("disconnect", runtimeOptions.operationLossError?.("disconnect") ?? new LocusDisconnectedError());
+      runtimeOptions.onReadyChange?.();
+      return true;
+    }
     if (message.type === "session-ended") {
       sessionStatus = "ended";
       credential = undefined;
-      const error = options.operationLossError?.("ended") ?? new LocusDisconnectedError();
+      const error = runtimeOptions.operationLossError?.("ended") ?? new LocusDisconnectedError();
       rejectEndpointOperations(error);
       pending.resolve(undefined);
-      options.onAttachmentLost?.("ended", error);
-      options.onReadyChange?.();
+      runtimeOptions.onAttachmentLost?.("ended", error);
+      runtimeOptions.onReadyChange?.();
       return true;
     }
     if ((logicalMapId !== undefined && logicalMapId !== message.logicalMapId)
@@ -289,8 +304,8 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       sessionRejectionCount += 1;
       rejectEndpointOperations(mismatch);
       pending.reject(mismatch);
-      options.onAttachmentLost?.("fenced", mismatch);
-      options.onReadyChange?.();
+      runtimeOptions.onAttachmentLost?.("fenced", mismatch);
+      runtimeOptions.onReadyChange?.();
       return true;
     }
     sessionId = message.sessionId;
@@ -327,8 +342,9 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       const pending: PendingSession = Object.freeze({ id, kind, resolve, reject });
       pendingSession = pending;
       try {
-        options.operations.submit(Object.freeze({
-          type: kind === "create" ? "session-create" : kind === "reattach" ? "session-attach" : "session-goodbye",
+        runtimeOptions.operations.submit(Object.freeze({
+          type: kind === "create" ? "session-create" : kind === "reattach" ? "session-attach"
+            : kind === "detach" ? "session-detach" : "session-goodbye",
           id,
           ...(kind === "reattach" && suppliedCredential !== undefined ? { credential: suppliedCredential } : {}),
         }));
@@ -360,12 +376,17 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     await beginSession("goodbye");
   }
 
+  async function detachSession(): Promise<void> {
+    if (sessionStatus !== "attached") return;
+    await beginSession("detach");
+  }
+
   function disposeSession(): void {
     if (sessionDisposed) return;
     sessionDisposed = true;
     sessionStatus = "disposed";
     rejectPendingSession(new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API was disposed."));
-    options.onReadyChange?.();
+    runtimeOptions.onReadyChange?.();
   }
 
   function actionHandle<TName extends keyof TActions & string>(
@@ -385,7 +406,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       try {
         const message = Object.freeze({
           type: "action",
-          id: options.actionMessageId === "attempt" ? attemptId : request.requestId,
+          id: runtimeOptions.actionMessageId === "attempt" ? attemptId : request.requestId,
           requestId: request.requestId,
           attemptId,
           clientId,
@@ -393,7 +414,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
           ...(request.payload === undefined ? {} : { payload: request.payload }),
           ...(retry ? { retry: true } : {}),
         }) as LocusClientActionMessage<TActions>;
-        options.operations.submit(message);
+        runtimeOptions.operations.submit(message);
       } catch (cause) {
         removeAttempt(attemptId, request.requestId);
         reject(cause instanceof Error ? cause : new LocusDisconnectedError());
@@ -433,7 +454,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     usedCorrelationIds.add(id);
     return new Promise((resolve, reject) => {
       pendingStatuses.set(id, Object.freeze({ requestId, resolve, reject }));
-      try { options.operations.submit(Object.freeze({ type: "action-status", id, clientId, requestId })); }
+      try { runtimeOptions.operations.submit(Object.freeze({ type: "action-status", id, clientId, requestId })); }
       catch (cause) {
         pendingStatuses.delete(id);
         reject(cause instanceof Error ? cause : new LocusDisconnectedError());
@@ -480,6 +501,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     session,
     get connected() { return connected; },
     get ready() { return isReady(); },
+    detachSession,
     connect,
     disconnect,
     receive,
@@ -501,7 +523,8 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       usedCorrelationIds.clear();
       sessionDisposed = true;
       sessionStatus = "disposed";
-      options.onReadyChange?.();
+      credential = undefined;
+      runtimeOptions.onReadyChange?.();
     },
   });
 }

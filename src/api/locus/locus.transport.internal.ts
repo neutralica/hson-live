@@ -20,12 +20,12 @@ import type {
 export type LocusFiniteOperationRequest<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = LocusClientActionMessage<TActions> | Extract<LocusClientMessage<TActions>, {
-  type: "action-status" | "session-create" | "session-attach" | "session-goodbye";
+  type: "action-status" | "session-create" | "session-attach" | "session-detach" | "session-goodbye";
 }>;
 
 /** @internal Typed finite authority outcomes and session-control outcomes. */
 export type LocusFiniteOperationOutcome = Extract<LocusServerMessage, {
-  type: "ack" | "error" | "action-status" | "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended";
+  type: "ack" | "error" | "action-status" | "session-created" | "session-attached" | "session-detached" | "session-rejected" | "session-fenced" | "session-ended";
 }>;
 
 /** @internal Recovery establishment and recovery-transfer output. */

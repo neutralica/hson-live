@@ -244,8 +244,8 @@ assert.equal(requests.length, 2);
   const clientMap = client_projection_map({ authority: cut.libs, localLibraries: {} });
   const wire = pair(); const stop = host.connect(wire.server);
   const echo = create_recovery_test_driver({ socket: wire.client, map: clientMap, session: { credential: retained.credential } });
-  echo.connect(); await echo.session.reattach();
-  assert.equal((await echo.completeRecovery()).strategy, "current");
+  echo.connect(); await echo.awaitReconnect();
+  assert.equal(echo.recovery.strategy, "current");
   assert.equal((await retained.update({ libraries: ["page", "state", "added"],
     systemFeatures: ["interactions"] })).changed, true);
   assert.equal(echo.recovery.status, "caught_up");
@@ -256,6 +256,8 @@ assert.equal(requests.length, 2);
   wire.server.send(JSON.stringify({ ...change, sequence: change.sequence + 1,
     previousDigest: change.projectionDigest, systemFeatures: [] }));
   assert.equal(echo.recovery.status, "failed");
+  assert.ok(echo.recovery.failure);
+  assert.equal(echo.recovery.debug().status, "failed");
   echo.dispose(); stop(); host.dispose();
 }
 
@@ -274,8 +276,8 @@ assert.equal(requests.length, 2);
   const clientMap = client_projection_map({ authority: cut.libs, localLibraries: {} });
   const wire = pair(); const stop = host.connect(wire.server);
   const echo = create_recovery_test_driver({ socket: wire.client, map: clientMap, session: { credential: retained.credential } });
-  echo.connect(); await echo.session.reattach();
-  assert.equal((await echo.completeRecovery()).strategy, "current");
+  echo.connect(); await echo.awaitReconnect();
+  assert.equal(echo.recovery.strategy, "current");
   assert.equal((await retained.update({ libraries: ["page"] })).changed, true);
   assert.ok(wire.frames.map(raw => JSON.parse(raw)).some(frame => frame.type === "projection-change"
     && frame.reconciliation !== undefined));
@@ -288,8 +290,8 @@ assert.equal(requests.length, 2);
   echo.disconnect(); stop();
   assert.equal((await retained.update({ libraries: ["page"] })).changed, true);
   const reconnect = host.connect(wire.server);
-  echo.connect(); await echo.session.reattach();
-  assert.equal((await echo.completeRecovery()).strategy, "snapshot");
+  echo.connect(); await echo.awaitReconnect();
+  assert.equal(echo.recovery.strategy, "snapshot");
   assert.equal(echo.recovery.status, "caught_up");
   assert.throws(() => clientMap.lib("extra"));
   assert.equal(clientMap.lib("page").mode, "document");

@@ -46,9 +46,9 @@ export function create_registry_echo<
     socket: options.socket,
     map: options.map,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
-    ...(options.session === undefined ? {} : { session: options.session }),
     connection: composition.connection,
     management: composition.management,
+    ...(options.initialStateFingerprint === undefined ? {} : { initialStateFingerprint: options.initialStateFingerprint }),
   });
   const documentAuthorities: ReadonlyArray<Readonly<{
     map: object;
@@ -111,21 +111,31 @@ export function create_registry_echo<
   let recoveryFailure: EchoRecoveryFailure | undefined;
   let recoveryStrategy: EchoRecoveryStrategy | undefined;
 
+  function failure(): EchoRecoveryFailure | undefined {
+    const underlying = endpoint.replica.failure;
+    if (underlying === undefined) return recoveryFailure;
+    if (underlying instanceof Error) return Object.freeze({
+      code: "LOCUS_RECOVERY_FAILED", message: underlying.message, cause: underlying,
+    });
+    return recoveryFailure ?? Object.freeze({ code: "LOCUS_RECOVERY_FAILED", message: "Aggregate Echo recovery failed.", cause: underlying });
+  }
+
   function recoveryStatus(): EchoRecoveryStatus {
     const status = endpoint.diagnostics().status;
     if (status === "recovering") return "recovering";
     if (status === "live") return "caught_up";
     if (status === "failed") return "failed";
-    if (recoveryFailure !== undefined) return "failed";
+    if (failure() !== undefined) return "failed";
     return "idle";
   }
 
   const recovery = Object.freeze({
     get status() { return recoveryStatus(); },
-    get failure() { return recoveryFailure; },
+    get failure() { return failure(); },
     get strategy() { return recoveryStrategy; },
     async recover() {
       const previousIncarnation = endpoint.incarnationId;
+      recoveryFailure = undefined;
       try {
         const result = await endpoint.recover();
         recoveryStrategy = result.outcome;
@@ -158,15 +168,6 @@ export function create_registry_echo<
         logicalMapId,
         ...(endpoint.incarnationId === undefined ? {} : { incarnationId: endpoint.incarnationId }),
         ...(endpoint.lastAppliedRev === undefined ? {} : { lastAppliedRev: endpoint.lastAppliedRev }),
-        bodyCommitsApplied: 0,
-        snapshotInstalls: recoveryStrategy === "snapshot" ? 1 : 0,
-        duplicateCommitsIgnored: 0,
-        gapsDetected: 0,
-        replayConflicts: 0,
-        tailCommitsApplied: 0,
-        liveCommitsApplied: 0,
-        recoveryFailures: recoveryFailure === undefined ? 0 : 1,
-        observerFailures: 0,
       });
     },
   });

@@ -154,4 +154,46 @@ function socketPair(): Readonly<{
   locus.dispose();
 }
 
+// An admitted but altered initial document cut must reconcile through the
+// already-bound Mirror after exact DOM adoption.
+{
+  const authority = admit_exact_runtime_livemap_libraries({
+    page: { document: parse_hson_exact_runtime("<main <button/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+  });
+  enable_interactions(authority);
+  add_interaction(authority, {
+    id: "save-click",
+    subject: { library: "page", path: [0, 0, 0] },
+    kind: "locus-authoritative",
+    key: "save",
+    payload: Hson.data.from({ value: 1 }),
+    listener: { event: "click", target: "element", capture: false, once: false,
+      passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false,
+      stopImmediatePropagation: false },
+  });
+  const empty = admit_exact_runtime_livemap_libraries({
+    page: { document: parse_hson_exact_runtime("<main <button/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+  });
+  enable_interactions(empty);
+  const emptyLocus = hsonLocus.create({ map: empty, exposure: test_public_exposure(empty),
+    authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
+  const emptySession = await emptyLocus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
+  const locus = hsonLocus.create({ map: authority, exposure: test_public_exposure(authority),
+    authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
+  const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
+  const cut = session.cut();
+  const mixed = { libs: { ...cut.libs, system: emptySession.cut().libs.system } };
+  const pair = socketPair();
+  const detach = locus.connect(pair.server);
+  const root = new FakeElement("main");
+  const button = new FakeElement("button");
+  root.appendChild(button);
+  const continuation = await continue_hosted_document({ cut: mixed, credential: session.credential!,
+    socket: pair.client, root: root as unknown as Element });
+  assert.equal(continuation.echo.recovery.strategy, "snapshot");
+  assert.equal(get_node_for_el(button as unknown as Element) !== undefined, true);
+  assert.equal(continuation.mirror.status, "active");
+  continuation.dispose(); continuation.echo.dispose(); detach(); locus.dispose(); emptyLocus.dispose();
+}
+
 process.stdout.write("Hosted document continuation acceptance passed.\n");

@@ -28,6 +28,7 @@ export async function replicate_echo_internal<TActions extends LocusActionPayloa
     await prepared.complete();
     return prepared.echo;
   } catch (cause) {
+    try { await prepared.detach(); } catch { /* Preserve establishment failure. */ }
     prepared.echo.dispose();
     throw cause;
   }

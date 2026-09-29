@@ -336,6 +336,8 @@ try {
   check("hidden interaction Library remains unavailable", hiddenUnavailable);
   check("aggregate recovery catches projected N up to N+1", librariesEcho.recovery.status === "caught_up"
     && librariesEcho.recovery.debug().lastAppliedRev === state.libraries.libs.revision + 1 && librariesMap.rev === 1);
+  check("unverified stale cut snapshots through the adopted Mirror", librariesEcho.recovery.strategy === "snapshot"
+    && librariesRoot.firstElementChild === librariesButton);
   check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
   check("other public document converges", librariesEcho.map.lib("admin").at([]).attrs.get("data-recovered") === "admin");
   check("data Library converges", librariesEcho.map.lib("state").snap(["count"]) === 1);

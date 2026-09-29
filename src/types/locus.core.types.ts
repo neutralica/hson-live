@@ -341,15 +341,6 @@ export type EchoRecoveryDiagnostics = Readonly<{
   logicalMapId?: LocusLogicalMapId;
   incarnationId?: LocusIncarnationId;
   lastAppliedRev?: number;
-  bodyCommitsApplied: number;
-  snapshotInstalls: number;
-  duplicateCommitsIgnored: number;
-  gapsDetected: number;
-  replayConflicts: number;
-  tailCommitsApplied: number;
-  liveCommitsApplied: number;
-  recoveryFailures: number;
-  observerFailures: number;
 }>;
 
 export type EchoRecovery = Readonly<{

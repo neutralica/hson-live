@@ -148,8 +148,8 @@ for (const strategy of ["replay", "snapshot"] as const) {
       assert.equal(locus.rev, 3);
       assert.equal(echo.recovery.debug().lastAppliedRev, 2);
       detach = locus.connect(pair.server);
-      echo.connect(); await echo.session.reattach();
-      assert.equal((await echo.completeRecovery()).strategy, strategy);
+      echo.connect(); await echo.awaitReconnect();
+      assert.equal(echo.recovery.strategy, strategy);
       assert.equal(echo.recovery.debug().lastAppliedRev, 3);
       assert.equal(data(client, "game").snap(["ready"]), true);
       assert.equal(pair.messages("recovery-commit").length, strategy === "replay" ? 1 : 0);

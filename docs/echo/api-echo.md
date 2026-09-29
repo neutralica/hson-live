@@ -23,6 +23,10 @@ and a transport. It admits the cut, constructs and manages a client map,
 reattaches the session, and completes current, replay, or snapshot recovery
 before resolving. The returned Echo exposes the endpoint capabilities plus
 `map` and read-only `recovery` diagnostics.
+An initial transferred cut is checked against authority state content before
+`current` can establish it; a stale or mismatched starting state is reconciled
+from an authoritative snapshot. Later reconnects retain verified replica
+continuity and may recover through current or replay.
 
 Library count is a LiveMap topology concern, not an Echo kind. The replica map
 contains the authorized libraries and contracts in the session cut. Echo orders
@@ -55,15 +59,18 @@ publish an application commit.
 
 Transport connection, retained-session attachment, and replica recovery remain
 separate internal layers. For a replica, `replicate()` performs all three before
-returning. After a disconnect, reconnect the transport and await
-`echo.session.reattach()`; reattachment synchronizes the replica before its
-promise resolves. Endpoint-only Echo retains explicit `connect()` and session
-operations without a replica recovery subsystem.
+returning. After a disconnect, `echo.connect()` automatically reattaches the
+retained session and recovers through `caught_up`. `echo.session.reattach()`
+can be awaited when the caller needs that completion boundary; repeated calls
+during the same reconnect share its work. Replica actions and status operations
+require `caught_up` readiness. Endpoint-only Echo retains explicit `connect()`
+and session operations without a replica recovery subsystem.
 
 `disconnect()` detaches transport listeners and settles uncertain endpoint
 operations without ending the session, releasing map management, or closing a
 caller-owned socket. The Echo may reconnect. `echo.dispose()` is terminal and,
-for a replica-bearing Echo, releases exclusive management.
+for a replica-bearing Echo, releases exclusive management and clears its retained
+client credential.
 
 An action's `completionRev` is the authoritative stream head at terminal
 settlement, interpreted with the current session's `logicalMapId` and

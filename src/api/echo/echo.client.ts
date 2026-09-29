@@ -185,6 +185,13 @@ function decodeEndpointMessage(raw: string, format?: string): EchoEndpointServer
       || !isRevision(value.epoch)) return undefined;
     return value as EchoEndpointServerMessage;
   }
+  if (value.type === "session-detached") {
+    if (!exactKeys(["type", "id", "sessionId", "epoch"])
+      || !isNonemptyString(value.id)
+      || !isNonemptyString(value.sessionId)
+      || !isRevision(value.epoch)) return undefined;
+    return value as EchoEndpointServerMessage;
+  }
   return undefined;
 }
 
@@ -197,6 +204,7 @@ export type EchoEndpointConnectionOptions<TActions extends LocusActionPayloads =
   actionMessageId?: "request" | "attempt";
   operationLossError?: (reason: "disconnect" | "fenced" | "ended") => Error;
   endpointMessageFormat?: string;
+  additionalReady?: () => boolean;
 }>;
 
 /** @internal Shared transport/session shell used by endpoint-only and deferred-replica Echo. */
@@ -239,6 +247,7 @@ export type EchoSemanticConnectionOptions<
   ids?: EchoEndpointIdFactories;
   actionMessageId?: "request" | "attempt";
   operationLossError?: (reason: "disconnect" | "fenced" | "ended") => Error;
+  additionalReady?: () => boolean;
 }>;
 
 /** @internal Compose semantic Echo from independently supplied capabilities. */
@@ -252,17 +261,19 @@ export function create_echo_semantic_connection_internal<
     || options.operations.binding !== options.synchronization.binding) {
     throw new Error("Echo semantic operation and synchronization capabilities require one authority/session binding.");
   }
+  const { session: initialSession, ...runtimeOptions } = options;
   const connectionListeners = new Set<(connected: boolean) => void>();
   const readyListeners = new Set<() => void>();
   const attachmentLostListeners = new Set<(reason: "disconnect" | "fenced" | "ended", error: Error) => void>();
   const endpoint = create_echo_endpoint_internal<TActions>({
     operations: options.operations,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
-    ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
+    ...(initialSession?.credential === undefined ? {} : { credential: initialSession.credential }),
     sessionRequired: true,
     ...(options.ids === undefined ? {} : { ids: options.ids }),
     ...(options.actionMessageId === undefined ? {} : { actionMessageId: options.actionMessageId }),
     ...(options.operationLossError === undefined ? {} : { operationLossError: options.operationLossError }),
+    ...(options.additionalReady === undefined ? {} : { additionalReady: options.additionalReady }),
     onReadyChange: () => { for (const listener of [...readyListeners]) listener(); },
     onAttachmentLost: (reason, error) => {
       for (const listener of [...attachmentLostListeners]) listener(reason, error);
@@ -284,11 +295,19 @@ export function create_echo_semantic_connection_internal<
 
   function connect(): LocusDisposer {
     if (disposed || connected) return disconnect;
-    connected = true;
-    detachTransport = options.lifecycle.attach(disconnect);
-    endpoint.connect();
-    for (const listener of [...connectionListeners]) listener(true);
-    return disconnect;
+    const detach = runtimeOptions.lifecycle.attach(disconnect);
+    try {
+      endpoint.connect();
+      connected = true;
+      detachTransport = detach;
+      for (const listener of [...connectionListeners]) listener(true);
+      return disconnect;
+    } catch (cause) {
+      connected = false;
+      detachTransport = undefined;
+      try { endpoint.disconnect(); } finally { detach(); }
+      throw cause;
+    }
   }
 
   function dispose(): void {
@@ -332,7 +351,7 @@ export function create_echo_semantic_connection_internal<
       attachmentLostListeners.add(listener);
       return () => attachmentLostListeners.delete(listener);
     },
-    synchronization: options.synchronization,
+    synchronization: runtimeOptions.synchronization,
   });
 }
 
@@ -340,16 +359,17 @@ export function create_echo_semantic_connection_internal<
 export function create_echo_endpoint_connection_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: EchoEndpointConnectionOptions<TActions>): EchoEndpointConnection<TActions> {
+  const { session: initialSession, ...runtimeOptions } = options;
   let encodeMessage = (message: LocusClientMessage<TActions> | EchoSynchronizationRequest): string => encodeEndpointMessage(message);
   let decodeSynchronization: ((raw: string) => EchoSynchronizationOutput | undefined) | undefined;
   let disposed = false;
   const binding = Object.freeze({});
   const operationAdapter = create_echo_finite_operation_adapter_internal<TActions>(
-    (message) => options.socket.send(encodeMessage(message)),
+    (message) => runtimeOptions.socket.send(encodeMessage(message)),
     binding,
   );
   const synchronizationAdapter = create_echo_synchronization_adapter_internal(
-    (message) => options.socket.send(encodeMessage(message)),
+    (message) => runtimeOptions.socket.send(encodeMessage(message)),
     binding,
   );
   const semantic = create_echo_semantic_connection_internal<TActions>({
@@ -358,25 +378,32 @@ export function create_echo_endpoint_connection_internal<
     lifecycle: Object.freeze({
       attach(onDisconnect) {
         const disposers: LocusDisposer[] = [];
-        const stopMessage = options.socket.onMessage((raw) => {
-          const decoded = decodeEndpointMessage(raw, options.endpointMessageFormat);
-          if (decoded !== undefined) operationAdapter.deliver(decoded);
-          const synchronization = decodeSynchronization?.(raw);
-          if (synchronization !== undefined) synchronizationAdapter.deliver(synchronization);
-        });
-        if (stopMessage !== undefined) disposers.push(stopMessage);
-        const stopClose = options.socket.onClose(onDisconnect);
-        if (stopClose !== undefined) disposers.push(stopClose);
-        return () => {
+        const rollback = (): void => {
           while (disposers.length > 0) disposers.pop()?.();
         };
+        try {
+          const stopMessage = runtimeOptions.socket.onMessage((raw) => {
+            const decoded = decodeEndpointMessage(raw, runtimeOptions.endpointMessageFormat);
+            if (decoded !== undefined) operationAdapter.deliver(decoded);
+            const synchronization = decodeSynchronization?.(raw);
+            if (synchronization !== undefined) synchronizationAdapter.deliver(synchronization);
+          });
+          if (stopMessage !== undefined) disposers.push(stopMessage);
+          const stopClose = runtimeOptions.socket.onClose(onDisconnect);
+          if (stopClose !== undefined) disposers.push(stopClose);
+          return rollback;
+        } catch (cause) {
+          rollback();
+          throw cause;
+        }
       },
     }),
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
-    ...(options.session === undefined ? {} : { session: options.session }),
+    ...(initialSession === undefined ? {} : { session: initialSession }),
     ...(options.ids === undefined ? {} : { ids: options.ids }),
     ...(options.actionMessageId === undefined ? {} : { actionMessageId: options.actionMessageId }),
     ...(options.operationLossError === undefined ? {} : { operationLossError: options.operationLossError }),
+    ...(options.additionalReady === undefined ? {} : { additionalReady: options.additionalReady }),
   });
 
   function dispose(): void {

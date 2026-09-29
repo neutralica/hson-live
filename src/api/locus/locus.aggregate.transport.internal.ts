@@ -16,6 +16,8 @@ export type LocusHostedAggregateRecoveryCursor = Readonly<{
   projectionDigest: string;
   projectionSequence: number;
   lastAppliedRev: number;
+  /** Present only until a transferred initial cut has been verified by recovery. */
+  initialStateFingerprint?: string;
 }>;
 
 /** @internal Aggregate topology evidence layered over the common synchronization lifecycle. */

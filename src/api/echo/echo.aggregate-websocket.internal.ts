@@ -56,7 +56,8 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
   if (value.format !== LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT) throw new Error("Hosted aggregate server protocol format is incompatible.");
   if (value.type === "ack" || value.type === "action-status" || value.type === "session-created"
     || value.type === "session-attached" || value.type === "session-rejected" || value.type === "session-fenced"
-    || value.type === "session-ended" || (value.type === "error" && Object.hasOwn(value, "error"))) return undefined;
+    || value.type === "session-detached" || value.type === "session-ended"
+    || (value.type === "error" && Object.hasOwn(value, "error"))) return undefined;
   if (value.type === "error") {
     const message = required_string(value.message);
     if (message === undefined) throw new Error("Hosted aggregate error is malformed.");

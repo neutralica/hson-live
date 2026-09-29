@@ -162,6 +162,7 @@ export async function continue_hosted_document_internal(options: HostedContinuat
     try { reflect?.dispose(); } catch { /* Preserve construction failure. */ }
     try { adoption?.abort(); } catch { /* Preserve construction failure. */ }
     releaseRoot();
+    try { await prepared.detach(); } catch { /* Preserve construction failure. */ }
     echo.dispose();
     throw cause;
   }

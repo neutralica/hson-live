@@ -180,6 +180,19 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
   } catch { return fail(); }
 }
 
+/** @internal Fingerprint mutable projected contents separately from the scope contract. */
+export function authority_projection_state_fingerprint_internal(input: AuthorityProjectionSnapshot): string {
+  const snapshot = admit_authority_projection_snapshot(input);
+  return hosted_sha256(JSON.stringify({
+    libraries: snapshot.libraries.map((entry) => ({
+      name: entry.name,
+      root: entry.root.payload,
+      ...(entry.mode === "document" ? { css: entry.css } : {}),
+    })),
+    system: snapshot.system,
+  }));
+}
+
 export function encode_authority_projection_snapshot(snapshot: AuthorityProjectionSnapshot): string {
   return JSON.stringify(admit_authority_projection_snapshot(snapshot));
 }

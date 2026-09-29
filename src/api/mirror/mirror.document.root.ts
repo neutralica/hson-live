@@ -37,6 +37,7 @@ export function plan_document_root_convergence(
   observedMaterial: DocumentRootMaterial,
   priorCanonicalRootQuid: string | undefined,
   persistedQuidForExisting: PersistedQuidLookup,
+  preserveUnquiddedRootChild = false,
 ): DocumentRootConvergencePlan {
   if (observedMaterial.mode !== "document" || !canonical_graph_equal(observedMaterial.root, canonicalDocumentRoot)) {
     throw new DocumentMirrorError(
@@ -68,6 +69,7 @@ export function plan_document_root_convergence(
       projectedRoot,
       canonicalRoot,
       persistedQuidForExisting,
+      preserveUnquiddedRootChild,
     );
     return Object.freeze({ canonicalRoot, structural });
   } catch (cause) {

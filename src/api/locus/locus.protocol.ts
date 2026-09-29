@@ -244,6 +244,12 @@ function decode_session_goodbye_message(value: Readonly<Record<string, unknown>>
   return ok({ type: "session-goodbye", id });
 }
 
+function decode_session_detach_message(value: Readonly<Record<string, unknown>>): LocusResult<import("../../types/locus.protocol.types.js").LocusClientSessionDetachMessage> {
+  const id = required_string(value.id);
+  if (!id || !has_exact_keys(value, ["type", "id"])) return fail("Malformed Locus session-detach message.");
+  return ok({ type: "session-detach", id });
+}
+
 export function decode_locus_message<TActions extends LocusActionPayloads = LocusActionPayloads>(message: string): LocusResult<LocusClientMessage<TActions>> {
   try {
     const value = JSON.parse(message) as unknown;
@@ -254,6 +260,7 @@ export function decode_locus_message<TActions extends LocusActionPayloads = Locu
     if (type === "action-status") return decode_action_status_message(value);
     if (type === "session-create") return decode_session_create_message(value);
     if (type === "session-attach") return decode_session_attach_message(value);
+    if (type === "session-detach") return decode_session_detach_message(value);
     if (type === "session-goodbye") return decode_session_goodbye_message(value);
 
     return fail("Unknown Locus message type.");

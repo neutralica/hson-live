@@ -58,6 +58,8 @@ export type EchoSocketClientOptions<TActions extends LocusActionPayloads = Locus
   connection?: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
   /** @internal Management acquired synchronously by the public Echo shell. */
   management?: EchoMapManagementLease;
+  /** Unverified transferred cut evidence; cleared after the first caught-up recovery. */
+  initialStateFingerprint?: string;
 }>;
 
 /** @internal */
@@ -138,6 +140,7 @@ function create_registry_echo_semantic_client_internal<
   let registryDigest: string | undefined;
   let projectionDigest: string | undefined = map === undefined ? undefined : client_projection_identity_internal(map);
   let projectionSequence = 0;
+  let initialStateFingerprint = options.initialStateFingerprint;
   let projectionFeatures: readonly string[] = map === undefined ? [] : client_projection_features_internal(map) ?? [];
   let authorityRev: number | undefined;
   const authorityPositionListeners = new Set<(revision: number) => void>();
@@ -232,11 +235,6 @@ function create_registry_echo_semantic_client_internal<
     readyWaiters.clear();
   }
 
-  function failEndpoint(error: Error): void {
-    failReplica(error);
-    endpoint.disconnect();
-  }
-
   function disconnect(): void {
     options.connection.echo.disconnect();
   }
@@ -288,7 +286,8 @@ function create_registry_echo_semantic_client_internal<
         ...(incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined || authorityRev === undefined
           ? {}
           : { cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest,
-            projectionSequence, lastAppliedRev: authorityRev }) }),
+            projectionSequence, lastAppliedRev: authorityRev,
+            ...(initialStateFingerprint === undefined ? {} : { initialStateFingerprint }) }) }),
       });
       options.connection.synchronization.begin(request);
     });
@@ -306,7 +305,9 @@ function create_registry_echo_semantic_client_internal<
   function receiveReplica(message: AggregateSynchronizationOutput): void {
     if (message.type === "synchronization-failure") {
       const error = new Error(message.error.message);
-      failEndpoint(error);
+      // Preserve the control channel so failed establishment can detach the
+      // retained server session without revoking it.
+      failReplica(error);
       return;
     }
     if (message.type === "recovery-plan") {
@@ -399,6 +400,7 @@ function create_registry_echo_semantic_client_internal<
         throw new Error("Hosted recovery projection sequence is incompatible.");
       }
       projectionSequence = message.projectionSequence ?? 0;
+      initialStateFingerprint = undefined;
       status = "live";
       replica.markReady();
       recovery = undefined;

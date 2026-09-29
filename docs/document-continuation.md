@@ -113,6 +113,8 @@ const continuation = await continue_hosted_document({
 
 await continuation.tree.async.attrs.set("data-state", "accepted");
 await continuation.tree.async.css.global.sel("body").setProp("color", "navy");
+continuation.dispose();
+continuation.echo.dispose();
 ```
 
 Continuation constructs a managed Echo replica from the cut. It first admits
@@ -206,16 +208,17 @@ continuation. `dispose()` is idempotent and removes continuation-owned
 interactions and Mirror propagation, but does not dispose the normal
 `LiveTree`, mutate the map or DOM, or remove browser-owned roots.
 
-Hosted continuation borrows Echo. Disposal never disconnects or disposes Echo,
-ends its session, or owns its later recovery. Echo, its credentials, connection
-policy, and session lifecycle remain caller-owned.
+Hosted continuation creates and returns its managed Echo replica. Ownership of
+that Echo transfers to the caller. `continuation.dispose()` releases continuation,
+Mirror, and adoption resources; `continuation.echo.dispose()` separately releases
+the replica, retained client credential, session attachment, and map management.
 
 ## Boundaries
 
-These functions contain no server/session or connection construction.
-Bootstrap decoding and installation, Echo construction, and session preparation
-remain separate caller operations. The local implementation
-is independently tree-shakeable from hosted authority machinery.
+Local continuation does not construct a session or Echo. Hosted continuation
+prepares the Echo replica internally from the caller's cut, credential, and
+transport before adopting the existing DOM. The local implementation is
+independently tree-shakeable from hosted authority machinery.
 
 Server-rendered HTML remains useful without JavaScript; continuation adds a live
 runtime only when called. A production helper for safely embedding bootstrap

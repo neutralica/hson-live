@@ -39,7 +39,7 @@ import { make_locus_action_dedupe_store } from "./locus.actions.js";
 import { make_locus_session_manager } from "./locus.session.js";
 import { LocusProjectionUnavailableError, make_locus_hosted_projection_policy, normalize_locus_effective_projection, runtime_locus_exposure_entries, snapshot_locus_requested_projection, type LocusEffectiveProjection } from "./locus.projection.js";
 import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal, projected_registry_digest, type LocusLiveProjectedEvent } from "./locus.live-projection.js";
-import { capture_locus_session_authority_projection_snapshot, capture_selected_authority_projection_snapshot, authority_projection_as_client_composition_internal } from "./locus.authority-projection-snapshot.js";
+import { capture_locus_session_authority_projection_snapshot, capture_selected_authority_projection_snapshot, authority_projection_as_client_composition_internal, authority_projection_state_fingerprint_internal } from "./locus.authority-projection-snapshot.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
@@ -94,12 +94,14 @@ type HostedCursor = Readonly<{
   projectionDigest: string;
   projectionSequence: number;
   lastAppliedRev: number;
+  initialStateFingerprint?: string;
 }>;
 
 type HostedRequest =
   | Readonly<{ type: "recover"; id: string; logicalMapId: string; cursor?: HostedCursor }>
   | Readonly<{ type: "session-create"; id: string; projection?: LocusRequestedProjection }>
   | Readonly<{ type: "session-attach"; id: string; credential?: unknown }>
+  | Readonly<{ type: "session-detach"; id: string }>
   | Readonly<{ type: "session-goodbye"; id: string }>
   | Readonly<{ type: "action-status"; id: string; clientId: string; requestId: string }>
   | Readonly<{
@@ -790,6 +792,12 @@ export function create_locus_hosted_aggregate_socket_internal<
     } else if (!sameIncarnation) {
       outcome = "snapshot";
       reason = "incarnation_mismatch";
+    } else if (cursor.initialStateFingerprint !== undefined
+      && (cursor.lastAppliedRev !== head
+        || cursor.initialStateFingerprint !== authority_projection_state_fingerprint_internal(headSnapshot))) {
+      // The transferred cut has no established continuity at an older revision.
+      outcome = "snapshot";
+      reason = "no_usable_revision";
     } else if (cursor.lastAppliedRev === head) {
       outcome = "current";
     } else {
@@ -1114,6 +1122,23 @@ export function create_locus_hosted_aggregate_socket_internal<
     stop_recovery(connection);
   }
 
+  function session_detach(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-detach" }>): void {
+    if (connection.sessionId === undefined || connection.sessionEpoch === undefined || connection.fenced) {
+      send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED",
+        message: "This transport does not own an active Locus session." }));
+      return;
+    }
+    const sessionId = connection.sessionId;
+    const epoch = connection.sessionEpoch;
+    stop_recovery(connection);
+    sessions.detach(sessionId, epoch);
+    connection.sessionId = undefined;
+    connection.sessionEpoch = undefined;
+    connection.sessionResumable = false;
+    connection.effectiveProjection = undefined;
+    send(connection, Object.freeze({ type: "session-detached", id: request.id, sessionId, epoch }));
+  }
+
   function send_action_result(
     connection: HostedConnection,
     response: LocusClientActionResult,
@@ -1383,6 +1408,10 @@ export function create_locus_hosted_aggregate_socket_internal<
       session_goodbye(connection, request);
       return;
     }
+    if (request.type === "session-detach") {
+      session_detach(connection, request);
+      return;
+    }
     if (request.type === "action-status") {
       return action_status(connection, request);
     }
@@ -1641,9 +1670,10 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
   if (value.type === "recover") {
     const hasCursor = Object.hasOwn(value, "incarnationId") || Object.hasOwn(value, "registryDigest")
       || Object.hasOwn(value, "projectionDigest") || Object.hasOwn(value, "projectionSequence")
-      || Object.hasOwn(value, "lastAppliedRev");
+      || Object.hasOwn(value, "lastAppliedRev") || Object.hasOwn(value, "initialStateFingerprint");
     exact_keys(value, hasCursor
-      ? ["type", "id", "logicalMapId", "incarnationId", "registryDigest", "projectionDigest", "projectionSequence", "lastAppliedRev"]
+      ? ["type", "id", "logicalMapId", "incarnationId", "registryDigest", "projectionDigest", "projectionSequence", "lastAppliedRev",
+        ...(Object.hasOwn(value, "initialStateFingerprint") ? ["initialStateFingerprint"] : [])]
       : ["type", "id", "logicalMapId"], "Hosted recovery request");
     const id = required_string(value.id);
     const logicalMapId = required_string(value.logicalMapId);
@@ -1655,14 +1685,19 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
     const projectionDigest = required_digest(value.projectionDigest);
     const projectionSequence = required_revision(value.projectionSequence);
     const lastAppliedRev = required_revision(value.lastAppliedRev);
+    const initialStateFingerprint = Object.hasOwn(value, "initialStateFingerprint")
+      ? required_digest(value.initialStateFingerprint) : undefined;
     if (incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined
-      || projectionSequence === undefined || lastAppliedRev === undefined) throw new Error("Hosted recovery cursor is malformed.");
+      || projectionSequence === undefined || lastAppliedRev === undefined
+      || (Object.hasOwn(value, "initialStateFingerprint") && initialStateFingerprint === undefined)) throw new Error("Hosted recovery cursor is malformed.");
     return Object.freeze({ type: "recover", id, logicalMapId,
-      cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, projectionSequence, lastAppliedRev }) });
+      cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, projectionSequence, lastAppliedRev,
+        ...(initialStateFingerprint === undefined ? {} : { initialStateFingerprint }) }) });
   }
-  if (value.type === "session-create" || value.type === "session-goodbye") {
+  if (value.type === "session-create" || value.type === "session-goodbye" || value.type === "session-detach") {
     const decoded = decode_locus_message(raw);
-    if (!decoded.ok || (decoded.value.type !== "session-create" && decoded.value.type !== "session-goodbye")) throw new Error(decoded.ok ? "Hosted session request is malformed." : decoded.error.message);
+    if (!decoded.ok || (decoded.value.type !== "session-create" && decoded.value.type !== "session-goodbye"
+      && decoded.value.type !== "session-detach")) throw new Error(decoded.ok ? "Hosted session request is malformed." : decoded.error.message);
     return decoded.value;
   }
   if (value.type === "session-attach") {

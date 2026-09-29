@@ -1171,6 +1171,7 @@ function reflect_document_binding_in_runtime(
         const registration = document_binding_for_node(node);
         return registration?.owner === owner ? registration.persistedQuid : undefined;
       },
+      borrowed,
     );
     currentStatus = "replacing";
     try {

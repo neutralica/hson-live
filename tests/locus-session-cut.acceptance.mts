@@ -109,8 +109,8 @@ for (const strategy of ["replay", "snapshot"] as const) {
   assert.equal(echo.recovery.debug().lastAppliedRev, snapshot.revision);
   assert.equal(JSON.stringify(snapshot), retained, "captured artifact is detached from later mutations");
   detach = locus.connect(pair.server);
-  echo.connect(); await echo.session.reattach();
-  assert.equal((await echo.completeRecovery()).strategy, strategy);
+  echo.connect(); await echo.awaitReconnect();
+  assert.equal(echo.recovery.strategy, strategy);
   assert.equal(echo.recovery.debug().lastAppliedRev, locus.rev);
   assert.equal(echo.map, client);
   assert.equal(client.lib("local"), local);
@@ -118,7 +118,7 @@ for (const strategy of ["replay", "snapshot"] as const) {
   assert.equal(data(client, "visible").snap(["value"]), "RECOVERED");
   if (strategy === "snapshot") {
     assert.ok(pair.serverSent.some((raw) => JSON.parse(raw).type === "recovery-snapshot"));
-    assert.equal(echo.recovery.debug().snapshotInstalls, 1);
+    assert.equal(echo.recovery.strategy, "snapshot");
   }
   portable_private_free(pair.serverSent.join("\n"));
   const beforeProjection = initial.capability.cut().libs;

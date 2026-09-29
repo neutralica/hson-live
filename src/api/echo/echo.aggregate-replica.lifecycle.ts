@@ -90,6 +90,7 @@ export function create_echo_aggregate_replica_capability_internal(
     markRecovering(): void {
       if (disposed) return;
       ready = false;
+      failure = undefined;
       for (const listener of [...stateListeners]) listener();
     },
     markReady(): void {
