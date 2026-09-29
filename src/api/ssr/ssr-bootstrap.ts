@@ -1,6 +1,5 @@
 import type {
   LiveMapSnapshot,
-  LocalLibrariesContinuationSnapshot,
   LiveMapRootMode,
 } from "../../types/livemap.types.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
@@ -12,7 +11,7 @@ import { BoundedStringWriter } from "../../core/bounded-string-writer.js";
 import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
-  assert_local_libraries_snapshot_shape,
+  HOSTED_MAX_SNAPSHOT_BYTES,
   decode_hosted_root,
 } from "../livemap/livemap.hosted.js";
 import { SsrBootstrapCodecError } from "./ssr-bootstrap.error.js";
@@ -63,11 +62,11 @@ export function encode_ssr_bootstrap(
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"hosted-projection">;
 export function encode_ssr_bootstrap(
-  bootstrap: LocalLibrariesContinuationSnapshot,
+  bootstrap: LiveMapSnapshot,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"libraries">;
 export function encode_ssr_bootstrap(
-  bootstrap: LocalLibrariesContinuationSnapshot | AuthorityProjectionSnapshot,
+  bootstrap: LiveMapSnapshot | AuthorityProjectionSnapshot,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap {
   const maximum = max_encoded_bytes(options, "encode");
@@ -171,8 +170,8 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
     if (Object.hasOwn(bootstrap, "authority")) {
       throw new TypeError("Local Libraries continuation state must not include authority state.");
     }
-    const local = bootstrap as LocalLibrariesContinuationSnapshot;
-    assert_local_libraries_snapshot_shape(local);
+    const local = bootstrap as LiveMapSnapshot;
+    assert_libraries_snapshot_shape(local);
     assert_local_libraries_roots_portable(local);
     assert_libraries_snapshot_bound(local);
     return { kind: "libraries", payload: libraries_payload(local) };
@@ -180,7 +179,7 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
   throw new TypeError("Bootstrap family is unsupported.");
 }
 
-function libraries_payload(snapshot: LocalLibrariesContinuationSnapshot): LibrariesPayload {
+function libraries_payload(snapshot: LiveMapSnapshot): LibrariesPayload {
   if (snapshot.format !== "hson-livemap-libraries-snapshot" || snapshot.registry.format !== "hson-hosted-registry"
     || !safe_nonnegative_integer(snapshot.revision)) throw new TypeError("Libraries scalar fields are malformed.");
   return {
@@ -221,19 +220,19 @@ function decode_payload(kind: SsrBootstrapKind, input: unknown): DecodedSsrBoots
     || typeof payload.registryDigest !== "string" || typeof payload.snapshotRegistryDigest !== "string") throw new TypeError("Libraries payload is malformed.");
   const registryEntries = payload.registry.map(decode_registry_entry);
   const libraryEntries = payload.libraries.map(decode_library_entry);
-  const local: LocalLibrariesContinuationSnapshot = Object.freeze({
+  const local: LiveMapSnapshot = Object.freeze({
     format: "hson-livemap-libraries-snapshot", revision: payload.revision,
     registry: Object.freeze({ format: "hson-hosted-registry", libraries: Object.freeze(registryEntries), digest: payload.registryDigest }),
     registryDigest: payload.snapshotRegistryDigest, libraries: Object.freeze(libraryEntries),
   });
-  assert_local_libraries_snapshot_shape(local);
+  assert_libraries_snapshot_shape(local);
   assert_local_libraries_roots_portable(local);
   return Object.freeze({ kind, bootstrap: local });
 }
 
-function assert_local_libraries_roots_portable(snapshot: LocalLibrariesContinuationSnapshot): void {
+function assert_local_libraries_roots_portable(snapshot: LiveMapSnapshot): void {
   for (const library of snapshot.libraries) {
-    const stack = [decode_hosted_root(library.root)];
+    const stack = [decode_hosted_root(library.root, HOSTED_MAX_SNAPSHOT_BYTES)];
     while (stack.length > 0) {
       const node = stack.pop();
       if (node === undefined) continue;

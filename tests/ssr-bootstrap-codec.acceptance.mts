@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   Hson, decode_ssr_bootstrap, encode_ssr_bootstrap, hsonLiveMap,
-  SsrBootstrapCodecError, render_document,
+  SsrBootstrapCodecError,
 } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 
@@ -41,7 +41,7 @@ const map = hsonLiveMap.fromLibraries({
   state: { data: { value: -0 }, schema: DataSchema },
   page: { document: `<main "ready"/>`, schema: PageSchema },
 });
-const bootstrap = render_document({ map, document: "page" }).bootstrap;
+const bootstrap = map.cut({ html: "page" }).libs;
 const encoded = encode_ssr_bootstrap(bootstrap);
 assert.match(encoded, /^[A-Za-z0-9_-]+$/);
 assert.equal(encoded.includes("="), false);

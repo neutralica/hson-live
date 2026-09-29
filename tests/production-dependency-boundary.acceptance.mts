@@ -261,8 +261,8 @@ check("SSR subpath excludes DOM realization, LiveHost, Echo, and Node adapters",
     absWorkingDir: repositoryRoot,
     stdin: {
       contents: `
-        import { render_document, render_hosted_document } from "hson-live/ssr";
-        globalThis.__document_ssr__ = { render_document, render_hosted_document };
+        import { render_hosted_document } from "hson-live/ssr";
+        globalThis.__document_ssr__ = { render_hosted_document };
       `,
       resolveDir: repositoryRoot,
       sourcefile: "document-ssr-public.mjs",

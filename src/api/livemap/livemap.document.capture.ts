@@ -3,10 +3,6 @@ import { canonical_hson_graph_equal } from "../../core/canonical-hson-equal.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
 import type {
-  LiveMapDocumentCapture,
-  LiveMapDocumentCaptureIdentity,
-  LiveMapDocumentCaptureOptions,
-  LiveMapDocumentInstallIdentity,
   LiveMapDocumentMode,
   LiveMapCommitObservation,
 } from "../../types/livemap.types.js";
@@ -14,6 +10,28 @@ import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentIdentityProvenanceError } from "./livemap.error.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
+
+/** Detached document state; only an owner-proven same-epoch capability retains identity. */
+export type LiveMapDocumentCapture<
+  TMode extends LiveMapDocumentMode = LiveMapDocumentMode,
+> = Readonly<{
+  kind: "hson-document";
+  mode: TMode;
+  rev: number;
+  root: HsonNode;
+}>;
+
+/** Explicit identity treatment for one detached document capture. */
+export type LiveMapDocumentCaptureIdentity =
+  | "same-epoch"
+  | "strip";
+
+/** Capture policy. Omission produces portable, QUID-free state. */
+export type LiveMapDocumentCaptureOptions = Readonly<{
+  identity: LiveMapDocumentCaptureIdentity;
+}>;
+
+type LiveMapDocumentInstallIdentity = "same-epoch" | "strip" | "reject";
 
 type CaptureCategory = LiveMapDocumentCaptureIdentity | "default";
 

@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -80,9 +81,9 @@ check("QUID-free replacement can later acquire local identity", () => {
 
 check("portable equal-QUID replacement input rejects before mutation", () => {
   const map = fixture();
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.document.content.replace(path(0), 0, projected_element(`<item @${Q1}/>`)));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("portable restoration reconstructs a fresh identity epoch", () => {

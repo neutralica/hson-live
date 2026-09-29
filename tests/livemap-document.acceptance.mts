@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
@@ -144,10 +145,10 @@ check("document input and detached reads do not share graph ownership", () => {
   const page = map.lib("page");
   const baseline = page.root();
   assert.notEqual(source, baseline);
-  const capture = page.capture();
+  const capture = capture_document(page);
   assert.equal(capture.kind, "hson-document");
   assert_fully_detached(page.root(), page.root());
-  assert_fully_detached(capture.root, page.capture().root);
+  assert_fully_detached(capture.root, capture_document(page).root);
   mutate_graph(source);
   mutate_graph(capture.root);
   const content = page.document.content();
@@ -175,7 +176,7 @@ check("local QUID identity is sparse and portable capture omits it", () => {
   assert.equal(find_nodes(root, "p")[1]?.$_meta?.quid, "000000005");
   assert.equal(page.document.byQuid("000000005")?.$_tag, "p");
   assert.equal(page.document.byQuid("unknown"), undefined);
-  assert.equal(JSON.stringify(page.capture()).includes('"quid"'), false);
+  assert.equal(JSON.stringify(capture_document(page)).includes('"quid"'), false);
   assert.equal(JSON.stringify(map.capture()).includes('"quid"'), false);
 });
 
@@ -192,7 +193,7 @@ check("selected document library has document operations and no data writes", ()
   assert.equal("replay" in page, false);
   assert.equal(typeof page.document.attrs.set, "function");
   assert.equal(typeof page.document.content, "function");
-  assert.equal(typeof map.render, "function");
+  assert.equal(typeof page.render, "function");
   assert.equal(typeof map.restore, "function");
 });
 

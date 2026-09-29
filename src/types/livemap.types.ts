@@ -64,9 +64,6 @@ export type LiveMapSnapshot = Readonly<{
   }>[];
 }>;
 
-/** Complete local continuation snapshot with portable roots and no server runtime identity. */
-export type LocalLibrariesContinuationSnapshot = LiveMapSnapshot;
-
 /** Internal owner-local exact cut plus its hosted authority fence. */
 export type HostedLiveMapSnapshot = LiveMapSnapshot & Readonly<{
   identity: Readonly<{ epoch: number; issuedQuids: readonly string[] }>;
@@ -368,43 +365,10 @@ export type LiveMapCore<
   replay: LiveMapCoreReplay;
 }>;
 
-/** Detached document state; only an owner-proven same-epoch capability retains identity. */
-export type LiveMapDocumentCapture<
-  TMode extends LiveMapDocumentMode = LiveMapDocumentMode,
-> = Readonly<{
-  kind: "hson-document";
-  mode: TMode;
-  rev: number;
-  root: HsonNode;
-}>;
-
-/** Explicit identity treatment for one detached document capture. */
-export type LiveMapDocumentCaptureIdentity =
-  | "same-epoch"
-  | "strip";
-
-/** Capture policy. Omission produces portable, QUID-free state. */
-export type LiveMapDocumentCaptureOptions = Readonly<{
-  identity: LiveMapDocumentCaptureIdentity;
-}>;
-
-/** Explicit identity treatment at a complete document admission boundary. */
-export type LiveMapDocumentInstallIdentity =
-  | LiveMapDocumentCaptureIdentity
-  | "reject";
-
-/** Callable capture surface with an additive identity-category selector. */
-export type LiveMapDocumentCaptureApi<
-  TMode extends LiveMapDocumentMode = LiveMapDocumentMode,
-> = {
-  (): LiveMapDocumentCapture<TMode>;
-  (options: LiveMapDocumentCaptureOptions): LiveMapDocumentCapture<TMode>;
-};
-
 /** Optimistic revision guard plus explicit complete-root identity admission policy. */
 export type LiveMapDocumentInstallOptions = Readonly<{
   expectedRev?: number;
-  identity?: LiveMapDocumentInstallIdentity;
+  identity?: "same-epoch" | "strip" | "reject";
 }>;
 
 declare const LIVEMAP_DOCUMENT_PATH_BRAND: unique symbol;
@@ -1558,7 +1522,7 @@ export type LiveMapDocumentLibrary<
       InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
     >;
   }>;
-  capture: LiveMapDocumentCaptureApi<"document">;
+  render: () => import("../api/ssr/ssr.types.js").BrowserRealizationHtml;
   document: Readonly<{
     root: () => HsonNode;
     content: (() => readonly NodeContent[number][]) & Readonly<{
@@ -1682,6 +1646,29 @@ type LiveMapLibrarySelector<TMap> = [LiveMapEffectiveKnownNames<TMap>] extends [
       (name: string): LiveMapDynamicLibrary;
     };
 
+type LiveMapFamilyNames<TMap, TFamily extends "data" | "document"> =
+  [LiveMapEffectiveKnownNames<TMap>] extends [never] ? string : {
+    [TName in LiveMapEffectiveKnownNames<TMap>]: LiveMapEffectiveDefinitions<TMap>[TName] extends Readonly<Record<TFamily, unknown>> ? TName : never;
+  }[LiveMapEffectiveKnownNames<TMap>];
+
+export type LiveMapCutOptions<TData extends string = string, TDocument extends string = string> = Readonly<{
+  data?: readonly TData[];
+  documents?: readonly TDocument[];
+  html?: TDocument;
+}>;
+
+export type LiveMapCut = Readonly<{ libs: LiveMapSnapshot }>;
+export type LiveMapHtmlCut<TDocument extends string = string> = LiveMapCut & Readonly<{
+  html: import("../api/ssr/ssr.types.js").BrowserRealizationHtml;
+  document: TDocument;
+}>;
+
+type LiveMapCutApi<TMap> = {
+  (options?: LiveMapCutOptions<LiveMapFamilyNames<TMap, "data">, LiveMapFamilyNames<TMap, "document">> & { html?: undefined }): LiveMapCut;
+  <const TDocument extends LiveMapFamilyNames<TMap, "document">>(options: LiveMapCutOptions<LiveMapFamilyNames<TMap, "data">, LiveMapFamilyNames<TMap, "document">> & { html: TDocument }): LiveMapHtmlCut<TDocument>;
+  (options: LiveMapCutOptions<LiveMapFamilyNames<TMap, "data">, LiveMapFamilyNames<TMap, "document">>): LiveMapCut | LiveMapHtmlCut;
+};
+
 /**
  * A collection of canonical Libraries with a local topology transition.
  */
@@ -1701,8 +1688,8 @@ export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
   capture: () => LiveMapSnapshot;
   /** Restore a local snapshot with the same Library topology at its captured revision. */
   restore: (snapshot: LiveMapSnapshot) => void;
-  /** Render one selected document as browser-compatible HTML. */
-  render: (document?: string) => import("../api/ssr/ssr.types.js").BrowserRealizationHtml;
+  /** Transfer a coherent selection; omitted families include all their application libraries. */
+  cut: LiveMapCutApi<this>;
   commits: LiveMapRegistryCommitObserverApi;
 }
 

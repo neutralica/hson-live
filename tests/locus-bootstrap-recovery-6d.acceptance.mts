@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type HsonSchema, type LiveMap } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
@@ -519,7 +520,7 @@ for (const mode of ["snapshot", "replay"] as const) {
   const localTree = panelMirror.tree.node;
   const projectedHandle = acquire_livemap_document_identity(page.document, { kind: "path", path: [0] });
   const localHandle = acquire_livemap_document_identity(panel.document, { kind: "path", path: [0] });
-  const projectedExact = page.capture({ identity: "same-epoch" });
+  const projectedExact = capture_document(page, { identity: "same-epoch" });
   const engine = internal_livemap_aggregate_authority(sameMap);
   const projectedId = engine.libraries()[0]!;
   const localEpoch = livemap_identity_epoch_accounting(panel).epoch;

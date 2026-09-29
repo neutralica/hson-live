@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -56,12 +57,12 @@ check("paths do not retarget through QUID continuity", () => {
 
 check("invalid later target rejects the whole staged transaction", () => {
   const map = source();
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => commit(map, [
     { domain: "graph", op: "move-content", target: carrier, from: 0, to: 1 },
     { domain: "graph", op: "set-attr", target: item(99), name: "bad", value: true },
   ]));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("inserted portable content is addressable at its staged path", () => {

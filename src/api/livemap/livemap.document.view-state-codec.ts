@@ -1,3 +1,4 @@
+import type { LiveMapDocumentCapture } from "./livemap.document.capture.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 import { normalize_empty_hson_metadata } from "../../core/normalize-hson-graph.js";
@@ -11,7 +12,7 @@ import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
-import type { LiveMapDocumentCapture, LiveMapDocumentMode } from "../../types/livemap.types.js";
+import type { LiveMapDocumentMode } from "../../types/livemap.types.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import { is_typed_css_value } from "../../core/inline-style.js";
 import {

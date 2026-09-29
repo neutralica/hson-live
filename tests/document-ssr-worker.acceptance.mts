@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { hsonLiveMap } from "../src/api/livemap/index.ts";
 import { Hson } from "../src/hson-authoring.ts";
-import { encode_ssr_bootstrap, render_document } from "../src/api/ssr/index.ts";
+import { encode_ssr_bootstrap } from "../src/api/ssr/index.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
 const map = hsonLiveMap.fromLibraries({ page: { document: `<main <p "worker"/>/>`, schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>` } });
-const node = render_document({ map });
-const largeMap = hsonLiveMap.fromLibraries({ page: { document: `<main "worker-large:${"x".repeat(2 * 1_024 * 1_024)}"/>`, schema: Hson.schema`<type "document" tag "main" content "string">` } });
-const largeBootstrap = render_document({ map: largeMap }).bootstrap;
+const node = map.cut({ html: "page" });
+const largeMap = hsonLiveMap.fromLibraries({ page: { document: `<main "worker-large:${"x".repeat(5 * 1_024 * 1_024)}"/>`, schema: Hson.schema`<type "document" tag "main" content "string">` } });
+const largeLibs = largeMap.cut({ html: "page" }).libs;
 const worker = await new Promise<Readonly<{
   html: string;
-  bootstrap: unknown;
+  libs: unknown;
   encoded: string;
   decoded: unknown;
   largeEncoded: string;
@@ -30,12 +30,12 @@ const worker = await new Promise<Readonly<{
 assert.equal(worker.hasDocument, false);
 assert.equal(worker.html, node.html);
 assert.doesNotMatch(worker.html, /hson:quid|000005301/);
-assert.doesNotMatch(JSON.stringify(worker.bootstrap), /000005301|"quid"/);
-assert.deepEqual(worker.bootstrap, node.bootstrap);
-assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));
-assert.deepEqual(worker.decoded, { kind: "libraries", bootstrap: node.bootstrap });
-assert.equal(worker.largeEncoded, encode_ssr_bootstrap(largeBootstrap));
-assert.deepEqual(worker.largeDecoded, { kind: "libraries", bootstrap: largeBootstrap });
+assert.doesNotMatch(JSON.stringify(worker.libs), /000005301|"quid"/);
+assert.deepEqual(worker.libs, node.libs);
+assert.equal(worker.encoded, encode_ssr_bootstrap(node.libs));
+assert.deepEqual(worker.decoded, { kind: "libraries", bootstrap: node.libs });
+assert.equal(worker.largeEncoded, encode_ssr_bootstrap(largeLibs));
+assert.deepEqual(worker.largeDecoded, { kind: "libraries", bootstrap: largeLibs });
 assert.deepEqual(worker.emptyRoot, { $_tag: "_hson_root", $_content: [] });
 assert.equal(worker.emptySsrRejected, true);
 process.stdout.write("Document SSR Worker parity acceptance passed.\n");

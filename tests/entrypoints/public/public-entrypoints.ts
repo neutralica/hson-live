@@ -1,3 +1,4 @@
+import type { LiveMapHtmlCut } from "hson-live/livemap";
 import {
   Hson,
   HsonData,
@@ -19,10 +20,8 @@ import {
   SsrBootstrapCodecError,
   encode_ssr_bootstrap,
   decode_ssr_bootstrap,
-  render_document,
   render_hosted_document,
   type BrowserRealizationHtml,
-  type LibrariesDocumentSsr,
   type HostedLibrariesDocumentSsr,
   type HostedLibrariesDocumentCut,
   type SsrBootstrapKind,
@@ -81,10 +80,9 @@ void localContinuation.mirror;
 localContinuation.dispose();
 void hostedContinuation;
 void DocumentContinuationError;
-const localSsr: LibrariesDocumentSsr = render_document({ map: continuationRegistry, document: "page" });
-// @ts-expect-error Local document maps do not expose hosted cuts.
-continuationRegistry.cut();
-const encodedSsr: EncodedSsrBootstrap<"libraries"> = encode_ssr_bootstrap(localSsr.bootstrap);
+const localSsr: LiveMapHtmlCut = continuationRegistry.cut({ html: "page" });
+void continuationRegistry.cut().libs;
+const encodedSsr: EncodedSsrBootstrap<"libraries"> = encode_ssr_bootstrap(localSsr.libs);
 const decodedSsr: Extract<DecodedSsrBootstrap, { kind: "libraries" }> = decode_ssr_bootstrap(encodedSsr);
 const ssrKind: SsrBootstrapKind = decodedSsr.kind;
 const ssrOptions: SsrBootstrapCodecOptions = { maxEncodedBytes: 1024 };
@@ -103,9 +101,8 @@ void DocumentSsrError;
 declare const libraries: import("hson-live/livemap").LiveMap;
 declare const librariesSnapshot: LiveMapSnapshot;
 const installedLibraries = install_libraries_snapshot(librariesSnapshot);
-const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries, document: "page" });
-// @ts-expect-error Local Libraries registries do not expose hosted cuts.
-libraries.cut();
+const librariesSsr: LiveMapHtmlCut = libraries.cut({ html: "page" });
+void libraries.cut().libs;
 declare const librariesAuthority: import("hson-live/locus").Locus;
 declare const hostedLibrariesSnapshot: { format: "hson-portable-aggregate-snapshot" };
 // @ts-expect-error Complete hosted Libraries state is retired from SSR encoding.
@@ -115,8 +112,7 @@ const hostedLibrariesSsr: HostedLibrariesDocumentSsr = render_hosted_document({ 
 const hostedLibrariesCut: HostedLibrariesDocumentCut = librariesAuthority.cut("authorized-session");
 void hostedLibrariesCut.data;
 const dataMap = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
-// @ts-expect-error Local registries have no authorized hosted cut.
-dataMap.cut();
+void dataMap.cut().libs;
 void installedLibraries.map;
 void librariesSsr.document;
 void hostedLibrariesSsr.document;

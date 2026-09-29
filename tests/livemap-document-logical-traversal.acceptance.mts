@@ -104,7 +104,7 @@ check("invalid insertion index leaves an empty element unchanged", () => {
 check("first empty-document insertion lowers through root content", () => {
   const map = hsonLiveMap.fromLibraries({ page: { document: '', schema: Multi } });
   map.lib("page").at([]).asRoot()!.insert(0, projected_element('<item/>'));
-  assert.match(map.render(), /<item/);
+  assert.match(map.lib("page").render(), /<item/);
 });
 
 check("Mirror consumes first element content materialization", () => {

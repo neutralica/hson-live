@@ -1,3 +1,6 @@
+import { project_interaction_state_internal } from "../interactions/interactions.projection.js";
+import { render_portable_document_stylesheet, decode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import type { LiveMapCutOptions, LiveMapCut, LiveMapHtmlCut } from "../../types/livemap.types.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import { clone_node } from "../../core/clone-node.js";
 import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
@@ -27,7 +30,6 @@ import type {
   LiveMapDocumentApi,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
-  LiveMapDocumentCaptureOptions,
   LiveMapDocumentRequestTarget,
   LiveMapDocumentCommitTarget,
   LiveMapDocumentContent,
@@ -57,13 +59,13 @@ import {
 import type { LiveMapAggregateCommit, LiveMapLibraryIdentity } from "./livemap.library.js";
 import { make_livemap_registry_authority, type InitialSystemState } from "./livemap.core.js";
 import { classify_live_root_mode, is_data_livemap_mode } from "./livemap.document.js";
-import { render_local_libraries_html } from "../../internal/document-cut.js";
+import { realize_document } from "../../internal/document-cut.js";
 import { make_livemap_document_css } from "./livemap.css.js";
 import { make_livemap_document_mutation_api } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api, make_livemap_document_flags_read_api } from "./livemap.document.attrs.js";
 import { make_livemap_document_location_factory, read_livemap_document_logical_location } from "./livemap.document.location.js";
 import { make_livemap_document_proxy } from "./livemap.proxy.js";
-import { capture_livemap_document, register_livemap_document_observation_evidence } from "./livemap.document.capture.js";
+import { clone_hson_graph_without_quids, register_livemap_document_observation_evidence } from "./livemap.document.capture.js";
 import { resolve_document_path } from "./livemap.document.path.js";
 import {
   make_livemap_document_identity_api,
@@ -81,6 +83,7 @@ import {
   portable_aggregate_snapshot_as_local,
   make_portable_aggregate_snapshot,
   make_hosted_registry,
+  registry_from_entries,
   decode_hosted_root,
   encode_hosted_root,
   HOSTED_MAX_SNAPSHOT_BYTES,
@@ -302,6 +305,68 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
   }));
   if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot);
 
+  function cut(options: LiveMapCutOptions & { html: string }): LiveMapHtmlCut;
+  function cut(options?: LiveMapCutOptions & { html?: undefined }): LiveMapCut;
+  function cut(options: LiveMapCutOptions): LiveMapCut | LiveMapHtmlCut;
+  function cut(options: LiveMapCutOptions = {}): LiveMapCut | LiveMapHtmlCut {
+    if (!is_record(options) || Object.keys(options).some(key => key !== "data" && key !== "documents" && key !== "html")) {
+      throw new TypeError("LiveMap cut options must contain only data, documents, and html selections.");
+    }
+    const html = options.html;
+    const source = aggregate.hostedRegistry();
+    const applications = source.libraries.filter(entry => entry.scope !== "hson-internal");
+    const select = (requested: readonly string[] | undefined, documents: boolean): readonly string[] => {
+      if (requested === undefined) return applications.filter(entry => (entry.mode === "document") === documents).map(entry => entry.name);
+      if (!Array.isArray(requested)) throw new TypeError("LiveMap cut family selection must be an array of Library names.");
+      const names = new Set<string>();
+      for (const name of requested) {
+        const entry = applications.find(entry => entry.name === name);
+        if (entry === undefined || (entry.mode === "document") !== documents || names.has(name)) {
+          throw new Error(`Invalid or duplicated LiveMap cut Library ${JSON.stringify(name)}.`);
+        }
+        names.add(name);
+      }
+      return Object.freeze([...names]);
+    };
+    const data = select(options.data, false);
+    const documents = select(options.documents, true);
+    if (html !== undefined && (typeof html !== "string" || !documents.includes(html))) {
+      throw new Error("LiveMap cut HTML must identify a selected document Library.");
+    }
+    const included = new Set([...data, ...documents]);
+    // Source registry order makes equivalent selections deterministic.
+    const entries = applications.filter(entry => included.has(entry.name));
+    const captured = aggregate.captureSelectedHosted(entries.map(entry => entry.name), false);
+    const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+    const registry = registry_from_entries(source.libraries.filter(entry =>
+      included.has(entry.name) || (system !== undefined && entry.scope === "hson-internal")));
+    const libraryRoots = captured.libraries.map((library, index) => {
+      const entry = registry.libraries[index];
+      if (entry === undefined) throw new Error("Cut Library metadata is unavailable.");
+      return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest,
+        root: library.root, ...(library.css === undefined ? {} : { css: library.css }) });
+    });
+    if (system !== undefined) {
+      const entry = registry.libraries[registry.libraries.length - 1];
+      if (entry === undefined) throw new Error("Interaction system registry is unavailable.");
+      libraryRoots.push(Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest,
+        root: encode_hosted_root(project_interaction_state_internal(aggregate.systemRoot(system), new Set(documents)), HOSTED_MAX_SNAPSHOT_BYTES) }));
+    }
+    const after = aggregate.hostedPosition();
+    if (captured.revision !== after.revision || captured.authority !== after.authority || source.digest !== after.registryDigest) {
+      throw new Error("LiveMap state changed during cut.");
+    }
+    const libs: LiveMapSnapshot = Object.freeze({ format: "hson-livemap-libraries-snapshot", revision: captured.revision,
+      registry, registryDigest: registry.digest, libraries: Object.freeze(libraryRoots) });
+    assert_libraries_snapshot_bound(libs);
+    if (html === undefined) return Object.freeze({ libs });
+    const document = captured.libraries.find(library => library.name === html);
+    if (document?.css === undefined) throw new Error("Cut document stylesheet is unavailable.");
+    return Object.freeze({ libs, document: html,
+      html: realize_document(decode_hosted_root(document.root, HOSTED_MAX_SNAPSHOT_BYTES),
+        render_portable_document_stylesheet(decode_portable_document_stylesheet(document.css))) });
+  }
+
   const public_commit = (commit: LiveMapAggregateCommit): LiveMapCommit => Object.freeze({
     kind: "map" as const,
     changed: commit.changed,
@@ -416,9 +481,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       }
       aggregate.restoreLibraries(snapshot);
     },
-    render: (document?: string) => render_local_libraries_html(
-      libraries as LiveMap, document, install_libraries_snapshot, decode_hosted_root,
-    ),
+    cut,
     commits: Object.freeze({
       observe: (listener: (commit: LiveMapCommit) => void) =>
         aggregate.observe((commit) => listener(public_commit(commit))),
@@ -636,7 +699,7 @@ export function make_livemap_mirror_from_snapshot_internal(
       || registry.schemaDigest !== library.schemaDigest) {
       throw new Error("LiveMap Libraries snapshot Library metadata is malformed.");
     }
-    const root = decode_hosted_root(library.root);
+    const root = decode_hosted_root(library.root, HOSTED_MAX_SNAPSHOT_BYTES);
     admit_portable_hson_node(root, "LiveMap Libraries snapshot");
     if (registry.scope === "hson-internal") {
       systems.push(Object.freeze({
@@ -899,6 +962,7 @@ function make_document_library(
     overlay: () => aggregate.documentOverlay(library.identity),
     commits: document_commits,
     identityEpoch: aggregate.identityEpoch(),
+    captureContinuity: () => aggregate.documentCaptureContinuity(library.identity),
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: import("./livemap.document.mutation.js").PreparedDocumentMutation<TOp>) =>
       aggregate.commitDocumentMutation(library.identity, candidate),
     acquireLocalIdentity: (path: import("../../types/livemap.types.js").LiveMapDocumentPath, quid: string, participant?: import("./livemap.runtime-identity.js").LiveMapRuntimeIdentityParticipant) =>
@@ -1058,15 +1122,6 @@ function make_document_library(
   register_livemap_document_identity_authority(documentApi, controller);
   register_livemap_identity_epoch_owner(documentApi, controller.identityEpoch);
 
-  const capture: LiveMapDocumentLibrary["capture"] = (options?: LiveMapDocumentCaptureOptions) => capture_livemap_document(
-    controller.identityEpoch,
-    "document",
-    aggregate.inspect().revision,
-    root(),
-    controller.overlay(),
-    options,
-    () => aggregate.documentCaptureContinuity(library.identity),
-  );
   const facade: LiveMapDocumentLibrary = {
     mode: "document" as const,
     get rev() { return aggregate.inspect().revision; },
@@ -1077,7 +1132,17 @@ function make_document_library(
     root: () => clone_node(root()),
     at: (path) => wrap_location(raw_at(path)),
     proxy: (path: readonly number[] = []) => Object.freeze({ $_: wrap_location(raw_at(path)) }),
-    capture,
+    render: () => {
+      // No application callbacks or aggregate inspection occur within this read.
+      const position = aggregate.hostedPosition();
+      const documentRoot = clone_hson_graph_without_quids(root());
+      const css = render_portable_document_stylesheet(aggregate.stylesheet(library.identity));
+      const after = aggregate.hostedPosition();
+      if (position.revision !== after.revision || position.authority !== after.authority || position.registryDigest !== after.registryDigest) {
+        throw new Error("Document state changed during rendering read.");
+      }
+      return realize_document(documentRoot, css);
+    },
     document: documentApi,
     commits: document_commits,
     schema: Object.freeze({

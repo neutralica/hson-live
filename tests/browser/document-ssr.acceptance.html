@@ -20,7 +20,6 @@ import {
   hson,
   hsonLiveMap,
   install_libraries_snapshot,
-  render_document,
 } from "/bundle.js";
 
 const results = [];
@@ -55,8 +54,8 @@ try {
   check("local element identity survives continuation", localRoot.firstElementChild === localParagraph);
   check("local text identity survives continuation", localParagraph.firstChild === localText);
   check("local continuation writes nothing", observer.takeRecords().length === 0);
-  check("local revision is exact N", localMap.rev === state.local.bootstrap.revision && localMap.rev === 1);
-  check("local canonical capture has no server QUID", JSON.stringify(localMap.capture()) === JSON.stringify(state.local.bootstrap)
+  check("local revision is exact N", localMap.rev === state.local.libs.revision && localMap.rev === 1);
+  check("local canonical capture has no server QUID", JSON.stringify(localMap.capture()) === JSON.stringify(state.local.libs)
     && !JSON.stringify(localMap.capture()).includes("000005201"));
   check("local subject begins without inherited QUID", localParagraph.getAttribute("hson:quid") === null
     && !JSON.stringify(decodedLocalBootstrap.bootstrap).includes("000005201"));
@@ -74,19 +73,20 @@ try {
     && !localCss.includes("000005201"));
   localContinuation.dispose();
 
-  const browserLocal = render_document({ map: localMap });
+  const browserLocal = localMap.cut({ html: "page" });
   check("Node and browser-compatible local SSR bytes match", browserLocal.html === state.local.html);
-  check("browser local rendering matches its continuation", JSON.stringify(browserLocal.bootstrap) === JSON.stringify(localMap.capture()));
+  check("browser local rendering matches its continuation", JSON.stringify(browserLocal.libs) === JSON.stringify(localMap.capture()));
 
   const localLibrariesRoot = document.querySelector("#local-libraries-ssr");
   const localLibrariesButton = localLibrariesRoot.firstElementChild;
   const decodedLocalLibraries = decode_ssr_bootstrap(state.encoded.localLibraries);
   check("browser Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalLibraries.bootstrap) === state.encoded.localLibraries);
   const localLibrariesInstalled = install_libraries_snapshot(decodedLocalLibraries.bootstrap);
-  const browserLibrariesRender = render_document({ map: localLibrariesInstalled.map });
-  check("browser Libraries rendering retains the complete continuation", browserLibrariesRender.document === "page"
+  const browserLibrariesRender = localLibrariesInstalled.map.cut({ html: "page" });
+  check("local subset omits unrelated library", !browserLibrariesRender.libs.registry.libraries.some(entry => entry.name === "omitted"));
+  check("browser Libraries rendering retains the selected continuation", browserLibrariesRender.document === "page"
     && browserLibrariesRender.html === state.localLibraries.html
-    && JSON.stringify(browserLibrariesRender.bootstrap) === JSON.stringify(decodedLocalLibraries.bootstrap));
+    && JSON.stringify(browserLibrariesRender.libs) === JSON.stringify(decodedLocalLibraries.bootstrap));
   const localLibrariesSelected = localLibrariesInstalled.map.lib(state.localLibraries.document);
   const localLibrariesObserver = new MutationObserver(() => {});
   localLibrariesObserver.observe(localLibrariesRoot, { subtree: true, childList: true, attributes: true, characterData: true });
@@ -99,7 +99,7 @@ try {
   check("local aggregate continuation preserves root identity", localLibrariesContinuation.tree.dom.el() === localLibrariesRoot);
   check("local aggregate continuation preserves descendant identity", localLibrariesRoot.firstElementChild === localLibrariesButton);
   check("local aggregate continuation writes nothing", localLibrariesObserver.takeRecords().length === 0);
-  check("local aggregate install restores the complete snapshot", localLibrariesInstalled.map.lib("state").snap(["count"]) === 7 && localLibrariesInstalled.map.rev === state.localLibraries.bootstrap.revision);
+  check("local aggregate install restores the complete snapshot", localLibrariesInstalled.map.lib("state").snap(["count"]) === 7 && localLibrariesInstalled.map.rev === state.localLibraries.libs.revision);
   localLibrariesObserver.disconnect();
   localLibrariesContinuation.dispose();
 
@@ -119,7 +119,7 @@ try {
 
   const cssMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
   cssMap.lib("page").css.sel("body").set.margin("0");
-  const cssRoot = new DOMParser().parseFromString(cssMap.render("page"), "text/html").documentElement;
+  const cssRoot = new DOMParser().parseFromString(cssMap.lib("page").render(), "text/html").documentElement;
   const cssStyle = cssRoot.querySelector('style[data-hson-managed-document-css="managed"]');
   const cssBefore = cssStyle.textContent;
   const cssObserver = new MutationObserver(() => {});
@@ -177,7 +177,7 @@ try {
 
   const reboundMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
   reboundMap.lib("page").css.sel("body").set.margin("0");
-  const reboundRoot = new DOMParser().parseFromString(reboundMap.render("page"), "text/html").documentElement;
+  const reboundRoot = new DOMParser().parseFromString(reboundMap.lib("page").render(), "text/html").documentElement;
   const reboundStyle = reboundRoot.querySelector('style[data-hson-managed-document-css]');
   const firstBinding = continue_document({ map: reboundMap, root: reboundRoot });
   firstBinding.dispose();
@@ -188,7 +188,7 @@ try {
 
   const malformedMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
   malformedMap.lib("page").css.sel("body").set.color("red");
-  const malformedHtml = malformedMap.render("page");
+  const malformedHtml = malformedMap.lib("page").render();
   const rejectCss = (name, mutate) => {
     const root = new DOMParser().parseFromString(malformedHtml, "text/html").documentElement;
     mutate(root);
@@ -207,7 +207,7 @@ try {
     root.querySelector("body").appendChild(forged);
   });
   const emptyCssMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
-  const staleRoot = new DOMParser().parseFromString(emptyCssMap.render("page"), "text/html").documentElement;
+  const staleRoot = new DOMParser().parseFromString(emptyCssMap.lib("page").render(), "text/html").documentElement;
   const stale = staleRoot.ownerDocument.createElement("style");
   stale.setAttribute("data-hson-managed-document-css", "managed");
   staleRoot.querySelector("head").appendChild(stale);
@@ -215,7 +215,7 @@ try {
   try { continue_document({ map: emptyCssMap, root: staleRoot }); } catch (cause) { staleFailure = cause; }
   check("managed style with empty semantic CSS fails adoption", staleFailure?.phase === "adopt");
 
-  const emptyStartRoot = new DOMParser().parseFromString(emptyCssMap.render("page"), "text/html").documentElement;
+  const emptyStartRoot = new DOMParser().parseFromString(emptyCssMap.lib("page").render(), "text/html").documentElement;
   const emptyStartContinuation = continue_document({ map: emptyCssMap, root: emptyStartRoot });
   emptyCssMap.lib("page").css.sel("body").set.color("green");
   check("first post-continuation CSS commit creates managed style", emptyStartRoot.querySelectorAll('style[data-hson-managed-document-css="managed"]').length === 1
@@ -228,8 +228,8 @@ try {
   });
   styledLibraries.lib("alpha").css.sel("body").set.color("blue");
   styledLibraries.lib("beta").css.sel("body").set.color("green");
-  const alphaRoot = new DOMParser().parseFromString(styledLibraries.render("alpha"), "text/html").documentElement;
-  const betaRoot = new DOMParser().parseFromString(styledLibraries.render("beta"), "text/html").documentElement;
+  const alphaRoot = new DOMParser().parseFromString(styledLibraries.lib("alpha").render(), "text/html").documentElement;
+  const betaRoot = new DOMParser().parseFromString(styledLibraries.lib("beta").render(), "text/html").documentElement;
   const authoredStyle = alphaRoot.querySelector("head style:not([data-hson-managed-document-css])");
   const alphaManaged = alphaRoot.querySelector('style[data-hson-managed-document-css]');
   const betaManaged = betaRoot.querySelector('style[data-hson-managed-document-css]');
@@ -257,7 +257,7 @@ try {
   replaySource.lib("page").css.sel("body").set.margin("0");
   const replayTarget = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
   replayTarget.lib("page").css.sel("body").set.margin("0");
-  const replayRoot = new DOMParser().parseFromString(replayTarget.render("page"), "text/html").documentElement;
+  const replayRoot = new DOMParser().parseFromString(replayTarget.lib("page").render(), "text/html").documentElement;
   const replayStyle = replayRoot.querySelector('style[data-hson-managed-document-css]');
   const replayContinued = continue_document({ map: replayTarget, root: replayRoot });
   let cssCommit;
@@ -272,7 +272,7 @@ try {
   const cascadeMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <p id=target "Target"/>/>/>' } });
   cascadeMap.lib("page").css.sel("p").set.color("blue");
   const cascadeFrame = document.createElement("iframe");
-  cascadeFrame.srcdoc = cascadeMap.render("page");
+  cascadeFrame.srcdoc = cascadeMap.lib("page").render();
   const cascadeLoaded = new Promise((resolve) => cascadeFrame.addEventListener("load", resolve, { once: true }));
   document.body.appendChild(cascadeFrame);
   await cascadeLoaded;

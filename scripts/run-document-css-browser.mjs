@@ -20,7 +20,7 @@ const map = hsonLiveMap.fromLibraries({ page: {
   document: '<html <head <title "CSS"/> <style "#home-screen{color:red;}"/>/> <body <main id=home-screen "Styled"/>/>/>',
 } });
 map.lib("page").css.stylesheet("#home-screen { color: rgb(0, 0, 255); display: grid; }");
-const html = map.render("page");
+const html = map.lib("page").render();
 assert.equal((html.match(/data-hson-managed-document-css/g) ?? []).length, 1);
 
 const server = createServer((_request, response) => {

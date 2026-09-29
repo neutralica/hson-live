@@ -56,7 +56,7 @@ check("structured cloning does not confer local identity authority", () => {
   const target = registry('<main <item/>/>');
   target.restore(structuredClone(source.capture()));
   assert.equal(target.lib("page").document.byQuid("000000113"), undefined);
-  assert.equal(target.render(), source.render());
+  assert.equal(target.lib("page").render(), source.lib("page").render());
 });
 
 check("JSON serialization retains portable state but no runtime epoch", () => {
@@ -66,7 +66,7 @@ check("JSON serialization retains portable state but no runtime epoch", () => {
   const target = registry('<main <item/>/>');
   target.restore(snapshot);
   assert.equal(target.rev, source.rev);
-  assert.match(target.render(), /state="ready"/);
+  assert.match(target.lib("page").render(), /state="ready"/);
 });
 
 check("capture graph is detached from later source mutations", () => {
@@ -75,7 +75,7 @@ check("capture graph is detached from later source mutations", () => {
   source.lib("page").at([]).asElement()!.attrs.set("later", true);
   const target = registry('<main <item/>/>');
   target.restore(snapshot);
-  assert.doesNotMatch(target.render(), /later/);
+  assert.doesNotMatch(target.lib("page").render(), /later/);
 });
 
 check("malformed portable capture rejects atomically", () => {
@@ -101,7 +101,7 @@ check("independent registries can restore equal portable bytes", () => {
   const right = registry('<main <item/>/>');
   left.restore(JSON.parse(bytes) as LiveMapSnapshot);
   right.restore(JSON.parse(bytes) as LiveMapSnapshot);
-  assert.equal(left.render(), right.render());
+  assert.equal(left.lib("page").render(), right.lib("page").render());
 });
 
 events.terminal("pass");

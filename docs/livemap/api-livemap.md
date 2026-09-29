@@ -16,7 +16,7 @@ const map = hsonLiveMap.fromLibraries({
 
 `data` accepts a JSON value or JSON source string. `document` accepts Hson source text or a canonical Hson node. Each library has a governing Hson Schema in the matching family. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT`; admission validates the initial state. The public facade also provides `fromClientSnapshot(...)` for a client composition with an authority projection.
 
-`hsonLiveMap.create()` creates a fully initialized map with no application libraries at revision 0. `hsonLiveMap.fromLibraries({})` has the same empty-registry semantics. An empty map can be captured and restored; `lib(name)` reports an unknown library and `render()` reports that no document is available until admission.
+`hsonLiveMap.create()` creates a fully initialized map with no application libraries at revision 0. `hsonLiveMap.fromLibraries({})` has the same empty-registry semantics. An empty map can be captured, cut, and restored; `lib(name)` reports an unknown library until admission.
 
 `ANY_DATA` and `ANY_DOCUMENT` are ordinary Hson Schemas for the full data and document families. They are exported from `hson-live` and `hson-live/hson`. The equivalent authored forms are `<type "data">` and `<type "document">`.
 
@@ -29,7 +29,8 @@ const commit = map.addLibraries({
   state: { data: { count: 0 }, schema: StateSchema },
 });
 
-map.render("page");
+const page = map.lib("page");
+if (page.mode === "document") page.render();
 ```
 
 `addLibraries(definitions: LiveMapDefinitions): LiveMapCommit` accepts one keyed batch. Each entry must state `data` or `document`; there is no inferred kind. The whole batch is validated before installation. One accepted batch advances `map.rev` once and publishes one map commit containing a portable `library-add` operation with the ordered names, modes, Schemas, and roots. A failed batch leaves state, identity accounting, revision, and observers unchanged. `addLibraries({})` returns an unchanged commit and publishes nothing. `fromLibraries(...)` uses the same input grammar but establishes initial state at revision 0.
@@ -54,7 +55,7 @@ Data locations offer `set`, `replace`, `delete`, `update`, observation, and shap
 
 Data library roots may be objects, arrays, strings, finite numbers, booleans, or null. A string passed as `data` is parsed as JSON source text: use `data: '"hello"'` for a string value. Primitive roots expose scalar handles, with no object or array mutation capabilities. The root mode is fixed at construction; a whole-root mutation that changes its kind fails before commit.
 
-Document libraries expose `document.content`, `document.attrs`, `document.flags`, `document.byQuid`, logical `at(path)` locations, commits, and document capture. Document identity is local to the runtime; portable addresses and requests use paths.
+Document libraries expose `document.content`, `document.attrs`, `document.flags`, `document.byQuid`, logical `at(path)` locations, commits, and `render()`. Document identity is local to the runtime; portable addresses and requests use paths.
 
 Every document library also owns an initially empty portable stylesheet. The root library handle exposes `page.css`; data libraries and `page.at(path)` locations do not. `page.css` is already document-wide, so it has no `.global`. It follows the global rule vocabulary: `sel`, `rule`, `scope`, `media`, `supports`, `layer`, `var`, `drop`, `clearAll`, `has`, `list`, `get`, `atProperty`, and `keyframes`. `stylesheet(cssText): void` parses a complete CSS stylesheet and appends its supported content in one transition. Rule handles support `set`, `setProp`, `setMany`, `remove`, `clear`, and `drop`. `snapshot()` returns deterministic CSS text for inspection; whitespace and comments from source text are not retained.
 
@@ -62,7 +63,7 @@ Every document library also owns an initially empty portable stylesheet. The roo
 const page = map.lib("page");
 page.css.sel("body").set.margin("0");
 page.css.sel("#home-screen").set.display("grid");
-const html = map.render("page");
+const html = map.lib("page").render();
 ```
 
 Each accepted CSS call is a map-wide semantic transition. No-op calls leave `map.rev` unchanged. Multi-declaration, registry batches, and stylesheet text ingress validate and commit atomically. `stylesheet()` returns `void`; empty or comment-only text does nothing. Parsed rules receive stable `stylesheet:1`, `stylesheet:2`, and subsequent keys, visible through `list()` and addressable through `get()` and `drop()`. This prefix is reserved from `rule(key, selector)` so author-named rules cannot collide. Duplicate selectors remain separate ordered rules, and parsed declarations retain authored order, including shorthand/longhand order. `clearAll()` clears all managed CSS, including parsed rules, properties, and keyframes. Unsupported constructs such as `@import`, unknown at-rules, layer statements, duplicate declarations, CSS nesting, and CSS that cannot safely enter a managed HTML `<style>` produce a `DocumentStylesheetError` without a map transition. CSS commits carry QUID-free semantic state. Construction-time `css` input is currently rejected; author through `page.css` after admission.
@@ -83,23 +84,30 @@ map.restore(snapshot);
 
 `capture()` returns a detached `LiveMapSnapshot` of the complete ordered registry at one revision. It includes Schema sources and digests, exact encoded roots, and each document library's portable stylesheet record, including the explicit empty record. Data libraries have no CSS field. It omits generated QUIDs, identity epochs, and issued ledgers. `restore(snapshot)` requires the map's current library topology and rejects incompatible snapshots before mutation. `install_libraries_snapshot(snapshot)` creates a separate local map from a portable snapshot. `map.replay(commit)` applies one portable local `library-add` or CSS commit at its recorded base revision. The local snapshot shape changed in Phase A2; older pre-A2 development snapshots are not read.
 
-The selected document library's `capture()` supports local document-specific identity categories. It is a library observation, not a separate LiveMap authority. The map-wide snapshot is the portable registry reconstruction surface.
+Internal document capture retains runtime provenance for identity admission and observation. Public document libraries expose detached `root()` reads and rendering; transferable selections belong to the map.
 
 ## Local rendering and hosting
 
 ```ts
-const html = map.render("page");
-const { html: ssrHtml, bootstrap } = render_document({ map, document: "page" });
+const html = map.lib("page").render();
+const all = map.cut(); // { libs }, both application families
+const dataOnly = map.cut({ documents: [] });
+const documentOnly = map.cut({ data: [], documents: ["page"] });
+const { html: ssrHtml, libs, document } = map.cut({ documents: ["page"], html: "page" });
 const hosted = locus.cut(sessionId, "page");
 ```
 
-`map.render(document?)` returns browser-realization HTML directly. It infers the name only when the registry contains exactly one document library. A missing document or an ambiguous selection fails clearly. A data library cannot be rendered as a document.
+`map.lib("page").render()` returns `BrowserRealizationHtml` directly from that document root and stylesheet at one coherent position. It reads no unrelated library and reconstructs no map. Data libraries have no rendering capability. Browser realization preserves authored fragments and full document structure; a canonical document can still fail parser compatibility checks.
 
 For an explicit `<html><head>...<body>...` document, nonempty `page.css` is realized as one marked `<style data-hson-managed-document-css="managed">` after authored head children. Authored `<style>` nodes remain document graph content and retain their source order. Empty managed CSS emits no derived style. Nonempty managed CSS on a fragment root is rejected, as is CSS containing parser-significant `</style` RAWTEXT or other nontransportable text. The managed style works on first contact without client JavaScript. Local and hosted cuts capture HTML and CSS from one semantic position. Continuation verifies and adopts the exact style element; Echo commits and recovery converge that same realization. The document Library remains the semantic CSS owner; `tree.css.global` reads its state. Hosted synchronous writes are fenced; hosted authoring uses `tree.async.css.global` or Locus document actions. QUID CSS remains runtime-local in a later separate style host. Projection expansion, contraction, replay, fallback, and durable restart carry or remove CSS with the owning document Library.
 
-`render_document(...)` composes coherent local HTML and a continuation bootstrap from one state cut. `locus.cut(...)` produces an authorized hosted projection and HTML for one session. Local LiveMap has no `cut()` method.
+`map.cut({ data?, documents?, html? })` transfers selected application state. Omitted `data` or `documents` selects all application libraries of that family; `[]` selects none. Omitted `html` returns exactly `{ libs }`. Requested HTML returns exactly `{ libs, html, document }`, with the HTML derived from the transferred document root and CSS. The HTML document must already be selected under `documents`; it is never silently added. Unknown names, duplicates, wrong families, internal names, and invalid HTML membership are rejected.
 
-Mirror binds a selected document library: `hsonMirror(map.lib("page"))`. Echo and Locus govern registry maps, including one-library maps. Libraries are not independent renderers or authorities.
+`libs` is a self-contained `LiveMapSnapshot` with only the selected library contracts and roots, consistent registry and Schema digests, CSS, and one source revision. It contains no local HTML selection field or generated QUIDs. Canonical interaction storage follows the selected document set automatically: omitted-document descriptors are removed, an enabled source retains an empty slot when no documents are selected, and an absent source stays absent. Empty application selections are valid. `install_libraries_snapshot(libs)` reconstructs the selected topology in a fresh runtime. Snapshot consumers use the 64 MiB aggregate byte bound while retaining the depth-256 and 100,000-node limits; ordinary exact-value operations keep their own limits.
+
+`locus.cut(...)` continues to produce an authorized hosted projection and HTML for one session.
+
+Mirror binds a selected document library: `hsonMirror(map.lib("page"))`. Echo and Locus govern registry maps, including one-library maps. Each document library renders its own state; the map remains the aggregate authority.
 
 ## Public boundaries
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, add_interaction, enable_interactions, encode_ssr_bootstrap,
-  decode_ssr_bootstrap, render_hosted_document, render_document, type HsonSchema } from "../src/index.ts";
+  decode_ssr_bootstrap, render_hosted_document, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
@@ -183,7 +183,7 @@ locus.dispose();
 
 // Local rendering remains independent of hosted authorization.
 const local = hsonLiveMap.fromLibraries({ page: { document: '<main <p "LOCAL_CUT"/>/>', schema: Page } });
-assert.match(render_document({ map: local }).html, /LOCAL_CUT/);
+assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
 
 // The same hostile authority fixture crosses an actual SSR -> live -> history-insufficient
 // recovery. Inspect every emitted wire frame, including the fallback envelope and tail.

@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { Hson, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus, render_document, render_hosted_document } from "../dist/index.js";
+import { Hson, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus, render_hosted_document } from "../dist/index.js";
 import { parse_hson_exact_runtime } from "../dist/internal/exact-runtime-hson-codec.js";
 import { admit_exact_runtime_livemap_libraries } from "../dist/internal/exact-runtime-node-admission.js";
 
@@ -56,21 +56,22 @@ try {
     page: { document: parse_hson_exact_runtime(`<main id="local-ssr" <p @000005201 "ab"/>/>`, { allowTopLevelDocumentText: true }), schema: LocalPageSchema },
   });
   localMap.lib("page").document.attrs.set({ kind: "path", path: [0] }, "data-revision", "N");
-  const local = render_document({ map: localMap });
+  const local = localMap.cut({ html: "page" });
   assert.doesNotMatch(local.html, /hson:quid|000005201/);
-  assert.doesNotMatch(JSON.stringify(local.bootstrap), /000005201|"quid"/);
+  assert.doesNotMatch(JSON.stringify(local.libs), /000005201|"quid"/);
   const FullPageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content <sequence [<tag "title" content "string">]>>, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
   const fullMap = hson.liveMap.fromLibraries({ page: { document: `<html <head <title "SSR"/>/> <body <main "whole"/>/>/>`, schema: FullPageSchema } });
-  const full = render_document({ map: fullMap });
+  const full = fullMap.cut({ html: "page" });
   const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;
   const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
   const localLibrariesMap = admit_exact_runtime_livemap_libraries({
     state: { data: { count: 7 }, schema: LocalLibrariesStateSchema },
+    omitted: { data: true },
     page: { document: parse_hson_exact_runtime('<main id="local-libraries-ssr" <button @000005204/>/>', { allowTopLevelDocumentText: true }), schema: LocalLibrariesPageSchema },
   });
-  const localLibraries = render_document({ map: localLibrariesMap });
+  const localLibraries = localLibrariesMap.cut({ data: ["state"], documents: ["page"], html: "page" });
   assert.doesNotMatch(localLibraries.html, /hson:quid|000005204/);
-  assert.doesNotMatch(JSON.stringify(localLibraries.bootstrap), /000005204|identityEpoch|issuedQuids|"identity"|"quid"/);
+  assert.doesNotMatch(JSON.stringify(localLibraries.libs), /000005204|identityEpoch|issuedQuids|"identity"|"quid"/);
 
   const StateSchema = Hson.schema`<type "data" content <count "number">>`;
   const PageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>`;
@@ -125,9 +126,9 @@ try {
   const libraries = render_hosted_document({ authority: librariesLocus, sessionId: issued.sessionId });
   closeSession();
   const encoded = Object.freeze({
-    local: encode_ssr_bootstrap(local.bootstrap),
-    localLibraries: encode_ssr_bootstrap(localLibraries.bootstrap),
-    full: encode_ssr_bootstrap(full.bootstrap),
+    local: encode_ssr_bootstrap(local.libs),
+    localLibraries: encode_ssr_bootstrap(localLibraries.libs),
+    full: encode_ssr_bootstrap(full.libs),
     libraries: encode_ssr_bootstrap(libraries.bootstrap),
   });
   await librariesLocus.mutate((draft) => {

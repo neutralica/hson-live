@@ -1,3 +1,4 @@
+import { document_html } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { ANY_DATA, ANY_DOCUMENT, Hson, add_interaction, enable_interactions, hsonLiveMap } from "../src/index.ts";
 import { install_libraries_snapshot, type LiveMapCommit } from "../src/api/livemap/index.ts";
@@ -93,8 +94,8 @@ check("empty map admits a document and data atomically with top Schemas", () => 
   explicit.addLibraries({ page: { document: page, schema: ANY_DOCUMENT },
     state: { data: { count: 0 }, schema: ANY_DATA } });
   assert.equal(explicit.capture().registry.digest, map.capture().registry.digest);
-  assert.equal(map.render("page"), "<main>Hello</main>");
-  assert.equal(map.render(), "<main>Hello</main>");
+  assert.equal(document_html(map.lib("page")), "<main>Hello</main>");
+  assert.equal(document_html(map.lib("page")), "<main>Hello</main>");
   assert.notEqual(map.capture().registry.digest, before.registry.digest);
   assert.equal(map.capture().revision, 1);
   let emptyObservations = 0;
@@ -180,7 +181,7 @@ check("portable replay and fresh install preserve topology guarantees", () => {
   const installed = install_libraries_snapshot(after).map;
   assert.equal(installed.rev, 1);
   assert.equal(installed.capture().registry.digest, after.registry.digest);
-  assert.equal(installed.render(), "<main>Hello</main>");
+  assert.equal(document_html(installed.lib("page")), "<main>Hello</main>");
   const replayed = hsonLiveMap.create();
   const replayCommit = replayed.replay(JSON.parse(JSON.stringify(commit)));
   assert.deepEqual(replayCommit.operations, commit.operations);
@@ -203,7 +204,7 @@ check("portable replay and fresh install preserve topology guarantees", () => {
   map.restore(after);
   assert.equal(map.rev, 1);
   assert.equal(map.capture().registry.digest, after.registry.digest);
-  assert.equal(map.render(), "<main>Hello</main>");
+  assert.equal(document_html(map.lib("page")), "<main>Hello</main>");
   assert.equal(map.lib("page"), oldPage);
 });
 

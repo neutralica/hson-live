@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonMirror, hsonEcho, hsonLocus, hsonTransform, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
@@ -190,8 +191,8 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   const projectedHandle = acquire_livemap_document_identity(page.document, { kind: "path", path: [0] });
   const localHandle = acquire_livemap_document_identity(panel.document, { kind: "path", path: [0] });
   const issuedBeforeFallback = livemap_identity_epoch_accounting(panel).issued;
-  const exact = page.capture({ identity: "same-epoch" });
-  const localExact = panel.capture({ identity: "same-epoch" });
+  const exact = capture_document(page, { identity: "same-epoch" });
+  const localExact = capture_document(panel, { identity: "same-epoch" });
   let localRestoreEvents = 0;
   const stopLocal = panel.commits.observe((observation) => {
     if (observation.kind === "snapshot") localRestoreEvents += 1;

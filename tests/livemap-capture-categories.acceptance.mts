@@ -98,8 +98,6 @@ check("local registry exposes no solo capture or install category", () => {
   const map = ordinary("<main/>");
   assert.equal("install" in map, false);
   assert.equal(typeof map.replay, "function");
-  assert.equal("cut" in map, false);
-  assert.equal("capture" in map.lib("page"), true);
 });
 process.stdout.write(`# ${checks} registry document capture checks passed\n`);
 events.terminal("pass");

@@ -15,7 +15,7 @@ import { Hson } from "hson-live/hson";
 import { hsonLiveMap, type LiveMap, type LiveMapDocumentLibrary } from "hson-live/livemap";
 import { create_locus, type LocusSocketLike } from "hson-live/locus";
 import { reflect_document } from "hson-live/mirror";
-import { decode_ssr_bootstrap, encode_ssr_bootstrap, render_document, render_hosted_document } from "hson-live/ssr";
+import { decode_ssr_bootstrap, encode_ssr_bootstrap, render_hosted_document } from "hson-live/ssr";
 import { hsonTransform, type TransformOutput } from "hson-live/transform";
 import { hsonLiveTree, type ContentManager } from "hson-live/livetree";
 
@@ -57,8 +57,8 @@ const hosted = create_locus({ map: hostedMap, exposure: [{ library: "page", expo
 const replica = create_echo({ socket, map: replicaMap, recovery: { logicalMapId: "document" } });
 void [hosted, replica];
 
-const localSsr = render_document({ map: libraries });
-const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(localSsr.bootstrap));
+const localSsr = libraries.cut({ html: "page" });
+const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(localSsr.libs));
 void decoded;
 void continue_document({ map: hostedMap, document: hostedMap.lib("page"), root });
 

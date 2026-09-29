@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -30,17 +31,17 @@ const overlay = (map: ReturnType<typeof element>) => livemap_document_identity_o
 
 check("supplied incoming QUID rejects before graph and revision publication", () => {
   const map = fixture();
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.document.content.insert(path(0), 1, projected_element('<item @000006b02/>')));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
   assert.equal(overlay(map).size, 1);
 });
 
 check("incoming collision with an active claim rejects atomically", () => {
   const map = fixture();
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.document.content.replace(path(0), 1, projected_element(`<item @${Q1}/>`)));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("explicit same-runtime lineage may preserve displaced local identity", () => {
@@ -53,9 +54,9 @@ check("explicit same-runtime lineage may preserve displaced local identity", () 
 
 check("invalid request path cannot route through an existing QUID", () => {
   const map = fixture();
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.document.attrs.set({ kind: "path", path: [99] }, "bad", true));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
   assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 0]);
 });
 
@@ -83,17 +84,17 @@ check("failed operation publishes no partial observation", () => {
 
 check("protected metadata mutation leaves canonical state intact", () => {
   const map = fixture();
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.document.attrs.set(path(), "hson:quid", "bad"));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("same-position move is an atomic no-op", () => {
   const map = fixture();
-  const before = map.capture();
+  const before = capture_document(map);
   const result = map.document.content.move(path(0), 0, 0);
   assert.equal(result.changed, false);
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("exact attribute no-op consumes no revision or publication", () => {

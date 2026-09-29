@@ -1831,7 +1831,7 @@ function make_livemap_registry_engine(
         || entry.schemaDigest !== encoded.schemaDigest) {
         throw new Error("LiveMap topology snapshot Library metadata is malformed.");
       }
-      const root = decode_hosted_root(encoded.root);
+      const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
       admit_portable_hson_node(root, "LiveMap topology snapshot");
       const schema = HsonSchemaHandle.fromHson(entry.schema);
       const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
@@ -1977,7 +1977,7 @@ function make_livemap_registry_engine(
       }
       const binding = hosted.byName.get(entry.name);
       if (binding === undefined) throw new Error("Hosted aggregate snapshot Library binding is unavailable.");
-      const root = decode_hosted_root(encoded.root);
+      const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
       if (identity === undefined) admit_portable_hson_node(root, "LiveMap Libraries snapshot");
       const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("Hosted aggregate snapshot root mode disagrees with its registry.");

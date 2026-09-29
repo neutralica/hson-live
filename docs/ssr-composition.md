@@ -2,12 +2,32 @@
 
 ## Local rendering
 
-`render_document({ map })` is the local structural SSR API. The caller owns the
-whole local map. It captures once, renders the detached selected document, and
-returns local continuation data. A Libraries map may infer its sole
-document; multiple local documents require a name. Local SSR uses
-`hson-ssr-bootstrap` with kind `libraries`. This local contract
-has no hosted projection policy.
+A document handle renders its own state with `map.lib("page").render()` and
+returns `BrowserRealizationHtml`. It reads only that document and its CSS, preserves
+fragments and authored document shells, and performs browser-parser checks.
+
+For transferable local state, use a coherent selection:
+
+```ts
+const stateOnly = map.cut();
+const dataOnly = map.cut({ documents: [] });
+const documentOnly = map.cut({ data: [], documents: ["page"] });
+const mixed = map.cut({ data: ["state"], documents: ["page"], html: "page" });
+const encoded = encode_ssr_bootstrap(mixed.libs);
+```
+
+Omitted family selections include all application libraries in that family;
+explicit empty arrays include none. Omitted HTML yields exactly `{ libs }`.
+Requested HTML yields `{ libs, html, document }`; its document must already belong
+to the document selection. HTML uses that cut's detached root and CSS. Unknown,
+duplicate, internal, and wrong-family names are rejected.
+
+The selected registry is self-contained, including Schemas, digests, portable
+roots, CSS, and the source revision. Canonical interactions follow the selected
+documents automatically, preserving enabled-empty storage without synthesizing
+absent storage. `install_libraries_snapshot(libs)` reconstructs a fresh local map.
+Local transfer uses `hson-ssr-bootstrap` with kind `libraries`. Snapshot root
+consumers use the aggregate 64 MiB bound, with unchanged depth and node limits.
 
 ## Session-projected hosted rendering
 

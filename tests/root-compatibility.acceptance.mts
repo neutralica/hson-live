@@ -33,7 +33,7 @@ try {
     [reflect, ["hsonMirror", "reflect_document", "DocumentMirrorError"]],
     [echo, ["hsonEcho", "create_echo", "EchoSessionError"]],
     [locus, ["hsonLocus", "create_locus", "LocusAuthorityError"]],
-    [ssr, ["render_document", "render_hosted_document", "DocumentSsrError"]],
+    [ssr, ["render_hosted_document", "DocumentSsrError"]],
     [livehost, ["create_livehost_locus_registry"]],
   ] as const;
   for (const [owner, names] of overlaps) {

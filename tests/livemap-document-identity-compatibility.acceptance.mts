@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -191,7 +192,7 @@ check("identity-free capture output strips acquired metadata intentionally", () 
   const map = element(`<main/>`);
   acquire_document_identity(map.document, target());
   assert.equal(
-    (map.capture({ identity: "strip" }).root.$_content[0] as { $_meta?: { quid?: string } } | undefined)?.$_meta?.quid,
+    (capture_document(map, { identity: "strip" }).root.$_content[0] as { $_meta?: { quid?: string } } | undefined)?.$_meta?.quid,
     undefined,
   );
   const restored = element(`<main/>`);

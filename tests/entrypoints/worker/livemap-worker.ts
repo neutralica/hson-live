@@ -28,8 +28,7 @@ void empty.capture();
 const added = empty.addLibraries({ runtimePage: { document: Hson.document`<main/>` }, runtimeState: { data: 1 } });
 void added.operations;
 const runtimePage = empty.lib("runtimePage");
-if (runtimePage.mode === "document") void runtimePage.document.root();
-void empty.render("runtimePage");
+if (runtimePage.mode === "document") { void runtimePage.document.root(); void runtimePage.render(); }
 const scalar = hsonLiveMap.fromLibraries({ value: { data: 1, schema: ANY_DATA } });
 void scalar.lib("value").at([]).asScalar();
 void ANY_DOCUMENT.toHson();
@@ -46,18 +45,15 @@ if (page.mode === "document") {
   void location.rev;
   const discovered = page.at([]).id("target");
   void discovered?.snap();
-  const documentCapture = page.capture();
-  void documentCapture;
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof page.document ? true : false = false;
   void documentAcquisitionIsPublic;
   // @ts-expect-error Data mutation is not a document location operation.
   location.set(page.root());
   // @ts-expect-error Document locations use numeric paths.
   page.at(["content"]);
-  // @ts-expect-error Rendering is owned by the registry.
   page.render();
 }
-void documentMap.render();
+void documentMap.lib("page").render();
 
 // @ts-expect-error Data locations do not provide HTML ID discovery.
 state.at([]).id("target");
@@ -71,3 +67,17 @@ const mutationCode: LiveMapProjectedMutationErrorCode = "OBJECT_RENAME_SOURCE_NO
 const identityCode: LiveMapProjectedIdentityErrorCode = "PROJECTED_IDENTITY_INELIGIBLE";
 void new LiveMapProjectedMutationError(mutationCode, "rename", [], "proof");
 void new LiveMapProjectedIdentityError(identityCode, [], "proof");
+
+const stateCut = documentMap.cut();
+void stateCut.libs;
+// @ts-expect-error State-only cuts have no HTML.
+void stateCut.html;
+const selectedCut = documentMap.cut({ data: [], documents: ["page"], html: "page" });
+const renderedName: "page" = selectedCut.document;
+void renderedName;
+// @ts-expect-error A document name cannot select data state.
+documentMap.cut({ data: ["page"] });
+// @ts-expect-error A data name cannot select document state.
+map.cut({ documents: ["state"] });
+// @ts-expect-error Data libraries have no document rendering capability.
+state.render();

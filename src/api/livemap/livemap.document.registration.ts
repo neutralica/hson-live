@@ -59,6 +59,7 @@ export class LiveMapDocumentIdentityParticipantCollisionError extends Error {
 
 type LiveMapDocumentIdentityAuthority = LiveMapDocumentMutationController & Readonly<{
   identityEpoch: LiveMapIdentityEpochController;
+  captureContinuity: () => object | undefined;
 }>;
 
 const authorityForOwner = new WeakMap<object, LiveMapDocumentIdentityAuthority>();
@@ -226,7 +227,7 @@ export function livemap_document_identity_reservation_for(
   return reservationForCommit.get(commit);
 }
 
-function require_authority(owner: object): LiveMapDocumentIdentityAuthority {
+export function require_authority(owner: object): LiveMapDocumentIdentityAuthority {
   const authority = authorityForOwner.get(owner);
   if (authority !== undefined) return authority;
   throw new LiveMapDocumentIdentityRegistrationError(

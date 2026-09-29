@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -53,9 +54,9 @@ check("request path arrays are detached from caller mutation", () => {
 
 check("raw-QUID request targets reject without a commit", () => {
   const map = fixture();
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.document.attrs.set({ kind: "quid", quid: Q1 } as never, "x", 1));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("malformed paths reject at request admission", () => {

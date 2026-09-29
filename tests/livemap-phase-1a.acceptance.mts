@@ -100,7 +100,6 @@ check("primitive data roots admit, expose scalar handles, commit, and round trip
     const before = map.rev;
     assert.throws(() => root.replace({ changed: true }), /root mode is fixed/);
     assert.equal(map.rev, before);
-    assert.throws(() => map.render(), /no selectable public document Library/);
   }
 });
 
@@ -119,7 +118,6 @@ check("empty maps are complete runtimes with capture, restore, and ordinary fail
     assert.equal(map.rev, 0);
     assert.deepEqual(commits, []);
     assert.throws(() => Reflect.apply(map.lib, map, ["whatever"]), /Unknown LiveMap Library/);
-    assert.throws(() => map.render(), /no selectable public document Library/);
   }
 });
 

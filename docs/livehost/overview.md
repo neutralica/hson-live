@@ -91,7 +91,7 @@ and `Response` machinery:
 
 ```text
 application / LiveHost route
-  -> render_document / render_hosted_document
+  -> map.cut / render_hosted_document
   -> encode_ssr_bootstrap
   -> standard Response
 ```

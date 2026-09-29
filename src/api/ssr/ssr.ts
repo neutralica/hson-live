@@ -3,51 +3,9 @@ import type {
 } from "../../types/livemap.types.js";
 import type { Locus } from "../../types/locus.types.js";
 import { is_locus_libraries_snapshot_authority_internal } from "../locus/locus.libraries-snapshot.js";
-import { install_libraries_snapshot } from "../livemap/livemap.libraries.js";
-import { decode_hosted_root } from "../livemap/livemap.hosted.js";
-import { DocumentSsrError } from "./ssr.error.js";
-import { render_local_libraries } from "../../internal/document-cut.js";
 import type {
-  LibrariesDocumentSsr,
   HostedLibrariesDocumentSsr,
 } from "./ssr.types.js";
-
-type SsrTestPoint =
-  | "local-after-capture"
-  | "hosted-after-snapshot"
-  | "local-libraries-after-capture"
-  | "hosted-libraries-after-snapshot";
-
-let testHook: ((point: SsrTestPoint) => void) | undefined;
-
-/** @internal Deterministic same-cut race seam; not reachable from public entrypoints. */
-export function set_document_ssr_hook_for_tests(
-  hook: ((point: SsrTestPoint) => void) | undefined,
-): void {
-  testHook = hook;
-}
-
-function require_options(value: unknown, name: string): Readonly<Record<string, unknown>> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new TypeError(`${name} options must be an object.`);
-  }
-  return value as Readonly<Record<string, unknown>>;
-}
-
-/** Compose browser-realization HTML and exact bootstrap state from one local capture. */
-export function render_document(options: Readonly<{
-  map: LiveMap;
-  document?: string;
-}>): LibrariesDocumentSsr;
-export function render_document(options: Readonly<{
-  map: LiveMap;
-  document?: string;
-}>): LibrariesDocumentSsr {
-  require_options(options, "render_document");
-  return render_local_libraries(options.map, options.document,
-    install_libraries_snapshot, decode_hosted_root,
-    () => testHook?.("local-libraries-after-capture"));
-}
 
 /** Compose browser HTML and projected authority state from one authorized session cut. */
 export function render_hosted_document<TMap extends LiveMap>(
@@ -60,14 +18,15 @@ export function render_hosted_document(
     document?: string;
   }>,
 ): HostedLibrariesDocumentSsr {
-  require_options(options, "render_hosted_document");
+  if (typeof options !== "object" || options === null || Array.isArray(options)) {
+    throw new TypeError("render_hosted_document options must be an object.");
+  }
   const authority = options.authority;
   if (!is_locus_libraries_snapshot_authority_internal(authority) || typeof authority.cut !== "function"
     || typeof options.sessionId !== "string" || options.sessionId.length === 0) {
     throw new TypeError("render_hosted_document requires an authorized Locus session.");
   }
   const cut = authority.cut(options.sessionId, options.document);
-  testHook?.("hosted-libraries-after-snapshot");
   return Object.freeze({ html: cut.html, bootstrap: cut.data, document: cut.document,
     revision: cut.revision, projectionDigest: cut.projectionDigest });
 }

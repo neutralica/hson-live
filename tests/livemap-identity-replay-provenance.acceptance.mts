@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -43,16 +44,16 @@ check("public document node admission rejects generated QUID metadata", () => {
 
 check("incoming document insertion rejects supplied identity atomically", () => {
   const map = element('<main <item/>/>');
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.document.content.insert(path(0), 1, projected_element(`<item @${Q1}/>`)));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("incoming document replacement rejects supplied identity atomically", () => {
   const map = element('<main <item/>/>');
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.document.content.replace(path(0), 0, projected_element(`<item @${Q1}/>`)));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("explicit same-runtime lineage retains a local QUID lifetime", () => {

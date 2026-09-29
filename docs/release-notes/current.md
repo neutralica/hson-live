@@ -13,7 +13,7 @@
 - Reworked hosted recovery around projected commits, authority-progress events and projected snapshot fallback, while preserving client-local libraries during fallback/reconstruction.
 - Hardened hosted egress so server-private and unselected state cannot escape through bootstrap, live traffic, replay, fallback or cuts; wire-size limits are applied after per-session projection.
 - Reworked hosted SSR/cut around session projections. Locus cuts now package a coherent projected authority snapshot together with the selected rendered document from the same authority position.
-- Consolidated local document rendering around map.render(...), separating ordinary LiveMap rendering from Locus-owned hosted cut/bootstrap responsibilities.
+- Moved local rendering to document-library render(), and added coherent selective map.cut({ data?, documents?, html? }) returning libs with optional HTML.
 - Completed the registry-only LiveMap construction model, including zero-library hsonLiveMap.create(), fromLibraries(...), broad ANY data/document modes, and primitive data roots.
 - Added dynamic library admission as a real LiveMap topology mutation. The final public surface became map.addLibraries(...), returning a LiveMapCommit; earlier factory/map.lib.add variants were removed.
 - Extended dynamic library admission through hosted authority, persistence, checkpoint/restart, replay and projection so topology changes use the same local/hosted model rather than a local-only escape hatch.

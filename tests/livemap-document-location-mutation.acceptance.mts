@@ -1,3 +1,4 @@
+import { capture_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -47,9 +48,9 @@ check("authored text replacement stays a string location", () => {
 
 check("off-Schema replacement fails without advancing revision", () => {
   const map = fixture();
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.at([0]).replace(projected_element('<aside/>')));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("missing location and document root cannot be replaced", () => {
@@ -90,10 +91,10 @@ check("nested deletion preserves remaining sibling", () => {
 
 check("missing location and document root cannot be deleted", () => {
   const map = fixture();
-  const before = map.capture();
+  const before = capture_document(map);
   assert.throws(() => map.at([99]).delete());
   assert.throws(() => map.at([]).delete());
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(capture_document(map), before);
 });
 
 check("Mirror consumes location replacement and deletion", () => {

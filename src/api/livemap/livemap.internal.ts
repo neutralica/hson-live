@@ -1,7 +1,7 @@
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
-import type { HostedLiveMapSnapshot, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LocalLibrariesContinuationSnapshot, LivePath } from "../../types/livemap.types.js";
+import type { HostedLiveMapSnapshot, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
 import { resolveLiveMapNode } from "./livemap.node.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
@@ -131,7 +131,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   captureSemanticCheckpoint: () => LiveMapSemanticCheckpoint;
   installSemanticCheckpoint: (checkpoint: LiveMapSemanticCheckpoint) => void;
   restoreLibraries: (snapshot: LiveMapSnapshot, afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => void;
-  restorePortableLibraries: (snapshot: LocalLibrariesContinuationSnapshot) => void;
+  restorePortableLibraries: (snapshot: LiveMapSnapshot) => void;
   restoreHosted: (snapshot: HostedLiveMapSnapshot, authorityOverride?: import("./livemap.hosted.js").HostedAuthorityFence) => void;
   /** QUID-free network snapshot; installs a fresh local identity epoch. @internal */
   restoreClientHosted: (snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot) => void;

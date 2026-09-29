@@ -12,10 +12,10 @@ const map = hsonLiveMap.fromLibraries({
   page: { document: "<main/>", schema: PageSchema },
 });
 
-const html = map.render();
+const html = map.lib("page").render();
 ```
 
-The one-library example is an ordinary registry. `map.lib("page")` selects its document library for canonical reads and writes. The map retains the global revision, commit stream, capture, restore, and rendering operations.
+The one-library example is an ordinary registry. `map.lib("page")` selects its document library for canonical reads and writes. The map retains the global revision, commit stream, capture, restore, and selective cut operations.
 
 ## Ownership
 
@@ -83,9 +83,9 @@ Document libraries expose `document.content`, `document.attrs`, `document.flags`
 
 `map.capture()` returns a detached complete `LiveMapSnapshot` of the registry, Schemas, and encoded roots at one revision. `map.restore(snapshot)` validates a compatible full registry before replacement. `install_libraries_snapshot(snapshot)` creates a fresh local runtime from a portable capture. The snapshot is QUID-free; a new runtime establishes its own identity epoch and issued ledger.
 
-`map.render(document?)` realizes one document as browser-compatible HTML and returns the HTML directly. With exactly one document library, the document name may be omitted. With none, rendering fails. With multiple, callers must select one explicitly. A named data library cannot be rendered.
+`map.lib("page").render()` returns browser-compatible HTML for that document and its managed CSS. It preserves authored structure and fragments without synthesizing a shell, and reads no unrelated libraries.
 
-`render_document({ map, document? })` is the lower-level local SSR composition surface. It returns coherent HTML and a continuation bootstrap derived from one state cut. Local continuation uses that bootstrap with the same registry. Hosted projection belongs to Locus: `locus.cut(sessionId, document?)` returns the authorized projected state and HTML, and hosted continuation uses Echo's governed replica.
+`map.cut({ data?, documents?, html? })` transfers coherent selected state in `libs`. Omitted families select all application libraries; `[]` selects none. No HTML selection returns `{ libs }`; naming a selected document returns `{ libs, html, document }` from the same detached state. The subset registry includes its Schemas, digests, roots, CSS and source revision. Internal interactions follow selected documents automatically. Local continuation reconstructs the subset with `install_libraries_snapshot(libs)`. Hosted projection belongs to Locus: `locus.cut(sessionId, document?)` returns authorized projected state and HTML, and hosted continuation uses Echo's governed replica.
 
 ## Other layers
 

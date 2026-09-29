@@ -1,4 +1,4 @@
-import type { LocalLibrariesContinuationSnapshot } from "../../types/livemap.types.js";
+import type { LiveMapSnapshot } from "../../types/livemap.types.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 
 declare const ENCODED_SSR_BOOTSTRAP: unique symbol;
@@ -21,7 +21,7 @@ export type EncodedSsrBootstrap<TKind extends SsrBootstrapKind = SsrBootstrapKin
 
 /** A decoded family discriminator paired with its detached semantic bootstrap. */
 export type DecodedSsrBootstrap =
-  | Readonly<{ kind: "libraries"; bootstrap: LocalLibrariesContinuationSnapshot }>
+  | Readonly<{ kind: "libraries"; bootstrap: LiveMapSnapshot }>
   | Readonly<{ kind: "hosted-projection"; bootstrap: AuthorityProjectionSnapshot }>;
 
 /** Outer encoded-size admission for SSR bootstrap transport. */

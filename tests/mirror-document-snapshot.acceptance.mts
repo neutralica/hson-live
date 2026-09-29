@@ -4,7 +4,7 @@ import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-cod
 import { document_from_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { LiveMapDocumentCapture, LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
+import type { LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
 import { hsonMirror } from "../src/api/mirror/mirror.facade.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
@@ -69,23 +69,6 @@ function mount(root: HsonNode): FakeElement {
   return project_livetree(root.$_tag === "_hson_root" ? raw_node(root, []) : root) as unknown as FakeElement;
 }
 
-function with_capture(
-  map: LiveMapDocumentLibrary,
-  capture: () => LiveMapDocumentCapture<"document">,
-): LiveMapDocumentLibrary {
-  return {
-    mode: "document",
-    get rev() { return map.rev; },
-    css: map.css,
-    root: map.root,
-    at: map.at,
-    proxy: map.proxy,
-    capture,
-    commits: map.commits,
-    schema: map.schema,
-    document: map.document,
-  };
-}
 
 check("mounted snapshot constructs a fresh tree and descendant identity epoch", () => {
   const map = element(`<main @000000601 class="old" <p @000000602 "old"/> <i/>/>`);
@@ -160,16 +143,9 @@ check("restore followed by commit projects from the exact restored revision", ()
 
 check("snapshot publication consumes private accepted evidence without public recapture", () => {
   const map = element(`<main @000000604 class="old"/>`);
-  let captures = 0;
-  const wrapped = with_capture(map, () => {
-    captures += 1;
-    const capture = map.capture();
-    return Object.freeze({ ...capture, rev: capture.rev + 1 });
-  });
-  const binding = hsonMirror(wrapped);
+  const binding = hsonMirror(map);
   const before = binding.tree;
   registry_for_document_library(map).restore(registry_for_document_library(element(`<main @000000604 class="canonical"/>`)).capture());
-  assert.equal(captures, 0);
   assert.equal(raw_node(map.root(), []).$_attrs?.class, "canonical");
   assert.notEqual(binding.tree, before);
   assert.equal(before.isDisposed, true);
@@ -181,12 +157,7 @@ check("snapshot publication consumes private accepted evidence without public re
 
 check("repeated snapshots independently reconstruct from accepted evidence", () => {
   const map = element(`<main @000000605/>`);
-  let captures = 0;
-  const wrapped = with_capture(map, () => {
-    captures += 1;
-    return map.capture();
-  });
-  const binding = hsonMirror(wrapped);
+  const binding = hsonMirror(map);
   const initialTree = binding.tree;
   const first = element(`<main @000000605 state="first"/>`);
   first.document.attrs.set(path(), "rev", 1);
@@ -196,7 +167,6 @@ check("repeated snapshots independently reconstruct from accepted evidence", () 
   registry_for_document_library(map).restore(registry_for_document_library(first).capture());
   const firstTree = binding.tree;
   registry_for_document_library(map).restore(registry_for_document_library(second).capture());
-  assert.equal(captures, 0);
   assert.equal(initialTree.isDisposed, true);
   assert.equal(firstTree.isDisposed, true);
   assert.notEqual(binding.tree, firstTree);
@@ -226,24 +196,6 @@ check("new snapshot epochs admit tag changes without source QUID continuity", ()
   assert.notEqual(quidBinding.tree.node, quidRoot);
   assert.equal(raw_node(quidBinding.tree.node, []).$_meta?.quid, undefined);
   quidBinding.dispose();
-});
-
-check("public capture failure is outside private snapshot publication evidence", () => {
-  const map = element(`<main @000000609/>`);
-  let captures = 0;
-  const wrapped = with_capture(map, () => {
-    captures += 1;
-    throw new Error("forced capture failure");
-  });
-  const binding = hsonMirror(wrapped);
-  registry_for_document_library(map).restore(registry_for_document_library(element(`<main @000000609 title="canonical"/>`)).capture());
-  assert.equal(captures, 0);
-  assert.equal(map.document.attrs.get(path(), "title"), "canonical");
-  assert.equal(binding.status, "active");
-  assert.equal(raw_node(binding.tree.node, []).$_attrs?.title, "canonical");
-  assert.equal(binding.sourceRevision, 0);
-  binding.dispose();
-  assert.equal(binding.status, "disposed");
 });
 
 check("new snapshot epochs do not reuse stale DOM convergence hooks", () => {

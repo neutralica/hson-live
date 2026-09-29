@@ -64,12 +64,11 @@ Root tag or namespace changes and persisted root-QUID introduction, removal,
 or change intentionally fail closed. The binding does not replace its root
 façade or physical root DOM element.
 
-Snapshot restore observations synchronously recapture exactly one complete
-`map.capture()`. The captured revision must equal the observed snapshot
-revision; the binding never retries, captures a later state, or skips an
-intervening revision. Compatible snapshots use the same root planner and
-application transaction as `replace-root`. Capture, revision, compatibility,
-or reflector failure remains observer-isolated and fails the binding.
+Snapshot restore observations carry private accepted document evidence for their
+exact observed revision. Mirror consumes that evidence without public document
+recapture. Compatible snapshots use the same root planner and application
+transaction as `replace-root`; evidence, compatibility, or reflector failure
+remains observer-isolated and fails the binding.
 
 Rejected delegation attempts do not fail an otherwise healthy binding.
 Incompatible root replacement, incompatible snapshots, and unsupported changed graph

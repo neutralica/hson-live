@@ -48,7 +48,7 @@ The browser composes client-local libraries separately with the authority projec
 
 The active hosted socket is `hson-locus-hosted-aggregate-message`. Hidden runtime additions emit progress with no private topology. A session expansion emits a separate `projection-change` event at the current authority revision. Contraction reconciles the authority-owned projection in the same client map. On reattachment, retained revisions replay under the client's prior session contract, then a disconnected expansion installs its currently authorized state at the recovery cut before queued live traffic. If retained history is unavailable, Echo reconciles a current authorized snapshot into only the authority-owned portion of its existing map, then applies the queued tail. Client-local state, unchanged authority handles, and unrelated Mirror/LiveTree resources survive. A Locus process restart loses its in-memory replay window and uses this fallback path.
 
-Local `render_document(...)` pairs browser-compatible HTML with a detached continuation bootstrap without an authorization boundary. Local one-library LiveMap constructors remain supported.
+Local `map.cut({ data?, documents?, html? })` produces selected transferable `libs` and optional coherent HTML. A selected document library renders itself with `render()`. Local one-library LiveMap constructors remain supported.
 
 See [authorized client projections](./authorized-client-projection.md), [SSR composition](../ssr-composition.md), and [Echo API](../echo/api-echo.md).
 

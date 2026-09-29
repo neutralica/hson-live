@@ -70,7 +70,6 @@ export {
   decode_ssr_bootstrap,
   DocumentSsrError,
   encode_ssr_bootstrap,
-  render_document,
   render_hosted_document,
   SsrBootstrapCodecError,
 } from "./api/ssr/index.js";
@@ -79,7 +78,6 @@ export type {
   DecodedSsrBootstrap,
   EncodedSsrBootstrap,
   HostedLibrariesDocumentSsr,
-  LibrariesDocumentSsr,
   HostedLibrariesDocumentCut,
   SsrBootstrapCodecOptions,
   SsrBootstrapKind,

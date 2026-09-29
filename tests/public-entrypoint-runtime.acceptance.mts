@@ -180,7 +180,6 @@ check("SSR root and subpath exports share runtime identity", () => {
       SsrBootstrapCodecError as RootBootstrapError,
       encode_ssr_bootstrap as rootEncode,
       decode_ssr_bootstrap as rootDecode,
-      render_document as rootRender,
       render_hosted_document as rootHostedRender,
     } from "hson-live";
     import {
@@ -188,12 +187,11 @@ check("SSR root and subpath exports share runtime identity", () => {
       SsrBootstrapCodecError as SsrBootstrapError,
       encode_ssr_bootstrap as ssrEncode,
       decode_ssr_bootstrap as ssrDecode,
-      render_document as ssrRender,
       render_hosted_document as ssrHostedRender,
     } from "hson-live/ssr";
     if (RootError !== SsrError || RootBootstrapError !== SsrBootstrapError
       || rootEncode !== ssrEncode || rootDecode !== ssrDecode
-      || rootRender !== ssrRender || rootHostedRender !== ssrHostedRender) {
+      || rootHostedRender !== ssrHostedRender) {
       throw new Error("SSR entrypoint identity diverged");
     }
   `;
@@ -207,11 +205,8 @@ check("SSR root and subpath exports share runtime identity", () => {
 check("SSR declarations expose only the approved semantic surface", () => {
   const declaration = readFileSync(resolve(repositoryRoot, "dist", "api", "ssr", "index.d.ts"), "utf8");
   for (const approved of [
-    "render_document",
     "render_hosted_document",
     "BrowserRealizationHtml",
-    "DocumentSsr",
-    "LibrariesDocumentSsr",
     "HostedLibrariesDocumentSsr",
     "DocumentSsrError",
     "SsrBootstrapKind",

@@ -1,9 +1,9 @@
+import type { LiveMapDocumentCapture } from "./livemap.document.capture.js";
 import { is_Node } from "../../core/node-guards.js";
 import { collect_hson_node_quid_claims } from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
 export { canonical_hson_graph_equal as canonical_graph_equal } from "../../core/canonical-hson-equal.js";
 import type {
-  LiveMapDocumentCapture,
   LiveMapDocumentInstallOptions,
   LiveMapDocumentMode,
   LiveMapGraphCommit,

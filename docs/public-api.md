@@ -146,31 +146,32 @@ const echo = create_echo({ socket, map: clientMap, recovery: { logicalMapId } })
 
 A one-library hosted application is a one-library registry. It still requires explicit exposure and an authorized session projection. `locus.lib.add(definitions, { exposure })` admits a runtime authority batch; missing exposure entries default to private. `locus.sessions.updateProjection(sessionId, request)` expands or contracts an attached grant using current authorization context; disconnected resumable sessions supply explicit current context as a third argument. `authority.cut(sessionId, document?)` creates one HTML and projection-state cut at a single authority revision and current session projection. The application owns its shell and can return `cut.html` without a bootstrap carrier. Hosted Echo reconciles authority-owned libraries in the existing composed client map through live delivery, retained replay, and snapshot fallback; local libraries remain local. The active hosted socket envelope is `hson-locus-hosted-aggregate-message`.
 
-### 7. Local SSR — render, deliver, restore, continue
+### 7. Local rendering, selective transfer, and continuation
 
 ```ts
-import { decode_ssr_bootstrap, encode_ssr_bootstrap, render_document } from "hson-live/ssr";
+import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "hson-live/ssr";
 
-const rendered = render_document({ map: documentMap });
-const encoded = encode_ssr_bootstrap(rendered.bootstrap);
+const html = documentMap.lib("page").render();
+const stateOnly = documentMap.cut();
+const rendered = documentMap.cut({ data: ["state"], documents: ["page"], html: "page" });
+const encoded = encode_ssr_bootstrap(rendered.libs);
 const decoded = decode_ssr_bootstrap(encoded);
 ```
 
-`rendered.html` is `BrowserRealizationHtml`, not `Hson.toHtml()` transport
-HTML. Use the matching public installer/restore path for `decoded.bootstrap`,
-then `continue_document` with an explicit existing root Element. Put an
-application-root carrier outside that continued root with no surrounding
-whitespace in its encoded text; full-document bootstrap is out-of-band. Return
-a standard Web `Response`; storage, routes, cache policy, and security remain
-application-owned. Runtime coverage: SSR codec and document-SSR acceptance
-tests.
+A document library renders itself as `BrowserRealizationHtml`. A map cuts selected
+transferable state: omitted data/document axes include every application library
+of that family, and `[]` includes none. State-only cuts return `{ libs }`; HTML
+cuts return `{ libs, html, document }`. HTML must name an already selected document.
+The registry contains only selected contracts and roots, with applicable interaction
+storage filtered by selected documents. Data-only, document-only, mixed, and empty
+state selections are valid.
 
-For a Library registry, use `render_document({ map: libraries, document: "page" })`;
-if it contains exactly one public document Library, the document name is inferred.
-The result includes `document`, selected-document `html`, and `bootstrap` for the
-complete Libraries snapshot, including its data Libraries. Data LiveMaps and
-data-only local maps cannot render a document. The HTML and bootstrap derive
-from one semantic revision.
+Use `install_libraries_snapshot(decoded.bootstrap)` to reconstruct the selected
+local topology, then `continue_document` with an explicit existing root Element.
+Put an application-root carrier outside that continued root with no surrounding
+whitespace in its encoded text; full-document state delivery is out-of-band.
+Return a standard Web `Response`; storage, routes, cache policy, and security
+remain application-owned. Hosted cuts retain their existing session contract.
 
 ### 8. Hosted SSR — authorized cut and continuation
 
@@ -242,7 +243,7 @@ and document continuation.
   `Hson.data.entries(value)` for exact semantics or `Hson.data.materialize(value)` for a detached JS view.
 - Construct hosted Locus from a library registry with explicit initial exposure and session projection; a one-library application uses the same path. Runtime admissions use `locus.lib.add` with private exposure as the default. Keep persistence server-side.
 - Admit documents through `hsonLiveMap.fromLibraries({ page: { document, schema } })`;
-  use `map.render("page")` for local HTML and path document requests for mutation.
+  use `map.lib("page").render()` for local HTML and path document requests for mutation.
 - Use `TransformOutput`, `SsrBootstrapCodecError`, `tree.style`/`tree.css` or
   `tree.css.global` and `tree.css.snapshot()`. Remove `sanitizeBEWARE`, `ensureQuid`, `syncNow`, and
   independent `ContentManager` construction assumptions.

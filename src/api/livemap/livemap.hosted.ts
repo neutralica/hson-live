@@ -21,7 +21,6 @@ import type {
   LiveMapRootMode,
   HostedLiveMapSnapshot,
   LiveMapSnapshot,
-  LocalLibrariesContinuationSnapshot,
   LivePath,
 } from "../../types/livemap.types.js";
 import type {
@@ -197,11 +196,16 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
       rootCodec: HOSTED_ROOT_FORMAT,
     });
   });
-  const canonical = registry_canonical_text(libraries);
+  return registry_from_entries(libraries);
+}
+
+/** Build a detached registry from already validated canonical contract entries. @internal */
+export function registry_from_entries(entries: readonly HostedRegistryEntry[]): HostedRegistry {
+  const libraries = Object.freeze([...entries]);
   return Object.freeze({
     format: HOSTED_REGISTRY_FORMAT,
-    libraries: Object.freeze(libraries),
-    digest: hosted_sha256(canonical),
+    libraries,
+    digest: hosted_sha256(registry_canonical_text(libraries)),
   });
 }
 
@@ -528,7 +532,7 @@ export function assert_portable_aggregate_snapshot_shape(snapshot: PortableAggre
 }
 
 /** Reuse the portable local installer while retaining a distinct client wire format. */
-export function portable_aggregate_snapshot_as_local(snapshot: PortableAggregateSnapshot): LocalLibrariesContinuationSnapshot {
+export function portable_aggregate_snapshot_as_local(snapshot: PortableAggregateSnapshot): LiveMapSnapshot {
   assert_portable_aggregate_snapshot_shape(snapshot);
   return Object.freeze({
     format: LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
@@ -581,7 +585,7 @@ export function decode_hosted_root(input: unknown, maxPayloadBytes?: number): Hs
   return root;
 }
 
-export function assert_libraries_snapshot_bound(snapshot: LiveMapSnapshot | LocalLibrariesContinuationSnapshot): void {
+export function assert_libraries_snapshot_bound(snapshot: LiveMapSnapshot): void {
   assert_encoded_bound(snapshot, HOSTED_MAX_SNAPSHOT_BYTES, "Hosted aggregate snapshot");
 }
 
@@ -589,11 +593,6 @@ export function assert_libraries_snapshot_shape(snapshot: LiveMapSnapshot): void
   const record = exact_record(snapshot, "Hosted aggregate snapshot");
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries"], "Hosted aggregate snapshot");
   assert_libraries_snapshot_entries(record);
-}
-
-/** Local browser bootstrap deliberately has no authority identity state. @internal */
-export function assert_local_libraries_snapshot_shape(snapshot: LocalLibrariesContinuationSnapshot): void {
-  assert_libraries_snapshot_shape(snapshot);
 }
 
 function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>): void {

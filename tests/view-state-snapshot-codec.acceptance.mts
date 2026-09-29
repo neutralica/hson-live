@@ -1,10 +1,11 @@
+import type { LiveMapDocumentCapture } from "../src/api/livemap/livemap.document.capture.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { Hson } from "../src/hson-authoring.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonAttrs, HsonMeta, HsonNode, JsonValue } from "../src/core/types.ts";
-import type { LiveMapDocumentCapture, LiveMapDocumentMode } from "../src/types/livemap.types.ts";
+import type { LiveMapDocumentMode } from "../src/types/livemap.types.ts";
 import {
   decode_view_state_snapshot,
   encode_view_state_snapshot,

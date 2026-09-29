@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import * as publicApi from "../src/index.ts";
-import { Hson, hsonLiveMap, hsonLiveTree, hsonTransform, render_document, type HsonDocument } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonLiveTree, hsonTransform, type HsonDocument } from "../src/index.ts";
 import type { HsonCanonical } from "../src/api/transform/transform.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -320,7 +320,7 @@ check("single raw-text substitutions preserve ordinary and complete managed CSS"
     assert.equal(hsonTransform.fromTrustedHtml(transport).toHson().serialize(), page);
     assert.doesNotMatch(transport, /<\/?_hson_(?:elem|str)(?=[\s>])/);
     const map = hsonLiveMap.fromLibraries({ page: { document: page, schema: HtmlPageSchema } });
-    const browserHtml = map.render();
+    const browserHtml = map.lib("page").render();
     assert.ok(browserHtml.includes(`<style>${cssText}</style>`));
     assert.doesNotMatch(browserHtml, /hson-raw:/);
   }
@@ -330,14 +330,14 @@ check("single raw-text substitutions preserve ordinary and complete managed CSS"
 check("external script admits, inline script rejects, and unsafe style closes reject browser realization", () => {
   const script = Hson.document`<script src="/app.js"/>`;
   assert.equal(hsonTransform.fromHson(script).toHtml().serialize(), '<script src="/app.js"></script>');
-  assert.equal(hsonLiveMap.fromLibraries({ page: { document: script, schema: ScriptSchema } }).render(), '<script src="/app.js"></script>');
+  assert.equal(hsonLiveMap.fromLibraries({ page: { document: script, schema: ScriptSchema } }).lib("page").render(), '<script src="/app.js"></script>');
   assert.throws(() => Hson.document`<script "go()"/>`, /requires src and no content/);
   assert.throws(() => Hson.document`<script src="/app.js" "go()"/>`, /requires src and no content/);
 
   const unsafe = Hson.document`<style "${"a{} </style> body{}"}"/>`;
   const map = hsonLiveMap.fromLibraries({ page: { document: unsafe, schema: StyleSchema } });
   assert.throws(
-    () => map.render(),
+    () => map.lib("page").render(),
     (error: unknown) => error instanceof Error
       && error.cause instanceof Error
       && /closing sentinel/.test(error.cause.message),

@@ -79,7 +79,7 @@
     const runtimeReplica = hsonLiveMap.create();
     runtimeReplica.replay(runtimeCommit);
     const runtimeAdmissionPassed = runtimeMap.rev === 1
-      && runtimeMap.render() === "<main>browser</main>"
+      && runtimeMap.lib("runtimePage").render() === "<main>browser</main>"
       && runtimeReplica.capture().registry.digest === runtimeMap.capture().registry.digest;
 
     const passed = runtimeAdmissionPassed && calls.element === 1

@@ -1,3 +1,4 @@
+import { document_html } from "./helpers/document-library.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -34,7 +35,7 @@ function registry(source: string) {
   });
 }
 function text(map: ReturnType<typeof registry>): string {
-  return map.render("page");
+  return document_html(map.lib("page"));
 }
 
 check("portable registry restore replaces document content and captured revision", () => {
@@ -81,7 +82,7 @@ check("foreign registry Schema requires fresh installation", () => {
   assert.equal(target.lib("page"), oldPage);
   const installed = install_libraries_snapshot(other.capture()).map;
   assert.deepEqual(installed.capture(), other.capture());
-  assert.match(installed.render("page"), /other/);
+  assert.match(document_html(installed.lib("page")), /other/);
 });
 
 check("portable capture excludes supplied runtime QUIDs", () => {
