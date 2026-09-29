@@ -144,23 +144,17 @@ LiveTree turns Hson into browser DOM, rendering Hson markup as live documents. I
 const body = hson.liveTree.queryBody().graft();
 
 const message = body
-  .create
-  .div()
-  .text
-  .set("hello")
-  .css
-  .setMany({
+  .create.div()
+  .text.set("hello")
+  .css.setMany({
     padding: "1rem",
     fontWeight: "700",
   });
 
 message.listen.onClick(() => {
   message
-    .text
-    .set("goodbye")
-    .css
-    .set
-    .backgroundColor("pink");
+    .text.set("goodbye")
+    .css.set.backgroundColor("pink");
 });
 ```
 
@@ -243,7 +237,7 @@ An optional proxy surface provides the same underlying capabilities through stru
 
 ## LiveMap - LiveTree Integration
 
-LiveTree bindings connect document presentation to LiveMap state.
+Bindings connect LiveTree document presentation to LiveMap state.
 
 ```ts
 const state = hson.liveMap.fromJson({
@@ -253,8 +247,7 @@ const state = hson.liveMap.fromJson({
 const body = hson.liveTree.queryBody().graft();
 
 const button = body
-  .create
-  .button();
+  .create.button();
 
 const stopBinding = button.bind.text(
   state.at(["count"]),
