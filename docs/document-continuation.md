@@ -96,20 +96,18 @@ Continuation calls `activate_interactions`; it does not call
 ## Hosted continuation
 
 For hosted continuation, deliver the explicit `session.cut({ html: "page" })`
-result's `libs` and `document` separately from its HTML. Decode the projected
-state carrier and compose Echo's map with `hsonLiveMap.fromClientSnapshot({
-authority: decoded.bootstrap, localLibraries })`. Resolve the delivered document
-name to a handle in that map, then pass the handle, Echo, decoded projection,
-and existing root Element to `continue_hosted_document`. Echo recovery
-converges the selected authority projection while client-local libraries stay
-local.
+result and its credential separately. If a text carrier is needed, decode the
+projected state and place it back in the cut's `libs` field. Pass the cut,
+credential, socket, and existing root Element to `continue_hosted_document`.
+The document name is explicit in the HTML-bearing cut; a separate `document`
+name can select among multiple projected documents.
 
 ```ts
-const selected = clientMap.lib(selectedDocumentName);
 const continuation = await continue_hosted_document({
-  echo,
-  authority: decoded.bootstrap,
-  document: selected,
+  cut,
+  credential,
+  socket,
+  document: selectedDocumentName,
   root: document.querySelector("main")!,
 });
 
@@ -117,21 +115,23 @@ await continuation.tree.async.attrs.set("data-state", "accepted");
 await continuation.tree.async.css.global.sel("body").setProp("color", "navy");
 ```
 
-The caller supplies a replica-bearing `Echo` whose exact map already contains
-the selected document. Continuation first admits the existing DOM at its
-captured revision and binds Mirror, then awaits ordinary Echo recovery. It
+Continuation constructs a managed Echo replica from the cut. It first admits
+the existing DOM at its captured revision and binds Mirror, then completes
+Echo recovery. It
 resolves only when Echo is caught up and Mirror is active at the current map
 revision. Compatible replay therefore advances the already-adopted nodes in
 place. An incompatible root epoch fails closed through existing Mirror
 continuity rules.
 
 Hosted interactions are activated once, after that readiness boundary. Their
-authoritative dispatcher is derived from the supplied Echo; callers provide
+authoritative dispatcher is derived from the prepared Echo; callers provide
 only local capabilities and an optional failure observer:
 
 ```ts
 const continuation = await continue_hosted_document({
-  echo,
+  cut,
+  credential,
+  socket,
   root,
   interactions: {
     local: { reveal: () => showPanel() },

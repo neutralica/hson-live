@@ -1,3 +1,5 @@
+import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
+import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonEcho, hsonLiveMap,
   type HsonSchema, type InteractionDescriptor } from "../src/index.ts";
@@ -308,7 +310,7 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   const effective = normalize_locus_effective_projection(policy, { libraries: ["public", "page"] });
   if (effective instanceof Promise) throw new Error("Expected synchronous projection policy.");
   const initialProjection = capture_selected_authority_projection_snapshot(map, effective);
-  const clientMap = hsonLiveMap.fromClientSnapshot({ authority: initialProjection, localLibraries: {} });
+  const clientMap = client_projection_map({ authority: initialProjection, localLibraries: {} });
   const value = "x".repeat(4 * 1024 * 1024 + 512 * 1024);
   for (const name of names) await locus.mutate((draft) => {
     const library = draft.lib(name);
@@ -340,11 +342,10 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   assert.equal(publicLibrary.snap(["value"]), "tiny");
   const pair = socket_pair();
   restored.connect(pair.server);
-  const client = hsonEcho.create({ socket: pair.client, map: clientMap,
-    recovery: { logicalMapId: restored.logicalMapId } });
+  const client = create_recovery_test_driver({ socket: pair.client, map: clientMap });
   client.connect();
   await client.session.create();
-  assert.equal((await client.recovery.recover()).strategy, "snapshot");
+  assert.equal((await client.completeRecovery()).strategy, "snapshot");
   const sessionId = client.session.sessionId;
   assert.ok(sessionId);
   const cut = restored.session.get(sessionId)!.cut({ html: "page" });

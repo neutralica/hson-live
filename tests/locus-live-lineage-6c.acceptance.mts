@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
@@ -20,7 +21,7 @@ const policy = make_locus_hosted_projection_policy(before.registry, before.autho
 ], undefined, () => ({ libraries: ["page"] }));
 const effective = await normalize_locus_effective_projection(policy, { libraries: ["page"] });
 const projected = project_authority_snapshot(before, effective);
-const client = hsonLiveMap.fromClientSnapshot({ authority: projected, localLibraries: {} });
+const client = client_projection_map({ authority: projected, localLibraries: {} });
 const replica = create_echo_aggregate_replica_capability_internal(client);
 const pageId = engine.libraries()[0]!;
 const target = { kind: "path" as const, path: validate_document_path([0, 0]) };

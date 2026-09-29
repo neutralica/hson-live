@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -41,9 +42,9 @@ const authorityProgress = project_locus_live_revision_internal(Object.freeze({
   operations: Object.freeze([]), replay: Object.freeze({ operations: Object.freeze([]) }),
 }), initial, Object.freeze({ ...initial, revision: initial.revision + 1 }), selectedA);
 assert.equal(authorityProgress.kind, "progress");
-const clientA = hsonLiveMap.fromClientSnapshot({ authority: snapshotA,
+const clientA = client_projection_map({ authority: snapshotA,
   localLibraries: { local: { data: { value: "LOCAL" }, schema: LocalSchema } } });
-const clientB = hsonLiveMap.fromClientSnapshot({ authority: snapshotB,
+const clientB = client_projection_map({ authority: snapshotB,
   localLibraries: { local: { data: { value: "LOCAL" }, schema: LocalSchema } } });
 const replicaA = create_echo_aggregate_replica_capability_internal(clientA);
 const replicaB = create_echo_aggregate_replica_capability_internal(clientB);

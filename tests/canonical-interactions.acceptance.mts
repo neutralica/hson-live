@@ -1,3 +1,5 @@
+import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
+import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_public_exposure, test_public_projection } from "./helpers/hosted-exposure.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -107,12 +109,12 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
 async function activate_echo(echo: Readonly<{
   connect: () => unknown;
   session: Readonly<{ credential: string | undefined; create: () => Promise<unknown>; reattach: () => Promise<unknown> }>;
-  recovery: Readonly<{ recover: () => Promise<unknown> }>;
+  completeRecovery: () => Promise<unknown>;
 }>): Promise<void> {
   echo.connect();
   if (echo.session.credential === undefined) await echo.session.create();
   else await echo.session.reattach();
-  await echo.recovery.recover();
+  await echo.completeRecovery();
 }
 
 function local(id: string, key: string, args: HsonData = Hson.data.from(null), override: Partial<InteractionListener> = {}): InteractionDescriptor {
@@ -732,11 +734,11 @@ await check("public Echo dispatcher preserves exact payload through configured L
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
     configured.exposure, configured.defaultProjection, configured.authorizeProjection);
   const effective = await normalize_locus_effective_projection(policy, configured.defaultProjection);
-  const echoMap = hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(captured, effective),
+  const echoMap = client_projection_map({ authority: project_authority_snapshot(captured, effective),
     localLibraries: {} }) as typeof authorityMap;
   const pair = socket_pair();
   locus.connect(pair.server);
-  const echo = hsonEcho.create({ socket: pair.client, map: echoMap, recovery: { logicalMapId: locus.logicalMapId } });
+  const echo = create_recovery_test_driver({ socket: pair.client, map: echoMap });
   await activate_echo(echo);
   assert.throws(() => add_interaction(echoMap, local("replica-write", "save")), /library mutation authority/i);
   const reflection = hsonMirror(echoMap.lib("page"));

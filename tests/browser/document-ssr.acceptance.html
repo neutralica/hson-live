@@ -13,7 +13,6 @@ import {
   Hson,
   continue_document,
   continue_hosted_document,
-  create_echo,
   create_browser_locus_socket,
   decode_ssr_bootstrap,
   encode_ssr_bootstrap,
@@ -317,35 +316,26 @@ try {
   const decodedHostedLibraries = decode_ssr_bootstrap(state.encoded.libraries);
   check("browser hosted Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHostedLibraries.bootstrap) === state.encoded.libraries);
   check("hosted carrier is the projected hosted family", decodedHostedLibraries.kind === "hosted-projection");
-  const librariesMap = hson.liveMap.fromClientSnapshot({ authority: decodedHostedLibraries.bootstrap, localLibraries: {} });
-  check("aggregate client map starts at its local revision", librariesMap.rev === 0);
   check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.revision === state.libraries.libs.revision);
+  const librariesSocket = create_browser_locus_socket(state.librariesSocketUrl);
+  await librariesSocket.ready;
+  let interactionCalls = 0;
+  const librariesContinuation = await continue_hosted_document({
+    cut: { ...state.libraries, libs: decodedHostedLibraries.bootstrap },
+    credential: state.credential,
+    socket: librariesSocket.socket,
+    document: state.libraries.document,
+    root: librariesRoot,
+    interactions: { local: { clicker: () => { interactionCalls += 1; } } },
+  });
+  const librariesEcho = librariesContinuation.echo;
+  const librariesMap = librariesEcho.map;
   check("aggregate install restores included Libraries", librariesMap.lib("admin").mode === "document" && librariesMap.lib("state").mode !== "document");
   let hiddenUnavailable = false;
   try { librariesMap.lib("@hson/canonical-interactions"); } catch { hiddenUnavailable = true; }
   check("hidden interaction Library remains unavailable", hiddenUnavailable);
-  const librariesSocket = create_browser_locus_socket(state.librariesSocketUrl);
-  await librariesSocket.ready;
-  const librariesEcho = create_echo({
-    socket: librariesSocket.socket,
-    map: librariesMap,
-    recovery: { logicalMapId: decodedHostedLibraries.bootstrap.authority.logicalMapId },
-    session: { credential: state.credential },
-  });
-  check("Echo cursor starts at projected authority N", librariesEcho.recovery.lastAppliedRev === decodedHostedLibraries.bootstrap.revision && librariesMap.rev === 0);
-  librariesEcho.connect();
-  await librariesEcho.session.reattach();
-  const selected = librariesEcho.map.lib(state.libraries.document);
-  let interactionCalls = 0;
-  const librariesContinuation = await continue_hosted_document({
-    echo: librariesEcho,
-    authority: decodedHostedLibraries.bootstrap,
-    document: selected,
-    root: librariesRoot,
-    interactions: { local: { clicker: () => { interactionCalls += 1; } } },
-  });
   check("aggregate recovery catches projected N up to N+1", librariesEcho.recovery.status === "caught_up"
-    && librariesEcho.recovery.lastAppliedRev === state.libraries.libs.revision + 1 && librariesMap.rev === 1);
+    && librariesEcho.recovery.debug().lastAppliedRev === state.libraries.libs.revision + 1 && librariesMap.rev === 1);
   check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
   check("other public document converges", librariesEcho.map.lib("admin").at([]).attrs.get("data-recovered") === "admin");
   check("data Library converges", librariesEcho.map.lib("state").snap(["count"]) === 1);
@@ -382,17 +372,12 @@ try {
   check("hosted CSS cut styles a browser without JavaScript", hostedStyle !== null
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(1, 2, 3)");
   const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut.libs));
-  const cssClientMap = hson.liveMap.fromClientSnapshot({ authority: cssBootstrap.bootstrap, localLibraries: {} });
-  check("hosted CSS bootstrap contains document stylesheet", cssClientMap.lib("page").css.snapshot().includes("rgb(1, 2, 3)"));
   const cssBrowserSocket = create_browser_locus_socket(state.cssSocketUrl);
   await cssBrowserSocket.ready;
-  const cssEcho = create_echo({ socket: cssBrowserSocket.socket, map: cssClientMap,
-    recovery: { logicalMapId: cssBootstrap.bootstrap.authority.logicalMapId },
-    session: { credential: state.cssCredential } });
-  cssEcho.connect();
-  await cssEcho.session.reattach();
-  const cssContinued = await continue_hosted_document({ echo: cssEcho, authority: cssBootstrap.bootstrap,
-    document: cssEcho.map.lib("page"), root: hostedCssRoot });
+  const cssContinued = await continue_hosted_document({ cut: { ...state.cssCut, libs: cssBootstrap.bootstrap },
+    credential: state.cssCredential, socket: cssBrowserSocket.socket, document: "page", root: hostedCssRoot });
+  const cssEcho = cssContinued.echo;
+  const cssClientMap = cssEcho.map;
   check("hosted CSS replay updates adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(4, 5, 6)");
   const authoredCssRev = cssClientMap.rev;

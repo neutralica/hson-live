@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_public_projection } from "./helpers/hosted-exposure.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -64,7 +65,7 @@ function projection_fence(source: LiveMap) {
 }
 
 function projected_client_map(source: LiveMap): LiveMap {
-  return hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(
+  return client_projection_map({ authority: project_authority_snapshot(
     internal_livemap_aggregate_authority(source).captureHosted(), effective_for(source)), localLibraries: {} });
 }
 

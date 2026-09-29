@@ -98,36 +98,32 @@ function socketPair(): Readonly<{
   const effective = normalize_locus_effective_projection(policy, requested);
   if (effective instanceof Promise) throw new Error("Expected synchronous continuation projection.");
   const projected = project_authority_snapshot(complete, effective);
-  const replica = hsonLiveMap.fromClientSnapshot({ authority: projected, localLibraries: {} });
-  const pair = socketPair();
-  locus.connect(pair.server);
-  const echo = hsonEcho.create({ socket: pair.client, map: replica, recovery: { logicalMapId: locus.logicalMapId } });
-  echo.connect();
-  await echo.session.create();
+  const session = await locus.session.create(requested);
+  const cut = session.cut();
+  const fresh = () => {
+    const pair = socketPair();
+    const detach = locus.connect(pair.server);
+    return { shared: { credential: session.credential!, socket: pair.client }, detach };
+  };
+  let wire = fresh();
   const root = new FakeElement("main");
   const button = new FakeElement("button");
   root.appendChild(button);
-  const otherRequest: LocusRequestedProjection = { libraries: ["page"] };
-  const otherPolicy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
-    test_public_exposure(authority), otherRequest, () => otherRequest);
-  const otherEffective = normalize_locus_effective_projection(otherPolicy, otherRequest);
-  if (otherEffective instanceof Promise) throw new Error("Expected synchronous alternate projection.");
-  const otherProjected = project_authority_snapshot(complete, otherEffective);
-  await assert.rejects(
-    continue_hosted_document({ echo, authority: otherProjected, root: root as unknown as Element }),
-    /authority projection does not match/i,
-  );
+  await assert.rejects(continue_hosted_document({ ...wire.shared, cut, document: "state", root: root as unknown as Element }),
+    /unknown|document/i);
   assert.equal(get_node_for_el(root as unknown as Element), undefined);
+  wire.detach(); wire = fresh();
   await assert.rejects(
-    continue_hosted_document({ echo, authority: Object.freeze({ ...projected, revision: projected.revision + 1 }),
+    continue_hosted_document({ ...wire.shared, cut: { libs: Object.freeze({ ...projected, revision: projected.revision + 1 }) },
       root: root as unknown as Element }),
-    /authority projection does not match/i,
+    (cause) => cause instanceof DocumentContinuationError && cause.phase === "recover",
   );
   assert.equal(get_node_for_el(root as unknown as Element), undefined);
+  wire.detach(); wire = fresh();
   await assert.rejects(
     continue_hosted_document({
-      echo,
-      authority: projected,
+      ...wire.shared,
+      cut,
       root: root as unknown as Element,
       interactions: { local: null as unknown as InteractionLocalBehaviors },
     }),
@@ -136,13 +132,14 @@ function socketPair(): Readonly<{
       && cause.cause !== undefined,
   );
   assert.equal(get_node_for_el(root as unknown as Element), undefined);
+  wire.detach(); wire = fresh();
   const continuation = await continue_hosted_document({
-    echo,
-    authority: projected,
+    ...wire.shared,
+    cut,
     root: root as unknown as Element,
     interactions: { local: {} },
   });
-  assert.equal(continuation.map, replica.lib("page"));
+  assert.equal(continuation.map, continuation.echo.map.lib("page"));
   button.dispatchEvent(new Event("click"));
   for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
   assert.equal(handled === Hson.data.from({ exact: true }), true);
@@ -151,8 +148,9 @@ function socketPair(): Readonly<{
   button.dispatchEvent(new Event("click"));
   for (let attempt = 0; attempt < 5; attempt += 1) await Promise.resolve();
   assert.equal(handled, undefined);
-  assert.equal(echo.session.status, "attached");
-  echo.dispose();
+  assert.equal(continuation.echo.session.status, "attached");
+  continuation.echo.dispose();
+  wire.detach();
   locus.dispose();
 }
 

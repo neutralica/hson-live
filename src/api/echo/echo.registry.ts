@@ -1,16 +1,14 @@
 import type { JsonValue } from "../../core/types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
-import type { LiveMap } from "../../types/livemap.types.js";
 import type {
-  Echo,
   EchoRecoveryDiagnostics,
   EchoRecoveryFailure,
-  EchoRecoveryOptions,
   EchoRecoveryStatus,
   EchoRecoveryStrategy,
   LocusActionPayloads,
-  EchoOptions,
 } from "../../types/locus.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
+import type { ReplicaOptions, ReplicaStrategy } from "./echo.lazy.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { derive_replacement_lineage_for_action } from "../livemap/livemap.document.lineage.js";
 import {
@@ -35,23 +33,22 @@ export function create_registry_echo<
   TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
-  options: EchoOptions<TMap> & Readonly<{ map: TMap; recovery: EchoRecoveryOptions }>,
-  composition?: Readonly<{
+  options: ReplicaOptions<TMap>,
+  composition: Readonly<{
     connection: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, LocusHostedAggregateSynchronizationOutput | LocusHostedAggregateCanonicalPublication>;
     management: EchoMapManagementLease;
   }>,
-): Echo<TMap, TActions> {
-  if (composition !== undefined) configure_echo_hosted_aggregate_websocket_internal(composition.connection);
+): ReplicaStrategy {
+  const logicalMapId = internal_livemap_aggregate_authority(options.map).clientProjection()?.authority.logicalMapId;
+  if (logicalMapId === undefined) throw new Error("Echo replica requires an admitted authority projection.");
+  configure_echo_hosted_aggregate_websocket_internal(composition.connection);
   const endpoint = create_echo_socket_client_internal<TActions>({
     socket: options.socket,
     map: options.map,
-    logicalMapId: options.recovery.logicalMapId,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.session === undefined ? {} : { session: options.session }),
-    ...(composition === undefined ? {} : {
-      connection: composition.connection,
-      management: composition.management,
-    }),
+    connection: composition.connection,
+    management: composition.management,
   });
   const documentAuthorities: ReadonlyArray<Readonly<{
     map: object;
@@ -77,7 +74,7 @@ export function create_registry_echo<
             } catch {
               const stable = pending.request;
               await endpoint.wait_until_ready();
-              if (options.recovery.logicalMapId !== expectedIdentity.logicalMapId
+              if (logicalMapId !== expectedIdentity.logicalMapId
                 || endpoint.incarnationId !== expectedIdentity.incarnationId) {
                 throw new Error("Echo document authority stream identity became incompatible before retry.");
               }
@@ -95,7 +92,7 @@ export function create_registry_echo<
         () => endpoint.replica.ready,
         endpoint.replica.onDispose,
         endpoint.replica.waitUntilReady,
-        () => ({ logicalMapId: options.recovery.logicalMapId, incarnationId: endpoint.incarnationId }),
+        () => ({ logicalMapId, incarnationId: endpoint.incarnationId }),
         endpoint.replica.onStateChange,
         () => endpoint.replica.failure,
       );
@@ -111,12 +108,10 @@ export function create_registry_echo<
     endpoint.dispose();
   };
 
-  let recoveryDisposed = false;
   let recoveryFailure: EchoRecoveryFailure | undefined;
   let recoveryStrategy: EchoRecoveryStrategy | undefined;
 
   function recoveryStatus(): EchoRecoveryStatus {
-    if (recoveryDisposed) return "disposed";
     const status = endpoint.diagnostics().status;
     if (status === "recovering") return "recovering";
     if (status === "live") return "caught_up";
@@ -127,14 +122,9 @@ export function create_registry_echo<
 
   const recovery = Object.freeze({
     get status() { return recoveryStatus(); },
-    get logicalMapId() { return options.recovery.logicalMapId; },
-    get incarnationId() { return endpoint.incarnationId; },
-    get lastAppliedRev() { return endpoint.lastAppliedRev; },
-    map: options.map,
     get failure() { return recoveryFailure; },
     get strategy() { return recoveryStrategy; },
     async recover() {
-      if (recoveryDisposed) throw new Error("Echo recovery is disposed.");
       const previousIncarnation = endpoint.incarnationId;
       try {
         const result = await endpoint.recover();
@@ -147,7 +137,7 @@ export function create_registry_echo<
         return Object.freeze({
           strategy: result.outcome,
           sessionId,
-          logicalMapId: options.recovery.logicalMapId,
+          logicalMapId,
           incarnationId,
           headRev: result.revision,
           incarnationChanged: previousIncarnation !== undefined && previousIncarnation !== incarnationId,
@@ -161,16 +151,11 @@ export function create_registry_echo<
         throw cause;
       }
     },
-    dispose() {
-      if (recoveryDisposed) return;
-      recoveryDisposed = true;
-      endpoint.replica.dispose();
-    },
     debug(): EchoRecoveryDiagnostics {
       return Object.freeze({
         status: recoveryStatus(),
         ...(recoveryStrategy === undefined ? {} : { strategy: recoveryStrategy }),
-        logicalMapId: options.recovery.logicalMapId,
+        logicalMapId,
         ...(endpoint.incarnationId === undefined ? {} : { incarnationId: endpoint.incarnationId }),
         ...(endpoint.lastAppliedRev === undefined ? {} : { lastAppliedRev: endpoint.lastAppliedRev }),
         bodyCommitsApplied: 0,
@@ -186,16 +171,5 @@ export function create_registry_echo<
     },
   });
 
-  return Object.freeze({
-    map: options.map,
-    recovery,
-    clientId: endpoint.clientId,
-    session: endpoint.session,
-    connect: endpoint.attachTransport,
-    disconnect: endpoint.disconnect,
-    action: endpoint.action,
-    retryAction: endpoint.retryAction,
-    actionStatus: endpoint.actionStatus,
-    dispose,
-  }) as unknown as Echo<TMap, TActions>;
+  return Object.freeze({ recovery, dispose });
 }

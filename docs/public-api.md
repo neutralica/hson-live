@@ -128,7 +128,7 @@ not the same promise as Echo revision convergence.
 
 ```ts
 import { create_locus } from "hson-live/locus";
-import { create_echo } from "hson-live/echo";
+import { hsonEcho } from "hson-live/echo";
 import { hsonLiveMap } from "hson-live/livemap";
 import { Hson } from "hson-live";
 
@@ -139,9 +139,8 @@ const authority = create_locus({
   exposure: [{ library: "page", exposure: "client-public" }],
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
-// The client map is composed from an authorized AuthorityProjectionSnapshot
-// and separately declared client-local libraries.
-const echo = create_echo({ socket, map: clientMap, recovery: { logicalMapId } });
+const session = await authority.session.create({ libraries: ["page"] });
+const echo = await hsonEcho.replicate({ cut: session.cut(), credential: session.credential!, socket });
 ```
 
 A one-library hosted application is a one-library registry. It still requires explicit exposure and an authorized session projection. `locus.lib.add(definitions, { exposure })` admits a runtime authority batch; missing exposure entries default to private. `session.update(request, context?)` expands or contracts a retained grant through the ordinary authorizer. A connected session uses its attachment context; a disconnected server-created session can use its captured creation context; a disconnected connection-created session supplies current trusted context as the second argument. `session.cut({ html: document })` creates one HTML and projection-state cut at a single authority revision and current session projection. The application owns its shell and can return `cut.html` without a bootstrap carrier. Hosted Echo reconciles authority-owned libraries in the existing composed client map through live delivery, retained replay, and snapshot fallback; local libraries remain local. The active hosted socket envelope is `hson-locus-hosted-aggregate-message`.
@@ -182,8 +181,8 @@ const session = await authority.session.create({ libraries: ["page"] });
 const cut = session.cut({ html: "page" });
 const encoded = encode_ssr_bootstrap(cut.libs);
 // Deliver cut.html and encoded in the application-owned response.
-// In the browser, decode the projected bootstrap and compose Echo before continuing.
-const continuation = await continue_hosted_document({ echo, root, authority: decoded.bootstrap });
+// In the browser, decode the projected state if its carrier required text.
+const continuation = await continue_hosted_document({ cut, credential, socket, root });
 await continuation.tree.async.attrs.set("data-ready", "yes");
 continuation.dispose();
 ```
@@ -191,8 +190,7 @@ continuation.dispose();
 `session.cut({ html: document })` requires an active authorized session.
 The selected document must belong to that session's projection. The cut's
 HTML and `AuthorityProjectionSnapshot` share one authority revision. A cut
-without HTML returns `{ libs }`. Explicit HTML selection returns `{ libs, html, document }`. Deliver `session.credential` separately for later client reattachment; it is absent from `libs`. The browser composes client-local libraries
-separately. Hosted continuation adopts matching DOM, waits for Echo recovery,
+without HTML returns `{ libs }`. Explicit HTML selection returns `{ libs, html, document }`. Deliver `session.credential` separately for client reattachment; it is absent from `libs`. Hosted continuation constructs a managed replica, adopts matching DOM, then completes Echo recovery,
 and exposes `continuation.mirror` for projection health. Its disposer releases
 its Mirror and interaction arrangements without disposing Echo.
 

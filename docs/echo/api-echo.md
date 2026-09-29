@@ -5,32 +5,28 @@ Echo's internal operation and synchronization architecture is described in
 adapter remains WebSocket.
 
 Echo is semantic hosted-client participation in one Locus authority domain.
-There is one public `Echo` type family with two capability-sensitive
-construction forms:
+There is one public `Echo` type family with two compositions:
 
 ```ts
-import { create_echo, hsonEcho, type Echo, type EchoOptions } from "hson-live/echo";
+import { create_echo, hsonEcho } from "hson-live/echo";
 
 const endpoint = create_echo({ socket });
-const replica = create_echo({ socket, map, recovery });
+const replica = await hsonEcho.replicate({ cut: sessionCut, credential, socket });
 ```
 
-`hsonEcho.create`, `hson.echo.create`, and `create_echo` have the same
-construction behavior. An endpoint-only Echo exposes `clientId`, `session`,
+`hsonEcho.create`, `hson.echo.create`, and `create_echo` construct an endpoint-only Echo. It exposes `clientId`, `session`,
 `connect`, `disconnect`, `dispose`, `action`, `retryAction`, and `actionStatus`.
 It does not construct or expose a LiveMap and has no recovery capability.
 
-A replica-bearing Echo requires both an explicit `map` and recovery
-configuration. It exposes the same endpoint capabilities plus that client map
-and `recovery`. In a composed fixed-library map, Echo manages only
-authority-projected targets; client-local targets remain locally mutable. The
-presence of `.map` is not proof that it is caught up: convergence is established
-by recovery state.
+`hsonEcho.replicate` accepts a retained session cut, its separate credential,
+and a transport. It admits the cut, constructs and manages a client map,
+reattaches the session, and completes current, replay, or snapshot recovery
+before resolving. The returned Echo exposes the endpoint capabilities plus
+`map` and read-only `recovery` diagnostics.
 
-Library count is a LiveMap topology concern, not an Echo kind. Supplying a
-fixed-library map preserves its exact library and Schema types through the
-same `Echo` family. A composed map holds the authority projection alongside
-client application Libraries. Echo orders authority effects with its own cursor.
+Library count is a LiveMap topology concern, not an Echo kind. The replica map
+contains the authorized libraries and contracts in the session cut. Echo orders
+authority effects with its own cursor.
 
 ```text
 LiveTree ⇅ Mirror ⇅ replica LiveMap ⇅ Echo ⇅ Locus ⇅ Locus LiveMap
@@ -57,13 +53,12 @@ client-local QUID through its
 LiveMap and Mirror. That demand does not contact Locus, advance `map.rev`, or
 publish an application commit.
 
-Transport connection, semantic session establishment, and replica recovery
-are separate lifecycle layers. `connect()` installs listeners on the supplied
-transport; it does not create or reattach a session and does not recover a
-replica. Use `echo.session.create()` or `echo.session.reattach(...)` before
-`action`, `retryAction`, `actionStatus`, or replica recovery. Successful
-session establishment records `echo.session.logicalMapId` and
-`echo.session.incarnationId`.
+Transport connection, retained-session attachment, and replica recovery remain
+separate internal layers. For a replica, `replicate()` performs all three before
+returning. After a disconnect, reconnect the transport and await
+`echo.session.reattach()`; reattachment synchronizes the replica before its
+promise resolves. Endpoint-only Echo retains explicit `connect()` and session
+operations without a replica recovery subsystem.
 
 `disconnect()` detaches transport listeners and settles uncertain endpoint
 operations without ending the session, releasing map management, or closing a
@@ -75,8 +70,8 @@ settlement, interpreted with the current session's `logicalMapId` and
 `incarnationId`. Receipt of that result does not claim local replica or Mirror
 convergence. Echo processes one ordered authority stream: a graph commit applies
 an application effect, while generic progress advances the processed authority
-position without graph or DOM work. For a composed map, `map.rev` is the local
-graph revision and Echo's `lastAppliedRev` is the authority position. A
+position without graph or DOM work. For a replica, `map.rev` is the local
+graph revision and Echo's internal authority cursor is the authority position. A
 completion waiter settles only after Echo has processed every authority
 revision through `completionRev`, including progress-only revisions.
 
@@ -116,12 +111,14 @@ convergence and Mirror revision ordering.
 Retained hosted recovery applies projected library additions before later writes,
 then reconciles any explicit disconnected grant expansion at the recovery cut.
 When retained history is unavailable, a current projected snapshot reconciles
-the authority-owned libraries in the existing composed map before queued live
-traffic. Client-local libraries and unrelated Mirror/LiveTree resources remain.
+the authority-owned libraries in the existing map before queued live
+traffic. Bound Mirror/LiveTree resources remain.
 Hidden additions advance only the authority cursor. A session projection
 contraction removes revoked authority libraries and makes their old handles
 stale, without changing authority revision.
 `EchoRecovery` has no `onChange` observation member. Echo has no topology-aware
 `subscribe`/`unsubscribe`, public `seq`, or `onEvent` surface.
 
-Hosted SSR continuation decodes the `hosted-projection` carrier, composes client-local libraries separately, constructs Echo over that composed map, and calls `continue_hosted_document` with the decoded authority projection.
+Hosted SSR continuation accepts the session cut, credential, transport, and
+existing DOM root. It prepares the managed replica, binds Mirror to the
+adopted DOM, then completes recovery through the same engine.

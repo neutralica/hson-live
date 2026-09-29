@@ -10,7 +10,7 @@ import {
   HsonData,
   HsonDocument,
 } from "hson-live";
-import { create_echo, type Echo } from "hson-live/echo";
+import { hsonEcho, type Echo } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
 import { hsonLiveMap, type LiveMap, type LiveMapDocumentLibrary } from "hson-live/livemap";
 import { create_locus, type LocusSocketLike } from "hson-live/locus";
@@ -21,7 +21,6 @@ import { hsonLiveTree, type ContentManager } from "hson-live/livetree";
 
 declare const userHtml: string;
 declare const documentMap: LiveMapDocumentLibrary;
-declare const replicaMap: LiveMap;
 declare const socket: LocusSocketLike;
 declare const root: Element;
 declare const libraries: LiveMap;
@@ -54,8 +53,7 @@ binding.dispose();
 const hostedMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>",
   schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
 const hosted = create_locus({ map: hostedMap, exposure: [{ library: "page", exposure: "client-public" }] });
-const replica = create_echo({ socket, map: replicaMap, recovery: { logicalMapId: "document" } });
-void [hosted, replica];
+void hosted;
 
 const localSsr = libraries.cut({ html: "page" });
 const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(localSsr.libs));
@@ -63,6 +61,8 @@ void decoded;
 void continue_document({ map: hostedMap, document: hostedMap.lib("page"), root });
 
 const retained = await hosted.session.create({ libraries: ["state", "page"] });
+const replica = await hsonEcho.replicate({ cut: retained.cut(), credential: retained.credential!, socket });
+void replica;
 void retained.cut({ html: "page" });
 // @ts-expect-error One-map hosted continuation is no longer a public client-egress path.
 void continue_hosted_document({ echo, root });

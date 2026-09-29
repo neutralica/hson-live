@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, add_interaction, enable_interactions, encode_ssr_bootstrap,
   decode_ssr_bootstrap, type HsonSchema } from "../src/index.ts";
@@ -111,7 +112,7 @@ for (const artifact of [cut.html, raw, combined]) {
 }
 assert.ok(raw.includes("PERMITTED_ROOT_SENTINEL"));
 assert.ok(raw.includes("PERMITTED_INTERACTION_SENTINEL"));
-const client = hsonLiveMap.fromClientSnapshot({ authority: decoded.bootstrap,
+const client = client_projection_map({ authority: decoded.bootstrap,
   localLibraries: { local: { data: { value: "CLIENT_LOCAL_SENTINEL" }, schema: Data } } });
 assert.equal(client.rev, 0);
 assert.equal(client.lib("local").mode, "data-object");
@@ -218,7 +219,7 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   createReceiver?.(JSON.stringify({ type: "session-create", id: "hostile-fallback-session", projection: { libraries: ["permittedData", "page"], systemFeatures: ["interactions"] } }));
   assert.ok(credential && fallbackSessionId);
   const ssr = fallbackLocus.session.get(fallbackSessionId)!.cut({ html: "page" });
-  const browserMap = hsonLiveMap.fromClientSnapshot({ authority: ssr.libs,
+  const browserMap = client_projection_map({ authority: ssr.libs,
     localLibraries: { local: { data: { value: "CLIENT_LOCAL_SENTINEL" }, schema: Data } } });
   assert.equal(browserMap.rev, 0);
   stopCreation();
@@ -305,7 +306,7 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   const selected = oneLocus.session.get(selectedId)!.cut({ html: "page" });
   assert.ok(selected.html.includes("ONE_LIBRARY_HTML"));
   assert.equal(selected.libs.libraries.length, 1);
-  const oneBrowser = hsonLiveMap.fromClientSnapshot({ authority: selected.libs, localLibraries: {} });
+  const oneBrowser = client_projection_map({ authority: selected.libs, localLibraries: {} });
   const onePairServer = new Set<(raw: string) => void>();
   const onePairClient = new Set<(raw: string) => void>();
   const browserSocket: LocusSocketLike = { send(raw) { for (const listener of onePairServer) listener(raw); }, close() {},

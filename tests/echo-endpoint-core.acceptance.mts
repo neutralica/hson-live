@@ -139,14 +139,14 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
   }
 });
 
-await check("untyped Echo construction rejects incomplete replica capability pairs", () => {
+await check("untyped endpoint Echo construction rejects replica arguments", () => {
   const pair = socket_pair();
   const createUntyped = (options: unknown): unknown => Reflect.apply(create_echo, undefined, [options]);
-  assert.throws(() => createUntyped({ socket: pair.client, map: Object.freeze({}) }), /map and recovery together/i);
-  assert.throws(() => createUntyped({ socket: pair.client, recovery: { logicalMapId: "untyped-map" } }), /map and recovery together/i);
+  assert.throws(() => createUntyped({ socket: pair.client, map: Object.freeze({}) }), /endpoint-only/i);
+  assert.throws(() => createUntyped({ socket: pair.client, recovery: {} }), /endpoint-only/i);
   assert.throws(
     () => createUntyped({ socket: pair.client, map: Object.freeze({}), recovery: { logicalMapId: "untyped-map" } }),
-    (cause) => cause instanceof Error && /LiveMap authority/.test(cause.message),
+    /endpoint-only/i,
   );
 });
 

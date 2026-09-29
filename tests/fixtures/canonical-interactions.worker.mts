@@ -1,3 +1,5 @@
+import { create_recovery_test_driver } from "../helpers/replica-driver.mts";
+import { client_projection_map } from "../helpers/client-projection.mts";
 import { parentPort } from "node:worker_threads";
 import { test_public_projection } from "../helpers/hosted-exposure.mts";
 import {
@@ -78,14 +80,14 @@ const captured = internal_livemap_aggregate_authority(authorityMap).captureHoste
 const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
   configured.exposure, configured.defaultProjection, configured.authorizeProjection);
 const effective = await normalize_locus_effective_projection(policy, configured.defaultProjection);
-const replicaMap = hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(captured, effective),
+const replicaMap = client_projection_map({ authority: project_authority_snapshot(captured, effective),
   localLibraries: {} }) as typeof authorityMap;
 const pair = socket_pair();
 locus.connect(pair.server);
-const echo = hsonEcho.create({ socket: pair.client, map: replicaMap, recovery: { logicalMapId: locus.logicalMapId } });
+const echo = create_recovery_test_driver({ socket: pair.client, map: replicaMap });
 echo.connect();
 await echo.session.create();
-await echo.recovery.recover();
+await echo.completeRecovery();
 
 const reflection = hsonMirror(replicaMap.lib("page"));
 const page = replicaMap.lib("page");

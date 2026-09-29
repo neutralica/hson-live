@@ -150,6 +150,7 @@ export type {
   EchoActionRequest,
   EchoActionStatusResult,
   EchoOptions,
+  EchoReplicateOptions,
   EchoRetryActionFn,
   EchoSession,
   EchoSessionFailure,

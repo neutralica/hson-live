@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror,
   type LocusSocketLike } from "../src/index.ts";
@@ -172,7 +173,7 @@ const emptyPolicy = make_locus_hosted_projection_policy(beforeTopology.registry,
   { libraries: [] }, ({ requested }) => ({ libraries: requested.libraries }));
 const emptyProjection = normalize_locus_effective_projection(emptyPolicy, { libraries: [] });
 if (emptyProjection instanceof Promise) throw new Error("Expected synchronous projection.");
-const topologyClient = hsonLiveMap.fromClientSnapshot({
+const topologyClient = client_projection_map({
   authority: project_authority_snapshot(beforeTopology, emptyProjection),
   localLibraries: { preferences: { data: { value: "local" } } },
 });

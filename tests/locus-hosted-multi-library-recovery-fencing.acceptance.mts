@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
@@ -109,7 +110,7 @@ function make_projected_map() {
   const effective = normalize_locus_effective_projection(policy, requested);
   if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
   const snapshot = project_authority_snapshot(complete, effective);
-  return { map: hsonLiveMap.fromClientSnapshot({ authority: snapshot, localLibraries: {} }),
+  return { map: client_projection_map({ authority: snapshot, localLibraries: {} }),
     projectionDigest: snapshot.projectionDigest };
 }
 

@@ -6,7 +6,7 @@ import type {
 } from "./locus.core.types.js";
 import type { LocusActionPayloads } from "./locus.protocol.types.js";
 
-export type EchoOptions<TMap extends LiveMap | undefined = undefined> = CoreEchoOptions<TMap>;
+export type EchoOptions = CoreEchoOptions;
 export type Echo<
   TMap extends LiveMap | undefined = undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -18,11 +18,8 @@ export type {
   EchoActionRequest,
   EchoActionStatusResult,
   EchoRecovery,
-  EchoRecoveryCursor,
   EchoRecoveryDiagnostics,
   EchoRecoveryFailure,
-  EchoRecoveryOptions,
-  EchoRecoveryResult,
   EchoRecoveryStatus,
   EchoRecoveryStrategy,
   EchoRetryActionFn,
@@ -32,4 +29,5 @@ export type {
   EchoSessionOptions,
   EchoSessionResult,
   EchoSessionStatus,
+  EchoReplicateOptions,
 } from "./locus.core.types.js";

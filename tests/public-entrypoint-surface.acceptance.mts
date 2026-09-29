@@ -20,7 +20,7 @@ const ROOT_EXPORTS = `
 ANY_DATA ANY_DOCUMENT AsyncLiveTree AsyncLiveTreeAttrs AsyncLiveTreeClasslist AsyncLiveTreeFlags AsyncLiveTreeForm AsyncLiveTreeId AsyncLiveTreeText AuthoritativeInteractionDescriptor
 AuthorityProjectionSnapshot BinaryDecodeOptions BrowserRealizationHtml DataLiveMapMode DecodedSsrBootstrap DetachedLiveContent DocumentContinuation DocumentContinuationError
 DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsrError Echo EchoActionFn EchoActionPromise EchoActionRequest
-EchoActionStatusResult EchoOptions EchoRecoveryError EchoRetryActionFn EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions
+EchoActionStatusResult EchoOptions EchoReplicateOptions EchoRecoveryError EchoRetryActionFn EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions
 EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation LocusSessionApi LocusSession LocusSessionCreateOptions LocusSessionCut LocusSessionHtmlCut Hson HsonCanonical
 HsonData HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData HsonSchemaMutationCandidate InteractionActionDispatcher
 InteractionActivationOptions InteractionDescriptor InteractionFailure InteractionListener InteractionLocalBehavior InteractionLocalBehaviors LiveHost
@@ -172,7 +172,7 @@ const ownerProofs = Object.freeze({
   "dist/api/livetree/index.d.ts": ["make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
   "dist/api/livemap/index.d.ts": ["LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
   "dist/api/mirror/index.d.ts": ["reflect_collection", "CollectionMirror", "CollectionMirrorErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
-  "dist/api/echo/index.d.ts": ["EchoRecovery", "EchoRecoveryCursor", "EchoRecoveryOptions", "EchoRecoveryStrategy"],
+  "dist/api/echo/index.d.ts": ["EchoRecovery", "EchoRecoveryStrategy"],
   "dist/api/locus/index.d.ts": ["create_persistent_locus", "PersistentLocusOptions"],
   "dist/api/locus/node/index.d.ts": ["create_node_locus_socket", "NodeLocusSocketOptions"],
   "dist/api/ssr/index.d.ts": ["BrowserRealizationHtml", "DocumentSsrError"],

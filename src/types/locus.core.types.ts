@@ -329,29 +329,10 @@ export type EchoActionStatusResult = Readonly<{
 export type EchoRecoveryStatus = "idle" | "recovering" | "caught_up" | "failed" | "disposed";
 export type EchoRecoveryStrategy = "current" | "replay" | "snapshot" | "reject";
 
-export type EchoRecoveryCursor = Readonly<{
-  incarnationId: LocusIncarnationId;
-  lastAppliedRev: number;
-}>;
-
-export type EchoRecoveryOptions = Readonly<{
-  logicalMapId: LocusLogicalMapId;
-  cursor?: EchoRecoveryCursor;
-}>;
-
 export type EchoRecoveryFailure = Readonly<{
   code: string;
   message: string;
   cause?: unknown;
-}>;
-
-export type EchoRecoveryResult = Readonly<{
-  strategy: Exclude<EchoRecoveryStrategy, "reject">;
-  sessionId: LocusSessionId;
-  logicalMapId: LocusLogicalMapId;
-  incarnationId: LocusIncarnationId;
-  headRev: number;
-  incarnationChanged: boolean;
 }>;
 
 export type EchoRecoveryDiagnostics = Readonly<{
@@ -371,18 +352,10 @@ export type EchoRecoveryDiagnostics = Readonly<{
   observerFailures: number;
 }>;
 
-export type EchoRecovery<
-  TMap extends LiveMap = LiveMap,
-> = Readonly<{
+export type EchoRecovery = Readonly<{
   readonly status: EchoRecoveryStatus;
-  readonly logicalMapId: LocusLogicalMapId | undefined;
-  readonly incarnationId: LocusIncarnationId | undefined;
-  readonly lastAppliedRev: number | undefined;
-  readonly map: TMap;
   readonly failure: EchoRecoveryFailure | undefined;
   readonly strategy: EchoRecoveryStrategy | undefined;
-  recover: () => Promise<EchoRecoveryResult>;
-  dispose: LocusDisposer;
   debug: () => EchoRecoveryDiagnostics;
 }>;
 
@@ -431,8 +404,6 @@ export type EchoSessionOptions = Readonly<{
   credential?: LocusSessionCredential;
 }>;
 
-type EchoMap = LiveMap;
-
 type EchoCommonOptions = Readonly<{
   socket: LocusSocketLike;
   /**
@@ -446,14 +417,17 @@ type EchoCommonOptions = Readonly<{
   trace?: LiveTraceSink;
 }>;
 
-export type EchoOptions<TMap extends EchoMap | undefined = undefined> = EchoCommonOptions & (
-  TMap extends EchoMap
-    ? Readonly<{ map: TMap; recovery: EchoRecoveryOptions }>
-    : Readonly<{ map?: never; recovery?: never }>
-);
+export type EchoOptions = EchoCommonOptions & Readonly<{ map?: never; recovery?: never }>;
+
+export type EchoReplicateOptions = Readonly<{
+  cut: LocusSessionCut | LocusSessionHtmlCut;
+  credential: LocusSessionCredential;
+  socket: LocusSocketLike;
+  clientId?: LocusClientId;
+}>;
 
 export type Echo<
-  TMap extends EchoMap | undefined = undefined,
+  TMap extends LiveMap | undefined = undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   clientId: LocusClientId;
@@ -464,9 +438,9 @@ export type Echo<
   retryAction: EchoRetryActionFn<TActions> & LocusDocumentRetryActionFn;
   actionStatus: (requestId: LocusActionRequestId) => Promise<EchoActionStatusResult>;
   dispose: LocusDisposer;
-}> & (TMap extends EchoMap ? Readonly<{
+}> & (TMap extends LiveMap ? Readonly<{
   map: TMap;
-  recovery: EchoRecovery<TMap>;
+  recovery: EchoRecovery;
 }> : Readonly<{}>);
 
 /** Creation context is server-owned; credentials remain separate bearer material. */

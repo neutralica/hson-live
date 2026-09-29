@@ -1,11 +1,5 @@
-import type { InteractionFailure, InteractionLocalBehaviors } from "../../types/interaction.types.js";
-import type { Echo, LocusActionPayloads } from "../../types/locus.types.js";
-import type {
-  LiveMapDocumentLibrary,
-  LiveMap,
-} from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
-import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
+import { prepare_echo_replica_internal } from "../echo/echo.replica-preparation.js";
 import { echo_document_authority_for } from "../echo/echo.document-authority.js";
 import { admit_authority_projection_snapshot, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
@@ -24,68 +18,39 @@ import {
 } from "./continuation.common.js";
 import { DocumentContinuationError } from "./continuation.error.js";
 import type { HostedDocumentContinuation } from "./continuation.types.js";
+import type { HostedContinuationOptions } from "./continue-hosted-document.lazy.js";
 
-type HostedInteractions = Readonly<{
-  local: InteractionLocalBehaviors;
-  onFailure?: (failure: InteractionFailure) => void;
-}>;
-
-type ReplicaEcho<TMap extends LiveMap> = Echo<TMap, LocusActionPayloads>;
-
-export function continue_hosted_document<TDocument extends LiveMapDocumentLibrary, TEcho extends ReplicaEcho<LiveMap>>(options: Readonly<{
-  echo: TEcho;
-  root: Element;
-  authority: AuthorityProjectionSnapshot;
-  document: TDocument;
-  interactions?: HostedInteractions;
-}>): Promise<HostedDocumentContinuation<TDocument> & Readonly<{ echo: TEcho }>>;
-export function continue_hosted_document<TEcho extends ReplicaEcho<LiveMap>>(options: Readonly<{
-  echo: TEcho;
-  root: Element;
-  authority: AuthorityProjectionSnapshot;
-  document?: undefined;
-  interactions?: HostedInteractions;
-}>): Promise<HostedDocumentContinuation<LiveMapDocumentLibrary> & Readonly<{ echo: TEcho }>>;
-export async function continue_hosted_document(options: Readonly<{
-  echo: ReplicaEcho<LiveMap>;
-  root: Element;
-  authority: AuthorityProjectionSnapshot;
-  document?: LiveMapDocumentLibrary;
-  interactions?: HostedInteractions;
-}>): Promise<HostedDocumentContinuation> {
+export async function continue_hosted_document(options: HostedContinuationOptions): Promise<HostedDocumentContinuation> {
   return continue_hosted_document_internal(options);
 }
 
 /** @internal Lazy package-root composition point. */
-export async function continue_hosted_document_internal(options: Readonly<{
-  echo: ReplicaEcho<LiveMap>;
-  root: Element;
-  authority: AuthorityProjectionSnapshot;
-  document?: LiveMapDocumentLibrary;
-  interactions?: HostedInteractions;
-}>): Promise<HostedDocumentContinuation> {
+export async function continue_hosted_document_internal(options: HostedContinuationOptions): Promise<HostedDocumentContinuation> {
   if (typeof options !== "object" || options === null) {
     throw new TypeError("Hosted document continuation options must be an object.");
   }
   validate_continuation_root(options.root);
   validate_interaction_shape(options.interactions);
-  const echo = options.echo;
-  if (typeof echo !== "object" || echo === null
-    || typeof echo.recovery !== "object" || echo.recovery === null
-    || echo.recovery.map !== echo.map) {
-    throw new TypeError("Hosted document continuation requires one replica-bearing Echo over its exact map.");
-  }
   const releaseRoot = reserve_continuation_root(options.root);
+  let prepared: ReturnType<typeof prepare_echo_replica_internal>;
+  try { prepared = prepare_echo_replica_internal(options); }
+  catch (cause) { releaseRoot(); throw cause; }
+  const echo = prepared.echo;
   let adoption: ExactDocumentAdoption | undefined;
   let reflect: ReturnType<typeof reflect_existing_document_in_runtime> | undefined;
   let disposeInteractions: (() => void) | undefined;
   let disposeCssBinding: (() => void) | undefined;
   try {
-    const resolved = resolve_continuation_document(echo.map, options.document);
+    const documentName = options.document ?? ("document" in options.cut ? options.cut.document : undefined);
+    const explicitDocument = documentName === undefined ? undefined : echo.map.lib(documentName);
+    if (explicitDocument !== undefined && explicitDocument.mode !== "document") {
+      throw new Error("Explicit continuation selection is not a document library.");
+    }
+    const resolved = resolve_continuation_document(echo.map, explicitDocument);
     if (resolved.aggregate === undefined) {
       throw new TypeError("Hosted continuation requires a projected library registry.");
     }
-    const snapshot = admit_authority_projection_snapshot(options.authority);
+    const snapshot = admit_authority_projection_snapshot(options.cut.libs);
     const aggregate = internal_livemap_aggregate_authority(resolved.aggregate);
     const projection = aggregate.clientProjection();
     const current = aggregate.captureSelectedHosted(snapshot.libraries.map((entry) => entry.name), false);
@@ -95,18 +60,13 @@ export async function continue_hosted_document_internal(options: Readonly<{
       || client_projection_identity_internal(resolved.aggregate) !== snapshot.projectionDigest
       || projection.authority.logicalMapId !== snapshot.authority.logicalMapId
       || projection.authority.incarnationId !== snapshot.authority.incarnationId
-      || echo.recovery.logicalMapId !== snapshot.authority.logicalMapId
       || projection.revision !== snapshot.revision
-      || echo.recovery.lastAppliedRev !== snapshot.revision
       || snapshot.libraries.some((entry) => currentLibraries.get(entry.name)?.root.payload !== entry.root.payload)
       || !snapshot.libraries.some((entry) => entry.name === selectedName && entry.mode === "document")) {
       throw new Error("Hosted continuation authority projection does not match its selected document.");
     }
     if (echo_document_authority_for(resolved.selected) === undefined) {
       throw new Error("Selected document is not governed by the supplied Echo replica.");
-    }
-    if (echo.recovery.logicalMapId === undefined || echo.recovery.logicalMapId.length === 0) {
-      throw new Error("Supplied Echo has no coherent logical map identity.");
     }
     const revision = resolved.selected.rev;
     const canonicalRoot = resolved.selected.root();
@@ -131,7 +91,8 @@ export async function continue_hosted_document_internal(options: Readonly<{
       throw new DocumentContinuationError("mirror", cause);
     }
     try {
-      if (echo.recovery.status !== "caught_up") await echo.recovery.recover();
+      await prepared.attach();
+      await prepared.complete();
       if (echo.recovery.status !== "caught_up") throw new Error("Echo recovery did not reach caught-up state.");
       if (resolved.selected.rev !== echo.map.rev) {
         throw new Error("Echo, aggregate, and selected document revisions are not current together.");
@@ -201,6 +162,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
     try { reflect?.dispose(); } catch { /* Preserve construction failure. */ }
     try { adoption?.abort(); } catch { /* Preserve construction failure. */ }
     releaseRoot();
+    echo.dispose();
     throw cause;
   }
 }

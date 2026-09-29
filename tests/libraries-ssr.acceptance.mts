@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import { decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
@@ -344,7 +345,7 @@ check("hosted rendering preserves its fence and produces the existing aggregate 
   assert.equal(ssr.document, "page");
   assert.equal(ssr.libs.authority.logicalMapId, locus.logicalMapId);
   assert.equal(ssr.libs.authority.incarnationId, locus.incarnationId);
-  const installed = hsonLiveMap.fromClientSnapshot({ authority: ssr.libs, localLibraries: {} });
+  const installed = client_projection_map({ authority: ssr.libs, localLibraries: {} });
   assert.equal(installed.rev, 0);
   session.close();
   locus.dispose();

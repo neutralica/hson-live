@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_public_exposure, test_public_projection } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
@@ -137,7 +138,7 @@ function projected_client_map(authority: LiveMap): LiveMap {
     configured.exposure, configured.defaultProjection, configured.authorizeProjection);
   const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
   if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
-  return hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(captured, effective), localLibraries: {} });
+  return client_projection_map({ authority: project_authority_snapshot(captured, effective), localLibraries: {} });
 }
 
 function data(draft: LocusHostedAggregateDraft, name: string): LocusHostedAggregateDataDraft {

@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
@@ -125,7 +126,7 @@ const mediumPolicy = make_locus_hosted_projection_policy(mediumAuthority.hostedR
 const mediumEffective = await normalize_locus_effective_projection(mediumPolicy, { libraries: ["selected"] });
 const mediumSnapshot = capture_selected_authority_projection_snapshot(medium, mediumEffective);
 assert.ok(JSON.stringify(mediumSnapshot).length > 4 * 1024 * 1024);
-const installed = hsonLiveMap.fromClientSnapshot({ authority: mediumSnapshot,
+const installed = client_projection_map({ authority: mediumSnapshot,
   localLibraries: { local: { data: { value: "local" }, schema: Data } } });
 assert.equal(installed.lib("selected").mode, "data-object");
 

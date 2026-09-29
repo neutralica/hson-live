@@ -1,3 +1,5 @@
+import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
+import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson } from "../src/hson-authoring.ts";
 import { hsonLiveMap, type LiveMap } from "../src/api/livemap/index.ts";
@@ -83,7 +85,7 @@ for (const strategy of ["replay", "snapshot"] as const) {
   assert.equal(snapshot.system, null);
   portable_private_free(JSON.stringify(snapshot));
   assert.deepEqual(Object.keys(initial.capability.cut()), ["libs"]);
-  const client = hsonLiveMap.fromClientSnapshot({ authority: snapshot,
+  const client = client_projection_map({ authority: snapshot,
     localLibraries: { local: { data: { value: "LOCAL" }, schema: Data } } });
   assert.deepEqual(data(client, "visible").snap(), { value: "INITIAL" });
   assert.equal(snapshot.libraries[0]?.schema, Data.toHson());
@@ -93,24 +95,23 @@ for (const strategy of ["replay", "snapshot"] as const) {
   assert.deepEqual(initial.capability.cut().libs, snapshot, "disconnected retained session remains available");
   const pair = socket_pair();
   let detach = locus.connect(pair.server);
-  const echo = hsonEcho.create({ socket: pair.client, map: client,
-    recovery: { logicalMapId: snapshot.authority.logicalMapId }, session: { credential: initial.credential } });
+  const echo = create_recovery_test_driver({ socket: pair.client, map: client, session: { credential: initial.credential } });
   echo.connect();
   await echo.session.reattach();
-  assert.equal((await echo.recovery.recover()).strategy, "current");
-  assert.equal(echo.recovery.lastAppliedRev, snapshot.revision);
+  assert.equal((await echo.completeRecovery()).strategy, "current");
+  assert.equal(echo.recovery.debug().lastAppliedRev, snapshot.revision);
   const local = data(client, "local");
   const localHandle = local.at(["value"]);
   echo.disconnect(); detach();
   localHandle.set("LOCAL_OFFLINE");
   await locus.mutate((draft) => draft.lib("visible").at(["value"]).set("RECOVERED"));
   await locus.mutate((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_OFFLINE"));
-  assert.equal(echo.recovery.lastAppliedRev, snapshot.revision);
+  assert.equal(echo.recovery.debug().lastAppliedRev, snapshot.revision);
   assert.equal(JSON.stringify(snapshot), retained, "captured artifact is detached from later mutations");
   detach = locus.connect(pair.server);
   echo.connect(); await echo.session.reattach();
-  assert.equal((await echo.recovery.recover()).strategy, strategy);
-  assert.equal(echo.recovery.lastAppliedRev, locus.rev);
+  assert.equal((await echo.completeRecovery()).strategy, strategy);
+  assert.equal(echo.recovery.debug().lastAppliedRev, locus.rev);
   assert.equal(echo.map, client);
   assert.equal(client.lib("local"), local);
   assert.equal(localHandle.snap(), "LOCAL_OFFLINE");
@@ -163,7 +164,7 @@ for (const libraries of [["page"], ["page", "state"]]) {
   assert.deepEqual(snapshot, initial.capability.cut({ html: "page" }).libs);
   assert.deepEqual(snapshot.libraries.map((entry) => entry.name), libraries);
   assert.ok(snapshot.libraries.find((entry) => entry.name === "page")?.css);
-  const client = hsonLiveMap.fromClientSnapshot({ authority: snapshot, localLibraries: {} });
+  const client = client_projection_map({ authority: snapshot, localLibraries: {} });
   const page = client.lib("page");
   assert.equal(page.mode, "document");
   if (page.mode === "document") assert.equal(page.css.snapshot(), map.lib("page").css.snapshot());

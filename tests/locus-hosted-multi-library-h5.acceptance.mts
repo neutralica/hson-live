@@ -1,3 +1,5 @@
+import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
+import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_public_exposure, test_public_projection } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
@@ -123,7 +125,7 @@ function make_client_map(server: ReturnType<typeof make_map>): ReturnType<typeof
     configured.exposure, configured.defaultProjection, configured.authorizeProjection);
   const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
   if (effective instanceof Promise) throw new Error("Test projection must be synchronous.");
-  return hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(captured, effective), localLibraries: {} }) as ReturnType<typeof make_map>;
+  return client_projection_map({ authority: project_authority_snapshot(captured, effective), localLibraries: {} }) as ReturnType<typeof make_map>;
 }
 
 function reflected_document_element(reflection: ReturnType<typeof hsonMirror>) {
@@ -220,10 +222,9 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   assert.equal("dispatch_action" in locus, false);
   locus.connect(pair.server);
   const clientMap = make_client_map(serverMap);
-  const client = hsonEcho.create({
+  const client = create_recovery_test_driver({
     socket: pair.client,
     map: clientMap,
-    recovery: { logicalMapId: locus.logicalMapId },
   });
   assert.equal(typeof client.retryAction, "function");
   assert.equal(typeof client.actionStatus, "function");
@@ -238,7 +239,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   assert.equal(established.incarnationId, locus.incarnationId);
   assert.equal(client.session.logicalMapId, locus.logicalMapId);
   assert.equal(client.session.incarnationId, locus.incarnationId);
-  const bootstrap = await client.recovery.recover();
+  const bootstrap = await client.completeRecovery();
   const bootstrapMs = performance.now() - started;
   assert.equal(bootstrap.strategy, "current");
   assert.equal(client.map, clientMap);
@@ -293,7 +294,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   const stateOnlyMs = performance.now() - stateOnlyStarted;
   assert.equal(reflection.sourceRevision, 2);
   assert.equal(reflection.diagnostics().updatesApplied, 1);
-  assert.equal(client.recovery.lastAppliedRev, 2);
+  assert.equal(client.recovery.debug().lastAppliedRev, 2);
   const reflectedMain = reflected_document_element(reflection);
   const reflectedWrite = reflectedMain.async.attrs.set("title", "echoed");
   assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), undefined);
@@ -336,14 +337,13 @@ await check("named document Echo authoring honors aggregate authorization and co
   const pair = socket_pair();
   locus.connect(pair.server, { principalId: "principal-a" });
   const clientMap = make_client_map(serverMap);
-  const echo = hsonEcho.create({
+  const echo = create_recovery_test_driver({
     socket: pair.client,
     map: clientMap,
-    recovery: { logicalMapId: locus.logicalMapId },
   });
   echo.connect();
   await echo.session.create();
-  await echo.recovery.recover();
+  await echo.completeRecovery();
   const reflection = hsonMirror(clientMap.lib("page"));
   const main = reflected_document_element(reflection);
   const denied = main.async.attrs.set("title", "denied");
@@ -369,7 +369,7 @@ await check("named Mirror text replacement carries empty portable lineage throug
   const locus = hsonLocus.create({ ...test_public_projection(serverMap), map: serverMap });
   const pair = socket_pair();
   locus.connect(pair.server);
-  const clientMap = hsonLiveMap.fromClientSnapshot({
+  const clientMap = client_projection_map({
     authority: (() => {
       const captured = internal_livemap_aggregate_authority(serverMap).captureHosted();
       const configured = test_public_projection(serverMap);
@@ -380,10 +380,10 @@ await check("named Mirror text replacement carries empty portable lineage throug
       return project_authority_snapshot(captured, effective);
     })(), localLibraries: {},
   }) as typeof serverMap;
-  const echo = hsonEcho.create({ socket: pair.client, map: clientMap, recovery: { logicalMapId: locus.logicalMapId } });
+  const echo = create_recovery_test_driver({ socket: pair.client, map: clientMap });
   echo.connect();
   await echo.session.create();
-  await echo.recovery.recover();
+  await echo.completeRecovery();
   const reflection = hsonMirror(clientMap.lib("page"));
   const lineages: unknown[] = [];
   const stop = serverMap.commits.observe((commit) => {
@@ -420,13 +420,12 @@ await check("projected fallback restores the observed authority document in plac
   });
   const first = socket_pair();
   locus.connect(first.server);
-  const snapshotClient = hsonEcho.create({ socket: first.client, map: staleMap,
-    recovery: { logicalMapId: locus.logicalMapId } });
+  const snapshotClient = create_recovery_test_driver({ socket: first.client, map: staleMap });
   snapshotClient.connect();
   await snapshotClient.session.create();
-  assert.equal((await snapshotClient.recovery.recover()).strategy, "snapshot");
+  assert.equal((await snapshotClient.completeRecovery()).strategy, "snapshot");
   assert.equal(snapshotClient.map, staleMap);
-  assert.equal(snapshotClient.recovery.lastAppliedRev, 2);
+  assert.equal(snapshotClient.recovery.debug().lastAppliedRev, 2);
   assert.equal(stateHandle.snap(), "dark");
   assert.equal(page_item(staleMap)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 1);
@@ -446,15 +445,14 @@ await check("projected fallback restores the observed authority document in plac
   });
   const second = socket_pair();
   locus.connect(second.server);
-  const replayClient = hsonEcho.create({ socket: second.client, map: staleMap,
-    recovery: { logicalMapId: locus.logicalMapId } });
+  const replayClient = create_recovery_test_driver({ socket: second.client, map: staleMap });
   replayClient.connect();
   await replayClient.session.create();
-  assert.equal((await replayClient.recovery.recover()).strategy, "replay");
-  assert.equal(replayClient.recovery.lastAppliedRev, 3);
+  assert.equal((await replayClient.completeRecovery()).strategy, "replay");
+  assert.equal(replayClient.recovery.debug().lastAppliedRev, 3);
   assert.deepEqual([staleMap.rev, stateHandle.snap(), reflection.sourceRevision], [2, "dark", 2]);
   assert.equal(page_item(staleMap)?.$_tag, "item");
-  assert.equal((await replayClient.recovery.recover()).strategy, "current");
+  assert.equal((await replayClient.completeRecovery()).strategy, "current");
   replayClient.dispose();
   reflection.dispose();
   locus.dispose();
@@ -546,10 +544,10 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   host.connect(first.server);
   const clientMap = make_client_map(serverMap);
   const fallbackMap = make_client_map(serverMap);
-  const client = hsonEcho.create({ socket: first.client, map: clientMap, recovery: { logicalMapId: host.logicalMapId } });
+  const client = create_recovery_test_driver({ socket: first.client, map: clientMap });
   client.connect();
   await client.session.create();
-  await client.recovery.recover();
+  await client.completeRecovery();
   const reflection = hsonMirror(clientMap.lib("page"));
   const echoMainQuid = reflected_document_element(reflection).quid;
   const retainedAction = client.action("state.page");
@@ -614,22 +612,22 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   assert.equal(restoredRetainedStatus.ok && restoredRetainedStatus.state, "unknown");
   const second = socket_pair();
   restored.connect(second.server);
-  const recovered = hsonEcho.create({ socket: second.client, map: clientMap, recovery: { logicalMapId: restored.logicalMapId } });
+  const recovered = create_recovery_test_driver({ socket: second.client, map: clientMap });
   const reconnectStarted = performance.now();
   recovered.connect();
   await recovered.session.create();
-  assert.equal((await recovered.recovery.recover()).strategy, "snapshot");
+  assert.equal((await recovered.completeRecovery()).strategy, "snapshot");
   assert.equal(reflected_document_element(reflection).quid, echoMainQuid);
   assert.equal(second.serverSent.join("\n").includes(LOCUS_RESTART_A_QUID), false);
   assert.equal(second.serverSent.join("\n").includes(LOCUS_RESTART_B_QUID), false);
   const fallbackPair = socket_pair();
   restored.connect(fallbackPair.server);
-  const fallback = hsonEcho.create({
-    socket: fallbackPair.client, map: fallbackMap, recovery: { logicalMapId: restored.logicalMapId },
+  const fallback = create_recovery_test_driver({
+    socket: fallbackPair.client, map: fallbackMap,
   });
   fallback.connect();
   await fallback.session.create();
-  assert.equal((await fallback.recovery.recover()).strategy, "snapshot");
+  assert.equal((await fallback.completeRecovery()).strategy, "snapshot");
   assert.equal(fallbackMap.rev, 1);
   assert.equal(fallbackMap.lib("state").snap(["count"]), 2);
   assert.equal(fallbackMap.lib("page").document.byQuid(LOCUS_RESTART_A_QUID), undefined);

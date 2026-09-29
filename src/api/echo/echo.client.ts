@@ -429,7 +429,7 @@ export function create_echo_endpoint_connection_internal<
 /** @internal Replica-independent public Echo composition. */
 export function create_endpoint_echo_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<undefined>): Echo<undefined, TActions> {
+>(options: EchoOptions): Echo<undefined, TActions> {
   return create_echo_endpoint_connection_internal<TActions>({
     ...options,
     endpointMessageFormat: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,

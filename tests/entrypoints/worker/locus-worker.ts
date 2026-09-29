@@ -1,6 +1,7 @@
 import { create_browser_locus_socket, create_locus, hsonLocus,
   type LocusSocketLike, type Locus, type LocusSessionId, type AuthorityProjectionSnapshot } from "hson-live/locus";
 import { hsonLiveMap } from "hson-live/livemap";
+import { hsonEcho } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
 
 declare const websocketUrl: string;
@@ -13,7 +14,7 @@ const locus: Locus<typeof map> = create_locus({ map, exposure: [{ library: "page
 void [locus, hsonLocus];
 const retained = await locus.session.create({ libraries: ["page"] });
 const snapshot: AuthorityProjectionSnapshot = retained.cut().libs;
-void hsonLiveMap.fromClientSnapshot({ authority: snapshot, localLibraries: {} });
+void hsonEcho.replicate({ cut: retained.cut(), credential: retained.credential!, socket });
 // @ts-expect-error Retained cuts have no family narrowing.
 retained.cut({ data: [] });
 // @ts-expect-error The public plural namespace is retired.

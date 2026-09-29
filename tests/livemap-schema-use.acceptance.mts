@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/livemap.libraries.ts";
@@ -212,7 +213,7 @@ check("projected client rejects replica-only attachment", () => {
     configured.exposure, configured.defaultProjection, configured.authorizeProjection);
   const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
   if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
-  const projected = hsonLiveMap.fromClientSnapshot({
+  const projected = client_projection_map({
     authority: project_authority_snapshot(captured, effective),
     localLibraries: {},
   });

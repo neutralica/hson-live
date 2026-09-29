@@ -2,90 +2,33 @@ import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   Echo,
   EchoOptions,
-  EchoRecoveryOptions,
+  EchoReplicateOptions,
   LocusActionPayloads,
 } from "../../types/locus.types.js";
-import { acquire_echo_map_management_internal } from "../../internal/echo-map-capability.js";
 import { create_endpoint_echo_internal } from "./echo.client.js";
-import {
-  create_lazy_replica_echo_internal,
-  DEFAULT_ECHO_REPLICA_LOADERS,
-  type EchoReplicaLoaders,
-} from "./echo.lazy.js";
 
-export function create_echo<
-  TMap extends undefined = undefined,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<TMap>): Echo<TMap, TActions>;
-export function create_echo<
-  TMap extends LiveMap,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
-  map: TMap;
-  recovery: EchoRecoveryOptions;
-}>): Echo<TMap, TActions>;
-export function create_echo(
-  options: EchoOptions<undefined> | EchoOptions<LiveMap>,
-): unknown {
-  const map = options.map;
-  const recovery = options.recovery;
-  if ((map === undefined) !== (recovery === undefined)) {
-    throw new Error("Echo replica construction requires map and recovery together.");
+/** Endpoint-only transport, session, and action composition. */
+export function create_echo<TActions extends LocusActionPayloads = LocusActionPayloads>(
+  options: EchoOptions,
+): Echo<undefined, TActions> {
+  if (typeof options !== "object" || options === null || "map" in options || "recovery" in options) {
+    throw new TypeError("Echo.create is endpoint-only; use Echo.replicate for a state replica.");
   }
-  if (map === undefined) return create_endpoint_echo_internal(options as EchoOptions<undefined>);
-  if (recovery === undefined) throw new Error("Echo replica construction requires map and recovery together.");
-  const management = acquire_echo_map_management_internal(map);
-  try {
-    const replicaOptions: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
-      map: LiveMap;
-      recovery: EchoRecoveryOptions;
-    }> = { ...options, map, recovery };
-    return create_lazy_replica_echo_internal<LiveMap>(
-      replicaOptions,
-      management,
-      DEFAULT_ECHO_REPLICA_LOADERS,
-    );
-  } catch (cause) {
-    management.release();
-    throw cause;
-  }
+  return create_endpoint_echo_internal<TActions>(options);
 }
 
-/** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
-export function create_echo_with_replica_loaders_internal(
-  options: EchoOptions<undefined>,
-  loaders: EchoReplicaLoaders,
-): Echo<undefined>;
-/** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
-export function create_echo_with_replica_loaders_internal(
-  options: EchoOptions<LiveMap>,
-  loaders: EchoReplicaLoaders,
-): Echo<LiveMap>;
-/** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
-export function create_echo_with_replica_loaders_internal(
-  options: EchoOptions<undefined> | EchoOptions<LiveMap>,
-  loaders: EchoReplicaLoaders,
-): Echo<undefined> | Echo<LiveMap> {
-  const map = options.map;
-  const recovery = options.recovery;
-  if ((map === undefined) !== (recovery === undefined)) {
-    throw new Error("Echo replica construction requires map and recovery together.");
-  }
-  if (map === undefined) return create_endpoint_echo_internal(options as EchoOptions<undefined>);
-  if (recovery === undefined) throw new Error("Echo replica construction requires map and recovery together.");
-  const management = acquire_echo_map_management_internal(map);
+/** Admit, attach, and synchronize one authorized session cut. */
+export async function replicate_echo_internal<TActions extends LocusActionPayloads = LocusActionPayloads>(
+  options: EchoReplicateOptions,
+): Promise<Echo<LiveMap, TActions>> {
+  const { prepare_echo_replica_internal } = await import("./echo.replica-preparation.js");
+  const prepared = prepare_echo_replica_internal<TActions>(options);
   try {
-    const replicaOptions: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
-      map: LiveMap;
-      recovery: EchoRecoveryOptions;
-    }> = { ...options, map, recovery };
-    return create_lazy_replica_echo_internal<LiveMap>(
-      replicaOptions,
-      management,
-      loaders,
-    );
+    await prepared.attach();
+    await prepared.complete();
+    return prepared.echo;
   } catch (cause) {
-    management.release();
+    prepared.echo.dispose();
     throw cause;
   }
 }

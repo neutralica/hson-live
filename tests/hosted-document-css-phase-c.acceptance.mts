@@ -1,3 +1,4 @@
+import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonLocus, type LocusSocketLike } from "../src/index.ts";
 import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
@@ -68,7 +69,7 @@ if (sessionId === undefined) throw new Error("Missing Echo session.");
 const cut = locus.session.get(sessionId)!.cut({ html: "page" });
 assert.match(cut.html, /rgb\(1,2,3\)/);
 assert.deepEqual(cut.libs.libraries.find((entry) => entry.name === "page")?.css, map.capture().libraries.find((entry) => entry.name === "page")?.css);
-assert.throws(() => hsonLiveMap.fromClientSnapshot({ authority: cut.libs,
+assert.throws(() => client_projection_map({ authority: cut.libs,
   localLibraries: { page: { document: '<html <head/> <body/>/>' } } }), /collid|duplicat|conflict/i);
 for (const raw of [...wire.sent, JSON.stringify(cut)]) {
   assert.equal(raw.includes("PRIVATE_CSS_SENTINEL"), false);

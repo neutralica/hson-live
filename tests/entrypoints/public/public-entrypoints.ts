@@ -65,13 +65,14 @@ void RemovedSsrBootstrapError;
 
 declare const continuationRegistry: import("hson-live/livemap").LiveMap;
 declare const continuationRoot: Element;
-declare const continuationEcho: import("hson-live/echo").Echo<typeof continuationRegistry>;
 const localContinuation: DocumentContinuation = continue_document({
   map: continuationRegistry,
   root: continuationRoot,
 });
-declare const continuationAuthority: import("hson-live").AuthorityProjectionSnapshot;
-const hostedContinuation: Promise<HostedDocumentContinuation> = continue_hosted_document({ echo: continuationEcho, root: continuationRoot, authority: continuationAuthority });
+declare const continuationCut: import("hson-live").LocusSessionCut;
+declare const continuationCredential: import("hson-live/locus").LocusSessionCredential;
+declare const continuationSocket: import("hson-live").LocusSocketLike;
+const hostedContinuation: Promise<HostedDocumentContinuation> = continue_hosted_document({ cut: continuationCut, credential: continuationCredential, socket: continuationSocket, root: continuationRoot });
 void localContinuation.map;
 void localContinuation.tree;
 void localContinuation.mirror;
