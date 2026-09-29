@@ -143,6 +143,11 @@ function normalize_request(input: LocusRequestedProjection): LocusRequestedProje
   });
 }
 
+/** Freeze a caller's requested scope before it enters queued authorization. @internal */
+export function snapshot_locus_requested_projection(input: LocusRequestedProjection): LocusRequestedProjection {
+  return normalize_request(input);
+}
+
 function authorized_names(input: unknown): ReadonlySet<string> { return new Set(normalize_names(input ?? [])); }
 
 /** Called before session creation; no session exists if normalization or authorization fails. */

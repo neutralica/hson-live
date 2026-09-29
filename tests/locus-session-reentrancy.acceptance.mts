@@ -109,4 +109,60 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
   assert.throws(() => retained.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
 }
 
+// A destination closed synchronously by an old fence or lifecycle observer
+// cannot become the manager's new live attachment.
+for (const closeAt of ["fence-send", "fenced-listener", "attached-listener"] as const) {
+  const scheduled: (() => void)[] = [];
+  const host = hsonLocus.create({ map: hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }),
+    exposure: [{ library: "page", exposure: "client-public" }], defaultProjection: { libraries: ["page"] },
+    authorizeProjection: () => ({ libraries: ["page"] }),
+    sessions: { schedule: (_delay, callback) => { scheduled.push(callback); return () => {}; } } });
+  let firstReceive: ((raw: string) => void) | undefined;
+  let destinationReceive: ((raw: string) => void) | undefined;
+  let sessionId: string | undefined;
+  let credential: string | undefined;
+  let closeDestination: (() => void) | undefined;
+  let armed = true;
+  const stopFirst = host.connect({ send(raw) {
+    const frame = JSON.parse(raw);
+    if (frame.type === "session-created") { sessionId = frame.sessionId; credential = frame.credential; }
+    if (frame.type === "session-fenced" && closeAt === "fence-send" && armed) closeDestination?.();
+  }, close() {}, onMessage(listener) { firstReceive = listener; return () => {}; }, onClose() { return () => {}; } });
+  firstReceive?.(JSON.stringify({ type: "session-create", id: "first" }));
+  assert.ok(sessionId && credential);
+  const retained = host.session.get(sessionId)!;
+  host.session.onChange(event => {
+    if (!armed) return;
+    if (closeAt === "fenced-listener" && event.kind === "fenced") closeDestination?.();
+    if (closeAt === "attached-listener" && event.kind === "attached" && event.attachment === "reattached") {
+      closeDestination?.();
+    }
+  });
+  const destinationFrames: string[] = [];
+  closeDestination = host.connect({ send(raw) { destinationFrames.push(raw); }, close() {},
+    onMessage(listener) { destinationReceive = listener; return () => {}; }, onClose() { return () => {}; } });
+  destinationReceive?.(JSON.stringify({ type: "session-attach", id: "closed-destination", credential }));
+  armed = false;
+  assert.equal(destinationFrames.some(raw => JSON.parse(raw).type === "session-attached"), false, closeAt);
+  const disconnected = host.session.debug().sessions.find(session => session.sessionId === sessionId);
+  assert.equal(disconnected?.state, "disconnected", closeAt);
+  assert.equal(disconnected.transportAttached, false, closeAt);
+  assert.ok(disconnected.expiresAt !== undefined, closeAt);
+  assert.equal(scheduled.length, 1, closeAt);
+  assert.deepEqual(retained.cut().libs.libraries.map(entry => entry.name), ["page"]);
+
+  let validReceive: ((raw: string) => void) | undefined;
+  const validFrames: string[] = [];
+  const stopValid = host.connect({ send(raw) { validFrames.push(raw); }, close() {},
+    onMessage(listener) { validReceive = listener; return () => {}; }, onClose() { return () => {}; } });
+  validReceive?.(JSON.stringify({ type: "session-attach", id: "valid-destination", credential }));
+  assert.ok(validFrames.some(raw => JSON.parse(raw).type === "session-attached"), closeAt);
+  assert.equal(host.session.get(sessionId), retained);
+  stopValid();
+  scheduled.at(-1)?.();
+  assert.equal(host.session.debug().sessions.find(session => session.sessionId === sessionId)?.state, "expired");
+  assert.throws(() => retained.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  stopFirst(); host.dispose();
+}
+
 console.log("Session reentrancy checks passed.");

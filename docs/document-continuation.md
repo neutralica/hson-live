@@ -20,8 +20,9 @@ writes are rejected; `tree.async.css.global` uses the document authority path.
 
 The required DOM is defined by hson-live's browser-realization contract, not by
 public `.toHtml()`. The latter remains Hson transport HTML and may contain
-`_hson_*` carriers. The plan and serializer remain private; `hson-live/ssr`
-exposes only the semantic `{ html, bootstrap }` composition boundary.
+`_hson_*` carriers. The plan and serializer remain private. Hosted HTML and
+its matching projected state come from an explicit `session.cut({ html })`;
+`hson-live/ssr` supplies the independent state-carrier codec.
 
 The structural names have distinct authorities: `_hson_*` names belong to
 canonical Hson and its transport representation; `hson-boundary` names derived
@@ -64,12 +65,13 @@ interaction storage is not a selectable document library. The returned `map`
 is always the selected document-facing map/library to which `tree` and
 `mirror` correspond, not the aggregate.
 
-After aggregate SSR installation, resolve the stable public name returned with
-the atomic SSR triple before continuation:
+After installing a local aggregate cut, select the document named by that cut
+before continuation:
 
 ```ts
-const installed = install_libraries_snapshot(ssr.bootstrap);
-const selected = installed.map.lib(ssr.document);
+const cut = aggregate.cut({ documents: ["page"], html: "page" });
+const installed = install_libraries_snapshot(cut.libs);
+const selected = installed.map.lib(cut.document);
 continue_document({ map: installed.map, document: selected, root });
 ```
 
@@ -93,16 +95,21 @@ Continuation calls `activate_interactions`; it does not call
 
 ## Hosted continuation
 
-For hosted continuation, decode the session's projected SSR bootstrap and
-compose the Echo map with `hsonLiveMap.fromClientSnapshot({ authority,
-localLibraries })`. Pass that Echo, the decoded projected bootstrap, and the
-existing root Element to `continue_hosted_document`. Echo recovery converges
-the selected authority projection while client-local libraries stay local.
+For hosted continuation, deliver the explicit `session.cut({ html: "page" })`
+result's `libs` and `document` separately from its HTML. Decode the projected
+state carrier and compose Echo's map with `hsonLiveMap.fromClientSnapshot({
+authority: decoded.bootstrap, localLibraries })`. Resolve the delivered document
+name to a handle in that map, then pass the handle, Echo, decoded projection,
+and existing root Element to `continue_hosted_document`. Echo recovery
+converges the selected authority projection while client-local libraries stay
+local.
 
 ```ts
+const selected = clientMap.lib(selectedDocumentName);
 const continuation = await continue_hosted_document({
   echo,
   authority: decoded.bootstrap,
+  document: selected,
   root: document.querySelector("main")!,
 });
 

@@ -17,7 +17,7 @@ import type { EchoMapManagementLease } from "../../internal/echo-map-capability.
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { make_livemap_libraries, make_livemap_mirror_from_portable_aggregate_internal } from "../livemap/livemap.libraries.js";
 import { decode_locus_live_projected_envelope_internal, type LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
-import { AUTHORITY_PROJECTION_SNAPSHOT_FORMAT, admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, replace_client_projection_identity_internal, advance_client_projection_identity_internal, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
+import { AUTHORITY_PROJECTION_SNAPSHOT_FORMAT, admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, replace_client_projection_identity_internal, advance_client_projection_identity_internal, client_projection_identity_internal, client_projection_features_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { locus_projection_contract_digest } from "../locus/locus.projection.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import {
@@ -138,7 +138,7 @@ function create_registry_echo_semantic_client_internal<
   let registryDigest: string | undefined;
   let projectionDigest: string | undefined = map === undefined ? undefined : client_projection_identity_internal(map);
   let projectionSequence = 0;
-  let projectionFeatures: readonly string[] = [];
+  let projectionFeatures: readonly string[] = map === undefined ? [] : client_projection_features_internal(map) ?? [];
   let authorityRev: number | undefined;
   const authorityPositionListeners = new Set<(revision: number) => void>();
   const publishAuthorityPosition = (): void => {
@@ -498,7 +498,7 @@ function create_registry_echo_semantic_client_internal<
         }
       } else {
         replica.restoreHosted(composition);
-        advance_client_projection_identity_internal(map, incarnationId, projectionDigest, nextDigest);
+        advance_client_projection_identity_internal(map, incarnationId, projectionDigest, nextDigest, message.systemFeatures);
       }
       projectionDigest = nextDigest;
       registryDigest = message.registryDigest;
@@ -559,7 +559,7 @@ function create_registry_echo_semantic_client_internal<
       }
     }
     if (map === undefined) throw new Error("Hosted projection change requires a composed client map.");
-    advance_client_projection_identity_internal(map, incarnationId, projectionDigest, message.projectionDigest);
+    advance_client_projection_identity_internal(map, incarnationId, projectionDigest, message.projectionDigest, message.systemFeatures);
     projectionDigest = message.projectionDigest;
     registryDigest = message.registryDigest;
     projectionFeatures = message.systemFeatures;

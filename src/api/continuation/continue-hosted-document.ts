@@ -108,10 +108,6 @@ export async function continue_hosted_document_internal(options: Readonly<{
     if (echo.recovery.logicalMapId === undefined || echo.recovery.logicalMapId.length === 0) {
       throw new Error("Supplied Echo has no coherent logical map identity.");
     }
-    if (resolved.aggregate === undefined && echo.recovery.lastAppliedRev !== undefined
-      && echo.recovery.lastAppliedRev !== echo.map.rev) {
-      throw new Error("Supplied Echo recovery cursor does not match its canonical map revision.");
-    }
     const revision = resolved.selected.rev;
     const canonicalRoot = resolved.selected.root();
     try {
@@ -137,8 +133,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
     try {
       if (echo.recovery.status !== "caught_up") await echo.recovery.recover();
       if (echo.recovery.status !== "caught_up") throw new Error("Echo recovery did not reach caught-up state.");
-      if ((resolved.aggregate === undefined && echo.recovery.lastAppliedRev !== echo.map.rev)
-        || resolved.selected.rev !== echo.map.rev) {
+      if (resolved.selected.rev !== echo.map.rev) {
         throw new Error("Echo, aggregate, and selected document revisions are not current together.");
       }
     } catch (cause) {
@@ -153,9 +148,6 @@ export async function continue_hosted_document_internal(options: Readonly<{
     }
     if (options.interactions !== undefined) {
       try {
-        if (resolved.aggregate === undefined) {
-          throw new Error("Canonical interactions require a multi-library Echo map with enabled interaction storage.");
-        }
         const dispatch = async (actionKey: string, payload: HsonData): Promise<void> => {
           const outcome = await echo.action(actionKey, payload);
           if (outcome.type === "ack" && outcome.ok === true) return;

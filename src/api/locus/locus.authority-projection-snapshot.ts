@@ -17,7 +17,11 @@ import type { LiveMap } from "../../types/livemap.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 
-const clientProjectionIdentity = new WeakMap<LiveMap, Readonly<{ digest: string; incarnationId: string }>>();
+const clientProjectionIdentity = new WeakMap<LiveMap, Readonly<{
+  digest: string;
+  incarnationId: string;
+  systemFeatures: AuthorityProjectionSnapshot["systemFeatures"];
+}>>();
 const admittedSnapshots = new WeakMap<object, AuthorityProjectionSnapshot>();
 
 /** @internal The client contract digest is independent of its local registry. */
@@ -27,7 +31,7 @@ export function bind_client_projection_identity_internal(map: LiveMap, snapshot:
   if (previous !== undefined && previous.incarnationId === admitted.authority.incarnationId
     && previous.digest !== admitted.projectionDigest) fail();
   clientProjectionIdentity.set(map, Object.freeze({ digest: admitted.projectionDigest,
-    incarnationId: admitted.authority.incarnationId }));
+    incarnationId: admitted.authority.incarnationId, systemFeatures: admitted.systemFeatures }));
 }
 
 /** Replace a verified Echo contract after an authorized projected fallback. @internal */
@@ -37,12 +41,17 @@ export function replace_client_projection_identity_internal(
   const admitted = admit_authority_projection_snapshot(snapshot);
   if (clientProjectionIdentity.get(map)?.digest !== previousDigest) fail();
   clientProjectionIdentity.set(map, Object.freeze({ digest: admitted.projectionDigest,
-    incarnationId: admitted.authority.incarnationId }));
+    incarnationId: admitted.authority.incarnationId, systemFeatures: admitted.systemFeatures }));
 }
 
 /** @internal */
 export function client_projection_identity_internal(map: LiveMap): string | undefined {
   return clientProjectionIdentity.get(map)?.digest;
+}
+
+/** Canonical feature contract supplied by the admitted initial projection. @internal */
+export function client_projection_features_internal(map: LiveMap): AuthorityProjectionSnapshot["systemFeatures"] | undefined {
+  return clientProjectionIdentity.get(map)?.systemFeatures;
 }
 
 /** Advance an existing Echo map's session contract without replacing that map. @internal */
@@ -51,11 +60,12 @@ export function advance_client_projection_identity_internal(
   incarnationId: string,
   previousDigest: string,
   nextDigest: string,
+  systemFeatures: AuthorityProjectionSnapshot["systemFeatures"],
 ): void {
   const current = clientProjectionIdentity.get(map);
   if (current?.incarnationId !== incarnationId || current.digest !== previousDigest
     || !/^[a-f0-9]{64}$/u.test(nextDigest)) fail();
-  clientProjectionIdentity.set(map, Object.freeze({ digest: nextDigest, incarnationId }));
+  clientProjectionIdentity.set(map, Object.freeze({ digest: nextDigest, incarnationId, systemFeatures }));
 }
 
 export const AUTHORITY_PROJECTION_SNAPSHOT_FORMAT: "hson-authority-projection-snapshot" = "hson-authority-projection-snapshot";

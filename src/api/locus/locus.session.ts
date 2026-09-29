@@ -18,6 +18,10 @@ const DEFAULT_GRACE_MS = 30_000;
 
 type SessionAttachment = Readonly<{
   fence: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => void;
+  /** A destination reservation must survive all old-attachment callbacks. */
+  current?: () => boolean;
+  /** Publish the new epoch before attached observers may close the destination. */
+  committed?: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => void;
 }>;
 
 type SessionRecord = {
@@ -80,6 +84,7 @@ export type LocusSessionManager = Readonly<{
   projection_at_digest: (sessionId: LocusSessionId, digest: string, sequence: number) => Readonly<{
     projection: LocusEffectiveProjection; sequence: number;
   }> | undefined;
+  principal_matches: (sessionId: LocusSessionId, context?: LocusConnectionContext) => boolean;
   disconnected_with_principal: (sessionId: LocusSessionId, context: LocusConnectionContext) => boolean;
   update_projection: (sessionId: LocusSessionId, expected: LocusEffectiveProjection, next: LocusEffectiveProjection) => number;
   /** Immutable projections of all still-resumable sessions at one roster cut. */
@@ -259,14 +264,27 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     }
     // Fencing and lifecycle observers may synchronously terminate or replace
     // this attachment. Their transition wins over the suspended reattachment.
-    const stillCurrent = () => !disposed && credentials.get(credential) === record
+    const stillCurrent = () => !disposed && sessions.get(record.sessionId) === record
+      && credentials.get(credential) === record
       && (record.state === "attached" || record.state === "disconnected")
       && record.epoch === previousEpoch && record.attachment === previous;
-    if (!stillCurrent()) return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session changed during reattachment.");
+    const destinationCurrent = () => attachment.current?.() !== false;
+    const checked = () => {
+      if (!stillCurrent()) return false;
+      if (!destinationCurrent()) {
+        if (stillCurrent()) {
+          if (record.state === "attached") detach(record.sessionId, previousEpoch);
+          else if (record.stopExpiry === undefined) schedule_expiry(record);
+        }
+        return false;
+      }
+      return stillCurrent();
+    };
+    if (!checked()) return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session changed during reattachment.");
     const stopExpiry = record.stopExpiry;
     record.stopExpiry = undefined;
     stopExpiry?.();
-    if (!stillCurrent()) return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session changed during reattachment.");
+    if (!checked()) return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session changed during reattachment.");
     record.disconnectedAt = undefined;
     record.expiresAt = undefined;
     record.epoch += 1;
@@ -274,8 +292,24 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     record.state = "attached";
     record.reattachmentCount += 1;
     totalReattachments += 1;
+    const committedCurrent = () => destinationCurrent() && !disposed
+      && sessions.get(record.sessionId) === record && credentials.get(credential) === record
+      && record.state === "attached" && record.epoch === previousEpoch + 1
+      && record.attachment === attachment;
+    try { attachment.committed?.(record.sessionId, record.epoch); }
+    catch {
+      detach(record.sessionId, previousEpoch + 1);
+      return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session changed during reattachment.");
+    }
+    if (!committedCurrent()) {
+      detach(record.sessionId, previousEpoch + 1);
+      return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session changed during reattachment.");
+    }
     emit(Object.freeze({ kind: "attached", session: diagnostic(record), attachment: "reattached" }));
-    if (!is_active(record.sessionId, previousEpoch + 1)) return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session changed during reattachment.");
+    if (!committedCurrent()) {
+      detach(record.sessionId, previousEpoch + 1);
+      return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session changed during reattachment.");
+    }
     return ok({ sessionId: record.sessionId, epoch: record.epoch, resumable: record.resumable,
       ...(record.effectiveProjection === undefined ? {} : { effectiveProjection: record.effectiveProjection }),
     });
@@ -390,6 +424,12 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
       && record.principalId === context.principalId;
   }
 
+  function principal_matches(sessionId: LocusSessionId, context?: LocusConnectionContext): boolean {
+    const record = sessions.get(sessionId);
+    return !disposed && (record?.state === "attached" || record?.state === "disconnected")
+      && record.principalId === context?.principalId;
+  }
+
   function update_projection(sessionId: LocusSessionId, expected: LocusEffectiveProjection, next: LocusEffectiveProjection): number {
     const record = sessions.get(sessionId);
     if (disposed || record === undefined || (record.state !== "attached" && record.state !== "disconnected")
@@ -467,6 +507,6 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
   }
 
   return Object.freeze({ create, reattach, detach, goodbye, revoke, release_ephemeral, is_active,
-    key, epoch, credential, projection, projection_sequence, projection_at_digest, disconnected_with_principal,
+    key, epoch, credential, projection, projection_sequence, projection_at_digest, principal_matches, disconnected_with_principal,
     update_projection, resumable_projections, debug, onChange, dispose });
 }

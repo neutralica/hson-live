@@ -4,6 +4,7 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
+  LiveMapLibraryAddOperation,
   LiveMap,
   LiveMapDefinitions,
 } from "../../types/livemap.types.js";
@@ -36,7 +37,7 @@ import { LocusPersistenceError } from "./locus.persistence.error.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
 import { make_locus_session_manager } from "./locus.session.js";
-import { LocusProjectionUnavailableError, make_locus_hosted_projection_policy, normalize_locus_effective_projection, runtime_locus_exposure_entries, type LocusEffectiveProjection } from "./locus.projection.js";
+import { LocusProjectionUnavailableError, make_locus_hosted_projection_policy, normalize_locus_effective_projection, runtime_locus_exposure_entries, snapshot_locus_requested_projection, type LocusEffectiveProjection } from "./locus.projection.js";
 import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal, projected_registry_digest, type LocusLiveProjectedEvent } from "./locus.live-projection.js";
 import { capture_locus_session_authority_projection_snapshot, capture_selected_authority_projection_snapshot, authority_projection_as_client_composition_internal } from "./locus.authority-projection-snapshot.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
@@ -144,9 +145,54 @@ type HostedConnection = {
   sessionEpoch: number | undefined;
   sessionResumable: boolean;
   establishing: boolean;
+  pendingAttachment?: { sessionId?: string; epoch?: number };
   effectiveProjection?: LocusEffectiveProjection;
   fenced: boolean;
 };
+
+/** Identical selected-root topology for live scope changes and recovery catch-up. */
+function projection_change_topology(
+  added: LocusEffectiveProjection["libraries"], snapshot: AuthorityProjectionSnapshot,
+): LiveMapLibraryAddOperation | undefined {
+  const additions = added.map((entry) => {
+    const captured = snapshot.libraries.find((candidate) => candidate.name === entry.name);
+    if (captured === undefined) throw new LocusProjectionUnavailableError();
+    return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, root: captured.root });
+  });
+  const first = additions[0];
+  return first === undefined ? undefined : Object.freeze({ library: first.name,
+    operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(additions) }) });
+}
+
+/** Detach authorization input from caller-owned objects before any queued work. */
+function authorization_context_snapshot(context?: LocusConnectionContext): LocusConnectionContext | undefined {
+  if (context === undefined) return undefined;
+  const principalId = context.principalId;
+  const originalAttachment = context.attachment;
+  let attachment: unknown;
+  try {
+    attachment = originalAttachment === undefined ? undefined : structuredClone(originalAttachment);
+  } catch {
+    throw new LocusProjectionUnavailableError();
+  }
+  const seen = new WeakSet<object>();
+  const rejectSharedMemory = (value: unknown): void => {
+    if (typeof value !== "object" || value === null || seen.has(value)) return;
+    seen.add(value);
+    if (typeof SharedArrayBuffer !== "undefined" && value instanceof SharedArrayBuffer) {
+      throw new LocusProjectionUnavailableError();
+    }
+    if (ArrayBuffer.isView(value)) rejectSharedMemory(value.buffer);
+    if (value instanceof Map) for (const [key, entry] of value) { rejectSharedMemory(key); rejectSharedMemory(entry); }
+    if (value instanceof Set) for (const entry of value) rejectSharedMemory(entry);
+    for (const entry of Object.values(value)) rejectSharedMemory(entry);
+  };
+  rejectSharedMemory(attachment);
+  return Object.freeze({
+    ...(principalId === undefined ? {} : { principalId }),
+    ...(attachment === undefined ? {} : { attachment }),
+  });
+}
 
 /** @internal Typed aggregate output before adapter framing. */
 function is_hosted_aggregate_downstream_output(value: unknown): value is Readonly<{ type: string; readonly [field: string]: unknown }> {
@@ -400,11 +446,17 @@ export function create_locus_hosted_aggregate_socket_internal<
       || (creation.resumable !== undefined && typeof creation.resumable !== "boolean")) {
       return Promise.reject(new LocusProjectionUnavailableError());
     }
-    const context = creation.connection === undefined ? undefined : Object.freeze({ ...creation.connection });
+    let context: LocusConnectionContext | undefined;
+    let requested: LocusRequestedProjection;
+    try {
+      context = authorization_context_snapshot(creation.connection);
+      requested = snapshot_locus_requested_projection(request);
+    }
+    catch { return Promise.reject(new LocusProjectionUnavailableError()); }
     const resumable = creation.resumable ?? true;
     return locus.run_exclusive(async () => {
       if (disposed) throw new LocusProjectionUnavailableError();
-      const effective = await normalize_locus_effective_projection(projectionPolicy, request, context);
+      const effective = await normalize_locus_effective_projection(projectionPolicy, requested, context);
       if (disposed) throw new LocusProjectionUnavailableError();
       const sessionId = next_session_id();
       const created = sessions.create(sessionId, resumable, Object.freeze({ fence: () => {} }),
@@ -419,11 +471,23 @@ export function create_locus_hosted_aggregate_socket_internal<
     context?: LocusConnectionContext, expectedKey?: object): Promise<Readonly<{
     changed: boolean; sequence: number; digest: string; authorityRev: number;
   }>> {
+    let suppliedContext: LocusConnectionContext | undefined;
+    let attachedContext: LocusConnectionContext | undefined;
+    let requested: LocusRequestedProjection;
+    const enteredConnection = [...connections].find((candidate) => candidate.sessionId === sessionId
+      && candidate.sessionEpoch !== undefined && candidate.live && !candidate.closed
+      && !candidate.fenced && sessions.is_active(sessionId, candidate.sessionEpoch));
+    try {
+      suppliedContext = authorization_context_snapshot(context);
+      attachedContext = authorization_context_snapshot(enteredConnection?.context);
+      requested = snapshot_locus_requested_projection(request);
+    } catch { return Promise.reject(new LocusProjectionUnavailableError()); }
     return locus.run_exclusive(async () => {
       if (disposed || (expectedKey !== undefined && sessions.key(sessionId) !== expectedKey)) throw new LocusProjectionUnavailableError();
       const connection = [...connections].find((candidate) => candidate.sessionId === sessionId
         && candidate.sessionEpoch !== undefined && candidate.live && !candidate.closed
         && !candidate.fenced && sessions.is_active(sessionId, candidate.sessionEpoch));
+      if (connection !== enteredConnection) throw new LocusProjectionUnavailableError();
       const previous = sessions.projection(sessionId);
       const retainedEpoch = sessions.epoch(sessionId);
       const hasTransport = () => [...connections].some(candidate => candidate.sessionId === sessionId
@@ -431,24 +495,28 @@ export function create_locus_hosted_aggregate_socket_internal<
         && sessions.is_active(sessionId, candidate.sessionEpoch));
       const serverOwned = !hasTransport() && serverSessionContexts.has(sessionId);
       const serverContext = serverSessionContexts.get(sessionId);
-      if (serverOwned && context !== undefined && context.principalId !== serverContext?.principalId) {
+      if (serverOwned && suppliedContext !== undefined && suppliedContext.principalId !== serverContext?.principalId) {
         throw new LocusProjectionUnavailableError();
       }
-      const disconnected = connection === undefined && context !== undefined
-        && sessions.disconnected_with_principal(sessionId, context);
+      const disconnected = connection === undefined && suppliedContext !== undefined
+        && sessions.disconnected_with_principal(sessionId, suppliedContext);
       if (previous === undefined || (!serverOwned && !disconnected && (connection === undefined
         || connection.effectiveProjection !== previous || connection.recoveryId === undefined
         || connection.sessionEpoch === undefined))) {
         throw new LocusProjectionUnavailableError();
       }
       const epoch = connection?.sessionEpoch;
-      const next = await normalize_locus_effective_projection(projectionPolicy, request, connection?.context ?? context ?? serverContext);
+      const authorizationContext = connection === undefined ? suppliedContext ?? serverContext : attachedContext;
+      const next = await normalize_locus_effective_projection(projectionPolicy, requested, authorizationContext);
       if (sessions.projection(sessionId) !== previous || sessions.epoch(sessionId) !== retainedEpoch
         || (expectedKey !== undefined && sessions.key(sessionId) !== expectedKey)
         || (serverOwned ? !serverSessionContexts.has(sessionId) || hasTransport()
-          : disconnected ? context === undefined || !sessions.disconnected_with_principal(sessionId, context)
+            || authorizationContext?.principalId !== serverContext?.principalId
+            || !sessions.principal_matches(sessionId, authorizationContext)
+          : disconnected ? suppliedContext === undefined || !sessions.disconnected_with_principal(sessionId, suppliedContext)
           : connection === undefined || epoch === undefined || !attachment_current(connection, sessionId, epoch)
-            || !connection.live || connection.effectiveProjection !== previous)) {
+            || !connection.live || connection.effectiveProjection !== previous
+            || !sessions.principal_matches(sessionId, authorizationContext))) {
         throw new LocusProjectionUnavailableError();
       }
       const added = next.libraries.filter((entry) => !previous.includesLibrary(entry.name));
@@ -465,14 +533,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       }
       if (connection === undefined || connection.recoveryId === undefined) throw new LocusProjectionUnavailableError();
       const snapshot = capture_selected_authority_projection_snapshot(options.map, next);
-      const additions = added.map((entry) => {
-        const captured = snapshot.libraries.find((candidate) => candidate.name === entry.name);
-        if (captured === undefined) throw new LocusProjectionUnavailableError();
-        return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, root: captured.root });
-      });
-      const first = additions[0];
-      const topology = first === undefined ? undefined : Object.freeze({ library: first.name,
-        operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(additions) }) });
+      const topology = projection_change_topology(added, snapshot);
       const event: LocusHostedProjectionChange = Object.freeze({
         type: "projection-change", id: connection.recoveryId,
         logicalMapId: locus.logicalMapId, incarnationId: locus.incarnationId,
@@ -482,8 +543,6 @@ export function create_locus_hosted_aggregate_socket_internal<
         libraries: next.libraries,
         systemFeatures: next.systemFeatures, writableDocuments: next.writableDocuments,
         ...(reconcile ? { reconciliation: snapshot } : topology === undefined ? {} : { topology }),
-        ...(!reconcile && added.some((entry) => entry.mode === "document") && snapshot.system !== null
-          ? { system: snapshot.system.interactions } : {}),
       });
       encode_downstream_message(event, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes);
       const sequence = sessions.update_projection(sessionId, previous, next);
@@ -775,12 +834,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     if (snapshot === undefined && replayProjection !== effective) {
       if (!recovery_delivery_current(connection, activeRecovery)) return;
       const added = effective.libraries.filter((entry) => !replayProjection.includesLibrary(entry.name));
-      const additions = added.map((entry) => {
-        const captured = headSnapshot.libraries.find((candidate) => candidate.name === entry.name);
-        if (captured === undefined) throw new LocusProjectionUnavailableError();
-        return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, root: captured.root });
-      });
-      const first = additions[0];
+      const topology = projection_change_topology(added, headSnapshot);
       const reconcile = added.some((entry) => entry.mode === "document");
       const change: LocusHostedProjectionChange = Object.freeze({
         type: "projection-change", id: request.id,
@@ -790,10 +844,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         registryDigest: projectedRegistryDigest,
         libraries: effective.libraries,
         systemFeatures: effective.systemFeatures, writableDocuments: effective.writableDocuments,
-        ...(reconcile ? { reconciliation: headSnapshot } : first === undefined ? {} : { topology: Object.freeze({ library: first.name,
-          operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(additions) }) }) }),
-        ...(!reconcile && added.some((entry) => entry.mode === "document") && headSnapshot.system !== null
-          ? { system: headSnapshot.system.interactions } : {}),
+        ...(reconcile ? { reconciliation: headSnapshot } : topology === undefined ? {} : { topology }),
       });
       send(connection, change, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes);
       if (!recovery_delivery_current(connection, activeRecovery)) return;
@@ -883,7 +934,8 @@ export function create_locus_hosted_aggregate_socket_internal<
     });
   }
 
-  function bind_session(connection: HostedConnection, resumable: boolean): boolean | Promise<boolean> {
+  function bind_session(connection: HostedConnection, resumable: boolean,
+    capturedContext?: LocusConnectionContext): boolean | Promise<boolean> {
     if (connection.sessionId !== undefined) {
       return connection.sessionEpoch !== undefined
         && !connection.fenced
@@ -893,8 +945,10 @@ export function create_locus_hosted_aggregate_socket_internal<
     connection.establishing = true;
     const policyRegistry = projectionPolicy.registry;
     let projection: LocusEffectiveProjection | Promise<LocusEffectiveProjection>;
+    let authorizationContext: LocusConnectionContext | undefined;
     try {
-      projection = normalize_locus_effective_projection(projectionPolicy, undefined, connection.context);
+      authorizationContext = capturedContext ?? authorization_context_snapshot(connection.context);
+      projection = normalize_locus_effective_projection(projectionPolicy, undefined, authorizationContext);
     } catch {
       connection.establishing = false;
       return false;
@@ -902,7 +956,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     const finish = (effectiveProjection: LocusEffectiveProjection): boolean | Promise<boolean> => {
       if (admissionBarrier !== undefined || projectionPolicy.registry !== policyRegistry) return (admissionBarrier ?? Promise.resolve()).then(() => {
         connection.establishing = false;
-        return bind_session(connection, resumable);
+        return bind_session(connection, resumable, authorizationContext);
       });
       if (connection.closed || connection.fenced || connection.sessionId !== undefined) {
         connection.establishing = false;
@@ -915,7 +969,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         session_attachment(connection),
         () => {},
         () => 0,
-        connection.context,
+        authorizationContext,
         effectiveProjection,
       );
       if (!created.ok) {
@@ -933,7 +987,8 @@ export function create_locus_hosted_aggregate_socket_internal<
     return finish(projection);
   }
 
-  function session_create(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-create" }>): void | Promise<void> {
+  function session_create(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-create" }>,
+    capturedContext?: LocusConnectionContext): void | Promise<void> {
     if (connection.sessionId !== undefined || connection.establishing) {
       send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "This transport already owns a Locus session." }));
       return;
@@ -945,8 +1000,10 @@ export function create_locus_hosted_aggregate_socket_internal<
       if (!connection.closed) send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_PROJECTION_UNAVAILABLE", message: "Requested client projection is unavailable." }));
     };
     let projection: LocusEffectiveProjection | Promise<LocusEffectiveProjection>;
+    let authorizationContext: LocusConnectionContext | undefined;
     try {
-      projection = normalize_locus_effective_projection(projectionPolicy, request.projection, connection.context);
+      authorizationContext = capturedContext ?? authorization_context_snapshot(connection.context);
+      projection = normalize_locus_effective_projection(projectionPolicy, request.projection, authorizationContext);
     } catch {
       failProjection();
       return;
@@ -954,14 +1011,15 @@ export function create_locus_hosted_aggregate_socket_internal<
     const finish = (effectiveProjection: LocusEffectiveProjection): void | Promise<void> => {
       if (admissionBarrier !== undefined || projectionPolicy.registry !== policyRegistry) return (admissionBarrier ?? Promise.resolve()).then(() => {
         connection.establishing = false;
-        return session_create(connection, request);
+        return session_create(connection, request, authorizationContext);
       });
       if (connection.closed || connection.fenced || connection.sessionId !== undefined) {
         connection.establishing = false;
         return;
       }
       const sessionId = next_session_id();
-      const created = sessions.create(sessionId, true, session_attachment(connection), () => {}, () => 0, connection.context, effectiveProjection);
+      const created = sessions.create(sessionId, true, session_attachment(connection), () => {}, () => 0,
+        authorizationContext, effectiveProjection);
       if (!created.ok || created.value.credential === undefined) {
         connection.establishing = false;
         send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "Locus could not create a resumable session." }));
@@ -987,6 +1045,7 @@ export function create_locus_hosted_aggregate_socket_internal<
   }
 
   function session_attach(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-attach" }>): void {
+    if (connection.closed || connection.fenced) return;
     if (Object.prototype.hasOwnProperty.call(request, "projection")) {
       send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "A different projection requires a new Locus session." }));
       return;
@@ -995,9 +1054,33 @@ export function create_locus_hosted_aggregate_socket_internal<
       send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "This transport already owns a Locus session." }));
       return;
     }
-    const attached = sessions.reattach(request.credential, session_attachment(connection), connection.context);
+    const reservation: { sessionId?: string; epoch?: number } = {};
+    connection.establishing = true;
+    connection.pendingAttachment = reservation;
+    const previousAttachment = session_attachment(connection);
+    const attachment = Object.freeze({
+      fence: previousAttachment.fence,
+      current: () => !connection.closed && !connection.fenced && connections.has(connection)
+        && connection.establishing && connection.pendingAttachment === reservation
+        && connection.sessionId === undefined,
+      committed: (sessionId: string, epoch: number) => {
+        reservation.sessionId = sessionId;
+        reservation.epoch = epoch;
+      },
+    });
+    let attached: ReturnType<typeof sessions.reattach>;
+    try { attached = sessions.reattach(request.credential, attachment, connection.context); }
+    finally {
+      connection.pendingAttachment = undefined;
+      connection.establishing = false;
+    }
     if (!attached.ok) {
-      send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: attached.error.code ?? "LOCUS_SESSION_NOT_ATTACHED", message: attached.error.message }));
+      if (!connection.closed) send(connection, Object.freeze({ type: "session-rejected", id: request.id,
+        code: attached.error.code ?? "LOCUS_SESSION_NOT_ATTACHED", message: attached.error.message }));
+      return;
+    }
+    if (connection.closed || connection.fenced || !connections.has(connection)) {
+      sessions.detach(attached.value.sessionId, attached.value.epoch);
       return;
     }
     connection.sessionId = attached.value.sessionId;
@@ -1358,7 +1441,11 @@ export function create_locus_hosted_aggregate_socket_internal<
       connections.delete(connection);
       if (connection.sessionId !== undefined && connection.sessionEpoch !== undefined) {
         sessions.detach(connection.sessionId, connection.sessionEpoch);
+      } else if (connection.pendingAttachment?.sessionId !== undefined
+        && connection.pendingAttachment.epoch !== undefined) {
+        sessions.detach(connection.pendingAttachment.sessionId, connection.pendingAttachment.epoch);
       }
+      connection.pendingAttachment = undefined;
       connection.releaseActivity?.();
       connection.releaseActivity = undefined;
       connection.onClose?.();

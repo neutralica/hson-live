@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { hsonLiveMap, hsonLocus, hsonEcho, Hson, type LocusSocketLike } from "../src/index.ts";
+import { hsonLiveMap, hsonLocus, hsonEcho, Hson, enable_interactions, type LocusSocketLike } from "../src/index.ts";
 import { decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.retained-session", title: "Retained session server-first cuts",
@@ -177,6 +177,127 @@ assert.equal(requests.length, 2);
   assert.equal(stale.revoke(), false);
   assert.deepEqual(replacement.cut().libs.libraries.map(entry => entry.name), ["state"]);
   host.dispose();
+}
+
+// Explicit update context, including opaque authorization metadata, is copied
+// before queued/asynchronous authorization can observe caller mutation.
+{
+  let delayed = false;
+  let entered: (() => void) | undefined;
+  let release: (() => void) | undefined;
+  const seen: Readonly<{ principal: unknown; role: unknown }>[] = [];
+  const host = hsonLocus.create({ map: hsonLiveMap.fromLibraries({
+    base: { data: { value: "base" } }, aliceOnly: { data: { value: "ALICE" } },
+    malloryOnly: { data: { value: "MALLORY" } }, privateValue: { data: { value: "PRIVATE" } },
+    unrequestedValue: { data: { value: "UNREQUESTED" } },
+  }), exposure: ["base", "aliceOnly", "malloryOnly", "privateValue", "unrequestedValue"].map(library => ({
+    library, exposure: library === "privateValue" ? "server-private" as const : "client-public" as const,
+  })), authorizeProjection: async ({ connection }) => {
+    if (delayed) { entered?.(); await new Promise<void>(resolve => { release = resolve; }); }
+    const attachment = connection?.attachment;
+    const role = typeof attachment === "object" && attachment !== null && "role" in attachment
+      ? attachment.role : undefined;
+    seen.push({ principal: connection?.principalId, role });
+    const permitted = connection?.principalId === "alice" && role === "reader" ? "aliceOnly" : "malloryOnly";
+    return { libraries: ["base", permitted, "privateValue", "unrequestedValue"] };
+  } });
+  const retained = await host.session.create({ libraries: ["base"] },
+    { connection: { principalId: "alice", attachment: { role: "reader" } } });
+  const context = { principalId: "alice", attachment: { role: "reader" } };
+  const requested = { libraries: ["base", "aliceOnly", "malloryOnly", "privateValue"] };
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  delayed = true;
+  const pending = retained.update(requested, context);
+  await started;
+  context.principalId = "mallory";
+  context.attachment.role = "admin";
+  requested.libraries.push("unrequestedValue");
+  release?.();
+  assert.equal((await pending).changed, true);
+  assert.deepEqual(seen.at(-1), { principal: "alice", role: "reader" });
+  assert.deepEqual(retained.cut().libs.libraries.map(entry => entry.name), ["aliceOnly", "base"]);
+  assert.equal(JSON.stringify(retained.cut()).includes("PRIVATE"), false);
+  assert.equal(JSON.stringify(retained.cut()).includes("UNREQUESTED"), false);
+
+  delayed = false;
+  const revoked = await host.session.create({ libraries: ["base"] },
+    { connection: { principalId: "alice", attachment: { role: "reader" } } });
+  const secondStarted = new Promise<void>(resolve => { entered = resolve; });
+  delayed = true;
+  const afterRevocation = revoked.update({ libraries: ["base", "aliceOnly"] });
+  await secondStarted;
+  assert.equal(revoked.revoke(), true);
+  release?.();
+  await assert.rejects(afterRevocation, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  host.dispose();
+}
+
+// CURRENT recovery must retain the admitted interaction-feature contract.
+{
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" },
+    state: { data: { value: "STATE" } }, added: { data: { value: "ADDED" } } });
+  enable_interactions(map);
+  const host = hsonLocus.create({ map, exposure: ["page", "state", "added"].map(library => ({
+    library, exposure: "client-public" as const,
+  })), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
+    systemFeatures: requested.systemFeatures }) });
+  const retained = await host.session.create({ libraries: ["page", "state"], systemFeatures: ["interactions"] });
+  const cut = retained.cut({ html: "page" });
+  const clientMap = hsonLiveMap.fromClientSnapshot({ authority: cut.libs, localLibraries: {} });
+  const wire = pair(); const stop = host.connect(wire.server);
+  const echo = hsonEcho.create({ socket: wire.client, map: clientMap,
+    recovery: { logicalMapId: cut.libs.authority.logicalMapId }, session: { credential: retained.credential } });
+  echo.connect(); await echo.session.reattach();
+  assert.equal((await echo.recovery.recover()).strategy, "current");
+  assert.equal((await retained.update({ libraries: ["page", "state", "added"],
+    systemFeatures: ["interactions"] })).changed, true);
+  assert.equal(echo.recovery.status, "caught_up");
+  assert.equal(clientMap.lib("added").mode, "data-object");
+  const change = wire.frames.map(raw => JSON.parse(raw)).find(frame => frame.type === "projection-change");
+  assert.ok(change);
+  assert.deepEqual(change.systemFeatures, ["interactions"]);
+  wire.server.send(JSON.stringify({ ...change, sequence: change.sequence + 1,
+    previousDigest: change.projectionDigest, systemFeatures: [] }));
+  assert.equal(echo.recovery.status, "failed");
+  echo.dispose(); stop(); host.dispose();
+}
+
+// Reconciliation consumes the same legal >4 MiB hosted root as installation.
+{
+  const text = "x".repeat(4 * 1024 * 1024 + 256);
+  const map = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main "${text}"/>` },
+    extra: { data: { value: "REMOVE_ME" } } });
+  const host = hsonLocus.create({ map, exposure: ["page", "extra"].map(library => ({
+    library, exposure: "client-public" as const,
+  })), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+  const retained = await host.session.create({ libraries: ["page", "extra"] });
+  const cut = retained.cut({ html: "page" });
+  assert.equal(cut.html, `<main>${text}</main>`);
+  assert.ok(cut.libs.libraries.find(entry => entry.name === "page")!.root.payload.length > 4 * 1024 * 1024);
+  const clientMap = hsonLiveMap.fromClientSnapshot({ authority: cut.libs, localLibraries: {} });
+  const wire = pair(); const stop = host.connect(wire.server);
+  const echo = hsonEcho.create({ socket: wire.client, map: clientMap,
+    recovery: { logicalMapId: cut.libs.authority.logicalMapId }, session: { credential: retained.credential } });
+  echo.connect(); await echo.session.reattach();
+  assert.equal((await echo.recovery.recover()).strategy, "current");
+  assert.equal((await retained.update({ libraries: ["page"] })).changed, true);
+  assert.ok(wire.frames.map(raw => JSON.parse(raw)).some(frame => frame.type === "projection-change"
+    && frame.reconciliation !== undefined));
+  assert.equal(echo.recovery.status, "caught_up");
+  assert.throws(() => clientMap.lib("extra"));
+  assert.equal(clientMap.lib("page").mode, "document");
+
+  assert.equal((await retained.update({ libraries: ["page", "extra"] })).changed, true);
+  assert.equal(clientMap.lib("extra").mode, "data-object");
+  echo.disconnect(); stop();
+  assert.equal((await retained.update({ libraries: ["page"] })).changed, true);
+  const reconnect = host.connect(wire.server);
+  echo.connect(); await echo.session.reattach();
+  assert.equal((await echo.recovery.recover()).strategy, "snapshot");
+  assert.equal(echo.recovery.status, "caught_up");
+  assert.throws(() => clientMap.lib("extra"));
+  assert.equal(clientMap.lib("page").mode, "document");
+  echo.dispose(); reconnect(); host.dispose();
 }
 
 console.log("Retained session checks passed.");

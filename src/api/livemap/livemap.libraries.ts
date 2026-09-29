@@ -547,7 +547,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       const contract = snapshot.registry.libraries.find((candidate) => candidate.name === entry.name);
       if (contract === undefined || contract.scope === "hson-internal") continue;
       const schema = HsonSchemaHandle.fromHson(entry.schema);
-      const root = decode_hosted_root(entry.root);
+      const root = decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES);
       inputs.set(entry.name, must_library_input(entry.name, entry.mode === "document"
         ? { document: root, schema } : { data: reconstructed_data(root), schema }));
     }
