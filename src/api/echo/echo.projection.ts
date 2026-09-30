@@ -9,7 +9,7 @@ import {
   reconstructed_data_internal,
 } from "../livemap/livemap.libraries.js";
 import { decode_hosted_root, HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
-import { apply_client_local_initializer_css_internal } from "../locus/locus.local-initializer.js";
+import { apply_client_local_initializer_css_internal, retain_client_local_seed_contracts_internal } from "../locus/locus.local-initializer.js";
 import {
   authority_projection_as_client_composition_internal,
   bind_client_projection_identity_internal,
@@ -48,5 +48,6 @@ export function compose_client_portable_aggregate_internal(
   }
   const map = make_livemap_libraries(Object.freeze(inputs), admitted.systems, snapshot);
   apply_client_local_initializer_css_internal(map, local);
+  retain_client_local_seed_contracts_internal(map, local);
   return map;
 }

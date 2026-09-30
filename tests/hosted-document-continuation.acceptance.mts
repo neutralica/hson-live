@@ -86,9 +86,10 @@ function socketPair(): Readonly<{
   let handled: HsonData | undefined;
   const locus = hsonLocus.create({
     map: authority,
-    libraries: test_application_catalog(authority),
-    defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
-    authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
+    libraries: [...test_application_catalog(authority),
+      { name: "ui", ownership: "local", initializer: { data: { value: 0 } } }],
+    defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] },
+    authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }),
     actions: { save: (_context, payload) => { handled = payload; } },
   });
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
@@ -98,8 +99,9 @@ function socketPair(): Readonly<{
   const effective = normalize_locus_effective_projection(policy, requested);
   if (effective instanceof Promise) throw new Error("Expected synchronous continuation projection.");
   const projected = project_authority_snapshot(complete, effective);
-  const session = await locus.session.create(requested);
+  const session = await locus.session.create({ libraries: ["page", "ui"], systemFeatures: ["interactions"] });
   const cut = session.now();
+  assert.deepEqual(cut.local.map((entry) => entry.name), ["ui"]);
   const fresh = () => {
     const pair = socketPair();
     const detach = locus.connect(pair.server);
@@ -140,6 +142,7 @@ function socketPair(): Readonly<{
     interactions: { local: {} },
   });
   assert.equal(continuation.map, continuation.echo.map.lib("page"));
+  assert.equal(continuation.echo.map.lib("ui").mode, "data-object");
   button.dispatchEvent(new Event("click"));
   for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
   assert.equal(handled === Hson.data.from({ exact: true }), true);
@@ -178,10 +181,13 @@ function socketPair(): Readonly<{
   const emptyLocus = hsonLocus.create({ map: empty, libraries: test_application_catalog(empty),
     authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
   const emptySession = await emptyLocus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
-  const locus = hsonLocus.create({ map: authority, libraries: test_application_catalog(authority),
-    authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
-  const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
+  const locus = hsonLocus.create({ map: authority, libraries: [
+    ...test_application_catalog(authority),
+    { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
+  ], authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }) });
+  const session = await locus.session.create({ libraries: ["page", "ui"], systemFeatures: ["interactions"] });
   const cut = session.now();
+  assert.deepEqual(cut.local.map((entry) => entry.name), ["ui"]);
   const mixed = { ...cut, libs: { ...cut.libs, system: emptySession.now().libs.system } };
   const pair = socketPair();
   const detach = locus.connect(pair.server);
@@ -191,6 +197,14 @@ function socketPair(): Readonly<{
   const continuation = await continue_hosted_document({ now: mixed, credential: session.credential!,
     socket: pair.client, root: root as unknown as Element });
   assert.equal(continuation.echo.sync.strategy, "reconcile");
+  const ui = continuation.echo.map.lib("ui");
+  if (ui.mode === "document") throw new Error("Expected local data Library.");
+  assert.equal(ui.snap(["value"]), 0);
+  const authorityRev = locus.rev;
+  ui.at(["value"]).set(12);
+  assert.equal(locus.rev, authorityRev);
+  assert.equal(ui.snap(["value"]), 12);
+  assert.equal(continuation.map, continuation.echo.map.lib("page"));
   assert.equal(get_node_for_el(button as unknown as Element) !== undefined, true);
   assert.equal(continuation.mirror.status, "active");
   continuation.dispose(); continuation.echo.dispose(); detach(); locus.dispose(); emptyLocus.dispose();

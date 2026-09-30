@@ -28,6 +28,7 @@ export function prepare_echo_replica_internal<TActions extends LocusActionPayloa
       session: { credential: options.credential },
       initialStateFingerprint: authority_projection_state_fingerprint_internal(now.libs),
       initialInitializerDigest: now.initializerDigest,
+      initialSessionBinding: now.sessionBinding,
       ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     }, management);
     return Object.freeze({

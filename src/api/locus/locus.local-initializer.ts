@@ -26,12 +26,31 @@ import {
   decode_portable_document_stylesheet,
   encode_portable_document_stylesheet,
   empty_portable_document_stylesheet,
+  render_portable_document_stylesheet,
 } from "../../internal/css/portable-document-stylesheet.js";
+import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 
 export type LocusApplicationCatalog = Readonly<{
   ownership: Map<string, "private" | "shared">;
   local: Map<string, LocusLocalInitializer>;
 }>;
+
+type LocalSeedContract = Readonly<Pick<LocusLocalInitializer, "mode" | "schemaDigest">>;
+const clientLocalSeedContracts = new WeakMap<LiveMap, Map<string, LocalSeedContract>>();
+
+function freeze_portable_value<T extends object>(value: T): Readonly<T> {
+  for (const child of Object.values(value)) {
+    if (typeof child === "object" && child !== null) freeze_portable_value(child);
+  }
+  return Object.freeze(value);
+}
+
+function canonical_local_css(input: unknown): import("../../types/document-css.types.js").DocumentCssRecord {
+  const stylesheet = decode_portable_document_stylesheet(input);
+  // A structured record must meet the same parser and RAWTEXT rules as authored CSS.
+  parse_document_stylesheet(render_portable_document_stylesheet(stylesheet), []);
+  return freeze_portable_value(encode_portable_document_stylesheet(stylesheet));
+}
 
 function initializer_fingerprint(input: Omit<LocusLocalInitializer, "fingerprint">): string {
   return hosted_sha256(JSON.stringify({ format: "hson-local-initializer", ...input }));
@@ -49,12 +68,15 @@ export function admit_locus_session_now(input: unknown): LocusSessionNow {
   if (typeof input !== "object" || input === null || (input as { format?: unknown }).format !== "hson-locus-session-now") {
     throw new Error("Locus session now state is malformed.");
   }
-  const value = input as { libs?: unknown; local?: unknown; initializerDigest?: unknown };
+  const value = input as { sessionBinding?: unknown; libs?: unknown; local?: unknown; initializerDigest?: unknown };
+  if (typeof value.sessionBinding !== "string" || !/^[a-f0-9]{32}$/u.test(value.sessionBinding)) {
+    throw new Error("Locus session now binding is malformed.");
+  }
   const libs = admit_authority_projection_snapshot(value.libs);
   const local = admit_locus_local_initializers(value.local);
   const initializerDigest = locus_local_initializer_digest(local);
   if (value.initializerDigest !== initializerDigest) throw new Error("Locus session local initializer set is inconsistent.");
-  return Object.freeze({ format: "hson-locus-session-now", libs, local, initializerDigest });
+  return Object.freeze({ format: "hson-locus-session-now", sessionBinding: value.sessionBinding, libs, local, initializerDigest });
 }
 
 function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "local" }>): LocusLocalInitializer {
@@ -69,8 +91,8 @@ function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "
   admit_portable_hson_node(decoded, `Locus local initializer (${entry.name})`);
   const css = registry.mode === "document"
     ? entry.css === undefined
-      ? encode_portable_document_stylesheet(empty_portable_document_stylesheet())
-      : encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css))
+      ? canonical_local_css(encode_portable_document_stylesheet(empty_portable_document_stylesheet()))
+      : canonical_local_css(entry.css)
     : undefined;
   if (registry.mode !== "document" && entry.css !== undefined) {
     throw new TypeError(`Locus local data initializer ${JSON.stringify(entry.name)} cannot define CSS.`);
@@ -160,7 +182,7 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
     if (mode !== value.mode) throw new Error("Local initializer root mode is inconsistent.");
     validate_hson_schema_graph(schema, root);
     const css = mode === "document"
-      ? encode_portable_document_stylesheet(decode_portable_document_stylesheet(value.css))
+      ? canonical_local_css(value.css)
       : undefined;
     if (mode !== "document" && hasCss) throw new Error("Local data initializer cannot carry CSS.");
     const base = Object.freeze({
@@ -178,6 +200,19 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
   return Object.freeze(admitted);
 }
 
+/** Retain the immutable definition identity independently of evolving client state. @internal */
+export function retain_client_local_seed_contracts_internal(map: LiveMap, initializers: readonly LocusLocalInitializer[]): void {
+  const contracts = clientLocalSeedContracts.get(map) ?? new Map<string, LocalSeedContract>();
+  for (const initializer of initializers) {
+    const prior = contracts.get(initializer.name);
+    if (prior !== undefined && (prior.mode !== initializer.mode || prior.schemaDigest !== initializer.schemaDigest)) {
+      throw new Error(`Local Library ${JSON.stringify(initializer.name)} already has a different seed contract.`);
+    }
+    contracts.set(initializer.name, Object.freeze({ mode: initializer.mode, schemaDigest: initializer.schemaDigest }));
+  }
+  clientLocalSeedContracts.set(map, contracts);
+}
+
 /** Initialize absent local Libraries; compatible existing client-owned state always wins. */
 export function install_client_local_initializers_internal(
   map: LiveMap,
@@ -187,6 +222,7 @@ export function install_client_local_initializers_internal(
   const aggregate = internal_livemap_aggregate_authority(map);
   const projected = new Set(aggregate.clientProjection()?.libraries ?? []);
   const registry = aggregate.hostedRegistry();
+  const seedContracts = clientLocalSeedContracts.get(map);
   const missing: LocusLocalInitializer[] = [];
   for (const initializer of initializers) {
     const existing = registry.libraries.find((entry) => entry.name === initializer.name);
@@ -195,7 +231,9 @@ export function install_client_local_initializers_internal(
       continue;
     }
     if (projected.has(initializer.name)) throw new Error(`Local initializer ${JSON.stringify(initializer.name)} collides with shared state.`);
-    if (existing.mode !== initializer.mode || existing.schemaDigest !== initializer.schemaDigest) {
+    const seed = seedContracts?.get(initializer.name);
+    if (seed === undefined || existing.mode !== initializer.mode
+      || seed.mode !== initializer.mode || seed.schemaDigest !== initializer.schemaDigest) {
       throw new Error(`Existing local Library ${JSON.stringify(initializer.name)} is incompatible with its authorized initializer.`);
     }
   }
@@ -210,6 +248,7 @@ export function install_client_local_initializers_internal(
   }
   map.addLibraries(Object.freeze(definitions));
   apply_client_local_initializer_css_internal(map, missing);
+  retain_client_local_seed_contracts_internal(map, missing);
 }
 
 /** Apply canonical initial CSS while establishing newly created local documents. @internal */

@@ -442,6 +442,8 @@ export type LocusSessionCreateOptions = Readonly<{
 
 export type LocusSessionNow = Readonly<{
   format: "hson-locus-session-now";
+  /** Non-bearer provenance of the retained session that materialized this state. */
+  sessionBinding: string;
   libs: import("./locus.projection.types.js").AuthorityProjectionSnapshot;
   local: readonly import("./locus.projection.types.js").LocusLocalInitializer[];
   initializerDigest: string;

@@ -4,7 +4,7 @@ import { Hson, add_interaction, decode_ssr_bootstrap, enable_interactions, encod
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
 import { encode_hosted_root, hosted_sha256 } from "../src/api/livemap/livemap.hosted.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { install_client_local_initializers_internal, make_locus_application_catalog } from "../src/api/locus/locus.local-initializer.ts";
+import { admit_locus_session_now, install_client_local_initializers_internal, make_locus_application_catalog } from "../src/api/locus/locus.local-initializer.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "echo.init", title: "Echo retained-session replica establishment", category: "Echo", runtime: "node",
@@ -104,6 +104,60 @@ for (const [expected, advance, truncateHistory] of [
   assert.equal(echo.sync.debug().status, "disposed");
   assert.equal(pair.clientListenerCount(), 0);
   detach(); locus.dispose();
+}
+
+// Content equality does not establish the retained session that produced now().
+{
+  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+  const locus = create_registry_locus_internal({ map, libraries: [
+    { name: "state", ownership: "shared" },
+    { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
+  ], authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) }, { maxHistoryBytes: 1 }).locus;
+  const a = await locus.session.create({ libraries: ["state", "ui"] });
+  const b = await locus.session.create({ libraries: ["state", "ui"] });
+  assert.deepEqual(a.now().libs, b.now().libs);
+  assert.deepEqual(a.now().local, b.now().local);
+  assert.equal(a.now().initializerDigest, b.now().initializerDigest);
+  assert.notEqual(a.now().sessionBinding, b.now().sessionBinding);
+  assert.notEqual(a.now().sessionBinding, a.credential);
+  const bindingA = a.now().sessionBinding;
+  const mixedPair = socket_pair(); const detachMixed = locus.connect(mixedPair.server);
+  await assert.rejects(hsonEcho.init({ now: a.now(), credential: b.credential!, socket: mixedPair.client }),
+    /binding|session/i);
+  detachMixed();
+  const c = await locus.session.create({ libraries: ["state"] });
+  const differentPair = socket_pair(); const detachDifferent = locus.connect(differentPair.server);
+  await assert.rejects(hsonEcho.init({ now: a.now(), credential: c.credential!, socket: differentPair.client }),
+    /binding|session|initializer|projection/i);
+  detachDifferent();
+  const validPair = socket_pair(); const detachValid = locus.connect(validPair.server);
+  const valid = await hsonEcho.init({ now: a.now(), credential: a.credential!, socket: validPair.client });
+  assert.equal(valid.sync.status, "caught_up");
+  const secondPair = socket_pair(); const detachSecond = locus.connect(secondPair.server);
+  const second = await hsonEcho.init({ now: b.now(), credential: b.credential!, socket: secondPair.client });
+  const localA = valid.map.lib("ui"); const localB = second.map.lib("ui");
+  if (localA.mode === "document" || localB.mode === "document") throw new Error("Expected local data Libraries.");
+  const beforeLocal = locus.rev;
+  localA.at(["value"]).set(12);
+  localB.at(["value"]).set(20);
+  assert.equal(localA.snap(["value"]), 12);
+  assert.equal(localB.snap(["value"]), 20);
+  assert.equal(locus.rev, beforeLocal);
+  assert.equal(a.now().local[0]!.root.payload.includes("value 0>"), true);
+  valid.disconnect(); second.disconnect();
+  await locus.mutate((draft) => {
+    const state = draft.lib("state");
+    if ("at" in state) state.at(["value"]).set(1);
+  });
+  valid.connect(); second.connect();
+  await until(() => valid.sync.status === "caught_up" && second.sync.status === "caught_up");
+  assert.equal(valid.sync.strategy, "reconcile");
+  assert.equal(second.sync.strategy, "reconcile");
+  assert.equal(localA.snap(["value"]), 12);
+  assert.equal(localB.snap(["value"]), 20);
+  assert.equal(a.now().sessionBinding, bindingA, "reattachment retains logical session provenance");
+  assert.equal(a.now().local[0]!.root.payload.includes("value 0>"), true);
+  valid.dispose(); second.dispose(); detachValid(); detachSecond(); locus.dispose();
 }
 
 // A transferred root is only structurally admitted. Equal revision and scope
@@ -325,18 +379,53 @@ for (const stage of ["message", "close"] as const) {
   const PanelSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
   const cssSource = hsonLiveMap.fromLibraries({ panel: { document: "<aside/>", schema: PanelSchema } });
   cssSource.lib("panel").css.stylesheet("aside { color: red; }");
+  const validCss = cssSource.capture().libraries[0]!.css!;
+  const localDocument = (css: typeof validCss) => make_locus_application_catalog(hsonLiveMap.create(), [
+    { name: "panel", ownership: "local", initializer: { document: "<aside/>", schema: PanelSchema }, css },
+  ]);
+  assert.doesNotThrow(() => localDocument(validCss));
+  const callerCss = structuredClone(validCss);
+  const detachedCatalog = localDocument(callerCss);
+  (callerCss.rules[0]!.declarations[0] as unknown as string[])[1] = "blue";
+  assert.match(JSON.stringify(detachedCatalog.local.get("panel")!.css), /red/);
+  for (const change of [
+    { selector: ":not(" }, { declaration: "red; color: blue" }, { declaration: "\"</style>\"" },
+  ]) {
+    const css = structuredClone(validCss);
+    if ("selector" in change) (css.rules[0] as { selector: string }).selector = change.selector!;
+    else (css.rules[0]!.declarations[0] as unknown as string[])[1] = change.declaration!;
+    assert.throws(() => localDocument(css), /CSS|selector|declaration|RAWTEXT|style|syntax|duplicate/i);
+  }
   const authority = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: StateSchema } });
   const options: LocusOptions<typeof authority> = {
     map: authority,
     libraries: [
       { name: "state", ownership: "shared" },
-      { name: "ui", ownership: "local", initializer: { data: { value: 0 }, schema: LocalSchema } },
+      { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
       { name: "panel", ownership: "local", initializer: { document: "<aside/>", schema: PanelSchema },
         css: cssSource.capture().libraries[0]!.css },
     ],
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ["panel"] }),
   };
   const locus = create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus;
+  const immutableA = await locus.session.create({ libraries: ["panel", "ui"] });
+  const immutableB = await locus.session.create({ libraries: ["panel", "ui"] });
+  const first = immutableA.now();
+  const originalLocal = structuredClone(immutableB.now().local);
+  const originalDigest = immutableB.now().initializerDigest;
+  const mutateReachable = (value: unknown): void => {
+    if (typeof value !== "object" || value === null) return;
+    for (const child of Object.values(value)) mutateReachable(child);
+    try { (value as Record<string, unknown>).tampered = true; } catch { /* frozen value */ }
+    if (Array.isArray(value)) try { value.push("tampered"); } catch { /* frozen array */ }
+  };
+  mutateReachable(first.local);
+  assert.deepEqual(immutableB.now().local, originalLocal);
+  assert.equal(immutableB.now().initializerDigest, originalDigest);
+  assert.doesNotThrow(() => admit_locus_session_now(immutableB.now()));
+  const cssRule = first.local.find((entry) => entry.name === "panel")!.css!.rules[0]!;
+  assert.throws(() => { (cssRule.declarations[0] as unknown as string[])[1] = "green"; }, TypeError);
+  assert.match(JSON.stringify(immutableB.now().local), /red/);
   assert.throws(() => locus.map.lib("ui"), /unknown/i, "local definitions never enter locus.map");
   const collisionAuthority = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: StateSchema } });
   assert.throws(() => hsonLocus.create({ map: collisionAuthority, libraries: [
@@ -373,6 +462,7 @@ for (const stage of ["message", "close"] as const) {
   panel.css.stylesheet("aside { color: blue; }");
   assert.equal(locus.rev, authorityRevBeforeLocal, "local mutation never enters authority history");
   assert.doesNotThrow(() => ui.schema.use(LocalSchema));
+  assert.equal(ui.schema.get().toHson(), LocalSchema.toHson());
   assert.throws(() => echo.map.lib("state").schema.use(StateSchema), /authority|projected|managed/i);
 
   await session.update({ libraries: ["state"] });
@@ -380,6 +470,7 @@ for (const stage of ["message", "close"] as const) {
   await session.update({ libraries: ["state", "ui", "panel"] });
   assert.equal(echo.map.lib("ui"), ui);
   assert.equal(ui.snap(["value"]), 12, "remove/re-add does not reapply the seed");
+  assert.equal(ui.schema.get().toHson(), LocalSchema.toHson(), "re-add preserves the evolved local Schema");
 
   echo.disconnect();
   await locus.mutate((draft) => {
@@ -393,12 +484,12 @@ for (const stage of ["message", "close"] as const) {
   assert.match(JSON.stringify(panel.css.snapshot()), /blue/);
 
   const changedSeed = make_locus_application_catalog(hsonLiveMap.create(), [
-    { name: "ui", ownership: "local", initializer: { data: { value: 5 }, schema: LocalSchema } },
+    { name: "ui", ownership: "local", initializer: { data: { value: 5 } } },
   ]).local.get("ui")!;
   install_client_local_initializers_internal(echo.map, [changedSeed]);
   assert.equal(ui.snap(["value"]), 12, "a changed compatible seed never overwrites existing local state");
   const incompatibleSeed = make_locus_application_catalog(hsonLiveMap.create(), [
-    { name: "ui", ownership: "local", initializer: { data: { value: 5 } } },
+    { name: "ui", ownership: "local", initializer: { data: { value: 5 }, schema: LocalSchema } },
   ]).local.get("ui")!;
   assert.throws(() => install_client_local_initializers_internal(echo.map, [incompatibleSeed]), /incompatible/i);
 

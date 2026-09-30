@@ -45,7 +45,7 @@ const credential = session.credential; // deliver separately for Echo reattachme
 
 Server-first creation uses ownership and authorization filtering and needs no browser transport. A resumable session retains its logical scope and capability through disconnect and reattachment. `session.update(...)` reauthorizes changes; `session.revoke()` withdraws authority. Terminal sessions and manager disposal fence subsequent operations.
 
-`session.now()` returns `{ format, libs, local, initializerDigest }`. Supplying `html` additionally returns `{ html, document }` and must name an included shared document library. Local document initializers are never selected as hosted output. HTML uses the captured shared root and CSS. There is no implicit selection.
+`session.now()` returns `{ format, sessionBinding, libs, local, initializerDigest }`. The non-bearer `sessionBinding` ties the materialization to its retained session while the credential travels separately. Supplying `html` additionally returns `{ html, document }` and must name an included shared document library. Local document initializers are never selected as hosted output. HTML uses the captured shared root and CSS. There is no implicit selection.
 
 Hosted `libs` is an admitted `hson-authority-projection-snapshot`; `local` is a distinct set of fingerprinted initializers. Encode the whole `now` object using the SSR codec's `hosted-projection` family so text carriers retain both. Local `map.cut().libs` uses the distinct `libraries` family. Credentials are absent and must be handed off independently.
 

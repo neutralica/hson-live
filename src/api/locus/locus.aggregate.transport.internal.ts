@@ -20,6 +20,8 @@ export type LocusHostedAggregateRecoveryCursor = Readonly<{
   initialStateFingerprint?: string;
   /** Establishment-only identity of the transferred authorized local initializer set. */
   initialInitializerDigest?: string;
+  /** Non-bearer binding of the transferred current state to one retained session. */
+  initialSessionBinding?: string;
 }>;
 
 /** @internal Aggregate topology evidence layered over the common synchronization lifecycle. */

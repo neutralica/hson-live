@@ -78,6 +78,57 @@ await case_("empty authority checkpoint restores without a placeholder library",
   restored.dispose();
 });
 
+await case_("restart reapplies deployment local definitions without persisting client state", async () => {
+  const adapter = new MemoryCheckpointAdapter();
+  const id = "z3b-local-catalog";
+  const libraries = [
+    { name: "public", ownership: "shared" as const },
+    { name: "ui", ownership: "local" as const, initializer: { data: { value: 0 } } },
+  ];
+  const options = { persistence: adapter, logicalMapId: id, libraries,
+    authorizeProjection: ({ requested }: { requested: { libraries: readonly string[] } }) =>
+      ({ libraries: requested.libraries }) };
+  const locus = await create_persistent_locus({ ...options,
+    map: hsonLiveMap.fromLibraries({ public: { data: { value: 1 } } }) });
+  const session = await locus.session.create({ libraries: ["public", "ui"] });
+  const pair = socket_pair(); const detach = locus.connect(pair.server);
+  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, socket: pair.client });
+  const ui = echo.map.lib("ui");
+  if (ui.mode === "document") throw new Error("Expected local data Library.");
+  const authorityRev = locus.rev;
+  ui.at(["value"]).set(12);
+  assert.equal(locus.rev, authorityRev);
+  assert.equal(adapter.appendCalls.length, 0);
+  await locus.checkpoint();
+  const manifest = active(adapter, id);
+  assert.deepEqual(manifest.registry.libraries.map((entry) => entry.name), ["public"]);
+  assert.equal(JSON.stringify(adapter.state(id)).includes('value 12>'), false);
+  echo.dispose(); detach(); locus.dispose();
+
+  const restored = await create_persistent_locus({ ...options,
+    map: hsonLiveMap.fromLibraries({ public: { data: { value: 0 } } }) });
+  assert.throws(() => restored.map.lib("ui"), /Unknown/i);
+  const freshSession = await restored.session.create({ libraries: ["public", "ui"] });
+  const freshPair = socket_pair(); const detachFresh = restored.connect(freshPair.server);
+  const fresh = await hsonEcho.init({ now: freshSession.now(), credential: freshSession.credential!, socket: freshPair.client });
+  const freshUi = fresh.map.lib("ui");
+  if (freshUi.mode === "document") throw new Error("Expected local data Library.");
+  assert.equal(freshUi.snap(["value"]), 0);
+  fresh.dispose(); detachFresh(); restored.dispose();
+
+  const conflictAdapter = new MemoryCheckpointAdapter();
+  const conflictId = "z3b-restored-local-collision";
+  const oldDeployment = await create_persistent_locus({ map: hsonLiveMap.create(),
+    persistence: conflictAdapter, logicalMapId: conflictId, libraries: [] });
+  await oldDeployment.lib.add({ ui: { data: { value: 9 } } });
+  await oldDeployment.checkpoint();
+  oldDeployment.dispose();
+  await assert.rejects(create_persistent_locus({ map: hsonLiveMap.create(),
+    persistence: conflictAdapter, logicalMapId: conflictId, libraries: [
+      { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
+    ] }), /collid|catalog|authority|topology/i);
+});
+
 await case_("checkpoint chunks exclude runtime QUID identity and restore fresh identity", async () => {
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-quid";

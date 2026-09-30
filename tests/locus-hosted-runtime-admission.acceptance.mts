@@ -249,6 +249,29 @@ revokeLocus.dispose();
 process.stdout.write("ok - reauthorization uses current context and honors revocation\n");
 
 const durableMap = hsonLiveMap.create();
+
+const reservedAdapter = new MemoryCheckpointAdapter();
+const reservedMap = hsonLiveMap.create();
+const reserved = await create_persistent_locus({ map: reservedMap, persistence: reservedAdapter,
+  logicalMapId: "local-name-reservation", libraries: [
+    { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
+  ], authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const reservedSession = await reserved.session.create({ libraries: ["ui"] });
+const reservedInitial = reservedSession.now();
+assert.throws(() => reservedMap.addLibraries({ ui: { data: { value: 99 } } }), /managed|authority|reserved/i);
+for (const ownership of ["private", "shared"] as const) {
+  const beforeRev = reserved.rev;
+  const beforeCommits = reservedAdapter.appendCalls.length;
+  await assert.rejects(reserved.lib.add({ ui: { data: { value: 99 } } },
+    { ownership: { ui: ownership } }), /local initializer|collides/i);
+  assert.equal(reserved.rev, beforeRev);
+  assert.equal(reservedAdapter.appendCalls.length, beforeCommits);
+  assert.throws(() => reservedMap.lib("ui"), /Unknown/i);
+  assert.deepEqual(reservedSession.now().local, reservedInitial.local);
+  assert.equal(reservedSession.now().initializerDigest, reservedInitial.initializerDigest);
+}
+reserved.dispose();
+
 const adapter = new MemoryCheckpointAdapter();
 const durable = await create_persistent_locus({ map: durableMap, libraries: [],
   persistence: adapter, logicalMapId: "public-hosted-admission" });

@@ -214,6 +214,7 @@ export function create_registry_locus_internal<
       return with_client_capture(sessionId, key, (snapshot, effective) => {
         const base: LocusSessionNow = Object.freeze({
           format: "hson-locus-session-now",
+          sessionBinding: authority.sessions.binding(sessionId)!,
           libs: snapshot,
           local: effective.local,
           initializerDigest: effective.initializerDigest,

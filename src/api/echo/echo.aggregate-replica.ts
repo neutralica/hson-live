@@ -60,6 +60,7 @@ export type EchoSocketClientOptions<TActions extends LocusActionPayloads = Locus
   /** Unverified transferred current-state evidence; cleared after the first caught-up synchronization. */
   initialStateFingerprint?: string;
   initialInitializerDigest?: string;
+  initialSessionBinding?: string;
   /** @internal Already-admitted session-authorized initializer definitions. */
   initializers?: readonly import("../../types/locus.projection.types.js").LocusLocalInitializer[];
 }>;
@@ -146,6 +147,7 @@ function create_registry_echo_semantic_client_internal<
   const initializers = admit_locus_local_initializers(options.initializers ?? []);
   let initialInitializerDigest = options.initialInitializerDigest
     ?? (options.initializers === undefined ? undefined : locus_local_initializer_digest(initializers));
+  let initialSessionBinding = options.initialSessionBinding;
   let projectionFeatures: readonly string[] = map === undefined ? [] : client_projection_features_internal(map) ?? [];
   let authorityRev: number | undefined;
   const authorityPositionListeners = new Set<(revision: number) => void>();
@@ -293,7 +295,8 @@ function create_registry_echo_semantic_client_internal<
           : { cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest,
             projectionSequence, lastAppliedRev: authorityRev,
             ...(initialStateFingerprint === undefined ? {} : { initialStateFingerprint }),
-            ...(initialInitializerDigest === undefined ? {} : { initialInitializerDigest }) }) }),
+            ...(initialInitializerDigest === undefined ? {} : { initialInitializerDigest }),
+            ...(initialSessionBinding === undefined ? {} : { initialSessionBinding }) }) }),
       });
       options.connection.synchronization.begin(request);
     });
@@ -408,6 +411,7 @@ function create_registry_echo_semantic_client_internal<
       projectionSequence = message.projectionSequence ?? 0;
       initialStateFingerprint = undefined;
       initialInitializerDigest = undefined;
+      initialSessionBinding = undefined;
       status = "live";
       replica.markReady();
       recovery = undefined;

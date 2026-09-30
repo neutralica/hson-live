@@ -96,6 +96,7 @@ type HostedCursor = Readonly<{
   lastAppliedRev: number;
   initialStateFingerprint?: string;
   initialInitializerDigest?: string;
+  initialSessionBinding?: string;
 }>;
 
 type HostedRequest =
@@ -256,7 +257,7 @@ export type LocusHostedAggregateSocketServer<
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
   create_session: (request: LocusRequestedProjection, options?: import("../../types/locus.types.js").LocusSessionCreateOptions) => Promise<LocusSessionId>;
-  sessions: Readonly<{ key: ReturnType<typeof make_locus_session_manager>["key"]; credential: ReturnType<typeof make_locus_session_manager>["credential"]; debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection, context?: LocusConnectionContext, expectedKey?: object) => Promise<Readonly<{ changed: boolean; sequence: number; digest: string; authorityRev: number }>>; dispose: () => void }>;
+  sessions: Readonly<{ key: ReturnType<typeof make_locus_session_manager>["key"]; binding: ReturnType<typeof make_locus_session_manager>["binding"]; credential: ReturnType<typeof make_locus_session_manager>["credential"]; debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection, context?: LocusConnectionContext, expectedKey?: object) => Promise<Readonly<{ changed: boolean; sequence: number; digest: string; authorityRev: number }>>; dispose: () => void }>;
   actionRequests: Readonly<{ debug: ReturnType<typeof make_locus_action_dedupe_store>["debug"]; dispose: () => void }>;
   /** Ordered internal barrier used by persistence checkpointing. */
   run_exclusive: LocusHostedAggregate["run_exclusive"];
@@ -428,6 +429,11 @@ export function create_locus_hosted_aggregate_socket_internal<
     // policy names and semantic names must come from the same caller snapshot.
     const capturedDefinitions: LiveMapDefinitions = Object.freeze(Object.fromEntries(Object.entries(definitions)));
     const entries = runtime_locus_ownership_entries(Object.keys(capturedDefinitions), ownership);
+    for (const entry of entries) {
+      if (projectionPolicy.local.has(entry.name)) {
+        throw new Error(`Authority Library ${JSON.stringify(entry.name)} collides with a local initializer.`);
+      }
+    }
     await locus.add_libraries_internal(capturedDefinitions, () => {
       const nextRegistry = aggregate.hostedRegistry();
       projectionPolicy.installRuntimeOwnership(entries, nextRegistry);
@@ -773,6 +779,18 @@ export function create_locus_hosted_aggregate_socket_internal<
     const head = headSnapshot.revision;
     const projectedRegistryDigest = authority_projection_as_client_composition_internal(headSnapshot).registryDigest;
     const replayRegistryDigest = projected_registry_digest(replayProjection);
+    if ((cursor?.initialInitializerDigest !== undefined && cursor.initialSessionBinding === undefined)
+      || (cursor?.initialSessionBinding !== undefined
+        && cursor.initialSessionBinding !== sessions.binding(connection.sessionId))) {
+      send(connection, recovery_plan(request.id, "reject", head, effective.digest, projectedRegistryDigest, {
+        code: "LOCUS_SESSION_NOW_BINDING_MISMATCH",
+        message: "Transferred current state belongs to a different retained session.",
+      }, sessions.projection_sequence(connection.sessionId) ?? 0));
+      connection.recovering = false;
+      connection.releaseRecoveryActivity?.();
+      connection.releaseRecoveryActivity = undefined;
+      return;
+    }
     if (cursor?.initialInitializerDigest !== undefined
       && cursor.initialInitializerDigest !== effective.initializerDigest) {
       send(connection, recovery_plan(request.id, "reject", head, effective.digest, projectedRegistryDigest, {
@@ -1578,7 +1596,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     dispatch_action: locus.dispatch_action,
     dispatch_message,
     create_session,
-    sessions: Object.freeze({ key: sessions.key, credential: sessions.credential, debug: sessions.debug, onChange: sessions.onChange, revoke: sessions.revoke,
+    sessions: Object.freeze({ key: sessions.key, binding: sessions.binding, credential: sessions.credential, debug: sessions.debug, onChange: sessions.onChange, revoke: sessions.revoke,
       projection: sessions.projection, updateProjection: update_projection, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
     run_exclusive: locus.run_exclusive,
@@ -1685,11 +1703,12 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
     const hasCursor = Object.hasOwn(value, "incarnationId") || Object.hasOwn(value, "registryDigest")
       || Object.hasOwn(value, "projectionDigest") || Object.hasOwn(value, "projectionSequence")
       || Object.hasOwn(value, "lastAppliedRev") || Object.hasOwn(value, "initialStateFingerprint")
-      || Object.hasOwn(value, "initialInitializerDigest");
+      || Object.hasOwn(value, "initialInitializerDigest") || Object.hasOwn(value, "initialSessionBinding");
     exact_keys(value, hasCursor
       ? ["type", "id", "logicalMapId", "incarnationId", "registryDigest", "projectionDigest", "projectionSequence", "lastAppliedRev",
         ...(Object.hasOwn(value, "initialStateFingerprint") ? ["initialStateFingerprint"] : []),
-        ...(Object.hasOwn(value, "initialInitializerDigest") ? ["initialInitializerDigest"] : [])]
+        ...(Object.hasOwn(value, "initialInitializerDigest") ? ["initialInitializerDigest"] : []),
+        ...(Object.hasOwn(value, "initialSessionBinding") ? ["initialSessionBinding"] : [])]
       : ["type", "id", "logicalMapId"], "Hosted recovery request");
     const id = required_string(value.id);
     const logicalMapId = required_string(value.logicalMapId);
@@ -1705,14 +1724,19 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
       ? required_digest(value.initialStateFingerprint) : undefined;
     const initialInitializerDigest = Object.hasOwn(value, "initialInitializerDigest")
       ? required_digest(value.initialInitializerDigest) : undefined;
+    const initialSessionBinding = Object.hasOwn(value, "initialSessionBinding")
+      ? required_string(value.initialSessionBinding) : undefined;
     if (incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined
       || projectionSequence === undefined || lastAppliedRev === undefined
       || (Object.hasOwn(value, "initialStateFingerprint") && initialStateFingerprint === undefined)
-      || (Object.hasOwn(value, "initialInitializerDigest") && initialInitializerDigest === undefined)) throw new Error("Hosted recovery cursor is malformed.");
+      || (Object.hasOwn(value, "initialInitializerDigest") && initialInitializerDigest === undefined)
+      || (Object.hasOwn(value, "initialSessionBinding")
+        && (initialSessionBinding === undefined || !/^[a-f0-9]{32}$/u.test(initialSessionBinding)))) throw new Error("Hosted recovery cursor is malformed.");
     return Object.freeze({ type: "recover", id, logicalMapId,
       cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, projectionSequence, lastAppliedRev,
         ...(initialStateFingerprint === undefined ? {} : { initialStateFingerprint }),
-        ...(initialInitializerDigest === undefined ? {} : { initialInitializerDigest }) }) });
+        ...(initialInitializerDigest === undefined ? {} : { initialInitializerDigest }),
+        ...(initialSessionBinding === undefined ? {} : { initialSessionBinding }) }) });
   }
   if (value.type === "session-create" || value.type === "session-goodbye" || value.type === "session-detach") {
     const decoded = decode_locus_message(raw);

@@ -390,7 +390,7 @@ check("Libraries rendering selection and hosted cuts preserve the aggregate fenc
   const locus = hsonLocus.create({ libraries: test_application_catalog(hostedMap), map: hostedMap,
     authorizeProjection: () => ({ libraries: ["page", "admin"] }) });
   const session = authorized_session(locus, ["page", "admin"]);
-  assert.deepEqual(Object.keys(locus.session.get(session.sessionId)!.now()).sort(), ["format", "initializerDigest", "libs", "local"]);
+  assert.deepEqual(Object.keys(locus.session.get(session.sessionId)!.now()).sort(), ["format", "initializerDigest", "libs", "local", "sessionBinding"]);
   const cut = locus.session.get(session.sessionId)!.now({ html: "page" });
   assert.equal(cut.libs.revision, hostedMap.rev);
   session.close();

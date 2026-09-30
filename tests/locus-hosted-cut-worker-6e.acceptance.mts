@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { encode_ssr_bootstrap } from "../src/index.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 import { hosted_cut_fixture } from "./helpers/hosted-cut-fixture.mts";
 
@@ -11,11 +12,15 @@ const worker = await new Promise<ReturnType<typeof hosted_cut_fixture>>((resolve
 });
 assert.equal(node.hasDocument, false);
 assert.equal(worker.hasDocument, false);
-assert.deepEqual(worker.cut, node.cut);
-assert.equal(worker.encoded, node.encoded);
-assert.deepEqual(worker.decoded, node.decoded);
+const parityBinding = "0".repeat(32);
+assert.notEqual(worker.cut.sessionBinding, node.cut.sessionBinding);
+assert.deepEqual({ ...worker.cut, sessionBinding: parityBinding }, { ...node.cut, sessionBinding: parityBinding });
+assert.equal(encode_ssr_bootstrap({ ...worker.cut, sessionBinding: parityBinding }),
+  encode_ssr_bootstrap({ ...node.cut, sessionBinding: parityBinding }));
+assert.deepEqual({ ...worker.decoded, bootstrap: { ...worker.decoded.bootstrap, sessionBinding: parityBinding } },
+  { ...node.decoded, bootstrap: { ...node.decoded.bootstrap, sessionBinding: parityBinding } });
 assert.equal(worker.cut.libs.revision, 0);
-assert.deepEqual(Object.keys(worker.cut).sort(), ["document", "format", "html", "initializerDigest", "libs", "local"]);
+assert.deepEqual(Object.keys(worker.cut).sort(), ["document", "format", "html", "initializerDigest", "libs", "local", "sessionBinding"]);
 assert.ok(worker.cut.html.includes("WORKER_PERMITTED_SENTINEL"));
 assert.ok(worker.encoded.includes("WORKER_PRIVATE_SENTINEL") === false);
 assert.ok(JSON.stringify(worker).includes("WORKER_PRIVATE_SENTINEL") === false);

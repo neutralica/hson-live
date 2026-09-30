@@ -44,6 +44,7 @@ export type ReplicaOptions<TMap extends EchoMap> = Readonly<{
   session?: EchoSessionOptions;
   initialStateFingerprint?: string;
   initialInitializerDigest?: string;
+  initialSessionBinding?: string;
 }>;
 export type ReplicaStrategy = Readonly<{
   sync: EchoSync & Readonly<{
@@ -99,6 +100,7 @@ export function create_lazy_replica_echo_internal<
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.initialStateFingerprint === undefined ? {} : { initialStateFingerprint: options.initialStateFingerprint }),
     ...(options.initialInitializerDigest === undefined ? {} : { initialInitializerDigest: options.initialInitializerDigest }),
+    ...(options.initialSessionBinding === undefined ? {} : { initialSessionBinding: options.initialSessionBinding }),
   });
   const deferredDocumentAuthorities = management.documentMaps.map((map) => {
     const deferred = create_deferred_echo_document_authority_internal();

@@ -73,7 +73,7 @@ receiveNoDefault?.(JSON.stringify({ type: "session-create", id: "no-default", pr
 const noDefaultCreated = noDefaultSent.find((entry) => entry.type === "session-created");
 assert.ok(noDefaultCreated && typeof noDefaultCreated.sessionId === "string");
 const noDefaultSessionId = noDefaultCreated.sessionId;
-assert.deepEqual(Object.keys(locus.session.get(noDefaultSessionId)!.now()).sort(), ["format", "initializerDigest", "libs", "local"]);
+assert.deepEqual(Object.keys(locus.session.get(noDefaultSessionId)!.now()).sort(), ["format", "initializerDigest", "libs", "local", "sessionBinding"]);
 const explicitCut = locus.session.get(noDefaultSessionId)!.now({ html: "page" });
 assert.ok(explicitCut.html.includes("PERMITTED_HTML_SENTINEL"));
 
@@ -94,7 +94,7 @@ assert.equal(JSON.parse(raw).kind, "hosted-projection");
 const decoded = decode_ssr_bootstrap(wire);
 assert.equal(decoded.kind, "hosted-projection");
 if (decoded.kind !== "hosted-projection") throw new Error("Expected projected SSR bootstrap.");
-assert.deepEqual(decoded.bootstrap, { format: cut.format, libs: cut.libs, local: cut.local, initializerDigest: cut.initializerDigest });
+assert.deepEqual(decoded.bootstrap, { format: cut.format, sessionBinding: cut.sessionBinding, libs: cut.libs, local: cut.local, initializerDigest: cut.initializerDigest });
 const wrongProjection = JSON.parse(raw);
 wrongProjection.payload.libs.projectionDigest = "0".repeat(64);
 assert.throws(() => decode_ssr_bootstrap(Buffer.from(JSON.stringify(wrongProjection)).toString("base64url")), /payload is invalid/i);
@@ -302,7 +302,7 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   receive?.(JSON.stringify({ type: "session-create", id: "one-library", projection: { libraries: ["page"] } }));
   if (sessionId === undefined || credential === undefined) throw new Error("One-library session was unavailable.");
   const selectedId: string = sessionId;
-  assert.deepEqual(Object.keys(oneLocus.session.get(selectedId)!.now()).sort(), ["format", "initializerDigest", "libs", "local"]);
+  assert.deepEqual(Object.keys(oneLocus.session.get(selectedId)!.now()).sort(), ["format", "initializerDigest", "libs", "local", "sessionBinding"]);
   const selected = oneLocus.session.get(selectedId)!.now({ html: "page" });
   assert.ok(selected.html.includes("ONE_LIBRARY_HTML"));
   assert.equal(selected.libs.libraries.length, 1);

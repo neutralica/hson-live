@@ -26,6 +26,7 @@ type SessionAttachment = Readonly<{
 
 type SessionRecord = {
   readonly key: object;
+  readonly binding: string;
   readonly sessionId: LocusSessionId;
   readonly credential?: LocusSessionCredential;
   readonly resumable: boolean;
@@ -77,6 +78,7 @@ export type LocusSessionManager = Readonly<{
   release_ephemeral: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   is_active: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   key: (sessionId: LocusSessionId) => object | undefined;
+  binding: (sessionId: LocusSessionId) => string | undefined;
   epoch: (sessionId: LocusSessionId) => LocusConnectionEpoch | undefined;
   credential: (sessionId: LocusSessionId) => LocusSessionCredential | undefined;
   projection: (sessionId: LocusSessionId) => LocusEffectiveProjection | undefined;
@@ -109,6 +111,12 @@ function default_schedule(delayMs: number, callback: () => void): LocusDisposer 
 
 function random_credential(): LocusSessionCredential {
   const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function random_session_binding(): string {
+  const bytes = new Uint8Array(16);
   globalThis.crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -206,6 +214,7 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     if (disposed) return fail("LOCUS_SESSION_ALREADY_GONE", "Locus session manager is disposed.");
     const record: SessionRecord = {
       key: Object.freeze({}),
+      binding: random_session_binding(),
       sessionId,
       ...(credential ? { credential } : {}),
       resumable,
@@ -393,6 +402,10 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     return projection(sessionId) === undefined ? undefined : sessions.get(sessionId)?.key;
   }
 
+  function binding(sessionId: LocusSessionId): string | undefined {
+    return projection(sessionId) === undefined ? undefined : sessions.get(sessionId)?.binding;
+  }
+
   function epoch(sessionId: LocusSessionId): LocusConnectionEpoch | undefined {
     return projection(sessionId) === undefined ? undefined : sessions.get(sessionId)?.epoch;
   }
@@ -507,6 +520,6 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
   }
 
   return Object.freeze({ create, reattach, detach, goodbye, revoke, release_ephemeral, is_active,
-    key, epoch, credential, projection, projection_sequence, projection_at_digest, principal_matches, disconnected_with_principal,
+    key, binding, epoch, credential, projection, projection_sequence, projection_at_digest, principal_matches, disconnected_with_principal,
     update_projection, resumable_projections, debug, onChange, dispose });
 }

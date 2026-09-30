@@ -50,6 +50,7 @@ export function create_registry_echo<
     management: composition.management,
     ...(options.initialStateFingerprint === undefined ? {} : { initialStateFingerprint: options.initialStateFingerprint }),
     ...(options.initialInitializerDigest === undefined ? {} : { initialInitializerDigest: options.initialInitializerDigest }),
+    ...(options.initialSessionBinding === undefined ? {} : { initialSessionBinding: options.initialSessionBinding }),
   });
   const documentAuthorities: ReadonlyArray<Readonly<{
     map: object;

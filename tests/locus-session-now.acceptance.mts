@@ -84,7 +84,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
   assert.deepEqual(snapshot.writableDocuments, []);
   assert.equal(snapshot.system, null);
   portable_private_free(JSON.stringify(snapshot));
-  assert.deepEqual(Object.keys(initial.capability.now()).sort(), ["format", "initializerDigest", "libs", "local"]);
+  assert.deepEqual(Object.keys(initial.capability.now()).sort(), ["format", "initializerDigest", "libs", "local", "sessionBinding"]);
   const client = client_projection_map({ authority: snapshot,
     local: { local: { data: { value: "LOCAL" }, schema: Data } } });
   assert.deepEqual(data(client, "visible").snap(), { value: "INITIAL" });
