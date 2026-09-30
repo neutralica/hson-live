@@ -16,7 +16,7 @@ const created = { type: "session-created", format: LOCUS_HOSTED_AGGREGATE_SOCKET
 const status = { type: "action-status", format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
   id: "status", requestId: "request", state: "unknown" };
 const statusRequest = { type: "action-status" as const, id: "status", clientId: "client", requestId: "request" };
-let mode: "ok" | "host-denied" | "capability-denied" | "lost" = "ok";
+let mode: "ok" | "host-denied" | "capability-denied" | "lost" | "wrong-mime" = "ok";
 let sent = 0;
 let lastHeader: string | null = null;
 const fetcher: typeof fetch = async (input, init) => {
@@ -31,6 +31,7 @@ const fetcher: typeof fetch = async (input, init) => {
   if (mode === "host-denied") return new Response(null, { status: 403 });
   if (mode === "capability-denied") return new Response(null, { status: 403,
     headers: { "x-hson-attachment-state": "invalid" } });
+  if (mode === "wrong-mime") return new Response(JSON.stringify(status), { headers: { "content-type": "text/html" } });
   return new Response(JSON.stringify(status), { headers: { "content-type": "application/json" } });
 };
 const transport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: fetcher });
@@ -47,7 +48,7 @@ try {
   const eventsSeen: EchoAttachmentEvent["kind"][] = [];
   const stop = transport.attachment.observe((event) => { eventsSeen.push(event.kind); });
   mode = "host-denied";
-  assert.equal((await transport.operations.submit(statusRequest)).kind, "not-submitted");
+  assert.equal((await transport.operations.submit(statusRequest)).kind, "uncertain");
   assert.equal(lastHeader, "a".repeat(64));
   assert.deepEqual(eventsSeen, ["available"], "host authentication failure does not fence attachment");
   mode = "lost";
@@ -55,8 +56,10 @@ try {
   assert.deepEqual(eventsSeen, ["available"], "finite response loss does not interrupt attachment");
   mode = "ok";
   assert.equal((await transport.operations.submit(statusRequest)).kind, "response");
+  mode = "wrong-mime";
+  assert.equal((await transport.operations.submit(statusRequest)).kind, "uncertain");
   mode = "capability-denied";
-  assert.equal((await transport.operations.submit(statusRequest)).kind, "not-submitted");
+  assert.equal((await transport.operations.submit(statusRequest)).kind, "uncertain");
   assert.deepEqual(eventsSeen.slice(0, 3), ["available", "fenced", "observation-interrupted"]);
   assert.equal((await transport.operations.submit(statusRequest)).kind, "not-submitted");
   stop();
@@ -80,5 +83,39 @@ try {
   assert.equal((await invalidEndpoint.operations.submit({ type: "session-create", id: "invalid-endpoint" })).kind, "not-submitted");
   assert.equal(invalidEndpointFetches, 0);
 } finally { invalidEndpoint.dispose(); }
+
+for (const httpStatus of [400, 401, 403, 404, 405, 409, 503]) {
+  let established = false;
+  const statusTransport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
+    if (String(input).endsWith("/sync")) return new Response(null, { status: 503 });
+    const message = JSON.parse(String(init?.body)) as { type: string; id: string };
+    if (message.type === "session-create" && !established) {
+      established = true;
+      return new Response(JSON.stringify({ ...created, id: message.id }),
+        { headers: { "content-type": "application/json", "x-hson-attachment": "a".repeat(64) } });
+    }
+    return new Response(null, { status: httpStatus });
+  } });
+  try {
+    assert.equal((await statusTransport.operations.submit({ type: "session-create", id: "bootstrap" })).kind, "response");
+    assert.equal((await statusTransport.operations.submit({ type: "action", id: "action", name: "echo",
+      clientId: "client", requestId: "stable", attemptId: "attempt" })).kind, "uncertain");
+    assert.equal((await statusTransport.operations.submit(statusRequest)).kind, "uncertain");
+    assert.equal((await statusTransport.operations.submit({ type: "session-create", id: "second-create" })).kind, "uncertain");
+  } finally { statusTransport.dispose(); }
+}
+
+const streamMime = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
+  if (String(input).endsWith("/sync")) return new Response('{"type":"ready"}\n',
+    { headers: { "content-type": "text/html" } });
+  const message = JSON.parse(String(init?.body)) as { id: string };
+  return new Response(JSON.stringify({ ...created, id: message.id }),
+    { headers: { "content-type": "application/json", "x-hson-attachment": "a".repeat(64) } });
+} });
+try {
+  await streamMime.operations.submit({ type: "session-create", id: "mime-create" });
+  await assert.rejects(streamMime.synchronization.open({ type: "recover", id: "mime-sync", logicalMapId: "map" },
+    { onOutput() {}, onEnd() {} }), /invalid content type/i);
+} finally { streamMime.dispose(); }
 events.case_end("classifications", "pass");
 events.terminal("pass");

@@ -43,6 +43,12 @@ session, action, status, recovery, projection, and publication authority as
 The bearer capability is private runtime-local attachment authorization,
 separate from the retained session credential. Dispose the binding with its
 application or Locus host.
+The HTTP endpoint must be direct: the Echo adapter rejects redirects for
+session, finite, synchronization, and heartbeat requests. The binder keeps one
+current response stream per attachment and fences establishment already in
+progress when disposed. Its idle lease is refreshed by admitted requests and
+stream opens; expiry releases the logical attachment under ordinary retained
+session grace rules.
 
 The construction catalog classifies every application definition as `private`, `shared`, or `local`. Private and shared libraries must already exist in `locus.map`; local entries instead carry a detached initializer and never enter that authority map. Shared eligibility remains separate from authorization. A selected HTML document must be an authorized shared document. `defaultProjection`, when configured, is only a default request and still passes authorization.
 

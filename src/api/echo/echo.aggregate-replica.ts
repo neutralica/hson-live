@@ -183,6 +183,7 @@ function create_registry_echo_semantic_client_internal<
   }> | undefined;
   let liveRecovery: Readonly<{ id: string; sessionId: string; sessionEpoch: number }> | undefined;
   let lastRecoveryOutcome: Exclude<HostedPlanOutcome, "reject"> | undefined;
+  let recoveryRetryTimer: ReturnType<typeof setTimeout> | undefined;
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
 
   const endpoint = options.connection.endpoint;
@@ -208,16 +209,22 @@ function create_registry_echo_semantic_client_internal<
 
   function onSyncEnd(id: string, end: EchoSynchronizationEnd): void {
     if (recovery?.id !== id && liveRecovery?.id !== id) return;
+    const failedWhileOpening = openingRecovery?.id === id;
     syncSubscription = undefined;
     if (status === "closed" || end.kind === "cancelled") return;
-    interruptRecovery(end.cause instanceof Error ? end.cause : new Error("Hosted aggregate synchronization interrupted."));
+    const error = end.cause instanceof Error ? end.cause : new Error("Hosted aggregate synchronization interrupted.");
+    if (end.kind === "invalid") { failReplica(error); return; }
+    interruptRecovery(error);
     replica.markRecovering();
     status = "idle";
-    queueMicrotask(() => {
+    const retry = () => {
+      recoveryRetryTimer = undefined;
       if (attachmentAvailable && status === "idle" && endpoint.session.status === "attached") {
         void recover_feed().catch(() => {});
       }
-    });
+    };
+    if (failedWhileOpening) recoveryRetryTimer = setTimeout(retry, 1000);
+    else queueMicrotask(retry);
   }
 
   function next(prefix: string): string {
@@ -226,6 +233,7 @@ function create_registry_echo_semantic_client_internal<
   }
 
   function interruptRecovery(error: Error): void {
+    if (recoveryRetryTimer !== undefined) { clearTimeout(recoveryRetryTimer); recoveryRetryTimer = undefined; }
     const active = recovery;
     recovery = undefined;
     liveRecovery = undefined;
@@ -260,6 +268,7 @@ function create_registry_echo_semantic_client_internal<
   }
 
   function recover_feed(): Promise<EchoAggregateRecovery> {
+    if (recoveryRetryTimer !== undefined) { clearTimeout(recoveryRetryTimer); recoveryRetryTimer = undefined; }
     if (status === "closed") return Promise.reject(new Error("Hosted aggregate Echo is closed."));
     if (!attachmentAvailable) return Promise.reject(new Error("Hosted aggregate synchronization requires a connected transport."));
     if (recovery !== undefined) return Promise.reject(new Error("Hosted aggregate synchronization is already in progress."));

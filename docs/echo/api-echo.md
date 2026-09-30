@@ -82,6 +82,9 @@ operations without ending the session or releasing map management. The Echo may
 reconnect. `echo.dispose()` is terminal and, for a replica-bearing Echo, releases
 exclusive management and clears its retained client credential. The caller
 separately calls `transport.dispose()` to close adapter-owned physical resources.
+For HTTP, Echo disposal also stops attachment heartbeat and stream maintenance
+for its permanently claimed transport. Transport disposal interrupts Echo's
+attachment observation and settles in-flight requests conservatively.
 Terminal transport disposal interrupts attachment observation and synchronization,
 so Echo no longer reports an attached or caught-up state. One semantic transport
 instance belongs to one Echo for its lifetime; create another transport for another Echo.

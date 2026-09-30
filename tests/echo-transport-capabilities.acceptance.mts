@@ -28,6 +28,30 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 
+await check("shared synchronization codec rejects extra fields in every output family", () => {
+  const digest = "0".repeat(64);
+  const base = { format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, id: "sync" };
+  const progress = { logicalMapId: "map", incarnationId: "incarnation", registryDigest: digest, prevRev: 0, rev: 1 };
+  const samples = [
+    { ...base, type: "recovery-plan", logicalMapId: "map", incarnationId: "incarnation",
+      registryDigest: digest, projectionDigest: digest, headRev: 1, outcome: "current" },
+    { ...base, type: "recovery-snapshot", snapshot: {} },
+    { ...base, type: "recovery-commit", phase: "body", projectionSequence: 0, projectionDigest: digest, commit: {} },
+    { ...base, type: "recovery-progress", phase: "tail", projectionSequence: 0, projectionDigest: digest, progress },
+    { ...base, type: "commit", projectionSequence: 0, projectionDigest: digest, commit: {} },
+    { ...base, type: "progress", projectionSequence: 0, projectionDigest: digest, progress },
+    { ...base, type: "recovery-caught-up", logicalMapId: "map", incarnationId: "incarnation",
+      registryDigest: digest, projectionDigest: digest, throughRev: 1 },
+    { ...base, type: "error", code: "LOCUS_SYNC_FAILED", message: "failure" },
+  ];
+  for (const sample of samples) {
+    assert.notEqual(decode_echo_hosted_aggregate_synchronization_frame_internal(JSON.stringify(sample)), undefined,
+      `${sample.type} baseline should decode`);
+    assert.throws(() => decode_echo_hosted_aggregate_synchronization_frame_internal(
+      JSON.stringify({ ...sample, unexpected: true })), `${sample.type} accepted an extra field`);
+  }
+});
+
 await check("finite submission distinguishes response, proved non-submission, and uncertainty", async () => {
   const received: string[] = [];
   const inbound = new Set<(raw: string) => void>();

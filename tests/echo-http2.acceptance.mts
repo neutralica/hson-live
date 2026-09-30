@@ -20,10 +20,20 @@ const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
 const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }],
   defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
+let releaseFinite: (() => void) | undefined;
+let finiteEntered: (() => void) | undefined;
+let enteredFinite = new Promise<void>((resolve) => { finiteEntered = resolve; });
+let holdFinite = false;
 const application: LiveHostApplication = {
   name: "echo-h2",
   requests: ["/_hson", "/_hson/sync"].map((path) => ({ method: "POST", path,
-    handle: (request, context) => binding.handle(request, { principalId: context.principal.id }) })),
+    async handle(request, context) {
+      if (holdFinite && path === "/_hson" && (await request.clone().text()).includes('"id":"h2-inflight"')) {
+        finiteEntered?.();
+        await new Promise<void>((resolve) => { releaseFinite = resolve; });
+      }
+      return binding.handle(request, { principalId: context.principal.id });
+    } })),
   dispose() { binding.dispose(); },
 };
 const host = await start_node_application_host({ port: 0, http2: { key, cert }, applications: [application] });
@@ -76,6 +86,10 @@ const fetchH2: typeof fetch = async (input, init) => {
       if (!settled) reject(cause);
       else { try { controller?.error(cause); } catch { /* Consumer cancelled. */ } }
     });
+    request.on("close", () => {
+      init?.signal?.removeEventListener("abort", abort);
+      if (!settled) reject(new Error("HTTP/2 finite stream closed before response."));
+    });
     request.end(typeof init?.body === "string" ? init.body : undefined);
   });
 };
@@ -102,8 +116,33 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   assert.equal(replica.sync.debug().lastAppliedRev, locus.rev, "finite cancellation leaves sync alive");
+  holdFinite = true;
+  const inFlightAbort = new AbortController();
+  const inFlight = transport.operations.submit({ type: "action-status", id: "h2-inflight",
+    clientId: "client", requestId: "unknown" }, { signal: inFlightAbort.signal });
+  await enteredFinite;
+  inFlightAbort.abort();
+  releaseFinite?.();
+  assert.equal((await inFlight).kind, "uncertain", "in-flight finite cancellation cannot prove non-submission");
+  await locus.mutate((draft) => {
+    const state = draft.lib("state");
+    if (!("at" in state)) throw new Error("Expected data draft.");
+    state.at(["value"]).set(2);
+  });
+  for (let i = 0; i < 100 && replica.sync.debug().lastAppliedRev !== locus.rev; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(replica.sync.debug().lastAppliedRev, locus.rev, "in-flight finite cancellation leaves sync alive");
   const epoch = replica.session.epoch;
+  holdFinite = true;
+  enteredFinite = new Promise<void>((resolve) => { finiteEntered = resolve; });
+  const sibling = transport.operations.submit({ type: "action-status", id: "h2-inflight",
+    clientId: "client", requestId: "unknown" });
+  await enteredFinite;
   cancelSync?.();
+  releaseFinite?.();
+  assert.equal((await sibling).kind, "response", "sync cancellation leaves in-flight finite work independent");
+  holdFinite = false;
   const afterCancellation = await transport.operations.submit({ type: "action-status", id: "h2-after-sync",
     clientId: "client", requestId: "unknown" });
   assert.equal(afterCancellation.kind, "response", "stream cancellation leaves sibling finite request usable");

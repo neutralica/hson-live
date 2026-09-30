@@ -14,6 +14,7 @@ import {
   type EchoEndpoint,
   type EchoEndpointIdFactories,
 } from "./echo.endpoint.js";
+import { release_echo_transport_owner_internal } from "./echo.transport-owner.internal.js";
 
 export type EchoEndpointConnectionOptions<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
   transport: EchoEndpointTransport<TActions>;
@@ -86,6 +87,7 @@ export function create_echo_semantic_connection_internal<TActions extends LocusA
     disconnect();
     disposed = true;
     endpoint.dispose();
+    release_echo_transport_owner_internal(options.transport);
     availabilityListeners.clear();
     readyListeners.clear();
     attachmentLostListeners.clear();

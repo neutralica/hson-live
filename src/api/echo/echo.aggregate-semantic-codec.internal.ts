@@ -67,6 +67,11 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
   const id = required_string(value.id);
   if (id === undefined) throw new Error("Hosted aggregate synchronization output requires an id.");
   if (value.type === "recovery-plan") {
+    const planFields = ["type", "format", "id", "logicalMapId", "incarnationId", "registryDigest",
+      "projectionDigest", "headRev", "outcome",
+      ...(Object.hasOwn(value, "projectionSequence") ? ["projectionSequence"] : []),
+      ...(value.outcome === "reject" ? ["error"] : Object.hasOwn(value, "reason") ? ["reason"] : [])];
+    if (!has_fields(value, planFields)) throw new Error("Hosted recovery plan fields are malformed.");
     const logicalMapId = required_string(value.logicalMapId);
     const incarnationId = required_string(value.incarnationId);
     const registryDigest = required_digest(value.registryDigest);
@@ -77,6 +82,9 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
     if (logicalMapId === undefined || incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined || headRev === undefined) throw new Error("Hosted recovery plan is malformed.");
     if (value.outcome === "reject") {
       const error = exact_record(value.error, "Hosted recovery rejection");
+      if (!has_fields(error, ["message", ...(Object.hasOwn(error, "code") ? ["code"] : [])])) {
+        throw new Error("Hosted recovery rejection fields are malformed.");
+      }
       const message = required_string(error.message);
       if (message === undefined) throw new Error("Hosted recovery rejection is malformed.");
       return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, projectionDigest,
@@ -89,8 +97,14 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
       ...(projectionSequence === undefined ? {} : { projectionSequence }), headRev, outcome,
       ...(typeof value.reason === "string" ? { reason: value.reason as "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" | "projection_changed" } : {}) });
   }
-  if (value.type === "recovery-snapshot") return Object.freeze({ type: "recovery-snapshot", id, snapshot: value.snapshot as AuthorityProjectionSnapshot });
+  if (value.type === "recovery-snapshot") {
+    if (!has_fields(value, ["type", "format", "id", "snapshot"])) throw new Error("Hosted recovery snapshot fields are malformed.");
+    return Object.freeze({ type: "recovery-snapshot", id, snapshot: value.snapshot as AuthorityProjectionSnapshot });
+  }
   if (value.type === "recovery-commit") {
+    if (!has_fields(value, ["type", "format", "id", "phase", "projectionSequence", "projectionDigest", "commit"])) {
+      throw new Error("Hosted recovery commit fields are malformed.");
+    }
     if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery commit phase is malformed.");
     const projectionSequence = required_revision(value.projectionSequence);
     const projectionDigest = required_digest(value.projectionDigest);
@@ -99,6 +113,9 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
       projectionDigest, commit: value.commit as LocusLiveProjectedWireEnvelope });
   }
   if (value.type === "recovery-progress") {
+    if (!has_fields(value, ["type", "format", "id", "phase", "projectionSequence", "projectionDigest", "progress"])) {
+      throw new Error("Hosted recovery progress fields are malformed.");
+    }
     if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery progress phase is malformed.");
     const projectionSequence = required_revision(value.projectionSequence);
     const projectionDigest = required_digest(value.projectionDigest);
@@ -107,6 +124,8 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
       projectionDigest, progress: decode_progress(value.progress) });
   }
   if (value.type === "commit" || value.type === "progress") {
+    if (!has_fields(value, ["type", "format", "id", "projectionSequence", "projectionDigest",
+      value.type === "commit" ? "commit" : "progress"])) throw new Error("Hosted live publication fields are malformed.");
     const projectionSequence = required_revision(value.projectionSequence);
     const projectionDigest = required_digest(value.projectionDigest);
     if (projectionSequence === undefined || projectionDigest === undefined) throw new Error("Hosted live projection fence is malformed.");
@@ -118,6 +137,10 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
   }
   if (value.type === "projection-change") return decode_projection_change(value, id);
   if (value.type === "recovery-caught-up") {
+    if (!has_fields(value, ["type", "format", "id", "logicalMapId", "incarnationId", "registryDigest",
+      "projectionDigest", "throughRev", ...(Object.hasOwn(value, "projectionSequence") ? ["projectionSequence"] : [])])) {
+      throw new Error("Hosted recovery caught-up fields are malformed.");
+    }
     const logicalMapId = required_string(value.logicalMapId);
     const incarnationId = required_string(value.incarnationId);
     const registryDigest = required_digest(value.registryDigest);

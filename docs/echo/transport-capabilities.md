@@ -18,6 +18,11 @@ Echo never automatically repeats an uncertain session create, because its
 credential may exist only in a lost response. Action retries preserve the
 stable `clientId` and `requestId`, use a fresh `attemptId`, and consult Locus's
 shared deduplication and status authority.
+After Fetch begins, an HTTP status code alone cannot prove non-submission:
+host or intermediary errors, redirect rejection, and invalid response content
+type remain uncertain. Finite semantic replies require `Content-Type:
+application/json`; synchronization replies require
+`Content-Type: application/x-ndjson`. Optional MIME parameters are accepted.
 
 HTTP uses `POST {endpoint}` with one exact semantic JSON request and response.
 Session create and attach need the retained credential only for attach. The
@@ -25,6 +30,9 @@ successful response carries a new attachment capability in the
 `x-hson-attachment` response header. Attached finite requests carry it in that
 same request header. The HTTP adapter stores it privately; Echo session state,
 `session.now()`, LiveMap state, Hson transfer, and URLs never contain it.
+Every HTTP transport Fetch rejects redirects, including same-origin redirects.
+The endpoint must be direct. The adapter never intentionally forwards an
+attachment capability or credential-bearing body through a redirect.
 `POST {endpoint}/sync` opens either a `recover` feed or an endpoint-only
 `{"type":"observe"}` control feed. Both use the same attachment capability.
 HTTP rejects other methods and paths without Locus admission. Finite and stream
@@ -52,6 +60,9 @@ and stream bind. The application must obtain that context from authentication;
 a caller-supplied principal string is not authentication. Capability lookup
 uses an exact Map key; there is no derived-token or secret-string comparison.
 Unknown capabilities receive a bounded empty admission response.
+The client applies an invalid-capability response only to the capability and
+attachment generation that sent that request. A delayed rejection for an old
+epoch cannot fence a newly installed capability.
 
 Replacing an HTTP stream uses the same Locus subscription generation as
 WebSocket recovery. Cancelling or losing one response ends only that
@@ -74,6 +85,12 @@ live-frame allowance; if the reader cannot
 keep up, the binder ends that subscription so the client can recover. It never
 silently drops a canonical revision or waits indefinitely for the network
 inside an authority transaction.
+The shared synchronization decoder checks exact keys for every output family;
+HTTP and WebSocket use that same admission. Only one HTTP observation or
+synchronization response is current per attachment. A new response closes the
+old one, including endpoint-only control observation. A recoverable physical
+stream-open failure waits before another recovery attempt; an invalid semantic
+stream does not cause a rapid retry loop.
 
 An HTTP attachment expires after 120 seconds without a received request;
 the binder closes its semantic attachment and normal retained-session
@@ -87,6 +104,16 @@ Fetch implementation or explicit Fetch credentials policy. Cross-origin use
 of the capability header requires the deployment's CORS preflight policy.
 Cookie-backed authentication still needs application origin and CSRF checks;
 the attachment capability does not replace them.
+The 120-second lease deliberately exceeds the nominal 30-second heartbeat
+interval. Any admitted finite request or new stream open also refreshes it;
+heartbeat scheduling need not be exact. Long browser suspension or deployment
+buffering can still affect liveness. Lease callbacks are fenced to the current
+attachment and activity generation, and disposal clears their timers.
+
+`transport.dispose()` is terminal: it aborts physical work and notifies Echo
+that attachment observation ended, without revoking the retained session.
+`echo.dispose()` releases its sole semantic owner and stops HTTP heartbeat and
+automatic stream maintenance; the caller still disposes the transport object.
 
 LiveHost stays generic. An application maps its authenticated
 `LiveHostApplicationContext` to `LocusConnectionContext` and calls

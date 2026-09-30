@@ -14,7 +14,7 @@ const browser = new Set([
   "test:stylesheet-ingress-browser",
   "test:echo-http-browser",
 ]);
-const network = new Set(["test:livehost-node-http2", "test:livehost-node-hosting", "test:echo-http", "test:echo-http2", "test:echo-http-completion"]);
+const network = new Set(["test:livehost-node-http2", "test:livehost-node-hosting", "test:echo-http", "test:echo-http2", "test:echo-http-completion", "test:echo-http-redirect"]);
 const environmentDependent = new Set([...browser, ...network]);
 const testNames = Object.keys(scripts).filter((name) => name.startsWith("test:"));
 const standard = new Set([...scripts.check.matchAll(/npm run (test:[\w-]+)/g)].map((match) => match[1]));

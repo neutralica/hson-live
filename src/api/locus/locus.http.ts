@@ -21,7 +21,8 @@ type Entry = {
   sessionId: string;
   epoch: number;
   lastActivity: number;
-  streams: Set<() => void>;
+  leaseGeneration: number;
+  currentStream?: () => void;
   notices: Set<(notice: LocusAttachmentNotice) => void>;
   timer?: ReturnType<typeof setTimeout>;
 };
@@ -40,6 +41,7 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
   const limit = locus_publication_byte_limit_internal(locus);
   const entries = new Map<string, Entry>();
   let disposed = false;
+  let binderGeneration = 0;
 
   const reject = (status: number): Response => new Response(null, { status, headers: { "cache-control": NO_STORE } });
   const rejectCapability = (): Response => new Response(null, { status: 403,
@@ -48,14 +50,14 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
     if (entries.get(entry.token) !== entry) return;
     entries.delete(entry.token);
     if (entry.timer !== undefined) clearTimeout(entry.timer);
-    for (const stop of [...entry.streams]) stop();
+    entry.currentStream?.();
     entry.attachment.close();
   };
   const fence = (entry: Entry): void => {
     if (entries.get(entry.token) !== entry) return;
     entries.delete(entry.token);
     if (entry.timer !== undefined) clearTimeout(entry.timer);
-    for (const stop of [...entry.streams]) stop();
+    entry.currentStream?.();
     // Session reattachment fences the old attachment before committing the new
     // epoch. Closing the old semantic attachment inside that callback would
     // reenter the session manager and abort the atomic transition.
@@ -63,9 +65,11 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
   };
   const schedule = (entry: Entry): void => {
     if (entry.timer !== undefined) clearTimeout(entry.timer);
+    const leaseGeneration = ++entry.leaseGeneration;
     entry.timer = setTimeout(() => {
+      if (disposed || entries.get(entry.token) !== entry || entry.leaseGeneration !== leaseGeneration) return;
       const remaining = IDLE_MS - (Date.now() - entry.lastActivity);
-      if (remaining > 0) { entry.timer = setTimeout(() => close(entry), remaining); return; }
+      if (remaining > 0) { schedule(entry); return; }
       close(entry);
     }, IDLE_MS);
   };
@@ -116,6 +120,7 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
     let raw: string;
     try { raw = await body(request); }
     catch { return reject(400); }
+    if (disposed) return reject(503);
     if (pathname === syncPath) {
       let recovery: Extract<ReturnType<typeof decode_request>, { type: "recover" }> | undefined;
       if (raw !== '{"type":"observe"}') {
@@ -143,6 +148,7 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
     const establishing = decoded.type === "session-create" || decoded.type === "session-attach";
     if (establishing) {
       if (request.headers.has(CAPABILITY_HEADER)) return reject(400);
+      const admittedGeneration = binderGeneration;
       let created: Entry | undefined;
       attachment = attach_locus_semantic_transport_internal(locus, {
         connection: context,
@@ -155,6 +161,10 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
       });
       try {
         const outcome = await attachment.operations.submit(decoded as LocusFiniteOperationRequest);
+        if (disposed || admittedGeneration !== binderGeneration) {
+          attachment.close();
+          return reject(503);
+        }
         if (outcome.type !== "session-created" && outcome.type !== "session-attached") {
           attachment.close();
           return response(outcome);
@@ -167,7 +177,8 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
         const token = capability();
         created = { token, attachment, principalId: context.principalId,
           sessionId: outcome.sessionId, epoch: outcome.epoch, lastActivity: Date.now(),
-          streams: new Set(), notices: new Set() };
+          leaseGeneration: 0,
+          notices: new Set() };
         entries.set(token, created);
         schedule(created);
         return response(outcome, token);
@@ -195,6 +206,7 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
 
   function stream(entry: Entry, recovery: Extract<ReturnType<typeof decode_request>, { type: "recover" }> | undefined,
     signal: AbortSignal): Response {
+    entry.currentStream?.();
     let stopSubscription: (() => void) | undefined;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let stopped = false;
@@ -202,7 +214,7 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
     const stop = (): void => {
       if (stopped) return;
       stopped = true;
-      entry.streams.delete(stop);
+      if (entry.currentStream === stop) entry.currentStream = undefined;
       entry.notices.delete(notice);
       signal.removeEventListener("abort", stop);
       if (heartbeat !== undefined) clearInterval(heartbeat);
@@ -221,7 +233,7 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
     const readable = new ReadableStream<Uint8Array>({
       start(target) {
         controller = target;
-        entry.streams.add(stop);
+        entry.currentStream = stop;
         entry.notices.add(notice);
         signal.addEventListener("abort", stop, { once: true });
         push(JSON.stringify({ type: "ready" }));
@@ -248,6 +260,7 @@ export function bind_locus_http(locus: object, options: Readonly<{ endpoint: str
   return Object.freeze({ handle, dispose() {
     if (disposed) return;
     disposed = true;
+    binderGeneration += 1;
     for (const entry of [...entries.values()]) close(entry);
   } });
 }

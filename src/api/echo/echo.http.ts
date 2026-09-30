@@ -8,6 +8,7 @@ import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
   LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import { HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted-limits.internal.js";
 import { EchoHttpRecordError, read_echo_http_records_internal } from "./echo.http-framing.internal.js";
+import { register_echo_transport_owner_release_internal } from "./echo.transport-owner.internal.js";
 
 const CAPABILITY_HEADER = "x-hson-attachment";
 const HEARTBEAT_MS = 30_000;
@@ -45,7 +46,9 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
   let epoch: number | undefined;
   let physical: Physical | undefined;
   let generation = 0;
+  let attachmentGeneration = 0;
   let disposed = false;
+  let ownerReleased = false;
   let controlRetry: ReturnType<typeof setTimeout> | undefined;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   let heartbeatInFlight = false;
@@ -56,10 +59,13 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
       try { listener(event); } catch { /* One listener cannot prevent other notices. */ }
     }
   };
+  const currentAttachment = (token: string, expectedGeneration: number): boolean =>
+    !disposed && !ownerReleased && capability === token && attachmentGeneration === expectedGeneration;
   const fence = (): void => {
     if (capability === undefined) return;
     if (sessionId !== undefined && epoch !== undefined) emit(Object.freeze({ kind: "fenced", sessionId, epoch }));
     capability = undefined;
+    attachmentGeneration += 1;
     stopHeartbeat();
     stopPhysical(Object.freeze({ kind: "invalid" }));
     emit(Object.freeze({ kind: "observation-interrupted" }));
@@ -98,7 +104,8 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
 
   async function ping(): Promise<void> {
     const token = capability;
-    if (token === undefined || heartbeatInFlight || disposed) return;
+    const sentGeneration = attachmentGeneration;
+    if (token === undefined || heartbeatInFlight || disposed || ownerReleased) return;
     heartbeatInFlight = true;
     const controller = new AbortController();
     requests.add(controller);
@@ -106,8 +113,8 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
     try {
       const response = await fetcher(endpoint, { method: "POST", body: '{"type":"heartbeat"}',
         headers: { "content-type": "application/json", [CAPABILITY_HEADER]: token },
-        credentials: options.credentials ?? "same-origin", signal: controller.signal, cache: "no-store" });
-      if (capability === token && response.status === 403
+        credentials: options.credentials ?? "same-origin", signal: controller.signal, cache: "no-store", redirect: "error" });
+      if (currentAttachment(token, sentGeneration) && response.status === 403
         && response.headers.get("x-hson-attachment-state") === "invalid") fence();
     } catch { /* The lease expires if the client cannot reach the authority. */ }
     finally { clearTimeout(timeout); requests.delete(controller); heartbeatInFlight = false; }
@@ -136,13 +143,32 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   }
 
+  function responseType(response: Response): string | undefined {
+    return response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  }
+
+  function releaseOwner(): void {
+    if (ownerReleased || disposed) return;
+    ownerReleased = true;
+    stopPhysical(Object.freeze({ kind: "cancelled" }));
+    if (controlRetry !== undefined) { clearTimeout(controlRetry); controlRetry = undefined; }
+    for (const controller of requests) controller.abort();
+    requests.clear();
+    capability = undefined;
+    attachmentGeneration += 1;
+    stopHeartbeat();
+    listeners.clear();
+  }
+
   async function submit(request: EchoFiniteOperationRequest,
     operationOptions?: Readonly<{ signal?: EchoCancellationSignal }>): Promise<EchoSubmission<EchoFiniteOperationOutcome>> {
-    if (disposed || operationOptions?.signal?.aborted) {
+    if (disposed || ownerReleased || operationOptions?.signal?.aborted) {
       return Object.freeze({ kind: "not-submitted", cause: operationOptions?.signal?.reason });
     }
     const establishing = request.type === "session-create" || request.type === "session-attach";
     if (!establishing && capability === undefined) return Object.freeze({ kind: "not-submitted" });
+    const sentToken = capability;
+    const sentGeneration = attachmentGeneration;
     let body: string;
     try {
       body = encodeEndpointMessage(request);
@@ -151,19 +177,19 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
     const controller = new AbortController();
     const abort = (): void => controller.abort(operationOptions?.signal?.reason);
     operationOptions?.signal?.addEventListener("abort", abort, { once: true });
-    if (operationOptions?.signal?.aborted || disposed) {
+    if (operationOptions?.signal?.aborted || disposed || ownerReleased) {
       operationOptions?.signal?.removeEventListener("abort", abort);
       return Object.freeze({ kind: "not-submitted", cause: operationOptions?.signal?.reason });
     }
     const init: RequestInit = { method: "POST", body,
-      headers: { "content-type": "application/json", ...(establishing ? {} : { [CAPABILITY_HEADER]: capability! }) },
-      credentials: options.credentials ?? "same-origin", signal: controller.signal, cache: "no-store" };
+      headers: { "content-type": "application/json", ...(establishing ? {} : { [CAPABILITY_HEADER]: sentToken! }) },
+      credentials: options.credentials ?? "same-origin", signal: controller.signal, cache: "no-store", redirect: "error" };
     try { new Request(endpoint, init); }
     catch (cause) {
       operationOptions?.signal?.removeEventListener("abort", abort);
       return Object.freeze({ kind: "not-submitted", cause });
     }
-    if (operationOptions?.signal?.aborted || disposed) {
+    if (operationOptions?.signal?.aborted || disposed || ownerReleased) {
       operationOptions?.signal?.removeEventListener("abort", abort);
       return Object.freeze({ kind: "not-submitted", cause: operationOptions?.signal?.reason });
     }
@@ -171,28 +197,38 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
     try {
       const response = await fetcher(endpoint, init);
       if (response.status === 403) {
-        if (!establishing && response.headers.get("x-hson-attachment-state") === "invalid") fence();
-        return Object.freeze({ kind: "not-submitted", cause: new Error("HTTP Echo attachment was rejected.") });
+        if (!establishing && sentToken !== undefined && currentAttachment(sentToken, sentGeneration)
+          && response.headers.get("x-hson-attachment-state") === "invalid") fence();
+        return Object.freeze({ kind: "uncertain", cause: new Error("HTTP Echo attachment was rejected.") });
       }
-      if (response.status !== 200) return Object.freeze({ kind: response.status === 400 || response.status === 405
-        ? "not-submitted" : "uncertain", cause: new Error(`HTTP Echo request failed (${response.status}).`) });
+      if (response.status !== 200) return Object.freeze({ kind: "uncertain",
+        cause: new Error(`HTTP Echo request failed (${response.status}).`) });
+      if (responseType(response) !== "application/json") throw new Error("HTTP Echo finite response has an invalid content type.");
       const raw = await boundedText(response);
       const outcome = decodeEndpointMessage(raw, LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT);
       if (outcome === undefined || outcome.type === "session-fenced" || outcome.id !== request.id) {
         throw new Error("HTTP Echo finite response is malformed.");
       }
       if (outcome.type === "session-created" || outcome.type === "session-attached") {
+        if (disposed || ownerReleased || attachmentGeneration !== sentGeneration) {
+          throw new Error("HTTP Echo attachment response is no longer current.");
+        }
         const token = response.headers.get(CAPABILITY_HEADER);
         if (token === null || !/^[a-f0-9]{64}$/u.test(token)) throw new Error("HTTP Echo attachment capability is missing.");
+        stopPhysical(Object.freeze({ kind: "cancelled" }));
         capability = token;
+        attachmentGeneration += 1;
         sessionId = outcome.sessionId;
         epoch = outcome.epoch;
         startHeartbeat();
         void startControl();
       } else if (outcome.type === "session-detached" || outcome.type === "session-ended") {
-        capability = undefined;
-        stopHeartbeat();
-        stopPhysical(Object.freeze({ kind: "cancelled" }));
+        if (sentToken !== undefined && currentAttachment(sentToken, sentGeneration)) {
+          capability = undefined;
+          attachmentGeneration += 1;
+          stopHeartbeat();
+          stopPhysical(Object.freeze({ kind: "cancelled" }));
+        }
       }
       return Object.freeze({ kind: "response", outcome });
     } catch (cause) {
@@ -204,7 +240,7 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
   }
 
   async function startControl(): Promise<void> {
-    if (disposed || capability === undefined || physical !== undefined) return;
+    if (disposed || ownerReleased || capability === undefined || physical !== undefined) return;
     try { await openPhysical(undefined, undefined); }
     catch { if (capability !== undefined) scheduleControl(); }
   }
@@ -212,7 +248,9 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
   async function openPhysical(request: EchoSynchronizationRequest | undefined,
     observer: EchoSynchronizationObserver | undefined,
     signal?: EchoCancellationSignal): Promise<EchoSynchronizationSubscription> {
-    if (disposed || capability === undefined || signal?.aborted) throw signal?.reason ?? new Error("HTTP Echo stream cannot open.");
+    if (disposed || ownerReleased || capability === undefined || signal?.aborted) throw signal?.reason ?? new Error("HTTP Echo stream cannot open.");
+    const sentToken = capability;
+    const sentGeneration = attachmentGeneration;
     if (controlRetry !== undefined) { clearTimeout(controlRetry); controlRetry = undefined; }
     stopPhysical(Object.freeze({ kind: "cancelled" }));
     const active: Physical = { controller: new AbortController(), generation: ++generation,
@@ -225,26 +263,33 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
       if (request !== undefined) aggregateCodec ??= await import("./echo.aggregate-semantic-codec.internal.js");
       body = request === undefined ? '{"type":"observe"}' : aggregateCodec!.encode_echo_hosted_aggregate_request_frame_internal(request);
     } catch (cause) { abort(); throw cause; }
+    if (!currentAttachment(sentToken, sentGeneration) || physical !== active || signal?.aborted) {
+      abort();
+      throw new Error("HTTP Echo stream opening was displaced.");
+    }
     try {
       const response = await fetcher(syncEndpoint, { method: "POST", body,
-        headers: { "content-type": "application/json", [CAPABILITY_HEADER]: capability },
-        credentials: options.credentials ?? "same-origin", signal: active.controller.signal, cache: "no-store" });
+        headers: { "content-type": "application/json", [CAPABILITY_HEADER]: sentToken },
+        credentials: options.credentials ?? "same-origin", signal: active.controller.signal, cache: "no-store", redirect: "error" });
       if (physical !== active || signal?.aborted) throw new Error("HTTP Echo stream opening was displaced.");
       if (response.status === 403) {
-        if (response.headers.get("x-hson-attachment-state") === "invalid") fence();
+        if (currentAttachment(sentToken, sentGeneration)
+          && response.headers.get("x-hson-attachment-state") === "invalid") fence();
         throw new Error("HTTP Echo stream admission failed.");
       }
-      if (response.status !== 200 || response.headers.get("content-type")?.split(";", 1)[0] !== "application/x-ndjson") {
-        throw new Error("HTTP Echo stream admission failed.");
+      if (response.status !== 200) throw new Error("HTTP Echo stream admission failed.");
+      if (responseType(response) !== "application/x-ndjson") {
+        throw new EchoHttpRecordError("HTTP Echo stream has an invalid content type.");
       }
-      if (response.body === null) throw new Error("HTTP Echo stream has no body.");
+      if (response.body === null) throw new EchoHttpRecordError("HTTP Echo stream has no body.");
       const reader = response.body.getReader();
       const ready = readStream(active, reader, request?.id);
       await ready;
       if (physical !== active || signal?.aborted) throw new Error("HTTP Echo stream opening was displaced.");
       return Object.freeze({ cancel: () => { if (physical === active) stopPhysical(Object.freeze({ kind: "cancelled" })); } });
     } catch (cause) {
-      if (physical === active) stopPhysical(Object.freeze({ kind: "interrupted", cause }));
+      if (physical === active) stopPhysical(Object.freeze({ kind: cause instanceof EchoHttpRecordError
+        ? "invalid" : "interrupted", cause }));
       throw cause;
     } finally { signal?.removeEventListener("abort", abort); }
   }
@@ -298,9 +343,13 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
     return ready;
   }
 
-  return Object.freeze({
+  const transport = Object.freeze({
     operations: Object.freeze({ submit }),
     attachment: Object.freeze({ observe(listener: (event: EchoAttachmentEvent) => void) {
+      if (disposed || ownerReleased) {
+        listener(Object.freeze({ kind: "observation-interrupted" }));
+        return () => {};
+      }
       listeners.add(listener);
       listener(Object.freeze({ kind: "available" }));
       return () => { listeners.delete(listener); };
@@ -311,12 +360,16 @@ export function create_echo_http_transport(options: EchoHttpTransportOptions): E
       if (disposed) return;
       disposed = true;
       stopPhysical(Object.freeze({ kind: "interrupted" }));
+      emit(Object.freeze({ kind: "observation-interrupted" }));
       if (controlRetry !== undefined) { clearTimeout(controlRetry); controlRetry = undefined; }
       for (const controller of requests) controller.abort();
       requests.clear();
       capability = undefined;
+      attachmentGeneration += 1;
       stopHeartbeat();
       listeners.clear();
     },
   });
+  register_echo_transport_owner_release_internal(transport, releaseOwner);
+  return transport;
 }
