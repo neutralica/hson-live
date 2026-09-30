@@ -58,8 +58,9 @@ export function bind_locus_websocket(
         stopSync?.();
         stopSync = attachment.synchronization.open(request, (output) => send(output,
           output.type === "recovery-snapshot" || (output.type === "projection-change" && output.reconciliation !== undefined)
-            ? HOSTED_MAX_SNAPSHOT_BYTES : limit), () => {
-          if (!closed) socket.close(1011, "Locus synchronization failed.");
+            ? HOSTED_MAX_SNAPSHOT_BYTES : limit), (cause) => {
+          if (cause === undefined || closed) return;
+          socket.close(1011, "Locus synchronization failed.");
           close();
         });
       } else {

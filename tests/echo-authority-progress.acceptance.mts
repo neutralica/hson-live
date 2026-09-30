@@ -4,10 +4,11 @@ import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_public_projection } from "./helpers/hosted-catalog.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonEcho, hsonLiveMap, hsonLocus, hsonMirror, type HsonSchema } from "../src/index.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
+import { echo_document_authority_for } from "../src/api/echo/echo.document-authority-registry.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_livemap_mirror_from_portable_aggregate_internal, make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { make_hosted_commit, make_portable_aggregate_commit, make_portable_aggregate_snapshot, type HostedRegistryBinding } from "../src/api/livemap/livemap.hosted.ts";
@@ -17,6 +18,10 @@ import { make_locus_hosted_projection_policy, normalize_locus_effective_projecti
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { create_locus_hosted_aggregate_authority_internal, derive_locus_hosted_progress_internal } from "../src/api/locus/locus.aggregate.authority.ts";
+import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
+import { attach_locus_semantic_transport_internal } from "../src/api/locus/locus.transport.internal.ts";
+import type { EchoAttachmentEvent, EchoCancellationSignal, EchoFiniteOperationRequest, EchoReplicaTransport,
+  EchoSynchronizationObserver, EchoSynchronizationOutput, EchoSynchronizationRequest } from "../src/types/echo.transport.types.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import type { LiveMap } from "../src/types/livemap.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -40,6 +45,15 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
   }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
+}
+
+async function bounded<T>(promise: Promise<T>, milliseconds: number, message: () => string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([promise, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message())), milliseconds);
+    })]);
+  } finally { clearTimeout(timer); }
 }
 
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
@@ -460,6 +474,109 @@ await check("completionRev waits through ordered progress while local identity s
   documentAuthority.dispose();
   replica.dispose();
 });
+
+for (const strategy of ["replay", "reconcile"] as const) {
+  await check(`admitted document completionRev survives semantic interruption and ${strategy}`, async () => {
+    const authority = make_map();
+    const options = { ...test_public_projection(authority), map: authority };
+    const locus = strategy === "reconcile"
+      ? create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus
+      : hsonLocus.create(options);
+    const session = await locus.session.create({ libraries: ["state", "page"] });
+    const notices = new Set<(event: EchoAttachmentEvent) => void>();
+    const attachment = attach_locus_semantic_transport_internal(locus, {
+      notice(event) {
+        if (event.type === "session-fenced") for (const listener of notices) listener({ kind: "fenced", sessionId: event.sessionId, epoch: event.epoch });
+      },
+    });
+    const plans: string[] = [];
+    let holdLive = false;
+    let heldLive = 0;
+    let dispatches = 0;
+    let actionRequest: Extract<EchoFiniteOperationRequest, { type: "action" }> | undefined;
+    let releaseRecovery: () => void = () => {};
+    const recoveryGate = new Promise<void>((resolve) => { releaseRecovery = resolve; });
+    let pauseRecovery = false;
+    let current: { interrupt(): void } | undefined;
+    const transport: EchoReplicaTransport = Object.freeze({
+      operations: Object.freeze({ async submit(request: EchoFiniteOperationRequest) {
+        if (request.type === "action" && request.name === "document.attrs.set") {
+          dispatches += 1;
+          actionRequest = request;
+        }
+        try { return Object.freeze({ kind: "response" as const, outcome: await attachment.operations.submit(request) }); }
+        catch (cause) { return Object.freeze({ kind: "uncertain" as const, cause }); }
+      } }),
+      attachment: Object.freeze({ observe(listener: (event: EchoAttachmentEvent) => void) {
+        notices.add(listener); listener({ kind: "available" }); return () => { notices.delete(listener); };
+      } }),
+      synchronization: Object.freeze({ async open(request: EchoSynchronizationRequest, observer: EchoSynchronizationObserver,
+        options?: Readonly<{ signal?: EchoCancellationSignal }>) {
+        if (options?.signal?.aborted) throw new Error("Synchronization opening aborted.");
+        if (pauseRecovery && plans.length > 0) await recoveryGate;
+        let ended = false;
+        const onOutput = (output: EchoSynchronizationOutput): void | Promise<void> => {
+          if (ended) return;
+          if (output.type === "recovery-plan") plans.push(output.outcome);
+          if (holdLive && output.type === "commit") { heldLive += 1; return; }
+          return observer.onOutput(output);
+        };
+        const stop = attachment.synchronization.open(request, onOutput, (cause) => {
+          if (ended) return;
+          ended = true;
+          observer.onEnd({ kind: cause === undefined ? "cancelled" : "interrupted", cause });
+        });
+        const feed = { interrupt() {
+          if (ended) return;
+          ended = true;
+          observer.onEnd({ kind: "interrupted" });
+          stop();
+        } };
+        current = feed;
+        return Object.freeze({ cancel() { if (ended) return; ended = true; stop(); observer.onEnd({ kind: "cancelled" }); } });
+      } }),
+    });
+    const echo = await bounded(hsonEcho.create({ now: session.now(), credential: session.credential!, transport }), 1_000,
+      () => `Replica establishment stalled: ${JSON.stringify({ plans, binding: attachment.binding.attached })}`);
+    const documentAuthority = echo_document_authority_for(echo.map.lib("page"));
+    assert.ok(documentAuthority);
+    holdLive = true;
+    const pending = documentAuthority.enqueue(() => Object.freeze({ name: "document.attrs.set" as const,
+      payload: { target: { kind: "path" as const, path: [0] }, name: "title", value: "restored" } }));
+    let settlements = 0;
+    void pending.then(() => { settlements += 1; }, () => { settlements += 1; });
+    for (let turn = 0; turn < 100 && (heldLive === 0 || documentAuthority.pendingRevisionWaits() === 0); turn++) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    assert.equal(heldLive, 1);
+    assert.equal(documentAuthority.pendingRevisionWaits(), 1);
+    assert.equal(settlements, 0);
+    holdLive = false;
+    pauseRecovery = true;
+    current?.interrupt();
+    assert.notEqual(echo.sync.status, "caught_up");
+    assert.ok(actionRequest);
+    const firstAttempt = actionRequest.attemptId;
+    assert.equal((await echo.actionStatus(actionRequest.requestId!)).state, "succeeded");
+    const retry = await echo.retryAction({ requestId: actionRequest.requestId!, name: actionRequest.name,
+      ...(actionRequest.payload === undefined ? {} : { payload: actionRequest.payload }) });
+    assert.equal(retry.type, "ack");
+    assert.notEqual(actionRequest.attemptId, firstAttempt);
+    await assert.rejects(echo.action("document.attrs.set", {
+      library: "page", target: { kind: "path", path: [0] }, name: "title", value: "new-work",
+    }), /disconnect|unavailable/i);
+    releaseRecovery();
+    for (let turn = 0; turn < 100 && echo.sync.status !== "caught_up"; turn++) await new Promise((resolve) => setTimeout(resolve, 1));
+    await bounded(pending, 2_000,
+      () => `Completion stalled: ${JSON.stringify({ plans, status: echo.sync.status, rev: echo.sync.debug().lastAppliedRev, waits: documentAuthority.pendingRevisionWaits() })}`);
+    assert.equal(plans.at(-1), strategy);
+    assert.equal(settlements, 1);
+    assert.equal(dispatches, 2, "retry uses the existing logical request");
+    assert.equal(authority.rev, 1);
+    assert.equal(echo.sync.debug().lastAppliedRev, 1);
+    echo.dispose(); attachment.close(); locus.dispose();
+  });
+}
 
 await check("exact identity history derives generic client progress without rewriting authority history", () => {
   const authority = make_map();

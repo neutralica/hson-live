@@ -29,7 +29,7 @@ export type {
   EchoSessionOptions,
   EchoSessionResult,
   EchoSessionStatus,
-  EchoInitOptions,
+  EchoReplicaOptions,
 } from "./locus.core.types.js";
 export type {
   EchoEndpointTransport,

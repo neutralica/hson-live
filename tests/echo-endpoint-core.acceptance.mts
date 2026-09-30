@@ -6,6 +6,7 @@ import { hsonEcho } from "../src/api/echo/index.ts";
 import { hsonLocus } from "../src/api/locus/index.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { create_echo_endpoint_internal } from "../src/api/echo/echo.endpoint.ts";
+import type { EchoAttachmentEvent } from "../src/types/echo.transport.types.ts";
 import type { LocusClientMessage, LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -168,16 +169,142 @@ await check("endpoint-only Echo reattaches after attachment observation is inter
   echo.dispose(); transport.dispose(); detach(); locus.dispose();
 });
 
+await check("terminal WebSocket transport disposal invalidates an attached endpoint Echo", async () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+  const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }],
+    defaultProjection: { libraries: ["state"] } });
+  const pair = socket_pair();
+  const detach = bind_locus_websocket(locus, pair.server);
+  const transport = test_echo_transport(pair.client);
+  const echo = hsonEcho.create({ transport });
+  echo.connect();
+  await echo.session.create();
+  assert.equal(echo.session.status, "attached");
+  transport.dispose();
+  assert.notEqual(echo.session.status, "attached");
+  await assert.rejects(echo.action("work"), /disconnect/i);
+  echo.dispose(); detach(); locus.dispose();
+});
+
 await check("untyped endpoint Echo construction rejects replica arguments", () => {
   const pair = socket_pair();
   const createUntyped = (options: unknown): unknown => Reflect.apply(create_echo, undefined, [options]);
-  assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), map: Object.freeze({}) }), /endpoint-only/i);
-  assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), now: Object.freeze({}) }), /endpoint-only/i);
-  assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), recovery: {} }), /endpoint-only/i);
+  assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), map: Object.freeze({}) }), /endpoint creation/i);
+  assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), now: Object.freeze({}) }), /requires now and credential/i);
+  assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), recovery: {} }), /endpoint creation/i);
   assert.throws(
     () => createUntyped({ transport: test_echo_transport(pair.client), map: Object.freeze({}), recovery: { logicalMapId: "untyped-map" } }),
-    /endpoint-only/i,
+    /endpoint creation/i,
   );
+});
+
+await check("correlated rejection settles an action and finite recovery stays available while replica readiness is stale", async () => {
+  let ready = true;
+  let attempts = 0;
+  const sent: LocusClientMessage[] = [];
+  const endpoint = create_echo_endpoint_internal({
+    operations: { async submit(message) {
+      sent.push(message);
+      if (message.type === "session-create") return { kind: "response" as const, outcome: {
+        type: "session-created" as const, id: message.id, sessionId: "s", credential: "c", epoch: 1,
+        logicalMapId: "m", incarnationId: "i",
+      } };
+      if (message.type === "action-status") return { kind: "response" as const, outcome: {
+        type: "action-status" as const, id: message.id, requestId: message.requestId, state: "unknown" as const,
+      } };
+      if (message.type === "action") {
+        attempts += 1;
+        return attempts === 1
+          ? { kind: "response" as const, outcome: { type: "session-rejected" as const, id: message.id,
+              code: "LOCUS_SESSION_NOT_ATTACHED", message: "rejected" } }
+          : { kind: "response" as const, outcome: { type: "ack" as const, id: message.id,
+              requestId: message.requestId, attemptId: message.attemptId, ok: true as const, seq: 1 } };
+      }
+      throw new Error("Unexpected operation.");
+    } },
+    attachment: { observe(listener) { listener({ kind: "available" }); return () => {}; } },
+    sessionRequired: true, additionalReady: () => ready,
+  });
+  endpoint.connect();
+  await endpoint.session.create();
+  const first = endpoint.action("work");
+  let settlements = 0;
+  void first.then(() => { settlements += 1; }, () => { settlements += 1; });
+  await assert.rejects(bounded(first), /rejected/);
+  const firstWire = last(sent, "action");
+  endpoint.receive({ type: "session-rejected", id: firstWire.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "late" });
+  await Promise.resolve();
+  assert.equal(settlements, 1);
+  ready = false;
+  assert.equal((await endpoint.actionStatus(first.request.requestId)).state, "unknown");
+  await assert.rejects(endpoint.action("new-work"), /disconnect/i);
+  const retry = endpoint.retryAction(first.request);
+  assert.equal((await bounded(retry)).type, "ack");
+  const secondWire = last(sent, "action");
+  assert.equal(secondWire.requestId, firstWire.requestId);
+  assert.notEqual(secondWire.attemptId, firstWire.attemptId);
+  assert.equal(attempts, 2);
+  endpoint.dispose();
+});
+
+await check("session-create failure exposes proved delivery and uncertainty structurally", async () => {
+  for (const kind of ["not-submitted", "uncertain"] as const) {
+    const endpoint = create_echo_endpoint_internal({
+      operations: { async submit() { return { kind }; } },
+      attachment: { observe(listener) { listener({ kind: "available" }); return () => {}; } },
+      sessionRequired: true,
+    });
+    endpoint.connect();
+    await assert.rejects(endpoint.session.create(), (error: unknown) => {
+      assert.equal((error as { delivery?: string }).delivery, kind);
+      return true;
+    });
+    assert.equal(endpoint.session.failure?.delivery, kind);
+    endpoint.dispose();
+  }
+});
+
+await check("uncertain session creation never triggers an automatic second creation", async () => {
+  let observe: ((event: EchoAttachmentEvent) => void) | undefined;
+  let creations = 0;
+  const transport = Object.freeze({
+    operations: Object.freeze({ async submit() { creations += 1; return { kind: "uncertain" as const }; } }),
+    attachment: Object.freeze({ observe(listener: (event: EchoAttachmentEvent) => void) {
+      observe = listener; listener({ kind: "available" }); return () => { observe = undefined; };
+    } }),
+  });
+  const echo = hsonEcho.create({ transport });
+  echo.connect();
+  await assert.rejects(echo.session.create(), (error: unknown) => {
+    assert.equal((error as { delivery?: string }).delivery, "uncertain");
+    return true;
+  });
+  observe?.({ kind: "observation-interrupted" });
+  observe?.({ kind: "available" });
+  await Promise.resolve();
+  assert.equal(creations, 1);
+  await assert.rejects(echo.session.create(), /uncertain/i);
+  assert.equal(creations, 2, "explicit create is a separate new attempt");
+  echo.dispose();
+});
+
+await check("one semantic transport has one Echo owner and replica capability is checked before installation", () => {
+  let observed = 0;
+  const transport = Object.freeze({
+    operations: Object.freeze({ async submit() { return { kind: "not-submitted" as const }; } }),
+    attachment: Object.freeze({ observe() { observed += 1; return () => {}; } }),
+  });
+  const first = hsonEcho.create({ transport });
+  assert.throws(() => hsonEcho.create({ transport }), /one Echo/i);
+  assert.equal(observed, 0);
+  first.connect();
+  assert.equal(observed, 1);
+  const createUntyped = (options: unknown): unknown => Reflect.apply(create_echo, undefined, [options]);
+  assert.throws(() => createUntyped({ transport: Object.freeze({ ...transport }), now: {}, credential: "credential" }),
+    /synchronization capability/i);
+  assert.equal(observed, 1);
+  first.dispose();
+  assert.throws(() => hsonEcho.create({ transport }), /one Echo/i);
 });
 
 await check("the endpoint core operates without a map, registry, or synchronization capability", async () => {

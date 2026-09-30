@@ -10,16 +10,17 @@ There is one public `Echo` type family with two compositions:
 ```ts
 import { create_echo, hsonEcho } from "hson-live/echo";
 
-const transport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" });
-const endpoint = create_echo({ transport });
-const replica = await hsonEcho.init({ now: sessionNow, credential, transport });
+const endpointTransport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" });
+const endpoint = create_echo({ transport: endpointTransport });
+const replicaTransport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" });
+const replica = await hsonEcho.create({ now: sessionNow, credential, transport: replicaTransport });
 ```
 
-`hsonEcho.create`, `hson.echo.create`, and `create_echo` construct an endpoint-only Echo. It exposes `clientId`, `session`,
+`hsonEcho.create`, `hson.echo.create`, and `create_echo` construct an endpoint-only Echo when given endpoint options. It exposes `clientId`, `session`,
 `connect`, `disconnect`, `dispose`, `action`, `retryAction`, and `actionStatus`.
 It does not construct or expose a LiveMap and has no synchronization state.
 
-`hsonEcho.init` accepts retained-session `now` state, its separate credential,
+The same `create` functions accept retained-session `now` state, its separate credential,
 and a transport. It admits the shared authority state and authorized local
 initializers, constructs one composed client map, reattaches the session, and
 completes `current`, `replay`, or `reconcile` synchronization before resolving.
@@ -61,12 +62,14 @@ LiveMap and Mirror. That demand does not contact Locus, advance `map.rev`, or
 publish an application commit.
 
 Transport availability, retained-session attachment, and replica synchronization remain
-separate layers. For a replica, `init()` performs all three before
+separate layers. For a replica, `create()` performs all three before
 returning. After a disconnect, `echo.connect()` automatically reattaches the
 retained session and synchronizes through `caught_up`. `echo.session.reattach()`
 can be awaited when the caller needs that completion boundary; repeated calls
-during the same reconnect share its work. Replica actions and status operations
-require `caught_up` readiness. Endpoint-only Echo retains explicit `connect()`
+during the same reconnect share its work. New replica actions and document authoring
+require `caught_up` readiness. Status and retry of an existing stable action request
+require an attached session and a usable finite-operation transport, even while
+synchronization is recovering. Endpoint-only Echo retains explicit `connect()`
 and session operations without a replica synchronization subsystem.
 
 `disconnect()` detaches semantic observation and settles uncertain endpoint
@@ -74,6 +77,12 @@ operations without ending the session or releasing map management. The Echo may
 reconnect. `echo.dispose()` is terminal and, for a replica-bearing Echo, releases
 exclusive management and clears its retained client credential. The caller
 separately calls `transport.dispose()` to close adapter-owned physical resources.
+Terminal transport disposal interrupts attachment observation and synchronization,
+so Echo no longer reports an attached or caught-up state. One semantic transport
+instance belongs to one Echo for its lifetime; create another transport for another Echo.
+If session creation fails, `EchoSessionError.delivery` and `echo.session.failure.delivery`
+distinguish `not-submitted` from `uncertain`. A later explicit `session.create()` is
+a new creation attempt; it cannot recover a credential lost with an uncertain response.
 
 An action's `completionRev` is the authoritative stream head at terminal
 settlement, interpreted with the current session's `logicalMapId` and

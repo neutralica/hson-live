@@ -75,6 +75,7 @@ export type EchoReplicaTransport<TActions extends LocusActionPayloads = LocusAct
       open: (
         request: EchoSynchronizationRequest,
         observer: EchoSynchronizationObserver,
+        options?: Readonly<{ signal?: EchoCancellationSignal }>,
       ) => Promise<EchoSynchronizationSubscription>;
     }>;
   }>;

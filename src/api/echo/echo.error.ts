@@ -12,10 +12,12 @@ export class EchoSyncError extends Error {
 
 export class EchoSessionError extends Error {
   readonly code: string;
+  readonly delivery?: "not-submitted" | "uncertain";
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, delivery?: "not-submitted" | "uncertain") {
     super(message);
     this.name = "EchoSessionError";
     this.code = code;
+    if (delivery !== undefined) this.delivery = delivery;
   }
 }

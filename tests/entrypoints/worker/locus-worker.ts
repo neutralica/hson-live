@@ -12,7 +12,7 @@ void [locus, hsonLocus];
 void bind_locus_websocket(locus, socket);
 const retained = await locus.session.create({ libraries: ["page"] });
 const snapshot: AuthorityProjectionSnapshot = retained.now().libs;
-void hsonEcho.init({ now: retained.now(), credential: retained.credential!, transport });
+void hsonEcho.create({ now: retained.now(), credential: retained.credential!, transport });
 // @ts-expect-error Retained cuts have no family narrowing.
 retained.now({ data: [] });
 // @ts-expect-error The public plural namespace is retired.

@@ -71,7 +71,7 @@ export type LocusHostedAggregateSynchronizationOutput =
   | Readonly<{ type: "recovery-commit"; id: string; phase: "body" | "tail"; projectionSequence: number; projectionDigest: string; commit: LocusLiveProjectedWireEnvelope }>
   | Readonly<{ type: "recovery-progress"; id: string; phase: "body" | "tail"; projectionSequence: number; projectionDigest: string; progress: LocusHostedAggregateProgress }>
   | Readonly<{ type: "recovery-caught-up"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; projectionDigest: string; projectionSequence?: number; throughRev: number }>
-  | Readonly<{ type: "synchronization-failure"; error: Readonly<{ code?: string; message: string; cause?: unknown }> }>;
+  | Readonly<{ type: "synchronization-failure"; id: string; error: Readonly<{ code?: string; message: string; cause?: unknown }> }>;
 
 export type LocusHostedAggregateCanonicalPublication =
   | Readonly<{ type: "commit"; id: string; projectionSequence: number; projectionDigest: string; commit: LocusLiveProjectedWireEnvelope }>

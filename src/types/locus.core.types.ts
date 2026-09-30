@@ -351,6 +351,7 @@ export type EchoSessionStatus = "idle" | "creating" | "attaching" | "attached" |
 export type EchoSessionFailure = Readonly<{
   code: string;
   message: string;
+  delivery?: "not-submitted" | "uncertain";
 }>;
 
 export type EchoSessionResult = Readonly<{
@@ -404,9 +405,9 @@ type EchoCommonOptions = Readonly<{
   trace?: LiveTraceSink;
 }>;
 
-export type EchoOptions = EchoCommonOptions & Readonly<{ map?: never; sync?: never }>;
+export type EchoOptions = EchoCommonOptions & Readonly<{ map?: never; sync?: never; now?: never; credential?: never }>;
 
-export type EchoInitOptions = Readonly<{
+export type EchoReplicaOptions = Readonly<{
   now: LocusSessionNow | LocusSessionHtmlNow;
   credential: LocusSessionCredential;
   transport: EchoReplicaTransport;

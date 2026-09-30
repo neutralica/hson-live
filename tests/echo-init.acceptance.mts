@@ -7,6 +7,9 @@ import { create_registry_locus_internal } from "../src/api/locus/locus.registry.
 import { encode_hosted_root, hosted_sha256 } from "../src/api/livemap/livemap.hosted.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_locus_session_now, install_client_local_initializers_internal, make_locus_application_catalog } from "../src/api/locus/locus.local-initializer.ts";
+import { prepare_echo_replica_internal } from "../src/api/echo/echo.replica-preparation.ts";
+import type { EchoAttachmentEvent, EchoCancellationSignal, EchoFiniteOperationRequest, EchoReplicaTransport,
+  EchoSynchronizationObserver, EchoSynchronizationRequest } from "../src/types/echo.transport.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "echo.init", title: "Echo retained-session replica establishment", category: "Echo", runtime: "node",
@@ -75,12 +78,12 @@ for (const [expected, advance, truncateHistory] of [
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
   if (expected === "current") {
-    await assert.rejects(hsonEcho.init({ now: { ...cut, libs: { ...cut.libs, projectionDigest: "0".repeat(64) } },
+    await assert.rejects(hsonEcho.create({ now: { ...cut, libs: { ...cut.libs, projectionDigest: "0".repeat(64) } },
       credential: session.credential!, transport: test_echo_transport(pair.client) }), /digest|projection/i);
     assert.equal(pair.clientListenerCount(), 0, "invalid cut does not install transport listeners");
     const ahead = socket_pair();
     const detachAhead = bind_locus_websocket(locus, ahead.server);
-    await assert.rejects(hsonEcho.init({ now: { ...cut, libs: { ...cut.libs, revision: cut.libs.revision + 1 } },
+    await assert.rejects(hsonEcho.create({ now: { ...cut, libs: { ...cut.libs, revision: cut.libs.revision + 1 } },
       credential: session.credential!, transport: test_echo_transport(ahead.client) }), /ahead|synchronization/i);
     assert.equal(ahead.clientListenerCount(), 0, "failed synchronization releases transport listeners");
     detachAhead(); // The deterministic fixture has no physical close notification.
@@ -90,7 +93,7 @@ for (const [expected, advance, truncateHistory] of [
     assert.equal(retained.resumable, true);
     assert.ok(retained.expiresAt);
   }
-  const echo = await hsonEcho.init({ now: cut, credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonEcho.create({ now: cut, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.session.status, "attached");
   assert.equal(echo.sync.status, "caught_up");
   assert.equal(echo.sync.strategy, expected);
@@ -106,6 +109,57 @@ for (const [expected, advance, truncateHistory] of [
   assert.equal(echo.sync.debug().status, "disposed");
   assert.equal(pair.clientListenerCount(), 0);
   detach(); locus.dispose();
+}
+
+{
+  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+  const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }],
+    defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+  const session = await locus.session.create({ libraries: ["state"] });
+  const pair = socket_pair();
+  const detach = bind_locus_websocket(locus, pair.server);
+  const transport = test_echo_transport(pair.client);
+  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport });
+  assert.equal(echo.sync.status, "caught_up");
+  transport.dispose();
+  assert.notEqual(echo.sync.status, "caught_up", "terminal transport disposal invalidates replica readiness");
+  assert.notEqual(echo.session.status, "attached", "terminal transport disposal invalidates attachment observation");
+  await assert.rejects(echo.action("unavailable"), /disconnect|unavailable/i);
+  echo.dispose(); detach(); locus.dispose();
+}
+
+{
+  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+  const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }],
+    defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+  const session = await locus.session.create({ libraries: ["state"] });
+  let opening = false;
+  let openingAborted = false;
+  const transport: EchoReplicaTransport = Object.freeze({
+    operations: Object.freeze({ async submit(request: EchoFiniteOperationRequest) {
+      if (request.type !== "session-attach") throw new Error("Unexpected finite request.");
+      return Object.freeze({ kind: "response" as const, outcome: Object.freeze({ type: "session-attached" as const,
+        id: request.id, sessionId: "pending-open-session", epoch: 1,
+        logicalMapId: locus.logicalMapId, incarnationId: locus.incarnationId }) });
+    } }),
+    attachment: Object.freeze({ observe(listener: (event: EchoAttachmentEvent) => void) { listener({ kind: "available" }); return () => {}; } }),
+    synchronization: Object.freeze({ open(_request: EchoSynchronizationRequest, _observer: EchoSynchronizationObserver,
+      options?: Readonly<{ signal?: EchoCancellationSignal }>) {
+      opening = true;
+      return new Promise<never>((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => { openingAborted = true; reject(new Error("Opening aborted.")); }, { once: true });
+      });
+    } }),
+  });
+  const prepared = prepare_echo_replica_internal({ now: session.now(), credential: session.credential!, transport });
+  await prepared.attach();
+  const completing = prepared.complete();
+  void completing.catch(() => {});
+  await until(() => opening);
+  prepared.echo.dispose();
+  assert.equal(openingAborted, true, "Echo disposal aborts a pending synchronization open");
+  await assert.rejects(completing);
+  locus.dispose();
 }
 
 // Content equality does not establish the retained session that produced now().
@@ -124,19 +178,19 @@ for (const [expected, advance, truncateHistory] of [
   assert.notEqual(a.now().sessionBinding, a.credential);
   const bindingA = a.now().sessionBinding;
   const mixedPair = socket_pair(); const detachMixed = bind_locus_websocket(locus, mixedPair.server);
-  await assert.rejects(hsonEcho.init({ now: a.now(), credential: b.credential!, transport: test_echo_transport(mixedPair.client) }),
+  await assert.rejects(hsonEcho.create({ now: a.now(), credential: b.credential!, transport: test_echo_transport(mixedPair.client) }),
     /binding|session/i);
   detachMixed();
   const c = await locus.session.create({ libraries: ["state"] });
   const differentPair = socket_pair(); const detachDifferent = bind_locus_websocket(locus, differentPair.server);
-  await assert.rejects(hsonEcho.init({ now: a.now(), credential: c.credential!, transport: test_echo_transport(differentPair.client) }),
+  await assert.rejects(hsonEcho.create({ now: a.now(), credential: c.credential!, transport: test_echo_transport(differentPair.client) }),
     /binding|session|initializer|projection/i);
   detachDifferent();
   const validPair = socket_pair(); let detachValid = bind_locus_websocket(locus, validPair.server);
-  const valid = await hsonEcho.init({ now: a.now(), credential: a.credential!, transport: test_echo_transport(validPair.client) });
+  const valid = await hsonEcho.create({ now: a.now(), credential: a.credential!, transport: test_echo_transport(validPair.client) });
   assert.equal(valid.sync.status, "caught_up");
   const secondPair = socket_pair(); let detachSecond = bind_locus_websocket(locus, secondPair.server);
-  const second = await hsonEcho.init({ now: b.now(), credential: b.credential!, transport: test_echo_transport(secondPair.client) });
+  const second = await hsonEcho.create({ now: b.now(), credential: b.credential!, transport: test_echo_transport(secondPair.client) });
   const localA = valid.map.lib("ui"); const localB = second.map.lib("ui");
   if (localA.mode === "document" || localB.mode === "document") throw new Error("Expected local data Libraries.");
   const beforeLocal = locus.rev;
@@ -178,7 +232,7 @@ for (const [expected, advance, truncateHistory] of [
   })) } };
   assert.notEqual(forged.libs.libraries[0]!.root.payload, cut.libs.libraries[0]!.root.payload);
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.init({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonEcho.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
   const state = echo.map.lib("state");
   if (state.mode === "document") throw new Error("Expected data.");
@@ -200,7 +254,7 @@ for (const [expected, advance, truncateHistory] of [
         [name, value === "red" ? "blue" : value]),
     })) } }) } };
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.init({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonEcho.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
   assert.equal(echo.map.lib("page").css.snapshot(), map.lib("page").css.snapshot());
   echo.dispose(); detach(); locus.dispose();
@@ -234,7 +288,7 @@ for (const [expected, advance, truncateHistory] of [
   assert.notDeepEqual(current.libs.system, emptySystem);
   const mixed = { ...current, libs: { ...current.libs, system: emptySystem } };
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.init({ now: mixed, credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonEcho.create({ now: mixed, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
   assert.equal(echo.sync.status, "caught_up");
   echo.dispose(); detach(); locus.dispose(); emptyLocus.dispose();
@@ -250,7 +304,7 @@ for (const [mutate, truncateHistory] of [[false, false], [true, false], [true, t
     : hsonLocus.create(options);
   const session = await locus.session.create({ libraries: ["state"] });
   const pair = socket_pair(); let detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   echo.disconnect();
   detach();
   assert.equal(locus.session.debug().sessions[0]!.state, "disconnected");
@@ -280,7 +334,7 @@ for (const outcome of ["disposed", "rejected"] as const) {
     authorizeProjection: () => ({ libraries: ["state"] }) });
   const session = await locus.session.create({ libraries: ["state"] });
   const pair = socket_pair(); let detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   echo.disconnect();
   detach();
   if (outcome === "rejected") {
@@ -324,11 +378,11 @@ for (const stage of ["message", "close"] as const) {
       return pair.client.onClose(listener);
     },
   };
-  await assert.rejects(hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(socket) }), /not submitted/);
+  await assert.rejects(hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(socket) }), /not submitted/);
   assert.equal(pair.clientListenerCount(), 0);
   assert.equal(locus.session.debug().sessions[0]!.activeConnectionEpoch, beforeAttachment.activeConnectionEpoch);
   fail = false;
-  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(socket) });
+  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(socket) });
   assert.equal(echo.sync.status, "caught_up");
   echo.dispose(); detach(); locus.dispose();
 }
@@ -342,11 +396,11 @@ for (const stage of ["message", "close"] as const) {
   const session = await locus.session.create({ libraries: ["state"] });
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);
-  await assert.rejects(hsonEcho.init({ now: session.now(), credential: "invalid-credential", transport: test_echo_transport(pair.client) }));
+  await assert.rejects(hsonEcho.create({ now: session.now(), credential: "invalid-credential", transport: test_echo_transport(pair.client) }));
   assert.equal(pair.clientListenerCount(), 0, "failed attachment releases transport listeners");
   const empty = await locus.session.create({ libraries: [] });
   assert.deepEqual(empty.now().libs.libraries, []);
-  await assert.rejects(hsonEcho.init({ now: empty.now(), credential: empty.credential!, transport: test_echo_transport(pair.client) }), /no LiveMap|application libraries/i);
+  await assert.rejects(hsonEcho.create({ now: empty.now(), credential: empty.credential!, transport: test_echo_transport(pair.client) }), /no LiveMap|application libraries/i);
   assert.equal(pair.clientListenerCount(), 0, "action-only cut does not create a replica endpoint");
   detach(); locus.dispose();
 }
@@ -360,7 +414,7 @@ for (const stage of ["message", "close"] as const) {
   const session = await locus.session.create({ libraries: ["state"] }, { connection: { principalId: "alice" } });
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server, { principalId: "mallory" });
-  await assert.rejects(hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) }));
+  await assert.rejects(hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) }));
   assert.equal(pair.clientListenerCount(), 0, "principal rejection releases transport listeners");
   detach(); locus.dispose();
 }
@@ -376,7 +430,7 @@ for (const stage of ["message", "close"] as const) {
   const quidRoot = encode_hosted_root(parse_hson_exact_runtime("<main @000000001/>", { allowTopLevelDocumentText: true }));
   const forged = { ...cut, libs: { ...cut.libs, libraries: cut.libs.libraries.map((entry) => ({ ...entry, root: quidRoot })) } };
   const pair = socket_pair();
-  await assert.rejects(hsonEcho.init({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) }), /malformed/i);
+  await assert.rejects(hsonEcho.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) }), /malformed/i);
   assert.equal(pair.clientListenerCount(), 0);
   locus.dispose();
 }
@@ -453,7 +507,7 @@ for (const stage of ["message", "close"] as const) {
   assert.deepEqual(session.now().local, []);
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.throws(() => echo.map.lib("ui"), /unknown/i);
 
   await session.update({ libraries: ["state", "ui", "panel"] });
@@ -515,7 +569,7 @@ for (const stage of ["message", "close"] as const) {
   assert.deepEqual(carried.bootstrap.local.map(({ name }) => name), ["panel", "ui"]);
   const freshPair = socket_pair();
   const detachFresh = bind_locus_websocket(locus, freshPair.server);
-  const fresh = await hsonEcho.init({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
+  const fresh = await hsonEcho.create({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
   const freshUi = fresh.map.lib("ui");
   if (freshUi.mode === "document") throw new Error("Expected fresh local data Library.");
   assert.equal(freshUi.snap(["value"]), 0);
@@ -535,7 +589,7 @@ for (const stage of ["message", "close"] as const) {
       initializers: [{ name: altered.name, fingerprint: altered.fingerprint }] })) });
   const tamperPair = socket_pair();
   const detachTamper = bind_locus_websocket(locus, tamperPair.server);
-  await assert.rejects(hsonEcho.init({ now: tampered as typeof authentic,
+  await assert.rejects(hsonEcho.create({ now: tampered as typeof authentic,
     credential: authorized.credential!, transport: test_echo_transport(tamperPair.client) }), /initializer|integrity|sync/i);
 
   echo.dispose(); detachTamper(); detach(); locus.dispose();

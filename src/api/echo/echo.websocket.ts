@@ -48,6 +48,18 @@ function outcome_id(outcome: EchoFiniteOperationOutcome): string | undefined {
   return outcome.id;
 }
 
+function await_opening<T>(promise: Promise<T>, signal?: EchoCancellationSignal): Promise<T> {
+  if (signal === undefined) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason ?? new Error("Echo synchronization opening was cancelled."));
+  return new Promise<T>((resolve, reject) => {
+    const abort = (): void => { signal.removeEventListener("abort", abort); reject(signal.reason ?? new Error("Echo synchronization opening was cancelled.")); };
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) { abort(); return; }
+    void promise.then((value) => { signal.removeEventListener("abort", abort); resolve(value); },
+      (cause) => { signal.removeEventListener("abort", abort); reject(cause); });
+  });
+}
+
 /** Browser and Web Platform WebSocket adapter for one replaceable Echo transport. */
 export function create_echo_websocket_transport(options: EchoWebSocketTransportOptions): EchoWebSocketTransport {
   const WebSocketConstructor = options.WebSocketConstructor ?? browser_websocket_constructor();
@@ -57,12 +69,16 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
   let opening: Promise<EchoWebSocketLike> | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
-  let currentSync: Readonly<{ id: string; observer: EchoSynchronizationObserver; socket: EchoWebSocketLike }> | undefined;
+  let currentSync: Readonly<{ id: string; observer: EchoSynchronizationObserver; socket: EchoWebSocketLike;
+    signal?: EchoCancellationSignal; abort?: () => void }> | undefined;
+  let syncOpeningGeneration = 0;
   let aggregateCodec: typeof import("./echo.aggregate-websocket.internal.js") | undefined;
   let syncTail = Promise.resolve();
 
   const emit = (event: EchoAttachmentEvent): void => {
-    for (const listener of [...listeners]) listener(event);
+    for (const listener of [...listeners]) {
+      try { listener(event); } catch { /* One observer cannot block other semantic consumers. */ }
+    }
   };
   const interruptPending = (cause?: unknown): void => {
     for (const settle of [...pending.values()]) settle(Object.freeze({ kind: "uncertain", cause }));
@@ -71,7 +87,8 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
     const active = currentSync;
     currentSync = undefined;
     syncTail = Promise.resolve();
-    active?.observer.onEnd(end);
+    if (active?.signal !== undefined && active.abort !== undefined) active.signal.removeEventListener("abort", active.abort);
+    try { active?.observer.onEnd(end); } catch { /* Adapter teardown must still complete. */ }
   };
 
   function scheduleReconnect(): void {
@@ -127,7 +144,7 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
           if (output !== undefined) {
             const active = currentSync;
             if (active?.socket !== created) return;
-            if ("id" in output && output.id !== active.id) return;
+            if (output.id !== active.id) return;
             syncTail = syncTail.then(() => currentSync === active ? active.observer.onOutput(output) : undefined).then(() => undefined);
             void syncTail.catch((cause) => {
               if (currentSync === active) endSync(Object.freeze({ kind: "invalid", cause }));
@@ -139,13 +156,13 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
         }
       };
       const onClose = (): void => {
-        if (socket !== created) return;
-        socket = undefined;
-        opening = undefined;
         created.removeEventListener("open", onOpen);
         created.removeEventListener("message", onMessage);
         created.removeEventListener("close", onClose);
         created.removeEventListener("error", onError);
+        if (socket !== created) return;
+        socket = undefined;
+        opening = undefined;
         if (!settled) reject(new Error("Echo WebSocket closed before opening."));
         if (disposed) return;
         interruptPending(new Error("Echo WebSocket closed."));
@@ -180,6 +197,14 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
         }
         const id = request_id(request);
         if (pending.has(id)) return Object.freeze({ kind: "not-submitted" as const, cause: new Error("Duplicate operation correlation ID.") });
+        let frame: string;
+        try {
+          frame = encodeEndpointMessage(request);
+          if (new TextEncoder().encode(frame).byteLength > DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES) {
+            throw new Error("Hosted aggregate Echo message exceeds the live wire byte limit.");
+          }
+        } catch (cause) { return Object.freeze({ kind: "not-submitted" as const, cause }); }
+        if (options?.signal?.aborted) return Object.freeze({ kind: "not-submitted" as const, cause: options.signal.reason });
         return new Promise<EchoSubmission<EchoFiniteOperationOutcome>>((resolve) => {
           const abort = (): void => {
             if (pending.get(id) !== settle) return;
@@ -193,13 +218,11 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
           };
           pending.set(id, settle);
           options?.signal?.addEventListener("abort", abort, { once: true });
-          try {
-            const frame = encodeEndpointMessage(request);
-            if (new TextEncoder().encode(frame).byteLength > DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES) {
-              throw new Error("Hosted aggregate Echo message exceeds the live wire byte limit.");
-            }
-            current.send(frame);
+          if (options?.signal?.aborted) {
+            settle(Object.freeze({ kind: "not-submitted", cause: options.signal.reason }));
+            return;
           }
+          try { current.send(frame); }
           catch (cause) { settle(Object.freeze({ kind: "uncertain", cause })); }
         });
       },
@@ -220,15 +243,30 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
       },
     }),
     synchronization: Object.freeze({
-      async open(request: EchoSynchronizationRequest, observer: EchoSynchronizationObserver) {
+      async open(request: EchoSynchronizationRequest, observer: EchoSynchronizationObserver,
+        options?: Readonly<{ signal?: EchoCancellationSignal }>) {
+        if (disposed || options?.signal?.aborted) throw options?.signal?.reason ?? new Error("Echo synchronization opening is unavailable.");
+        const generation = ++syncOpeningGeneration;
         if (currentSync !== undefined) endSync(Object.freeze({ kind: "cancelled" }));
-        aggregateCodec ??= await import("./echo.aggregate-websocket.internal.js");
-        const current = await ensureOpen();
-        const active = Object.freeze({ id: request.id, observer, socket: current });
+        aggregateCodec ??= await await_opening(import("./echo.aggregate-websocket.internal.js"), options?.signal);
+        if (disposed || generation !== syncOpeningGeneration) throw new Error("Echo synchronization opening was displaced.");
+        const current = await await_opening(ensureOpen(), options?.signal);
+        if (disposed || generation !== syncOpeningGeneration || options?.signal?.aborted) {
+          throw options?.signal?.reason ?? new Error("Echo synchronization opening was displaced.");
+        }
+        const abort = (): void => {
+          if (currentSync !== active) return;
+          endSync(Object.freeze({ kind: "cancelled" }));
+          if (socket === current && current.readyState === 1) current.close(1000, "Echo synchronization cancelled.");
+        };
+        const active = Object.freeze({ id: request.id, observer, socket: current,
+          ...(options?.signal === undefined ? {} : { signal: options.signal, abort }) });
         currentSync = active;
+        options?.signal?.addEventListener("abort", abort, { once: true });
+        if (options?.signal?.aborted) { abort(); throw options.signal.reason ?? new Error("Echo synchronization opening was cancelled."); }
         try { current.send(aggregateCodec.encode_echo_hosted_aggregate_request_frame_internal(request)); }
         catch (cause) {
-          if (currentSync === active) currentSync = undefined;
+          if (currentSync === active) endSync(Object.freeze({ kind: "interrupted", cause }));
           throw cause;
         }
         return Object.freeze({ cancel() {
@@ -243,9 +281,11 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
     dispose() {
       if (disposed) return;
       disposed = true;
+      syncOpeningGeneration += 1;
       if (retry !== undefined) { clearTimeout(retry); retry = undefined; }
       interruptPending(new Error("Echo WebSocket transport was disposed."));
-      endSync(Object.freeze({ kind: "cancelled" }));
+      endSync(Object.freeze({ kind: "interrupted", cause: new Error("Echo WebSocket transport was disposed.") }));
+      emit(Object.freeze({ kind: "observation-interrupted", cause: new Error("Echo WebSocket transport was disposed.") }));
       listeners.clear();
       if (socket !== undefined && socket.readyState !== 3) socket.close(1000, "Echo transport disposed.");
     },

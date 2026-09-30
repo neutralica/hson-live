@@ -1,6 +1,7 @@
 import type { LocusClientMessage, LocusServerMessage } from "../../types/locus.types.js";
 import type { EchoSynchronizationRequest } from "../../types/echo.transport.types.js";
 import { decode_hson_data_internal, encode_hson_data_internal, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
+import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES } from "../locus/locus.aggregate.protocol.js";
 
 export type EchoWebSocketControlMessage = Extract<LocusServerMessage, { type: "session-fenced" }> | import("../../types/echo.transport.types.js").EchoFiniteOperationOutcome;
 
@@ -14,6 +15,11 @@ function isNonemptyString(value: unknown): value is string {
 
 function isRevision(value: unknown): value is number {
   return Number.isInteger(value) && typeof value === "number" && value >= 0;
+}
+
+function isLivePath(value: unknown): value is readonly (string | number)[] {
+  return Array.isArray(value) && value.every((part) => typeof part === "string"
+    || (typeof part === "number" && Number.isSafeInteger(part) && part >= 0));
 }
 
 function hasExactKeys(value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean {
@@ -33,6 +39,7 @@ export function encodeEndpointMessage(message: LocusClientMessage | EchoSynchron
 
 /** @internal Endpoint-only wire admission without importing replica protocol machinery. */
 export function decodeEndpointMessage(raw: string, format?: string): EchoWebSocketControlMessage | undefined {
+  if (new TextEncoder().encode(raw).byteLength > DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES) return undefined;
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -116,9 +123,24 @@ export function decodeEndpointMessage(raw: string, format?: string): EchoWebSock
     return value as EchoWebSocketControlMessage;
   }
   if (value.type === "error") {
-    if (!isRecord(value.error) || !isNonemptyString(value.error.message)
+    if (!isRecord(value.error)) return undefined;
+    const error = value.error;
+    const optional = ["id", "ok", "requestId", "attemptId", "completionRev", "delivery"]
+      .filter((key) => Object.hasOwn(value, key));
+    if (!exactKeys(["type", "seq", "error", ...optional])
+      || !isNonemptyString(error.message)
+      || !hasExactKeys(error, ["message", ...["code", "path", "cause"]
+        .filter((key) => Object.hasOwn(error, key))])
       || !isRevision(value.seq)
-      || (Object.hasOwn(value, "id") && !isNonemptyString(value.id))) return undefined;
+      || (Object.hasOwn(value, "id") && !isNonemptyString(value.id))
+      || (Object.hasOwn(value, "ok") && value.ok !== false)
+      || (Object.hasOwn(value, "requestId") && !isNonemptyString(value.requestId))
+      || (Object.hasOwn(value, "attemptId") && !isNonemptyString(value.attemptId))
+      || (Object.hasOwn(value, "completionRev") && !isRevision(value.completionRev))
+      || (Object.hasOwn(value, "delivery") && value.delivery !== "executed" && value.delivery !== "joined"
+        && value.delivery !== "cached" && value.delivery !== "rejected")
+      || (Object.hasOwn(error, "code") && !isNonemptyString(error.code))
+      || (Object.hasOwn(error, "path") && !isLivePath(error.path))) return undefined;
     return value as EchoWebSocketControlMessage;
   }
   if (value.type === "session-fenced") {

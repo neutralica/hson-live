@@ -176,6 +176,7 @@ type HostedAttachment = {
   pendingAttachment?: { sessionId?: string; epoch?: number };
   effectiveProjection?: LocusEffectiveProjection;
   fenced: boolean;
+  endingSubscription: boolean;
 };
 
 /** Identical selected-root topology for live scope changes and recovery catch-up. */
@@ -623,13 +624,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   function close_failed_publication(connection: HostedAttachment,
     subscription = connection.subscription): void {
     if (connection.closed || connection.subscription !== subscription) return;
-    stop_recovery(connection);
-    subscription.sink = undefined;
-    subscription.queue.length = 0;
-    subscription.queuedBytes = 0;
-    connection.subscription = empty_subscription();
-    try { subscription.onEnd?.(new Error("Locus synchronization subscription failed.")); }
-    catch { /* Adapter failure is isolated from authority work. */ }
+    end_subscription(connection, subscription, new Error("Locus synchronization subscription failed."));
   }
 
   function enqueue_sync(connection: HostedAttachment, output: LocusOrderedSynchronizationOutput): void {
@@ -777,10 +772,28 @@ export function create_locus_hosted_aggregate_authority_internal<
     connection.subscription.releaseRecoveryActivity = undefined;
   }
 
-  function reject(connection: HostedAttachment, code: string, message: string, id?: string): void {
+  function end_subscription(connection: HostedAttachment, subscription = connection.subscription, cause?: unknown): void {
+    if (connection.subscription !== subscription || connection.endingSubscription) return;
+    connection.endingSubscription = true;
+    try {
+      stop_recovery(connection);
+      subscription.sink = undefined;
+      subscription.queue.length = 0;
+      subscription.queuedBytes = 0;
+      connection.subscription = empty_subscription();
+      const onEnd = subscription.onEnd;
+      subscription.onEnd = undefined;
+      try { onEnd?.(cause); }
+      catch { /* Adapter failure is isolated from authority work. */ }
+    }
+    finally { connection.endingSubscription = false; }
+  }
+
+  function reject(connection: HostedAttachment, code: string, message: string, id: string): void {
     send(connection, Object.freeze({
       type: "synchronization-failure",
-      error: Object.freeze({ code, message, ...(id === undefined ? {} : { cause: Object.freeze({ id }) }) }),
+      id,
+      error: Object.freeze({ code, message, cause: Object.freeze({ id }) }),
     }));
   }
 
@@ -798,7 +811,7 @@ export function create_locus_hosted_aggregate_authority_internal<
 
   async function recover(connection: HostedAttachment, request: Extract<HostedRequest, { type: "recover" }>): Promise<void> {
     if (utf8_bytes(request.id) > MAX_RECOVERY_REQUEST_ID_BYTES || request.id.length === 0) {
-      reject(connection, "LOCUS_PROTOCOL_INVALID", "Hosted recovery request ID exceeds its byte limit.");
+      close_failed_publication(connection);
       return;
     }
     const binding = bind_session(connection, false);
@@ -1044,7 +1057,7 @@ export function create_locus_hosted_aggregate_authority_internal<
           code: "LOCUS_SESSION_ATTACHMENT_FENCED",
         }));
         connection.fenced = true;
-        stop_recovery(connection);
+        end_subscription(connection);
         for (const pending of connection.pendingFinite.values()) pending.reject(new Error("Locus attachment fenced."));
         connection.pendingFinite.clear();
       },
@@ -1228,7 +1241,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     }
     send(connection, Object.freeze({ type: "session-ended", id: request.id, sessionId, epoch }));
     connection.fenced = true;
-    stop_recovery(connection);
+    end_subscription(connection);
   }
 
   function session_detach(connection: HostedAttachment, request: Extract<HostedRequest, { type: "session-detach" }>): void {
@@ -1239,7 +1252,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     }
     const sessionId = connection.sessionId;
     const epoch = connection.sessionEpoch;
-    stop_recovery(connection);
+    end_subscription(connection);
     sessions.detach(sessionId, epoch);
     connection.sessionId = undefined;
     connection.sessionEpoch = undefined;
@@ -1573,6 +1586,7 @@ export function create_locus_hosted_aggregate_authority_internal<
       sessionResumable: false,
       establishing: false,
       fenced: false,
+      endingSubscription: false,
       ...(releaseConnectionActivity === undefined ? {} : { releaseActivity: releaseConnectionActivity }),
       ...(attachedContext === undefined ? {} : { context: attachedContext }),
     };
@@ -1580,8 +1594,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     const dispose = (): void => {
       if (connection.closed) return;
       connection.closed = true;
-      stop_recovery(connection);
-      connection.subscription.sink = undefined;
+      end_subscription(connection);
       for (const pending of connection.pendingFinite.values()) pending.reject(new Error("Locus attachment closed."));
       connection.pendingFinite.clear();
       connections.delete(connection);
@@ -1633,8 +1646,15 @@ export function create_locus_hosted_aggregate_authority_internal<
       synchronization: Object.freeze({
         open(request: Extract<HostedRequest, { type: "recover" }>, sink: LocusOrderedSynchronizationSink,
           onEnd?: (cause?: unknown) => void) {
-          stop_recovery(connection);
-          connection.subscription.sink = undefined;
+          if (connection.closed || connection.fenced || connection.endingSubscription) {
+            try { onEnd?.(new Error("Locus attachment is unavailable.")); } catch { /* Isolate adapter callback. */ }
+            return () => {};
+          }
+          end_subscription(connection);
+          if (connection.closed || connection.fenced || connection.subscription.sink !== undefined) {
+            try { onEnd?.(new Error("Locus synchronization opening was displaced.")); } catch { /* Isolate adapter callback. */ }
+            return () => {};
+          }
           const subscription = empty_subscription();
           subscription.sink = sink;
           subscription.onEnd = onEnd;
@@ -1642,9 +1662,7 @@ export function create_locus_hosted_aggregate_authority_internal<
           void dispatch_request(connection, request);
           return () => {
             if (connection.subscription !== subscription) return;
-            stop_recovery(connection);
-            subscription.sink = undefined;
-            connection.subscription = empty_subscription();
+            end_subscription(connection, subscription);
           };
         },
       }),
@@ -1683,7 +1701,7 @@ export function create_locus_hosted_aggregate_authority_internal<
       stopWire();
       for (const connection of [...connections]) {
         connection.closed = true;
-        stop_recovery(connection);
+        end_subscription(connection);
         connection.onClose?.();
         connection.releaseActivity?.();
         connection.releaseActivity = undefined;

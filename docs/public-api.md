@@ -141,7 +141,7 @@ const authority = create_locus({
 });
 const session = await authority.session.create({ libraries: ["page"] });
 const transport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" });
-const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, transport });
+const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport });
 ```
 
 A hosted application supplies one ownership catalog: private/shared entries refer to current state in `locus.map`, while local entries carry detached initializers outside authority state. `locus.lib.add(definitions, { ownership })` admits only private/shared runtime authority batches; omitted entries default to private. `session.update(request, context?)` expands or contracts a retained grant through the ordinary authorizer. `session.now({ html: document })` materializes shared current state plus authorized local initializers at one authority position. Echo reconciles only shared state in the existing composed map; local roots, Schemas, CSS, handles, and Mirror continuity remain client-owned.

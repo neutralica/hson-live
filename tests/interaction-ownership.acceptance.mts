@@ -423,7 +423,7 @@ for (const sharedFeature of [true, false]) {
   const session = await locus.session.create({ libraries: ["page", "panel"] });
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   const beforeCursor = echo.sync.debug().lastAppliedRev;
   const beforeLocusRev = locus.rev;
   const beforeDigest = internal_livemap_aggregate_authority(echo.map).clientProjection()?.registry.digest;

@@ -165,6 +165,7 @@ function create_registry_echo_semantic_client_internal<
   let status: "idle" | "recovering" | "live" | "failed" | "closed" = "idle";
   let attachmentAvailable = false;
   let syncSubscription: EchoSynchronizationSubscription | undefined;
+  let openingRecovery: Readonly<{ id: string; controller: AbortController }> | undefined;
   const compositionDisposers: LocusDisposer[] = [];
   let nextId = 0;
   let recovery: Readonly<{
@@ -203,7 +204,8 @@ function create_registry_echo_semantic_client_internal<
       if (status !== "closed") status = "idle";
   }));
 
-  function onSyncEnd(end: EchoSynchronizationEnd): void {
+  function onSyncEnd(id: string, end: EchoSynchronizationEnd): void {
+    if (recovery?.id !== id && liveRecovery?.id !== id) return;
     syncSubscription = undefined;
     if (status === "closed" || end.kind === "cancelled") return;
     interruptRecovery(end.cause instanceof Error ? end.cause : new Error("Hosted aggregate synchronization interrupted."));
@@ -225,6 +227,8 @@ function create_registry_echo_semantic_client_internal<
     const active = recovery;
     recovery = undefined;
     liveRecovery = undefined;
+    openingRecovery?.controller.abort(error);
+    openingRecovery = undefined;
     if (status === "recovering" || status === "live") status = "idle";
     active?.reject(error);
   }
@@ -278,6 +282,8 @@ function create_registry_echo_semantic_client_internal<
     status = "recovering";
     replica.markRecovering();
     const id = next("recover");
+    const controller = new AbortController();
+    openingRecovery = Object.freeze({ id, controller });
     const recoverySessionId = endpoint.session.sessionId;
     const recoverySessionEpoch = endpoint.session.epoch;
     return new Promise<EchoAggregateRecovery>((resolve, reject) => {
@@ -303,14 +309,19 @@ function create_registry_echo_semantic_client_internal<
       });
       void options.transport.synchronization.open(request, Object.freeze({
         onOutput(output) {
+          if (recovery?.id !== id && liveRecovery?.id !== id) return;
           try { receiveReplica(output); }
           catch (cause) { failReplica(cause instanceof Error ? cause : new Error("Hosted aggregate replica failed.")); }
         },
-        onEnd: onSyncEnd,
-      })).then((subscription) => {
+        onEnd: (end) => onSyncEnd(id, end),
+      }), { signal: controller.signal }).then((subscription) => {
+        if (openingRecovery?.id === id) openingRecovery = undefined;
         if (status === "closed" || (recovery?.id !== id && liveRecovery?.id !== id)) subscription.cancel();
         else syncSubscription = subscription;
-      }, (cause) => onSyncEnd(Object.freeze({ kind: "interrupted", cause })));
+      }, (cause) => {
+        if (openingRecovery?.id === id) openingRecovery = undefined;
+        onSyncEnd(id, Object.freeze({ kind: "interrupted", cause }));
+      });
     });
   }
 
@@ -325,6 +336,7 @@ function create_registry_echo_semantic_client_internal<
 
   function receiveReplica(message: AggregateSynchronizationOutput): void {
     if (message.type === "synchronization-failure") {
+      if (recovery?.id !== message.id && liveRecovery?.id !== message.id) return;
       const error = new Error(message.error.message);
       // Preserve the control channel so failed establishment can detach the
       // retained server session without revoking it.

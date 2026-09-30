@@ -11,7 +11,7 @@ export type {
   EchoSync,
   EchoSyncDiagnostics,
   EchoSyncFailure,
-  EchoInitOptions,
+  EchoReplicaOptions,
   EchoSyncStatus,
   EchoSyncStrategy,
   EchoSession,

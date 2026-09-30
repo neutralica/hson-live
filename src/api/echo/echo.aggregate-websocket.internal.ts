@@ -50,9 +50,14 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
     || (value.type === "error" && Object.hasOwn(value, "error"))) return undefined;
   if (value.type === "error") {
     const message = required_string(value.message);
-    if (message === undefined) throw new Error("Hosted aggregate error is malformed.");
+    const id = required_string(value.id);
+    if (!has_fields(value, ["type", "format", "id", "code", "message"])
+      || message === undefined || id === undefined || required_string(value.code) === undefined) {
+      throw new Error("Hosted aggregate error is malformed.");
+    }
     return Object.freeze({
       type: "synchronization-failure",
+      id,
       error: Object.freeze({
         ...(typeof value.code === "string" ? { code: value.code } : {}),
         message,

@@ -58,7 +58,7 @@ for (const name of ["unknown", "secret", "state", "extra"]) assert.throws(() => 
 assert.throws(() => session.now({ data: [] } as never), /only html/);
 const wire = pair();
 let detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
-const echo = await hsonEcho.init({ now: html, credential: session.credential!, transport: test_echo_transport(wire.client) });
+const echo = await hsonEcho.create({ now: html, credential: session.credential!, transport: test_echo_transport(wire.client) });
 assert.equal(echo.sync.strategy, "current");
 const id = echo.session.sessionId;
 assert.ok(id);

@@ -86,7 +86,7 @@ const locus = hsonLocus.create({
 
 One `context.mutate(...)` call stages all selected-Library writes as one atomic action. Each Library keeps its own HsonSchema; initial state, server action preparation, client replay, reconciliation, and durable restart validate those Schemas.
 
-For a client, `await hsonEcho.init({ now, credential, transport })` admits the
+For a client, `await hsonEcho.create({ now, credential, transport })` admits the
 authorized current session composition and returns an attached, caught-up
 replica. `now.libs` contains the visible shared authority registry and its
 contracts; `now.local` contains authorized local initializers. Excluded
@@ -107,7 +107,7 @@ libraries in that same map. Retained replay installs missed topology before
 later writes; reconcile synchronizes the current authorized shared authority
 projection in place. Authorized local initializers are installed only when the
 named local instance is absent; later local state is client-owned and survives
-shared synchronization. `hsonEcho.init(...)` has no receiving-runtime local
+shared synchronization. `hsonEcho.create(...)` has no receiving-runtime local
 library input.
 
 Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics for a one-library registry Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.

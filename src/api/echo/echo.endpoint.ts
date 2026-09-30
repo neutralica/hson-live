@@ -154,7 +154,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   let sessionEpoch: number | undefined;
   let logicalMapId: string | undefined;
   let incarnationId: string | undefined;
-  let sessionFailure: Readonly<{ code: string; message: string }> | undefined;
+  let sessionFailure: Readonly<{ code: string; message: string; delivery?: "not-submitted" | "uncertain" }> | undefined;
   let pendingSession: PendingSession | undefined;
   let sessionCreateCount = 0;
   let sessionReattachCount = 0;
@@ -165,6 +165,10 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   function isReady(): boolean {
     return !disposed && active && (!runtimeOptions.sessionRequired || sessionStatus === "attached")
       && (runtimeOptions.additionalReady?.() ?? true);
+  }
+
+  function canRecoverFiniteOperation(): boolean {
+    return !disposed && active && (!runtimeOptions.sessionRequired || sessionStatus === "attached");
   }
 
   function notifyReadyChange(): void {
@@ -243,7 +247,10 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     if (disposed) return;
     const error = runtimeOptions.operationLossError?.("disconnect") ?? new LocusDisconnectedError();
     rejectEndpointOperations(error);
-    rejectPendingSession(new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session transport disconnected."));
+    const sessionError = new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session transport disconnected.", "uncertain");
+    if (pendingSession?.kind === "create") sessionFailure = Object.freeze({ code: sessionError.code,
+      message: sessionError.message, delivery: "uncertain" });
+    rejectPendingSession(sessionError);
     if (sessionStatus === "attached" || sessionStatus === "creating" || sessionStatus === "attaching") {
       sessionStatus = "detached";
     }
@@ -284,6 +291,13 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       if (status !== undefined) {
         pendingStatuses.delete(message.id);
         status.reject(new EchoSessionError(message.code, message.message));
+        return true;
+      }
+      const actionAttempt = pendingActions.has(message.id) ? message.id : attemptsByRequest.get(message.id)?.[0];
+      if (actionAttempt !== undefined) {
+        const action = pendingActions.get(actionAttempt);
+        if (action !== undefined) removeAttempt(actionAttempt, action.requestId)
+          ?.reject(new EchoSessionError(message.code, message.message));
         return true;
       }
       if (sessionDisposed) return true;
@@ -394,13 +408,24 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
           if (submission.kind === "response") receive(submission.outcome);
           else {
             pendingSession = undefined;
-            reject(new EchoSessionError("LOCUS_SESSION_DISCONNECTED", submission.kind === "uncertain"
-              ? "Locus session request outcome is uncertain." : "Locus session request was not submitted."));
+            const failure = new EchoSessionError("LOCUS_SESSION_DISCONNECTED", submission.kind === "uncertain"
+              ? "Locus session request outcome is uncertain." : "Locus session request was not submitted.", submission.kind);
+            sessionFailure = Object.freeze({ code: failure.code, message: failure.message, delivery: submission.kind });
+            if (kind === "create") sessionStatus = "failed";
+            else if (kind === "reattach") sessionStatus = "detached";
+            else if (submission.kind === "uncertain") sessionStatus = "detached";
+            reject(failure);
+            runtimeOptions.onReadyChange?.();
           }
         }, (cause) => {
           if (pendingSession !== pending) return;
           pendingSession = undefined;
-          reject(Object.assign(new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session request outcome is uncertain."), { cause }));
+          const failure = new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session request outcome is uncertain.", "uncertain");
+          sessionFailure = Object.freeze({ code: failure.code, message: failure.message, delivery: "uncertain" });
+          if (kind === "create") sessionStatus = "failed";
+          else sessionStatus = "detached";
+          reject(Object.assign(failure, { cause }));
+          runtimeOptions.onReadyChange?.();
         });
     });
   }
@@ -443,7 +468,8 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     request: EchoActionRequest<TActions, TName>, retry: boolean,
   ): EchoActionPromise<TActions, TName> {
     const attemptId = makeAttemptId();
-    if (!isReady()) return Object.assign(Promise.reject(new LocusDisconnectedError()), { request });
+    if (!(retry ? canRecoverFiniteOperation() : isReady()))
+      return Object.assign(Promise.reject(new LocusDisconnectedError()), { request });
     if (usedCorrelationIds.has(attemptId)) {
       return Object.assign(Promise.reject(new LocusDuplicateActionIdError(attemptId)), { request });
     }
@@ -503,7 +529,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   }
 
   function actionStatus(requestId: LocusActionRequestId): Promise<EchoActionStatusResult> {
-    if (!isReady()) return Promise.reject(new LocusDisconnectedError());
+    if (!canRecoverFiniteOperation()) return Promise.reject(new LocusDisconnectedError());
     const id = makeStatusId();
     if (usedCorrelationIds.has(id)) return Promise.reject(new Error(`Locus action status correlation ID ${JSON.stringify(id)} is already in use.`));
     usedCorrelationIds.add(id);

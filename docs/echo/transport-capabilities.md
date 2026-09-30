@@ -4,7 +4,8 @@ Echo consumes one semantic transport object. Endpoint Echo needs finite
 operations and attachment observation; replica Echo additionally needs an
 ordered synchronization feed. The currently implemented concrete adapter is
 `hsonEcho.transport.websocket({ url, WebSocketConstructor? })`. The same object
-may serve either Echo composition. Echo owns its semantic lifecycle, while the
+may serve either Echo composition, but one transport instance belongs to one Echo
+for its lifetime. Echo owns its semantic lifecycle, while the
 caller disposes the transport and its physical resources.
 
 ## Finite operations
@@ -13,7 +14,12 @@ caller disposes the transport and its physical resources.
 `response` carries a typed authority outcome, including semantic rejection;
 `not-submitted` means the adapter can prove the request never entered its
 admission path; `uncertain` means it may have been admitted but its outcome was
-lost. Actions keep a stable `clientId` and `requestId` across attempts, a fresh
+lost. Encoding, size admission, and aborts before physical send are `not-submitted`;
+an interruption after send is `uncertain`. Session creation is never retried
+automatically after uncertainty because its credential may exist only in the
+lost response. `EchoSessionError.delivery` and `echo.session.failure.delivery`
+expose that distinction. An explicit later create is a new session attempt.
+Actions keep a stable `clientId` and `requestId` across attempts, a fresh
 `attemptId` per retry, and retained status/deduplication at Locus. Independent
 finite requests need no global transport queue. Locus serializes authority
 mutation.
@@ -30,9 +36,15 @@ feed, not caught-up readiness. Echo verifies recovery ID, authority identity,
 projection, and cursor continuity across current, replay, or reconcile material,
 then a `caught_up` boundary and continuing live commit/progress publication.
 Locus holds one current subscription sink per logical attachment. Replacing a
-subscription fences old output. If a feed is interrupted, the replica loses
+subscription ends the displaced subscriber exactly once and fences old output.
+Opening accepts an optional abort signal; Echo aborts a pending open when
+recovery is replaced or disposed. Established subscriptions retain `cancel()`.
+Ending synchronization alone does not revoke the retained session. The physical
+stream or socket lifetime is adapter-specific. If a feed is interrupted, the replica loses
 caught-up readiness and can recover from its last applied authority cursor;
 the retained session and admitted document `completionRev` waits survive.
+Status and retry of the same logical action request remain available over the
+finite-operation capability while sync recovers; new replica work remains gated.
 Canonical publications are reliable and ordered. A slow consumer must interrupt
 and recover rather than silently drop a revision.
 
@@ -43,6 +55,8 @@ reattachment. That shared physical fate is adapter policy, not an Echo or Locus
 core requirement. The credential remains separate sensitive reattachment
 material; `session.now()` contains transferable, non-secret state and no route,
 transport, or attachment secret.
+Terminal adapter disposal notifies attachment and sync consumers before closing
+its resources; it does not dispose the Echo object itself.
 
 ## Later transports
 

@@ -61,7 +61,7 @@ void decoded;
 void continue_document({ map: hostedMap, document: hostedMap.lib("page"), root });
 
 const retained = await hosted.session.create({ libraries: ["state", "page"] });
-const replica = await hsonEcho.init({ now: retained.now(), credential: retained.credential!, transport });
+const replica = await hsonEcho.create({ now: retained.now(), credential: retained.credential!, transport });
 void replica;
 void retained.now({ html: "page" });
 // @ts-expect-error One-map hosted continuation is no longer a public client-egress path.

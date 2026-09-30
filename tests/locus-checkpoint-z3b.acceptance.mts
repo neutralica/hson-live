@@ -94,7 +94,7 @@ await case_("restart reapplies deployment local definitions without persisting c
     map: hsonLiveMap.fromLibraries({ public: { data: { value: 1 } } }) });
   const session = await locus.session.create({ libraries: ["public", "ui"] });
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   const ui = echo.map.lib("ui");
   if (ui.mode === "document") throw new Error("Expected local data Library.");
   const authorityRev = locus.rev;
@@ -112,7 +112,7 @@ await case_("restart reapplies deployment local definitions without persisting c
   assert.throws(() => restored.map.lib("ui"), /Unknown/i);
   const freshSession = await restored.session.create({ libraries: ["public", "ui"] });
   const freshPair = socket_pair(); const detachFresh = bind_locus_websocket(restored, freshPair.server);
-  const fresh = await hsonEcho.init({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
+  const fresh = await hsonEcho.create({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
   const freshUi = fresh.map.lib("ui");
   if (freshUi.mode === "document") throw new Error("Expected local data Library.");
   assert.equal(freshUi.snap(["value"]), 0);

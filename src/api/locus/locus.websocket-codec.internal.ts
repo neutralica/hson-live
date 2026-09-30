@@ -12,11 +12,10 @@ export function encode_downstream_message(message: unknown, limit: number): stri
   const semantic = exact_record(message, "Hosted aggregate semantic output");
   let framed: Readonly<Record<string, unknown>>;
   if (semantic.type === "synchronization-failure" && is_record(semantic.error)) {
-    const cause = is_record(semantic.error.cause) ? semantic.error.cause : undefined;
     framed = Object.freeze({
       type: "error",
       format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-      ...(typeof cause?.id === "string" ? { id: cause.id } : {}),
+      id: semantic.id,
       code: typeof semantic.error.code === "string" ? semantic.error.code : "LOCUS_SYNC_FAILED",
       message: semantic.error.message,
     });
