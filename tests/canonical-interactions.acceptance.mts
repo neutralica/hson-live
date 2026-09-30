@@ -244,7 +244,7 @@ await check("portable restore rejects duplicate descriptor IDs atomically", () =
 
 await check("canonical reorder changes listener order within one activation", () => {
   const map = map_fixture();
-  add_interaction(map, local("first", "first", Hson.data.from(null), { once: true }));
+  add_interaction(map, local("first", "first"));
   add_interaction(map, local("second", "second"));
   const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
@@ -252,16 +252,74 @@ await check("canonical reorder changes listener order within one activation", ()
   const calls: string[] = [];
   const dispose = activate_interactions({ map, tree: reflection.tree,
     local: { first: () => { calls.push("first"); }, second: () => { calls.push("second"); } } });
+  const firstListener = target.registrations[0]?.listener;
+  const secondListener = target.registrations[1]?.listener;
   target.fire();
   assert.deepEqual(calls, ["first", "second"]);
-  target.fire();
-  assert.deepEqual(calls, ["first", "second", "second"]);
   calls.length = 0;
   const { aggregate, system, descriptors } = canonical_descriptors(map);
   aggregate.commit([{ target: aggregate.systemTarget(system, ["descriptors"]), kind: "replace",
     value: ordered_projected_array([...descriptors].reverse()) }]);
+  assert.equal(target.registrations.length, 2);
+  assert.equal(target.registrations[0]?.listener, secondListener);
+  assert.notEqual(target.registrations[1]?.listener, firstListener);
   target.fire();
   assert.deepEqual(calls, ["second", "first"]);
+  dispose(); reflection.dispose();
+});
+
+await check("unaffected consumed once survives an active descriptor reorder", () => {
+  const map = map_fixture();
+  add_interaction(map, local("a", "a"));
+  add_interaction(map, local("b", "b"));
+  add_interaction(map, local("c", "c", Hson.data.from(null), { once: true }));
+  const reflection = hsonMirror(map.lib("page"));
+  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
+  const calls: string[] = [];
+  const dispose = activate_interactions({ map, tree: reflection.tree,
+    local: { a: () => { calls.push("a"); }, b: () => { calls.push("b"); },
+      c: () => { calls.push("c"); } } });
+  target.fire();
+  assert.deepEqual(calls, ["a", "b", "c"]);
+  assert.equal(target.registrations.length, 2);
+  const { aggregate, system, descriptors } = canonical_descriptors(map);
+  aggregate.commit([{ target: aggregate.systemTarget(system, ["descriptors"]), kind: "replace",
+    value: ordered_projected_array([descriptors[1]!, descriptors[0]!, descriptors[2]!]) }]);
+  assert.equal(target.registrations.length, 2);
+  calls.length = 0;
+  target.fire();
+  assert.deepEqual(calls, ["b", "a"]);
+  dispose(); reflection.dispose();
+});
+
+await check("moved consumed once stays consumed until its descriptor changes", () => {
+  const map = map_fixture();
+  add_interaction(map, local("a", "a"));
+  add_interaction(map, local("b", "b"));
+  add_interaction(map, local("c", "c", Hson.data.from(null), { once: true }));
+  const reflection = hsonMirror(map.lib("page"));
+  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
+  const calls: string[] = [];
+  const dispose = activate_interactions({ map, tree: reflection.tree,
+    local: { a: () => { calls.push("a"); }, b: () => { calls.push("b"); },
+      c: () => { calls.push("c"); } } });
+  target.fire();
+  assert.deepEqual(calls, ["a", "b", "c"]);
+  const { aggregate, system, descriptors } = canonical_descriptors(map);
+  aggregate.commit([{ target: aggregate.systemTarget(system, ["descriptors"]), kind: "replace",
+    value: ordered_projected_array([descriptors[2]!, descriptors[1]!, descriptors[0]!]) }]);
+  calls.length = 0;
+  target.fire();
+  assert.deepEqual(calls, ["b", "a"]);
+  replace_interaction(map, local("c", "c", Hson.data.from(1), { once: true }));
+  calls.length = 0;
+  target.fire();
+  assert.deepEqual(calls, ["c", "b", "a"]);
+  calls.length = 0;
+  target.fire();
+  assert.deepEqual(calls, ["b", "a"]);
   dispose(); reflection.dispose();
 });
 
@@ -708,7 +766,7 @@ await check("an ignored missing listener target remains eligible for later reali
 
 await check("exact subject replacement disposes A and materializes once on B", () => {
   const map = map_fixture();
-  add_interaction(map, local("replace-subject", "run"));
+  add_interaction(map, local("replace-subject", "run", Hson.data.from(null), { once: true }));
   const localQ = "000009001";
   assert.notEqual(currentQ, localQ);
   const page = admit_exact_runtime_livemap_libraries({ page: {
@@ -722,6 +780,8 @@ await check("exact subject replacement disposes A and materializes once on B", (
   let calls = 0;
   const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
   assert.equal(firstElement.listeners.get("click")?.size, 1);
+  firstElement.dispatchEvent(new Event("click"));
+  assert.equal(calls, 1);
   const replacement = { $_tag: "button", $_content: [] };
   page.at([0]).replace(replacement);
   assert.equal(reflection.tree.find.byQuid(localQ), undefined);
@@ -736,7 +796,8 @@ await check("exact subject replacement disposes A and materializes once on B", (
   assert.equal(secondElement.listeners.get("click")?.size, 1);
   firstElement.dispatchEvent(new Event("click"));
   secondElement.dispatchEvent(new Event("click"));
-  assert.equal(calls, 1);
+  secondElement.dispatchEvent(new Event("click"));
+  assert.equal(calls, 2);
   dispose(); reflection.dispose();
 });
 

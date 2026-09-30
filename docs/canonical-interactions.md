@@ -118,7 +118,7 @@ The interaction subsystem has no Echo dependency and no action-handler registry.
 
 Activation observes before its initial read, then reconciles the current system slot on every relevant aggregate commit, restore boundary, and exact tree realization transition. If an established activation sees the slot removed, its desired descriptors become empty and its listeners are disposed. Initial activation still rejects when no interaction capability exists. Stale or mismatched records are disposed before missing records are installed, while unaffected records remain. Fingerprints use exact canonical data encoding rather than ordinary-object normalization.
 
-Within one selected document activation, canonical descriptor order is listener installation order. A reorder that changes active listener order reinstalls affected records; this starts new `once` materializations for those records. Unchanged order preserves `once` state. Separate activations remain independent, including when their `document` or `window` listeners share an EventTarget; their relative order follows activation/install timing and has no global canonical guarantee.
+Within one selected document activation, canonical descriptor order is listener installation order. A reorder retains the longest active listener prefix already in canonical order and reattaches only active listeners that must move after it. An unchanged descriptor keeps consumed `once` state even if its canonical position moves; changing or replacing the descriptor starts a new materialization. Separate activations remain independent, including when their `document` or `window` listeners share an EventTarget; their relative order follows activation/install timing and has no global canonical guarantee.
 
 Each activation captures one tree/root, one local capability table, one optional authoritative dispatcher, and one optional failure observer. Later mutation of the caller-owned options object or capability table has no effect. There is no rebind operation: moving realization to another tree requires disposing the activation and creating another one.
 
@@ -126,7 +126,7 @@ Multiple activations against the same map and tree are allowed and independent. 
 
 Each installed listener belongs to the exact current HsonNode realization. The descriptor ID and QUID are lookup evidence, not runtime-resource owners. If a QUID later resolves to a fresh exact realization, the outgoing node's listener is disposed and a new listener is installed on the replacement. Listener materialization never mints a QUID or changes canonical state.
 
-`once` means once per concrete materialization. An unrelated reconciliation does not reinstall a consumed listener on the same descriptor semantics and exact node. Descriptor replacement, remove and re-add, an affected canonical reorder, activation disposal and reactivation, or a fresh exact subject realization creates a fresh materialization. Consumption is runtime-only.
+`once` means once per concrete materialization. Reordering unchanged descriptors does not reinstall a consumed listener on the same descriptor semantics and exact node. Descriptor replacement, remove and re-add, activation disposal and reactivation, or a fresh exact subject realization creates a fresh materialization. Consumption is runtime-only.
 
 ## Failures, synchronization, and disposal
 

@@ -198,9 +198,10 @@ export function activate_interactions(options: InteractionActivationOptions): ()
           }
         }
 
-        // A selected document's canonical sequence is its installation order.
-        // Reordering active records requires reinstallation; this also starts a
-        // new once-materialization for records displaced by that reorder.
+        // Native listeners can only be appended after those we retain. Keep
+        // the longest desired active prefix already in installation order,
+        // then move only the remaining active records. A consumed once record
+        // has no installed listener and keeps its state across a reorder.
         const installable = desired.filter((descriptor) => {
           if (descriptor.subject.library !== activation.document) return false;
           if (records.has(descriptor.id)) return true;
@@ -212,10 +213,21 @@ export function activate_interactions(options: InteractionActivationOptions): ()
               && resolve_livetree_listener_targets_internal(subject, descriptor.listener.target).length > 0;
           } catch { return false; }
         }).map((descriptor) => descriptor.id);
-        const installed = [...records.keys()];
-        if (installed.length > 0 && installed.some((id, index) => id !== installable[index])) {
-          for (const record of records.values()) record.sub.off();
-          records.clear();
+        const desiredActive = installable.filter((id) => !records.get(id)?.state.consumed);
+        const installedActive = [...records].filter(([, record]) => !record.state.consumed)
+          .map(([id]) => id);
+        const retained = new Set<string>();
+        let nextInstalledIndex = 0;
+        for (const id of desiredActive) {
+          const index = installedActive.indexOf(id, nextInstalledIndex);
+          if (index < 0) break;
+          retained.add(id);
+          nextInstalledIndex = index + 1;
+        }
+        for (const [id, record] of [...records]) {
+          if (record.state.consumed || retained.has(id)) continue;
+          record.sub.off();
+          records.delete(id);
         }
 
         for (const descriptor of desired) {
