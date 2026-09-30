@@ -9,6 +9,9 @@ import {
   reconstructed_data_internal,
 } from "../livemap/livemap.libraries.js";
 import { decode_hosted_root, HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
+import { hsonTransform } from "../transform/transform.facade.js";
+import { interaction_schema_internal } from "../interactions/interactions.projection.js";
+import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
 import { apply_client_local_initializer_css_internal, retain_client_local_seed_contracts_internal } from "../locus/locus.local-initializer.js";
 import {
   authority_projection_as_client_composition_internal,
@@ -46,7 +49,14 @@ export function compose_client_portable_aggregate_internal(
   if (Object.keys(inputs).length === 0) {
     throw new Error("An action-only client session has no LiveMap; use endpoint-only Echo.");
   }
-  const map = make_livemap_libraries(Object.freeze(inputs), admitted.systems, snapshot);
+  const localDocumentExists = local.some((initializer) => initializer.mode === "document");
+  const systems = admitted.systems.length > 0 || !localDocumentExists ? admitted.systems : [Object.freeze({
+    key: INTERACTION_RESERVED_LIBRARY_KEY,
+    transportName: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
+    root: hsonTransform.fromJson({ descriptors: [] }).toNode(),
+    hsonSchema: interaction_schema_internal(),
+  })];
+  const map = make_livemap_libraries(Object.freeze(inputs), systems, snapshot);
   apply_client_local_initializer_css_internal(map, local);
   retain_client_local_seed_contracts_internal(map, local);
   return map;

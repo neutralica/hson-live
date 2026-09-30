@@ -22,11 +22,25 @@ function field(value: OrderedProjectedObject, name: string): OrderedProjectedVal
   return value.entries.find(([key]) => key === name)?.[1];
 }
 
+/** The Schema validates shape, while descriptor IDs occupy one global namespace. */
+export function validate_interaction_descriptor_ids(descriptors: OrderedProjectedValue | undefined): void {
+  if (!Array.isArray(descriptors)) throw new TypeError("Canonical interaction descriptors must be an array.");
+  const ids = new Set<string>();
+  for (const entry of descriptors) {
+    if (!is_ordered_projected_object(entry)) throw new TypeError("Canonical interaction descriptor is malformed.");
+    const id = field(entry, "id");
+    if (typeof id !== "string") throw new TypeError("Canonical interaction descriptor ID is malformed.");
+    if (ids.has(id)) throw new TypeError(`Canonical interaction descriptor ID ${JSON.stringify(id)} is duplicated.`);
+    ids.add(id);
+  }
+}
+
 /** Check the portable coordinate against the fixed application registry. */
 export function validate_interaction_subjects(
   descriptors: OrderedProjectedValue | undefined,
   isDocumentLibrary: (name: string) => boolean,
 ): void {
+  validate_interaction_descriptor_ids(descriptors);
   if (!Array.isArray(descriptors)) throw new TypeError("Canonical interaction descriptors must be an array.");
   for (const entry of descriptors) {
     if (!is_ordered_projected_object(entry)) throw new TypeError("Canonical interaction descriptor is malformed.");

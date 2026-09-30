@@ -60,7 +60,7 @@ export {
   replace_interaction,
 } from "./api/interactions/interactions.js";
 export type {
-  AuthoritativeInteractionDescriptor,
+  LocusInteractionDescriptor,
   InteractionActionDispatcher,
   InteractionActivationOptions,
   InteractionDescriptor,
@@ -68,7 +68,7 @@ export type {
   InteractionListener,
   InteractionLocalBehavior,
   InteractionLocalBehaviors,
-  LocalInteractionDescriptor,
+  BrowserInteractionDescriptor,
 } from "./types/interaction.types.js";
 
 export {

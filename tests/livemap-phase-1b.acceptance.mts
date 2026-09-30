@@ -234,7 +234,7 @@ check("interaction state can target a document admitted after enabling it", () =
     listener: Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
       passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false,
       stopImmediatePropagation: false }),
-    kind: "browser-local" as const, key: "run", args: null,
+    kind: "browser" as const, key: "run", args: null,
   });
   add_interaction(map, descriptor);
   assert.equal(map.rev, 2);

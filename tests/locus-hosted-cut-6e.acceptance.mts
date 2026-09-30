@@ -27,11 +27,11 @@ const map = hsonLiveMap.fromLibraries({
 });
 enable_interactions(map);
 add_interaction(map, { id: "visible", subject: { library: "page", path: [99] }, listener,
-  kind: "browser-local", key: "PERMITTED_INTERACTION_SENTINEL", args: Hson.data.from(null) });
+  kind: "browser", key: "PERMITTED_INTERACTION_SENTINEL", args: Hson.data.from(null) });
 add_interaction(map, { id: "private", subject: { library: "privatePage", path: [99] }, listener,
-  kind: "browser-local", key: "PRIVATE_INTERACTION_SENTINEL", args: Hson.data.from(null) });
+  kind: "browser", key: "PRIVATE_INTERACTION_SENTINEL", args: Hson.data.from(null) });
 add_interaction(map, { id: "unselected", subject: { library: "unselectedPage", path: [99] }, listener,
-  kind: "browser-local", key: "UNSELECTED_INTERACTION_SENTINEL", args: Hson.data.from(null) });
+  kind: "browser", key: "UNSELECTED_INTERACTION_SENTINEL", args: Hson.data.from(null) });
 return map;
 }
 

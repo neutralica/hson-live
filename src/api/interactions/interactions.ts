@@ -5,7 +5,9 @@ import { wrap_in_tree } from "../livetree/creation/create-livetree.js";
 import type { HsonData } from "../transform/transform.types.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
+import { projected_value_from_hson_node, projected_value_to_hson_root } from "../../core/projected-value-graph.js";
+import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
+import { validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import {
   is_ordered_projected_object,
   ordered_projected_array,
@@ -24,13 +26,13 @@ import type { LiveTree } from "../livetree/livetree.js";
 import type { ListenerBuilder, ListenerSub } from "../../types/listen.types.js";
 import { resolve_livetree_listener_targets_internal } from "../livetree/managers/listener-builder.js";
 import type {
-  AuthoritativeInteractionDescriptor,
+  LocusInteractionDescriptor,
   InteractionActivationOptions,
   InteractionDescriptor,
   InteractionFailure,
   InteractionListener,
   InteractionLocalBehavior,
-  LocalInteractionDescriptor,
+  BrowserInteractionDescriptor,
 } from "../../types/interaction.types.js";
 import {
   INTERACTION_RESERVED_LIBRARY_KEY,
@@ -57,9 +59,9 @@ type RuntimeRecord = Readonly<{
   state: { consumed: boolean };
 }>;
 
-type RuntimeLocalDescriptor = Omit<LocalInteractionDescriptor, "args"> & Readonly<{ args: HsonData }>;
-type RuntimeAuthoritativeDescriptor = Omit<AuthoritativeInteractionDescriptor, "payload"> & Readonly<{ payload: HsonData }>;
-type RuntimeDescriptor = RuntimeLocalDescriptor | RuntimeAuthoritativeDescriptor;
+type RuntimeBrowserDescriptor = Omit<BrowserInteractionDescriptor, "args"> & Readonly<{ args: HsonData }>;
+type RuntimeLocusDescriptor = Omit<LocusInteractionDescriptor, "payload"> & Readonly<{ payload: HsonData }>;
+type RuntimeDescriptor = RuntimeBrowserDescriptor | RuntimeLocusDescriptor;
 
 type ActivationSnapshot = Readonly<{
   map: LiveMap;
@@ -100,12 +102,36 @@ export function enable_interactions(map: LiveMap): void {
 }
 
 export function add_interaction(target: object, descriptor: InteractionDescriptor): void {
+  prepare_local_slot_for_add(target, descriptor);
   const storage = interaction_storage(target);
   const current = descriptor_array(storage.read());
   if (current.some((entry) => descriptor_id(entry) === descriptor.id)) {
     throw new Error(`Canonical interaction ${JSON.stringify(descriptor.id)} already exists.`);
   }
   storage.replace(ordered_projected_array([...current, descriptor_to_value(descriptor)]));
+}
+
+function prepare_local_slot_for_add(target: object, descriptor: InteractionDescriptor): void {
+  if (interaction_draft_capability_internal(target) !== undefined) return;
+  const aggregate = internal_livemap_aggregate_authority(target);
+  if (aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) !== undefined) return;
+  const projection = aggregate.clientProjection();
+  if (projection === undefined) return;
+  const value = descriptor_to_value(descriptor);
+  const library = descriptor.subject.library;
+  const entry = aggregate.hostedRegistry().libraries.find((candidate) => candidate.name === library);
+  if (entry?.mode !== "document" || entry.scope !== undefined) {
+    throw new TypeError("Canonical interaction subject must name a document Library.");
+  }
+  if (projection.registry.libraries.some((candidate) => candidate.name === library)) {
+    throw new Error("Shared canonical interactions require Locus library mutation authority.");
+  }
+  const candidate = ordered_projected_object([["descriptors", ordered_projected_array([value])]]);
+  validate_interaction_subjects(ordered_projected_array([value]), (name) => name === library);
+  validate_hson_schema_graph(INTERACTION_SCHEMA, projected_value_to_hson_root(candidate));
+  aggregate.configureSystemState(INTERACTION_RESERVED_LIBRARY_KEY,
+    INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
+    hsonTransform.fromJson({ descriptors: [] }).toNode(), INTERACTION_SCHEMA);
 }
 
 export function replace_interaction(target: object, descriptor: InteractionDescriptor): void {
@@ -131,8 +157,9 @@ export function remove_interaction(target: object, descriptorId: string): void {
 export function activate_interactions(options: InteractionActivationOptions): () => void {
   const activation = snapshot_activation(options);
   const aggregate = internal_livemap_aggregate_authority(activation.map);
-  const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-  if (system === undefined) throw new Error("Canonical interactions are not enabled for this LiveMap.");
+  if (aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) === undefined) {
+    throw new Error("Canonical interactions are not enabled for this LiveMap.");
+  }
   const records = new Map<string, RuntimeRecord>();
   let disposed = false;
   let reconciling = false;
@@ -153,8 +180,9 @@ export function activate_interactions(options: InteractionActivationOptions): ()
     try {
       do {
         pending = false;
-        const interactionRoot = require_object(projected_value_from_hson_node(aggregate.systemRoot(system)));
-        const desired = read_descriptors(require_member(interactionRoot, "descriptors"));
+        const currentSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+        const desired = currentSystem === undefined ? [] : read_descriptors(require_member(
+          require_object(projected_value_from_hson_node(aggregate.systemRoot(currentSystem))), "descriptors"));
         const desiredById = new Map(desired.map((descriptor) => [descriptor.id, descriptor] as const));
 
         for (const [id, record] of [...records]) {
@@ -170,6 +198,26 @@ export function activate_interactions(options: InteractionActivationOptions): ()
           }
         }
 
+        // A selected document's canonical sequence is its installation order.
+        // Reordering active records requires reinstallation; this also starts a
+        // new once-materialization for records displaced by that reorder.
+        const installable = desired.filter((descriptor) => {
+          if (descriptor.subject.library !== activation.document) return false;
+          if (records.has(descriptor.id)) return true;
+          try {
+            const subject = resolve_local_subject(activation, descriptor);
+            return subject !== undefined
+              && (descriptor.kind !== "browser" || activation.local.has(descriptor.key))
+              && (descriptor.kind !== "locus" || activation.dispatch !== undefined)
+              && resolve_livetree_listener_targets_internal(subject, descriptor.listener.target).length > 0;
+          } catch { return false; }
+        }).map((descriptor) => descriptor.id);
+        const installed = [...records.keys()];
+        if (installed.length > 0 && installed.some((id, index) => id !== installable[index])) {
+          for (const record of records.values()) record.sub.off();
+          records.clear();
+        }
+
         for (const descriptor of desired) {
           if (records.has(descriptor.id)) continue;
           let subject: LiveTree | undefined;
@@ -181,12 +229,12 @@ export function activate_interactions(options: InteractionActivationOptions): ()
             report(descriptor, "subject-resolution", new Error("Canonical interaction subject is not currently realized."));
             continue;
           }
-          if (descriptor.kind === "browser-local" && !activation.local.has(descriptor.key)) {
-            report(descriptor, "local-capability-resolution", new Error(`Unknown local interaction behavior ${JSON.stringify(descriptor.key)}.`));
+          if (descriptor.kind === "browser" && !activation.local.has(descriptor.key)) {
+            report(descriptor, "browser-capability-resolution", new Error(`Unknown local interaction behavior ${JSON.stringify(descriptor.key)}.`));
             continue;
           }
-          if (descriptor.kind === "locus-authoritative" && activation.dispatch === undefined) {
-            report(descriptor, "authoritative-capability-resolution", new Error("No authoritative interaction dispatcher is configured."));
+          if (descriptor.kind === "locus" && activation.dispatch === undefined) {
+            report(descriptor, "locus-capability-resolution", new Error("No authoritative interaction dispatcher is configured."));
             continue;
           }
           const state = { consumed: false };
@@ -194,23 +242,23 @@ export function activate_interactions(options: InteractionActivationOptions): ()
           try {
             const handler = (event: Event): void => {
               if (descriptor.listener.once) state.consumed = true;
-              if (descriptor.kind === "browser-local") {
+              if (descriptor.kind === "browser") {
                 const behavior = activation.local.get(descriptor.key);
                 if (behavior === undefined) return;
                 try {
                   Promise.resolve(behavior(event, subject, descriptor.args)).catch((cause) => {
-                    report(descriptor, "local-invocation", cause);
+                    report(descriptor, "browser-invocation", cause);
                   });
-                } catch (cause) { report(descriptor, "local-invocation", cause); }
+                } catch (cause) { report(descriptor, "browser-invocation", cause); }
                 return;
               }
               const dispatch = activation.dispatch;
               if (dispatch === undefined) return;
               try {
                 Promise.resolve(dispatch(descriptor.key, descriptor.payload)).catch((cause) => {
-                  report(descriptor, "authoritative-invocation", cause);
+                  report(descriptor, "locus-invocation", cause);
                 });
-              } catch (cause) { report(descriptor, "authoritative-invocation", cause); }
+              } catch (cause) { report(descriptor, "locus-invocation", cause); }
             };
             const sub = install_listener(subject, descriptor.listener, handler);
             if (resolve_livetree_listener_targets_internal(subject, descriptor.listener.target).length === 0) {
@@ -339,7 +387,7 @@ function interaction_storage(target: object): Storage {
 }
 
 function descriptor_to_value(descriptor: InteractionDescriptor): OrderedProjectedObject {
-  const kind = exact_record(descriptor, descriptor.kind === "browser-local"
+  const kind = exact_record(descriptor, descriptor.kind === "browser"
     ? ["id", "subject", "listener", "kind", "key", "args"]
     : ["id", "subject", "listener", "kind", "key", "payload"], "interaction descriptor");
   const subject = exact_record(kind.subject, ["library", "path"], "interaction subject");
@@ -352,7 +400,7 @@ function descriptor_to_value(descriptor: InteractionDescriptor): OrderedProjecte
     ["kind", scalar(kind.kind)],
     ["key", scalar(kind.key)],
   ];
-  return ordered_projected_object(descriptor.kind === "browser-local"
+  return ordered_projected_object(descriptor.kind === "browser"
     ? [...common, ["args", interaction_data_value(kind.args)]]
     : [...common, ["payload", interaction_data_value(kind.payload)]]);
 }
@@ -421,16 +469,16 @@ function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescrip
       listener: read_listener(require_object(member(entry, "listener"))),
       key: require_string(member(entry, "key")),
     };
-    if (kind === "browser-local") return Object.freeze({
+    if (kind === "browser") return Object.freeze({
       ...base,
       kind,
       args: hson_data_from_value(require_member(entry, "args")).toHson() as HsonData,
-    }) satisfies LocalInteractionDescriptor;
-    if (kind === "locus-authoritative") return Object.freeze({
+    }) satisfies BrowserInteractionDescriptor;
+    if (kind === "locus") return Object.freeze({
       ...base,
       kind,
       payload: hson_data_from_value(require_member(entry, "payload")).toHson() as HsonData,
-    }) satisfies AuthoritativeInteractionDescriptor;
+    }) satisfies LocusInteractionDescriptor;
     throw new Error("Canonical interaction descriptor discriminant is malformed.");
   }));
 }

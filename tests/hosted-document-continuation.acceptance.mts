@@ -72,7 +72,7 @@ function socketPair(): Readonly<{
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "authoritative-click",
     subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
-    kind: "locus-authoritative",
+    kind: "locus",
     key: "save",
     payload: Hson.data.from({ exact: true }),
     listener: Object.freeze({
@@ -167,7 +167,7 @@ function socketPair(): Readonly<{
   add_interaction(authority, {
     id: "save-click",
     subject: { library: "page", path: [0, 0, 0] },
-    kind: "locus-authoritative",
+    kind: "locus",
     key: "save",
     payload: Hson.data.from({ value: 1 }),
     listener: { event: "click", target: "element", capture: false, once: false,

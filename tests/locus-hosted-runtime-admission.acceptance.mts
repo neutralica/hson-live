@@ -159,7 +159,7 @@ const listener = Object.freeze({ event: "click", target: "element" as const, cap
   stopImmediatePropagation: false });
 await interactionLocus.mutate((draft) => add_interaction(draft, {
   id: "next-button", subject: { library: "nextPage", path: [99] }, listener,
-  kind: "browser-local", key: "NEW_INTERACTION_SENTINEL", args: Hson.data.from(null),
+  kind: "browser", key: "NEW_INTERACTION_SENTINEL", args: Hson.data.from(null),
 }));
 assert.equal(interactionWire.received.at(-1)?.includes("NEW_INTERACTION_SENTINEL"), false);
 const interactionSessionId = interactionEcho.session.sessionId;

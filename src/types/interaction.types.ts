@@ -25,27 +25,27 @@ export type InteractionSubject = Readonly<{
   path: LiveMapDocumentPathInput;
 }>;
 
-export type LocalInteractionDescriptor = Readonly<{
+export type BrowserInteractionDescriptor = Readonly<{
   id: string;
   subject: InteractionSubject;
   listener: InteractionListener;
-  kind: "browser-local";
+  kind: "browser";
   key: string;
   args: InteractionDataInput;
 }>;
 
-export type AuthoritativeInteractionDescriptor = Readonly<{
+export type LocusInteractionDescriptor = Readonly<{
   id: string;
   subject: InteractionSubject;
   listener: InteractionListener;
-  kind: "locus-authoritative";
+  kind: "locus";
   key: string;
   payload: InteractionDataInput;
 }>;
 
 export type InteractionDescriptor =
-  | LocalInteractionDescriptor
-  | AuthoritativeInteractionDescriptor;
+  | BrowserInteractionDescriptor
+  | LocusInteractionDescriptor;
 
 export type InteractionLocalBehavior = (
   event: Event,
@@ -64,11 +64,11 @@ export type InteractionFailure = Readonly<{
   descriptor: InteractionDescriptor;
   phase:
     | "subject-resolution"
-    | "local-capability-resolution"
-    | "authoritative-capability-resolution"
+    | "browser-capability-resolution"
+    | "locus-capability-resolution"
     | "listener-installation"
-    | "local-invocation"
-    | "authoritative-invocation";
+    | "browser-invocation"
+    | "locus-invocation";
   cause: unknown;
 }>;
 

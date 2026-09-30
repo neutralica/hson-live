@@ -334,7 +334,7 @@ await interactionServer.mutate((draft) => add_interaction(draft, {
   id: "recovered-button", subject: { library: "nextPage", path: [99] },
   listener: { event: "click", target: "element", capture: false, once: false, passive: false,
     missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
-  kind: "browser-local", key: "RECOVERED_INTERACTION_SENTINEL", args: Hson.data.from(null),
+  kind: "browser", key: "RECOVERED_INTERACTION_SENTINEL", args: Hson.data.from(null),
 }));
 await interactionServer.session.get(interactionSession)!.update({ libraries: ["basePage", "nextPage"], systemFeatures: ["interactions"] }, { principalId: "alice" });
 const beforeInteractionReplay = interactionWire.serverSent.length;

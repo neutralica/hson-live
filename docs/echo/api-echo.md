@@ -137,5 +137,8 @@ when absent and are thereafter client-owned: local root, Schema, and document
 CSS changes stay local and survive replay, reconcile, scope removal, and re-add.
 If the entire client runtime and its application persistence are lost, evolved
 local state is lost and a new replica starts from the currently authorized seed.
-Canonical local interaction descriptors are intentionally outside this model;
-the interaction system domain remains shared authority state when enabled.
+Canonical interaction descriptors use one composed system root. Subject Library
+ownership partitions it: shared descriptors synchronize from Locus, while local
+document descriptors are client-owned and survive replay, reconcile, and scope
+changes. Local interaction capability does not require the shared `interactions`
+feature; the projected registry digest and authority cursor exclude local state.

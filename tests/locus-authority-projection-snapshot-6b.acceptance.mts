@@ -28,9 +28,9 @@ const map = hsonLiveMap.fromLibraries({
 });
 enable_interactions(map);
 add_interaction(map, { id: "allowed", subject: { library: "allowedPage", path: [99] }, listener,
-  kind: "browser-local", key: "ALLOWED_INTERACTION_SENTINEL", args: Hson.data.from(null) });
+  kind: "browser", key: "ALLOWED_INTERACTION_SENTINEL", args: Hson.data.from(null) });
 add_interaction(map, { id: "hidden", subject: { library: "hiddenDoc", path: [99] }, listener,
-  kind: "browser-local", key: "PRIVATE_INTERACTION_SENTINEL", args: Hson.data.from(null) });
+  kind: "browser", key: "PRIVATE_INTERACTION_SENTINEL", args: Hson.data.from(null) });
 
 const aggregate = internal_livemap_aggregate_authority(map);
 const complete = aggregate.captureHosted();

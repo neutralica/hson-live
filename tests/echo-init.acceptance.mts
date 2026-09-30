@@ -214,7 +214,7 @@ for (const [expected, advance, truncateHistory] of [
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "save-click",
     subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
-    kind: "locus-authoritative",
+    kind: "locus",
     key: "save",
     payload: Hson.data.from({ value: 1 }),
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false,

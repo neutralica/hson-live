@@ -171,7 +171,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "local-click",
     subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
-    kind: "browser-local",
+    kind: "browser",
     key: "click",
     args: Hson.data.from({ exact: true }),
     listener: Object.freeze({

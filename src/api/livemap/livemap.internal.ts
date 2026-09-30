@@ -123,7 +123,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Add installed names to the client authority-owned partition. @internal */
   extendClientProjectionManaged: (owner: object, names: readonly string[], expectedDigest: string) => void;
   /** Validate a projected system root now and install it with the next topology transition. @internal */
-  prepareClientProjectionSystemManaged: (owner: object, root: HsonNode) => () => void;
+  prepareClientProjectionSystemManaged: (owner: object, root: HsonNode,
+    newSharedDocuments: readonly string[]) => () => void;
   captureLibraries: () => LiveMapSnapshot;
   stylesheet: (library: LiveMapLibraryIdentity) => import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   commitStylesheet: (library: LiveMapLibraryIdentity, operation: import("../../types/livemap.types.js").LiveMapCssOp) => LiveMapAggregateCommit;

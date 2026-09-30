@@ -213,9 +213,11 @@ dispose();
 
 Supply the executable behavior at its owning runtime, describe event binding
 and symbolic behavior/data canonically, activate on the intended tree, then
-dispose activation resources when appropriate. Local behavior tables are fixed
-runtime capabilities; they do not grant Locus ordering, authorization, or
-synchronization. Locus-registered actions are the authoritative counterpart. Descriptors
+dispose activation resources when appropriate. `kind: "browser"` invokes the
+activation-side behavior table; `kind: "locus"` invokes the dispatcher. Subject
+Library ownership, independently of kind, decides whether Locus or the client
+owns canonical descriptor state. The runtime behavior table grants no Locus
+action authorization. Descriptors
 do not serialize callbacks, auto-generate registrations, mint subject identity,
 or intrinsically require Echo. Runtime coverage: canonical-interactions tests.
 

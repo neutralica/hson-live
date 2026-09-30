@@ -38,8 +38,8 @@ import {
   type InteractionListener,
   type InteractionLocalBehavior,
   type InteractionLocalBehaviors,
-  type LocalInteractionDescriptor,
-  type AuthoritativeInteractionDescriptor,
+  type BrowserInteractionDescriptor,
+  type LocusInteractionDescriptor,
 } from "hson-live";
 
 import type { TransformOutput } from "hson-live/transform";
@@ -356,8 +356,8 @@ void [
 ];
 declare const interactionListener: InteractionListener;
 declare const interactionDescriptor: InteractionDescriptor;
-declare const localInteractionDescriptor: LocalInteractionDescriptor;
-declare const authoritativeInteractionDescriptor: AuthoritativeInteractionDescriptor;
+declare const localInteractionDescriptor: BrowserInteractionDescriptor;
+declare const authoritativeInteractionDescriptor: LocusInteractionDescriptor;
 declare const localInteractionBehavior: InteractionLocalBehavior;
 declare const localInteractionBehaviors: InteractionLocalBehaviors;
 declare const interactionDispatcher: InteractionActionDispatcher;

@@ -1,8 +1,8 @@
 # Canonical interactions
 
-Canonical interactions store portable browser interaction intent as ordinary canonical data in an application's aggregate `LiveMap`. An interaction descriptor contains no executable capability. Activation combines current descriptors with an active `LiveTree`, a fixed local behavior table, and an optional application-supplied authoritative dispatcher to derive native listeners.
+Canonical interactions store portable interaction intent in one canonical `LiveMap` system root: `{ descriptors: [...] }`. A descriptor contains no executable capability. Activation combines the current descriptors with an active `LiveTree`, a fixed behavior table, and an optional application-supplied dispatcher to derive listeners.
 
-The public surface is intentionally provisional and loose:
+The current public functions are:
 
 ```ts
 import {
@@ -14,13 +14,13 @@ import {
 } from "hson-live";
 ```
 
-The corresponding public types are `InteractionDescriptor`, `InteractionListener`, `LocalInteractionDescriptor`, `AuthoritativeInteractionDescriptor`, `InteractionLocalBehavior`, `InteractionLocalBehaviors`, `InteractionActionDispatcher`, `InteractionFailure`, and `InteractionActivationOptions`.
+The corresponding public types are `InteractionDescriptor`, `InteractionListener`, `BrowserInteractionDescriptor`, `LocusInteractionDescriptor`, `InteractionLocalBehavior`, `InteractionLocalBehaviors`, `InteractionActionDispatcher`, `InteractionFailure`, and `InteractionActivationOptions`.
 
 ## Canonical storage and Schema
 
-`enable_interactions(map)` adds one schema-governed reserved data Library inside the same aggregate authority. Repeated enablement is idempotent. Enablement must happen before the aggregate's first transition and before exclusive authority management begins; late enablement rejects rather than reconfiguring a live topology.
+`enable_interactions(map)` adds one schema-governed reserved data Library inside the same aggregate. Repeated enablement is idempotent. Standalone maps enable it before the first transition. An Echo map with a local document may establish local interaction capability after management begins; the first local `add_interaction` does this lazily if needed. This local operation changes the composed map and its revision, but not the projected registry, authority cursor, or Locus state.
 
-The reserved Library contributes to aggregate revision, capture, replay, hosted registry construction, Echo mirror construction, reconcile synchronization, and authority transitions. Its structural scope excludes it from normal application Library selection and commit operation enumeration. Its transport name is not a public selection authority, and no Library handle is exposed. Local canonical interaction descriptors remain deliberately outside the Step 3B local-initializer model pending a dedicated interaction-ownership design.
+The reserved Library contributes to aggregate revision and capture, but is hidden from normal application Library selection and commit operation enumeration. Echo can retain this composed system slot for local descriptors while the projected registry omits the shared `interactions` feature. The projected registry digest and authority fingerprint cover authority state only. Local initializers still contain root, Schema, CSS, and definition identity; they do not seed descriptors.
 
 Hson owns one fixed, closed Schema. Its semantic shape is:
 
@@ -40,7 +40,7 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
       stopPropagation "boolean"
       stopImmediatePropagation "boolean"
     >>
-    kind <exact "browser-local">
+    kind <exact "browser">
     key "string"
     args "any"
   >>,
@@ -58,28 +58,44 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
       stopPropagation "boolean"
       stopImmediatePropagation "boolean"
     >>
-    kind <exact "locus-authoritative">
+    kind <exact "locus">
     key "string"
     payload "any"
   >>
 ]>>>>
 ```
 
-Unknown fields, hybrid variants, malformed listener settings, and invalid library or document paths fail canonical admission before publication or revision movement. `add_interaction` rejects duplicate descriptor IDs, `replace_interaction` rejects missing IDs, and `remove_interaction` rejects missing IDs. These writes are ordinary aggregate mutations: local maps commit locally, Locus-managed maps must author through an authoritative mutation draft, and fenced Echo replicas remain read-only.
+Unknown fields, hybrid variants, malformed listener settings, invalid document paths, and duplicate IDs fail canonical admission before publication or revision movement. Descriptor IDs are globally unique across the entire root, including shared and local partitions. `replace_interaction` and `remove_interaction` select that global ID and reject missing IDs. Lower-level transitions, portable restoration, authority snapshots, replay, and reconcile enforce the same uniqueness rule.
+
+## Ownership and dispatch
+
+Descriptor ownership comes solely from `descriptor.subject.library`:
+
+| Subject document | Canonical owner | Transfer |
+| --- | --- | --- |
+| Private | Locus | Not projected to clients |
+| Shared | Locus | Synchronized through Echo |
+| Local | Client | Retained on the composed map |
+
+There is one interaction system root. Its shared partition `S` contains descriptors for projected shared documents; its local partition `L` contains descriptors for local documents. Echo exposes `S + L`. Direct client authoring may change only `L`; Locus drafts may change private or shared descriptors in the authority map. Locus has no local document Library, so it rejects local subjects. A shared descriptor remains authority-owned even when `kind` is `"browser"`.
+
+`kind` chooses execution, independently of ownership. `"browser"` calls the activation-side behavior table (named `local` in the current activation options); it does not assert a browser-only platform. `"locus"` calls the supplied dispatcher. Hosted Echo composition normally dispatches through `echo.action`, where Locus authorizes the action independently. Shared/browser, shared/locus, local/browser, and local/locus are all valid.
+
+Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. Shared authoring still belongs in an authority mutation draft, where document edits and descriptor maintenance can commit atomically.
 
 The descriptor ID identifies only the descriptor. The subject uses the fixed application document Library name and canonical numeric document path. Runtime-local QUIDs may follow an activated subject but are never serialized into interaction state.
 
-An established subject that moves keeps its interaction: the authority rewrites its path in the same transition as the document edit. Deletion or identity-destroying replacement removes the descriptor in that transition, so a new subject at the old path cannot inherit it. A descriptor authored before its subject exists remains at its authored path and can activate if a subject appears there.
+An established subject that moves keeps its interaction: the owning map rewrites its path in the same transition as the document edit. Local edits rewrite only local descriptors; shared edits rewrite only shared descriptors. Deletion or identity-destroying replacement removes the descriptor in that transition, so a new subject at the old path cannot inherit it. A descriptor authored before its subject exists remains at its authored path and can activate if a subject appears there.
 
 Generated QUIDs are scoped to one runtime. A runtime can map local QUIDs to and from paths for live continuity; portable interaction state uses the document Library and path. Ordinary Hson, structural JSON, and Transform HTML now omit generated QUIDs on output and reject serialized QUID claims on input. Same-runtime exact capture is separate. Browser continuation and hosted graph identity remain later migration boundaries.
 
 ## Exact interaction data
 
-Local `args` and authoritative `payload` use Schema `"any"` and represent canonical data-mode values. The interaction layer retains exact `HsonData`; it does not materialize through ordinary JavaScript or stringify and reparse during reconciliation or dispatch. Signed zero, object member order, integer-like member order, dangerous valid names such as `__proto__`, and nested combinations therefore retain their semantics.
+Browser `args` and locus `payload` use Schema `"any"` and represent canonical data-mode values. The interaction layer retains exact `HsonData`; it does not materialize through ordinary JavaScript or stringify and reparse during reconciliation or dispatch. Signed zero, object member order, integer-like member order, dangerous valid names such as `__proto__`, and nested combinations therefore retain their semantics. Shared `args` and `payload` are shared canonical data: no general taint tracking redacts values an authority author places there. Private-subject descriptors are filtered from projection.
 
 A local behavior receives the native `Event`, the exact resolved `LiveTree` subject, and exact `HsonData` args. Activation snapshots only explicitly supplied own string-keyed data properties whose values are behavior functions. Prototype members are not capabilities, and accessor-backed or non-function capability entries are invalid activation configuration. The resulting behavior table is fixed for one activation and application context normally comes from closure.
 
-An authoritative descriptor invokes only the optional generic dispatcher:
+A locus descriptor invokes only the optional generic dispatcher:
 
 ```ts
 const dispose = activate_interactions({
@@ -94,13 +110,15 @@ const dispose = activate_interactions({
 });
 ```
 
-The interaction subsystem has no Echo dependency and no action-handler registry. Locus remains the configured action authority. Authoritative dispatch never consults local behaviors and has no local fallback.
+The interaction subsystem has no Echo dependency and no action-handler registry. Locus remains the configured action authority. Locus dispatch never consults browser behaviors and has no fallback to them.
 
 ## Listener realization
 
 `InteractionListener` is the normalized portable form of current `LiveTree.listen` semantics: event, element/document/window target, capture, once, passive, missing-target policy, prevent-default, propagation stop, and immediate-propagation stop. Activation installs through `LiveTree.listen`; it does not implement a second native listener engine.
 
-Activation observes before its initial read, then reconciles full current descriptor state. Every relevant aggregate commit, restore boundary, and exact tree realization transition causes another full-state comparison. Stale or mismatched records are disposed before missing records are installed, while unaffected records remain. Fingerprints use exact canonical data encoding rather than ordinary-object normalization.
+Activation observes before its initial read, then reconciles the current system slot on every relevant aggregate commit, restore boundary, and exact tree realization transition. If an established activation sees the slot removed, its desired descriptors become empty and its listeners are disposed. Initial activation still rejects when no interaction capability exists. Stale or mismatched records are disposed before missing records are installed, while unaffected records remain. Fingerprints use exact canonical data encoding rather than ordinary-object normalization.
+
+Within one selected document activation, canonical descriptor order is listener installation order. A reorder that changes active listener order reinstalls affected records; this starts new `once` materializations for those records. Unchanged order preserves `once` state. Separate activations remain independent, including when their `document` or `window` listeners share an EventTarget; their relative order follows activation/install timing and has no global canonical guarantee.
 
 Each activation captures one tree/root, one local capability table, one optional authoritative dispatcher, and one optional failure observer. Later mutation of the caller-owned options object or capability table has no effect. There is no rebind operation: moving realization to another tree requires disposing the activation and creating another one.
 
@@ -108,7 +126,7 @@ Multiple activations against the same map and tree are allowed and independent. 
 
 Each installed listener belongs to the exact current HsonNode realization. The descriptor ID and QUID are lookup evidence, not runtime-resource owners. If a QUID later resolves to a fresh exact realization, the outgoing node's listener is disposed and a new listener is installed on the replacement. Listener materialization never mints a QUID or changes canonical state.
 
-`once` means once per concrete materialization. An unrelated reconciliation does not reinstall a consumed listener on the same descriptor semantics and exact node. Descriptor replacement, remove and re-add, activation disposal and reactivation, or a fresh exact subject realization creates a fresh materialization. Consumption is runtime-only.
+`once` means once per concrete materialization. An unrelated reconciliation does not reinstall a consumed listener on the same descriptor semantics and exact node. Descriptor replacement, remove and re-add, an affected canonical reorder, activation disposal and reactivation, or a fresh exact subject realization creates a fresh materialization. Consumption is runtime-only.
 
 ## Failures, synchronization, and disposal
 
@@ -116,7 +134,9 @@ Missing subjects, unknown local keys, absent authoritative dispatchers, listener
 
 Activation construction is exception-safe. Input capture and validation happen before observers or listeners are installed. If later initialization cannot complete, every observer, runtime record, and listener created by that activation attempt is rolled back before the error escapes.
 
-Hosted capture and synchronization include the hidden Library atomically. Reconciled current descriptors become truth: stale listeners disappear and current descriptors materialize once against the compatible active tree. Runtime records are never replayed and are reconstructable from canonical state, fixed application capabilities, and the active tree.
+Locus commits, checkpoints, and replay history contain only private/shared authority interaction state. Echo replay applies `S → S′` to `S + L` as `S′ + L`; reconcile installs current authority `S` while retaining `L`. Both reject shared/local ID collisions before publication. `current` sync compares authority state alone, so local descriptor edits do not force replay or reconcile. Shared feature revocation removes `S` and its listeners while keeping `L` and the composed slot when local capability exists; regrant adds current `S` back without resetting unchanged local listeners. Shared document scope removal similarly removes its shared descriptors while local descriptors survive. Local initializer scope removal and re-add retain existing client Library and descriptor state.
+
+An Echo-composed `map.cut()` or capture may contain both partitions because it is a snapshot of the actual client map. Installing that artifact as a standalone map does not preserve former Echo ownership provenance. Runtime records are never replayed and are reconstructed from canonical state, fixed application capabilities, and the active tree.
 
 The activation disposer is idempotent. It stops observation and removes only listeners owned by that activation. Canonical descriptors, the `LiveTree`, Mirror, and unrelated imperative listeners remain intact. Mirror and interaction activation have independent lifecycles.
 

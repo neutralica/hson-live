@@ -171,7 +171,7 @@ const listener = Object.freeze({ event: "click", target: "element" as const, cap
 let observed: NonNullable<ReturnType<typeof engine.commit>["hosted"]> | undefined;
 const stop = engine.observe((commit) => { observed = commit.hosted; });
 add_interaction(authority, { id: "visible", subject: { library: "page", path: [99] }, listener,
-  kind: "browser-local", key: "VISIBLE_INTERACTION_SENTINEL", args: Hson.data.from(null) });
+  kind: "browser", key: "VISIBLE_INTERACTION_SENTINEL", args: Hson.data.from(null) });
 assert.ok(observed);
 const visibleInteraction = deliver(observed);
 assert.equal(visibleInteraction.a.kind, "commit");
@@ -182,7 +182,7 @@ if (visibleInteraction.a.kind === "commit") {
 }
 observed = undefined;
 add_interaction(authority, { id: "hidden", subject: { library: "hiddenDoc", path: [99] }, listener,
-  kind: "browser-local", key: "HIDDEN_INTERACTION_SENTINEL", args: Hson.data.from(null) });
+  kind: "browser", key: "HIDDEN_INTERACTION_SENTINEL", args: Hson.data.from(null) });
 assert.ok(observed);
 const hiddenInteraction = deliver(observed);
 assert.equal(hiddenInteraction.a.kind, "progress");

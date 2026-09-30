@@ -66,7 +66,7 @@ enable_interactions(authorityMap);
 set_livemap_document_quid_candidate_source_for_tests(authorityMap.lib("page").document, () => QUID);
 acquire_document_identity(authorityMap.lib("page").document, { kind: "path", path: validate_document_path([0, 0, 0]) });
 const descriptor: InteractionDescriptor = Object.freeze({
-  id: "worker", subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener, kind: "locus-authoritative", key: "save", payload: exact,
+  id: "worker", subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener, kind: "locus", key: "save", payload: exact,
 });
 add_interaction(authorityMap, descriptor);
 let handled: HsonData | undefined;

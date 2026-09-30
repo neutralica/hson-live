@@ -166,7 +166,7 @@ await case_("two data and two document libraries retain system interactions and 
     capture: false, once: false, passive: false, missingTarget: "ignore", preventDefault: false,
     stopPropagation: false, stopImmediatePropagation: false });
   add_interaction(map, Object.freeze({ id: "z3b-click", subject: { library: "pageA", path: [0, 0, 1] },
-    listener, kind: "browser-local", key: "run", args: null }));
+    listener, kind: "browser", key: "run", args: null }));
   const locus = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter });
   await locus.mutate((draft) => {
     for (const [name, value] of [["dataA", "A1"], ["dataB", "B1"]] as const) {

@@ -6,7 +6,7 @@ At session creation, Locus normalizes an authorized composition from the catalog
 
 `session.now({ html: document })` binds HTML and shared authority state to one authority revision. Only a selected permitted shared document renders into HTML. The application may send HTML alone or place the whole `now` composition in an SSR carrier.
 
-Echo manages shared and local libraries inside one composed client LiveMap. Local roots, Schemas, and CSS are client-owned after initialization. The authority cursor and client `map.rev` are separate clocks. Canonical local interaction descriptors remain deferred.
+Echo manages shared and local libraries inside one composed client LiveMap. Local roots, Schemas, CSS, and interaction descriptors are client-owned after initialization. Descriptor ownership follows the subject Library inside one canonical interaction root; `kind: "browser" | "locus"` chooses only the dispatch branch. The authority cursor and client `map.rev` are separate clocks, so local edits do not change Locus sync position.
 
 Locus persistence and server-side authority access remain complete. The framework does not inspect arbitrary application HTML or JSON, so application code must avoid manually copying private values into a permitted document or response.
 

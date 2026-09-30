@@ -86,7 +86,7 @@ try {
     id: "ssr-click",
     subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
-    kind: "browser-local",
+    kind: "browser",
     key: "clicker",
     args: Hson.data.from(null),
   }));
@@ -94,7 +94,7 @@ try {
     id: "ssr-authoritative",
     subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
-    kind: "locus-authoritative",
+    kind: "locus",
     key: "state.interaction",
     payload: Hson.data.from(null),
   }));

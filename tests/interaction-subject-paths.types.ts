@@ -6,7 +6,7 @@ const portable: InteractionDescriptor = {
   id: "portable",
   subject: { library: "page", path: [0, 0, 0] },
   listener,
-  kind: "browser-local",
+  kind: "browser",
   key: "run",
   args: null,
 };
@@ -18,7 +18,7 @@ const oldAddress: InteractionDescriptor = {
   // @ts-expect-error The old portable QUID subject has no public type contract.
   subjectQuid: "000000001",
   listener,
-  kind: "browser-local",
+  kind: "browser",
   key: "run",
   args: null,
 };
@@ -29,7 +29,7 @@ const missingLibrary: InteractionDescriptor = {
   // @ts-expect-error A subject must be qualified by its document Library.
   subject: { path: [0] },
   listener,
-  kind: "browser-local",
+  kind: "browser",
   key: "run",
   args: null,
 };

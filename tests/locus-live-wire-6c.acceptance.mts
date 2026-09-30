@@ -254,9 +254,9 @@ const listener = Object.freeze({ event: "click", target: "element" as const, cap
   stopImmediatePropagation: false });
 await interactionServer.mutate((draft) => {
   add_interaction(draft, { id: "visible", subject: { library: "page", path: [99] }, listener,
-    kind: "browser-local", key: "VISIBLE_INTERACTION_WIRE_SENTINEL", args: Hson.data.from(null) });
+    kind: "browser", key: "VISIBLE_INTERACTION_WIRE_SENTINEL", args: Hson.data.from(null) });
   add_interaction(draft, { id: "hidden", subject: { library: "hiddenDoc", path: [99] }, listener,
-    kind: "browser-local", key: "HIDDEN_INTERACTION_WIRE_SENTINEL", args: Hson.data.from(null) });
+    kind: "browser", key: "HIDDEN_INTERACTION_WIRE_SENTINEL", args: Hson.data.from(null) });
 });
 const interactionWire = live(interactionConnection)[0]!;
 assert.equal(JSON.parse(interactionWire).type, "commit");
@@ -265,7 +265,7 @@ assert.equal(interactionWire.includes("HIDDEN_INTERACTION_WIRE_SENTINEL"), false
 assert.equal(interactionWire.includes("hiddenDoc"), false);
 await interactionServer.mutate((draft) => {
   add_interaction(draft, { id: "hidden-two", subject: { library: "hiddenDoc", path: [98] }, listener,
-    kind: "browser-local", key: "HIDDEN_INTERACTION_TWO_WIRE_SENTINEL", args: Hson.data.from(null) });
+    kind: "browser", key: "HIDDEN_INTERACTION_TWO_WIRE_SENTINEL", args: Hson.data.from(null) });
 });
 const interactionProgress = live(interactionConnection)[1]!;
 assert.equal(JSON.parse(interactionProgress).type, "progress");

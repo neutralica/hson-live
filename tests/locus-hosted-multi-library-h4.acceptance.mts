@@ -400,7 +400,7 @@ await check("transactional interaction state and path descriptors survive checkp
   const interaction: InteractionDescriptor = Object.freeze({
     id: "persisted-click", subject: { library: "page", path: [0, 0, 1] },
     listener,
-    kind: "browser-local", key: "run", args: null,
+    kind: "browser", key: "run", args: null,
   });
   add_interaction(map, interaction);
   const host = await create_persistent_locus_hosted_aggregate_internal({

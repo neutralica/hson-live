@@ -199,7 +199,8 @@ export function install_client_projected_topology_internal(
   let installSystem: (() => void) | undefined;
   try {
     installSystem = system === undefined ? undefined
-      : aggregate.prepareClientProjectionSystemManaged(owner, decode_hosted_root(system));
+      : aggregate.prepareClientProjectionSystemManaged(owner, decode_hosted_root(system),
+        operation.operation.libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name));
     if (JSON.stringify(prepared.transition.commit.topology) !== JSON.stringify(operation)) {
       throw new Error("Projected topology operation is noncanonical.");
     }

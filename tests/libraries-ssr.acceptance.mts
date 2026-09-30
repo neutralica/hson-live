@@ -194,7 +194,7 @@ check("cut retains its HTML, data and interactions after source mutation", () =>
       event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false,
     }),
-    kind: "browser-local",
+    kind: "browser",
     key: "noop",
     args: Hson.data.from(null),
   }));
@@ -280,7 +280,7 @@ check("interaction storage follows selected documents and preserves enabled-empt
     id: `${library}-click`, subject: { library, path: [0, 0, 0] },
     listener: { event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
-    kind: "browser-local", key: "noop", args: Hson.data.from(null),
+    kind: "browser", key: "noop", args: Hson.data.from(null),
   });
   const descriptors = (libs: import("../src/types/livemap.types.ts").LiveMapSnapshot) => {
     const installed = install_libraries_snapshot(libs).map;

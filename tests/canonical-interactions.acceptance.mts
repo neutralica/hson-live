@@ -40,6 +40,11 @@ import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-cod
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
+import { projected_value_from_hson_node, projected_value_to_hson_root } from "../src/core/projected-value-graph.ts";
+import { is_ordered_projected_object, ordered_projected_array, ordered_projected_object } from "../src/core/ordered-projected-value.ts";
+import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
+import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
+import { authority_projection_as_client_composition_internal } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 
 install_fake_document();
 
@@ -118,10 +123,21 @@ async function activate_echo(echo: Readonly<{
 }
 
 function local(id: string, key: string, args: HsonData = Hson.data.from(null), override: Partial<InteractionListener> = {}): InteractionDescriptor {
-  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener: Object.freeze({ ...listener, ...override }), kind: "browser-local", key, args });
+  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener: Object.freeze({ ...listener, ...override }), kind: "browser", key, args });
 }
 function authoritative(id: string, key: string, payload: HsonData): InteractionDescriptor {
-  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener, kind: "locus-authoritative", key, payload });
+  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener, kind: "locus", key, payload });
+}
+
+function canonical_descriptors(map: ReturnType<typeof map_fixture>) {
+  const aggregate = internal_livemap_aggregate_authority(map);
+  const system = aggregate.systemState("@hson/canonical-interactions");
+  if (system === undefined) throw new Error("Missing interaction system state.");
+  const root = projected_value_from_hson_node(aggregate.systemRoot(system));
+  if (!is_ordered_projected_object(root)) throw new Error("Malformed interaction root.");
+  const descriptors = root.entries.find(([name]) => name === "descriptors")?.[1];
+  if (!Array.isArray(descriptors)) throw new Error("Malformed interaction descriptors.");
+  return { aggregate, system, descriptors };
 }
 
 const testEvents = create_test_event_emitter("canonical-interactions");
@@ -194,6 +210,89 @@ await check("strict Schema and authoring semantics reject before revision moveme
   remove_interaction(map, "a");
   assert.equal(map.rev, before + 1);
   assert.throws(() => remove_interaction(map, "a"), /does not exist/);
+});
+
+await check("lower-level interaction admission rejects duplicate IDs atomically", () => {
+  const map = map_fixture();
+  add_interaction(map, local("duplicate", "run"));
+  const { aggregate, system, descriptors } = canonical_descriptors(map);
+  const before = map.rev;
+  assert.throws(() => aggregate.commit([{
+    target: aggregate.systemTarget(system, ["descriptors"]), kind: "replace",
+    value: ordered_projected_array([descriptors[0]!, descriptors[0]!]),
+  }]), /duplicate|already exists/i);
+  assert.equal(map.rev, before);
+  assert.equal(canonical_descriptors(map).descriptors.length, 1);
+});
+
+await check("portable restore rejects duplicate descriptor IDs atomically", () => {
+  const map = map_fixture();
+  add_interaction(map, local("duplicate", "run"));
+  const { aggregate, descriptors } = canonical_descriptors(map);
+  const snapshot = map.capture();
+  const duplicateRoot = projected_value_to_hson_root(ordered_projected_object([
+    ["descriptors", ordered_projected_array([descriptors[0]!, descriptors[0]!])],
+  ]));
+  const forged = { ...snapshot,
+    libraries: snapshot.libraries.map((entry) => entry.name === "@hson/canonical-interactions"
+      ? { ...entry, root: encode_hosted_root(duplicateRoot) } : entry) };
+  const before = map.rev;
+  assert.throws(() => aggregate.restorePortableLibraries(forged), /duplicate/i);
+  assert.equal(map.rev, before);
+  assert.equal(canonical_descriptors(map).descriptors.length, 1);
+});
+
+await check("canonical reorder changes listener order within one activation", () => {
+  const map = map_fixture();
+  add_interaction(map, local("first", "first", Hson.data.from(null), { once: true }));
+  add_interaction(map, local("second", "second"));
+  const reflection = hsonMirror(map.lib("page"));
+  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
+  const calls: string[] = [];
+  const dispose = activate_interactions({ map, tree: reflection.tree,
+    local: { first: () => { calls.push("first"); }, second: () => { calls.push("second"); } } });
+  target.fire();
+  assert.deepEqual(calls, ["first", "second"]);
+  target.fire();
+  assert.deepEqual(calls, ["first", "second", "second"]);
+  calls.length = 0;
+  const { aggregate, system, descriptors } = canonical_descriptors(map);
+  aggregate.commit([{ target: aggregate.systemTarget(system, ["descriptors"]), kind: "replace",
+    value: ordered_projected_array([...descriptors].reverse()) }]);
+  target.fire();
+  assert.deepEqual(calls, ["second", "first"]);
+  dispose(); reflection.dispose();
+});
+
+await check("revoking shared interaction feature removes installed listeners", async () => {
+  const authorityMap = hsonLiveMap.fromLibraries({
+    state: { data: { count: 0 }, schema: StateSchema },
+    page: { document: "<main <button/>/>", schema: PageSchema },
+  });
+  enable_interactions(authorityMap);
+  add_interaction(authorityMap, local("revoked", "run"));
+  const captured = internal_livemap_aggregate_authority(authorityMap).captureHosted();
+  const configured = test_public_projection(authorityMap);
+  const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
+    configured.libraries, configured.defaultProjection, configured.authorizeProjection);
+  const granted = await normalize_locus_effective_projection(policy, configured.defaultProjection);
+  const revoked = await normalize_locus_effective_projection(policy, { libraries: ["page", "state"], systemFeatures: [] });
+  const client = client_projection_map({ authority: project_authority_snapshot(captured, granted), local: {} });
+  const replica = create_echo_aggregate_replica_capability_internal(client);
+  const clientPage = client.lib("page");
+  if (clientPage.mode !== "document") throw new Error("Expected projected page document.");
+  const reflection = hsonMirror(clientPage);
+  const subject = reflection.tree.find.must.byTag("button");
+  const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
+  const failures: unknown[] = [];
+  const dispose = activate_interactions({ map: client, tree: reflection.tree, local: { run: () => undefined },
+    onFailure: (failure) => { failures.push(failure); } });
+  assert.equal(target.registrations.length, 1);
+  replica.restoreHosted(authority_projection_as_client_composition_internal(project_authority_snapshot(captured, revoked)));
+  assert.equal(target.registrations.length, 0);
+  assert.deepEqual(failures, []);
+  dispose(); reflection.dispose(); replica.dispose();
 });
 
 await check("document and interaction effects accept or reject as one authority transition", async () => {
@@ -678,9 +777,9 @@ await check("runtime failures are isolated and canonical descriptors remain", as
   });
   target.fire(); await Promise.resolve();
   assert.equal(calls, 1);
-  assert.equal(phases.includes("local-capability-resolution"), true);
+  assert.equal(phases.includes("browser-capability-resolution"), true);
   assert.equal(phases.includes("subject-resolution"), true);
-  assert.equal(phases.includes("authoritative-capability-resolution"), true);
+  assert.equal(phases.includes("locus-capability-resolution"), true);
   assert.equal(phases.includes("listener-installation"), true);
   assert.equal(map.rev, 5);
   dispose(); reflection.dispose();
@@ -700,7 +799,7 @@ await check("invocation rejection is isolated and disposal leaves imperative lis
     onFailure: (failure) => { phases.push(failure.phase); },
   });
   target.fire(); await Promise.resolve(); await Promise.resolve();
-  assert.equal(phases.includes("authoritative-invocation"), true);
+  assert.equal(phases.includes("locus-invocation"), true);
   assert.equal(imperative, 1);
   const beforeDispose = map.rev;
   dispose(); dispose();

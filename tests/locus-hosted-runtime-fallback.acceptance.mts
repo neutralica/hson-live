@@ -379,7 +379,7 @@ await interactionServer.mutate((draft) => add_interaction(draft, {
   id: "revoked-listener", subject: { library: "revoke", path: [99] },
   listener: { event: "click", target: "element", capture: false, once: false, passive: false,
     missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
-  kind: "browser-local", key: "REVOKED_INTERACTION_SENTINEL", args: Hson.data.from(null),
+  kind: "browser", key: "REVOKED_INTERACTION_SENTINEL", args: Hson.data.from(null),
 }));
 const obsoleteCommitRaw = interactionWire.serverSent.findLast((raw) => JSON.parse(raw).type === "commit");
 assert.ok(obsoleteCommitRaw);

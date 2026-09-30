@@ -75,8 +75,9 @@ const selected = installed.map.lib(cut.document);
 continue_document({ map: installed.map, document: selected, root });
 ```
 
-Canonical interactions are opt-in and assume their topology was enabled before
-ordinary application transitions:
+Standalone canonical interactions are opt-in and enable their topology before
+ordinary application transitions. An Echo-composed map can also gain local
+interaction capability after a local document initializer arrives:
 
 ```ts
 const continuation = continue_document({

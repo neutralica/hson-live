@@ -24,7 +24,7 @@ const listener = Object.freeze({
 });
 const subject = (path: readonly number[]) => Object.freeze({ library: "page", path });
 const descriptor = (id: string, path: readonly number[]): InteractionDescriptor =>
-  Object.freeze({ id, subject: subject(path), listener, kind: "browser-local", key: "run", args: null });
+  Object.freeze({ id, subject: subject(path), listener, kind: "browser", key: "run", args: null });
 const button = () => {
   const root = parse_hson_exact_runtime("<button/>", { allowTopLevelDocumentText: true });
   const bucket = root.$_content[0];
@@ -107,14 +107,14 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   assert.throws(() => authority.commit([{
     target: authority.systemTarget(system, ["descriptors"]),
     kind: "replace",
-    value: [{ id: "legacy", subjectQuid: "000007201", listener, kind: "browser-local", key: "run", args: null }],
+    value: [{ id: "legacy", subjectQuid: "000007201", listener, kind: "browser", key: "run", args: null }],
   }]), /subject|Schema/i);
   assert.throws(() => authority.commit([{
     target: authority.systemTarget(system, ["descriptors"]),
     kind: "replace",
     value: [{
       id: "hybrid", subject: { library: "page", path: [0, 0, 0] },
-      subjectQuid: "000007201", listener, kind: "browser-local", key: "run", args: null,
+      subjectQuid: "000007201", listener, kind: "browser", key: "run", args: null,
     }],
   }]), /Schema/i);
   assert.equal(map.rev, beforeSchemaFailure);

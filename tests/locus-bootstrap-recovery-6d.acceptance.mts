@@ -290,13 +290,13 @@ function data_library(map: LiveMap | undefined, name: string) {
     stopImmediatePropagation: false });
   await server.mutate((draft) => {
     add_interaction(draft, { id: "visible", subject: { library: "page", path: [99] }, listener,
-      kind: "browser-local", key: "VISIBLE_INTERACTION_REPLAY_SENTINEL", args: Hson.data.from(null) });
+      kind: "browser", key: "VISIBLE_INTERACTION_REPLAY_SENTINEL", args: Hson.data.from(null) });
     add_interaction(draft, { id: "hidden", subject: { library: "PRIVATE_NAME_SENTINEL", path: [99] }, listener,
-      kind: "browser-local", key: "PRIVATE_INTERACTION_REPLAY_SENTINEL", args: Hson.data.from(null) });
+      kind: "browser", key: "PRIVATE_INTERACTION_REPLAY_SENTINEL", args: Hson.data.from(null) });
   });
   await server.mutate((draft) => {
     add_interaction(draft, { id: "hidden-again", subject: { library: "PRIVATE_NAME_SENTINEL", path: [98] }, listener,
-      kind: "browser-local", key: "PRIVATE_INTERACTION_ONLY_SENTINEL", args: Hson.data.from(null) });
+      kind: "browser", key: "PRIVATE_INTERACTION_ONLY_SENTINEL", args: Hson.data.from(null) });
   });
   detachServer = server.connect(pair.server);
   const result = await client.connect();
@@ -375,7 +375,7 @@ function data_library(map: LiveMap | undefined, name: string) {
     stopImmediatePropagation: false });
   const add = (draft: Parameters<Parameters<typeof server.mutate>[0]>[0], id: string, library: string, key: string) =>
     add_interaction(draft, { id, subject: { library, path: [99] }, listener,
-      kind: "browser-local", key, args: Hson.data.from(null) });
+      kind: "browser", key, args: Hson.data.from(null) });
   await server.mutate((draft) => {
     add(draft, "visible-start", "page", "VISIBLE_INTERACTION_BOOTSTRAP_SENTINEL");
     add(draft, "hidden-start", "PRIVATE_NAME_SENTINEL", "PRIVATE_INTERACTION_BOOTSTRAP_SENTINEL");
