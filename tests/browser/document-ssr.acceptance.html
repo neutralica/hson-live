@@ -77,29 +77,29 @@ try {
   check("browser local rendering matches its continuation", JSON.stringify(browserLocal.libs) === JSON.stringify(localMap.capture()));
 
   const localLibrariesRoot = document.querySelector("#local-libraries-ssr");
-  const localLibrariesButton = localLibrariesRoot.firstElementChild;
-  const decodedLocalLibraries = decode_ssr_bootstrap(state.encoded.localLibraries);
-  check("browser Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalLibraries.bootstrap) === state.encoded.localLibraries);
-  const localLibrariesInstalled = install_libraries_snapshot(decodedLocalLibraries.bootstrap);
-  const browserLibrariesRender = localLibrariesInstalled.map.cut({ html: "page" });
+  const localButton = localLibrariesRoot.firstElementChild;
+  const decodedLocalLibraries = decode_ssr_bootstrap(state.encoded.localSelection);
+  check("browser Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalLibraries.bootstrap) === state.encoded.localSelection);
+  const localInstalled = install_libraries_snapshot(decodedLocalLibraries.bootstrap);
+  const browserLibrariesRender = localInstalled.map.cut({ html: "page" });
   check("local subset omits unrelated library", !browserLibrariesRender.libs.registry.libraries.some(entry => entry.name === "omitted"));
   check("browser Libraries rendering retains the selected continuation", browserLibrariesRender.document === "page"
-    && browserLibrariesRender.html === state.localLibraries.html
+    && browserLibrariesRender.html === state.localSelection.html
     && JSON.stringify(browserLibrariesRender.libs) === JSON.stringify(decodedLocalLibraries.bootstrap));
-  const localLibrariesSelected = localLibrariesInstalled.map.lib(state.localLibraries.document);
-  const localLibrariesObserver = new MutationObserver(() => {});
-  localLibrariesObserver.observe(localLibrariesRoot, { subtree: true, childList: true, attributes: true, characterData: true });
+  const localSelected = localInstalled.map.lib(state.local.document);
+  const localObserver = new MutationObserver(() => {});
+  localObserver.observe(localLibrariesRoot, { subtree: true, childList: true, attributes: true, characterData: true });
   const localLibrariesContinuation = continue_document({
-    map: localLibrariesInstalled.map,
-    document: localLibrariesSelected,
+    map: localInstalled.map,
+    document: localSelected,
     root: localLibrariesRoot,
   });
-  check("local aggregate continuation resolves the selected document name", state.localLibraries.document === "page");
+  check("local aggregate continuation resolves the selected document name", state.localSelection.document === "page");
   check("local aggregate continuation preserves root identity", localLibrariesContinuation.tree.dom.el() === localLibrariesRoot);
-  check("local aggregate continuation preserves descendant identity", localLibrariesRoot.firstElementChild === localLibrariesButton);
-  check("local aggregate continuation writes nothing", localLibrariesObserver.takeRecords().length === 0);
-  check("local aggregate install restores the complete snapshot", localLibrariesInstalled.map.lib("state").snap(["count"]) === 7 && localLibrariesInstalled.map.rev === state.localLibraries.libs.revision);
-  localLibrariesObserver.disconnect();
+  check("local aggregate continuation preserves descendant identity", localLibrariesRoot.firstElementChild === localButton);
+  check("local aggregate continuation writes nothing", localObserver.takeRecords().length === 0);
+  check("local aggregate install restores the complete snapshot", localInstalled.map.lib("state").snap(["count"]) === 7 && localInstalled.map.rev === state.localSelection.libs.revision);
+  localObserver.disconnect();
   localLibrariesContinuation.dispose();
 
   const decodedFull = decode_ssr_bootstrap(state.encoded.full);
@@ -316,12 +316,12 @@ try {
   const decodedHostedLibraries = decode_ssr_bootstrap(state.encoded.libraries);
   check("browser hosted Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHostedLibraries.bootstrap) === state.encoded.libraries);
   check("hosted carrier is the projected hosted family", decodedHostedLibraries.kind === "hosted-projection");
-  check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.revision === state.libraries.libs.revision);
+  check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.libs.revision === state.libraries.libs.revision);
   const librariesSocket = create_browser_locus_socket(state.librariesSocketUrl);
   await librariesSocket.ready;
   let interactionCalls = 0;
   const librariesContinuation = await continue_hosted_document({
-    cut: { ...state.libraries, libs: decodedHostedLibraries.bootstrap },
+    now: { ...state.libraries, ...decodedHostedLibraries.bootstrap },
     credential: state.credential,
     socket: librariesSocket.socket,
     document: state.libraries.document,
@@ -334,9 +334,9 @@ try {
   let hiddenUnavailable = false;
   try { librariesMap.lib("@hson/canonical-interactions"); } catch { hiddenUnavailable = true; }
   check("hidden interaction Library remains unavailable", hiddenUnavailable);
-  check("aggregate recovery catches projected N up to N+1", librariesEcho.recovery.status === "caught_up"
-    && librariesEcho.recovery.debug().lastAppliedRev === state.libraries.libs.revision + 1 && librariesMap.rev === 1);
-  check("unverified stale cut snapshots through the adopted Mirror", librariesEcho.recovery.strategy === "snapshot"
+  check("aggregate sync catches projected N up to N+1", librariesEcho.sync.status === "caught_up"
+    && librariesEcho.sync.debug().lastAppliedRev === state.libraries.libs.revision + 1 && librariesMap.rev === 1);
+  check("unverified stale current state reconciles through the adopted Mirror", librariesEcho.sync.strategy === "reconcile"
     && librariesRoot.firstElementChild === librariesButton);
   check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
   check("other public document converges", librariesEcho.map.lib("admin").at([]).attrs.get("data-recovered") === "admin");
@@ -373,10 +373,10 @@ try {
   const hostedTarget = hostedCssRoot.querySelector("#hosted-css-target");
   check("hosted CSS cut styles a browser without JavaScript", hostedStyle !== null
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(1, 2, 3)");
-  const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut.libs));
+  const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut));
   const cssBrowserSocket = create_browser_locus_socket(state.cssSocketUrl);
   await cssBrowserSocket.ready;
-  const cssContinued = await continue_hosted_document({ cut: { ...state.cssCut, libs: cssBootstrap.bootstrap },
+  const cssContinued = await continue_hosted_document({ now: { ...state.cssCut, ...cssBootstrap.bootstrap },
     credential: state.cssCredential, socket: cssBrowserSocket.socket, document: "page", root: hostedCssRoot });
   const cssEcho = cssContinued.echo;
   const cssClientMap = cssEcho.map;

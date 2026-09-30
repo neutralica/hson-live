@@ -10,7 +10,7 @@ declare const documentLibrary: LiveMapDocumentLibrary;
 declare const element: Element;
 declare const socket: LocusSocketLike;
 const registry = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
-const locus = create_locus({ map: registry, exposure: [{ library: "page", exposure: "client-public" }] });
+const locus = create_locus({ map: registry, libraries: [{ name: "page", ownership: "shared" }] });
 const checked: Locus<typeof registry> = locus;
 void (0 as unknown as Locus | LiveMap);
 void [hson, hsonLocus, checked, create_echo, continue_document({ map: registry, root: element }),

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror,
   type LocusSocketLike } from "../src/index.ts";
 import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { local_initializers } from "./helpers/client-projection.mts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
@@ -41,14 +42,14 @@ function require_map(client: Readonly<{ map: LiveMap | undefined }>): LiveMap {
 
 const authority = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <p "Existing"/>/>` } });
 const locus = hsonLocus.create({ map: authority,
-  exposure: [{ library: "page", exposure: "client-public" }],
+  libraries: [{ name: "page", ownership: "shared" }],
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
 const wire = pair();
 let detach = locus.connect(wire.server, { principalId: "alice" });
 const echo = create_echo_socket_client_internal({ socket: wire.client, logicalMapId: locus.logicalMapId,
-  localLibraries: { preferences: { data: { theme: "dark" } } } });
+  initializers: local_initializers({ preferences: { data: { theme: "dark" } } }) });
 await echo.connect();
 const clientMap = echo.map;
 assert.ok(clientMap);
@@ -64,7 +65,7 @@ echo.disconnect();
 detach();
 
 await locus.lib.add({ newState: { data: { value: 1 } } },
-  { exposure: { newState: "client-public" } });
+  { ownership: { newState: "shared" } });
 await locus.mutate((draft) => {
   const state = draft.lib("newState");
   if (!("at" in state)) throw new Error("Expected data Library.");
@@ -77,7 +78,7 @@ await locus.lib.add({ privateState: { data: { secret: "PRIVATE_REPLAY_ROOT_SENTI
   ungrantedState: { data: { secret: "UNGRANTED_REPLAY_ROOT_SENTINEL",
     UNGRANTED_REPLAY_SCHEMA_SENTINEL: "ungranted" },
     schema: Hson.schema`<type "data" content <secret "string" UNGRANTED_REPLAY_SCHEMA_SENTINEL "string">>` } },
-{ exposure: { nextState: "client-public", ungrantedState: "client-public" } });
+{ ownership: { nextState: "shared", ungrantedState: "shared" } });
 await locus.mutate((draft) => {
   const next = draft.lib("nextState"), hidden = draft.lib("privateState");
   if (!("at" in next) || !("at" in hidden)) throw new Error("Expected data Libraries.");
@@ -131,7 +132,7 @@ process.stdout.write("ok - retained reconnect installs current grant after hidde
 
 const currentAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
 const currentServer = hsonLocus.create({ map: currentAuthority,
-  exposure: [{ library: "anchor", exposure: "client-public" }],
+  libraries: [{ name: "anchor", ownership: "shared" }],
   defaultProjection: { libraries: ["anchor"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
@@ -144,7 +145,7 @@ const currentMap = require_map(currentEcho);
 const currentSession = currentEcho.session.sessionId;
 assert.ok(currentSession);
 await currentServer.lib.add({ later: { data: { value: 9 } } },
-  { exposure: { later: "client-public" } });
+  { ownership: { later: "shared" } });
 assert.equal(currentEcho.lastAppliedRev, currentServer.rev);
 assert.throws(() => currentMap.lib("later"), /Unknown/);
 currentEcho.disconnect();
@@ -175,7 +176,7 @@ const emptyProjection = normalize_locus_effective_projection(emptyPolicy, { libr
 if (emptyProjection instanceof Promise) throw new Error("Expected synchronous projection.");
 const topologyClient = client_projection_map({
   authority: project_authority_snapshot(beforeTopology, emptyProjection),
-  localLibraries: { preferences: { data: { value: "local" } } },
+  local: { preferences: { data: { value: "local" } } },
 });
 const topologyLocal = topologyClient.lib("preferences");
 const topologyReplica = create_echo_aggregate_replica_capability_internal(topologyClient);
@@ -184,7 +185,7 @@ sourceAggregate.observe((commit) => { topologyCommit = commit.hosted; });
 topologySource.addLibraries({ visible: { data: { value: 1 } }, hidden: { data: { secret: "PURE_HIDDEN_SENTINEL" } } });
 const afterTopology = sourceAggregate.captureHosted();
 const visiblePolicy = make_locus_hosted_projection_policy(afterTopology.registry, afterTopology.authority,
-  [{ library: "visible", exposure: "client-public" }, { library: "hidden", exposure: "server-private" }],
+  [{ name: "visible", ownership: "shared" }, { name: "hidden", ownership: "private" }],
   { libraries: ["visible"] }, ({ requested }) => ({ libraries: requested.libraries }));
 const visibleProjection = normalize_locus_effective_projection(visiblePolicy, { libraries: ["visible"] });
 if (visibleProjection instanceof Promise || topologyCommit === undefined) throw new Error("Missing topology projection.");
@@ -222,7 +223,7 @@ const cutEntered = new Promise<void>((resolve) => { enteredCut = resolve; });
 const cutGate = new Promise<void>((resolve) => { releaseCut = resolve; });
 const tailAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 0 } } });
 const tailServer = create_locus_hosted_aggregate_socket_internal({ map: tailAuthority,
-  exposure: [{ library: "anchor", exposure: "client-public" }],
+  libraries: [{ name: "anchor", ownership: "shared" }],
   defaultProjection: { libraries: ["anchor"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   internal: { afterRecoveryCut: async () => { cuts += 1; if (cuts === 2) { enteredCut(); await cutGate; } } },
@@ -238,7 +239,7 @@ const tailSession = tailEcho.session.sessionId;
 assert.ok(tailSession);
 tailEcho.disconnect();
 detachTail();
-await tailServer.add_libraries({ added: { data: { value: 1 } } }, { added: "client-public" });
+await tailServer.add_libraries({ added: { data: { value: 1 } } }, { added: "shared" });
 await tailServer.mutate((draft) => {
   const added = draft.lib("added");
   if (!("at" in added)) throw new Error("Expected added data Library.");
@@ -277,7 +278,7 @@ tailServer.dispose();
 process.stdout.write("ok - queued live writes and hidden topology follow retained recovery in order\n");
 
 const emptyAuthority = hsonLiveMap.create();
-const emptyServer = hsonLocus.create({ map: emptyAuthority, exposure: [],
+const emptyServer = hsonLocus.create({ map: emptyAuthority, libraries: [],
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const emptyWire = pair();
 let detachEmpty = emptyServer.connect(emptyWire.server, { principalId: "alice" });
@@ -290,7 +291,7 @@ assert.ok(emptySession);
 emptyEcho.disconnect();
 detachEmpty();
 await emptyServer.lib.add({ first: { data: { value: 7 } } },
-  { exposure: { first: "client-public" } });
+  { ownership: { first: "shared" } });
 await emptyServer.session.get(emptySession)!.update({ libraries: ["first"] }, { principalId: "alice" });
 detachEmpty = emptyServer.connect(emptyWire.server, { principalId: "alice" });
 assert.equal((await emptyEcho.connect()).outcome, "replay");
@@ -307,7 +308,7 @@ process.stdout.write("ok - an empty projected client gains its first Library thr
 const interactionAuthority = hsonLiveMap.fromLibraries({ basePage: { document: Hson.document`<main/>` } });
 enable_interactions(interactionAuthority);
 const interactionServer = hsonLocus.create({ map: interactionAuthority,
-  exposure: [{ library: "basePage", exposure: "client-public" }],
+  libraries: [{ name: "basePage", ownership: "shared" }],
   defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
     systemFeatures: requested.systemFeatures }),
@@ -328,7 +329,7 @@ assert.ok(interactionSession);
 interactionEcho.disconnect();
 detachInteraction();
 await interactionServer.lib.add({ nextPage: { document: Hson.document`<main <button "Next"/>/>` } },
-  { exposure: { nextPage: "client-public" } });
+  { ownership: { nextPage: "shared" } });
 await interactionServer.mutate((draft) => add_interaction(draft, {
   id: "recovered-button", subject: { library: "nextPage", path: [99] },
   listener: { event: "click", target: "element", capture: false, once: false, passive: false,
@@ -365,7 +366,7 @@ const revocationCutEntered = new Promise<void>((resolve) => { enteredRevocationC
 const revocationCutGate = new Promise<void>((resolve) => { releaseRevocationCut = resolve; });
 const revokeAuthority = hsonLiveMap.fromLibraries({ base: { data: { value: 0 } } });
 const revokeServer = create_locus_hosted_aggregate_socket_internal({ map: revokeAuthority,
-  exposure: [{ library: "base", exposure: "client-public" }],
+  libraries: [{ name: "base", ownership: "shared" }],
   defaultProjection: { libraries: ["base"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   internal: { afterRecoveryCut: async () => { revokeCuts += 1;

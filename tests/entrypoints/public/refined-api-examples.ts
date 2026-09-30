@@ -52,7 +52,7 @@ binding.dispose();
 
 const hostedMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>",
   schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
-const hosted = create_locus({ map: hostedMap, exposure: [{ library: "page", exposure: "client-public" }] });
+const hosted = create_locus({ map: hostedMap, libraries: [{ name: "page", ownership: "shared" }] });
 void hosted;
 
 const localSsr = libraries.cut({ html: "page" });
@@ -61,9 +61,9 @@ void decoded;
 void continue_document({ map: hostedMap, document: hostedMap.lib("page"), root });
 
 const retained = await hosted.session.create({ libraries: ["state", "page"] });
-const replica = await hsonEcho.replicate({ cut: retained.cut(), credential: retained.credential!, socket });
+const replica = await hsonEcho.init({ now: retained.now(), credential: retained.credential!, socket });
 void replica;
-void retained.cut({ html: "page" });
+void retained.now({ html: "page" });
 // @ts-expect-error One-map hosted continuation is no longer a public client-egress path.
 void continue_hosted_document({ echo, root });
 

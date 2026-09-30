@@ -41,7 +41,7 @@ export async function continue_hosted_document_internal(options: HostedContinuat
   let disposeInteractions: (() => void) | undefined;
   let disposeCssBinding: (() => void) | undefined;
   try {
-    const documentName = options.document ?? ("document" in options.cut ? options.cut.document : undefined);
+    const documentName = options.document ?? ("document" in options.now ? options.now.document : undefined);
     const explicitDocument = documentName === undefined ? undefined : echo.map.lib(documentName);
     if (explicitDocument !== undefined && explicitDocument.mode !== "document") {
       throw new Error("Explicit continuation selection is not a document library.");
@@ -50,7 +50,7 @@ export async function continue_hosted_document_internal(options: HostedContinuat
     if (resolved.aggregate === undefined) {
       throw new TypeError("Hosted continuation requires a projected library registry.");
     }
-    const snapshot = admit_authority_projection_snapshot(options.cut.libs);
+    const snapshot = admit_authority_projection_snapshot(options.now.libs);
     const aggregate = internal_livemap_aggregate_authority(resolved.aggregate);
     const projection = aggregate.clientProjection();
     const current = aggregate.captureSelectedHosted(snapshot.libraries.map((entry) => entry.name), false);
@@ -93,7 +93,7 @@ export async function continue_hosted_document_internal(options: HostedContinuat
     try {
       await prepared.attach();
       await prepared.complete();
-      if (echo.recovery.status !== "caught_up") throw new Error("Echo recovery did not reach caught-up state.");
+      if (echo.sync.status !== "caught_up") throw new Error("Echo sync did not reach caught-up state.");
       if (resolved.selected.rev !== echo.map.rev) {
         throw new Error("Echo, aggregate, and selected document revisions are not current together.");
       }
@@ -102,7 +102,7 @@ export async function continue_hosted_document_internal(options: HostedContinuat
     }
     try {
       if (reflect.status !== "active" || reflect.sourceRevision !== resolved.selected.rev) {
-        throw reflect.failure ?? new Error("Mirror is not current after Echo recovery.");
+        throw reflect.failure ?? new Error("Mirror is not current after Echo synchronization.");
       }
     } catch (cause) {
       throw new DocumentContinuationError("mirror", cause);

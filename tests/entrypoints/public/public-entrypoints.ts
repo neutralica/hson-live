@@ -21,7 +21,7 @@ import {
   encode_ssr_bootstrap,
   decode_ssr_bootstrap,
   type BrowserRealizationHtml,
-  type LocusSessionHtmlCut,
+  type LocusSessionHtmlNow,
   type SsrBootstrapKind,
   type EncodedSsrBootstrap,
   type DecodedSsrBootstrap,
@@ -69,10 +69,10 @@ const localContinuation: DocumentContinuation = continue_document({
   map: continuationRegistry,
   root: continuationRoot,
 });
-declare const continuationCut: import("hson-live").LocusSessionCut;
+declare const continuationCut: import("hson-live").LocusSessionNow;
 declare const continuationCredential: import("hson-live/locus").LocusSessionCredential;
 declare const continuationSocket: import("hson-live").LocusSocketLike;
-const hostedContinuation: Promise<HostedDocumentContinuation> = continue_hosted_document({ cut: continuationCut, credential: continuationCredential, socket: continuationSocket, root: continuationRoot });
+const hostedContinuation: Promise<HostedDocumentContinuation> = continue_hosted_document({ now: continuationCut, credential: continuationCredential, socket: continuationSocket, root: continuationRoot });
 void localContinuation.map;
 void localContinuation.tree;
 void localContinuation.mirror;
@@ -105,7 +105,7 @@ declare const hostedLibrariesSnapshot: { format: "hson-portable-aggregate-snapsh
 const encodedHostedLibraries = encode_ssr_bootstrap(hostedLibrariesSnapshot);
 void encodedHostedLibraries;
 const hostedSession = await librariesAuthority.session.create({ libraries: ["page"] });
-const hostedLibrariesCut: LocusSessionHtmlCut = hostedSession.cut({ html: "page" });
+const hostedLibrariesCut: LocusSessionHtmlNow = hostedSession.now({ html: "page" });
 void hostedLibrariesCut.libs;
 const dataMap = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
 void dataMap.cut().libs;
@@ -414,7 +414,7 @@ declare const librariesConnection: LocusConnection;
 void soloLocus.dispatchAction;
 void multiLocus.dispatchAction;
 void multiLocus.lib.add({ runtimeState: { data: { count: 1 } } },
-  { exposure: { runtimeState: "client-public" } });
+  { ownership: { runtimeState: "shared" } });
 void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] });
 void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] },
   { principalId: "alice" });

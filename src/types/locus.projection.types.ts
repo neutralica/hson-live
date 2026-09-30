@@ -1,13 +1,35 @@
 import type { LocusConnectionContext } from "./locus.protocol.types.js";
 import type { LiveMapRootMode } from "./livemap.types.js";
 
-/** Hosted deployment policy for one application library. Never part of Hson or a Schema. */
-export type LocusLibraryExposure = "server-private" | "client-public";
+/** Deployment ownership for one application library. Never part of Hson or a Schema. */
+export type LocusLibraryOwnership = "private" | "shared" | "local";
 
-/** An entry list makes duplicate and conflicting classifications detectable. */
-export type LocusExposureEntry = Readonly<{
-  library: string;
-  exposure: LocusLibraryExposure;
+/** One explicit application-catalog entry. Local initializers never enter `locus.map`. */
+export type LocusLibraryCatalogEntry =
+  | Readonly<{
+    name: string;
+    ownership: "private" | "shared";
+    initializer?: never;
+    css?: never;
+  }>
+  | Readonly<{
+    name: string;
+    ownership: "local";
+    initializer: import("./livemap.types.js").LiveMapLibraryDefinition;
+    /** Initial document stylesheet. Invalid for data initializers. */
+    css?: import("./document-css.types.js").DocumentCssRecord;
+  }>;
+
+/** Canonical, portable, session-authorized initializer definition. */
+export type LocusLocalInitializer = Readonly<{
+  name: string;
+  mode: LiveMapRootMode;
+  schema: import("../api/transform/transform.types.js").HsonSchemaData;
+  schemaDigest: string;
+  rootCodec: "hson-exact-value";
+  root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+  css?: import("./document-css.types.js").DocumentCssRecord;
+  fingerprint: string;
 }>;
 
 export type LocusProjectionSystemFeature = "interactions";

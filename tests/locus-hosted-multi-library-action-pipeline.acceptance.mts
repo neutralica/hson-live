@@ -1,6 +1,6 @@
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
-import { test_public_projection } from "./helpers/hosted-exposure.mts";
+import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import {
   Hson,
@@ -61,10 +61,10 @@ function make_projected_map(source: LiveMap): LiveMap {
   const complete = internal_livemap_aggregate_authority(source).captureHosted();
   const configured = test_public_projection(source);
   const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
-    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+    configured.libraries, configured.defaultProjection, configured.authorizeProjection);
   const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
   if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
-  return client_projection_map({ authority: project_authority_snapshot(complete, effective), localLibraries: {} });
+  return client_projection_map({ authority: project_authority_snapshot(complete, effective), local: {} });
 }
 
 async function activate_echo(echo: Readonly<{

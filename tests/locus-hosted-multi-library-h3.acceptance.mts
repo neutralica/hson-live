@@ -1,5 +1,5 @@
 import { client_projection_map } from "./helpers/client-projection.mts";
-import { test_public_exposure, test_public_projection } from "./helpers/hosted-exposure.mts";
+import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts";
@@ -135,10 +135,10 @@ function projected_client_map(authority: LiveMap): LiveMap {
   const captured = internal_livemap_aggregate_authority(authority).captureHosted();
   const configured = test_public_projection(authority);
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
-    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+    configured.libraries, configured.defaultProjection, configured.authorizeProjection);
   const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
   if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
-  return client_projection_map({ authority: project_authority_snapshot(captured, effective), localLibraries: {} });
+  return client_projection_map({ authority: project_authority_snapshot(captured, effective), local: {} });
 }
 
 function data(draft: LocusHostedAggregateDraft, name: string): LocusHostedAggregateDataDraft {
@@ -203,7 +203,7 @@ await check("actual socket aggregate bootstrap establishes one projected QUID-fr
   const map = make_map(2);
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
   const attached = await attach(server);
-  assert.equal(attached.recovery.outcome, "snapshot");
+  assert.equal(attached.recovery.outcome, "reconcile");
   assert.ok(attached.client.map);
   assert.equal(data_library(attached.client.map!, "state").snap(["theme"]), "light");
   assert.equal(data_library(attached.client.map!, "colors").snap(["accent"]), "#000");
@@ -227,7 +227,7 @@ await check("a commit or wire discriminator cannot identify a hosted socket mess
     socket: pair.client,
     logicalMapId: server.logicalMapId,
   });
-  await assert.rejects(endpoint.connect(), /recovery failed|format|incompatible/i);
+  await assert.rejects(endpoint.connect(), /synchronization failed|format|incompatible/i);
   assert.equal(endpoint.map, undefined);
   endpoint.dispose();
   server.dispose();
@@ -238,7 +238,7 @@ await check("projected bootstrap admission rejects generated authority QUID clai
   const captured = internal_livemap_aggregate_authority(map).captureHosted();
   const configured = test_public_projection(map);
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
-    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+    configured.libraries, configured.defaultProjection, configured.authorizeProjection);
   const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
   if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
   const snapshot = project_authority_snapshot(captured, effective);
@@ -299,7 +299,7 @@ await check("retained global history recovers QUID-free aggregate effects withou
   server.dispose();
 });
 
-await check("aggregate snapshot recovery restores a retained mirror in place and converges selected page Mirror once", async () => {
+await check("aggregate reconcile restores a retained mirror in place and converges selected page Mirror once", async () => {
   install_fake_document();
   const map = make_map();
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map, maxHistoryBytes: 1 });
@@ -312,7 +312,7 @@ await check("aggregate snapshot recovery restores a retained mirror in place and
     document(draft, "page").graph(insert_item());
   });
   const attached = await attach(server, { map: stale });
-  assert.equal(attached.recovery.outcome, "snapshot");
+  assert.equal(attached.recovery.outcome, "reconcile");
   assert.equal(attached.client.map, stale);
   assert.equal(stateHandle.snap(), "dark");
   assert.equal(page_library(stale).root().$_tag, "_hson_root");
@@ -335,7 +335,7 @@ await check("a state-only aggregate snapshot preserves unchanged document identi
   const reflected = hsonMirror(page_library(stale));
   await server.mutate((draft) => data(draft, "state").at(["theme"]).set("dark"));
   const attached = await attach(server, { map: stale });
-  assert.equal(attached.recovery.outcome, "snapshot");
+  assert.equal(attached.recovery.outcome, "reconcile");
   assert.equal(reflected.sourceRevision, 1);
   assert.equal(reflected.diagnostics().updatesApplied, 0);
   assert.equal(oldSubject.active, true);
@@ -416,7 +416,7 @@ await check("registry mismatch refuses replay against an existing topology and l
   const stale = projected_client_map(map);
   const before = internal_livemap_aggregate_authority(stale).captureHosted();
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
-  // The bad projected-registry claim changes the recovery strategy without
+  // The bad projected-registry claim changes the synchronization strategy without
   // changing this detached composed map.
   const pair = socket_pair();
   server.connect(pair.server);
@@ -438,7 +438,7 @@ await check("registry mismatch refuses replay against an existing topology and l
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   const plan = pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>)
     .find((message) => message.type === "recovery-plan" && message.id === "bad-registry");
-  assert.equal(plan?.outcome, "snapshot");
+  assert.equal(plan?.outcome, "reconcile");
   assert.equal(plan?.reason, "registry_mismatch");
   assert.deepEqual(internal_livemap_aggregate_authority(stale).captureHosted(), before);
   server.dispose();
@@ -463,7 +463,7 @@ await check("snapshot cut buffers an accepted aggregate tail and drains it in gl
   });
   await server.mutate((draft) => data(draft, "state").at(["count"]).set(1));
   const attached = await attach(server, { map: stale });
-  assert.equal(attached.recovery.outcome, "snapshot");
+  assert.equal(attached.recovery.outcome, "reconcile");
   assert.equal(attached.client.lastAppliedRev, 2);
   assert.equal(data_library(stale, "state").snap(["theme"]), "dark");
   assert.equal(data_library(stale, "colors").snap(["accent"]), "#fff");

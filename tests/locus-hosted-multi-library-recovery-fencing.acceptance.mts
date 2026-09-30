@@ -1,5 +1,5 @@
 import { client_projection_map } from "./helpers/client-projection.mts";
-import { test_public_exposure } from "./helpers/hosted-exposure.mts";
+import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
@@ -106,11 +106,11 @@ function make_projected_map() {
   const complete = internal_livemap_aggregate_authority(source).captureHosted();
   const requested = { libraries: ["state"] };
   const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
-    test_public_exposure(source), requested, () => requested);
+    test_application_catalog(source), requested, () => requested);
   const effective = normalize_locus_effective_projection(policy, requested);
   if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
   const snapshot = project_authority_snapshot(complete, effective);
-  return { map: client_projection_map({ authority: snapshot, localLibraries: {} }),
+  return { map: client_projection_map({ authority: snapshot, local: {} }),
     projectionDigest: snapshot.projectionDigest };
 }
 
@@ -153,7 +153,7 @@ await check("replacement after the recovery cut stops plan and body delivery and
   const release = deferred();
   let hold = true;
   const server = create_locus_hosted_aggregate_socket_internal({
-    exposure: test_public_exposure(make_map()),
+    libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCut: async () => {
@@ -186,7 +186,7 @@ await check("replacement immediately before caught-up prevents completion and st
   const release = deferred();
   let hold = true;
   const server = create_locus_hosted_aggregate_socket_internal({
-    exposure: test_public_exposure(make_map()),
+    libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
       beforeRecoveryCaughtUp: async () => {
@@ -220,7 +220,7 @@ await check("replacement after caught-up suppresses queued live drain", async ()
   const release = deferred();
   let caughtUpCount = 0;
   const server = create_locus_hosted_aggregate_socket_internal({
-    exposure: test_public_exposure(make_map()),
+    libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCaughtUp: async () => {
@@ -342,7 +342,7 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
   const release = deferred();
   let hold = true;
   const server = create_locus_hosted_aggregate_socket_internal({
-    exposure: test_public_exposure(make_map()),
+    libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCut: async () => {
@@ -366,7 +366,7 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
   server.dispose();
 });
 
-await check("replica recovery failure leaves the attached endpoint usable for unrelated actions", async () => {
+await check("replica synchronization failure leaves the attached endpoint usable for unrelated actions", async () => {
   const pair = socket_pair();
   const projected = make_projected_map();
   const client = create_echo_socket_client_internal({

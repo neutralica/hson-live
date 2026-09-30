@@ -16,7 +16,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
   title: "Locus document recovery",
   category: "Locus",
   runtime: "node",
-  tags: Object.freeze(["document", "recovery", "snapshot"]),
+  tags: Object.freeze(["document", "recovery", "reconcile"]),
 });
 
 const testEvents = create_test_event_emitter("locus.document-recovery");
@@ -179,7 +179,7 @@ async function begin_scripted_snapshot_recovery(map, logicalMapId, incarnationId
     logicalMapId,
     incarnationId,
     headRev,
-    outcome: "snapshot",
+    outcome: "reconcile",
     reason: "incarnation_mismatch",
     snapshotEncoding: { format: "view-state" },
   }));
@@ -369,7 +369,7 @@ await check("element snapshot recovery restores revision and state with a fresh 
   await host.mutate((draft) => draft.document.attrs.set(root, "class", "ready"));
   const mirror = element(`<aside @000000007/>`);
   const { client } = await attach(host, mirror);
-  assert.equal((await client.recovery.recover()).strategy, "snapshot");
+  assert.equal((await client.recovery.recover()).strategy, "reconcile");
   assert.equal(client.map, mirror);
   assert.equal(client.map.mode, "document");
   assert.equal(client.map.rev, host.stream.headRev);
@@ -383,7 +383,7 @@ await check("multiNodeDocument snapshot recovery reconstructs multiNodeDocument 
   const host = hson.locus.create({ map: authority, logicalMapId: "document-multiNodeDocument-snapshot" });
   const mirror = multiNodeDocument(`<div/> "old"`);
   const { client, pair } = await attach(host, mirror);
-  assert.equal((await client.recovery.recover()).strategy, "snapshot");
+  assert.equal((await client.recovery.recover()).strategy, "reconcile");
   assert.equal(client.map.mode, "document");
   assert.deepEqual(client.map.capture({ identity: "strip" }), authority.capture({ identity: "strip" }));
   assert.equal(client.map.document.byQuid("000000008"), undefined);
@@ -608,7 +608,7 @@ await check("view-state element snapshot recovery preserves typed document state
   const mirror = element(`<aside/>`);
   const { client, pair } = await attach(host, mirror);
 
-  assert.equal((await client.recovery.recover()).strategy, "snapshot");
+  assert.equal((await client.recovery.recover()).strategy, "reconcile");
   const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
   assert.equal(snapshot.format, "view-state-client-snapshot-v1");
   assert.equal("formatVersion" in snapshot, false);
@@ -661,7 +661,7 @@ await check("view-state snapshot recovery applies the existing JSON replay tail 
   host.connect(pair.server);
   let queuedTail = false;
   pair.set_before_server_delivery((message) => {
-    if (!queuedTail && message.type === "recovery-plan" && message.outcome === "snapshot") {
+    if (!queuedTail && message.type === "recovery-plan" && message.outcome === "reconcile") {
       queuedTail = true;
       void host.mutate((draft) => draft.document.attrs.set(root, "title", "tail-applied"));
     }
@@ -810,7 +810,7 @@ await check("document history gap falls back to a same-mode snapshot", async () 
   await host.mutate((draft) => draft.document.attrs.set(root, "class", "one"));
   await host.mutate((draft) => draft.document.attrs.set(root, "title", "two"));
   const { client } = await attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
-  assert.equal((await client.recovery.recover()).strategy, "snapshot");
+  assert.equal((await client.recovery.recover()).strategy, "reconcile");
   assert.equal(client.map.mode, "document");
   assert.deepEqual(client.map.capture({ identity: "strip" }), authority.capture({ identity: "strip" }));
   assert.equal(client.map.document.byQuid("000000009"), undefined);
@@ -867,7 +867,7 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
   });
   assert.deepEqual(
     events.filter((event) => event.phase === "recovery.material").map((event) => event.details.strategy),
-    ["incremental-replay", "snapshot"],
+    ["incremental-replay", "reconcile"],
   );
   assert.equal(JSON.stringify(events).includes("ready"), false);
 

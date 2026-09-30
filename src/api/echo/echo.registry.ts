@@ -1,10 +1,10 @@
 import type { JsonValue } from "../../core/types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import type {
-  EchoRecoveryDiagnostics,
-  EchoRecoveryFailure,
-  EchoRecoveryStatus,
-  EchoRecoveryStrategy,
+  EchoSyncDiagnostics,
+  EchoSyncFailure,
+  EchoSyncStatus,
+  EchoSyncStrategy,
   LocusActionPayloads,
 } from "../../types/locus.types.js";
 import type { LiveMap } from "../../types/livemap.types.js";
@@ -49,6 +49,7 @@ export function create_registry_echo<
     connection: composition.connection,
     management: composition.management,
     ...(options.initialStateFingerprint === undefined ? {} : { initialStateFingerprint: options.initialStateFingerprint }),
+    ...(options.initialInitializerDigest === undefined ? {} : { initialInitializerDigest: options.initialInitializerDigest }),
   });
   const documentAuthorities: ReadonlyArray<Readonly<{
     map: object;
@@ -108,32 +109,32 @@ export function create_registry_echo<
     endpoint.dispose();
   };
 
-  let recoveryFailure: EchoRecoveryFailure | undefined;
-  let recoveryStrategy: EchoRecoveryStrategy | undefined;
+  let recoveryFailure: EchoSyncFailure | undefined;
+  let recoveryStrategy: EchoSyncStrategy | undefined;
 
-  function failure(): EchoRecoveryFailure | undefined {
+  function failure(): EchoSyncFailure | undefined {
     const underlying = endpoint.replica.failure;
     if (underlying === undefined) return recoveryFailure;
     if (underlying instanceof Error) return Object.freeze({
-      code: "LOCUS_RECOVERY_FAILED", message: underlying.message, cause: underlying,
+      code: "LOCUS_SYNC_FAILED", message: underlying.message, cause: underlying,
     });
-    return recoveryFailure ?? Object.freeze({ code: "LOCUS_RECOVERY_FAILED", message: "Aggregate Echo recovery failed.", cause: underlying });
+    return recoveryFailure ?? Object.freeze({ code: "LOCUS_SYNC_FAILED", message: "Aggregate Echo synchronization failed.", cause: underlying });
   }
 
-  function recoveryStatus(): EchoRecoveryStatus {
+  function recoveryStatus(): EchoSyncStatus {
     const status = endpoint.diagnostics().status;
-    if (status === "recovering") return "recovering";
+    if (status === "recovering") return "syncing";
     if (status === "live") return "caught_up";
     if (status === "failed") return "failed";
     if (failure() !== undefined) return "failed";
     return "idle";
   }
 
-  const recovery = Object.freeze({
+  const sync = Object.freeze({
     get status() { return recoveryStatus(); },
     get failure() { return failure(); },
     get strategy() { return recoveryStrategy; },
-    async recover() {
+    async synchronize() {
       const previousIncarnation = endpoint.incarnationId;
       recoveryFailure = undefined;
       try {
@@ -141,9 +142,9 @@ export function create_registry_echo<
         recoveryStrategy = result.outcome;
         recoveryFailure = undefined;
         const incarnationId = endpoint.incarnationId;
-        if (incarnationId === undefined) throw new Error("Aggregate recovery completed without authority identity.");
+        if (incarnationId === undefined) throw new Error("Aggregate synchronization completed without authority identity.");
         const sessionId = endpoint.session.sessionId;
-        if (sessionId === undefined) throw new Error("Aggregate recovery completed without an attached session.");
+        if (sessionId === undefined) throw new Error("Aggregate synchronization completed without an attached session.");
         return Object.freeze({
           strategy: result.outcome,
           sessionId,
@@ -154,14 +155,14 @@ export function create_registry_echo<
         });
       } catch (cause) {
         recoveryFailure ??= Object.freeze({
-          code: "LOCUS_RECOVERY_FAILED",
-          message: cause instanceof Error ? cause.message : "Aggregate Echo recovery failed.",
+          code: "LOCUS_SYNC_FAILED",
+          message: cause instanceof Error ? cause.message : "Aggregate Echo synchronization failed.",
           cause,
         });
         throw cause;
       }
     },
-    debug(): EchoRecoveryDiagnostics {
+    debug(): EchoSyncDiagnostics {
       return Object.freeze({
         status: recoveryStatus(),
         ...(recoveryStrategy === undefined ? {} : { strategy: recoveryStrategy }),
@@ -172,5 +173,5 @@ export function create_registry_echo<
     },
   });
 
-  return Object.freeze({ recovery, dispose });
+  return Object.freeze({ sync, dispose });
 }

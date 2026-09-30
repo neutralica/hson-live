@@ -1,6 +1,6 @@
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
-import { test_public_exposure, test_public_projection } from "./helpers/hosted-exposure.mts";
+import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import {
@@ -200,7 +200,7 @@ await check("document and interaction effects accept or reject as one authority 
   const map = map_fixture();
   const aggregate = internal_livemap_aggregate_authority(map);
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(map),
+    libraries: test_application_catalog(map),
     map,
     actions: {
       mixed: (context) => context.mutate((draft) => {
@@ -249,7 +249,7 @@ await check("Locus staging authors hidden descriptors while direct managed write
   const map = map_fixture();
   const descriptor = local("managed", "run", Hson.data.from(-0));
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(map),
+    libraries: test_application_catalog(map),
     map,
     actions: {
       add: (context) => context.mutate((draft) => add_interaction(draft, descriptor)),
@@ -732,10 +732,10 @@ await check("public Echo dispatcher preserves exact payload through configured L
   });
   const captured = internal_livemap_aggregate_authority(authorityMap).captureHosted();
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
-    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+    configured.libraries, configured.defaultProjection, configured.authorizeProjection);
   const effective = await normalize_locus_effective_projection(policy, configured.defaultProjection);
   const echoMap = client_projection_map({ authority: project_authority_snapshot(captured, effective),
-    localLibraries: {} }) as typeof authorityMap;
+    local: {} }) as typeof authorityMap;
   const pair = socket_pair();
   locus.connect(pair.server);
   const echo = create_recovery_test_driver({ socket: pair.client, map: echoMap });

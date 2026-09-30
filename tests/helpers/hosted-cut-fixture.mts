@@ -11,13 +11,13 @@ export async function hosted_cut_fixture() {
     private: { data: { value: "WORKER_PRIVATE_SENTINEL" }, schema: Data },
   });
   const locus = hsonLocus.create({ map, logicalMapId: "worker-projection-map", incarnationId: "worker-projection-incarnation",
-    exposure: [{ library: "page", exposure: "client-public" }, { library: "data", exposure: "client-public" },
-      { library: "private", exposure: "server-private" }],
+    libraries: [{ name: "page", ownership: "shared" }, { name: "data", ownership: "shared" },
+      { name: "private", ownership: "private" }],
     authorizeProjection: () => ({ libraries: ["page", "data"] }),
   });
   const session = await locus.session.create({ libraries: ["data", "page"] });
-  const cut = session.cut({ html: "page" });
-  const encoded = encode_ssr_bootstrap(cut.libs);
+  const cut = session.now({ html: "page" });
+  const encoded = encode_ssr_bootstrap(cut);
   const decoded = decode_ssr_bootstrap(encoded);
   locus.dispose();
   return { cut, encoded, decoded, hasDocument: "document" in globalThis };

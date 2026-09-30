@@ -34,14 +34,14 @@ add_interaction(map, { id: "hidden", subject: { library: "hiddenDoc", path: [99]
 
 const aggregate = internal_livemap_aggregate_authority(map);
 const complete = aggregate.captureHosted();
-const exposure = [
-  { library: "allowedData", exposure: "client-public" as const },
-  { library: "allowedPage", exposure: "client-public" as const },
-  { library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" as const },
-  { library: "hiddenDoc", exposure: "server-private" as const },
-  { library: "UNSELECTED_NAME_SENTINEL", exposure: "client-public" as const },
+const libraries = [
+  { name: "allowedData", ownership: "shared" as const },
+  { name: "allowedPage", ownership: "shared" as const },
+  { name: "PRIVATE_NAME_SENTINEL", ownership: "private" as const },
+  { name: "hiddenDoc", ownership: "private" as const },
+  { name: "UNSELECTED_NAME_SENTINEL", ownership: "shared" as const },
 ];
-const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority, exposure, undefined,
+const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority, libraries, undefined,
   () => ({ libraries: ["allowedData", "allowedPage", "PRIVATE_NAME_SENTINEL", "hiddenDoc", "UNSELECTED_NAME_SENTINEL"],
     systemFeatures: ["interactions"], writableDocuments: ["allowedPage"] }));
 const effective = await normalize_locus_effective_projection(policy,
@@ -69,13 +69,13 @@ for (const sentinel of ["PRIVATE_NAME_SENTINEL", "PRIVATE_ROOT_SENTINEL", "PRIVA
   "PRIVATE_INTERACTION_SENTINEL", "UNSELECTED_NAME_SENTINEL", "UNSELECTED_ROOT_SENTINEL", "UNSELECTED_SCHEMA_SENTINEL", "hiddenDoc"]) {
   assert.equal(encoded.includes(sentinel), false, `Excluded sentinel leaked: ${sentinel}`);
 }
-for (const forbidden of ["registryDigest", "issuedQuids", "epoch", "exposure", "totalLibraries", "originalIndex", "policy"]) {
+for (const forbidden of ["registryDigest", "issuedQuids", "epoch", "catalog", "ownership", "totalLibraries", "originalIndex", "policy"]) {
   assert.equal(Object.hasOwn(decoded, forbidden), false);
   assert.equal(encoded.includes(`"${forbidden}"`), false);
 }
 assert.equal(encoded.toLowerCase().includes("quid"), false);
 
-const client = client_projection_map({ authority: decoded, localLibraries: {
+const client = client_projection_map({ authority: decoded, local: {
   localData: { data: { value: "local" }, schema: DataSchema },
   localDoc: { document: "<aside/>", schema: LocalDocSchema },
 } });
@@ -92,23 +92,23 @@ assert.equal(replica.clientProjection()?.revision, decoded.revision);
 replica.dispose();
 const echo = create_recovery_test_driver({ map: client,
   socket: { send() {}, close() {}, onMessage() { return () => {}; }, onClose() { return () => {}; } } });
-assert.equal(echo.recovery.debug().lastAppliedRev, decoded.revision);
+assert.equal(echo.sync.debug().lastAppliedRev, decoded.revision);
 assert.equal(client.rev, 0);
 echo.dispose();
 assert.throws(() => client_projection_map({ authority: decoded,
-  localLibraries: { allowedData: { data: { value: "collision" }, schema: DataSchema } } }), /collides/i);
+  local: { allowedData: { data: { value: "collision" }, schema: DataSchema } } }), /collides/i);
 
 const disabled = await normalize_locus_effective_projection(policy, { libraries: ["allowedData"] });
 const noSystem = project_authority_snapshot(complete, disabled);
 assert.equal(noSystem.system, null);
 assert.deepEqual(noSystem.systemFeatures, []);
 assert.deepEqual(noSystem.libraries.map((entry) => entry.name), ["allowedData"]);
-const unauthorizedPolicy = make_locus_hosted_projection_policy(complete.registry, complete.authority, exposure, undefined,
+const unauthorizedPolicy = make_locus_hosted_projection_policy(complete.registry, complete.authority, libraries, undefined,
   () => ({ libraries: ["allowedData"] }));
 const unauthorized = project_authority_snapshot(complete, await normalize_locus_effective_projection(unauthorizedPolicy,
   { libraries: ["allowedPage", "allowedData"] }));
 assert.deepEqual(unauthorized.libraries.map((entry) => entry.name), ["allowedData"]);
-const readonlyPolicy = make_locus_hosted_projection_policy(complete.registry, complete.authority, exposure, undefined,
+const readonlyPolicy = make_locus_hosted_projection_policy(complete.registry, complete.authority, libraries, undefined,
   () => ({ libraries: ["allowedPage"] }));
 const readonlyPage = project_authority_snapshot(complete, await normalize_locus_effective_projection(readonlyPolicy, { libraries: ["allowedPage"] }));
 assert.deepEqual(readonlyPage.libraries.map((entry) => entry.name), ["allowedPage"]);
@@ -119,20 +119,20 @@ assert.deepEqual(zeroSnapshot.libraries, []);
 assert.ok(zeroSnapshot.system);
 assert.equal(encode_authority_projection_snapshot(zeroSnapshot).includes("ALLOWED_INTERACTION_SENTINEL"), false);
 const localOnly = client_projection_map({ authority: zeroSnapshot,
-  localLibraries: { localData: { data: { value: "only" }, schema: DataSchema } } });
+  local: { localData: { data: { value: "only" }, schema: DataSchema } } });
 assert.equal(localOnly.rev, 0);
 assert.equal(localOnly.lib("localData").mode, "data-object");
 const localDocumentOnly = client_projection_map({ authority: zeroSnapshot,
-  localLibraries: { localDoc: { document: "<aside/>", schema: LocalDocSchema } } });
+  local: { localDoc: { document: "<aside/>", schema: LocalDocSchema } } });
 assert.equal(localDocumentOnly.lib("localDoc").mode, "document");
-assert.throws(() => client_projection_map({ authority: zeroSnapshot, localLibraries: {} }), /no LiveMap/i);
+assert.throws(() => client_projection_map({ authority: zeroSnapshot, local: {} }), /no LiveMap/i);
 const zeroDisabled = project_authority_snapshot(complete, await normalize_locus_effective_projection(policy, { libraries: [] }));
 assert.equal(zeroDisabled.system, null);
 const localOnlyWithoutSystem = client_projection_map({ authority: zeroDisabled,
-  localLibraries: { localData: { data: { value: "only" }, schema: DataSchema } } });
+  local: { localData: { data: { value: "only" }, schema: DataSchema } } });
 assert.equal(localOnlyWithoutSystem.rev, 0);
 assert.equal(localOnlyWithoutSystem.lib("localData").mode, "data-object");
-assert.throws(() => client_projection_map({ authority: zeroDisabled, localLibraries: {} }), /no LiveMap/i);
+assert.throws(() => client_projection_map({ authority: zeroDisabled, local: {} }), /no LiveMap/i);
 
 const malformed = { ...decoded, libraries: [...decoded.libraries, decoded.libraries[0]] };
 assert.throws(() => admit_authority_projection_snapshot(malformed), /malformed/i);
@@ -142,7 +142,7 @@ assert.throws(() => admit_authority_projection_snapshot({ ...decoded,
   libraries: decoded.libraries.map((entry) => entry.name === "allowedData" ? { ...entry, root: decoded.libraries[1]!.root } : entry),
 }), /malformed/i);
 assert.throws(() => client_projection_map({ authority: { ...decoded, projectionDigest: "0".repeat(64) },
-  localLibraries: { localData: { data: { value: "safe" }, schema: DataSchema } } }), /malformed/i);
+  local: { localData: { data: { value: "safe" }, schema: DataSchema } } }), /malformed/i);
 assert.throws(() => decode_authority_projection_snapshot(encoded.replace('"format":"hson-exact-value"', '"format":"invalid"')), /malformed/i);
 const quidRoot = encode_hosted_root(parse_hson_exact_runtime("<main @000000001/>", { allowTopLevelDocumentText: true }));
 assert.throws(() => admit_authority_projection_snapshot({ ...decoded,

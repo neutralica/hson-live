@@ -6,17 +6,17 @@ import { decode_locus_message } from "../src/api/locus/locus.protocol.ts";
 import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection, HOSTED_PROJECTION_EGRESS_COMPLETE } from "../src/api/locus/locus.projection.ts";
-import type { LocusExposureEntry, LocusProjectionAuthorization } from "../src/types/locus.types.ts";
+import type { LocusLibraryCatalogEntry, LocusProjectionAuthorization } from "../src/types/locus.types.ts";
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>`;
 const PresentationSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const PresentationSchemaChanged: HsonSchema = Hson.schema`<type "data" content <value "string" extra "string">>`;
 const CredentialsSchema: HsonSchema = Hson.schema`<type "data" content <password "string">>`;
 const CredentialsSchemaChanged: HsonSchema = Hson.schema`<type "data" content <password "string" token "string">>`;
-const EXPOSURE: readonly LocusExposureEntry[] = Object.freeze([
-  { library: "page", exposure: "client-public" },
-  { library: "presentation", exposure: "client-public" },
-  { library: "credentials", exposure: "server-private" },
+const CATALOG: readonly LocusLibraryCatalogEntry[] = Object.freeze([
+  { name: "page", ownership: "shared" },
+  { name: "presentation", ownership: "shared" },
+  { name: "credentials", ownership: "private" },
 ]);
 const FENCE = Object.freeze({ logicalMapId: "projection-map", incarnationId: "projection-incarnation" });
 
@@ -32,8 +32,8 @@ function map(options: { presentationValue?: string; changedPublicSchema?: boolea
   });
 }
 
-function policy(authority: ReturnType<typeof map>, exposure = EXPOSURE) {
-  return make_locus_hosted_projection_policy(internal_livemap_aggregate_authority(authority).hostedRegistry(), FENCE, exposure);
+function policy(authority: ReturnType<typeof map>, catalog = CATALOG) {
+  return make_locus_hosted_projection_policy(internal_livemap_aggregate_authority(authority).hostedRegistry(), FENCE, catalog);
 }
 
 function grant(principal?: string): LocusProjectionAuthorization {
@@ -57,25 +57,25 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 {
   const authority = map();
   enable_interactions(authority);
-  assert.throws(() => hsonLocus.create({ map: authority, exposure: JSON.parse("null") }), /exposure configuration is required/i);
-  assert.throws(() => hsonLocus.create({ map: authority, exposure: EXPOSURE.slice(0, 2) }), /missing.*credentials/i);
-  assert.throws(() => hsonLocus.create({ map: authority, exposure: [...EXPOSURE, { library: "unknown", exposure: "client-public" }] }), /unknown application library/i);
-  assert.throws(() => hsonLocus.create({ map: authority, exposure: [...EXPOSURE, EXPOSURE[0]!] }), /duplicates/i);
-  assert.throws(() => hsonLocus.create({ map: authority, exposure: [...EXPOSURE,
-    { library: "page", exposure: "server-private" }] }), /duplicates/i);
-  assert.throws(() => hsonLocus.create({ map: authority, exposure: JSON.parse('[{"library":"page","exposure":"client-local"}]') }), /invalid value/i);
-  assert.throws(() => hsonLocus.create({ map: authority, exposure: [{ library: "page", exposure: "client-public" }] }), /missing/i);
-  const hosted = hsonLocus.create({ map: authority, exposure: EXPOSURE });
+  assert.throws(() => hsonLocus.create({ map: authority, libraries: JSON.parse("null") }), /application library catalog is required/i);
+  assert.throws(() => hsonLocus.create({ map: authority, libraries: CATALOG.slice(0, 2) }), /missing.*credentials/i);
+  assert.throws(() => hsonLocus.create({ map: authority, libraries: [...CATALOG, { name: "unknown", ownership: "shared" }] }), /unknown authority Library/i);
+  assert.throws(() => hsonLocus.create({ map: authority, libraries: [...CATALOG, CATALOG[0]!] }), /duplicate/i);
+  assert.throws(() => hsonLocus.create({ map: authority, libraries: [...CATALOG,
+    { name: "page", ownership: "private" }] }), /duplicate/i);
+  assert.throws(() => hsonLocus.create({ map: authority, libraries: JSON.parse('[{"name":"page","ownership":"bogus"}]') }), /invalid|ownership/i);
+  assert.throws(() => hsonLocus.create({ map: authority, libraries: [{ name: "page", ownership: "shared" }] }), /missing/i);
+  const hosted = hsonLocus.create({ map: authority, libraries: CATALOG });
   hosted.dispose();
 
   const one = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
-  assert.throws(() => hsonLocus.create({ map: one, exposure: [] }), /missing.*page/i);
-  hsonLocus.create({ map: one, exposure: [{ library: "page", exposure: "server-private" }] }).dispose();
-  const allPrivate = hsonLocus.create({ map: map(), exposure: EXPOSURE.map((entry) => ({ ...entry, exposure: "server-private" as const })) });
+  assert.throws(() => hsonLocus.create({ map: one, libraries: [] }), /missing.*page/i);
+  hsonLocus.create({ map: one, libraries: [{ name: "page", ownership: "private" }] }).dispose();
+  const allPrivate = hsonLocus.create({ map: map(), libraries: CATALOG.map((entry) => ({ name: entry.name, ownership: "private" as const })) });
   allPrivate.dispose();
 }
 
-// Request, exposure, and read authorization are independent. No authorizer denies all.
+// Request, libraries, and read authorization are independent. No authorizer denies all.
 {
   const authority = map();
   enable_interactions(authority);
@@ -83,7 +83,7 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   const denied = await normalize_locus_effective_projection(base, { libraries: ["page", "presentation"] });
   assert.deepEqual(denied.libraries, []);
   assert.equal(denied.includesLibrary("page"), false);
-  const authorized = make_locus_hosted_projection_policy(base.registry, FENCE, EXPOSURE, undefined,
+  const authorized = make_locus_hosted_projection_policy(base.registry, FENCE, CATALOG, undefined,
     ({ connection }) => grant(connection?.principalId));
   const alice = await normalize_locus_effective_projection(authorized,
     { libraries: ["presentation", "credentials", "page"], systemFeatures: ["interactions"] }, { principalId: "alice" });
@@ -103,13 +103,13 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   const empty = await normalize_locus_effective_projection(authorized, { libraries: [] }, { principalId: "alice" });
   assert.deepEqual(empty.libraries, []);
   assert.deepEqual((await normalize_locus_effective_projection(authorized, undefined, { principalId: "alice" })).libraries, []);
-  const configuredDefault = make_locus_hosted_projection_policy(base.registry, FENCE, EXPOSURE,
+  const configuredDefault = make_locus_hosted_projection_policy(base.registry, FENCE, CATALOG,
     { libraries: ["presentation", "page"] }, ({ connection }) => grant(connection?.principalId));
   assert.deepEqual((await normalize_locus_effective_projection(configuredDefault, undefined, { principalId: "alice" }))
     .libraries.map((entry) => entry.name), ["page", "presentation"]);
 
   const allPrivatePolicy = make_locus_hosted_projection_policy(base.registry, FENCE,
-    EXPOSURE.map((entry) => ({ ...entry, exposure: "server-private" as const })), undefined, () => ({ libraries: ["page"] }));
+    CATALOG.map((entry) => ({ name: entry.name, ownership: "private" as const })), undefined, () => ({ libraries: ["page"] }));
   assert.deepEqual((await normalize_locus_effective_projection(allPrivatePolicy, { libraries: ["page"] })).libraries, []);
 }
 
@@ -118,15 +118,15 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   const request = { libraries: ["presentation"] };
   const authorize = () => ({ libraries: ["presentation"] });
   const first = await normalize_locus_effective_projection(
-    make_locus_hosted_projection_policy(policy(map()).registry, FENCE, EXPOSURE, undefined, authorize), request);
+    make_locus_hosted_projection_policy(policy(map()).registry, FENCE, CATALOG, undefined, authorize), request);
   const same = await normalize_locus_effective_projection(
-    make_locus_hosted_projection_policy(policy(map({ presentationValue: "changed" })).registry, FENCE, EXPOSURE, undefined, authorize), request);
+    make_locus_hosted_projection_policy(policy(map({ presentationValue: "changed" })).registry, FENCE, CATALOG, undefined, authorize), request);
   const hiddenChanged = await normalize_locus_effective_projection(
-    make_locus_hosted_projection_policy(policy(map({ changedPrivateSchema: true })).registry, FENCE, EXPOSURE, undefined, authorize), request);
+    make_locus_hosted_projection_policy(policy(map({ changedPrivateSchema: true })).registry, FENCE, CATALOG, undefined, authorize), request);
   const includedChanged = await normalize_locus_effective_projection(
-    make_locus_hosted_projection_policy(policy(map({ changedPublicSchema: true })).registry, FENCE, EXPOSURE, undefined, authorize), request);
+    make_locus_hosted_projection_policy(policy(map({ changedPublicSchema: true })).registry, FENCE, CATALOG, undefined, authorize), request);
   const differentSet = await normalize_locus_effective_projection(
-    make_locus_hosted_projection_policy(policy(map()).registry, FENCE, EXPOSURE, undefined,
+    make_locus_hosted_projection_policy(policy(map()).registry, FENCE, CATALOG, undefined,
       () => ({ libraries: ["page", "presentation"] })), { libraries: ["page", "presentation"] });
   assert.equal(first.digest, same.digest);
   assert.equal(first.digest, hiddenChanged.digest);
@@ -138,7 +138,7 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
     credentials: { data: { password: "SECRET_ROOT" }, schema: CredentialsSchema },
   });
   const changedRevisionPolicy = make_locus_hosted_projection_policy(
-    internal_livemap_aggregate_authority(changedRevisionMap).hostedRegistry(), FENCE, EXPOSURE, undefined, authorize);
+    internal_livemap_aggregate_authority(changedRevisionMap).hostedRegistry(), FENCE, CATALOG, undefined, authorize);
   const beforeRevision = await normalize_locus_effective_projection(changedRevisionPolicy, request);
   changedRevisionMap.lib("presentation").at(["value"]).set("after-revision");
   assert.equal(changedRevisionMap.rev, 1);
@@ -152,7 +152,7 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 // Session creation stores one frozen effective scope. Reattachment reuses it; revocation fences it.
 {
   const authority = map();
-  const server = create_locus_hosted_aggregate_socket_internal({ map: authority, exposure: EXPOSURE,
+  const server = create_locus_hosted_aggregate_socket_internal({ map: authority, libraries: CATALOG,
     authorizeProjection: ({ connection }) => grant(connection?.principalId) });
   const first = attachment(server, "alice");
   await first.attached.operations.submit({ type: "session-create", id: "a", projection: { libraries: ["page"] } });
@@ -192,7 +192,7 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 // second request on the same attachment cannot replace that pending scope.
 {
   let decide: ((grant: LocusProjectionAuthorization) => void) | undefined;
-  const server = create_locus_hosted_aggregate_socket_internal({ map: map(), exposure: EXPOSURE,
+  const server = create_locus_hosted_aggregate_socket_internal({ map: map(), libraries: CATALOG,
     authorizeProjection: () => new Promise<LocusProjectionAuthorization>((resolve) => { decide = resolve; }) });
   const context = { principalId: "alice" };
   const finite: Array<{ type: string; readonly [field: string]: unknown }> = [];
@@ -221,18 +221,18 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   server.dispose();
 }
 
-// The deployment supplies exposure again on restart; durable authority records contain no exposure classification.
+// The deployment supplies the catalog again on restart; durable authority records contain no ownership classification.
 {
   const adapter = new MemoryCheckpointAdapter();
-  const first = await create_persistent_locus({ map: map(), exposure: EXPOSURE, logicalMapId: "projection-persist", persistence: adapter });
+  const first = await create_persistent_locus({ map: map(), libraries: CATALOG, logicalMapId: "projection-persist", persistence: adapter });
   await first.checkpoint();
   const checkpoint = adapter.state("projection-persist")?.checkpoint;
-  assert.equal(JSON.stringify(checkpoint).includes("server-private"), false);
-  assert.equal(JSON.stringify(checkpoint).includes("client-public"), false);
+  assert.equal(JSON.stringify(checkpoint).includes("private"), false);
+  assert.equal(JSON.stringify(checkpoint).includes("shared"), false);
   first.dispose();
-  await assert.rejects(() => create_persistent_locus({ map: map(), exposure: EXPOSURE.slice(0, 2), logicalMapId: "projection-persist", persistence: adapter }), /missing.*credentials/i);
-  const restored = await create_persistent_locus({ map: map(), exposure: EXPOSURE, logicalMapId: "projection-persist", persistence: adapter });
+  await assert.rejects(() => create_persistent_locus({ map: map(), libraries: CATALOG.slice(0, 2), logicalMapId: "projection-persist", persistence: adapter }), /missing.*credentials/i);
+  const restored = await create_persistent_locus({ map: map(), libraries: CATALOG, logicalMapId: "projection-persist", persistence: adapter });
   restored.dispose();
 }
 
-process.stdout.write("Step 6A exposure and session projection acceptance passed.\n");
+process.stdout.write("Step 6A ownership catalog and session projection acceptance passed.\n");

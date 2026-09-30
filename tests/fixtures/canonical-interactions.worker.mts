@@ -1,7 +1,7 @@
 import { create_recovery_test_driver } from "../helpers/replica-driver.mts";
 import { client_projection_map } from "../helpers/client-projection.mts";
 import { parentPort } from "node:worker_threads";
-import { test_public_projection } from "../helpers/hosted-exposure.mts";
+import { test_public_projection } from "../helpers/hosted-catalog.mts";
 import {
   Hson,
   HsonData,
@@ -78,10 +78,10 @@ const locus = hsonLocus.create({
 });
 const captured = internal_livemap_aggregate_authority(authorityMap).captureHosted();
 const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
-  configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+  configured.libraries, configured.defaultProjection, configured.authorizeProjection);
 const effective = await normalize_locus_effective_projection(policy, configured.defaultProjection);
 const replicaMap = client_projection_map({ authority: project_authority_snapshot(captured, effective),
-  localLibraries: {} }) as typeof authorityMap;
+  local: {} }) as typeof authorityMap;
 const pair = socket_pair();
 locus.connect(pair.server);
 const echo = create_recovery_test_driver({ socket: pair.client, map: replicaMap });

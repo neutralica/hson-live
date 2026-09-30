@@ -18,9 +18,9 @@ function make_map() {
     B: { data: { value: "B0" }, schema },
   });
 }
-const exposure = [
-  { library: "A", exposure: "client-public" as const },
-  { library: "B", exposure: "client-public" as const },
+const libraries = [
+  { name: "A", ownership: "shared" as const },
+  { name: "B", ownership: "shared" as const },
 ];
 function set_value(draft: LocusHostedAggregateDraft, name: "A" | "B", value: string) {
   const library = draft.lib(name);
@@ -99,7 +99,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_registry_locus({ map, exposure,
+  const host = await create_persistent_registry_locus({ map, libraries,
     defaultProjection: { libraries: ["A"] }, authorizeProjection: ({ requested }) => requested,
     logicalMapId: "z1z2-persistent-rejection", persistence });
   let installed = 0;
@@ -131,7 +131,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   assert.equal(messages(b, "commit").length, 1);
   host.dispose();
   const restoredMap = make_map();
-  const restored = await create_persistent_registry_locus({ map: restoredMap, exposure,
+  const restored = await create_persistent_registry_locus({ map: restoredMap, libraries,
     logicalMapId: "z1z2-persistent-rejection", persistence });
   assert.equal(restored.rev, 1);
   assert.equal(restoredMap.lib("A").snap(["value"]), "A-small");
@@ -144,7 +144,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_registry_locus({ map, exposure,
+  const host = await create_persistent_registry_locus({ map, libraries,
     logicalMapId: "z1z2-clean-append", persistence });
   persistence.mode = "clean";
   await assert.rejects(host.mutate((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
@@ -161,7 +161,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_registry_locus({ map, exposure,
+  const host = await create_persistent_registry_locus({ map, libraries,
     logicalMapId: "z1z2-uncertain-append", persistence });
   persistence.mode = "uncertain";
   await assert.rejects(host.mutate((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
@@ -170,7 +170,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   await assert.rejects(host.mutate((draft) => draft.lib("A").at(["value"]).set("A2")), /faulted/i);
   assert.equal(persistence.appendCalls.length, 1);
   host.dispose();
-  const restored = await create_persistent_registry_locus({ map: make_map(), exposure,
+  const restored = await create_persistent_registry_locus({ map: make_map(), libraries,
     logicalMapId: "z1z2-uncertain-append", persistence });
   assert.equal(restored.rev, 1);
   assert.equal(restored.map.lib("A").snap(["value"]), "A1");
@@ -180,7 +180,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 // A resumably disconnected session remains in the preaccept roster.
 {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ map, exposure,
+  const server = create_locus_hosted_aggregate_socket_internal({ map, libraries,
     authorizeProjection: ({ requested }) => requested, maxWireBytes: 30_000 });
   const disconnected = await session(server, "A");
   disconnected.close();
@@ -196,7 +196,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   attached.client.send(JSON.stringify({ type: "recover", id: "recovery-A", logicalMapId: server.logicalMapId }));
   await settle();
   assert.equal(messages(attached, "recovery-caught-up").length, 1);
-  assert.equal(messages(attached, "error").some((message) => message.code === "LOCUS_RECOVERY_FAILED"), false);
+  assert.equal(messages(attached, "error").some((message) => message.code === "LOCUS_SYNC_FAILED"), false);
   await server.mutate((draft) => set_value(draft, "A", "A-small"));
   assert.equal(server.rev, 1);
   server.dispose();
@@ -205,7 +205,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 // Revocation before the roster cut removes the session's future obligation.
 {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ map, exposure,
+  const server = create_locus_hosted_aggregate_socket_internal({ map, libraries,
     authorizeProjection: ({ requested }) => requested, maxWireBytes: 30_000 });
   const revoked = await session(server, "A");
   const sessionId = messages(revoked, "session-created")[0]?.sessionId;
@@ -220,7 +220,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 // request that would otherwise leave an unprovable future wrapper size.
 {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ map, exposure,
+  const server = create_locus_hosted_aggregate_socket_internal({ map, libraries,
     authorizeProjection: ({ requested }) => requested });
   const connection = await session(server, "A", false);
   connection.client.send(JSON.stringify({ type: "recover", id: "r".repeat(1_025), logicalMapId: server.logicalMapId }));
@@ -237,7 +237,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   const held = deferred();
   const entered = deferred();
   let hold = true;
-  const server = create_locus_hosted_aggregate_socket_internal({ map, exposure,
+  const server = create_locus_hosted_aggregate_socket_internal({ map, libraries,
     authorizeProjection: ({ requested }) => requested, maxWireBytes: 30_000,
     internal: { afterRecoveryCut: async () => { if (hold) { entered.resolve(); await held.promise; } } } });
   const recovering = await session(server, "A", false);
@@ -253,7 +253,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   await settle();
   assert.equal(messages(recovering, "recovery-caught-up").length, 1);
   assert.equal(messages(recovering, "commit").length, 1);
-  assert.equal(messages(recovering, "error").some((message) => message.code === "LOCUS_RECOVERY_FAILED"), false);
+  assert.equal(messages(recovering, "error").some((message) => message.code === "LOCUS_SYNC_FAILED"), false);
   server.dispose();
 }
 
@@ -262,7 +262,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   const persistence = new MemoryPersistence();
   const map = make_map();
   const authorization = deferred();
-  const host = await create_persistent_registry_locus({ map, exposure,
+  const host = await create_persistent_registry_locus({ map, libraries,
     logicalMapId: "z1z2-reservation", persistence,
     authorizeProjection: async ({ requested }) => { await authorization.promise; return requested; } });
   const pending = persistence.deferNextAppend();
@@ -304,7 +304,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   assert.equal(persistence.state("z1z2-postinstall-fault")?.commits.length, 1);
   await assert.rejects(host.mutate((draft) => set_value(draft, "A", "A2")), /faulted/i);
   host.dispose();
-  const restored = await create_persistent_registry_locus({ map: make_map(), exposure,
+  const restored = await create_persistent_registry_locus({ map: make_map(), libraries,
     logicalMapId: "z1z2-postinstall-fault", persistence });
   assert.equal(restored.rev, 1);
   restored.dispose();

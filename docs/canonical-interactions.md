@@ -20,7 +20,7 @@ The corresponding public types are `InteractionDescriptor`, `InteractionListener
 
 `enable_interactions(map)` adds one schema-governed reserved data Library inside the same aggregate authority. Repeated enablement is idempotent. Enablement must happen before the aggregate's first transition and before exclusive authority management begins; late enablement rejects rather than reconfiguring a live topology.
 
-The reserved Library contributes to aggregate revision, capture, replay, hosted registry construction, Echo mirror construction, snapshot recovery, and authority transitions. Its structural scope excludes it from normal application Library selection and commit operation enumeration. Its transport name is not a public selection authority, and no Library handle is exposed.
+The reserved Library contributes to aggregate revision, capture, replay, hosted registry construction, Echo mirror construction, reconcile synchronization, and authority transitions. Its structural scope excludes it from normal application Library selection and commit operation enumeration. Its transport name is not a public selection authority, and no Library handle is exposed. Local canonical interaction descriptors remain deliberately outside the Step 3B local-initializer model pending a dedicated interaction-ownership design.
 
 Hson owns one fixed, closed Schema. Its semantic shape is:
 
@@ -110,13 +110,13 @@ Each installed listener belongs to the exact current HsonNode realization. The d
 
 `once` means once per concrete materialization. An unrelated reconciliation does not reinstall a consumed listener on the same descriptor semantics and exact node. Descriptor replacement, remove and re-add, activation disposal and reactivation, or a fresh exact subject realization creates a fresh materialization. Consumption is runtime-only.
 
-## Failures, recovery, and disposal
+## Failures, synchronization, and disposal
 
 Missing subjects, unknown local keys, absent authoritative dispatchers, listener installation failures, and rejected invocation promises are isolated per descriptor. The optional failure observer receives the descriptor, a broad phase, and the underlying cause. Descriptors remain canonical; unrelated descriptors continue to function. No invocation status is added to canonical state.
 
 Activation construction is exception-safe. Input capture and validation happen before observers or listeners are installed. If later initialization cannot complete, every observer, runtime record, and listener created by that activation attempt is rolled back before the error escapes.
 
-Hosted capture and recovery include the hidden Library atomically. Restored current descriptors become reconciliation truth: stale listeners disappear and current descriptors materialize once against the compatible active tree. Runtime records are never replayed and are reconstructable from canonical state, fixed application capabilities, and the active tree.
+Hosted capture and synchronization include the hidden Library atomically. Reconciled current descriptors become truth: stale listeners disappear and current descriptors materialize once against the compatible active tree. Runtime records are never replayed and are reconstructable from canonical state, fixed application capabilities, and the active tree.
 
 The activation disposer is idempotent. It stops observation and removes only listeners owned by that activation. Canonical descriptors, the `LiveTree`, Mirror, and unrelated imperative listeners remain intact. Mirror and interaction activation have independent lifecycles.
 

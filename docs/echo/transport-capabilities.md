@@ -21,7 +21,7 @@ through the physical attachment that submitted its request.
 ## Ordered synchronization
 
 Synchronization begins or resumes from replica revision and fence evidence and delivers a
-typed recovery plan, current/replay/snapshot material, recovery tail, caught-up
+typed synchronization plan, current/replay/reconcile material, synchronization tail, caught-up
 boundary, and ordered live authority publications. Each authority revision in
 the Echo client stream carries either a graph commit or generic progress with
 no graph effect. Client commits contain portable application and system effects;
@@ -29,13 +29,13 @@ replacement lineage expresses surviving subjects. Neither client graph content
 nor snapshots carry generated Locus QUIDs. Action `HsonData` is not used as a
 replacement commit format.
 
-Locus installs live observation before recovery transfer completes. Revisions
+Locus installs live observation before synchronization transfer completes. Revisions
 accepted across that cut are retained as tail or pending-live output, so the
-internal seam does not turn recovery into a separate fetch followed by a later
+internal seam does not turn synchronization into a separate fetch followed by a later
 subscription.
 
 Projected registry digest, selected-library identity, topology evidence, and
-global recovery ordering are layered over this synchronization lifecycle. They
+global authority ordering is layered over this synchronization lifecycle. It
 do not define a second transport attachment. Hosted WebSocket envelope
 shape, format tags, exact `resultData` encoding, and frame byte limits remain
 adapter concerns.
@@ -49,7 +49,7 @@ physical transport attachment. The attachment epoch fences stale attachments.
 An Echo `clientId` remains logical request-lineage identity and is not a
 security principal.
 
-Recovery is semantic; reconnect is transport lifecycle. Authority settlement
+Synchronization is semantic; reconnect is transport lifecycle. Authority settlement
 is likewise distinct from Echo replica convergence. AsyncLiveTree continues to
 wait for the accepted operation's `completionRev`, delivered later through
 ordered authority synchronization, and Mirror/DOM realization remains a

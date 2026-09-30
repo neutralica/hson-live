@@ -1,32 +1,33 @@
 # Authorized hosted client projection
 
-LiveMap owns a library registry that may grow at runtime. Locus governs the complete registry and separate system state. A one-library registry uses the same hosted path as a larger registry. Every application library has exactly one `client-public` or `server-private` exposure entry. Exposure makes a library eligible for a client projection; the session request and `authorizeProjection` decide what the session receives. With no authorizer, read, system-feature, and built-in document-write grants are empty.
+Locus owns a single current authority map containing private and shared libraries, plus a deployment catalog of canonical local initializers. Local definitions are not installed in `locus.map`, committed, checkpointed, or replayed. The session request and `authorizeProjection` decide which shared state and local initializers may be delivered. With no authorizer, all grants are empty.
 
 ```ts
 const locus = hsonLocus.create({
   map,
-  exposure: [
-    { library: "page", exposure: "client-public" },
-    { library: "credentials", exposure: "server-private" },
+  libraries: [
+    { name: "page", ownership: "shared" },
+    { name: "credentials", ownership: "private" },
+    { name: "ui", ownership: "local", initializer: { data: { open: false }, schema: UiSchema } },
   ],
   authorizeProjection: () => ({ libraries: ["page"], writableDocuments: [] }),
 });
 ```
 
-A retained session stores one normalized effective projection, digest, and sequence. Create one with `await locus.session.create({ libraries: ["page"] }, { connection: { principalId: "alice" } })`, without a socket. Request membership, application ownership, client-public exposure, and read authorization must all hold. Broader unrequested grants do not enter the scope. With no authorizer, read, write, and system grants remain empty.
+A retained session stores one normalized effective composition, digest, and sequence. Request membership, ownership, and read authorization must all hold. A local grant authorizes seed delivery only; it never creates server write authority.
 
 `session.update(request, context?)` reruns authorization for scope changes. Connected sessions use their current connection context; server-created sessions retain their creation context, and disconnected connection-created sessions require current trusted context. Principal continuity remains enforced. Future public libraries do not automatically enter an existing grant. `defaultProjection` is only a default request, subject to the same authorization.
 
-`session.cut()` returns `{ libs }`; `session.cut({ html: "page" })` returns `{ libs, html, document }`. `libs` contains only included public contracts, QUID-free roots, captured document CSS, authority revision/identity, permitted system state, and writable-document grants. The HTML selection belongs only to this output operation and must already be in scope. Deliver `session.credential` separately for later Echo reattachment. Transferred state alone grants no session or write authority.
+`session.now()` returns `{ format, libs, local, initializerDigest }`; the HTML form additionally returns `{ html, document }`. `libs` remains exclusively current shared authority state. `local` contains canonical QUID-free initializers with Schema, root, document CSS, and content fingerprints. HTML must name an in-scope shared document. Deliver `session.credential` separately.
 
-`await hsonEcho.replicate({ cut, credential, socket })` admits the authorized authority projection and synchronizes its replica. Echo's authority cursor starts at the snapshot's authority revision and advances through current, replay, or snapshot recovery. Generated QUIDs stay in their runtime. Client-local library ownership remains under review separately from replica establishment.
+`await hsonEcho.init({ now, credential, socket })` structurally admits both partitions, verifies shared content and the initializer set against the retained session, creates missing local libraries, and synchronizes shared state through `current`, `replay`, or `reconcile`. Existing local state is preserved. Echo exposes this automatic process through read-only `echo.sync` diagnostics.
 
-Every accepted authority revision yields one session-specific projected commit or progress event. A mixed transition remains atomic for its visible effects. Invisible revisions yield progress at the original authority revision. Retained `library-add` has the same filtered portable topology form as live projection; later writes follow its authority revision. A disconnected expansion replays missed revisions under the prior exact grant, then sends a `projection-change` with current newly granted roots at the recovery cut. Echo applies that change before queued live traffic in the existing composed LiveMap. A contraction sends the current authorized projection as a session contract change, removing only revoked authority-owned libraries. When replay is unavailable, a current projected snapshot reconciles authority-owned topology and state before the queued tail. Unchanged handles and local libraries remain valid; revoked handles remain stale even after a later regrant. Hidden topology remains absent, and a client-local name collision fences installation.
+Every accepted authority revision yields one session-specific projected commit or progress event. Reconcile derives the same current shared session view used by `session.now()` and updates only the shared partition in place. A scope update can add an authorized local initializer; Echo verifies and installs it once when absent. Retaining, removing, or re-adding the name preserves an existing client-owned instance. A changed compatible seed affects only new or missing instances; an incompatible mode or Schema fails clearly instead of migrating state.
 
-Hosted commit and progress frames carry the effective session projection sequence and digest. Echo checks both before applying semantic state. Projection changes use their own sequence and never fabricate an authority revision. A projected snapshot fallback advances the authority cursor to its captured authority position; client `map.rev` changes only when its semantic state changes.
+Hosted commit and progress frames carry the effective session projection sequence and digest. Echo checks both before applying semantic state. Projection changes use their own sequence and never fabricate an authority revision. Reconcile advances the authority cursor to its captured position; client `map.rev` changes only when semantic client state changes.
 
-Hosted continuation receives that cut's admitted `libs`, an Echo replica, and the explicit document handle being adopted. Multiple documents require explicit selection. It checks authority, contract, roots, and revision, then waits for recovery. The application owns its response shell and state-carrier placement.
+Hosted continuation receives the admitted `now` composition, credential, socket, and explicit shared document being adopted. It initializes local definitions without treating them as the SSR document, adopts the shared DOM, binds Mirror, and completes sync. Local canonical interaction descriptors are deliberately deferred; the enabled interaction domain remains projected shared authority state.
 
 The active formats identify distinct contracts: `hson-authority-projection-snapshot` for projected state, `hson-locus-live-projected-client-commit` and `hson-locus-live-projected-client-wire` for live and retained effects, `hson-locus-hosted-aggregate-message` for the hosted socket, and `hson-ssr-bootstrap` for projected hosted SSR. Local SSR uses the distinct `libraries` payload family. Unknown format identities and malformed payloads reject.
 
-Durable persistence stores complete server authority state without generated QUIDs or exposure policy. Its current checkpoint is the chunked `hson-locus-durable-aggregate-checkpoint` manifest with durable records and tail. It is never a client projection or SSR payload. Client-local libraries remain local.
+Durable persistence stores complete private/shared authority state without generated QUIDs or ownership policy. Local initializer definitions remain deployment configuration and evolving local state remains client-owned.

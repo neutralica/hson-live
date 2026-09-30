@@ -11,7 +11,7 @@ export function create_locus<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: LocusOptions<TMap, TActions>): Locus<TMap, TActions> {
   if (typeof options !== "object" || options === null || !is_public_multi_library_livemap(options.map)) {
-    throw new TypeError("Hosted Locus requires a library registry and explicit exposure policy.");
+    throw new TypeError("Hosted Locus requires a LiveMap and explicit application library catalog.");
   }
   return create_registry_locus(options);
 }
@@ -22,7 +22,7 @@ export async function create_persistent_locus<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: PersistentLocusOptions<TMap, TActions>): Promise<PersistentLocus<TMap, TActions>> {
   if (typeof options !== "object" || options === null || !is_public_multi_library_livemap(options.map)) {
-    throw new TypeError("Persistent hosted Locus requires a library registry and explicit exposure policy.");
+    throw new TypeError("Persistent hosted Locus requires a LiveMap and explicit application library catalog.");
   }
   return create_persistent_registry_locus(options);
 }

@@ -1,6 +1,7 @@
 import type {
   LocusConnectionContext,
-  LocusExposureEntry,
+  LocusLibraryCatalogEntry,
+  LocusLocalInitializer,
   LocusProjectionAuthorization,
   LocusProjectionAuthorizer,
   LocusProjectionSystemFeature,
@@ -9,6 +10,8 @@ import type {
 import type { HostedAuthorityFence, HostedRegistry, HostedRegistryEntry } from "../livemap/livemap.hosted.js";
 import { hosted_sha256 } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
+import { locus_local_initializer_digest, make_locus_application_catalog, type LocusApplicationCatalog } from "./locus.local-initializer.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 
 /** Nominal hosted client egress is governed by the stored session projection. */
 export const HOSTED_PROJECTION_EGRESS_COMPLETE = true;
@@ -27,10 +30,14 @@ export type LocusProjectedLibraryContract = Readonly<Pick<HostedRegistryEntry, "
 export type LocusEffectiveProjection = Readonly<{
   authority: HostedAuthorityFence;
   libraries: readonly LocusProjectedLibraryContract[];
+  local: readonly LocusLocalInitializer[];
+  initializerDigest: string;
+  compositionDigest: string;
   systemFeatures: readonly LocusProjectionSystemFeature[];
   writableDocuments: readonly string[];
   digest: string;
   includesLibrary: (name: string) => boolean;
+  includesLocal: (name: string) => boolean;
   canAuthorDocument: (name: string) => boolean;
   hasSystemFeature: (feature: LocusProjectionSystemFeature) => boolean;
 }>;
@@ -38,78 +45,82 @@ export type LocusEffectiveProjection = Readonly<{
 export type LocusHostedProjectionPolicy = Readonly<{
   registry: HostedRegistry;
   authority: HostedAuthorityFence;
-  exposure: ReadonlyMap<string, "server-private" | "client-public">;
+  ownership: ReadonlyMap<string, "private" | "shared">;
+  local: ReadonlyMap<string, LocusLocalInitializer>;
   defaultProjection?: LocusRequestedProjection;
   authorizeProjection?: LocusProjectionAuthorizer;
   /** Install a prevalidated hosted batch before the authority publishes it. @internal */
-  installRuntimeExposure: (entries: readonly LocusExposureEntry[], registry: HostedRegistry) => void;
+  installRuntimeOwnership: (entries: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[], registry: HostedRegistry) => void;
 }>;
 
 /** Validate deployment policy against the restored/current application registry. */
 export function make_locus_hosted_projection_policy(
   registry: HostedRegistry,
   authority: HostedAuthorityFence,
-  exposureEntries: readonly LocusExposureEntry[],
+  libraryEntries: readonly LocusLibraryCatalogEntry[],
   defaultProjection?: LocusRequestedProjection,
   authorizeProjection?: LocusProjectionAuthorizer,
+  map?: LiveMap,
 ): LocusHostedProjectionPolicy {
-  if (!Array.isArray(exposureEntries)) throw new Error("Hosted Locus exposure configuration is required.");
-  const application = new Map(registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => [entry.name, entry]));
-  const exposure = new Map<string, "server-private" | "client-public">();
-  for (const entry of exposureEntries) {
-    if (typeof entry !== "object" || entry === null || typeof entry.library !== "string" || !application.has(entry.library)) {
-      throw new Error("Hosted Locus exposure configuration contains an unknown application library.");
+  const catalog = map === undefined ? (() => {
+    if (!Array.isArray(libraryEntries) || libraryEntries.some((entry) => entry.ownership === "local")) {
+      throw new Error("Local initializer catalog validation requires its Locus map.");
     }
-    if (exposure.has(entry.library)) throw new Error(`Hosted Locus exposure configuration duplicates ${JSON.stringify(entry.library)}.`);
-    if (entry.exposure !== "server-private" && entry.exposure !== "client-public") {
-      throw new Error(`Hosted Locus exposure configuration has an invalid value for ${JSON.stringify(entry.library)}.`);
+    const application = new Set(registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name));
+    const ownership = new Map<string, "private" | "shared">();
+    for (const entry of libraryEntries) {
+      if (typeof entry !== "object" || entry === null || typeof entry.name !== "string"
+        || !application.has(entry.name) || ownership.has(entry.name)
+        || (entry.ownership !== "private" && entry.ownership !== "shared")) {
+        throw new Error("Locus application library catalog is invalid.");
+      }
+      ownership.set(entry.name, entry.ownership);
     }
-    exposure.set(entry.library, entry.exposure);
-  }
-  for (const name of application.keys()) {
-    if (!exposure.has(name)) throw new Error(`Hosted Locus exposure configuration is missing ${JSON.stringify(name)}.`);
-  }
+    for (const name of application) if (!ownership.has(name)) throw new Error(`Locus application library catalog is missing ${JSON.stringify(name)}.`);
+    return Object.freeze({ ownership, local: new Map<string, LocusLocalInitializer>() });
+  })() : make_locus_application_catalog(map, libraryEntries);
   if (authorizeProjection !== undefined && typeof authorizeProjection !== "function") {
     throw new Error("Hosted Locus projection authorizer must be a function.");
   }
   if (defaultProjection !== undefined) normalize_request(defaultProjection);
   let currentRegistry = registry;
-  return Object.freeze({ get registry() { return currentRegistry; }, authority: Object.freeze({ ...authority }), exposure,
+  return Object.freeze({ get registry() { return currentRegistry; }, authority: Object.freeze({ ...authority }),
+    ownership: catalog.ownership, local: catalog.local,
     ...(defaultProjection === undefined ? {} : { defaultProjection: normalize_request(defaultProjection) }),
     ...(authorizeProjection === undefined ? {} : { authorizeProjection }),
-    installRuntimeExposure(entries: readonly LocusExposureEntry[], nextRegistry: HostedRegistry) {
+    installRuntimeOwnership(entries, nextRegistry: HostedRegistry) {
       // The caller validates the entire policy before admission. This install
       // runs in the prepared transition's publication boundary and cannot fail.
-      for (const entry of entries) exposure.set(entry.library, entry.exposure);
+      for (const entry of entries) catalog.ownership.set(entry.name, entry.ownership);
       currentRegistry = nextRegistry;
     },
   });
 }
 
 /** Validate a complete per-library hosted classification before durable acceptance. */
-export function runtime_locus_exposure_entries(
+export function runtime_locus_ownership_entries(
   names: readonly string[],
-  values: Readonly<Record<string, "server-private" | "client-public">> | undefined,
-): readonly LocusExposureEntry[] {
+  values: Readonly<Record<string, "private" | "shared">> | undefined,
+): readonly Readonly<{ name: string; ownership: "private" | "shared" }>[] {
   const requested = values ?? {};
   if (typeof requested !== "object" || requested === null || Array.isArray(requested)) {
-    throw new Error("Hosted exposure must be a per-Library record.");
+    throw new Error("Hosted ownership must be a per-Library record.");
   }
   const candidates = new Set(names);
-  const explicit = new Map<string, "server-private" | "client-public">();
+  const explicit = new Map<string, "private" | "shared">();
   for (const name of Reflect.ownKeys(requested)) {
-    if (typeof name !== "string") throw new Error("Hosted exposure contains an invalid Library name.");
-    if (!candidates.has(name)) throw new Error(`Hosted exposure names an unknown Library ${JSON.stringify(name)}.`);
+    if (typeof name !== "string") throw new Error("Hosted ownership contains an invalid Library name.");
+    if (!candidates.has(name)) throw new Error(`Hosted ownership names an unknown Library ${JSON.stringify(name)}.`);
     const descriptor = Object.getOwnPropertyDescriptor(requested, name);
     if (descriptor === undefined || !("value" in descriptor)
-      || (descriptor.value !== "server-private" && descriptor.value !== "client-public")) {
-      throw new Error(`Hosted exposure is invalid for ${JSON.stringify(name)}.`);
+      || (descriptor.value !== "private" && descriptor.value !== "shared")) {
+      throw new Error(`Hosted ownership is invalid for ${JSON.stringify(name)}.`);
     }
     explicit.set(name, descriptor.value);
   }
-  return Object.freeze(names.map((library) => {
-    const exposure = explicit.get(library) ?? "server-private";
-    return Object.freeze({ library, exposure });
+  return Object.freeze(names.map((name) => {
+    const ownership = explicit.get(name) ?? "private";
+    return Object.freeze({ name, ownership });
   }));
 }
 
@@ -179,7 +190,7 @@ function materialize_effective_projection(
   const included = policy.registry.libraries
     .filter((entry) => entry.scope !== "hson-internal"
       && requestedNames.has(entry.name)
-      && policy.exposure.get(entry.name) === "client-public"
+      && policy.ownership.get(entry.name) === "shared"
       && allowed.has(entry.name))
     .map((entry): LocusProjectedLibraryContract => {
       // Reconstruct the included Schema from its own source. No library resolver or
@@ -196,15 +207,22 @@ function materialize_effective_projection(
     })
     .sort((a, b) => a.name.localeCompare(b.name));
   const includedNames = new Set(included.map((entry) => entry.name));
+  const local = Object.freeze([...policy.local.values()]
+    .filter((entry) => requestedNames.has(entry.name) && allowed.has(entry.name))
+    .sort((a, b) => a.name.localeCompare(b.name)));
+  const localNames = new Set(local.map((entry) => entry.name));
+  const initializerDigest = locus_local_initializer_digest(local);
   const features = Object.freeze((requested.systemFeatures ?? []).filter((feature) => allowedFeatures.has(feature)
     && (feature !== "interactions" || policy.registry.libraries.some((entry) => entry.scope === "hson-internal"))));
   const writable = Object.freeze(included.filter((entry) => entry.mode === "document" && allowedWritable.has(entry.name)).map((entry) => entry.name));
   const authority = Object.freeze({ ...policy.authority });
   // The canonical digest input has no root, revision, policy, or excluded registry topology.
   const digest = locus_projection_contract_digest(authority, included, features, writable);
-  return Object.freeze({ authority, libraries: Object.freeze(included),
+  const compositionDigest = hosted_sha256(JSON.stringify({ format: "locus-session-composition", digest, initializerDigest }));
+  return Object.freeze({ authority, libraries: Object.freeze(included), local, initializerDigest, compositionDigest,
     systemFeatures: features, writableDocuments: writable, digest,
     includesLibrary: (name: string) => includedNames.has(name),
+    includesLocal: (name: string) => localNames.has(name),
     canAuthorDocument: (name: string) => writable.includes(name),
     hasSystemFeature: (feature: LocusProjectionSystemFeature) => features.includes(feature),
   });

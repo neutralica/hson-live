@@ -17,11 +17,11 @@ const map = hsonLiveMap.fromLibraries({
   PRIVATE_NAME_SENTINEL: { data: { value: "PRIVATE_ROOT_SENTINEL" }, schema: Schema },
   UNSELECTED_NAME_SENTINEL: { data: { value: "UNSELECTED_ROOT_SENTINEL" }, schema: Schema },
 });
-const server = create_locus_hosted_aggregate_socket_internal({ map, exposure: [
-  { library: "A", exposure: "client-public" },
-  { library: "B", exposure: "client-public" },
-  { library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" },
-  { library: "UNSELECTED_NAME_SENTINEL", exposure: "client-public" },
+const server = create_locus_hosted_aggregate_socket_internal({ map, libraries: [
+  { name: "A", ownership: "shared" },
+  { name: "B", ownership: "shared" },
+  { name: "PRIVATE_NAME_SENTINEL", ownership: "private" },
+  { name: "UNSELECTED_NAME_SENTINEL", ownership: "shared" },
 ], defaultProjection: { libraries: ["A"] }, authorizeProjection: () => ({ libraries: ["A", "B"] }) });
 function data(draft: LocusHostedAggregateDraft, name: string) {
   const library = draft.lib(name);
@@ -200,7 +200,7 @@ const probeMap = hsonLiveMap.fromLibraries({ A: { data: { value: "A0" }, schema:
 const probe = internal_livemap_aggregate_authority(probeMap);
 const probeInitial = probe.captureHosted();
 const probePolicy = make_locus_hosted_projection_policy(probeInitial.registry, probeInitial.authority,
-  [{ library: "A", exposure: "client-public" }], undefined, () => ({ libraries: ["A"] }));
+  [{ name: "A", ownership: "shared" }], undefined, () => ({ libraries: ["A"] }));
 const probeEffective = await normalize_locus_effective_projection(probePolicy, { libraries: ["A"] });
 const probeCommit = probe.commit([{ target: probe.target(probe.libraries()[0]!, ["value"]), kind: "set", value: "A1" }]).hosted;
 assert.ok(probeCommit);
@@ -214,7 +214,7 @@ const projectedBytes = new TextEncoder().encode(JSON.stringify({ type: "commit",
     commit: projected.commit }, format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT })).byteLength;
 assert.ok(projectedBytes > oldBytes + 1);
 const tightMap = hsonLiveMap.fromLibraries({ A: { data: { value: "A0" }, schema: Schema } });
-const tightServer = create_locus_hosted_aggregate_socket_internal({ map: tightMap, exposure: [{ library: "A", exposure: "client-public" }],
+const tightServer = create_locus_hosted_aggregate_socket_internal({ map: tightMap, libraries: [{ name: "A", ownership: "shared" }],
   defaultProjection: { libraries: ["A"] }, authorizeProjection: () => ({ libraries: ["A"] }),
   maxWireBytes: oldBytes + 1 });
 const tightConnection = pair();
@@ -239,8 +239,8 @@ const interactionMap = hsonLiveMap.fromLibraries({
   hiddenDoc: { document: "<main/>", schema: PageSchema },
 });
 enable_interactions(interactionMap);
-const interactionServer = hsonLocus.create({ map: interactionMap, exposure: [
-  { library: "page", exposure: "client-public" }, { library: "hiddenDoc", exposure: "server-private" },
+const interactionServer = hsonLocus.create({ map: interactionMap, libraries: [
+  { name: "page", ownership: "shared" }, { name: "hiddenDoc", ownership: "private" },
 ], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
 authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
 const interactionConnection = pair();

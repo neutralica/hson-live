@@ -1,5 +1,5 @@
 // @hson-live-external-test
-import { test_public_exposure } from "./helpers/hosted-exposure.mts";
+import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import {
   DocumentContinuationError,
@@ -86,7 +86,7 @@ function socketPair(): Readonly<{
   let handled: HsonData | undefined;
   const locus = hsonLocus.create({
     map: authority,
-    exposure: test_public_exposure(authority),
+    libraries: test_application_catalog(authority),
     defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
     authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
     actions: { save: (_context, payload) => { handled = payload; } },
@@ -94,12 +94,12 @@ function socketPair(): Readonly<{
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
   const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: ["interactions"] };
   const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
-    test_public_exposure(authority), requested, () => requested);
+    test_application_catalog(authority), requested, () => requested);
   const effective = normalize_locus_effective_projection(policy, requested);
   if (effective instanceof Promise) throw new Error("Expected synchronous continuation projection.");
   const projected = project_authority_snapshot(complete, effective);
   const session = await locus.session.create(requested);
-  const cut = session.cut();
+  const cut = session.now();
   const fresh = () => {
     const pair = socketPair();
     const detach = locus.connect(pair.server);
@@ -109,12 +109,12 @@ function socketPair(): Readonly<{
   const root = new FakeElement("main");
   const button = new FakeElement("button");
   root.appendChild(button);
-  await assert.rejects(continue_hosted_document({ ...wire.shared, cut, document: "state", root: root as unknown as Element }),
+  await assert.rejects(continue_hosted_document({ ...wire.shared, now: cut, document: "state", root: root as unknown as Element }),
     /unknown|document/i);
   assert.equal(get_node_for_el(root as unknown as Element), undefined);
   wire.detach(); wire = fresh();
   await assert.rejects(
-    continue_hosted_document({ ...wire.shared, cut: { libs: Object.freeze({ ...projected, revision: projected.revision + 1 }) },
+    continue_hosted_document({ ...wire.shared, now: { ...cut, libs: Object.freeze({ ...projected, revision: projected.revision + 1 }) },
       root: root as unknown as Element }),
     (cause) => cause instanceof DocumentContinuationError && cause.phase === "recover",
   );
@@ -123,7 +123,7 @@ function socketPair(): Readonly<{
   await assert.rejects(
     continue_hosted_document({
       ...wire.shared,
-      cut,
+      now: cut,
       root: root as unknown as Element,
       interactions: { local: null as unknown as InteractionLocalBehaviors },
     }),
@@ -135,7 +135,7 @@ function socketPair(): Readonly<{
   wire.detach(); wire = fresh();
   const continuation = await continue_hosted_document({
     ...wire.shared,
-    cut,
+    now: cut,
     root: root as unknown as Element,
     interactions: { local: {} },
   });
@@ -175,22 +175,22 @@ function socketPair(): Readonly<{
     page: { document: parse_hson_exact_runtime("<main <button/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(empty);
-  const emptyLocus = hsonLocus.create({ map: empty, exposure: test_public_exposure(empty),
+  const emptyLocus = hsonLocus.create({ map: empty, libraries: test_application_catalog(empty),
     authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
   const emptySession = await emptyLocus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
-  const locus = hsonLocus.create({ map: authority, exposure: test_public_exposure(authority),
+  const locus = hsonLocus.create({ map: authority, libraries: test_application_catalog(authority),
     authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
   const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
-  const cut = session.cut();
-  const mixed = { libs: { ...cut.libs, system: emptySession.cut().libs.system } };
+  const cut = session.now();
+  const mixed = { ...cut, libs: { ...cut.libs, system: emptySession.now().libs.system } };
   const pair = socketPair();
   const detach = locus.connect(pair.server);
   const root = new FakeElement("main");
   const button = new FakeElement("button");
   root.appendChild(button);
-  const continuation = await continue_hosted_document({ cut: mixed, credential: session.credential!,
+  const continuation = await continue_hosted_document({ now: mixed, credential: session.credential!,
     socket: pair.client, root: root as unknown as Element });
-  assert.equal(continuation.echo.recovery.strategy, "snapshot");
+  assert.equal(continuation.echo.sync.strategy, "reconcile");
   assert.equal(get_node_for_el(button as unknown as Element) !== undefined, true);
   assert.equal(continuation.mirror.status, "active");
   continuation.dispose(); continuation.echo.dispose(); detach(); locus.dispose(); emptyLocus.dispose();

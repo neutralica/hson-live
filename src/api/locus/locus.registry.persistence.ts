@@ -73,7 +73,7 @@ async function persistent_view<
 ): Promise<PersistentLocus<TMap, TActions>> {
   const exposureAuthority = internal_livemap_aggregate_authority(options.map);
   make_locus_hosted_projection_policy(exposureAuthority.hostedRegistry(), exposureAuthority.hostedPosition().authority,
-    options.exposure, options.defaultProjection, options.authorizeProjection);
+    options.libraries, options.defaultProjection, options.authorizeProjection, options.map);
   if (initialize) {
     set_initial_authority(options.map, options.logicalMapId, options.incarnationId);
     try {
@@ -167,11 +167,11 @@ export async function create_persistent_registry_locus<
   // remains Locus-owned and is never imported from semantic Library records.
   try {
     make_locus_hosted_projection_policy(restoredCheckpoint.registry, restoredCheckpoint.authority,
-      options.exposure, options.defaultProjection, options.authorizeProjection);
+      options.libraries, options.defaultProjection, options.authorizeProjection, restored.map);
   } catch (cause) {
     restored.dispose();
     throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
-      `Hosted registry topology requires complete deployment exposure: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+      `Hosted registry topology requires a complete deployment catalog: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   }
   if (restoredCheckpoint.registry.digest !== initial.registryDigest) {
     const definitions: Record<string, LiveMapDefinitions[string]> = Object.create(null);

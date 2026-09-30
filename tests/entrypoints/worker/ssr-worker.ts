@@ -6,7 +6,7 @@ import {
   type BrowserRealizationHtml,
 } from "hson-live/ssr";
 import type { LiveMap } from "hson-live/livemap";
-import type { Locus, LocusSessionHtmlCut } from "hson-live/locus";
+import type { Locus, LocusSessionHtmlNow } from "hson-live/locus";
 
 declare const map: LiveMap;
 const local: LiveMapHtmlCut = map.cut({ html: "page" });
@@ -21,9 +21,9 @@ declare const libraries: LiveMap;
 declare const librariesAuthority: Locus;
 const aggregateLocal: LiveMapHtmlCut = libraries.cut({ html: "page" });
 const session = await librariesAuthority.session.create({ libraries: ["page"] });
-const aggregateHosted: LocusSessionHtmlCut = session.cut({ html: "page" });
+const aggregateHosted: LocusSessionHtmlNow = session.now({ html: "page" });
 void aggregateLocal.libs;
 void libraries.cut().libs;
-void session.cut().libs;
+void session.now().libs;
 void aggregateLocal.document;
 void aggregateHosted.document;

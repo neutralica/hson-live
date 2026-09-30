@@ -1,5 +1,5 @@
 import { client_projection_map } from "./helpers/client-projection.mts";
-import { test_public_projection } from "./helpers/hosted-exposure.mts";
+import { test_public_projection } from "./helpers/hosted-catalog.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts";
@@ -54,7 +54,7 @@ function effective_for(source: LiveMap) {
   const snapshot = internal_livemap_aggregate_authority(source).captureHosted();
   const configured = test_public_projection(source);
   const policy = make_locus_hosted_projection_policy(snapshot.registry, snapshot.authority,
-    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+    configured.libraries, configured.defaultProjection, configured.authorizeProjection);
   const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
   if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
   return effective;
@@ -66,7 +66,7 @@ function projection_fence(source: LiveMap) {
 
 function projected_client_map(source: LiveMap): LiveMap {
   return client_projection_map({ authority: project_authority_snapshot(
-    internal_livemap_aggregate_authority(source).captureHosted(), effective_for(source)), localLibraries: {} });
+    internal_livemap_aggregate_authority(source).captureHosted(), effective_for(source)), local: {} });
 }
 
 function fixture() {
@@ -303,7 +303,7 @@ await check("replay history processes commit, progress, commit, final progress b
   server.dispose();
 });
 
-await check("snapshot recovery drains buffered progress and graph tail through caught-up", async () => {
+await check("reconcile synchronization drains buffered progress and graph tail through caught-up", async () => {
   const authority = make_map();
   const aggregate = internal_livemap_aggregate_authority(authority);
   for (let revision = 1; revision <= 4; revision += 1) {
@@ -337,7 +337,7 @@ await check("snapshot recovery drains buffered progress and graph tail through c
   if (map === undefined) throw new Error("Expected snapshot-installed Echo map.");
   const state = map.lib("state");
   if (!("snap" in state)) throw new Error("Expected data Library.");
-  assert.equal(recovered.outcome, "snapshot");
+  assert.equal(recovered.outcome, "reconcile");
   assert.equal(recovered.revision, 7);
   assert.equal(client.lastAppliedRev, 7);
   assert.equal(map.rev, 1);

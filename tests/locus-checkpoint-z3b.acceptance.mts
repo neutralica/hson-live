@@ -39,11 +39,11 @@ function make_map() {
   return hsonLiveMap.fromLibraries({ public: { data: { value: "public" }, schema: Data },
     private: { data: { value: "private" }, schema: Data } });
 }
-const exposure = [{ library: "public", exposure: "client-public" as const },
-  { library: "private", exposure: "server-private" as const }];
+const libraries = [{ name: "public", ownership: "shared" as const },
+  { name: "private", ownership: "private" as const }];
 
 async function host(adapter: MemoryCheckpointAdapter, logicalMapId: string) {
-  return create_persistent_locus({ map: make_map(), persistence: adapter, logicalMapId, exposure,
+  return create_persistent_locus({ map: make_map(), persistence: adapter, logicalMapId, libraries,
     defaultProjection: { libraries: ["public"] }, authorizeProjection: () => ({ libraries: ["public"] }) });
 }
 
@@ -63,14 +63,14 @@ await case_("empty authority checkpoint restores without a placeholder library",
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-empty";
   const locus = await create_persistent_locus({
-    map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, exposure: [],
+    map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, libraries: [],
   });
   const manifest = active(adapter, id);
   assert.deepEqual(manifest.registry.libraries, []);
   assert.deepEqual(manifest.chunks, []);
   locus.dispose();
   const restored = await create_persistent_locus({
-    map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, exposure: [],
+    map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, libraries: [],
   });
   assert.ok(restored);
   assert.equal(restored.rev, 0);
@@ -296,21 +296,21 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   inputs.page = { document: "<main/>", schema: Page };
   for (const name of names) inputs[name] = { data: { value: "" }, schema: Data };
   const map = hsonLiveMap.fromLibraries(inputs);
-  const exposure = [{ library: "public", exposure: "client-public" as const },
-    { library: "page", exposure: "client-public" as const },
-    ...names.map((library) => ({ library, exposure: "server-private" as const }))];
+  const libraries = [{ name: "public", ownership: "shared" as const },
+    { name: "page", ownership: "shared" as const },
+    ...names.map((library) => ({ name: library, ownership: "private" as const }))];
   const id = "z3b-large";
-  const locus = await create_persistent_locus({ map, persistence: adapter, logicalMapId: id, exposure,
+  const locus = await create_persistent_locus({ map, persistence: adapter, logicalMapId: id, libraries,
     defaultProjection: { libraries: ["public", "page"] },
     authorizeProjection: () => ({ libraries: ["public", "page"] }) });
   const authority = internal_livemap_aggregate_authority(map);
   const policy = make_locus_hosted_projection_policy(authority.hostedRegistry(), authority.hostedPosition().authority,
-    exposure, { libraries: ["public", "page"] },
+    libraries, { libraries: ["public", "page"] },
     () => ({ libraries: ["public", "page"] }));
   const effective = normalize_locus_effective_projection(policy, { libraries: ["public", "page"] });
   if (effective instanceof Promise) throw new Error("Expected synchronous projection policy.");
   const initialProjection = capture_selected_authority_projection_snapshot(map, effective);
-  const clientMap = client_projection_map({ authority: initialProjection, localLibraries: {} });
+  const clientMap = client_projection_map({ authority: initialProjection, local: {} });
   const value = "x".repeat(4 * 1024 * 1024 + 512 * 1024);
   for (const name of names) await locus.mutate((draft) => {
     const library = draft.lib(name);
@@ -327,7 +327,7 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   assert.ok([...adapter.chunks.values()].every((entry) => !entry.payload.includes("issuedQuids")));
   locus.dispose();
   const restoredMap = hsonLiveMap.fromLibraries(inputs);
-  const restored = await create_persistent_locus({ map: restoredMap, persistence: adapter, logicalMapId: id, exposure,
+  const restored = await create_persistent_locus({ map: restoredMap, persistence: adapter, logicalMapId: id, libraries,
     defaultProjection: { libraries: ["public", "page"] },
     authorizeProjection: () => ({ libraries: ["public", "page"] }) });
   assert.equal(restored.rev, count);
@@ -345,10 +345,10 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   const client = create_recovery_test_driver({ socket: pair.client, map: clientMap });
   client.connect();
   await client.session.create();
-  assert.equal((await client.completeRecovery()).strategy, "snapshot");
+  assert.equal((await client.completeRecovery()).strategy, "reconcile");
   const sessionId = client.session.sessionId;
   assert.ok(sessionId);
-  const cut = restored.session.get(sessionId)!.cut({ html: "page" });
+  const cut = restored.session.get(sessionId)!.now({ html: "page" });
   assert.ok(cut.html.length > 0);
   assert.ok(JSON.stringify(cut.libs).length < 1024 * 1024);
   assert.equal(pair.serverSent.join("\n").includes(value.slice(0, 1024)), false);

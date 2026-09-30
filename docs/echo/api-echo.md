@@ -11,25 +11,27 @@ There is one public `Echo` type family with two compositions:
 import { create_echo, hsonEcho } from "hson-live/echo";
 
 const endpoint = create_echo({ socket });
-const replica = await hsonEcho.replicate({ cut: sessionCut, credential, socket });
+const replica = await hsonEcho.init({ now: sessionNow, credential, socket });
 ```
 
 `hsonEcho.create`, `hson.echo.create`, and `create_echo` construct an endpoint-only Echo. It exposes `clientId`, `session`,
 `connect`, `disconnect`, `dispose`, `action`, `retryAction`, and `actionStatus`.
-It does not construct or expose a LiveMap and has no recovery capability.
+It does not construct or expose a LiveMap and has no synchronization state.
 
-`hsonEcho.replicate` accepts a retained session cut, its separate credential,
-and a transport. It admits the cut, constructs and manages a client map,
-reattaches the session, and completes current, replay, or snapshot recovery
-before resolving. The returned Echo exposes the endpoint capabilities plus
-`map` and read-only `recovery` diagnostics.
-An initial transferred cut is checked against authority state content before
+`hsonEcho.init` accepts retained-session `now` state, its separate credential,
+and a transport. It admits the shared authority state and authorized local
+initializers, constructs one composed client map, reattaches the session, and
+completes `current`, `replay`, or `reconcile` synchronization before resolving.
+The returned Echo exposes the endpoint capabilities plus `map` and read-only
+`sync` diagnostics: `status`, `failure`, `strategy`, and `debug()`.
+An initial transferred state is checked against authority content before
 `current` can establish it; a stale or mismatched starting state is reconciled
-from an authoritative snapshot. Later reconnects retain verified replica
-continuity and may recover through current or replay.
+from a current authorized view. Local initializer fingerprints are verified
+against the retained session independently of the shared-state fingerprint.
+Later reconnects retain verified replica continuity and synchronize automatically.
 
 Library count is a LiveMap topology concern, not an Echo kind. The replica map
-contains the authorized libraries and contracts in the session cut. Echo orders
+contains the authorized libraries and contracts in the session current-state materialization. Echo orders
 authority effects with its own cursor.
 
 ```text
@@ -57,14 +59,14 @@ client-local QUID through its
 LiveMap and Mirror. That demand does not contact Locus, advance `map.rev`, or
 publish an application commit.
 
-Transport connection, retained-session attachment, and replica recovery remain
-separate internal layers. For a replica, `replicate()` performs all three before
+Transport connection, retained-session attachment, and replica synchronization remain
+separate internal layers. For a replica, `init()` performs all three before
 returning. After a disconnect, `echo.connect()` automatically reattaches the
-retained session and recovers through `caught_up`. `echo.session.reattach()`
+retained session and synchronizes through `caught_up`. `echo.session.reattach()`
 can be awaited when the caller needs that completion boundary; repeated calls
 during the same reconnect share its work. Replica actions and status operations
 require `caught_up` readiness. Endpoint-only Echo retains explicit `connect()`
-and session operations without a replica recovery subsystem.
+and session operations without a replica synchronization subsystem.
 
 `disconnect()` detaches transport listeners and settles uncertain endpoint
 operations without ending the session, releasing map management, or closing a
@@ -115,17 +117,25 @@ Replica graph changes are observed through LiveMap commit/sub/feed/watch
 facilities. Progress-only authority advancement emits no application commit or
 value/mutation observation; internal authority-position observers support Echo
 convergence and Mirror revision ordering.
-Retained hosted recovery applies projected library additions before later writes,
-then reconciles any explicit disconnected grant expansion at the recovery cut.
+Retained synchronization applies projected library additions before later writes,
+then reconciles any explicit disconnected grant expansion at the current cut.
 When retained history is unavailable, a current projected snapshot reconciles
 the authority-owned libraries in the existing map before queued live
 traffic. Bound Mirror/LiveTree resources remain.
 Hidden additions advance only the authority cursor. A session projection
 contraction removes revoked authority libraries and makes their old handles
 stale, without changing authority revision.
-`EchoRecovery` has no `onChange` observation member. Echo has no topology-aware
+`EchoSync` has no `onChange` observation member. Echo has no topology-aware
 `subscribe`/`unsubscribe`, public `seq`, or `onEvent` surface.
 
-Hosted SSR continuation accepts the session cut, credential, transport, and
+Hosted SSR continuation accepts the session current-state materialization, credential, transport, and
 existing DOM root. It prepares the managed replica, binds Mirror to the
-adopted DOM, then completes recovery through the same engine.
+adopted DOM, then completes synchronization through the same engine.
+
+Shared libraries remain managed by Locus. Local libraries are initialized only
+when absent and are thereafter client-owned: local root, Schema, and document
+CSS changes stay local and survive replay, reconcile, scope removal, and re-add.
+If the entire client runtime and its application persistence are lost, evolved
+local state is lost and a new replica starts from the currently authorized seed.
+Canonical local interaction descriptors are intentionally outside this model;
+the interaction system domain remains shared authority state when enabled.

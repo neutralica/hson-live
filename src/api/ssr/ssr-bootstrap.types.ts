@@ -1,5 +1,5 @@
 import type { LiveMapSnapshot } from "../../types/livemap.types.js";
-import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
+import type { LocusSessionNow } from "../../types/locus.core.types.js";
 
 declare const ENCODED_SSR_BOOTSTRAP: unique symbol;
 
@@ -22,7 +22,7 @@ export type EncodedSsrBootstrap<TKind extends SsrBootstrapKind = SsrBootstrapKin
 /** A decoded family discriminator paired with its detached semantic bootstrap. */
 export type DecodedSsrBootstrap =
   | Readonly<{ kind: "libraries"; bootstrap: LiveMapSnapshot }>
-  | Readonly<{ kind: "hosted-projection"; bootstrap: AuthorityProjectionSnapshot }>;
+  | Readonly<{ kind: "hosted-projection"; bootstrap: LocusSessionNow }>;
 
 /** Outer encoded-size admission for SSR bootstrap transport. */
 export type SsrBootstrapCodecOptions = Readonly<{

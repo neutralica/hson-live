@@ -15,7 +15,7 @@ assert.deepEqual(worker.cut, node.cut);
 assert.equal(worker.encoded, node.encoded);
 assert.deepEqual(worker.decoded, node.decoded);
 assert.equal(worker.cut.libs.revision, 0);
-assert.deepEqual(Object.keys(worker.cut).sort(), ["document", "html", "libs"]);
+assert.deepEqual(Object.keys(worker.cut).sort(), ["document", "format", "html", "initializerDigest", "libs", "local"]);
 assert.ok(worker.cut.html.includes("WORKER_PERMITTED_SENTINEL"));
 assert.ok(worker.encoded.includes("WORKER_PRIVATE_SENTINEL") === false);
 assert.ok(JSON.stringify(worker).includes("WORKER_PRIVATE_SENTINEL") === false);

@@ -1,6 +1,6 @@
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
-import { test_public_exposure, test_public_projection } from "./helpers/hosted-exposure.mts";
+import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import {
@@ -122,10 +122,10 @@ function make_client_map(server: ReturnType<typeof make_map>): ReturnType<typeof
   const captured = internal_livemap_aggregate_authority(server).captureHosted();
   const configured = test_public_projection(server);
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
-    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+    configured.libraries, configured.defaultProjection, configured.authorizeProjection);
   const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
   if (effective instanceof Promise) throw new Error("Test projection must be synchronous.");
-  return client_projection_map({ authority: project_authority_snapshot(captured, effective), localLibraries: {} }) as ReturnType<typeof make_map>;
+  return client_projection_map({ authority: project_authority_snapshot(captured, effective), local: {} }) as ReturnType<typeof make_map>;
 }
 
 function reflected_document_element(reflection: ReturnType<typeof hsonMirror>) {
@@ -294,7 +294,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   const stateOnlyMs = performance.now() - stateOnlyStarted;
   assert.equal(reflection.sourceRevision, 2);
   assert.equal(reflection.diagnostics().updatesApplied, 1);
-  assert.equal(client.recovery.debug().lastAppliedRev, 2);
+  assert.equal(client.sync.debug().lastAppliedRev, 2);
   const reflectedMain = reflected_document_element(reflection);
   const reflectedWrite = reflectedMain.async.attrs.set("title", "echoed");
   assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), undefined);
@@ -374,11 +374,11 @@ await check("named Mirror text replacement carries empty portable lineage throug
       const captured = internal_livemap_aggregate_authority(serverMap).captureHosted();
       const configured = test_public_projection(serverMap);
       const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
-        configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+        configured.libraries, configured.defaultProjection, configured.authorizeProjection);
       const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
       if (effective instanceof Promise) throw new Error("Test projection must be synchronous.");
       return project_authority_snapshot(captured, effective);
-    })(), localLibraries: {},
+    })(), local: {},
   }) as typeof serverMap;
   const echo = create_recovery_test_driver({ socket: pair.client, map: clientMap });
   echo.connect();
@@ -423,9 +423,9 @@ await check("projected fallback restores the observed authority document in plac
   const snapshotClient = create_recovery_test_driver({ socket: first.client, map: staleMap });
   snapshotClient.connect();
   await snapshotClient.session.create();
-  assert.equal((await snapshotClient.completeRecovery()).strategy, "snapshot");
+  assert.equal((await snapshotClient.completeRecovery()).strategy, "reconcile");
   assert.equal(snapshotClient.map, staleMap);
-  assert.equal(snapshotClient.recovery.debug().lastAppliedRev, 2);
+  assert.equal(snapshotClient.sync.debug().lastAppliedRev, 2);
   assert.equal(stateHandle.snap(), "dark");
   assert.equal(page_item(staleMap)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 1);
@@ -449,7 +449,7 @@ await check("projected fallback restores the observed authority document in plac
   replayClient.connect();
   await replayClient.session.create();
   assert.equal((await replayClient.completeRecovery()).strategy, "replay");
-  assert.equal(replayClient.recovery.debug().lastAppliedRev, 3);
+  assert.equal(replayClient.sync.debug().lastAppliedRev, 3);
   assert.deepEqual([staleMap.rev, stateHandle.snap(), reflection.sourceRevision], [2, "dark", 2]);
   assert.equal(page_item(staleMap)?.$_tag, "item");
   assert.equal((await replayClient.completeRecovery()).strategy, "current");
@@ -616,7 +616,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   const reconnectStarted = performance.now();
   recovered.connect();
   await recovered.session.create();
-  assert.equal((await recovered.completeRecovery()).strategy, "snapshot");
+  assert.equal((await recovered.completeRecovery()).strategy, "reconcile");
   assert.equal(reflected_document_element(reflection).quid, echoMainQuid);
   assert.equal(second.serverSent.join("\n").includes(LOCUS_RESTART_A_QUID), false);
   assert.equal(second.serverSent.join("\n").includes(LOCUS_RESTART_B_QUID), false);
@@ -627,7 +627,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   });
   fallback.connect();
   await fallback.session.create();
-  assert.equal((await fallback.completeRecovery()).strategy, "snapshot");
+  assert.equal((await fallback.completeRecovery()).strategy, "reconcile");
   assert.equal(fallbackMap.rev, 1);
   assert.equal(fallbackMap.lib("state").snap(["count"]), 2);
   assert.equal(fallbackMap.lib("page").document.byQuid(LOCUS_RESTART_A_QUID), undefined);
@@ -653,7 +653,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   restored.dispose();
 
   await assert.rejects(
-    () => create_persistent_locus({ exposure: test_public_exposure(hsonLiveMap.fromLibraries({
+    () => create_persistent_locus({ libraries: test_application_catalog(hsonLiveMap.fromLibraries({
         state: { data: { theme: "light", count: 0 }, schema: StateSchema },
       })),
       map: hsonLiveMap.fromLibraries({

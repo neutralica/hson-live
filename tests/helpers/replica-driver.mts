@@ -3,7 +3,7 @@ import type { EchoOptions } from "../../src/types/locus.types.ts";
 import { acquire_echo_map_management_internal } from "../../src/internal/echo-map-capability.ts";
 import { create_lazy_replica_echo_internal } from "../../src/api/echo/echo.lazy.ts";
 
-/** Internal driver for focused wire/reconciliation tests. Public replica establishment uses hsonEcho.replicate. */
+/** Internal driver for focused wire/reconciliation tests. Public replica establishment uses hsonEcho.init. */
 export function create_recovery_test_driver<TMap extends LiveMap>(options: Omit<EchoOptions, "map" | "recovery"> & Readonly<{
   map: TMap;
 }>) {

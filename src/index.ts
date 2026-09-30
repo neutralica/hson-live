@@ -7,7 +7,12 @@
 
 export { Hson } from "./hson-authoring.js";
 export { ANY_DATA, ANY_DOCUMENT } from "./api/schema/hson-schema.js";
-export type { AuthorityProjectionSnapshot } from "./types/locus.projection.types.js";
+export type {
+  AuthorityProjectionSnapshot,
+  LocusLibraryCatalogEntry,
+  LocusLibraryOwnership,
+  LocusLocalInitializer,
+} from "./types/locus.projection.types.js";
 export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, SchemaType } from "./api/transform/transform.types.js";
 export {
   hson,
@@ -142,7 +147,7 @@ export {
 export { DocumentMirrorError } from "./api/mirror/mirror.document.error.js";
 
 export { create_echo } from "./api/echo/echo.js";
-export { EchoRecoveryError, EchoSessionError } from "./api/echo/echo.error.js";
+export { EchoSyncError, EchoSessionError } from "./api/echo/echo.error.js";
 export type {
   Echo,
   EchoActionFn,
@@ -150,7 +155,7 @@ export type {
   EchoActionRequest,
   EchoActionStatusResult,
   EchoOptions,
-  EchoReplicateOptions,
+  EchoInitOptions,
   EchoRetryActionFn,
   EchoSession,
   EchoSessionFailure,
@@ -177,8 +182,8 @@ export type {
   LocusSessionApi,
   LocusSession,
   LocusSessionCreateOptions,
-  LocusSessionCut,
-  LocusSessionHtmlCut,
+  LocusSessionNow,
+  LocusSessionHtmlNow,
   LocusActionContext,
   LocusActionHandler,
   LocusActions,

@@ -46,11 +46,11 @@ array refinement cannot mutate an endpoint that has since become an object.
 Document element locations expose `attrs`, `flags`, insertion, and movement;
 text/content locations do not expose those element-only capabilities.
 `hsonMirror(map.lib("page"))` binds one named document Library and stays
-attached across unrelated global revisions and recovery replacement.
+attached across unrelated global revisions and reconcile replacement.
 
 Multi-library mutations return `LiveMapCommit`. It holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Every operation is `{ library, operation }`; the library name is public and the engine's opaque library identity is never exposed. A local `addLibraries(...)` batch contributes one `library-add` operation with ordered definitions and advances revision once. A hosted Locus retains one global revision and complete authority commit history as its registry grows. Echo receives one ordered client stream in which a revision has either a graph commit or generic progress without a graph effect.
 
-There is no default Library on a multi-map and no public removal, replacement, or rename operation. `map.addLibraries(...)` changes local topology; `locus.lib.add(...)` admits hosted authority topology through its durable gate and exposure policy. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
+There is no default Library on a multi-map and no public removal, replacement, or rename operation. `map.addLibraries(...)` changes local topology; `locus.lib.add(...)` admits hosted authority topology through its durable gate and ownership policy. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
 
 `map.capture()` synchronously returns one detached `LiveMapSnapshot`.
 It contains the complete ordered registry, QUID-free public and hidden roots,
@@ -68,9 +68,9 @@ Attach the map through the normal Locus API. No hosted-specific map constructor 
 ```ts
 const locus = hsonLocus.create({
   map,
-  exposure: [
-    { library: "state", exposure: "client-public" },
-    { library: "colors", exposure: "client-public" },
+  libraries: [
+    { name: "state", ownership: "shared" },
+    { name: "colors", ownership: "shared" },
   ],
   authorizeProjection: () => ({ libraries: ["state", "colors"] }),
   actions: {
@@ -84,18 +84,19 @@ const locus = hsonLocus.create({
 });
 ```
 
-One `context.mutate(...)` call stages all selected-Library writes as one atomic action. Each Library keeps its own HsonSchema; initial state, server action preparation, client replay, recovery, and durable restart validate those Schemas.
+One `context.mutate(...)` call stages all selected-Library writes as one atomic action. Each Library keeps its own HsonSchema; initial state, server action preparation, client replay, reconciliation, and durable restart validate those Schemas.
 
-For a client, `await hsonEcho.replicate({ cut, credential, socket })` admits the
-authorized session cut and returns an attached, caught-up replica. The cut
-contains the visible authority registry and its contracts. Excluded authority
-Library names and state remain unavailable. An action-only session with no
-projected application Libraries uses endpoint-only Echo without a LiveMap.
+For a client, `await hsonEcho.init({ now, credential, socket })` admits the
+authorized current session composition and returns an attached, caught-up
+replica. `now.libs` contains the visible shared authority registry and its
+contracts; `now.local` contains authorized local initializers. Excluded
+authority Library names and state remain unavailable. An action-only session
+with no projected application Libraries uses endpoint-only Echo without a LiveMap.
 
 Echo manages the authority-projected Libraries. Direct public mutation of
 projected Libraries remains gated. `map.rev` counts accepted graph transitions
 in this client runtime. Echo separately tracks the highest contiguous authority
-revision as its recovery and completion cursor. An authority progress event
+revision as its synchronization and completion cursor. An authority progress event
 advances that cursor without a graph commit, `map.rev` change, value
 observation, or Mirror work.
 
@@ -103,13 +104,14 @@ Connection loss does not destroy the replica map or its bound Mirror resources.
 After reconnecting transport, awaiting `echo.session.reattach()` synchronizes
 the replica. Live projection expansion and contraction update authority-owned
 libraries in that same map. Retained replay installs missed topology before
-later writes; snapshot fallback reconciles the current authorized authority
-projection. Client-local library ownership and seed semantics are deferred to
-a later design pass; `replicate()` has no receiving-runtime `localLibraries`
-input.
+later writes; reconcile synchronizes the current authorized shared authority
+projection in place. Authorized local initializers are installed only when the
+named local instance is absent; later local state is client-owned and survives
+shared synchronization. `hsonEcho.init(...)` has no receiving-runtime local
+library input.
 
 Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics for a one-library registry Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.
 
-`create_persistent_locus({ map, logicalMapId, persistence })` supports a growing registry. Calling that same ordinary constructor after a restart with the same `logicalMapId` reconstructs persisted application and authority state before the Locus is exposed. The deployment must supply exposure for every restored library because hosted policy is not persisted. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch.
+`create_persistent_locus({ map, logicalMapId, persistence })` supports a growing authority registry. Calling that same ordinary constructor after a restart with the same `logicalMapId` reconstructs persisted application and authority state before the Locus is used. The deployment must supply the ownership catalog for every restored authority library because hosted policy and local initializer definitions are not persisted. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch.
 
 Hosted authority topology grows through explicit `locus.lib.add(...)` admissions; authorized projection changes update client-visible topology. Public Library removal, replacement, and rename remain unsupported, as do a default Library and cross-Library QUID transfer. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. A projected named document Library may be bound through Mirror; supported hosted LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay.

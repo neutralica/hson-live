@@ -4,6 +4,7 @@ import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, ty
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { local_initializers } from "./helpers/client-projection.mts";
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -27,10 +28,10 @@ function fixture(maxHistoryBytes?: number, afterRecoveryCut?: () => void | Promi
     UNSELECTED_NAME_SENTINEL: { data: { UNSELECTED_SCHEMA_SENTINEL: "UNSELECTED_ROOT_SENTINEL" }, schema: UnselectedSchema },
   });
   const server = create_locus_hosted_aggregate_socket_internal({ map,
-    exposure: [
-      { library: "visible", exposure: "client-public" },
-      { library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" },
-      { library: "UNSELECTED_NAME_SENTINEL", exposure: "client-public" },
+    libraries: [
+      { name: "visible", ownership: "shared" },
+      { name: "PRIVATE_NAME_SENTINEL", ownership: "private" },
+      { name: "UNSELECTED_NAME_SENTINEL", ownership: "shared" },
     ],
     defaultProjection: { libraries: ["visible"] },
     authorizeProjection: () => ({ libraries: ["visible"] }),
@@ -86,11 +87,11 @@ function data_library(map: LiveMap | undefined, name: string) {
   const pair = socket_pair();
   let detachServer = server.connect(pair.server);
   const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
-    localLibraries: { local: { data: { value: "LOCAL_BOOTSTRAP" }, schema: LocalSchema } } });
+    initializers: local_initializers({ local: { data: { value: "LOCAL_BOOTSTRAP" }, schema: LocalSchema } }) });
   const initial = await client.connect();
-  assert.equal(initial.outcome, "snapshot");
+  assert.equal(initial.outcome, "reconcile");
   assert.equal(client.lastAppliedRev, 1);
-  assert.equal(client.map?.rev, 0);
+  assert.equal(client.map?.rev, 1);
   assert.equal(data_library(client.map, "visible").snap(["value"]), "VISIBLE_BOOTSTRAP_SENTINEL");
   assert.equal(data_library(client.map, "local").snap(["value"]), "LOCAL_BOOTSTRAP");
   const initialSnapshot = pair.serverSent.find((raw) => JSON.parse(raw).type === "recovery-snapshot");
@@ -143,7 +144,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   const pair = socket_pair();
   let detachServer = server.connect(pair.server);
   const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
-    localLibraries: { local: { data: { value: "LOCAL_FALLBACK" }, schema: LocalSchema } } });
+    initializers: local_initializers({ local: { data: { value: "LOCAL_FALLBACK" }, schema: LocalSchema } }) });
   await client.connect();
   const sameMap = client.map;
   const local = data_library(client.map, "local");
@@ -155,7 +156,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   await server.mutate((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if ("at" in library) library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_FALLBACK_SENTINEL"); });
   detachServer = server.connect(pair.server);
   const result = await client.connect();
-  assert.equal(result.outcome, "snapshot");
+  assert.equal(result.outcome, "reconcile");
   assert.equal(client.map, sameMap);
   assert.equal(client.lastAppliedRev, 3);
   assert.equal(localHandle.snap(), "LOCAL_DURING_FALLBACK");
@@ -180,7 +181,7 @@ function data_library(map: LiveMap | undefined, name: string) {
     PRIVATE_NAME_SENTINEL: { data: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
   });
   const server = create_locus_hosted_aggregate_socket_internal({ map,
-    exposure: [{ library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" }],
+    libraries: [{ name: "PRIVATE_NAME_SENTINEL", ownership: "private" }],
     defaultProjection: { libraries: [] },
   });
   const pair = socket_pair();
@@ -210,12 +211,12 @@ function data_library(map: LiveMap | undefined, name: string) {
     PRIVATE_NAME_SENTINEL: { data: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
   });
   const server = create_locus_hosted_aggregate_socket_internal({ map,
-    exposure: [{ library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" }],
+    libraries: [{ name: "PRIVATE_NAME_SENTINEL", ownership: "private" }],
     defaultProjection: { libraries: [] }, maxHistoryBytes: 1 });
   const pair = socket_pair();
   let detach = server.connect(pair.server);
   const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
-    localLibraries: { local: { data: { value: "LOCAL_ONLY_INITIAL" }, schema: LocalSchema } } });
+    initializers: local_initializers({ local: { data: { value: "LOCAL_ONLY_INITIAL" }, schema: LocalSchema } }) });
   await client.connect();
   const sameMap = client.map;
   const handle = data_library(sameMap, "local").at(["value"]);
@@ -226,7 +227,7 @@ function data_library(map: LiveMap | undefined, name: string) {
     if ("at" in hidden) hidden.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_LOCAL_ONLY_SENTINEL");
   });
   detach = server.connect(pair.server);
-  assert.equal((await client.connect()).outcome, "snapshot");
+  assert.equal((await client.connect()).outcome, "reconcile");
   assert.equal(client.map, sameMap);
   assert.equal(client.lastAppliedRev, 1);
   assert.equal(handle.snap(), "LOCAL_ONLY_DISCONNECTED");
@@ -250,7 +251,7 @@ function data_library(map: LiveMap | undefined, name: string) {
     projectionDigest: "a".repeat(64), projectionSequence: 0, lastAppliedRev: 0 }));
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   const bad = messages(pair.serverSent).find((message) => message.type === "recovery-plan"
-    && message.id === "bad-projection" && message.outcome === "snapshot"
+    && message.id === "bad-projection" && message.outcome === "reconcile"
     && message.reason === "projection_changed");
   assert.ok(bad);
   pair.client.send(JSON.stringify({ type: "recover", id: "bad-projection-sequence", logicalMapId: server.logicalMapId,
@@ -258,7 +259,7 @@ function data_library(map: LiveMap | undefined, name: string) {
     projectionDigest: plan.projectionDigest, projectionSequence: 1, lastAppliedRev: 0 }));
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   const staleSequence = messages(pair.serverSent).find((message) => message.type === "recovery-plan"
-    && message.id === "bad-projection-sequence" && message.outcome === "snapshot"
+    && message.id === "bad-projection-sequence" && message.outcome === "reconcile"
     && message.reason === "projection_changed");
   assert.ok(staleSequence);
   assert.equal(pair.serverSent.some((raw) => raw.includes("PRIVATE_NAME_SENTINEL")), false);
@@ -273,8 +274,8 @@ function data_library(map: LiveMap | undefined, name: string) {
   });
   enable_interactions(map);
   const server = create_locus_hosted_aggregate_socket_internal({ map,
-    exposure: [{ library: "page", exposure: "client-public" },
-      { library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" }],
+    libraries: [{ name: "page", ownership: "shared" },
+      { name: "PRIVATE_NAME_SENTINEL", ownership: "private" }],
     defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
     authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
   });
@@ -320,7 +321,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   let detach = pairs.map((pair) => server.connect(pair.server));
   const clients = pairs.map((pair, index) => create_echo_socket_client_internal({
     socket: pair.client, logicalMapId: server.logicalMapId,
-    localLibraries: { local: { data: { value: `LOCAL_${index}` }, schema: LocalSchema } },
+    initializers: local_initializers({ local: { data: { value: `LOCAL_${index}` }, schema: LocalSchema } }),
   }));
   await Promise.all(clients.map((client) => client.connect()));
   const [live, replay, fallback] = clients;
@@ -340,7 +341,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   const replayResult = await replay.connect();
   const fallbackResult = await fallback.connect();
   assert.equal(replayResult.outcome, "replay");
-  assert.equal(fallbackResult.outcome, "snapshot");
+  assert.equal(fallbackResult.outcome, "reconcile");
   for (const client of clients) {
     assert.equal(client.lastAppliedRev, 3);
     assert.equal(data_library(client.map, "visible").snap(["value"]), "VISIBLE_FINAL");
@@ -363,9 +364,9 @@ function data_library(map: LiveMap | undefined, name: string) {
   });
   enable_interactions(map);
   const server = create_locus_hosted_aggregate_socket_internal({ map,
-    exposure: [{ library: "page", exposure: "client-public" },
-      { library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" },
-      { library: "privateData", exposure: "server-private" }],
+    libraries: [{ name: "page", ownership: "shared" },
+      { name: "PRIVATE_NAME_SENTINEL", ownership: "private" },
+      { name: "privateData", ownership: "private" }],
     defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
     authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
     maxHistoryBytes: 200_000 });
@@ -404,7 +405,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   server.connect(pairs[1]!.server);
   server.connect(pairs[2]!.server);
   assert.equal((await replay.connect()).outcome, "replay");
-  assert.equal((await fallback.connect()).outcome, "snapshot");
+  assert.equal((await fallback.connect()).outcome, "reconcile");
   const projectedSystem = (client: typeof live) => {
     if (client.map === undefined) throw new Error("Missing composed interaction map.");
     const engine = internal_livemap_aggregate_authority(client.map);
@@ -431,12 +432,12 @@ function data_library(map: LiveMap | undefined, name: string) {
   server.dispose();
 }
 
-for (const mode of ["snapshot", "replay"] as const) {
-  const { server } = fixture(mode === "snapshot" ? 1 : undefined);
+for (const mode of ["reconcile", "replay"] as const) {
+  const { server } = fixture(mode === "reconcile" ? 1 : undefined);
   const pair = socket_pair();
   let detachServer = server.connect(pair.server);
   const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
-    localLibraries: { local: { data: { value: "LOCAL_UNCHANGED" }, schema: LocalSchema } } });
+    initializers: local_initializers({ local: { data: { value: "LOCAL_UNCHANGED" }, schema: LocalSchema } }) });
   await client.connect();
   const sameMap = client.map;
   const original = data_library(client.map, "visible").snap(["value"]);
@@ -444,7 +445,7 @@ for (const mode of ["snapshot", "replay"] as const) {
   detachServer();
   await server.mutate((draft) => { const library = draft.lib("visible"); if ("at" in library) library.at(["value"]).set("VISIBLE_MALFORMED_SOURCE"); });
   pair.transformServer((message) => {
-    if (mode === "snapshot" && message.type === "recovery-snapshot") {
+    if (mode === "reconcile" && message.type === "recovery-snapshot") {
       const snapshot = message.snapshot as Record<string, unknown>;
       return { ...message, snapshot: { ...snapshot, projectionDigest: "0".repeat(64) } };
     }
@@ -489,7 +490,7 @@ for (const mode of ["snapshot", "replay"] as const) {
     : message);
   detach = server.connect(pair.server);
   const result = await client.connect();
-  assert.equal(result.outcome, "snapshot");
+  assert.equal(result.outcome, "reconcile");
   assert.equal(result.revision, 1);
   assert.equal(client.lastAppliedRev, 1);
   assert.equal(data_library(client.map, "visible").snap(["value"]), "VISIBLE_SNAPSHOT_BEFORE_BAD_TAIL");
@@ -503,13 +504,13 @@ for (const mode of ["snapshot", "replay"] as const) {
   const PanelSchema: HsonSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
   const server = create_locus_hosted_aggregate_socket_internal({ map,
-    exposure: [{ library: "page", exposure: "client-public" }],
+    libraries: [{ name: "page", ownership: "shared" }],
     defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }), maxHistoryBytes: 1 });
   const pair = socket_pair();
   let detach = server.connect(pair.server);
   const client = create_echo_socket_client_internal({ socket: pair.client,
     logicalMapId: server.logicalMapId,
-    localLibraries: { panel: { document: "<aside/>", schema: PanelSchema } } });
+    initializers: local_initializers({ panel: { document: "<aside/>", schema: PanelSchema } }) });
   await client.connect();
   const sameMap = client.map;
   const page = sameMap?.lib("page");
@@ -555,7 +556,7 @@ for (const mode of ["snapshot", "replay"] as const) {
   const result = await client.connect();
   await pendingCompletion;
   assert.equal(completionSettled, true);
-  assert.equal(result.outcome, "snapshot");
+  assert.equal(result.outcome, "reconcile");
   assert.equal(client.map, sameMap);
   assert.equal(client.lastAppliedRev, 1);
   assert.equal(panel.document.attrs.get({ kind: "path", path: [0] }, "title"), "LOCAL_DOCUMENT_DISCONNECTED");
@@ -585,14 +586,14 @@ for (const mode of ["snapshot", "replay"] as const) {
     PRIVATE_NAME_SENTINEL: { document: "<main/>", schema: PageSchema },
   });
   const server = create_locus_hosted_aggregate_socket_internal({ map,
-    exposure: [{ library: "page", exposure: "client-public" },
-      { library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" }],
+    libraries: [{ name: "page", ownership: "shared" },
+      { name: "PRIVATE_NAME_SENTINEL", ownership: "private" }],
     defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }) });
   const pair = socket_pair();
   let detach = server.connect(pair.server);
   const client = create_echo_socket_client_internal({ socket: pair.client,
     logicalMapId: server.logicalMapId,
-    localLibraries: { panel: { document: "<aside/>", schema: PanelSchema } } });
+    initializers: local_initializers({ panel: { document: "<aside/>", schema: PanelSchema } }) });
   await client.connect();
   const page = client.map?.lib("page");
   const panel = client.map?.lib("panel");

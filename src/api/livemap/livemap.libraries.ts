@@ -145,7 +145,7 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): LiveMapDef
     }
     definitions[entry.name] = entry.mode === "document"
       ? { document: root, schema }
-      : { data: reconstructed_data(root), schema };
+      : { data: reconstructed_data_internal(root), schema };
   }
   return definitions;
 }
@@ -549,7 +549,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       const schema = HsonSchemaHandle.fromHson(entry.schema);
       const root = decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES);
       inputs.set(entry.name, must_library_input(entry.name, entry.mode === "document"
-        ? { document: root, schema } : { data: reconstructed_data(root), schema }));
+        ? { document: root, schema } : { data: reconstructed_data_internal(root), schema }));
     }
     aggregate.restoreClientHostedManaged(owner, snapshot, (projected, retired) => {
       const nextByName = new Map(projected.map((entry) => [entry.name, entry.identity]));
@@ -581,7 +581,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
 
 /**
  * Construct an internal, fixed-registry client mirror from an exact aggregate
- * snapshot. The Locus client owns recovery/bootstrap protocol exposure.
+ * snapshot. The Locus client owns synchronization/current-state protocol handling.
  */
 export function make_livemap_hosted_mirror_from_snapshot_internal(
   snapshot: HostedLiveMapSnapshot,
@@ -594,45 +594,47 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
 /** Construct an Echo replica from QUID-free client state and its protocol fence. */
 export function make_livemap_mirror_from_portable_aggregate_internal(
   snapshot: PortableAggregateSnapshot,
-  localLibraries?: LiveMapInput,
 ): LiveMap {
-  if (localLibraries !== undefined) {
-    assert_portable_aggregate_snapshot_shape(snapshot);
-    const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
-    const systems: InitialSystemState[] = [];
-    for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
-      const entry = snapshot.registry.libraries[index];
-      const encoded = snapshot.libraries[index];
-      if (entry === undefined || encoded === undefined || entry.name !== encoded.name
-        || entry.mode !== encoded.mode || entry.schema !== encoded.schema) {
-        throw new Error("Client projection Library metadata is malformed.");
-      }
-      const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
-      admit_portable_hson_node(root, "Client projection root");
-      const schema = HsonSchemaHandle.fromHson(entry.schema);
-      if (entry.scope === "hson-internal") {
-        systems.push(Object.freeze({ key: entry.name, transportName: entry.name, root, hsonSchema: schema }));
-      } else {
-        inputs[entry.name] = entry.mode === "document"
-          ? { document: root, schema }
-          : { data: reconstructed_data(root), schema };
-      }
-    }
-    for (const [name, definition] of Object.entries(localLibraries)) {
-      if (Object.hasOwn(inputs, name) || snapshot.registry.libraries.some((entry) => entry.name === name)) {
-        throw new Error(`Client-local Library ${JSON.stringify(name)} collides with the authority projection.`);
-      }
-      inputs[name] = must_library_input(name, definition);
-    }
-    if (Object.keys(inputs).length === 0) {
-      throw new Error("An action-only client session has no LiveMap; use endpoint-only Echo.");
-    }
-    return make_livemap_libraries(inputs, systems, snapshot);
-  }
   const local = portable_aggregate_snapshot_as_local(snapshot);
   const mirror = make_livemap_mirror_from_snapshot_internal(local);
   internal_livemap_aggregate_authority(mirror).restoreClientHosted(snapshot);
   return mirror;
+}
+
+/** Construct the authority-owned partition of one composed Echo LiveMap. @internal */
+export function make_livemap_client_composition_from_portable_aggregate_internal(
+  snapshot: PortableAggregateSnapshot,
+): LiveMap {
+  const admitted = portable_aggregate_inputs_internal(snapshot);
+  return make_livemap_libraries(admitted.inputs, admitted.systems, snapshot);
+}
+
+/** Structurally admit one authority partition without constructing its runtime. @internal */
+export function portable_aggregate_inputs_internal(
+  snapshot: PortableAggregateSnapshot,
+): Readonly<{ inputs: Readonly<Record<string, LiveMapLibraryInput>>; systems: readonly InitialSystemState[] }> {
+  assert_portable_aggregate_snapshot_shape(snapshot);
+  const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
+  const systems: InitialSystemState[] = [];
+  for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
+    const entry = snapshot.registry.libraries[index];
+    const encoded = snapshot.libraries[index];
+    if (entry === undefined || encoded === undefined || entry.name !== encoded.name
+      || entry.mode !== encoded.mode || entry.schema !== encoded.schema) {
+      throw new Error("Client projection Library metadata is malformed.");
+    }
+    const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
+    admit_portable_hson_node(root, "Client projection root");
+    const schema = HsonSchemaHandle.fromHson(entry.schema);
+    if (entry.scope === "hson-internal") {
+      systems.push(Object.freeze({ key: entry.name, transportName: entry.name, root, hsonSchema: schema }));
+    } else {
+      inputs[entry.name] = entry.mode === "document"
+        ? { document: root, schema }
+        : { data: reconstructed_data_internal(root), schema };
+    }
+  }
+  return Object.freeze({ inputs: Object.freeze(inputs), systems: Object.freeze(systems) });
 }
 
 /** Install one detached complete aggregate snapshot into a fresh runtime domain. */
@@ -665,7 +667,7 @@ export function make_livemap_mirror_from_semantic_checkpoint_internal(
     } else {
       inputs[entry.name] = entry.mode === "document"
         ? { document: library.root, schema }
-        : { data: reconstructed_data(library.root), schema };
+        : { data: reconstructed_data_internal(library.root), schema };
     }
   }
   const map = make_livemap_libraries(inputs, systems);
@@ -709,7 +711,7 @@ export function make_livemap_mirror_from_snapshot_internal(
     }
     inputs[registry.name] = registry.mode === "document"
       ? { document: root, schema: HsonSchemaHandle.fromHson(registry.schema) }
-      : { data: reconstructed_data(root), schema: HsonSchemaHandle.fromHson(registry.schema) };
+      : { data: reconstructed_data_internal(root), schema: HsonSchemaHandle.fromHson(registry.schema) };
   }
 
   const mirror = make_livemap_libraries(inputs, systems);
@@ -1199,7 +1201,8 @@ function library_root(input: LiveMapLibraryInput): HsonNode {
 }
 
 /** A string in the public data input is JSON source, so re-encode stored string values. */
-function reconstructed_data(root: HsonNode): JsonValue {
+/** @internal Reconstruct a public data definition from one admitted exact root. */
+export function reconstructed_data_internal(root: HsonNode): JsonValue {
   const value = node_to_json_value(root);
   return typeof value === "string" ? JSON.stringify(value) : value;
 }

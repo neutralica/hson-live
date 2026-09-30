@@ -1,6 +1,6 @@
 import { client_projection_map } from "./helpers/client-projection.mts";
 import { decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
-import { test_public_exposure } from "./helpers/hosted-exposure.mts";
+import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import {
   DocumentSsrError,
@@ -338,14 +338,14 @@ check("aggregate-scale roots are consumable without changing ordinary exact-valu
 check("hosted rendering preserves its fence and produces the existing aggregate recovery cursor", () => {
   const map = hosted_map_fixture();
   enable_interactions(map);
-  const locus = hsonLocus.create({ exposure: test_public_exposure(map), map,
+  const locus = hsonLocus.create({ libraries: test_application_catalog(map), map,
     authorizeProjection: () => ({ libraries: ["state", "page"] }) });
   const session = authorized_session(locus, ["state", "page"]);
-  const ssr = locus.session.get(session.sessionId)!.cut({ html: "page" });
+  const ssr = locus.session.get(session.sessionId)!.now({ html: "page" });
   assert.equal(ssr.document, "page");
   assert.equal(ssr.libs.authority.logicalMapId, locus.logicalMapId);
   assert.equal(ssr.libs.authority.incarnationId, locus.incarnationId);
-  const installed = client_projection_map({ authority: ssr.libs, localLibraries: {} });
+  const installed = client_projection_map({ authority: ssr.libs, local: {} });
   assert.equal(installed.rev, 0);
   session.close();
   locus.dispose();
@@ -372,13 +372,13 @@ check("HTML cut retains complete transferable state", () => {
   assert.equal(data(install_libraries_snapshot(rendered.libs).map, "state").snap(["count"]), 0);
   assert.equal(typeof encode_ssr_bootstrap(rendered.libs), "string");
   const hostedMap = hosted_map_fixture();
-  const locus = hsonLocus.create({ exposure: test_public_exposure(hostedMap), map: hostedMap,
+  const locus = hsonLocus.create({ libraries: test_application_catalog(hostedMap), map: hostedMap,
     authorizeProjection: () => ({ libraries: ["state", "page"] }) });
   const session = authorized_session(locus, ["state", "page"]);
-  const hosted = locus.session.get(session.sessionId)!.cut({ html: "page" });
+  const hosted = locus.session.get(session.sessionId)!.now({ html: "page" });
   assert.equal(hosted.document, "page");
   assert.equal(hosted.libs.libraries.some((entry) => entry.name === "state"), true);
-  assert.equal(typeof encode_ssr_bootstrap(hosted.libs), "string");
+  assert.equal(typeof encode_ssr_bootstrap(hosted), "string");
   session.close();
   locus.dispose();
 });
@@ -387,11 +387,11 @@ check("Libraries rendering selection and hosted cuts preserve the aggregate fenc
   const map = map_fixture(true);
   assert.notEqual(map.cut({ html: "page" }).html, (map as import("../src/types/livemap.types.ts").LiveMap).cut({ html: "admin" }).html);
   const hostedMap = hosted_map_fixture(true);
-  const locus = hsonLocus.create({ exposure: test_public_exposure(hostedMap), map: hostedMap,
+  const locus = hsonLocus.create({ libraries: test_application_catalog(hostedMap), map: hostedMap,
     authorizeProjection: () => ({ libraries: ["page", "admin"] }) });
   const session = authorized_session(locus, ["page", "admin"]);
-  assert.deepEqual(Object.keys(locus.session.get(session.sessionId)!.cut()), ["libs"]);
-  const cut = locus.session.get(session.sessionId)!.cut({ html: "page" });
+  assert.deepEqual(Object.keys(locus.session.get(session.sessionId)!.now()).sort(), ["format", "initializerDigest", "libs", "local"]);
+  const cut = locus.session.get(session.sessionId)!.now({ html: "page" });
   assert.equal(cut.libs.revision, hostedMap.rev);
   session.close();
   locus.dispose();

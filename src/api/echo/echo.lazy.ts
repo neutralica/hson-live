@@ -1,11 +1,11 @@
 import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   Echo,
-  EchoRecovery,
-  EchoRecoveryDiagnostics,
-  EchoRecoveryFailure,
-  EchoRecoveryStatus,
-  EchoRecoveryStrategy,
+  EchoSync,
+  EchoSyncDiagnostics,
+  EchoSyncFailure,
+  EchoSyncStatus,
+  EchoSyncStrategy,
   EchoSessionResult,
   EchoSession,
   EchoSessionOptions,
@@ -17,7 +17,7 @@ import type {
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { EchoRecoveryError } from "./echo.error.js";
+import { EchoSyncError } from "./echo.error.js";
 import {
   create_deferred_echo_document_authority_internal,
   register_echo_document_authority,
@@ -29,8 +29,8 @@ import {
 } from "./echo.client.js";
 
 type EchoMap = LiveMap;
-type EchoRecoveryResult = Readonly<{
-  strategy: Exclude<EchoRecoveryStrategy, "reject">;
+type EchoSyncResult = Readonly<{
+  strategy: EchoSyncStrategy;
   sessionId: string;
   logicalMapId: string;
   incarnationId: string;
@@ -43,10 +43,11 @@ export type ReplicaOptions<TMap extends EchoMap> = Readonly<{
   clientId?: LocusClientId;
   session?: EchoSessionOptions;
   initialStateFingerprint?: string;
+  initialInitializerDigest?: string;
 }>;
 export type ReplicaStrategy = Readonly<{
-  recovery: EchoRecovery & Readonly<{
-    recover: () => Promise<EchoRecoveryResult>;
+  sync: EchoSync & Readonly<{
+    synchronize: () => Promise<EchoSyncResult>;
   }>;
   dispose: LocusDisposer;
 }>;
@@ -71,7 +72,7 @@ export function create_lazy_replica_echo_internal<
   rawSession: EchoSession;
   attach: () => Promise<EchoSessionResult>;
   detach: () => Promise<void>;
-  complete: () => Promise<EchoRecoveryResult>;
+  complete: () => Promise<EchoSyncResult>;
 }> {
   const logicalMapId = internal_livemap_aggregate_authority(options.map).clientProjection()?.authority.logicalMapId;
   if (logicalMapId === undefined) throw new Error("Echo replica requires an admitted authority projection.");
@@ -87,7 +88,7 @@ export function create_lazy_replica_echo_internal<
         : reason === "fenced"
           ? "Hosted aggregate session attachment was fenced."
           : "Hosted aggregate socket closed."),
-      additionalReady: () => !disposed && !pendingRecovery && strategy?.recovery.status === "caught_up",
+      additionalReady: () => !disposed && !pendingRecovery && strategy?.sync.status === "caught_up",
     }),
   });
   // Only the endpoint retains the reattachment credential. The deferred strategy
@@ -97,6 +98,7 @@ export function create_lazy_replica_echo_internal<
     map: options.map,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.initialStateFingerprint === undefined ? {} : { initialStateFingerprint: options.initialStateFingerprint }),
+    ...(options.initialInitializerDigest === undefined ? {} : { initialInitializerDigest: options.initialInitializerDigest }),
   });
   const deferredDocumentAuthorities = management.documentMaps.map((map) => {
     const deferred = create_deferred_echo_document_authority_internal();
@@ -107,8 +109,8 @@ export function create_lazy_replica_echo_internal<
   let initialization: Promise<ReplicaStrategy> | undefined;
   let pendingRecovery = false;
   let disposed = false;
-  let shellStatus: EchoRecoveryStatus = "idle";
-  let shellFailure: EchoRecoveryFailure | undefined;
+  let shellStatus: EchoSyncStatus = "idle";
+  let shellFailure: EchoSyncFailure | undefined;
   let previouslyConnected = false;
   let established = false;
   let reconnecting: Promise<EchoSessionResult> | undefined;
@@ -128,7 +130,7 @@ export function create_lazy_replica_echo_internal<
     initialization = import("./echo.registry.js")
       .then((loaded) => {
         if (disposed) {
-          throw new EchoRecoveryError("LOCUS_RECOVERY_DISPOSED", "Echo recovery is disposed.");
+          throw new EchoSyncError("LOCUS_SYNC_DISPOSED", "Echo synchronization is disposed.");
         }
         const createReplica = loaded.create_registry_echo as ReplicaInitializer;
         const created = createReplica<TMap, TActions>(strategyOptions, Object.freeze({ connection, management }));
@@ -136,9 +138,9 @@ export function create_lazy_replica_echo_internal<
         return created;
       })
       .catch((cause: unknown) => {
-        if (cause instanceof EchoRecoveryError && cause.code === "LOCUS_RECOVERY_DISPOSED") throw cause;
-        const error = new EchoRecoveryError(
-          "LOCUS_RECOVERY_FAILED",
+        if (cause instanceof EchoSyncError && cause.code === "LOCUS_SYNC_DISPOSED") throw cause;
+        const error = new EchoSyncError(
+          "LOCUS_SYNC_FAILED",
           cause instanceof Error ? cause.message : "Echo replica implementation could not be loaded.",
           cause,
         );
@@ -149,39 +151,39 @@ export function create_lazy_replica_echo_internal<
     return initialization;
   };
 
-  const recover = (): Promise<EchoRecoveryResult> => {
+  const recover = (): Promise<EchoSyncResult> => {
     if (disposed) {
-      return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_DISPOSED", "Echo recovery is disposed."));
+      return Promise.reject(new EchoSyncError("LOCUS_SYNC_DISPOSED", "Echo synchronization is disposed."));
     }
     if (!connection.connected) {
-      return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_DISCONNECTED", "Locus recovery requires a connected transport."));
+      return Promise.reject(new EchoSyncError("LOCUS_SYNC_DISCONNECTED", "Locus synchronization requires a connected transport."));
     }
     if (connection.endpoint.session.status !== "attached") {
-      return Promise.reject(new EchoRecoveryError("LOCUS_SESSION_NOT_ATTACHED", "Locus recovery requires an attached session."));
+      return Promise.reject(new EchoSyncError("LOCUS_SESSION_NOT_ATTACHED", "Locus synchronization requires an attached session."));
     }
     if (connection.endpoint.session.logicalMapId !== logicalMapId) {
-      const error = new EchoRecoveryError(
+      const error = new EchoSyncError(
         "LOCUS_SESSION_AUTHORITY_MISMATCH",
-        "Locus session authority does not match the configured recovery target.",
+        "Locus session authority does not match the configured synchronization target.",
       );
       shellStatus = "failed";
       shellFailure ??= Object.freeze({ code: error.code, message: error.message, cause: error });
       return Promise.reject(error);
     }
     if (pendingRecovery) {
-      return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_IN_PROGRESS", "Locus recovery is already in progress."));
+      return Promise.reject(new EchoSyncError("LOCUS_SYNC_IN_PROGRESS", "Locus synchronization is already in progress."));
     }
     if (shellStatus === "failed" && strategy === undefined) {
-      return Promise.reject(new EchoRecoveryError(
-        "LOCUS_RECOVERY_LIFECYCLE_INVALID",
-        "Locus recovery requires a reconnect after failure.",
+      return Promise.reject(new EchoSyncError(
+        "LOCUS_SYNC_LIFECYCLE_INVALID",
+        "Locus synchronization requires a reconnect after failure.",
       ));
     }
     pendingRecovery = true;
-    shellStatus = "recovering";
+    shellStatus = "syncing";
     shellFailure = undefined;
     return initialize()
-      .then((created) => created.recovery.recover())
+      .then((created) => created.sync.synchronize())
       .then((result) => {
         shellStatus = "caught_up";
         shellFailure = undefined;
@@ -192,8 +194,8 @@ export function create_lazy_replica_echo_internal<
         if (strategy === undefined && shellStatus !== "failed") {
           shellStatus = "failed";
           shellFailure ??= Object.freeze({
-            code: "LOCUS_RECOVERY_FAILED",
-            message: cause instanceof Error ? cause.message : "Echo recovery failed.",
+            code: "LOCUS_SYNC_FAILED",
+            message: cause instanceof Error ? cause.message : "Echo synchronization failed.",
             cause,
           });
         }
@@ -204,9 +206,9 @@ export function create_lazy_replica_echo_internal<
 
   const reattachAndRecover = (credential?: string): Promise<EchoSessionResult> => {
     if (reconnecting !== undefined) return reconnecting;
-    if (disposed) return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_DISPOSED", "Echo recovery is disposed."));
+    if (disposed) return Promise.reject(new EchoSyncError("LOCUS_SYNC_DISPOSED", "Echo synchronization is disposed."));
     shellFailure = undefined;
-    shellStatus = "recovering";
+    shellStatus = "syncing";
     const task = (async (): Promise<EchoSessionResult> => {
       const result = await echo.session.reattach(credential);
       await recover();
@@ -214,7 +216,7 @@ export function create_lazy_replica_echo_internal<
     })().catch((cause: unknown) => {
       if (!disposed) {
         shellStatus = "failed";
-        shellFailure = Object.freeze({ code: cause instanceof EchoRecoveryError ? cause.code : "LOCUS_RECOVERY_FAILED",
+        shellFailure = Object.freeze({ code: cause instanceof EchoSyncError ? cause.code : "LOCUS_SYNC_FAILED",
           message: cause instanceof Error ? cause.message : "Echo replica reconnect failed.", cause });
       }
       throw cause;
@@ -223,20 +225,20 @@ export function create_lazy_replica_echo_internal<
     return task;
   };
 
-  const recovery = Object.freeze({
-    get status(): EchoRecoveryStatus {
+  const sync = Object.freeze({
+    get status(): EchoSyncStatus {
       if (disposed) return "disposed";
       if (shellFailure !== undefined) return "failed";
-      if (pendingRecovery || reconnecting !== undefined) return "recovering";
-      return strategy?.recovery.status ?? shellStatus;
+      if (pendingRecovery || reconnecting !== undefined) return "syncing";
+      return strategy?.sync.status ?? shellStatus;
     },
-    get failure(): EchoRecoveryFailure | undefined { return shellFailure ?? strategy?.recovery.failure; },
-    get strategy(): EchoRecoveryStrategy | undefined { return strategy?.recovery.strategy; },
-    debug(): EchoRecoveryDiagnostics {
-      const details = strategy?.recovery.debug();
+    get failure(): EchoSyncFailure | undefined { return shellFailure ?? strategy?.sync.failure; },
+    get strategy(): EchoSyncStrategy | undefined { return strategy?.sync.strategy; },
+    debug(): EchoSyncDiagnostics {
+      const details = strategy?.sync.debug();
       return Object.freeze({
-        status: recovery.status,
-        ...(recovery.strategy === undefined ? {} : { strategy: recovery.strategy }),
+        status: sync.status,
+        ...(sync.strategy === undefined ? {} : { strategy: sync.strategy }),
         logicalMapId,
         ...((details?.incarnationId ?? management.initialRecovery.incarnationId) === undefined ? {} : {
           incarnationId: details?.incarnationId ?? management.initialRecovery.incarnationId,
@@ -257,7 +259,7 @@ export function create_lazy_replica_echo_internal<
   };
   const publicEcho = {
     map: strategyOptions.map,
-    recovery,
+    sync,
     clientId: echo.clientId,
     session: Object.freeze({
       get status() { return echo.session.status; },

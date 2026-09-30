@@ -5,6 +5,7 @@ import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "../src/api/ssr/index
 import { Hson, hsonTransform, type HsonSchema } from "../src/index.ts";
 import { encode_hosted_root, hosted_sha256 } from "../src/api/livemap/livemap.hosted.ts";
 import { locus_projection_contract_digest } from "../src/api/locus/locus.projection.ts";
+import { locus_local_initializer_digest } from "../src/api/locus/locus.local-initializer.ts";
 
 const MIB = 1_024 * 1_024;
 const mode = process.argv[2];
@@ -32,7 +33,8 @@ if (mode === "--child") {
     libraries.push({ ...contract, root: { format: "hson-exact-value" as const,
       payload: rootTemplate.replace('"xxx"', `"${"x".repeat(size)}"`) } });
   }
-  const bootstrap = { format: "hson-authority-projection-snapshot" as const, authority, revision: 0, projectionDigest: locus_projection_contract_digest(authority, contracts, [], []), libraries, systemFeatures: [], writableDocuments: [], system: null };
+  const libs = { format: "hson-authority-projection-snapshot" as const, authority, revision: 0, projectionDigest: locus_projection_contract_digest(authority, contracts, [], []), libraries, systemFeatures: [], writableDocuments: [], system: null };
+  const bootstrap = { format: "hson-locus-session-now" as const, libs, local: [], initializerDigest: locus_local_initializer_digest([]) };
   globalThis.gc?.();
   const baselineRssMiB = process.memoryUsage().rss / MIB;
   const encoded = encode_ssr_bootstrap(bootstrap);
@@ -42,7 +44,7 @@ if (mode === "--child") {
   const decoded = decode_ssr_bootstrap(encoded);
   assert.equal(decoded.kind, "hosted-projection");
   if (decoded.kind !== "hosted-projection") throw new Error("Memory fixture decoded as the wrong family.");
-  assert.equal(decoded.bootstrap.libraries.length, libraries.length);
+  assert.equal(decoded.bootstrap.libs.libraries.length, libraries.length);
   globalThis.gc?.();
   assert.equal(encode_ssr_bootstrap(decoded.bootstrap), encoded);
   process.stdout.write(JSON.stringify({

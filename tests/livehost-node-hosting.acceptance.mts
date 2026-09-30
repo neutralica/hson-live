@@ -484,7 +484,7 @@ check("connection paths select applications without interpreting Locus topology"
   const oneLibrary = (room: string, logicalMapId: string) => create_locus({
     map: hsonLiveMap.fromLibraries({ room: { data: { room }, schema: Room } }),
     logicalMapId,
-    exposure: [{ library: "room", exposure: "client-public" }],
+    libraries: [{ name: "room", ownership: "shared" }],
     defaultProjection: { libraries: ["room"] },
     authorizeProjection: () => ({ libraries: ["room"] }),
   });

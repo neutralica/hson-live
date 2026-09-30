@@ -54,15 +54,15 @@ function portable_private_free(raw: string) {
 }
 
 const Data = Hson.schema`<type "data" content <value "string">>`;
-for (const strategy of ["replay", "snapshot"] as const) {
+for (const strategy of ["replay", "reconcile"] as const) {
   const map = hsonLiveMap.fromLibraries({
     visible: { data: { value: "INITIAL" }, schema: Data },
     PRIVATE_NAME: { data: { PRIVATE_SCHEMA: "PRIVATE_ROOT" }, schema: Hson.schema`<type "data" content <PRIVATE_SCHEMA "string">>` },
     UNSELECTED_NAME: { data: { value: "UNSELECTED_ROOT" }, schema: Data },
   });
   const options: LocusOptions<typeof map> = { map,
-    exposure: [{ library: "visible", exposure: "client-public" }, { library: "PRIVATE_NAME", exposure: "server-private" },
-      { library: "UNSELECTED_NAME", exposure: "client-public" }],
+    libraries: [{ name: "visible", ownership: "shared" }, { name: "PRIVATE_NAME", ownership: "private" },
+      { name: "UNSELECTED_NAME", ownership: "shared" }],
     defaultProjection: { libraries: ["visible"] },
     // A grant makes an eligible library available; it does not select it.
     authorizeProjection: () => ({ libraries: ["visible", "UNSELECTED_NAME"] }),
@@ -72,7 +72,7 @@ for (const strategy of ["replay", "snapshot"] as const) {
   await locus.mutate((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_ADVANCED"));
   const initial = await session(locus);
   const sentBefore = initial.pair.serverSent.length;
-  const snapshot = initial.capability.cut().libs;
+  const snapshot = initial.capability.now().libs;
   assert.equal(initial.pair.serverSent.length, sentBefore, "capture does not send state");
   assert.equal("document" in globalThis, false);
   assert.equal("html" in snapshot, false);
@@ -84,53 +84,53 @@ for (const strategy of ["replay", "snapshot"] as const) {
   assert.deepEqual(snapshot.writableDocuments, []);
   assert.equal(snapshot.system, null);
   portable_private_free(JSON.stringify(snapshot));
-  assert.deepEqual(Object.keys(initial.capability.cut()), ["libs"]);
+  assert.deepEqual(Object.keys(initial.capability.now()).sort(), ["format", "initializerDigest", "libs", "local"]);
   const client = client_projection_map({ authority: snapshot,
-    localLibraries: { local: { data: { value: "LOCAL" }, schema: Data } } });
+    local: { local: { data: { value: "LOCAL" }, schema: Data } } });
   assert.deepEqual(data(client, "visible").snap(), { value: "INITIAL" });
   assert.equal(snapshot.libraries[0]?.schema, Data.toHson());
   assert.throws(() => client.lib("PRIVATE_NAME"), /unknown/i);
   const retained = JSON.stringify(snapshot);
   initial.detach();
-  assert.deepEqual(initial.capability.cut().libs, snapshot, "disconnected retained session remains available");
+  assert.deepEqual(initial.capability.now().libs, snapshot, "disconnected retained session remains available");
   const pair = socket_pair();
   let detach = locus.connect(pair.server);
   const echo = create_recovery_test_driver({ socket: pair.client, map: client, session: { credential: initial.credential } });
   echo.connect();
   await echo.session.reattach();
   assert.equal((await echo.completeRecovery()).strategy, "current");
-  assert.equal(echo.recovery.debug().lastAppliedRev, snapshot.revision);
+  assert.equal(echo.sync.debug().lastAppliedRev, snapshot.revision);
   const local = data(client, "local");
   const localHandle = local.at(["value"]);
   echo.disconnect(); detach();
   localHandle.set("LOCAL_OFFLINE");
   await locus.mutate((draft) => draft.lib("visible").at(["value"]).set("RECOVERED"));
   await locus.mutate((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_OFFLINE"));
-  assert.equal(echo.recovery.debug().lastAppliedRev, snapshot.revision);
+  assert.equal(echo.sync.debug().lastAppliedRev, snapshot.revision);
   assert.equal(JSON.stringify(snapshot), retained, "captured artifact is detached from later mutations");
   detach = locus.connect(pair.server);
   echo.connect(); await echo.awaitReconnect();
-  assert.equal(echo.recovery.strategy, strategy);
-  assert.equal(echo.recovery.debug().lastAppliedRev, locus.rev);
+  assert.equal(echo.sync.strategy, strategy);
+  assert.equal(echo.sync.debug().lastAppliedRev, locus.rev);
   assert.equal(echo.map, client);
   assert.equal(client.lib("local"), local);
   assert.equal(localHandle.snap(), "LOCAL_OFFLINE");
   assert.equal(data(client, "visible").snap(["value"]), "RECOVERED");
-  if (strategy === "snapshot") {
+  if (strategy === "reconcile") {
     assert.ok(pair.serverSent.some((raw) => JSON.parse(raw).type === "recovery-snapshot"));
-    assert.equal(echo.recovery.strategy, "snapshot");
+    assert.equal(echo.sync.strategy, "reconcile");
   }
   portable_private_free(pair.serverSent.join("\n"));
-  const beforeProjection = initial.capability.cut().libs;
+  const beforeProjection = initial.capability.now().libs;
   await initial.capability.update({ libraries: [] });
-  const contracted = initial.capability.cut().libs;
+  const contracted = initial.capability.now().libs;
   assert.equal(contracted.revision, beforeProjection.revision);
   assert.notEqual(contracted.projectionDigest, beforeProjection.projectionDigest);
   assert.deepEqual(contracted.libraries, []);
   assert.equal(initial.capability.revoke(), true);
-  assert.throws(() => initial.capability.cut().libs, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => initial.capability.now().libs, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   echo.dispose(); detach(); locus.dispose();
-  assert.throws(() => initial.capability.cut().libs, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => initial.capability.now().libs, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   console.log(`ok - data-only public capture, privacy, current position, ${strategy}, local preservation, and projection changes`);
 }
 
@@ -138,7 +138,7 @@ for (const strategy of ["replay", "snapshot"] as const) {
 {
   const expirations = new Set<() => void>();
   const locus = hsonLocus.create({ map: hsonLiveMap.fromLibraries({ state: { data: { value: "value" } } }),
-    exposure: [{ library: "state", exposure: "client-public" }], defaultProjection: { libraries: ["state"] },
+    libraries: [{ name: "state", ownership: "shared" }], defaultProjection: { libraries: ["state"] },
     authorizeProjection: () => ({ libraries: ["state"] }),
     sessions: { schedule: (_delay, callback) => { expirations.add(callback); return () => { expirations.delete(callback); }; } },
   });
@@ -147,7 +147,7 @@ for (const strategy of ["replay", "snapshot"] as const) {
   initial.detach();
   assert.equal(expirations.size, 1);
   for (const expire of [...expirations]) expire();
-  assert.throws(() => initial.capability.cut().libs, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => initial.capability.now().libs, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   locus.dispose();
   console.log("ok - unknown, empty, retained, and expired sessions");
 }
@@ -156,18 +156,18 @@ for (const libraries of [["page"], ["page", "state"]]) {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body <main/>/>/>" }, state: { data: { value: 1 } } });
   map.lib("page").css.stylesheet("main { color: blue; }");
   const locus = hsonLocus.create({ map,
-    exposure: [{ library: "page", exposure: "client-public" }, { library: "state", exposure: "client-public" }],
+    libraries: [{ name: "page", ownership: "shared" }, { name: "state", ownership: "shared" }],
     defaultProjection: { libraries }, authorizeProjection: () => ({ libraries }),
   });
   const initial = await session(locus);
-  const snapshot = initial.capability.cut().libs;
-  assert.deepEqual(snapshot, initial.capability.cut({ html: "page" }).libs);
+  const snapshot = initial.capability.now().libs;
+  assert.deepEqual(snapshot, initial.capability.now({ html: "page" }).libs);
   assert.deepEqual(snapshot.libraries.map((entry) => entry.name), libraries);
   assert.ok(snapshot.libraries.find((entry) => entry.name === "page")?.css);
-  const client = client_projection_map({ authority: snapshot, localLibraries: {} });
+  const client = client_projection_map({ authority: snapshot, local: {} });
   const page = client.lib("page");
   assert.equal(page.mode, "document");
   if (page.mode === "document") assert.equal(page.css.snapshot(), map.lib("page").css.snapshot());
   initial.detach(); locus.dispose();
 }
-console.log("ok - document-only and mixed snapshots preserve hosted cut state and CSS");
+console.log("ok - document-only and mixed session now state preserves hosted state and CSS");

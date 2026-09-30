@@ -18,6 +18,8 @@ export type LocusHostedAggregateRecoveryCursor = Readonly<{
   lastAppliedRev: number;
   /** Present only until a transferred initial cut has been verified by recovery. */
   initialStateFingerprint?: string;
+  /** Establishment-only identity of the transferred authorized local initializer set. */
+  initialInitializerDigest?: string;
 }>;
 
 /** @internal Aggregate topology evidence layered over the common synchronization lifecycle. */
@@ -28,7 +30,7 @@ export type LocusHostedAggregateSynchronizationRequest = Readonly<{
   cursor?: LocusHostedAggregateRecoveryCursor;
 }>;
 
-type PlanOutcome = "current" | "replay" | "snapshot" | "reject";
+type PlanOutcome = "current" | "replay" | "reconcile" | "reject";
 type SnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" | "projection_changed";
 
 /** One ordered authority revision with no graph effect for this replica. */
@@ -54,6 +56,8 @@ export type LocusHostedProjectionChange = Readonly<{
   libraries: readonly LocusProjectedLibraryContract[];
   systemFeatures: readonly LocusProjectionSystemFeature[];
   writableDocuments: readonly string[];
+  local: readonly import("../../types/locus.projection.types.js").LocusLocalInitializer[];
+  initializerDigest: string;
   topology?: LiveMapLibraryAddOperation;
   system?: Readonly<{ format: "hson-exact-value"; payload: string }>;
   reconciliation?: AuthorityProjectionSnapshot;

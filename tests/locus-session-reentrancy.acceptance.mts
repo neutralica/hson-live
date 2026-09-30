@@ -11,7 +11,7 @@ const map = hsonLiveMap.fromLibraries({ state: { data: { value: "visible" } } })
 const aggregate = internal_livemap_aggregate_authority(map);
 const effective = await normalize_locus_effective_projection(make_locus_hosted_projection_policy(
   aggregate.hostedRegistry(), aggregate.hostedPosition().authority,
-  [{ library: "state", exposure: "client-public" }], undefined, () => ({ libraries: ["state"] })), { libraries: ["state"] });
+  [{ name: "state", ownership: "shared" }], undefined, () => ({ libraries: ["state"] })), { libraries: ["state"] });
 
 for (const terminal of ["revoke", "dispose", "goodbye", "expire"] as const) {
   let expire: (() => void) | undefined;
@@ -46,7 +46,7 @@ for (const terminal of ["revoke", "dispose", "goodbye", "expire"] as const) {
 // callback, before the revoked lifecycle notification is delivered.
 for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const) {
   const host = hsonLocus.create({ map: hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }),
-    exposure: [{ library: "page", exposure: "client-public" }], defaultProjection: { libraries: ["page"] },
+    libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
     authorizeProjection: () => ({ libraries: ["page"] }) });
   let receive: ((raw: string) => void) | undefined;
   let id: string | undefined;
@@ -59,8 +59,8 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
     if (frame.type === "session-fenced") {
       fences += 1;
       if (transition === "revoke") {
-        assert.throws(() => retained!.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
-        assert.throws(() => retained!.cut({ html: "page" }), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+        assert.throws(() => retained!.now(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+        assert.throws(() => retained!.now({ html: "page" }), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
       } else if (transition === "dispose-manager") host.session.dispose();
       else host.dispose();
     }
@@ -73,7 +73,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
   host.session.onChange(event => {
     if (event.kind !== "fenced" && event.kind !== "revoked") return;
     events += 1;
-    try { retained!.cut(); observerAvailability.push(true); }
+    try { retained!.now(); observerAvailability.push(true); }
     catch { observerAvailability.push(false); }
   });
   if (transition === "revoke") assert.equal(retained.revoke(), true);
@@ -90,7 +90,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
   assert.equal(fences, 1);
   assert.ok(events >= 1);
   assert.deepEqual(observerAvailability, Array(events).fill(false));
-  assert.throws(() => retained.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => retained.now(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   stop(); host.dispose();
 }
 
@@ -98,7 +98,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
 // Locus disposal must already fence every capability operation at that point.
 {
   const host = hsonLocus.create({ map: hsonLiveMap.fromLibraries({ state: { data: {} } }),
-    exposure: [{ library: "state", exposure: "client-public" }],
+    libraries: [{ name: "state", ownership: "shared" }],
     authorizeProjection: () => ({ libraries: ["state"] }) });
   const retained = await host.session.create({ libraries: ["state"] });
   let revoked: boolean | undefined;
@@ -106,7 +106,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
     onMessage() { return () => { revoked = retained.revoke(); }; }, onClose() { return () => {}; } });
   host.dispose();
   assert.equal(revoked, false);
-  assert.throws(() => retained.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => retained.now(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
 }
 
 // A destination closed synchronously by an old fence or lifecycle observer
@@ -114,7 +114,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
 for (const closeAt of ["fence-send", "fenced-listener", "attached-listener"] as const) {
   const scheduled: (() => void)[] = [];
   const host = hsonLocus.create({ map: hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }),
-    exposure: [{ library: "page", exposure: "client-public" }], defaultProjection: { libraries: ["page"] },
+    libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
     authorizeProjection: () => ({ libraries: ["page"] }),
     sessions: { schedule: (_delay, callback) => { scheduled.push(callback); return () => {}; } } });
   let firstReceive: ((raw: string) => void) | undefined;
@@ -149,7 +149,7 @@ for (const closeAt of ["fence-send", "fenced-listener", "attached-listener"] as 
   assert.equal(disconnected.transportAttached, false, closeAt);
   assert.ok(disconnected.expiresAt !== undefined, closeAt);
   assert.equal(scheduled.length, 1, closeAt);
-  assert.deepEqual(retained.cut().libs.libraries.map(entry => entry.name), ["page"]);
+  assert.deepEqual(retained.now().libs.libraries.map(entry => entry.name), ["page"]);
 
   let validReceive: ((raw: string) => void) | undefined;
   const validFrames: string[] = [];
@@ -161,7 +161,7 @@ for (const closeAt of ["fence-send", "fenced-listener", "attached-listener"] as 
   stopValid();
   scheduled.at(-1)?.();
   assert.equal(host.session.debug().sessions.find(session => session.sessionId === sessionId)?.state, "expired");
-  assert.throws(() => retained.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => retained.now(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   stopFirst(); host.dispose();
 }
 

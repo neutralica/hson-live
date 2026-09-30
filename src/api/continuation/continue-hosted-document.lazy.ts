@@ -1,5 +1,5 @@
 import type { InteractionFailure, InteractionLocalBehaviors } from "../../types/interaction.types.js";
-import type { EchoReplicateOptions } from "../../types/locus.types.js";
+import type { EchoInitOptions } from "../../types/locus.types.js";
 import type { HostedDocumentContinuation } from "./continuation.types.js";
 
 type HostedInteractions = Readonly<{
@@ -7,7 +7,7 @@ type HostedInteractions = Readonly<{
   onFailure?: (failure: InteractionFailure) => void;
 }>;
 
-export type HostedContinuationOptions = EchoReplicateOptions & Readonly<{
+export type HostedContinuationOptions = EchoInitOptions & Readonly<{
   root: Element;
   document?: string;
   interactions?: HostedInteractions;

@@ -40,7 +40,7 @@ specialist capability from its owning public subpath.
   the source map; dispose it when the binding is no longer wanted.
 - **Locus and Echo** are optional hosted authority and replica/session layers.
   Locus orders and authorizes authority work; Echo carries a replica through
-  session and recovery. Transport closure, semantic session termination, and
+  session and synchronization. Transport closure, semantic session termination, and
   terminal disposal are distinct application lifecycle decisions.
 - **LiveHost** is optional server application/authority hosting infrastructure.
 - **Canonical interactions** persist portable event intent; they are not a
@@ -136,14 +136,14 @@ const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 const authorityMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
 const authority = create_locus({
   map: authorityMap,
-  exposure: [{ library: "page", exposure: "client-public" }],
+  libraries: [{ name: "page", ownership: "shared" }],
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
 const session = await authority.session.create({ libraries: ["page"] });
-const echo = await hsonEcho.replicate({ cut: session.cut(), credential: session.credential!, socket });
+const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, socket });
 ```
 
-A one-library hosted application is a one-library registry. It still requires explicit exposure and an authorized session projection. `locus.lib.add(definitions, { exposure })` admits a runtime authority batch; missing exposure entries default to private. `session.update(request, context?)` expands or contracts a retained grant through the ordinary authorizer. A connected session uses its attachment context; a disconnected server-created session can use its captured creation context; a disconnected connection-created session supplies current trusted context as the second argument. `session.cut({ html: document })` creates one HTML and projection-state cut at a single authority revision and current session projection. The application owns its shell and can return `cut.html` without a bootstrap carrier. Hosted Echo reconciles authority-owned libraries in the existing composed client map through live delivery, retained replay, and snapshot fallback; local libraries remain local. The active hosted socket envelope is `hson-locus-hosted-aggregate-message`.
+A hosted application supplies one ownership catalog: private/shared entries refer to current state in `locus.map`, while local entries carry detached initializers outside authority state. `locus.lib.add(definitions, { ownership })` admits only private/shared runtime authority batches; omitted entries default to private. `session.update(request, context?)` expands or contracts a retained grant through the ordinary authorizer. `session.now({ html: document })` materializes shared current state plus authorized local initializers at one authority position. Echo reconciles only shared state in the existing composed map; local roots, Schemas, CSS, handles, and Mirror continuity remain client-owned.
 
 ### 7. Local rendering, selective transfer, and continuation
 
@@ -172,25 +172,27 @@ whitespace in its encoded text; full-document state delivery is out-of-band.
 Return a standard Web `Response`; storage, routes, cache policy, and security
 remain application-owned. Hosted cuts retain their existing session contract.
 
-### 8. Hosted SSR — authorized cut and continuation
+### 8. Hosted SSR — authorized current state and continuation
 
 ```ts
 import { encode_ssr_bootstrap, continue_hosted_document } from "hson-live";
 
 const session = await authority.session.create({ libraries: ["page"] });
-const cut = session.cut({ html: "page" });
-const encoded = encode_ssr_bootstrap(cut.libs);
-// Deliver cut.html and encoded in the application-owned response.
+const now = session.now({ html: "page" });
+const encoded = encode_ssr_bootstrap(now);
+// Deliver now.html and encoded in the application-owned response.
 // In the browser, decode the projected state if its carrier required text.
-const continuation = await continue_hosted_document({ cut, credential, socket, root });
+const continuation = await continue_hosted_document({ now, credential, socket, root });
 await continuation.tree.async.attrs.set("data-ready", "yes");
 continuation.dispose();
 ```
 
-`session.cut({ html: document })` requires an active authorized session.
-The selected document must belong to that session's projection. The cut's
-HTML and `AuthorityProjectionSnapshot` share one authority revision. A cut
-without HTML returns `{ libs }`. Explicit HTML selection returns `{ libs, html, document }`. Deliver `session.credential` separately for client reattachment; it is absent from `libs`. Hosted continuation constructs a managed replica, adopts matching DOM, then completes Echo recovery,
+`session.now({ html: document })` requires an active authorized session.
+The selected document must be a shared document in that session's projection.
+The HTML and `AuthorityProjectionSnapshot` share one authority revision. The
+structured result keeps `libs` and `local` distinct and carries a separate
+initializer digest. Deliver `session.credential` separately. Hosted continuation
+constructs one managed replica, adopts matching shared DOM, then completes Echo sync,
 and exposes `continuation.mirror` for projection health. Its disposer releases
 its Mirror and interaction arrangements without disposing Echo.
 
@@ -213,7 +215,7 @@ Supply the executable behavior at its owning runtime, describe event binding
 and symbolic behavior/data canonically, activate on the intended tree, then
 dispose activation resources when appropriate. Local behavior tables are fixed
 runtime capabilities; they do not grant Locus ordering, authorization, or
-recovery. Locus-registered actions are the authoritative counterpart. Descriptors
+synchronization. Locus-registered actions are the authoritative counterpart. Descriptors
 do not serialize callbacks, auto-generate registrations, mint subject identity,
 or intrinsically require Echo. Runtime coverage: canonical-interactions tests.
 
@@ -239,7 +241,7 @@ and document continuation.
   specialist subpaths; keep normal composition imports at the package root.
 - Treat action payload/result values as `HsonData`: check presence, use
   `Hson.data.entries(value)` for exact semantics or `Hson.data.materialize(value)` for a detached JS view.
-- Construct hosted Locus from a library registry with explicit initial exposure and session projection; a one-library application uses the same path. Runtime admissions use `locus.lib.add` with private exposure as the default. Keep persistence server-side.
+- Construct hosted Locus from an authority registry plus an explicit private/shared/local application catalog; a one-library application uses the same path. Runtime authority admissions use `locus.lib.add` with private ownership as the default. Keep persistence server-side.
 - Admit documents through `hsonLiveMap.fromLibraries({ page: { document, schema } })`;
   use `map.lib("page").render()` for local HTML and path document requests for mutation.
 - Use `TransformOutput`, `SsrBootstrapCodecError`, `tree.style`/`tree.css` or

@@ -29,7 +29,7 @@ absent storage. `install_libraries_snapshot(libs)` reconstructs a fresh local ma
 Local transfer uses `hson-ssr-bootstrap` with kind `libraries`. Snapshot root
 consumers use the aggregate 64 MiB bound, with unchanged depth and node limits.
 
-## Hosted session cuts
+## Hosted session current state
 
 `locus.map` contains complete authority state. `locus.session` owns retained client sessions; each returned capability represents one authorized scope.
 
@@ -38,17 +38,17 @@ const session = await locus.session.create(
   { libraries: ["state", "page"] },
   { connection: { principalId: "alice" } },
 );
-const cut = session.cut({ html: "page" });
-const encoded = encode_ssr_bootstrap(cut.libs);
+const now = session.now({ html: "page" });
+const encoded = encode_ssr_bootstrap(now);
 const credential = session.credential; // deliver separately for Echo reattachment
 ```
 
-Server-first creation uses real exposure and authorization filtering and needs no browser transport. A resumable session retains its logical scope and capability through disconnect and reattachment. `session.update(...)` reauthorizes changes; `session.revoke()` withdraws authority. Terminal sessions and manager disposal fence subsequent cuts.
+Server-first creation uses ownership and authorization filtering and needs no browser transport. A resumable session retains its logical scope and capability through disconnect and reattachment. `session.update(...)` reauthorizes changes; `session.revoke()` withdraws authority. Terminal sessions and manager disposal fence subsequent operations.
 
-`session.cut()` returns only `{ libs }`. Supplying `html` returns `{ libs, html, document }` and must name an included document library. It neither includes another library nor changes the retained contract. HTML uses the captured root and CSS, including legal roots larger than the generic 4 MiB codec default. There is no implicit HTML document selection.
+`session.now()` returns `{ format, libs, local, initializerDigest }`. Supplying `html` additionally returns `{ html, document }` and must name an included shared document library. Local document initializers are never selected as hosted output. HTML uses the captured shared root and CSS. There is no implicit selection.
 
-Hosted `libs` is an admitted `hson-authority-projection-snapshot`, with authority/recovery identity and authorized system/write contract metadata. Encode it using the SSR codec's `hosted-projection` family. Local `map.cut().libs` uses the distinct `libraries` family. Credentials are absent from both transferred state and HTML and must be handed off independently.
+Hosted `libs` is an admitted `hson-authority-projection-snapshot`; `local` is a distinct set of fingerprinted initializers. Encode the whole `now` object using the SSR codec's `hosted-projection` family so text carriers retain both. Local `map.cut().libs` uses the distinct `libraries` family. Credentials are absent and must be handed off independently.
 
-The browser passes the structured session cut, separate credential, socket, and existing root to `continue_hosted_document`. The helper constructs a managed Echo replica, adopts the document, binds Mirror, and then completes recovery. Multiple documents require an explicit document name. Continuation checks contract identity, authority revision and binding, captured roots, and CSS before publication. The transfer codec remains optional when a carrier needs text.
+The browser passes structured `now`, a separate credential, socket, and existing root to `continue_hosted_document`. The helper prepares Echo, initializes missing local libraries, adopts the explicit shared document, binds Mirror, and completes sync. The transfer codec remains optional when a carrier needs text.
 
-The application owns its shell, routing, asset tags, headers, CSP, and carrier placement. Encode this cut's `libs` beside this cut's HTML. Framework privacy filtering protects library scope; the application still controls the contents it authors into permitted libraries and arbitrary responses.
+The application owns its shell, routing, asset tags, headers, CSP, and carrier placement. Encode this `now` composition beside its HTML. Framework privacy filtering protects library scope; the application still controls the contents it authors into permitted libraries and arbitrary responses.

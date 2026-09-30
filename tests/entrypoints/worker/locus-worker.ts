@@ -10,13 +10,13 @@ declare const socket: LocusSocketLike;
 void create_browser_locus_socket(websocketUrl, BrowserSocket);
 void socket;
 const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
-const locus: Locus<typeof map> = create_locus({ map, exposure: [{ library: "page", exposure: "client-public" }] });
+const locus: Locus<typeof map> = create_locus({ map, libraries: [{ name: "page", ownership: "shared" }] });
 void [locus, hsonLocus];
 const retained = await locus.session.create({ libraries: ["page"] });
-const snapshot: AuthorityProjectionSnapshot = retained.cut().libs;
-void hsonEcho.replicate({ cut: retained.cut(), credential: retained.credential!, socket });
+const snapshot: AuthorityProjectionSnapshot = retained.now().libs;
+void hsonEcho.init({ now: retained.now(), credential: retained.credential!, socket });
 // @ts-expect-error Retained cuts have no family narrowing.
-retained.cut({ data: [] });
+retained.now({ data: [] });
 // @ts-expect-error The public plural namespace is retired.
 void locus.sessions;
 // @ts-expect-error A bare map cannot become a hosted Locus.

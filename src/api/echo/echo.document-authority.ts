@@ -69,7 +69,7 @@ export function make_echo_document_authority(
     if (failure instanceof Error) return failure;
     const message = typeof failure === "object" && failure !== null && typeof Reflect.get(failure, "message") === "string"
       ? String(Reflect.get(failure, "message"))
-      : "Echo document replica recovery failed.";
+      : "Echo document replica synchronization failed.";
     const error = new Error(message, { cause: failure });
     const code = typeof failure === "object" && failure !== null ? Reflect.get(failure, "code") : undefined;
     if (typeof code === "string") Object.defineProperty(error, "code", { value: code, enumerable: true });

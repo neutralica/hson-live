@@ -21,7 +21,7 @@ writes are rejected; `tree.async.css.global` uses the document authority path.
 The required DOM is defined by hson-live's browser-realization contract, not by
 public `.toHtml()`. The latter remains Hson transport HTML and may contain
 `_hson_*` carriers. The plan and serializer remain private. Hosted HTML and
-its matching projected state come from an explicit `session.cut({ html })`;
+its matching projected state come from an explicit `session.now({ html })`;
 `hson-live/ssr` supplies the independent state-carrier codec.
 
 The structural names have distinct authorities: `_hson_*` names belong to
@@ -95,7 +95,7 @@ Continuation calls `activate_interactions`; it does not call
 
 ## Hosted continuation
 
-For hosted continuation, deliver the explicit `session.cut({ html: "page" })`
+For hosted continuation, deliver the explicit `session.now({ html: "page" })`
 result and its credential separately. If a text carrier is needed, decode the
 projected state and place it back in the cut's `libs` field. Pass the cut,
 credential, socket, and existing root Element to `continue_hosted_document`.
@@ -104,7 +104,7 @@ name can select among multiple projected documents.
 
 ```ts
 const continuation = await continue_hosted_document({
-  cut,
+  now,
   credential,
   socket,
   document: selectedDocumentName,
@@ -117,9 +117,9 @@ continuation.dispose();
 continuation.echo.dispose();
 ```
 
-Continuation constructs a managed Echo replica from the cut. It first admits
+Continuation constructs a managed Echo replica from the session's current composition. It first admits
 the existing DOM at its captured revision and binds Mirror, then completes
-Echo recovery. It
+Echo synchronization. It
 resolves only when Echo is caught up and Mirror is active at the current map
 revision. Compatible replay therefore advances the already-adopted nodes in
 place. An incompatible root epoch fails closed through existing Mirror
@@ -131,7 +131,7 @@ only local capabilities and an optional failure observer:
 
 ```ts
 const continuation = await continue_hosted_document({
-  cut,
+  now,
   credential,
   socket,
   root,

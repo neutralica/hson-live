@@ -33,7 +33,7 @@ function sockets() {
 const authority = hsonLiveMap.fromLibraries({ base: { data: { count: 1 } } });
 let allowNew = false;
 const locus = hsonLocus.create({ map: authority,
-  exposure: [{ library: "base", exposure: "client-public" }],
+  libraries: [{ name: "base", ownership: "shared" }],
   defaultProjection: { libraries: ["base"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries.filter((name) =>
     allowNew || (name !== "newPublic" && name !== "page")) }),
@@ -56,7 +56,7 @@ assert.equal(locus.rev, beforeAuthorityRev);
 const beforeAdmissionWire = wire.received.length;
 await locus.lib.add({ newPublic: { data: { count: 2 } }, page: { document: Hson.document`<main <p "RUNTIME_PAGE_SENTINEL"/>/>` },
   privateState: { data: { secret: "PRIVATE_ROOT_SENTINEL" } } },
-{ exposure: { newPublic: "client-public", page: "client-public" } });
+{ ownership: { newPublic: "shared", page: "shared" } });
 assert.equal(locus.rev, beforeAuthorityRev + 1);
 assert.equal(echo.lastAppliedRev, locus.rev);
 assert.equal(clientMap.rev, beforeClientRev + 1);
@@ -85,7 +85,7 @@ assert.equal(clientMap.lib("newPublic").mode, "data-object");
 assert.equal(client_library_source_internal(clientMap.lib("newPublic")), "authority-projected");
 assert.equal(clientMap.lib("page").mode, "document");
 assert.equal(wire.received.at(-1)?.includes("privateState"), false);
-const cut = locus.session.get(sessionId)!.cut({ html: "page" });
+const cut = locus.session.get(sessionId)!.now({ html: "page" });
 assert.match(cut.html, /RUNTIME_PAGE_SENTINEL/);
 assert.ok(JSON.stringify(cut.libs).includes("newPublic"));
 assert.equal(JSON.stringify(cut.libs).includes("PRIVATE_ROOT_SENTINEL"), false);
@@ -116,7 +116,7 @@ assert.equal(newSnapshot.includes("privateState"), false);
 
 const beforeInvalid = locus.rev;
 await assert.rejects(locus.lib.add({ invalid: { data: 1 } },
-  { exposure: { unknown: "client-public" } }), /unknown/i);
+  { ownership: { unknown: "shared" } }), /unknown/i);
 assert.equal(locus.rev, beforeInvalid);
 assert.throws(() => authority.lib("invalid"), /Unknown/);
 const NumberSchema = Hson.schema`<type "data" content <value "number">>`;
@@ -136,7 +136,7 @@ process.stdout.write("ok - public runtime admission and explicit live projection
 const interactionMap = hsonLiveMap.fromLibraries({ basePage: { document: Hson.document`<main/>` } });
 enable_interactions(interactionMap);
 const interactionLocus = hsonLocus.create({ map: interactionMap,
-  exposure: [{ library: "basePage", exposure: "client-public" }],
+  libraries: [{ name: "basePage", ownership: "shared" }],
   defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }),
 });
@@ -153,7 +153,7 @@ const existingMirror = hsonMirror(initialPage);
 const existingTree = existingMirror.tree.node;
 const existingMirrorUpdates = existingMirror.diagnostics().updatesApplied;
 await interactionLocus.lib.add({ nextPage: { document: Hson.document`<main <button "Next"/>/>` } },
-  { exposure: { nextPage: "client-public" } });
+  { ownership: { nextPage: "shared" } });
 const listener = Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
   passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false,
   stopImmediatePropagation: false });
@@ -175,7 +175,7 @@ if (nextPage.mode !== "document") throw new Error("Expected runtime document Lib
 const nextMirror = hsonMirror(nextPage);
 assert.ok(nextMirror.tree.node);
 assert.ok(interactionWire.received.at(-1)?.includes("NEW_INTERACTION_SENTINEL"));
-assert.match(interactionLocus.session.get(interactionSessionId)!.cut({ html: "nextPage" }).html, /Next/);
+assert.match(interactionLocus.session.get(interactionSessionId)!.now({ html: "nextPage" }).html, /Next/);
 interactionEcho.dispose();
 nextMirror.dispose();
 existingMirror.dispose();
@@ -184,7 +184,7 @@ process.stdout.write("ok - projected runtime document interaction\n");
 
 const collisionMap = hsonLiveMap.fromLibraries({ base: { data: { value: 1 } } });
 const collisionLocus = hsonLocus.create({ map: collisionMap,
-  exposure: [{ library: "base", exposure: "client-public" }],
+  libraries: [{ name: "base", ownership: "shared" }],
   defaultProjection: { libraries: ["base"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
@@ -196,7 +196,7 @@ await collisionEcho.connect();
 const collisionClientMap = collisionEcho.map;
 assert.ok(collisionClientMap);
 await collisionLocus.lib.add({ shared: { data: { owner: "authority" } } },
-  { exposure: { shared: "client-public" } });
+  { ownership: { shared: "shared" } });
 collisionClientMap.addLibraries({ shared: { data: { owner: "local" } } });
 const localShared = collisionClientMap.lib("shared");
 const localRev = collisionClientMap.rev;
@@ -219,7 +219,7 @@ const entered = new Promise<void>((resolve) => { authorizationEntered = resolve;
 const authorization = new Promise<void>((resolve) => { releaseAuthorization = resolve; });
 let sawCurrentContext = false;
 const revokeLocus = hsonLocus.create({ map: revokeMap,
-  exposure: [{ library: "base", exposure: "client-public" }],
+  libraries: [{ name: "base", ownership: "shared" }],
   defaultProjection: { libraries: ["base"] },
   authorizeProjection: async ({ requested, connection }) => {
     if (!requested.libraries.includes("later")) return { libraries: requested.libraries };
@@ -234,7 +234,7 @@ revokeLocus.connect(revokeWire.server, { principalId: "alice", attachment: { rol
 const revokeEcho = create_echo_socket_client_internal({ socket: revokeWire.client,
   logicalMapId: revokeLocus.logicalMapId });
 await revokeEcho.connect();
-await revokeLocus.lib.add({ later: { data: { value: 2 } } }, { exposure: { later: "client-public" } });
+await revokeLocus.lib.add({ later: { data: { value: 2 } } }, { ownership: { later: "shared" } });
 const revokeSessionId = revokeEcho.session.sessionId;
 assert.ok(revokeSessionId);
 const pendingUpdate = revokeLocus.session.get(revokeSessionId)!.update({ libraries: ["base", "later"] });
@@ -250,23 +250,23 @@ process.stdout.write("ok - reauthorization uses current context and honors revoc
 
 const durableMap = hsonLiveMap.create();
 const adapter = new MemoryCheckpointAdapter();
-const durable = await create_persistent_locus({ map: durableMap, exposure: [],
+const durable = await create_persistent_locus({ map: durableMap, libraries: [],
   persistence: adapter, logicalMapId: "public-hosted-admission" });
 await durable.lib.add({ first: { data: { value: 1 } }, second: { data: { value: 2 } } },
-  { exposure: { first: "client-public" } });
+  { ownership: { first: "shared" } });
 assert.equal(durable.rev, 1);
 assert.equal(adapter.state(durable.logicalMapId)?.commits.length, 1);
 adapter.failAppend = new Error("append failed");
 await assert.rejects(durable.lib.add({ refused: { data: { value: 3 } } },
-  { exposure: { refused: "client-public" } }), /append/i);
+  { ownership: { refused: "shared" } }), /append/i);
 assert.equal(durable.rev, 1);
 assert.throws(() => durableMap.lib("refused"), /Unknown/);
 durable.dispose();
 const resumedMap = hsonLiveMap.create();
 const resumed = await create_persistent_locus({ map: resumedMap, persistence: adapter,
-  logicalMapId: "public-hosted-admission", exposure: [
-    { library: "first", exposure: "client-public" },
-    { library: "second", exposure: "server-private" },
+  logicalMapId: "public-hosted-admission", libraries: [
+    { name: "first", ownership: "shared" },
+    { name: "second", ownership: "private" },
   ] });
 assert.equal(resumed.rev, 1);
 const resumedFirst = resumedMap.lib("first");
@@ -276,33 +276,33 @@ resumed.dispose();
 const sortedAdapter = new MemoryCheckpointAdapter();
 const sortedInitial = hsonLiveMap.fromLibraries({ middle: { data: { value: 1 } } });
 const sortedLocus = await create_persistent_locus({ map: sortedInitial, persistence: sortedAdapter,
-  logicalMapId: "sorted-hosted-admission", exposure: [{ library: "middle", exposure: "client-public" }] });
+  logicalMapId: "sorted-hosted-admission", libraries: [{ name: "middle", ownership: "shared" }] });
 await sortedLocus.lib.add({ aardvark: { data: { value: 2 } } },
-  { exposure: { aardvark: "client-public" } });
+  { ownership: { aardvark: "shared" } });
 sortedLocus.dispose();
 const sortedRestartMap = hsonLiveMap.fromLibraries({ middle: { data: { value: 0 } } });
 const sortedRestart = await create_persistent_locus({ map: sortedRestartMap, persistence: sortedAdapter,
-  logicalMapId: "sorted-hosted-admission", exposure: [
-    { library: "middle", exposure: "client-public" },
-    { library: "aardvark", exposure: "client-public" },
+  logicalMapId: "sorted-hosted-admission", libraries: [
+    { name: "middle", ownership: "shared" },
+    { name: "aardvark", ownership: "shared" },
   ] });
 assert.equal(sortedRestartMap.lib("aardvark").mode, "data-object");
 sortedRestart.dispose();
 process.stdout.write("ok - public admission uses the durable authority gate atomically\n");
 
 const capturedMap = hsonLiveMap.create();
-const capturedLocus = hsonLocus.create({ map: capturedMap, exposure: [],
+const capturedLocus = hsonLocus.create({ map: capturedMap, libraries: [],
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const mutableBatch = { one: { data: { value: 1 } } };
-const pendingBatch = capturedLocus.lib.add(mutableBatch, { exposure: { one: "client-public" } });
+const pendingBatch = capturedLocus.lib.add(mutableBatch, { ownership: { one: "shared" } });
 Object.assign(mutableBatch, { unclassified: { data: { secret: "LATE_LIBRARY_SENTINEL" } } });
 await pendingBatch;
 assert.equal(capturedLocus.rev, 1);
 assert.equal(capturedMap.lib("one").mode, "data-object");
 assert.throws(() => capturedMap.lib("unclassified"), /Unknown/);
-const inheritedExposure: Record<string, "client-public"> = Object.create({ inherited: "client-public" });
+const inheritedExposure: Record<string, "shared"> = Object.create({ inherited: "shared" });
 await capturedLocus.lib.add({ inherited: { data: { secret: "INHERITED_EXPOSURE_SENTINEL" } } },
-  { exposure: inheritedExposure });
+  { ownership: inheritedExposure });
 const capturedWire = sockets();
 capturedLocus.connect(capturedWire.server);
 capturedWire.client.send(JSON.stringify({ type: "session-create", id: "captured-session",
@@ -315,4 +315,4 @@ assert.ok(capturedSnapshot);
 assert.ok(capturedSnapshot.includes('"one"'));
 assert.equal(capturedSnapshot.includes("INHERITED_EXPOSURE_SENTINEL"), false);
 capturedLocus.dispose();
-process.stdout.write("ok - admission captures names before queueing and ignores inherited exposure\n");
+process.stdout.write("ok - admission captures names before queueing and ignores inherited ownership metadata\n");

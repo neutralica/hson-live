@@ -2,7 +2,7 @@ import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   Echo,
   EchoOptions,
-  EchoReplicateOptions,
+  EchoInitOptions,
   LocusActionPayloads,
 } from "../../types/locus.types.js";
 import { create_endpoint_echo_internal } from "./echo.client.js";
@@ -11,15 +11,15 @@ import { create_endpoint_echo_internal } from "./echo.client.js";
 export function create_echo<TActions extends LocusActionPayloads = LocusActionPayloads>(
   options: EchoOptions,
 ): Echo<undefined, TActions> {
-  if (typeof options !== "object" || options === null || "map" in options || "recovery" in options) {
-    throw new TypeError("Echo.create is endpoint-only; use Echo.replicate for a state replica.");
+  if (typeof options !== "object" || options === null || "map" in options || "now" in options || "recovery" in options) {
+    throw new TypeError("Echo.create is endpoint-only; use Echo.init for a state replica.");
   }
   return create_endpoint_echo_internal<TActions>(options);
 }
 
-/** Admit, attach, and synchronize one authorized session cut. */
-export async function replicate_echo_internal<TActions extends LocusActionPayloads = LocusActionPayloads>(
-  options: EchoReplicateOptions,
+/** Admit, attach, and synchronize one authorized current session composition. */
+export async function init_echo_internal<TActions extends LocusActionPayloads = LocusActionPayloads>(
+  options: EchoInitOptions,
 ): Promise<Echo<LiveMap, TActions>> {
   const { prepare_echo_replica_internal } = await import("./echo.replica-preparation.js");
   const prepared = prepare_echo_replica_internal<TActions>(options);

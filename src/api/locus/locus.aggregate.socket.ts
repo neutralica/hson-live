@@ -21,8 +21,8 @@ import type {
   LocusSessionOptions,
   LocusActionDedupeOptions,
   LocusSchema,
-  LocusExposureEntry,
-  LocusLibraryExposure,
+  LocusLibraryCatalogEntry,
+  LocusLibraryOwnership,
   LocusProjectionAuthorizer,
   LocusRequestedProjection,
   LocusSocketLike,
@@ -37,7 +37,7 @@ import { LocusPersistenceError } from "./locus.persistence.error.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
 import { make_locus_session_manager } from "./locus.session.js";
-import { LocusProjectionUnavailableError, make_locus_hosted_projection_policy, normalize_locus_effective_projection, runtime_locus_exposure_entries, snapshot_locus_requested_projection, type LocusEffectiveProjection } from "./locus.projection.js";
+import { LocusProjectionUnavailableError, make_locus_hosted_projection_policy, normalize_locus_effective_projection, runtime_locus_ownership_entries, snapshot_locus_requested_projection, type LocusEffectiveProjection } from "./locus.projection.js";
 import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal, projected_registry_digest, type LocusLiveProjectedEvent } from "./locus.live-projection.js";
 import { capture_locus_session_authority_projection_snapshot, capture_selected_authority_projection_snapshot, authority_projection_as_client_composition_internal, authority_projection_state_fingerprint_internal } from "./locus.authority-projection-snapshot.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
@@ -95,6 +95,7 @@ type HostedCursor = Readonly<{
   projectionSequence: number;
   lastAppliedRev: number;
   initialStateFingerprint?: string;
+  initialInitializerDigest?: string;
 }>;
 
 type HostedRequest =
@@ -115,8 +116,8 @@ type HostedRequest =
     retry?: true;
   }>;
 
-type HostedPlanOutcome = "current" | "replay" | "snapshot" | "reject";
-type HostedSnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" | "projection_changed";
+type HostedPlanOutcome = "current" | "replay" | "reconcile" | "reject";
+type HostedReconcileReason = "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" | "projection_changed";
 
 type HostedHistoryEntry = Readonly<{
   envelope: LocusHostedAggregateAuthorityEnvelope;
@@ -208,7 +209,7 @@ export type LocusHostedAggregateSocketOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   map: LiveMap;
-  exposure: readonly LocusExposureEntry[];
+  libraries: readonly LocusLibraryCatalogEntry[];
   defaultProjection?: LocusRequestedProjection;
   authorizeProjection?: LocusProjectionAuthorizer;
   actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
@@ -251,7 +252,7 @@ export type LocusHostedAggregateSocketServer<
     onClose?: LocusDisposer,
   ) => LocusHostedAggregateSemanticAttachment<TActions>;
   mutate: LocusHostedAggregate["mutate"];
-  add_libraries: (definitions: LiveMapDefinitions, exposure?: Readonly<Record<string, LocusLibraryExposure>>) => Promise<void>;
+  add_libraries: (definitions: LiveMapDefinitions, ownership?: Readonly<Record<string, Exclude<LocusLibraryOwnership, "local">>>) => Promise<void>;
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
   create_session: (request: LocusRequestedProjection, options?: import("../../types/locus.types.js").LocusSessionCreateOptions) => Promise<LocusSessionId>;
@@ -289,8 +290,8 @@ export function create_locus_hosted_aggregate_socket_internal<
   const aggregate = internal_livemap_aggregate_authority(options.map);
   const initial = aggregate.hostedPosition();
   const registry = aggregate.hostedRegistry();
-  const projectionPolicy = make_locus_hosted_projection_policy(registry, initial.authority, options.exposure,
-    options.defaultProjection, options.authorizeProjection);
+  const projectionPolicy = make_locus_hosted_projection_policy(registry, initial.authority, options.libraries,
+    options.defaultProjection, options.authorizeProjection, options.map);
   const bindings = aggregate.libraries();
   const identitiesByName = new Map<string, object>();
   let applicationIndex = 0;
@@ -417,7 +418,7 @@ export function create_locus_hosted_aggregate_socket_internal<
 
   async function add_libraries(
     definitions: LiveMapDefinitions,
-    exposure?: Readonly<Record<string, LocusLibraryExposure>>,
+    ownership?: Readonly<Record<string, "private" | "shared">>,
   ): Promise<void> {
     if (disposed) throw new Error("Hosted Locus authority is disposed.");
     if (typeof definitions !== "object" || definitions === null || Array.isArray(definitions)) {
@@ -426,15 +427,15 @@ export function create_locus_hosted_aggregate_socket_internal<
     // Capture the batch before it enters the asynchronous authority queue. The
     // policy names and semantic names must come from the same caller snapshot.
     const capturedDefinitions: LiveMapDefinitions = Object.freeze(Object.fromEntries(Object.entries(definitions)));
-    const entries = runtime_locus_exposure_entries(Object.keys(capturedDefinitions), exposure);
+    const entries = runtime_locus_ownership_entries(Object.keys(capturedDefinitions), ownership);
     await locus.add_libraries_internal(capturedDefinitions, () => {
       const nextRegistry = aggregate.hostedRegistry();
-      projectionPolicy.installRuntimeExposure(entries, nextRegistry);
+      projectionPolicy.installRuntimeOwnership(entries, nextRegistry);
       const bindings = aggregate.libraries();
       for (const entry of entries) {
-        const index = nextRegistry.libraries.findIndex((candidate) => candidate.name === entry.library);
+        const index = nextRegistry.libraries.findIndex((candidate) => candidate.name === entry.name);
         const identity = bindings[index];
-        if (identity !== undefined) identitiesByName.set(entry.library, identity);
+        if (identity !== undefined) identitiesByName.set(entry.name, identity);
       }
     });
   }
@@ -527,7 +528,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         || added.some((entry) => entry.mode === "document");
       const currentSequence = sessions.projection_sequence(sessionId);
       if (currentSequence === undefined) throw new LocusProjectionUnavailableError();
-      if (next.digest === previous.digest) return Object.freeze({ changed: false, sequence: currentSequence,
+      if (next.compositionDigest === previous.compositionDigest) return Object.freeze({ changed: false, sequence: currentSequence,
         digest: previous.digest, authorityRev: locus.rev });
       if (disconnected || serverOwned) {
         const sequence = sessions.update_projection(sessionId, previous, next);
@@ -544,6 +545,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         registryDigest: projected_registry_digest(next),
         libraries: next.libraries,
         systemFeatures: next.systemFeatures, writableDocuments: next.writableDocuments,
+        local: next.local, initializerDigest: next.initializerDigest,
         ...(reconcile ? { reconciliation: snapshot } : topology === undefined ? {} : { topology }),
       });
       encode_downstream_message(event, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes);
@@ -722,17 +724,17 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
     const binding = bind_session(connection, false);
     if (!(binding instanceof Promise ? await binding : binding)) {
-      reject(connection, "LOCUS_SESSION_NOT_ATTACHED", "Hosted aggregate recovery requires an active Locus session.", request.id);
+      reject(connection, "LOCUS_SESSION_NOT_ATTACHED", "Hosted aggregate synchronization requires an active Locus session.", request.id);
       return;
     }
     if (request.logicalMapId !== locus.logicalMapId) {
-      reject(connection, "LOCUS_RECOVERY_INVALID_TARGET", "Hosted recovery target is incompatible.", request.id);
+      reject(connection, "LOCUS_SYNC_INVALID_TARGET", "Hosted synchronization target is incompatible.", request.id);
       return;
     }
     const cursor = request.cursor;
     const sameIncarnation = cursor?.incarnationId === locus.incarnationId;
     if (connection.recovering) {
-      reject(connection, "LOCUS_RECOVERY_IN_PROGRESS", "Hosted aggregate recovery is already in progress.", request.id);
+      reject(connection, "LOCUS_SYNC_IN_PROGRESS", "Hosted aggregate synchronization is already in progress.", request.id);
       return;
     }
 
@@ -764,46 +766,57 @@ export function create_locus_hosted_aggregate_socket_internal<
     connection.pendingLive.length = 0;
     connection.releaseRecoveryActivity = options.internal?.acquireRecoveryActivity?.();
     let outcome: Exclude<HostedPlanOutcome, "reject">;
-    let reason: HostedSnapshotReason | undefined;
+    let reason: HostedReconcileReason | undefined;
     let snapshot: AuthorityProjectionSnapshot | undefined;
     let replay: readonly HostedHistoryEntry[] = Object.freeze([]);
     const headSnapshot = capture_locus_session_authority_projection_snapshot(options.map, sessions, connection.sessionId);
     const head = headSnapshot.revision;
     const projectedRegistryDigest = authority_projection_as_client_composition_internal(headSnapshot).registryDigest;
     const replayRegistryDigest = projected_registry_digest(replayProjection);
+    if (cursor?.initialInitializerDigest !== undefined
+      && cursor.initialInitializerDigest !== effective.initializerDigest) {
+      send(connection, recovery_plan(request.id, "reject", head, effective.digest, projectedRegistryDigest, {
+        code: "LOCUS_INITIALIZER_INTEGRITY_MISMATCH",
+        message: "Transferred local initializers do not match the retained session.",
+      }, sessions.projection_sequence(connection.sessionId) ?? 0));
+      connection.recovering = false;
+      connection.releaseRecoveryActivity?.();
+      connection.releaseRecoveryActivity = undefined;
+      return;
+    }
     const sameProjectedRegistry = cursor?.registryDigest === replayRegistryDigest;
     if (cursor === undefined) {
-      outcome = "snapshot";
+      outcome = "reconcile";
       reason = "no_usable_revision";
     } else if (unknownPriorProjection) {
-      outcome = "snapshot";
+      outcome = "reconcile";
       reason = "projection_changed";
     } else if (options.internal?.recoveryFloorRevision !== undefined
       && cursor.lastAppliedRev <= options.internal.recoveryFloorRevision) {
-      outcome = "snapshot";
+      outcome = "reconcile";
       reason = "history_unavailable";
     } else if (replayProjection.libraries.some((entry) => !effective.includesLibrary(entry.name))
       || JSON.stringify(replayProjection.systemFeatures) !== JSON.stringify(effective.systemFeatures)) {
-      outcome = "snapshot";
+      outcome = "reconcile";
       reason = "projection_changed";
     } else if (!sameProjectedRegistry) {
-      outcome = "snapshot";
+      outcome = "reconcile";
       reason = "registry_mismatch";
     } else if (!sameIncarnation) {
-      outcome = "snapshot";
+      outcome = "reconcile";
       reason = "incarnation_mismatch";
     } else if (cursor.initialStateFingerprint !== undefined
       && (cursor.lastAppliedRev !== head
         || cursor.initialStateFingerprint !== authority_projection_state_fingerprint_internal(headSnapshot))) {
       // The transferred cut has no established continuity at an older revision.
-      outcome = "snapshot";
+      outcome = "reconcile";
       reason = "no_usable_revision";
     } else if (cursor.lastAppliedRev === head) {
       outcome = "current";
     } else {
       const retained = replay_after(cursor.lastAppliedRev, head);
       if (retained === undefined) {
-        outcome = "snapshot";
+        outcome = "reconcile";
         reason = "history_unavailable";
       } else {
         outcome = "replay";
@@ -811,7 +824,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       }
     }
 
-    if (outcome === "snapshot") {
+    if (outcome === "reconcile") {
       snapshot = headSnapshot;
       if (snapshot.revision !== locus.rev) throw new Error("Hosted aggregate snapshot cut disagrees with its global revision.");
     }
@@ -852,6 +865,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         registryDigest: projectedRegistryDigest,
         libraries: effective.libraries,
         systemFeatures: effective.systemFeatures, writableDocuments: effective.writableDocuments,
+        local: effective.local, initializerDigest: effective.initializerDigest,
         ...(reconcile ? { reconciliation: headSnapshot } : topology === undefined ? {} : { topology }),
       });
       send(connection, change, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes);
@@ -907,7 +921,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     headRev: number,
     projectionDigest: string,
     registryDigest: string,
-    detail?: Readonly<{ reason: HostedSnapshotReason }> | Readonly<{ code: string; message: string }>,
+    detail?: Readonly<{ reason: HostedReconcileReason }> | Readonly<{ code: string; message: string }>,
     projectionSequence = 0,
   ): object {
     const base = {
@@ -921,7 +935,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       headRev,
       outcome,
     };
-    if (outcome === "snapshot") return Object.freeze({ ...base, reason: (detail as { reason: HostedSnapshotReason }).reason });
+    if (outcome === "reconcile") return Object.freeze({ ...base, reason: (detail as { reason: HostedReconcileReason }).reason });
     if (outcome === "reject") return Object.freeze({ ...base, error: detail });
     return Object.freeze(base);
   }
@@ -1393,7 +1407,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       void recover(connection, request).catch(() => {
         if (connection.closed || connection.fenced || connection.recoveryId !== request.id) return;
         stop_recovery(connection);
-        reject(connection, "LOCUS_RECOVERY_FAILED", "Hosted aggregate recovery failed.", request.id);
+        reject(connection, "LOCUS_SYNC_FAILED", "Hosted aggregate synchronization failed.", request.id);
       });
       return;
     }
@@ -1617,7 +1631,7 @@ function encode_downstream_message(message: unknown, limit: number): string {
       type: "error",
       format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
       ...(typeof cause?.id === "string" ? { id: cause.id } : {}),
-      code: typeof semantic.error.code === "string" ? semantic.error.code : "LOCUS_RECOVERY_FAILED",
+      code: typeof semantic.error.code === "string" ? semantic.error.code : "LOCUS_SYNC_FAILED",
       message: semantic.error.message,
     });
   } else if (semantic.type === "ack" && Object.hasOwn(semantic, "result")) {
@@ -1670,10 +1684,12 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
   if (value.type === "recover") {
     const hasCursor = Object.hasOwn(value, "incarnationId") || Object.hasOwn(value, "registryDigest")
       || Object.hasOwn(value, "projectionDigest") || Object.hasOwn(value, "projectionSequence")
-      || Object.hasOwn(value, "lastAppliedRev") || Object.hasOwn(value, "initialStateFingerprint");
+      || Object.hasOwn(value, "lastAppliedRev") || Object.hasOwn(value, "initialStateFingerprint")
+      || Object.hasOwn(value, "initialInitializerDigest");
     exact_keys(value, hasCursor
       ? ["type", "id", "logicalMapId", "incarnationId", "registryDigest", "projectionDigest", "projectionSequence", "lastAppliedRev",
-        ...(Object.hasOwn(value, "initialStateFingerprint") ? ["initialStateFingerprint"] : [])]
+        ...(Object.hasOwn(value, "initialStateFingerprint") ? ["initialStateFingerprint"] : []),
+        ...(Object.hasOwn(value, "initialInitializerDigest") ? ["initialInitializerDigest"] : [])]
       : ["type", "id", "logicalMapId"], "Hosted recovery request");
     const id = required_string(value.id);
     const logicalMapId = required_string(value.logicalMapId);
@@ -1687,12 +1703,16 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
     const lastAppliedRev = required_revision(value.lastAppliedRev);
     const initialStateFingerprint = Object.hasOwn(value, "initialStateFingerprint")
       ? required_digest(value.initialStateFingerprint) : undefined;
+    const initialInitializerDigest = Object.hasOwn(value, "initialInitializerDigest")
+      ? required_digest(value.initialInitializerDigest) : undefined;
     if (incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined
       || projectionSequence === undefined || lastAppliedRev === undefined
-      || (Object.hasOwn(value, "initialStateFingerprint") && initialStateFingerprint === undefined)) throw new Error("Hosted recovery cursor is malformed.");
+      || (Object.hasOwn(value, "initialStateFingerprint") && initialStateFingerprint === undefined)
+      || (Object.hasOwn(value, "initialInitializerDigest") && initialInitializerDigest === undefined)) throw new Error("Hosted recovery cursor is malformed.");
     return Object.freeze({ type: "recover", id, logicalMapId,
       cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, projectionSequence, lastAppliedRev,
-        ...(initialStateFingerprint === undefined ? {} : { initialStateFingerprint }) }) });
+        ...(initialStateFingerprint === undefined ? {} : { initialStateFingerprint }),
+        ...(initialInitializerDigest === undefined ? {} : { initialInitializerDigest }) }) });
   }
   if (value.type === "session-create" || value.type === "session-goodbye" || value.type === "session-detach") {
     const decoded = decode_locus_message(raw);

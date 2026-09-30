@@ -7,12 +7,12 @@ export type {
   EchoActionRequest,
   EchoActionStatusResult,
   EchoOptions,
-  EchoRecovery,
-  EchoRecoveryDiagnostics,
-  EchoRecoveryFailure,
-  EchoReplicateOptions,
-  EchoRecoveryStatus,
-  EchoRecoveryStrategy,
+  EchoSync,
+  EchoSyncDiagnostics,
+  EchoSyncFailure,
+  EchoInitOptions,
+  EchoSyncStatus,
+  EchoSyncStrategy,
   EchoSession,
   EchoSessionDiagnostics,
   EchoSessionFailure,
@@ -21,4 +21,4 @@ export type {
   EchoSessionStatus,
   EchoRetryActionFn,
 } from "../../types/echo.types.js";
-export { EchoRecoveryError, EchoSessionError } from "./echo.error.js";
+export { EchoSyncError, EchoSessionError } from "./echo.error.js";

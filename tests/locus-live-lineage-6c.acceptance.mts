@@ -17,11 +17,11 @@ const authority = hsonLiveMap.fromLibraries({
 const engine = internal_livemap_aggregate_authority(authority);
 const before = engine.captureHosted();
 const policy = make_locus_hosted_projection_policy(before.registry, before.authority, [
-  { library: "page", exposure: "client-public" }, { library: "privateData", exposure: "server-private" },
+  { name: "page", ownership: "shared" }, { name: "privateData", ownership: "private" },
 ], undefined, () => ({ libraries: ["page"] }));
 const effective = await normalize_locus_effective_projection(policy, { libraries: ["page"] });
 const projected = project_authority_snapshot(before, effective);
-const client = client_projection_map({ authority: projected, localLibraries: {} });
+const client = client_projection_map({ authority: projected, local: {} });
 const replica = create_echo_aggregate_replica_capability_internal(client);
 const pageId = engine.libraries()[0]!;
 const target = { kind: "path" as const, path: validate_document_path([0, 0]) };

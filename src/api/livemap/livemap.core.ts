@@ -1486,15 +1486,16 @@ function make_livemap_registry_engine(
     schema: HsonSchema,
     expectedPreviousSchemaDigest?: string,
   ): LiveMapAggregateCommit {
-    transitionController.assertPublicMutationAllowed();
-    if (clientComposition !== undefined) {
-      throw new LiveMapTransitionError(
-        "LIVEMAP_MANAGED_MUTATION_REJECTED",
-        "Projected LiveMap Library Schema attachment requires Echo authority support.",
-      );
-    }
-    if (!(schema instanceof HsonSchemaHandle)) throw new TypeError("LiveMap Library Schema attachment requires a genuine HsonSchema.");
     const state = require_library(libraryIdentity);
+    if (clientComposition !== undefined) {
+      if (clientComposition.projected.has(libraryIdentity)) {
+        throw new LiveMapTransitionError(
+          "LIVEMAP_MANAGED_MUTATION_REJECTED",
+          "Shared LiveMap Library Schema attachment requires Locus authority.",
+        );
+      }
+    } else transitionController.assertPublicMutationAllowed();
+    if (!(schema instanceof HsonSchemaHandle)) throw new TypeError("LiveMap Library Schema attachment requires a genuine HsonSchema.");
     const family = state.mode === "document" ? "document" as const : "data" as const;
     must_hson_schema_family(schema, family);
     const current = state.hsonSchema;

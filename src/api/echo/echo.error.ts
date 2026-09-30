@@ -1,10 +1,10 @@
-export class EchoRecoveryError extends Error {
+export class EchoSyncError extends Error {
   readonly code: string;
   readonly cause?: unknown;
 
   constructor(code: string, message: string, cause?: unknown) {
     super(message);
-    this.name = "EchoRecoveryError";
+    this.name = "EchoSyncError";
     this.code = code;
     if (cause !== undefined) this.cause = cause;
   }

@@ -5,6 +5,7 @@ import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
 import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { local_initializers } from "./helpers/client-projection.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { capture_selected_authority_projection_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
@@ -21,11 +22,11 @@ const map = hsonLiveMap.fromLibraries({
   privateSignal: { data: { value: "PRIVATE_SIGNAL_INITIAL" }, schema: Data },
 });
 const aggregate = internal_livemap_aggregate_authority(map);
-const exposure = [{ library: "page", exposure: "client-public" as const },
-  { library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" as const },
-  { library: "privateSignal", exposure: "server-private" as const }];
+const libraries = [{ name: "page", ownership: "shared" as const },
+  { name: "PRIVATE_NAME_SENTINEL", ownership: "private" as const },
+  { name: "privateSignal", ownership: "private" as const }];
 assert.throws(() => aggregate.captureHosted(), /bound|limit|size|payload/i);
-const { locus } = create_registry_locus_internal({ map, exposure,
+const { locus } = create_registry_locus_internal({ map, libraries,
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 }, { maxHistoryBytes: 1 });
@@ -45,12 +46,12 @@ const serverSocket: LocusSocketLike = {
 };
 let detach = locus.connect(serverSocket);
 const echo = create_echo_socket_client_internal({ socket: clientSocket, logicalMapId: locus.logicalMapId,
-  localLibraries: { local: { data: { value: "LOCAL_SENTINEL" }, schema: Data } } });
+  initializers: local_initializers({ local: { data: { value: "LOCAL_SENTINEL" }, schema: Data } }) });
 const initial = await echo.connect();
-assert.equal(initial.outcome, "snapshot");
+assert.equal(initial.outcome, "reconcile");
 const session = sent.map((raw) => JSON.parse(raw)).find((message) => message.type === "session-created");
 assert.equal(typeof session?.sessionId, "string");
-const cut = locus.session.get(session.sessionId)!.cut({ html: "page" });
+const cut = locus.session.get(session.sessionId)!.now({ html: "page" });
 assert.match(cut.html, /PUBLIC_PAGE_SENTINEL/);
 const artifact = JSON.stringify(cut.libs);
 for (const hidden of ["PRIVATE_NAME_SENTINEL", "PRIVATE_ROOT_SENTINEL", "hson:quid", "issuedQuids", "registryDigest"]) {
@@ -68,12 +69,12 @@ localHandle.set("LOCAL_AFTER_DISCONNECT");
 await locus.mutate((draft) => { const page = draft.lib("page"); if ("attrs" in page) page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "PUBLIC_NEXT_SENTINEL"); });
 await locus.mutate((draft) => { const privateLib = draft.lib("privateSignal"); if ("at" in privateLib) privateLib.at(["value"]).set(`PRIVATE_SMALL_COMMIT_SENTINEL${"q".repeat(2 * 1024 * 1024)}`); });
 assert.equal(JSON.stringify(cut), oldCut);
-const nextCut = locus.session.get(session.sessionId)!.cut({ html: "page" });
+const nextCut = locus.session.get(session.sessionId)!.now({ html: "page" });
 assert.equal(nextCut.libs.revision, locus.rev);
 assert.match(nextCut.html, /PUBLIC_NEXT_SENTINEL/);
 detach = locus.connect(serverSocket);
 const recovered = await echo.connect();
-assert.equal(recovered.outcome, "snapshot");
+assert.equal(recovered.outcome, "reconcile");
 assert.equal(echo.lastAppliedRev, locus.rev);
 assert.equal(localHandle.snap(), "LOCAL_AFTER_DISCONNECT");
 assert.equal(echo.map?.lib("local"), local);
@@ -83,7 +84,7 @@ assert.equal(snapshots[1]?.includes("PRIVATE_NAME_SENTINEL"), false);
 assert.equal(snapshots[1]?.includes("PRIVATE_SMALL_COMMIT_SENTINEL"), false);
 
 const policy = make_locus_hosted_projection_policy(aggregate.hostedRegistry(), aggregate.hostedPosition().authority,
-  exposure, undefined, () => ({ libraries: [] }));
+  libraries, undefined, () => ({ libraries: [] }));
 const zero = await normalize_locus_effective_projection(policy, { libraries: [] });
 const empty = capture_selected_authority_projection_snapshot(map, zero);
 assert.deepEqual(empty.libraries, []);
@@ -93,13 +94,13 @@ echo.dispose();
 detach();
 locus.dispose();
 
-const { locus: zeroLocus } = create_registry_locus_internal({ map, exposure,
+const { locus: zeroLocus } = create_registry_locus_internal({ map, libraries,
   defaultProjection: { libraries: [] }, authorizeProjection: () => ({ libraries: [] }),
 }, { maxHistoryBytes: 1 });
 let detachZero = zeroLocus.connect(serverSocket);
 const endpoint = create_echo_socket_client_internal({ socket: clientSocket, logicalMapId: zeroLocus.logicalMapId });
 const zeroInitial = await endpoint.connect();
-assert.equal(zeroInitial.outcome, "snapshot");
+assert.equal(zeroInitial.outcome, "reconcile");
 assert.equal(endpoint.map, undefined);
 assert.equal(endpoint.lastAppliedRev, zeroLocus.rev);
 endpoint.disconnect();
@@ -108,7 +109,7 @@ await zeroLocus.mutate((draft) => { const privateLib = draft.lib("privateSignal"
   if ("at" in privateLib) privateLib.at(["value"]).set(`PRIVATE_ENDPOINT_SENTINEL${"z".repeat(3 * 1024 * 1024)}`); });
 detachZero = zeroLocus.connect(serverSocket);
 const zeroRecovered = await endpoint.connect();
-assert.equal(zeroRecovered.outcome, "snapshot");
+assert.equal(zeroRecovered.outcome, "reconcile");
 assert.equal(endpoint.map, undefined);
 assert.equal(endpoint.lastAppliedRev, zeroLocus.rev);
 assert.equal(sent.filter((raw) => JSON.parse(raw).type === "recovery-snapshot").at(-1)?.includes("PRIVATE_ENDPOINT_SENTINEL"), false);
@@ -121,19 +122,19 @@ zeroLocus.dispose();
 const medium = hsonLiveMap.fromLibraries({ selected: { data: { value: "m".repeat(5 * 1024 * 1024) }, schema: Data } });
 const mediumAuthority = internal_livemap_aggregate_authority(medium);
 const mediumPolicy = make_locus_hosted_projection_policy(mediumAuthority.hostedRegistry(),
-  mediumAuthority.hostedPosition().authority, [{ library: "selected", exposure: "client-public" }], undefined,
+  mediumAuthority.hostedPosition().authority, [{ name: "selected", ownership: "shared" }], undefined,
   () => ({ libraries: ["selected"] }));
 const mediumEffective = await normalize_locus_effective_projection(mediumPolicy, { libraries: ["selected"] });
 const mediumSnapshot = capture_selected_authority_projection_snapshot(medium, mediumEffective);
 assert.ok(JSON.stringify(mediumSnapshot).length > 4 * 1024 * 1024);
 const installed = client_projection_map({ authority: mediumSnapshot,
-  localLibraries: { local: { data: { value: "local" }, schema: Data } } });
+  local: { local: { data: { value: "local" }, schema: Data } } });
 assert.equal(installed.lib("selected").mode, "data-object");
 
 const oversized = hsonLiveMap.fromLibraries({ selected: { data: { value: "o".repeat(65 * 1024 * 1024) }, schema: Data } });
 const oversizedAuthority = internal_livemap_aggregate_authority(oversized);
 const oversizedPolicy = make_locus_hosted_projection_policy(oversizedAuthority.hostedRegistry(),
-  oversizedAuthority.hostedPosition().authority, [{ library: "selected", exposure: "client-public" }], undefined,
+  oversizedAuthority.hostedPosition().authority, [{ name: "selected", ownership: "shared" }], undefined,
   () => ({ libraries: ["selected"] }));
 const oversizedEffective = await normalize_locus_effective_projection(oversizedPolicy, { libraries: ["selected"] });
 assert.throws(() => capture_selected_authority_projection_snapshot(oversized, oversizedEffective), /malformed/i);
@@ -144,7 +145,7 @@ const persistentMap = hsonLiveMap.fromLibraries({
   privateSignal: { data: { value: "small" }, schema: Data },
 });
 const persistent = await create_persistent_locus({ map: persistentMap, persistence,
-  exposure: [{ library: "page", exposure: "client-public" }, { library: "privateSignal", exposure: "server-private" }],
+  libraries: [{ name: "page", ownership: "shared" }, { name: "privateSignal", ownership: "private" }],
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 });

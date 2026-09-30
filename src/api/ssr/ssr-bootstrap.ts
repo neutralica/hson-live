@@ -2,8 +2,8 @@ import type {
   LiveMapSnapshot,
   LiveMapRootMode,
 } from "../../types/livemap.types.js";
-import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
-import { admit_authority_projection_snapshot } from "../locus/locus.authority-projection-snapshot.js";
+import type { LocusSessionNow } from "../../types/locus.core.types.js";
+import { admit_locus_session_now } from "../locus/locus.local-initializer.js";
 import type { HsonSchemaData } from "../transform/transform.types.js";
 import { is_Node } from "../../core/node-guards.js";
 import { HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
@@ -58,7 +58,7 @@ type LibrariesPayload = Readonly<{
 }>;
 
 export function encode_ssr_bootstrap(
-  bootstrap: AuthorityProjectionSnapshot,
+  bootstrap: LocusSessionNow,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"hosted-projection">;
 export function encode_ssr_bootstrap(
@@ -66,7 +66,7 @@ export function encode_ssr_bootstrap(
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"libraries">;
 export function encode_ssr_bootstrap(
-  bootstrap: LiveMapSnapshot | AuthorityProjectionSnapshot,
+  bootstrap: LiveMapSnapshot | LocusSessionNow,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap {
   const maximum = max_encoded_bytes(options, "encode");
@@ -163,8 +163,8 @@ export function decode_ssr_bootstrap(
 
 function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapKind; payload: unknown }> {
   if (!is_record(bootstrap)) throw new TypeError("Bootstrap must be an object.");
-  if (bootstrap.format === "hson-authority-projection-snapshot") {
-    return { kind: "hosted-projection", payload: admit_authority_projection_snapshot(bootstrap) };
+  if (bootstrap.format === "hson-locus-session-now") {
+    return { kind: "hosted-projection", payload: admit_locus_session_now(bootstrap) };
   }
   if (bootstrap.format === "hson-livemap-libraries-snapshot") {
     if (Object.hasOwn(bootstrap, "authority")) {
@@ -210,7 +210,7 @@ function libraries_payload(snapshot: LiveMapSnapshot): LibrariesPayload {
 
 function decode_payload(kind: SsrBootstrapKind, input: unknown): DecodedSsrBootstrap {
   if (kind === "hosted-projection") {
-    return Object.freeze({ kind, bootstrap: admit_authority_projection_snapshot(input) });
+    return Object.freeze({ kind, bootstrap: admit_locus_session_now(input) });
   }
   const payload = record(input);
   exact_keys(payload, ["snapshotFormat", "revision", "registryFormat", "registry", "registryDigest", "snapshotRegistryDigest", "libraries"]);

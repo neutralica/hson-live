@@ -96,7 +96,7 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
   let actions = 0;
   const locus = hsonLocus.create({
     map,
-    exposure: [{ library: "state", exposure: "client-public" }],
+    libraries: [{ name: "state", ownership: "shared" }],
     defaultProjection: { libraries: ["state"] },
     actions: { probe() { actions += 1; } },
   });
@@ -144,6 +144,7 @@ await check("untyped endpoint Echo construction rejects replica arguments", () =
   const pair = socket_pair();
   const createUntyped = (options: unknown): unknown => Reflect.apply(create_echo, undefined, [options]);
   assert.throws(() => createUntyped({ socket: pair.client, map: Object.freeze({}) }), /endpoint-only/i);
+  assert.throws(() => createUntyped({ socket: pair.client, now: Object.freeze({}) }), /endpoint-only/i);
   assert.throws(() => createUntyped({ socket: pair.client, recovery: {} }), /endpoint-only/i);
   assert.throws(
     () => createUntyped({ socket: pair.client, map: Object.freeze({}), recovery: { logicalMapId: "untyped-map" } }),
@@ -151,7 +152,7 @@ await check("untyped endpoint Echo construction rejects replica arguments", () =
   );
 });
 
-await check("the endpoint core operates without a map, registry, or recovery capability", async () => {
+await check("the endpoint core operates without a map, registry, or synchronization capability", async () => {
   const sent: LocusClientMessage[] = [];
   const attemptIds = ["attempt-a", "attempt-a", "attempt-b", "attempt-c", "attempt-d"];
   const statusIds = ["status-a", "status-a", "status-b", "status-c"];

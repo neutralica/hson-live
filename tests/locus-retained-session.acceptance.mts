@@ -27,7 +27,7 @@ const map = hsonLiveMap.fromLibraries({
 });
 map.lib("page").css.stylesheet("p { color: red; }");
 const locus = hsonLocus.create({ map,
-  exposure: ["page", "state", "extra", "secret"].map(library => ({ library, exposure: library === "secret" ? "server-private" : "client-public" })),
+  libraries: ["page", "state", "extra", "secret"].map(library => ({ name: library, ownership: library === "secret" ? "private" : "shared" })),
   authorizeProjection: ({ requested, connection }) => {
     assert.equal(connection?.principalId, "alice");
     assert.equal("htmlDocument" in requested, false);
@@ -42,39 +42,39 @@ assert.equal("updateProjection" in locus.session, false);
 assert.equal(locus.session.debug().activeSessionCount, 0);
 const session = await locus.session.create({ libraries: ["page", "state", "secret"] }, { connection: { principalId: "alice" } });
 assert.equal(locus.session.debug().activeSessionCount, 1);
-const state = session.cut();
-assert.deepEqual(Object.keys(state), ["libs"]);
+const state = session.now();
+assert.deepEqual(Object.keys(state).sort(), ["format", "initializerDigest", "libs", "local"]);
 assert.deepEqual(state.libs.libraries.map(entry => entry.name), ["page", "state"]);
-const html = session.cut({ html: "page" });
-assert.deepEqual(Object.keys(html).sort(), ["document", "html", "libs"]);
+const html = session.now({ html: "page" });
+assert.deepEqual(Object.keys(html).sort(), ["document", "format", "html", "initializerDigest", "libs", "local"]);
 assert.deepEqual(html.libs, state.libs);
 assert.match(html.html, /SSR_FIRST/);
 assert.match(html.html, /color:red/);
 assert.equal(session.credential, "server-first-credential-0001");
 for (const forbidden of ["PRIVATE", "UNREQUESTED", "htmlDocument", session.credential!]) assert.equal(JSON.stringify(html).includes(forbidden), false);
-for (const name of ["unknown", "secret", "state", "extra"]) assert.throws(() => session.cut({ html: name }), /unavailable/i);
-assert.throws(() => session.cut({ data: [] } as never), /only html/);
+for (const name of ["unknown", "secret", "state", "extra"]) assert.throws(() => session.now({ html: name }), /unavailable/i);
+assert.throws(() => session.now({ data: [] } as never), /only html/);
 const wire = pair();
 let detach = locus.connect(wire.server, { principalId: "alice" });
-const echo = await hsonEcho.replicate({ cut: html, credential: session.credential!, socket: wire.client });
-assert.equal(echo.recovery.strategy, "current");
+const echo = await hsonEcho.init({ now: html, credential: session.credential!, socket: wire.client });
+assert.equal(echo.sync.strategy, "current");
 const id = echo.session.sessionId;
 assert.ok(id);
 assert.equal(locus.session.get(id), session);
-assert.deepEqual(session.cut().libs, html.libs);
+assert.deepEqual(session.now().libs, html.libs);
 echo.disconnect(); detach();
-assert.deepEqual(session.cut().libs, html.libs);
+assert.deepEqual(session.now().libs, html.libs);
 const changed = await session.update({ libraries: ["state"] });
 assert.equal(changed.changed, true);
-assert.deepEqual(session.cut().libs.libraries.map(entry => entry.name), ["state"]);
-assert.throws(() => session.cut({ html: "page" }), /unavailable/i);
+assert.deepEqual(session.now().libs.libraries.map(entry => entry.name), ["state"]);
+assert.throws(() => session.now({ html: "page" }), /unavailable/i);
 await locus.mutate(draft => { const state = draft.lib("state"); if ("at" in state) state.at(["value"]).set("LATER"); });
 detach = locus.connect(wire.server, { principalId: "alice" });
 echo.connect(); await echo.session.reattach();
-assert.equal(echo.recovery.strategy, "snapshot");
+assert.equal(echo.sync.strategy, "reconcile");
 assert.equal(locus.session.get(id), session);
-assert.equal(echo.recovery.debug().lastAppliedRev, locus.rev);
-assert.deepEqual(session.cut().libs.libraries.map(entry => entry.name), ["state"]);
+assert.equal(echo.sync.debug().lastAppliedRev, locus.rev);
+assert.deepEqual(session.now().libs.libraries.map(entry => entry.name), ["state"]);
 for (const raw of wire.frames) assert.equal(raw.includes("htmlDocument"), false);
 const wrong = pair(); const wrongDetach = locus.connect(wrong.server, { principalId: "mallory" });
 wrong.client.send(JSON.stringify({ type: "session-attach", id: "wrong", credential: session.credential }));
@@ -83,7 +83,7 @@ wrongDetach();
 echo.disconnect(); detach();
 assert.ok(expiry); expiry();
 assert.equal(locus.session.get(id), undefined);
-assert.throws(() => session.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+assert.throws(() => session.now(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
 assert.throws(() => session.credential, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
 await assert.rejects(session.update({ libraries: ["page"] }), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
 echo.dispose(); locus.dispose();
@@ -93,24 +93,24 @@ assert.equal(requests.length, 2);
 {
   const text = "x".repeat(4 * 1024 * 1024 + 256);
   const large = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main "${text}"/>` } });
-  const host = hsonLocus.create({ map: large, exposure: [{ library: "page", exposure: "client-public" }],
+  const host = hsonLocus.create({ map: large, libraries: [{ name: "page", ownership: "shared" }],
     authorizeProjection: () => ({ libraries: ["page"] }) });
   const retained = await host.session.create({ libraries: ["page"] });
-  const cut = retained.cut({ html: "page" });
+  const cut = retained.now({ html: "page" });
   assert.equal(cut.html, `<main>${text}</main>`);
   assert.throws(() => decode_hosted_root(cut.libs.libraries[0]!.root), /bound|limit/i);
   assert.equal(retained.revoke(), true);
-  assert.throws(() => retained.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => retained.now(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   await assert.rejects(retained.update({ libraries: ["page"] }), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   host.dispose();
 }
 {
   const host = hsonLocus.create({ map: hsonLiveMap.fromLibraries({ state: { data: {} } }),
-    exposure: [{ library: "state", exposure: "client-public" }], authorizeProjection: () => ({ libraries: ["state"] }) });
+    libraries: [{ name: "state", ownership: "shared" }], authorizeProjection: () => ({ libraries: ["state"] }) });
   const retained = await host.session.create({ libraries: ["state"] }, { resumable: false });
   assert.equal(retained.credential, undefined);
   host.session.dispose();
-  assert.throws(() => retained.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => retained.now(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   await assert.rejects(host.session.create({ libraries: ["state"] }), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   host.dispose();
 }
@@ -123,7 +123,7 @@ assert.equal(requests.length, 2);
   let updating = false;
   const started = new Promise<void>(resolve => { authorizing = resolve; });
   const host = hsonLocus.create({ map: hsonLiveMap.fromLibraries({ state: { data: {} }, other: { data: {} } }),
-    exposure: ["state", "other"].map(library => ({ library, exposure: "client-public" })),
+    libraries: ["state", "other"].map(library => ({ name: library, ownership: "shared" })),
     authorizeProjection: async ({ requested }) => {
       if (updating) { authorizing?.(); await new Promise<void>(resolve => { release = resolve; }); }
       return { libraries: requested.libraries };
@@ -138,7 +138,7 @@ assert.equal(requests.length, 2);
   assert.ok(wire.frames.some(raw => JSON.parse(raw).type === "session-attached"));
   release?.();
   await assert.rejects(pending, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
-  assert.deepEqual(retained.cut().libs.libraries.map(entry => entry.name), ["state"]);
+  assert.deepEqual(retained.now().libs.libraries.map(entry => entry.name), ["state"]);
   stop(); host.dispose();
 }
 
@@ -151,7 +151,7 @@ assert.equal(requests.length, 2);
   let released: import("../src/types/locus.types.ts").LocusSession | undefined;
   const sessionMap = hsonLiveMap.fromLibraries({ state: { data: {} } });
   const host: import("../src/types/locus.types.ts").Locus<typeof sessionMap> = hsonLocus.create({ map: sessionMap,
-    exposure: [{ library: "state", exposure: "client-public" }],
+    libraries: [{ name: "state", ownership: "shared" }],
     sessionId: () => recycledId ?? "unused",
     authorizeProjection: () => ({ libraries: ["state"] }),
     actions: { remember: context => {
@@ -159,21 +159,21 @@ assert.equal(requests.length, 2);
       recycledId = context.origin.sessionId;
       released = host.session.get(recycledId);
       assert.ok(released);
-      assert.deepEqual(released.cut().libs.libraries, []);
+      assert.deepEqual(released.now().libs.libraries, []);
     } } });
   const result = await admit_locus_remote_action_internal(host, { message: { type: "action", id: "remember", name: "remember" } });
   assert.equal(result.type, "ack");
   assert.ok(released && recycledId);
   const stale = released;
-  assert.throws(() => stale.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => stale.now(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   const replacement = await host.session.create({ libraries: ["state"] });
   assert.equal(host.session.get(recycledId), replacement);
   assert.notEqual(released, replacement);
-  assert.throws(() => stale.cut(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
+  assert.throws(() => stale.now(), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   assert.throws(() => stale.credential, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   await assert.rejects(stale.update({ libraries: [] }), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   assert.equal(stale.revoke(), false);
-  assert.deepEqual(replacement.cut().libs.libraries.map(entry => entry.name), ["state"]);
+  assert.deepEqual(replacement.now().libs.libraries.map(entry => entry.name), ["state"]);
   host.dispose();
 }
 
@@ -188,8 +188,8 @@ assert.equal(requests.length, 2);
     base: { data: { value: "base" } }, aliceOnly: { data: { value: "ALICE" } },
     malloryOnly: { data: { value: "MALLORY" } }, privateValue: { data: { value: "PRIVATE" } },
     unrequestedValue: { data: { value: "UNREQUESTED" } },
-  }), exposure: ["base", "aliceOnly", "malloryOnly", "privateValue", "unrequestedValue"].map(library => ({
-    library, exposure: library === "privateValue" ? "server-private" as const : "client-public" as const,
+  }), libraries: ["base", "aliceOnly", "malloryOnly", "privateValue", "unrequestedValue"].map(library => ({
+    name: library, ownership: library === "privateValue" ? "private" as const : "shared" as const,
   })), authorizeProjection: async ({ connection }) => {
     if (delayed) { entered?.(); await new Promise<void>(resolve => { release = resolve; }); }
     const attachment = connection?.attachment;
@@ -213,9 +213,9 @@ assert.equal(requests.length, 2);
   release?.();
   assert.equal((await pending).changed, true);
   assert.deepEqual(seen.at(-1), { principal: "alice", role: "reader" });
-  assert.deepEqual(retained.cut().libs.libraries.map(entry => entry.name), ["aliceOnly", "base"]);
-  assert.equal(JSON.stringify(retained.cut()).includes("PRIVATE"), false);
-  assert.equal(JSON.stringify(retained.cut()).includes("UNREQUESTED"), false);
+  assert.deepEqual(retained.now().libs.libraries.map(entry => entry.name), ["aliceOnly", "base"]);
+  assert.equal(JSON.stringify(retained.now()).includes("PRIVATE"), false);
+  assert.equal(JSON.stringify(retained.now()).includes("UNREQUESTED"), false);
 
   delayed = false;
   const revoked = await host.session.create({ libraries: ["base"] },
@@ -235,29 +235,29 @@ assert.equal(requests.length, 2);
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" },
     state: { data: { value: "STATE" } }, added: { data: { value: "ADDED" } } });
   enable_interactions(map);
-  const host = hsonLocus.create({ map, exposure: ["page", "state", "added"].map(library => ({
-    library, exposure: "client-public" as const,
+  const host = hsonLocus.create({ map, libraries: ["page", "state", "added"].map(library => ({
+    name: library, ownership: "shared" as const,
   })), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
     systemFeatures: requested.systemFeatures }) });
   const retained = await host.session.create({ libraries: ["page", "state"], systemFeatures: ["interactions"] });
-  const cut = retained.cut({ html: "page" });
-  const clientMap = client_projection_map({ authority: cut.libs, localLibraries: {} });
+  const cut = retained.now({ html: "page" });
+  const clientMap = client_projection_map({ authority: cut.libs, local: {} });
   const wire = pair(); const stop = host.connect(wire.server);
   const echo = create_recovery_test_driver({ socket: wire.client, map: clientMap, session: { credential: retained.credential } });
   echo.connect(); await echo.awaitReconnect();
-  assert.equal(echo.recovery.strategy, "current");
+  assert.equal(echo.sync.strategy, "current");
   assert.equal((await retained.update({ libraries: ["page", "state", "added"],
     systemFeatures: ["interactions"] })).changed, true);
-  assert.equal(echo.recovery.status, "caught_up");
+  assert.equal(echo.sync.status, "caught_up");
   assert.equal(clientMap.lib("added").mode, "data-object");
   const change = wire.frames.map(raw => JSON.parse(raw)).find(frame => frame.type === "projection-change");
   assert.ok(change);
   assert.deepEqual(change.systemFeatures, ["interactions"]);
   wire.server.send(JSON.stringify({ ...change, sequence: change.sequence + 1,
     previousDigest: change.projectionDigest, systemFeatures: [] }));
-  assert.equal(echo.recovery.status, "failed");
-  assert.ok(echo.recovery.failure);
-  assert.equal(echo.recovery.debug().status, "failed");
+  assert.equal(echo.sync.status, "failed");
+  assert.ok(echo.sync.failure);
+  assert.equal(echo.sync.debug().status, "failed");
   echo.dispose(); stop(); host.dispose();
 }
 
@@ -266,22 +266,22 @@ assert.equal(requests.length, 2);
   const text = "x".repeat(4 * 1024 * 1024 + 256);
   const map = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main "${text}"/>` },
     extra: { data: { value: "REMOVE_ME" } } });
-  const host = hsonLocus.create({ map, exposure: ["page", "extra"].map(library => ({
-    library, exposure: "client-public" as const,
+  const host = hsonLocus.create({ map, libraries: ["page", "extra"].map(library => ({
+    name: library, ownership: "shared" as const,
   })), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
   const retained = await host.session.create({ libraries: ["page", "extra"] });
-  const cut = retained.cut({ html: "page" });
+  const cut = retained.now({ html: "page" });
   assert.equal(cut.html, `<main>${text}</main>`);
   assert.ok(cut.libs.libraries.find(entry => entry.name === "page")!.root.payload.length > 4 * 1024 * 1024);
-  const clientMap = client_projection_map({ authority: cut.libs, localLibraries: {} });
+  const clientMap = client_projection_map({ authority: cut.libs, local: {} });
   const wire = pair(); const stop = host.connect(wire.server);
   const echo = create_recovery_test_driver({ socket: wire.client, map: clientMap, session: { credential: retained.credential } });
   echo.connect(); await echo.awaitReconnect();
-  assert.equal(echo.recovery.strategy, "current");
+  assert.equal(echo.sync.strategy, "current");
   assert.equal((await retained.update({ libraries: ["page"] })).changed, true);
   assert.ok(wire.frames.map(raw => JSON.parse(raw)).some(frame => frame.type === "projection-change"
     && frame.reconciliation !== undefined));
-  assert.equal(echo.recovery.status, "caught_up");
+  assert.equal(echo.sync.status, "caught_up");
   assert.throws(() => clientMap.lib("extra"));
   assert.equal(clientMap.lib("page").mode, "document");
 
@@ -291,8 +291,8 @@ assert.equal(requests.length, 2);
   assert.equal((await retained.update({ libraries: ["page"] })).changed, true);
   const reconnect = host.connect(wire.server);
   echo.connect(); await echo.awaitReconnect();
-  assert.equal(echo.recovery.strategy, "snapshot");
-  assert.equal(echo.recovery.status, "caught_up");
+  assert.equal(echo.sync.strategy, "reconcile");
+  assert.equal(echo.sync.status, "caught_up");
   assert.throws(() => clientMap.lib("extra"));
   assert.equal(clientMap.lib("page").mode, "document");
   echo.dispose(); reconnect(); host.dispose();

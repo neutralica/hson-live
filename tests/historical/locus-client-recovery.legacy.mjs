@@ -1,7 +1,7 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
-import { Hson, EchoRecoveryError, hson } from "../../src/index.ts";
+import { Hson, EchoSyncError, hson } from "../../src/index.ts";
 import { decode_locus_server_message } from "../../src/api/locus/index.ts";
 import { acquire_projected_identity } from "../helpers/livemap-identity-internal.mts";
 import { create_locus_internal } from "../../src/api/locus/locus.core.ts";
@@ -261,7 +261,7 @@ await check("recovery cursor admission requires the supplied mirror revision", (
           cursor: { incarnationId: "inc", lastAppliedRev: cursorRev },
         },
       }),
-      (error) => error instanceof EchoRecoveryError
+      (error) => error instanceof EchoSyncError
         && error.code === "LOCUS_RECOVERY_CURSOR_MISMATCH",
     );
     assert.equal(pair.clientSent.length, 0);
@@ -287,7 +287,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const pair = socket_pair();
   let queuedTail = false;
   pair.set_before_server_delivery((message) => {
-    if (!queuedTail && message.type === "recovery-plan" && message.outcome === "snapshot") {
+    if (!queuedTail && message.type === "recovery-plan" && message.outcome === "reconcile") {
       queuedTail = true;
       void host.mutate((draft) => draft.set(["value"], 9));
     }
@@ -295,7 +295,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const client = attach(host, pair, { map: mirror, recovery: { logicalMapId: host.stream.logicalMapId }, trace });
   const oldMap = client.map;
   const result = await client.recovery.recover();
-  assert.equal(result.strategy, "snapshot");
+  assert.equal(result.strategy, "reconcile");
   assert.equal(client.recovery.incarnationId, host.stream.incarnationId);
   assert.equal(client.recovery.lastAppliedRev, host.stream.headRev);
   assert.deepEqual(client.map.snap(), host.map.snap());
@@ -331,7 +331,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
     map: hson.liveMap.fromJson({ container: [] }),
     recovery: { logicalMapId: identityHost.stream.logicalMapId },
   });
-  assert.equal((await identityClient.recovery.recover()).strategy, "snapshot");
+  assert.equal((await identityClient.recovery.recover()).strategy, "reconcile");
   const identityRev = identityClient.map.rev;
   const requestsBeforeDemand = identityPair.clientSent.length;
   assert.equal(acquire_projected_identity(identityClient.map, ["container"]).active, true);
@@ -353,7 +353,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
     map: equalMirror,
     recovery: { logicalMapId: equalHost.stream.logicalMapId },
   });
-  assert.equal((await equalClient.recovery.recover()).strategy, "snapshot");
+  assert.equal((await equalClient.recovery.recover()).strategy, "reconcile");
   assert.deepEqual(equalWatched, [5]);
   assert.equal(equalBoundTree.text.get(), "5");
   assert.equal(equalBindingCalls, 2);
@@ -467,7 +467,7 @@ await check("small history falls back to snapshot", async () => {
   await host.mutate((draft) => draft.set(["value"], 2));
   const pair = socket_pair();
   const client = attach(host, pair, recovery_options(host, mirror, base));
-  assert.equal((await client.recovery.recover()).strategy, "snapshot");
+  assert.equal((await client.recovery.recover()).strategy, "reconcile");
   assert.equal(client.recovery.debug().snapshotInstalls, 1);
 });
 
@@ -477,7 +477,7 @@ await check("incarnation mismatch resets only after snapshot validation", async 
   const pair = socket_pair();
   const client = attach(host, pair, recovery_options(host, old, 0, "old-inc"));
   const result = await client.recovery.recover();
-  assert.equal(result.strategy, "snapshot");
+  assert.equal(result.strategy, "reconcile");
   assert.equal(result.incarnationChanged, true);
   assert.equal(client.recovery.incarnationId, "new-inc");
   assert.equal(client.map, old);
@@ -493,7 +493,7 @@ await check("revision ahead rejects without replacing the mirror", async () => {
   restore_projected_revision(mirror, host.stream.headRev + 2);
   const pair = socket_pair();
   const client = attach(host, pair, { ...recovery_options(host, mirror, host.stream.headRev + 2), trace });
-  await assert.rejects(client.recovery.recover(), (error) => error instanceof EchoRecoveryError && error.code === "REVISION_AHEAD_OF_AUTHORITY");
+  await assert.rejects(client.recovery.recover(), (error) => error instanceof EchoSyncError && error.code === "REVISION_AHEAD_OF_AUTHORITY");
   assert.equal(client.map, mirror);
   assert.equal(client.recovery.lastAppliedRev, host.stream.headRev + 2);
   assert.equal(pair.serverSent.some((raw) => JSON.parse(raw).type === "recovery-snapshot"), false);
@@ -538,7 +538,7 @@ await check("disconnect after plan prevents caught-up and a new connection recov
 
   const reconnectPair = socket_pair();
   const reconnect = attach(host, reconnectPair, { map: hson.liveMap.fromJson(host.map.snap()), recovery: { logicalMapId: host.stream.logicalMapId } });
-  assert.equal((await reconnect.recovery.recover()).strategy, "snapshot");
+  assert.equal((await reconnect.recovery.recover()).strategy, "reconcile");
   assert.deepEqual(reconnect.map.snap(), host.map.snap());
 });
 
@@ -704,7 +704,7 @@ await check("client rejects a second plan, duplicate snapshot, and duplicate cau
   }
   {
     const fixture = await begin_scripted_projected_recovery("duplicate-snapshot", "new");
-    fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: "duplicate-snapshot", incarnationId: "new", headRev: 0, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
+    fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: "duplicate-snapshot", incarnationId: "new", headRev: 0, outcome: "reconcile", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
     const snapshot = { type: "recovery-snapshot", id: fixture.id, snapshot: { logicalMapId: "duplicate-snapshot", incarnationId: "new", rev: 0, mode: "data-object", format: "hson-client-snapshot-v1", payload: compact_hson({ value: 1 }) } };
     fixture.pair.push_server(snapshot);
     fixture.pair.push_server(snapshot);
@@ -730,7 +730,7 @@ await check("client rejects mismatched snapshot formats and out-of-order replay 
     ["ack-view-state-body-hson", { format: "view-state" }, { logicalMapId: "ack-view-state-body-hson", incarnationId: "new", rev: 0, mode: "data-object", format: "hson-client-snapshot-v1", payload: compact_hson({ value: 1 }) }],
   ]) {
     const fixture = await begin_scripted_projected_recovery(label, "new");
-    fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: label, incarnationId: "new", headRev: 0, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding });
+    fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: label, incarnationId: "new", headRev: 0, outcome: "reconcile", reason: "incarnation_mismatch", snapshotEncoding });
     fixture.pair.push_server({ type: "recovery-snapshot", id: fixture.id, snapshot });
     await assert.rejects(fixture.promise, (error) => error.code === "LOCUS_SNAPSHOT_NEGOTIATION_MISMATCH");
     assert.deepEqual(fixture.mirror.snap(), { value: 0 });
@@ -791,7 +791,7 @@ await check("replay conflict preserves cursor and supports a later snapshot atte
     map: hson.liveMap.fromJson({ value: 0 }),
     recovery: { logicalMapId: host.stream.logicalMapId },
   });
-  assert.equal((await replacement.recovery.recover()).strategy, "snapshot");
+  assert.equal((await replacement.recovery.recover()).strategy, "reconcile");
 });
 
 await check("invalid snapshot retains old mirror and cursor", async () => {
@@ -804,7 +804,7 @@ await check("invalid snapshot retains old mirror and cursor", async () => {
   establish_scripted_session(pair, client, "bad-snapshot", "new");
   const promise = client.recovery.recover();
   const id = (await waitForClientMessage(pair, "recover")).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "bad-snapshot", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "bad-snapshot", incarnationId: "new", headRev: 5, outcome: "reconcile", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
   pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "bad-snapshot", incarnationId: "new", rev: 6, mode: "data-object", format: "hson-client-snapshot-v1", payload: compact_hson({ value: 2 }) } });
   await assert.rejects(promise, (error) => error.code === "LOCUS_RECOVERY_INVALID_SNAPSHOT");
   assert.equal(client.map, mirror);
@@ -822,7 +822,7 @@ await check("malformed snapshot Hson fails installation without advancing state"
   establish_scripted_session(pair, client, "malformed-hson", "new");
   const promise = client.recovery.recover();
   const id = (await waitForClientMessage(pair, "recover")).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "malformed-hson", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "malformed-hson", incarnationId: "new", headRev: 5, outcome: "reconcile", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
   pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "malformed-hson", incarnationId: "new", rev: 5, mode: "data-object", format: "hson-client-snapshot-v1", payload: `<value "unterminated>` } });
   await assert.rejects(
     promise,
@@ -847,7 +847,7 @@ await check("valid Hson rejected by the active schema does not replace the mirro
   establish_scripted_session(pair, client, "schema-invalid", "new");
   const promise = client.recovery.recover();
   const id = (await waitForClientMessage(pair, "recover")).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "schema-invalid", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "schema-invalid", incarnationId: "new", headRev: 5, outcome: "reconcile", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
   pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "schema-invalid", incarnationId: "new", rev: 5, mode: "data-object", format: "hson-client-snapshot-v1", payload: compact_hson({ value: "wrong" }) } });
   await assert.rejects(
     promise,
@@ -869,7 +869,7 @@ await check("legacy value snapshot fails as a protocol envelope error", async ()
   establish_scripted_session(pair, client, "legacy-envelope", "new");
   const promise = client.recovery.recover();
   const id = (await waitForClientMessage(pair, "recover")).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "legacy-envelope", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "legacy-envelope", incarnationId: "new", headRev: 5, outcome: "reconcile", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
   pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "legacy-envelope", incarnationId: "new", rev: 5, value: { value: 2 } } });
   await assert.rejects(promise, (error) => error.code === "LOCUS_RECOVERY_SNAPSHOT_ENVELOPE_INVALID");
   assert.equal(client.map, mirror);
@@ -897,7 +897,7 @@ await check("tail overflow is visible and a fresh recovery succeeds", async () =
     map: hson.liveMap.fromJson({ value: 0 }),
     recovery: { logicalMapId: host.stream.logicalMapId },
   });
-  assert.equal((await fresh.recovery.recover()).strategy, "snapshot");
+  assert.equal((await fresh.recovery.recover()).strategy, "reconcile");
 });
 
 await check("disposal is idempotent and later messages cannot mutate", async () => {
@@ -910,7 +910,7 @@ await check("disposal is idempotent and later messages cannot mutate", async () 
   await sessionPromise;
   const promise = client.recovery.recover();
   const id = (await waitForClientMessage(pair, "recover")).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "dispose-map", incarnationId: "inc", headRev: 0, outcome: "snapshot", reason: "no_usable_revision", snapshotEncoding: { format: "hson" } });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "dispose-map", incarnationId: "inc", headRev: 0, outcome: "reconcile", reason: "no_usable_revision", snapshotEncoding: { format: "hson" } });
   client.recovery.dispose();
   client.recovery.dispose();
   await assert.rejects(promise, (error) => error.code === "LOCUS_RECOVERY_DISPOSED");
@@ -935,7 +935,7 @@ await check("two clients recover independently with replay and snapshot", async 
     snapshotClient.recovery.recover(),
   ]);
   assert.equal(replayResult.strategy, "replay");
-  assert.equal(snapshotResult.strategy, "snapshot");
+  assert.equal(snapshotResult.strategy, "reconcile");
   await host.mutate((draft) => draft.set(["value"], 2));
   assert.deepEqual(replayClient.map.snap(), { value: 2 });
   assert.deepEqual(snapshotClient.map.snap(), { value: 2 });
@@ -944,7 +944,7 @@ await check("two clients recover independently with replay and snapshot", async 
   assert.notEqual(replayClient.map, snapshotClient.map);
   const requestIds = [replayPair, snapshotPair].map((pair) => pair.clientSent.map(JSON.parse).find((message) => message.type === "recover").id);
   const attempts = requestIds.map((requestId) => recovery_events(events, requestId));
-  assert.deepEqual(attempts.map((attempt) => attempt.find((event) => event.phase === "recovery.plan").details.strategy), ["incremental-replay", "snapshot"]);
+  assert.deepEqual(attempts.map((attempt) => attempt.find((event) => event.phase === "recovery.plan").details.strategy), ["incremental-replay", "reconcile"]);
   assert.equal(attempts.every((attempt) => new Set(attempt.map((event) => event.details.requestId)).size === 1), true);
   assert.equal(attempts.every((attempt) => {
     const completions = attempt

@@ -42,9 +42,9 @@ const dynamicLibraryName: string = "users";
 void dynamicLibraryName;
 const hostedLibraries = hsonLocus.create({
   map: libraries,
-  exposure: [
-    { library: "user", exposure: "client-public" },
-    { library: "tree", exposure: "client-public" },
+  libraries: [
+    { name: "user", ownership: "shared" },
+    { name: "tree", ownership: "shared" },
   ],
   actions: {
     async rename(context) {

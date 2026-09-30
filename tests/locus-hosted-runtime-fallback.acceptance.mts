@@ -5,6 +5,7 @@ import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggrega
 import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
+import { local_initializers } from "./helpers/client-projection.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.hosted-runtime-fallback",
   title: "Hosted runtime topology fallback and contraction", category: "Locus", runtime: "node",
@@ -29,7 +30,7 @@ function pair() {
 
 const authority = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <p "Original"/>/>` } });
 const server = create_locus_hosted_aggregate_socket_internal({ map: authority,
-  exposure: [{ library: "page", exposure: "client-public" }],
+  libraries: [{ name: "page", ownership: "shared" }],
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   maxHistoryBytes: 1,
@@ -37,7 +38,7 @@ const server = create_locus_hosted_aggregate_socket_internal({ map: authority,
 const wire = pair();
 let detach = server.connect(wire.server, { principalId: "alice" });
 const echo = create_echo_socket_client_internal({ socket: wire.client, logicalMapId: server.logicalMapId,
-  localLibraries: { preferences: { data: { theme: "dark" } } } });
+  initializers: local_initializers({ preferences: { data: { theme: "dark" } } }) });
 await echo.connect();
 const map = echo.map;
 assert.ok(map);
@@ -51,14 +52,14 @@ assert.ok(sessionId);
 echo.disconnect();
 detach();
 await server.add_libraries({ added: { data: { value: 1 } },
-  hidden: { data: { secret: "HIDDEN_FALLBACK_SENTINEL" } } }, { added: "client-public" });
+  hidden: { data: { secret: "HIDDEN_FALLBACK_SENTINEL" } } }, { added: "shared" });
 await server.mutate((draft) => {
   const added = draft.lib("added");
   if (!("at" in added)) throw new Error("Expected data Library.");
   added.at(["value"]).set(2);
 });
 await server.add_libraries({ batchHidden: { data: { secret: "BATCH_HIDDEN_FALLBACK_SENTINEL" } },
-  batchVisible: { data: { value: 6 } } }, { batchVisible: "client-public" });
+  batchVisible: { data: { value: 6 } } }, { batchVisible: "shared" });
 await server.mutate((draft) => {
   const visible = draft.lib("batchVisible");
   if (!("at" in visible)) throw new Error("Expected batch data Library.");
@@ -68,7 +69,7 @@ await server.sessions.updateProjection(sessionId,
   { libraries: ["page", "added", "batchVisible"] }, { principalId: "alice" });
 const beforeFallback = wire.serverSent.length;
 detach = server.connect(wire.server, { principalId: "alice" });
-assert.equal((await echo.connect()).outcome, "snapshot");
+assert.equal((await echo.connect()).outcome, "reconcile");
 assert.equal(echo.map, map);
 assert.equal(map.lib("page"), page);
 assert.equal(map.lib("preferences"), local);
@@ -133,7 +134,7 @@ server.dispose();
 const adapter = new MemoryCheckpointAdapter();
 const persistentAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
 const persistent = await create_persistent_locus({ map: persistentAuthority, persistence: adapter,
-  logicalMapId: "runtime-fallback-restart", exposure: [{ library: "anchor", exposure: "client-public" }],
+  logicalMapId: "runtime-fallback-restart", libraries: [{ name: "anchor", ownership: "shared" }],
   defaultProjection: { libraries: ["anchor"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
@@ -141,7 +142,7 @@ const restartWire = pair();
 const detachBeforeRestart = persistent.connect(restartWire.server, { principalId: "alice" });
 const beforeRestartEcho = create_echo_socket_client_internal({ socket: restartWire.client,
   logicalMapId: persistent.logicalMapId,
-  localLibraries: { preferences: { data: { theme: "light" } } } });
+  initializers: local_initializers({ preferences: { data: { theme: "light" } } }) });
 await beforeRestartEcho.connect();
 const continuedMap = beforeRestartEcho.map;
 assert.ok(continuedMap);
@@ -150,7 +151,7 @@ beforeRestartEcho.disconnect();
 detachBeforeRestart();
 await persistent.lib.add({ durablePublic: { data: { value: 4 } },
   durableHidden: { data: { secret: `DURABLE_HIDDEN_FALLBACK_SENTINEL${"x".repeat(1024 * 1024)}` } } },
-{ exposure: { durablePublic: "client-public" } });
+{ ownership: { durablePublic: "shared" } });
 await persistent.mutate((draft) => {
   const publicLibrary = draft.lib("durablePublic");
   if (!("at" in publicLibrary)) throw new Error("Expected durable public data Library.");
@@ -161,10 +162,10 @@ beforeRestartEcho.dispose();
 persistent.dispose();
 const resumedAuthority = hsonLiveMap.create();
 const resumed = await create_persistent_locus({ map: resumedAuthority, persistence: adapter,
-  logicalMapId: "runtime-fallback-restart", exposure: [
-    { library: "anchor", exposure: "client-public" },
-    { library: "durablePublic", exposure: "client-public" },
-    { library: "durableHidden", exposure: "server-private" },
+  logicalMapId: "runtime-fallback-restart", libraries: [
+    { name: "anchor", ownership: "shared" },
+    { name: "durablePublic", ownership: "shared" },
+    { name: "durableHidden", ownership: "private" },
   ],
   defaultProjection: { libraries: ["anchor", "durablePublic"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
@@ -173,7 +174,7 @@ const resumedWire = pair();
 const detachResumed = resumed.connect(resumedWire.server, { principalId: "alice" });
 const resumedEcho = create_echo_socket_client_internal({ socket: resumedWire.client,
   logicalMapId: resumed.logicalMapId, map: continuedMap });
-assert.equal((await resumedEcho.connect()).outcome, "snapshot");
+assert.equal((await resumedEcho.connect()).outcome, "reconcile");
 assert.equal(resumedEcho.map, continuedMap);
 assert.equal(continuedMap.lib("preferences"), continuedLocal);
 if (!("snap" in continuedLocal)) throw new Error("Expected local data Library.");
@@ -194,7 +195,7 @@ process.stdout.write("ok - durable restart fallback preserves the composed clien
 const detachedAuthority = hsonLiveMap.fromLibraries({ alpha: { data: { value: 1 } },
   beta: { data: { value: 2 } } });
 const detachedServer = hsonLocus.create({ map: detachedAuthority,
-  exposure: [{ library: "alpha", exposure: "client-public" }, { library: "beta", exposure: "client-public" }],
+  libraries: [{ name: "alpha", ownership: "shared" }, { name: "beta", ownership: "shared" }],
   defaultProjection: { libraries: ["alpha", "beta"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
@@ -202,7 +203,7 @@ const detachedWire = pair();
 let detachDetached = detachedServer.connect(detachedWire.server, { principalId: "alice" });
 const detachedEcho = create_echo_socket_client_internal({ socket: detachedWire.client,
   logicalMapId: detachedServer.logicalMapId,
-  localLibraries: { preferences: { data: { theme: "local" } } } });
+  initializers: local_initializers({ preferences: { data: { theme: "local" } } }) });
 await detachedEcho.connect();
 const detachedMap = detachedEcho.map;
 assert.ok(detachedMap);
@@ -215,7 +216,7 @@ detachDetached();
 const revBeforeDetachedContraction = detachedServer.rev;
 await detachedServer.session.get(detachedSession)!.update({ libraries: [] }, { principalId: "alice" });
 detachDetached = detachedServer.connect(detachedWire.server, { principalId: "alice" });
-assert.equal((await detachedEcho.connect()).outcome, "snapshot");
+assert.equal((await detachedEcho.connect()).outcome, "reconcile");
 assert.equal(detachedEcho.map, detachedMap);
 assert.equal(detachedEcho.lastAppliedRev, revBeforeDetachedContraction);
 assert.throws(() => detachedMap.lib("alpha"), /Unknown/);
@@ -232,8 +233,8 @@ process.stdout.write("ok - disconnected contraction falls back to an empty proje
 const cutAuthority = hsonLiveMap.fromLibraries({ firstPage: { document: Hson.document`<main <p "First"/>/>` },
   secondPage: { document: Hson.document`<main <p "Second"/>/>` } });
 const cutServer = hsonLocus.create({ map: cutAuthority,
-  exposure: [{ library: "firstPage", exposure: "client-public" },
-    { library: "secondPage", exposure: "client-public" }],
+  libraries: [{ name: "firstPage", ownership: "shared" },
+    { name: "secondPage", ownership: "shared" }],
   defaultProjection: { libraries: ["firstPage", "secondPage"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
@@ -244,13 +245,13 @@ const cutEcho = create_echo_socket_client_internal({ socket: cutWire.client,
 await cutEcho.connect();
 const cutSession = cutEcho.session.sessionId;
 assert.ok(cutSession);
-assert.match(cutServer.session.get(cutSession)!.cut({ html: "secondPage" }).html, /Second/);
+assert.match(cutServer.session.get(cutSession)!.now({ html: "secondPage" }).html, /Second/);
 const cutAuthorityRev = cutServer.rev;
 await cutServer.session.get(cutSession)!.update({ libraries: ["firstPage"] });
 assert.equal(cutServer.rev, cutAuthorityRev);
-assert.match(cutServer.session.get(cutSession)!.cut({ html: "firstPage" }).html, /First/);
-assert.throws(() => cutServer.session.get(cutSession)!.cut({ html: "secondPage" }), /unavailable|authorized/i);
-assert.equal(JSON.stringify(cutServer.session.get(cutSession)!.cut({ html: "firstPage" }).libs).includes("secondPage"), false);
+assert.match(cutServer.session.get(cutSession)!.now({ html: "firstPage" }).html, /First/);
+assert.throws(() => cutServer.session.get(cutSession)!.now({ html: "secondPage" }), /unavailable|authorized/i);
+assert.equal(JSON.stringify(cutServer.session.get(cutSession)!.now({ html: "firstPage" }).libs).includes("secondPage"), false);
 assert.throws(() => cutEcho.map?.lib("secondPage"), /Unknown/);
 cutEcho.dispose();
 detachCut();
@@ -259,7 +260,7 @@ process.stdout.write("ok - hosted cuts and bootstrap omit a revoked document imm
 
 const collisionAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
 const collisionServer = create_locus_hosted_aggregate_socket_internal({ map: collisionAuthority,
-  exposure: [{ library: "anchor", exposure: "client-public" }],
+  libraries: [{ name: "anchor", ownership: "shared" }],
   defaultProjection: { libraries: ["anchor"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   maxHistoryBytes: 1,
@@ -268,7 +269,7 @@ const collisionWire = pair();
 let detachCollision = collisionServer.connect(collisionWire.server, { principalId: "alice" });
 const collisionEcho = create_echo_socket_client_internal({ socket: collisionWire.client,
   logicalMapId: collisionServer.logicalMapId,
-  localLibraries: { preferences: { data: { owner: "local" } } } });
+  initializers: local_initializers({ preferences: { data: { owner: "local" } } }) });
 await collisionEcho.connect();
 const collisionMap = collisionEcho.map;
 assert.ok(collisionMap);
@@ -279,7 +280,7 @@ assert.ok(collisionSession);
 collisionEcho.disconnect();
 detachCollision();
 await collisionServer.add_libraries({ preferences: { data: { owner: "authority" } } },
-  { preferences: "client-public" });
+  { preferences: "shared" });
 await collisionServer.sessions.updateProjection(collisionSession,
   { libraries: ["anchor", "preferences"] }, { principalId: "alice" });
 const collisionRevision = collisionMap.rev;
@@ -302,7 +303,7 @@ const cutEntered = new Promise<void>((resolve) => { enteredCut = resolve; });
 const cutGate = new Promise<void>((resolve) => { releaseCut = resolve; });
 const tailAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
 const tailServer = create_locus_hosted_aggregate_socket_internal({ map: tailAuthority,
-  exposure: [{ library: "anchor", exposure: "client-public" }],
+  libraries: [{ name: "anchor", ownership: "shared" }],
   defaultProjection: { libraries: ["anchor"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   maxHistoryBytes: 1,
@@ -320,7 +321,7 @@ const tailSession = tailEcho.session.sessionId;
 assert.ok(tailSession);
 tailEcho.disconnect();
 detachTail();
-await tailServer.add_libraries({ target: { data: { value: 2 } } }, { target: "client-public" });
+await tailServer.add_libraries({ target: { data: { value: 2 } } }, { target: "shared" });
 await tailServer.sessions.updateProjection(tailSession,
   { libraries: ["anchor", "target"] }, { principalId: "alice" });
 const tailStart = tailWire.serverSent.length;
@@ -336,7 +337,7 @@ await tailServer.mutate((draft) => {
 });
 await tailServer.add_libraries({ hiddenTail: { data: { secret: "HIDDEN_FALLBACK_TAIL_SENTINEL" } } });
 releaseCut();
-assert.equal((await recoveringTail).outcome, "snapshot");
+assert.equal((await recoveringTail).outcome, "reconcile");
 assert.equal(tailEcho.map, tailMap);
 assert.equal(tailEcho.lastAppliedRev, tailServer.rev);
 const tailTarget = tailMap.lib("target");
@@ -357,8 +358,8 @@ const interactionAuthority = hsonLiveMap.fromLibraries({ keep: { document: Hson.
   revoke: { document: Hson.document`<main <button "Revoke"/>/>` } });
 enable_interactions(interactionAuthority);
 const interactionServer = hsonLocus.create({ map: interactionAuthority,
-  exposure: [{ library: "keep", exposure: "client-public" },
-    { library: "revoke", exposure: "client-public" }],
+  libraries: [{ name: "keep", ownership: "shared" },
+    { name: "revoke", ownership: "shared" }],
   defaultProjection: { libraries: ["keep", "revoke"], systemFeatures: ["interactions"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
     systemFeatures: requested.systemFeatures }),
@@ -411,8 +412,8 @@ process.stdout.write("ok - revoked document Mirror terminates and unrelated inte
 const replaceAuthority = hsonLiveMap.fromLibraries({ A: { data: { value: 1 } },
   B: { data: { value: 2 } }, C: { data: { value: 3 } } });
 const replaceServer = create_locus_hosted_aggregate_socket_internal({ map: replaceAuthority,
-  exposure: [{ library: "A", exposure: "client-public" },
-    { library: "B", exposure: "client-public" }, { library: "C", exposure: "client-public" }],
+  libraries: [{ name: "A", ownership: "shared" },
+    { name: "B", ownership: "shared" }, { name: "C", ownership: "shared" }],
   defaultProjection: { libraries: ["A", "B"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   maxHistoryBytes: 1,
@@ -421,7 +422,7 @@ const replaceWire = pair();
 let detachReplace = replaceServer.connect(replaceWire.server, { principalId: "alice" });
 const replaceEcho = create_echo_socket_client_internal({ socket: replaceWire.client,
   logicalMapId: replaceServer.logicalMapId,
-  localLibraries: { preferences: { data: { value: "local" } } } });
+  initializers: local_initializers({ preferences: { data: { value: "local" } } }) });
 await replaceEcho.connect();
 const replaceMap = replaceEcho.map;
 assert.ok(replaceMap);
@@ -436,7 +437,7 @@ detachReplace();
 await replaceServer.sessions.updateProjection(replaceSession, { libraries: ["A", "C"] },
   { principalId: "alice" });
 detachReplace = replaceServer.connect(replaceWire.server, { principalId: "alice" });
-assert.equal((await replaceEcho.connect()).outcome, "snapshot");
+assert.equal((await replaceEcho.connect()).outcome, "reconcile");
 assert.equal(replaceEcho.map, replaceMap);
 assert.equal(replaceMap.rev, replaceRev + 1);
 assert.equal(replaceMap.lib("A"), retainedA);
@@ -456,8 +457,8 @@ process.stdout.write("ok - fallback replaces authority projection A,B with A,C a
 const boundedAuthority = hsonLiveMap.fromLibraries({ retained: { data: { payload: "r".repeat(4096) } },
   revoked: { data: { value: 1 } } });
 const boundedServer = create_locus_hosted_aggregate_socket_internal({ map: boundedAuthority,
-  exposure: [{ library: "retained", exposure: "client-public" },
-    { library: "revoked", exposure: "client-public" }],
+  libraries: [{ name: "retained", ownership: "shared" },
+    { name: "revoked", ownership: "shared" }],
   defaultProjection: { libraries: ["retained", "revoked"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   maxWireBytes: 2048,

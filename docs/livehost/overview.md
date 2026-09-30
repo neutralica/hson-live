@@ -8,7 +8,7 @@ LiveHost, and the LiveHost Node runtime.
 | Layer | Owns | Cardinality |
 |---|---|---|
 | LiveMap | Canonical graph state, revision, mutation, schema enforcement, capture/apply/replay, paths, and graph equality | May exist without a Locus |
-| Locus | Authority over an application library registry, FIFO mutation admission, canonical history, recovery, sessions, actions, persistence, projected synchronization, bootstrap state, and activity | One registry of one or more application libraries |
+| Locus | Private/shared authority state, local initializer definitions, mutation admission, history, sessions, actions, persistence, and projected synchronization | One authority registry plus one definition catalog |
 | Echo | Semantic hosted client endpoint and request/session lifecycle, optionally managing one composed projected LiveMap | Endpoint-only or one authority-projected registry replica |
 | Mirror | LiveTree ↔ LiveMap bridge; delegates supported hosted authoring through Echo without owning transport policy | One binding |
 | Application | Domain meaning, custom actions and side effects, authorization policy, event semantics, topology, acquisition-key meaning, retention policy, and cross-Locus workflows | Zero or more Loci |
@@ -91,7 +91,7 @@ and `Response` machinery:
 
 ```text
 application / LiveHost route
-  -> map.cut / session.cut
+  -> map.cut / session.now
   -> encode_ssr_bootstrap
   -> standard Response
 ```

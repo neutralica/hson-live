@@ -25,10 +25,10 @@ const authority = hsonLiveMap.fromLibraries({
 enable_interactions(authority);
 const engine = internal_livemap_aggregate_authority(authority);
 const initial = engine.captureHosted();
-const exposure = initial.registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => ({
-  library: entry.name, exposure: entry.name === "PRIVATE_NAME_SENTINEL" || entry.name === "hiddenDoc" ? "server-private" as const : "client-public" as const,
+const libraries = initial.registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => ({
+  name: entry.name, ownership: entry.name === "PRIVATE_NAME_SENTINEL" || entry.name === "hiddenDoc" ? "private" as const : "shared" as const,
 }));
-const policy = make_locus_hosted_projection_policy(initial.registry, initial.authority, exposure, undefined,
+const policy = make_locus_hosted_projection_policy(initial.registry, initial.authority, libraries, undefined,
   () => ({ libraries: ["visibleA", "visibleB", "page"], systemFeatures: ["interactions"] }));
 const selectedA = await normalize_locus_effective_projection(policy,
   { libraries: ["visibleA", "page"], systemFeatures: ["interactions"] });
@@ -43,9 +43,9 @@ const authorityProgress = project_locus_live_revision_internal(Object.freeze({
 }), initial, Object.freeze({ ...initial, revision: initial.revision + 1 }), selectedA);
 assert.equal(authorityProgress.kind, "progress");
 const clientA = client_projection_map({ authority: snapshotA,
-  localLibraries: { local: { data: { value: "LOCAL" }, schema: LocalSchema } } });
+  local: { local: { data: { value: "LOCAL" }, schema: LocalSchema } } });
 const clientB = client_projection_map({ authority: snapshotB,
-  localLibraries: { local: { data: { value: "LOCAL" }, schema: LocalSchema } } });
+  local: { local: { data: { value: "LOCAL" }, schema: LocalSchema } } });
 const replicaA = create_echo_aggregate_replica_capability_internal(clientA);
 const replicaB = create_echo_aggregate_replica_capability_internal(clientB);
 let before = initial;

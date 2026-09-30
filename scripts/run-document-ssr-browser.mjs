@@ -64,14 +64,14 @@ try {
   const full = fullMap.cut({ html: "page" });
   const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;
   const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
-  const localLibrariesMap = admit_exact_runtime_livemap_libraries({
+  const localSelectionMap = admit_exact_runtime_livemap_libraries({
     state: { data: { count: 7 }, schema: LocalLibrariesStateSchema },
     omitted: { data: true },
     page: { document: parse_hson_exact_runtime('<main id="local-libraries-ssr" <button @000005204/>/>', { allowTopLevelDocumentText: true }), schema: LocalLibrariesPageSchema },
   });
-  const localLibraries = localLibrariesMap.cut({ data: ["state"], documents: ["page"], html: "page" });
-  assert.doesNotMatch(localLibraries.html, /hson:quid|000005204/);
-  assert.doesNotMatch(JSON.stringify(localLibraries.libs), /000005204|identityEpoch|issuedQuids|"identity"|"quid"/);
+  const localSelection = localSelectionMap.cut({ data: ["state"], documents: ["page"], html: "page" });
+  assert.doesNotMatch(localSelection.html, /hson:quid|000005204/);
+  assert.doesNotMatch(JSON.stringify(localSelection.libs), /000005204|identityEpoch|issuedQuids|"identity"|"quid"/);
 
   const StateSchema = Hson.schema`<type "data" content <count "number">>`;
   const PageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>`;
@@ -101,10 +101,10 @@ try {
   librariesLocus = hsonLocus.create({
     map: librariesMap,
     sessions: {},
-    exposure: [
-      { library: "state", exposure: "client-public" },
-      { library: "page", exposure: "client-public" },
-      { library: "admin", exposure: "client-public" },
+    libraries: [
+      { name: "state", ownership: "shared" },
+      { name: "page", ownership: "shared" },
+      { name: "admin", ownership: "shared" },
     ],
     defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] },
     authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }),
@@ -114,12 +114,12 @@ try {
     },
   });
   const retained = await librariesLocus.session.create({ libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] });
-  const libraries = retained.cut({ html: "page" });
+  const libraries = retained.now({ html: "page" });
   const encoded = Object.freeze({
     local: encode_ssr_bootstrap(local.libs),
-    localLibraries: encode_ssr_bootstrap(localLibraries.libs),
+    localSelection: encode_ssr_bootstrap(localSelection.libs),
     full: encode_ssr_bootstrap(full.libs),
-    libraries: encode_ssr_bootstrap(libraries.libs),
+    libraries: encode_ssr_bootstrap(libraries),
   });
   await librariesLocus.mutate((draft) => {
     draft.lib("state").at(["count"]).set(1);
@@ -145,12 +145,12 @@ try {
   const cssMap = hson.liveMap.fromLibraries({ page: { document: '<html <head/> <body <p id="hosted-css-target" "hosted"/>/>/>' } });
   cssMap.lib("page").css.sel("#hosted-css-target").set.color("rgb(1, 2, 3)");
   cssLocus = hsonLocus.create({ map: cssMap,
-    exposure: [{ library: "page", exposure: "client-public" }],
+    libraries: [{ name: "page", ownership: "shared" }],
     defaultProjection: { libraries: ["page"] },
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
   });
   const cssSession = await cssLocus.session.create({ libraries: ["page"] });
-  const cssCut = cssSession.cut({ html: "page" });
+  const cssCut = cssSession.now({ html: "page" });
   await cssLocus.mutate((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
     rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(4, 5, 6)"]] } }); });
   cssSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
@@ -173,7 +173,7 @@ try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/__state") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ local, localLibraries, full, libraries, librariesSocketUrl, credential: retained.credential,
+      response.end(JSON.stringify({ local, localSelection, full, libraries, librariesSocketUrl, credential: retained.credential,
         cssCut, cssSocketUrl, cssCredential: cssSession.credential, encoded }));
       return;
     }
@@ -214,7 +214,7 @@ try {
       content = content
         .replace(moduleMatch[0], `<script type="module" src="/test.js"></script>`)
         .replace("<!--LOCAL_SSR-->", local.html)
-        .replace("<!--LOCAL_LIBRARIES_SSR-->", localLibraries.html)
+        .replace("<!--LOCAL_LIBRARIES_SSR-->", localSelection.html)
         .replace("<!--LIBRARIES_SSR-->", libraries.html)
         .replace("</body>", `<script>
           (() => {

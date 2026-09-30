@@ -3,9 +3,10 @@ import { capture_internal_document } from "./helpers/document-capture.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonMirror, hsonEcho, hsonLocus, hsonTransform, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
-import { test_public_projection } from "./helpers/hosted-exposure.mts";
+import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { make_livemap_mirror_from_portable_aggregate_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { compose_client_portable_aggregate_internal } from "../src/api/echo/echo.projection.ts";
+import { local_initializers } from "./helpers/client-projection.mts";
 import { encode_hosted_root, hosted_sha256, make_portable_aggregate_commit, make_portable_aggregate_snapshot } from "../src/api/livemap/livemap.hosted.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { acquire_livemap_document_identity } from "../src/api/livemap/livemap.document.identity-handle.ts";
@@ -28,10 +29,10 @@ function authority() {
 function setup() {
   const server = authority();
   const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
-  const client = make_livemap_mirror_from_portable_aggregate_internal(snapshot, {
+  const client = compose_client_portable_aggregate_internal(snapshot, local_initializers({
     ui: { data: { value: 0 }, schema: DataSchema },
     panel: { document: "<aside/>", schema: LocalSchema },
-  });
+  }));
   const engine = internal_livemap_aggregate_authority(client);
   const replica = create_echo_aggregate_replica_capability_internal(client);
   return { server, snapshot, client, engine, replica };
@@ -63,9 +64,9 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
 
 {
   const { snapshot, replica } = setup();
-  assert.throws(() => make_livemap_mirror_from_portable_aggregate_internal(snapshot, {
+  assert.throws(() => compose_client_portable_aggregate_internal(snapshot, local_initializers({
     state: { data: { value: 1 }, schema: DataSchema },
-  }), /collides/i);
+  })), /collides/i);
   replica.dispose();
 }
 
@@ -109,13 +110,13 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   const cut = internal_livemap_aggregate_authority(server).captureHosted();
   const requested = test_public_projection(server);
   const policy = make_locus_hosted_projection_policy(cut.registry, cut.authority,
-    requested.exposure, requested.defaultProjection, requested.authorizeProjection);
+    requested.libraries, requested.defaultProjection, requested.authorizeProjection);
   const effective = await normalize_locus_effective_projection(policy, requested.defaultProjection);
   const snapshot = authority_projection_as_client_composition_internal(project_authority_snapshot(cut, effective));
-  const client = make_livemap_mirror_from_portable_aggregate_internal(snapshot, {
+  const client = compose_client_portable_aggregate_internal(snapshot, local_initializers({
     ui: { data: { value: 0 }, schema: DataSchema },
     panel: { document: "<aside/>", schema: LocalSchema },
-  });
+  }));
   const ui = client.lib("ui");
   const panel = client.lib("panel");
   if (ui.mode === "document" || panel.mode !== "document") throw new Error("Wrong local library modes.");
@@ -131,7 +132,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   ui.at(["value"]).set(1);
   assert.equal(client.rev, before + 1);
   assert.equal(pair.clientSent.length, sentBefore);
-  assert.equal(echo.recovery.debug().lastAppliedRev, 1);
+  assert.equal(echo.sync.debug().lastAppliedRev, 1);
   echo.disconnect();
   const sentDuringOffline = pair.clientSent.length;
   pair.drop();
@@ -139,15 +140,15 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   panel.document.attrs.set({ kind: "path", path: [0] }, "title", "offline");
   assert.equal(client.rev, before + 3);
   assert.equal(pair.clientSent.length, sentDuringOffline);
-  assert.equal(echo.recovery.debug().lastAppliedRev, 1);
+  assert.equal(echo.sync.debug().lastAppliedRev, 1);
   assert.equal(localMirror.tree.node, localTree);
   await locus.mutate((draft) => { draft.lib("state").at(["value"]).set(4); });
   locus.connect(pair.server);
   echo.connect();
   await echo.awaitReconnect();
-  assert.equal(echo.recovery.strategy, "replay");
+  assert.equal(echo.sync.strategy, "replay");
   assert.equal(echo.map, client);
-  assert.equal(echo.recovery.debug().lastAppliedRev, 2);
+  assert.equal(echo.sync.debug().lastAppliedRev, 2);
   assert.equal(client.rev, before + 4);
   assert.equal(ui.at(["value"]).snap(), 2);
   const projectedState = client.lib("state");
@@ -289,9 +290,9 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
     digest: hosted_sha256(JSON.stringify({ format: base.registry.format, libraries: [] })) });
   const snapshot = Object.freeze({ ...base, registry, registryDigest: registry.digest,
     libraries: Object.freeze([]) });
-  const local = make_livemap_mirror_from_portable_aggregate_internal(snapshot, {
+  const local = compose_client_portable_aggregate_internal(snapshot, local_initializers({
     ui: { data: { value: 0 }, schema: DataSchema },
-  });
+  }));
   const replica = create_echo_aggregate_replica_capability_internal(local);
   const ui = local.lib("ui");
   if (ui.mode === "document") throw new Error("Expected local data library.");
@@ -303,7 +304,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   assert.equal(local.rev, 1);
   assert.equal(ui.at(["value"]).snap(), 1);
   replica.dispose();
-  assert.throws(() => make_livemap_mirror_from_portable_aggregate_internal(snapshot, {}), /no LiveMap/i);
+  assert.throws(() => compose_client_portable_aggregate_internal(snapshot, []), /no LiveMap/i);
 }
 
 process.stdout.write("ok - client library composition 6A.5\n");

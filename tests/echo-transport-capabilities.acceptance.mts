@@ -1,4 +1,4 @@
-import { test_public_projection } from "./helpers/hosted-exposure.mts";
+import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import type { JsonValue } from "../src/core/types.ts";
 import { Hson, HsonData, hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";

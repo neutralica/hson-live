@@ -13,8 +13,8 @@ import type {
   LocusOptions,
   LocusSessionId,
   LocusSession,
-  LocusSessionCut,
-  LocusSessionHtmlCut,
+  LocusSessionNow,
+  LocusSessionHtmlNow,
   AuthorityProjectionSnapshot,
 } from "../../types/locus.types.js";
 import { alias_locus_remote_action_admission_internal } from "./locus.remote-action.internal.js";
@@ -80,7 +80,7 @@ export function create_registry_locus_internal<
   const startingAuthority = internal_livemap_aggregate_authority(options.map);
   const startingPosition = startingAuthority.hostedPosition();
   make_locus_hosted_projection_policy(startingAuthority.hostedRegistry(), startingPosition.authority,
-    options.exposure, options.defaultProjection, options.authorizeProjection);
+    options.libraries, options.defaultProjection, options.authorizeProjection, options.map);
   establish_authority_identity(options.map, options.logicalMapId, options.incarnationId);
   const activity = make_locus_activity_controller();
   let actionSequence = 0;
@@ -125,7 +125,7 @@ export function create_registry_locus_internal<
 
   const authority = create_locus_hosted_aggregate_socket_internal({
     map: options.map,
-    exposure: options.exposure,
+    libraries: options.libraries,
     ...(options.defaultProjection === undefined ? {} : { defaultProjection: options.defaultProjection }),
     ...(options.authorizeProjection === undefined ? {} : { authorizeProjection: options.authorizeProjection }),
     ...(Object.keys(actions).length === 0 ? {} : { actions }),
@@ -185,12 +185,12 @@ export function create_registry_locus_internal<
   };
 
   function with_client_capture<TResult>(sessionId: LocusSessionId, key: object,
-    consume: (snapshot: AuthorityProjectionSnapshot) => TResult): TResult {
+    consume: (snapshot: AuthorityProjectionSnapshot, effective: import("./locus.projection.js").LocusEffectiveProjection) => TResult): TResult {
     if (disposed || authority.sessions.key(sessionId) !== key) throw new LocusProjectionUnavailableError();
     const effective = authority.sessions.projection(sessionId);
     if (effective === undefined) throw new LocusProjectionUnavailableError();
     const projected = capture_selected_authority_projection_snapshot(options.map, effective);
-    const result = consume(projected);
+    const result = consume(projected, effective);
     // Synchronous revocation observers can fence capture or rendering while it is built.
     if (authority.sessions.key(sessionId) !== key || authority.sessions.projection(sessionId) !== effective) throw new LocusProjectionUnavailableError();
     return result;
@@ -202,24 +202,31 @@ export function create_registry_locus_internal<
     const key: object = currentKey;
     const previous = capabilities.get(sessionId);
     if (previous !== undefined) return previous;
-    function cut(options: Readonly<{ html: string }>): LocusSessionHtmlCut;
-    function cut(options?: Readonly<{ html?: undefined }>): LocusSessionCut;
-    function cut(options: Readonly<{ html?: string }>): LocusSessionCut | LocusSessionHtmlCut;
-    function cut(options: Readonly<{ html?: string }> = {}): LocusSessionCut | LocusSessionHtmlCut {
+    function now(options: Readonly<{ html: string }>): LocusSessionHtmlNow;
+    function now(options?: Readonly<{ html?: undefined }>): LocusSessionNow;
+    function now(options: Readonly<{ html?: string }>): LocusSessionNow | LocusSessionHtmlNow;
+    function now(options: Readonly<{ html?: string }> = {}): LocusSessionNow | LocusSessionHtmlNow {
       if (typeof options !== "object" || options === null || Array.isArray(options)
         || Object.keys(options).some(key => key !== "html")) {
-        throw new TypeError("Session cut options may contain only html.");
+        throw new TypeError("Session now options may contain only html.");
       }
       const html = options.html;
-      return with_client_capture(sessionId, key, snapshot => html === undefined
-        ? Object.freeze({ libs: snapshot }) : cut_hosted_projection(snapshot, html));
+      return with_client_capture(sessionId, key, (snapshot, effective) => {
+        const base: LocusSessionNow = Object.freeze({
+          format: "hson-locus-session-now",
+          libs: snapshot,
+          local: effective.local,
+          initializerDigest: effective.initializerDigest,
+        });
+        return html === undefined ? base : Object.freeze({ ...base, ...cut_hosted_projection(snapshot, html) });
+      });
     }
     const session: LocusSession = Object.freeze({
       get credential() {
         if (disposed || authority.sessions.key(sessionId) !== key) throw new LocusProjectionUnavailableError();
         return authority.sessions.credential(sessionId);
       },
-      cut,
+      now,
       update: (scope, context) => authority.sessions.updateProjection(sessionId, scope, context, key),
       revoke: () => !disposed && authority.sessions.key(sessionId) === key && authority.sessions.revoke(sessionId),
     });
@@ -230,8 +237,8 @@ export function create_registry_locus_internal<
   const locus = Object.freeze({
     map: options.map,
     lib: Object.freeze({ add: (definitions: import("../../types/livemap.types.js").LiveMapDefinitions,
-      admission?: Readonly<{ exposure?: Readonly<Record<string, import("../../types/locus.types.js").LocusLibraryExposure>> }>) =>
-      authority.add_libraries(definitions, admission?.exposure) }),
+      admission?: Readonly<{ ownership?: Readonly<Record<string, "private" | "shared">> }>) =>
+      authority.add_libraries(definitions, admission?.ownership) }),
     logicalMapId: authority.logicalMapId,
     incarnationId: authority.incarnationId,
     get rev() { return authority.rev; },

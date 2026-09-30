@@ -15,7 +15,8 @@ import type {
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
-import { make_livemap_libraries, make_livemap_mirror_from_portable_aggregate_internal } from "../livemap/livemap.libraries.js";
+import { make_livemap_libraries, make_livemap_client_composition_from_portable_aggregate_internal } from "../livemap/livemap.libraries.js";
+import { admit_locus_local_initializers, install_client_local_initializers_internal, locus_local_initializer_digest } from "../locus/locus.local-initializer.js";
 import { decode_locus_live_projected_envelope_internal, type LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
 import { AUTHORITY_PROJECTION_SNAPSHOT_FORMAT, admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, replace_client_projection_identity_internal, advance_client_projection_identity_internal, client_projection_identity_internal, client_projection_features_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { locus_projection_contract_digest } from "../locus/locus.projection.js";
@@ -37,7 +38,7 @@ import {
 } from "./echo.aggregate-websocket.internal.js";
 
 
-type HostedPlanOutcome = "current" | "replay" | "snapshot" | "reject";
+type HostedPlanOutcome = "current" | "replay" | "reconcile" | "reject";
 type AggregateSynchronizationOutput = EchoHostedAggregateSynchronizationOutput;
 
 /** @internal */
@@ -47,8 +48,6 @@ export type EchoSocketClientOptions<TActions extends LocusActionPayloads = Locus
   logicalMapId?: string;
   /** An existing aggregate mirror is restored in place during snapshot recovery. */
   map?: LiveMap;
-  /** Client-owned definitions composed with the received authority snapshot. @internal */
-  localLibraries?: import("../../types/livemap.types.js").LiveMapInput;
   clientId?: string;
   actionId?: () => string;
   actionAttemptId?: () => string;
@@ -58,8 +57,11 @@ export type EchoSocketClientOptions<TActions extends LocusActionPayloads = Locus
   connection?: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
   /** @internal Management acquired synchronously by the public Echo shell. */
   management?: EchoMapManagementLease;
-  /** Unverified transferred cut evidence; cleared after the first caught-up recovery. */
+  /** Unverified transferred current-state evidence; cleared after the first caught-up synchronization. */
   initialStateFingerprint?: string;
+  initialInitializerDigest?: string;
+  /** @internal Already-admitted session-authorized initializer definitions. */
+  initializers?: readonly import("../../types/locus.projection.types.js").LocusLocalInitializer[];
 }>;
 
 /** @internal */
@@ -141,6 +143,9 @@ function create_registry_echo_semantic_client_internal<
   let projectionDigest: string | undefined = map === undefined ? undefined : client_projection_identity_internal(map);
   let projectionSequence = 0;
   let initialStateFingerprint = options.initialStateFingerprint;
+  const initializers = admit_locus_local_initializers(options.initializers ?? []);
+  let initialInitializerDigest = options.initialInitializerDigest
+    ?? (options.initializers === undefined ? undefined : locus_local_initializer_digest(initializers));
   let projectionFeatures: readonly string[] = map === undefined ? [] : client_projection_features_internal(map) ?? [];
   let authorityRev: number | undefined;
   const authorityPositionListeners = new Set<(revision: number) => void>();
@@ -245,13 +250,13 @@ function create_registry_echo_semantic_client_internal<
 
   function recover_wire(): Promise<EchoSocketRecovery> {
     if (status === "closed") return Promise.reject(new Error("Hosted aggregate socket Echo is closed."));
-    if (!connected) return Promise.reject(new Error("Hosted aggregate recovery requires a connected transport."));
-    if (recovery !== undefined) return Promise.reject(new Error("Hosted aggregate recovery is already in progress."));
+    if (!connected) return Promise.reject(new Error("Hosted aggregate synchronization requires a connected transport."));
+    if (recovery !== undefined) return Promise.reject(new Error("Hosted aggregate synchronization is already in progress."));
     if (endpoint.session.status !== "attached" || endpoint.session.sessionId === undefined || endpoint.session.epoch === undefined) {
-      return Promise.reject(new Error("Hosted aggregate recovery requires an attached session."));
+      return Promise.reject(new Error("Hosted aggregate synchronization requires an attached session."));
     }
     if (endpoint.session.logicalMapId !== clientLogicalMapId) {
-      return Promise.reject(new Error("Hosted aggregate session authority does not match the configured recovery target."));
+      return Promise.reject(new Error("Hosted aggregate session authority does not match the configured synchronization target."));
     }
     if (map !== undefined) {
       const projection = replica.clientProjection();
@@ -287,7 +292,8 @@ function create_registry_echo_semantic_client_internal<
           ? {}
           : { cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest,
             projectionSequence, lastAppliedRev: authorityRev,
-            ...(initialStateFingerprint === undefined ? {} : { initialStateFingerprint }) }) }),
+            ...(initialStateFingerprint === undefined ? {} : { initialStateFingerprint }),
+            ...(initialInitializerDigest === undefined ? {} : { initialInitializerDigest }) }) }),
       });
       options.connection.synchronization.begin(request);
     });
@@ -320,11 +326,11 @@ function create_registry_echo_semantic_client_internal<
       }
       if (message.outcome === "reject") throw new Error(message.error.message);
       if (incarnationId === message.incarnationId && projectionDigest !== undefined
-        && message.outcome !== "snapshot" && message.projectionDigest !== projectionDigest) {
+        && message.outcome !== "reconcile" && message.projectionDigest !== projectionDigest) {
         throw new Error("Hosted recovery projection is incompatible.");
       }
       if (incarnationId === message.incarnationId && registryDigest !== undefined
-        && message.outcome !== "snapshot" && message.registryDigest !== registryDigest) {
+        && message.outcome !== "reconcile" && message.registryDigest !== registryDigest) {
         throw new Error("Hosted recovery projected registry mismatch.");
       }
       if (recoveryCurrent(active)) recovery = Object.freeze({ ...active, outcome: message.outcome,
@@ -335,7 +341,7 @@ function create_registry_echo_semantic_client_internal<
     if (message.type === "recovery-snapshot") {
       const active = current_recovery(message.id);
       if (active === undefined) return;
-      if (active.outcome !== "snapshot") throw new Error("Hosted recovery received an unexpected aggregate snapshot.");
+      if (active.outcome !== "reconcile") throw new Error("Hosted recovery received an unexpected aggregate snapshot.");
       install_snapshot(message.snapshot);
       if (recoveryCurrent(active)) recovery = Object.freeze({ ...active, snapshotReceived: true });
       return;
@@ -343,7 +349,7 @@ function create_registry_echo_semantic_client_internal<
     if (message.type === "recovery-commit") {
       const active = current_recovery(message.id);
       if (active === undefined) return;
-      if (active.outcome !== "replay" && active.outcome !== "snapshot") throw new Error("Hosted recovery received an unexpected aggregate commit.");
+      if (active.outcome !== "replay" && active.outcome !== "reconcile") throw new Error("Hosted recovery received an unexpected aggregate commit.");
       assert_projection_message(message, active);
       apply_live_envelope(message.commit);
       return;
@@ -351,7 +357,7 @@ function create_registry_echo_semantic_client_internal<
     if (message.type === "recovery-progress") {
       const active = current_recovery(message.id);
       if (active === undefined) return;
-      if (active.outcome !== "replay" && active.outcome !== "snapshot") throw new Error("Hosted recovery received unexpected authority progress.");
+      if (active.outcome !== "replay" && active.outcome !== "reconcile") throw new Error("Hosted recovery received unexpected authority progress.");
       assert_projection_message(message, active);
       apply_progress(message.progress, false);
       return;
@@ -374,7 +380,7 @@ function create_registry_echo_semantic_client_internal<
     }
     if (message.type === "projection-change") {
       const recovering = current_recovery(message.id);
-      if (recovering !== undefined && recovering.outcome !== "snapshot") {
+      if (recovering !== undefined && recovering.outcome !== "reconcile") {
         apply_projection_change(message, true);
         return;
       }
@@ -395,12 +401,13 @@ function create_registry_echo_semantic_client_internal<
       if (authorityRev !== message.throughRev) {
         throw new Error("Hosted recovery caught-up authority revision does not match the Echo cursor.");
       }
-      if ((message.projectionSequence ?? 0) !== (active.outcome === "snapshot"
+      if ((message.projectionSequence ?? 0) !== (active.outcome === "reconcile"
         ? (active.projectionSequence ?? 0) : projectionSequence)) {
         throw new Error("Hosted recovery projection sequence is incompatible.");
       }
       projectionSequence = message.projectionSequence ?? 0;
       initialStateFingerprint = undefined;
+      initialInitializerDigest = undefined;
       status = "live";
       replica.markReady();
       recovery = undefined;
@@ -417,7 +424,7 @@ function create_registry_echo_semantic_client_internal<
 
   function assert_projection_message(message: Readonly<{ projectionSequence: number; projectionDigest: string }>,
     active?: NonNullable<typeof recovery>): void {
-    const expectedSequence = active?.outcome === "snapshot" ? active.projectionSequence : projectionSequence;
+    const expectedSequence = active?.outcome === "reconcile" ? active.projectionSequence : projectionSequence;
     if (message.projectionSequence !== expectedSequence || message.projectionDigest !== projectionDigest) {
       throw new Error("Hosted authority message projection fence is incompatible.");
     }
@@ -432,7 +439,7 @@ function create_registry_echo_semantic_client_internal<
   function install_snapshot(input: AuthorityProjectionSnapshot): void {
     const snapshot = admit_authority_projection_snapshot(input);
     const active = recovery;
-    if (active?.outcome !== "snapshot" || active.projectionDigest !== snapshot.projectionDigest
+    if (active?.outcome !== "reconcile" || active.projectionDigest !== snapshot.projectionDigest
       || snapshot.authority.logicalMapId !== clientLogicalMapId
       || snapshot.authority.incarnationId !== endpoint.session.incarnationId) {
       throw new Error("Hosted projected snapshot fence is incompatible.");
@@ -440,8 +447,9 @@ function create_registry_echo_semantic_client_internal<
     const composition = authority_projection_as_client_composition_internal(snapshot);
     if (active.registryDigest !== composition.registryDigest) throw new Error("Hosted projected snapshot registry is incompatible.");
     if (map === undefined) {
-      if (composition.registry.libraries.length > 0 || Object.keys(options.localLibraries ?? {}).length > 0) {
-        const created = make_livemap_mirror_from_portable_aggregate_internal(composition, options.localLibraries ?? {});
+      if (composition.registry.libraries.length > 0 || initializers.length > 0) {
+        const created = make_livemap_client_composition_from_portable_aggregate_internal(composition);
+        install_client_local_initializers_internal(created, initializers);
         replica.attachMap(created);
         map = created;
       }
@@ -492,8 +500,9 @@ function create_registry_echo_semantic_client_internal<
         throw new Error("Hosted projection reconciliation fence is incompatible.");
       }
       if (map === undefined) {
-        if (composition.registry.libraries.length > 0 || Object.keys(options.localLibraries ?? {}).length > 0) {
-          const created = make_livemap_mirror_from_portable_aggregate_internal(composition, options.localLibraries ?? {});
+        if (composition.registry.libraries.length > 0 || initializers.length > 0) {
+          const created = make_livemap_client_composition_from_portable_aggregate_internal(composition);
+          install_client_local_initializers_internal(created, initializers);
           replica.attachMap(created);
           map = created;
           bind_client_projection_identity_internal(created, snapshot);
@@ -506,6 +515,7 @@ function create_registry_echo_semantic_client_internal<
       registryDigest = message.registryDigest;
       projectionFeatures = message.systemFeatures;
       projectionSequence = message.sequence;
+      if (map !== undefined) install_client_local_initializers_internal(map, message.local);
       return;
     }
     const current = replica.clientProjection();
@@ -566,6 +576,7 @@ function create_registry_echo_semantic_client_internal<
     registryDigest = message.registryDigest;
     projectionFeatures = message.systemFeatures;
     projectionSequence = message.sequence;
+    install_client_local_initializers_internal(map, message.local);
   }
 
   function apply_live_envelope(envelope: LocusLiveProjectedWireEnvelope): void {

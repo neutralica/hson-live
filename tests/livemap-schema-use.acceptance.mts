@@ -6,7 +6,7 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 import { HsonSchema as RuntimeHsonSchema } from "../src/api/schema/hson-schema.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
-import { test_public_projection } from "./helpers/hosted-exposure.mts";
+import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -210,15 +210,15 @@ check("projected client rejects replica-only attachment", () => {
   const captured = internal_livemap_aggregate_authority(authority).captureHosted();
   const configured = test_public_projection(authority);
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
-    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+    configured.libraries, configured.defaultProjection, configured.authorizeProjection);
   const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
   if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
   const projected = client_projection_map({
     authority: project_authority_snapshot(captured, effective),
-    localLibraries: {},
+    local: {},
   });
   const before = projected.capture();
-  assert.throws(() => projected.lib("state").schema.use(StateSchema), /Echo authority support|projected/i);
+  assert.throws(() => projected.lib("state").schema.use(StateSchema), /shared|Locus authority|projected/i);
   assert.deepEqual(projected.capture(), before);
 });
 

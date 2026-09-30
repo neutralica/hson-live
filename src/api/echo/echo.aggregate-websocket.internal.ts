@@ -20,6 +20,7 @@ import type { LiveMapLibraryAddOperation, LiveMapRootMode } from "../../types/li
 import type { LocusProjectedLibraryContract } from "../locus/locus.projection.js";
 import type { LocusProjectionSystemFeature } from "../../types/locus.projection.types.js";
 import type { EchoEndpointConnection } from "./echo.client.js";
+import { admit_locus_local_initializers, locus_local_initializer_digest } from "../locus/locus.local-initializer.js";
 
 export type EchoHostedAggregateSynchronizationOutput =
   | LocusHostedAggregateSynchronizationOutput
@@ -88,8 +89,8 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
         ...(projectionSequence === undefined ? {} : { projectionSequence }), headRev, outcome: "reject",
         error: Object.freeze({ ...(typeof error.code === "string" ? { code: error.code } : {}), message }) });
     }
-    if (value.outcome !== "current" && value.outcome !== "replay" && value.outcome !== "snapshot") throw new Error("Hosted recovery plan outcome is invalid.");
-    const outcome: "current" | "replay" | "snapshot" = value.outcome;
+    if (value.outcome !== "current" && value.outcome !== "replay" && value.outcome !== "reconcile") throw new Error("Hosted sync plan outcome is invalid.");
+    const outcome: "current" | "replay" | "reconcile" = value.outcome;
     return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, projectionDigest,
       ...(projectionSequence === undefined ? {} : { projectionSequence }), headRev, outcome,
       ...(typeof value.reason === "string" ? { reason: value.reason as "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" | "projection_changed" } : {}) });
@@ -139,7 +140,8 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
 
 function decode_projection_change(value: Record<string, unknown>, id: string): LocusHostedProjectionChange {
   const fields = ["format", "type", "id", "logicalMapId", "incarnationId", "authorityRev", "sequence",
-    "previousDigest", "projectionDigest", "registryDigest", "libraries", "systemFeatures", "writableDocuments"];
+    "previousDigest", "projectionDigest", "registryDigest", "libraries", "systemFeatures", "writableDocuments",
+    "local", "initializerDigest"];
   const actual = Object.keys(value);
   if (actual.length < fields.length || actual.length > fields.length + 2
     || fields.some((field) => !Object.hasOwn(value, field))
@@ -156,7 +158,8 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
   if (logicalMapId === undefined || incarnationId === undefined || authorityRev === undefined
     || sequence === undefined || previousDigest === undefined || projectionDigest === undefined
     || registryDigest === undefined || !Array.isArray(value.libraries)
-    || !Array.isArray(value.systemFeatures) || !Array.isArray(value.writableDocuments)) {
+    || !Array.isArray(value.systemFeatures) || !Array.isArray(value.writableDocuments)
+    || !Array.isArray(value.local)) {
     throw new Error("Hosted projection change is malformed.");
   }
   const libraries: LocusProjectedLibraryContract[] = value.libraries.map((raw: unknown) => {
@@ -190,6 +193,11 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
       throw new Error("Hosted projection writable document is malformed.");
     }
     writableDocuments.push(name);
+  }
+  const local = admit_locus_local_initializers(value.local);
+  const initializerDigest = required_digest(value.initializerDigest);
+  if (initializerDigest === undefined || locus_local_initializer_digest(local) !== initializerDigest) {
+    throw new Error("Hosted local initializer set is malformed.");
   }
   let topology: LiveMapLibraryAddOperation | undefined;
   if (Object.hasOwn(value, "topology")) {
@@ -244,7 +252,7 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
   return Object.freeze({ type: "projection-change", id, logicalMapId, incarnationId, authorityRev,
     sequence, previousDigest, projectionDigest, registryDigest,
     libraries: Object.freeze(libraries), systemFeatures: Object.freeze(systemFeatures),
-    writableDocuments: Object.freeze(writableDocuments),
+    writableDocuments: Object.freeze(writableDocuments), local, initializerDigest,
     ...(topology === undefined ? {} : { topology }), ...(system === undefined ? {} : { system }),
     ...(reconciliation === undefined ? {} : { reconciliation }),
   });

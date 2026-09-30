@@ -35,7 +35,7 @@ import type {
   LocusSessionRejectCode,
   LocusSocketLike,
 } from "./locus.protocol.types.js";
-import type { LocusExposureEntry, LocusLibraryExposure, LocusProjectionAuthorizer, LocusRequestedProjection } from "./locus.projection.types.js";
+import type { LocusLibraryCatalogEntry, LocusLibraryOwnership, LocusProjectionAuthorizer, LocusRequestedProjection } from "./locus.projection.types.js";
 import type {
   LocusActionRequestId,
   LocusConnectionEpoch,
@@ -144,14 +144,14 @@ export type LocusActions<
   [TName in keyof TActions & string]: LocusActionHandler<TActions[TName], TMap, TActions>;
 }>;
 
-/** Existing Locus construction options when `map` is a fixed public Library registry. */
+/** Locus construction with authority state in `map` and one complete application catalog. */
 export type LocusOptions<
   TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   map: TMap;
-  /** Exactly one explicit classification for every application library. */
-  exposure: readonly LocusExposureEntry[];
+  /** Every map library is private/shared; local entries carry detached initializers. */
+  libraries: readonly LocusLibraryCatalogEntry[];
   /** Optional request used when a session supplies no request. Never implies all libraries. */
   defaultProjection?: LocusRequestedProjection;
   /** Absent authorizer grants no read, system-feature, or built-in write scope. */
@@ -326,28 +326,28 @@ export type EchoActionStatusResult = Readonly<{
   outcome?: LocusActionTerminalOutcome;
 }>;
 
-export type EchoRecoveryStatus = "idle" | "recovering" | "caught_up" | "failed" | "disposed";
-export type EchoRecoveryStrategy = "current" | "replay" | "snapshot" | "reject";
+export type EchoSyncStatus = "idle" | "syncing" | "caught_up" | "failed" | "disposed";
+export type EchoSyncStrategy = "current" | "replay" | "reconcile";
 
-export type EchoRecoveryFailure = Readonly<{
+export type EchoSyncFailure = Readonly<{
   code: string;
   message: string;
   cause?: unknown;
 }>;
 
-export type EchoRecoveryDiagnostics = Readonly<{
-  status: EchoRecoveryStatus;
-  strategy?: EchoRecoveryStrategy;
+export type EchoSyncDiagnostics = Readonly<{
+  status: EchoSyncStatus;
+  strategy?: EchoSyncStrategy;
   logicalMapId?: LocusLogicalMapId;
   incarnationId?: LocusIncarnationId;
   lastAppliedRev?: number;
 }>;
 
-export type EchoRecovery = Readonly<{
-  readonly status: EchoRecoveryStatus;
-  readonly failure: EchoRecoveryFailure | undefined;
-  readonly strategy: EchoRecoveryStrategy | undefined;
-  debug: () => EchoRecoveryDiagnostics;
+export type EchoSync = Readonly<{
+  readonly status: EchoSyncStatus;
+  readonly failure: EchoSyncFailure | undefined;
+  readonly strategy: EchoSyncStrategy | undefined;
+  debug: () => EchoSyncDiagnostics;
 }>;
 
 export type EchoSessionStatus = "idle" | "creating" | "attaching" | "attached" | "detached" | "failed" | "ended" | "disposed";
@@ -408,10 +408,10 @@ type EchoCommonOptions = Readonly<{
   trace?: LiveTraceSink;
 }>;
 
-export type EchoOptions = EchoCommonOptions & Readonly<{ map?: never; recovery?: never }>;
+export type EchoOptions = EchoCommonOptions & Readonly<{ map?: never; sync?: never }>;
 
-export type EchoReplicateOptions = Readonly<{
-  cut: LocusSessionCut | LocusSessionHtmlCut;
+export type EchoInitOptions = Readonly<{
+  now: LocusSessionNow | LocusSessionHtmlNow;
   credential: LocusSessionCredential;
   socket: LocusSocketLike;
   clientId?: LocusClientId;
@@ -431,7 +431,7 @@ export type Echo<
   dispose: LocusDisposer;
 }> & (TMap extends LiveMap ? Readonly<{
   map: TMap;
-  recovery: EchoRecovery;
+  sync: EchoSync;
 }> : Readonly<{}>);
 
 /** Creation context is server-owned; credentials remain separate bearer material. */
@@ -440,10 +440,13 @@ export type LocusSessionCreateOptions = Readonly<{
   connection?: LocusConnectionContext;
 }>;
 
-export type LocusSessionCut = Readonly<{
+export type LocusSessionNow = Readonly<{
+  format: "hson-locus-session-now";
   libs: import("./locus.projection.types.js").AuthorityProjectionSnapshot;
+  local: readonly import("./locus.projection.types.js").LocusLocalInitializer[];
+  initializerDigest: string;
 }>;
-export type LocusSessionHtmlCut = LocusSessionCut & Readonly<{
+export type LocusSessionHtmlNow = LocusSessionNow & Readonly<{
   html: import("../api/ssr/ssr.types.js").BrowserRealizationHtml;
   document: string;
 }>;
@@ -452,10 +455,10 @@ export type LocusSessionHtmlCut = LocusSessionCut & Readonly<{
 export type LocusSession = Readonly<{
   /** Deliver separately to the client for reattachment; absent for ephemeral sessions. */
   readonly credential: LocusSessionCredential | undefined;
-  cut: {
-    (options: Readonly<{ html: string }>): LocusSessionHtmlCut;
-    (options?: Readonly<{ html?: undefined }>): LocusSessionCut;
-    (options: Readonly<{ html?: string }>): LocusSessionCut | LocusSessionHtmlCut;
+  now: {
+    (options: Readonly<{ html: string }>): LocusSessionHtmlNow;
+    (options?: Readonly<{ html?: undefined }>): LocusSessionNow;
+    (options: Readonly<{ html?: string }>): LocusSessionNow | LocusSessionHtmlNow;
   };
   update: (scope: LocusRequestedProjection, context?: LocusConnectionContext) => Promise<Readonly<{
     changed: boolean; sequence: number; digest: string; authorityRev: number;
@@ -474,8 +477,8 @@ export type Locus<
   readonly rev: number;
   activity: LocusActivity;
   lib: Readonly<{
-    /** One durable authority topology transition; omitted exposure is server-private. */
-    add: (definitions: LiveMapDefinitions, options?: Readonly<{ exposure?: Readonly<Record<string, LocusLibraryExposure>> }>) => Promise<void>;
+    /** One durable authority topology transition; omitted ownership is private. */
+    add: (definitions: LiveMapDefinitions, options?: Readonly<{ ownership?: Readonly<Record<string, Exclude<LocusLibraryOwnership, "local">>> }>) => Promise<void>;
   }>;
   session: LocusSessionApi;
   actionRequests: LocusActionDedupeInspector;
