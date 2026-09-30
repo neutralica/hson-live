@@ -1,4 +1,4 @@
-import { bind_locus_websocket, create_locus, hsonLocus,
+import { bind_locus_http, bind_locus_websocket, create_locus, hsonLocus,
   type LocusWebSocketLike, type Locus, type LocusSessionId, type AuthorityProjectionSnapshot } from "hson-live/locus";
 import { hsonLiveMap } from "hson-live/livemap";
 import { hsonEcho, type EchoReplicaTransport } from "hson-live/echo";
@@ -10,6 +10,9 @@ const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hso
 const locus: Locus<typeof map> = create_locus({ map, libraries: [{ name: "page", ownership: "shared" }] });
 void [locus, hsonLocus];
 void bind_locus_websocket(locus, socket);
+const http = bind_locus_http(locus, { endpoint: "/_hson" });
+void http.handle(new Request("https://example.test/_hson", { method: "POST" }), {});
+http.dispose();
 const retained = await locus.session.create({ libraries: ["page"] });
 const snapshot: AuthorityProjectionSnapshot = retained.now().libs;
 void hsonEcho.create({ now: retained.now(), credential: retained.credential!, transport });

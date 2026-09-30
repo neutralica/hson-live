@@ -1,8 +1,8 @@
 # Echo API reference
 
 Echo's operation and synchronization architecture is described in
-[Transport capabilities](./transport-capabilities.md). The public hosted
-adapter remains WebSocket.
+[Transport capabilities](./transport-capabilities.md). WebSocket and HTTP are
+peer hosted adapters.
 
 Echo is semantic hosted-client participation in one Locus authority domain.
 There is one public `Echo` type family with two compositions:
@@ -14,6 +14,9 @@ const endpointTransport = hsonEcho.transport.websocket({ url: "wss://example.tes
 const endpoint = create_echo({ transport: endpointTransport });
 const replicaTransport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" });
 const replica = await hsonEcho.create({ now: sessionNow, credential, transport: replicaTransport });
+
+const httpTransport = hsonEcho.transport.http({ endpoint: "/_hson" });
+const httpEndpoint = hsonEcho.create({ transport: httpTransport });
 ```
 
 `hsonEcho.create`, `hson.echo.create`, and `create_echo` construct an endpoint-only Echo when given endpoint options. It exposes `clientId`, `session`,
@@ -25,7 +28,9 @@ and a transport. It admits the shared authority state and authorized local
 initializers, constructs one composed client map, reattaches the session, and
 completes `current`, `replay`, or `reconcile` synchronization before resolving.
 The returned Echo exposes the endpoint capabilities plus `map` and read-only
-`sync` diagnostics: `status`, `failure`, `strategy`, and `debug()`.
+`sync` diagnostics: `status`, `failure`, `strategy`, and `debug()`. `strategy`
+reports the latest completed recovery, including automatic same-attachment
+stream replacement.
 An initial transferred state is checked against authority content before
 `current` can establish it; a stale or mismatched starting state is reconciled
 from a current authorized view. Local initializer fingerprints are verified

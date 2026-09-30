@@ -75,6 +75,7 @@ export type EchoAggregateClient = Readonly<{
   readonly incarnationId: string | undefined;
   readonly registryDigest: string | undefined;
   readonly lastAppliedRev: number | undefined;
+  readonly lastRecoveryOutcome: Exclude<HostedPlanOutcome, "reject"> | undefined;
   observeAuthorityPosition: (listener: (revision: number) => void) => LocusDisposer;
   /** @internal Exact aggregate replica owner used by full-Echo composition. */
   readonly replica: EchoAggregateReplicaCapability;
@@ -181,6 +182,7 @@ function create_registry_echo_semantic_client_internal<
     snapshotReceived: boolean;
   }> | undefined;
   let liveRecovery: Readonly<{ id: string; sessionId: string; sessionEpoch: number }> | undefined;
+  let lastRecoveryOutcome: Exclude<HostedPlanOutcome, "reject"> | undefined;
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
 
   const endpoint = options.connection.endpoint;
@@ -437,6 +439,7 @@ function create_registry_echo_semantic_client_internal<
       initialInitializerDigest = undefined;
       initialSessionBinding = undefined;
       status = "live";
+      lastRecoveryOutcome = active.outcome ?? "current";
       replica.markReady();
       recovery = undefined;
       liveRecovery = Object.freeze({ id: active.id, sessionId: active.sessionId, sessionEpoch: active.sessionEpoch });
@@ -672,6 +675,7 @@ function create_registry_echo_semantic_client_internal<
     get incarnationId() { return incarnationId; },
     get registryDigest() { return registryDigest; },
     get lastAppliedRev() { return authorityRev; },
+    get lastRecoveryOutcome() { return lastRecoveryOutcome; },
     observeAuthorityPosition(listener) {
       authorityPositionListeners.add(listener);
       return () => authorityPositionListeners.delete(listener);

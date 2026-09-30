@@ -10,7 +10,7 @@ import type {
   EchoSynchronizationRequest,
   EchoCancellationSignal,
 } from "../../types/echo.transport.types.js";
-import { decodeEndpointMessage, encodeEndpointMessage } from "./echo.websocket-codec.internal.js";
+import { decodeEndpointMessage, encodeEndpointMessage } from "./echo.semantic-codec.internal.js";
 import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES, LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 
 export type EchoWebSocketLike = Readonly<{
@@ -72,7 +72,7 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
   let currentSync: Readonly<{ id: string; observer: EchoSynchronizationObserver; socket: EchoWebSocketLike;
     signal?: EchoCancellationSignal; abort?: () => void }> | undefined;
   let syncOpeningGeneration = 0;
-  let aggregateCodec: typeof import("./echo.aggregate-websocket.internal.js") | undefined;
+  let aggregateCodec: typeof import("./echo.aggregate-semantic-codec.internal.js") | undefined;
   let syncTail = Promise.resolve();
 
   const emit = (event: EchoAttachmentEvent): void => {
@@ -248,7 +248,7 @@ export function create_echo_websocket_transport(options: EchoWebSocketTransportO
         if (disposed || options?.signal?.aborted) throw options?.signal?.reason ?? new Error("Echo synchronization opening is unavailable.");
         const generation = ++syncOpeningGeneration;
         if (currentSync !== undefined) endSync(Object.freeze({ kind: "cancelled" }));
-        aggregateCodec ??= await await_opening(import("./echo.aggregate-websocket.internal.js"), options?.signal);
+        aggregateCodec ??= await await_opening(import("./echo.aggregate-semantic-codec.internal.js"), options?.signal);
         if (disposed || generation !== syncOpeningGeneration) throw new Error("Echo synchronization opening was displaced.");
         const current = await await_opening(ensureOpen(), options?.signal);
         if (disposed || generation !== syncOpeningGeneration || options?.signal?.aborted) {

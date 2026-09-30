@@ -11,7 +11,7 @@ function read_metadata(source) {
   if (parsed === null) throw new Error("Suite metadata must use the exact static literal grammar.");
   const [, id, title, category, runtime] = parsed;
   if (!id || !title || !category) throw new Error("Suite metadata requires id, title, and category.");
-  if (!new Set(["node", "node-synthetic-dom", "node-real-websocket", "node-real-websocket-process", "node-real-http2"]).has(runtime)) throw new Error("Invalid suite runtime.");
+  if (!new Set(["node", "node-synthetic-dom", "node-real-websocket", "node-real-websocket-process", "node-real-http1", "node-real-http2"]).has(runtime)) throw new Error("Invalid suite runtime.");
   return id;
 }
 

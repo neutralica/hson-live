@@ -144,6 +144,13 @@ const transport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" 
 const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport });
 ```
 
+The same Echo creation surface accepts `hsonEcho.transport.http({ endpoint:
+"/_hson" })`. An application can host it with `bind_locus_http` from
+`hson-live/locus`, passing authenticated request context for each finite
+operation and continuing synchronization request. WebSocket and HTTP share
+the semantic Locus authority; HTTP/1 and HTTP/2 use one HTTP adapter. HTTP/3
+is an architectural fit for ordered response streams, not a tested runtime.
+
 A hosted application supplies one ownership catalog: private/shared entries refer to current state in `locus.map`, while local entries carry detached initializers outside authority state. `locus.lib.add(definitions, { ownership })` admits only private/shared runtime authority batches; omitted entries default to private. `session.update(request, context?)` expands or contracts a retained grant through the ordinary authorizer. `session.now({ html: document })` materializes shared current state plus authorized local initializers at one authority position. Echo reconciles only shared state in the existing composed map; local roots, Schemas, CSS, handles, and Mirror continuity remain client-owned.
 
 ### 7. Local rendering, selective transfer, and continuation

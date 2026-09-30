@@ -113,6 +113,15 @@ or a general socket framework.
 LiveHost Node adapts physical WebSocket transport to this interface.
 Applications own connection meaning and may choose to connect one to a Locus.
 
+For HTTP Echo, applications register ordinary `POST` request routes and call
+`bind_locus_http(...).handle(request, { principalId: context.principal.id })`
+after LiveHost authentication. The binder uses one continuing Web `Response`
+for ordered replica synchronization or endpoint control observation, alongside
+independent finite operation requests. LiveHost only writes the Web response
+with normal backpressure; it does not interpret Echo or Locus messages.
+An application serving no-JavaScript streamed HTML can use a different response
+representation and need not construct JavaScript Echo. Scout is deferred.
+
 ## Authentication and authorization
 
 The layering is:

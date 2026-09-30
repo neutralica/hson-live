@@ -1,6 +1,7 @@
 import { create_echo, hsonEcho, EchoSyncError, EchoSessionError,
   type Echo, type EchoOptions, type EchoReplicaOptions, type EchoSession,
-  type EchoActionRequest, type EchoEndpointTransport, type EchoReplicaTransport } from "hson-live/echo";
+  type EchoActionRequest, type EchoEndpointTransport, type EchoReplicaTransport,
+  type EchoHttpTransportOptions } from "hson-live/echo";
 import type { LiveMap } from "hson-live/livemap";
 import type { LocusSessionNow, LocusSessionCredential } from "hson-live/locus";
 
@@ -20,6 +21,9 @@ const replica = await hsonEcho.create({ transport, now, credential });
 void [replica.map, replica.sync.status, replica.session, replica.connect, replica.disconnect];
 const namedReplica = await create_echo({ transport, now, credential });
 void [namedReplica.map, namedReplica.sync.status];
+const httpOptions: EchoHttpTransportOptions = { endpoint: "/_hson" };
+const http = hsonEcho.transport.http(httpOptions);
+void [http.operations, http.synchronization, http.dispose];
 type HasInit = "init" extends keyof typeof hsonEcho ? true : false;
 const noInit: HasInit = false;
 void noInit;

@@ -16,6 +16,34 @@ const locus = create_locus({
 });
 ```
 
+## HTTP binding
+
+`bind_locus_http(locus, { endpoint: "/_hson" })` returns a Web
+`Request`/`Response` binding with `handle(request, trustedContext)` and
+`dispose()`. Register `POST /_hson` and `POST /_hson/sync` in the application
+host and pass the principal established by its authentication policy:
+
+```ts
+import { bind_locus_http } from "hson-live/locus";
+
+const http = bind_locus_http(locus, { endpoint: "/_hson" });
+const requests = ["/_hson", "/_hson/sync"].map((path) => ({
+  method: "POST",
+  path,
+  handle: (request: Request, context: LiveHostApplicationContext) =>
+    http.handle(request, { principalId: context.principal.id }),
+}));
+```
+
+The application supplies the authenticated context and owns origin/CSRF and
+cross-origin policy. The binder checks a current attachment capability and
+exact principal continuity on every attached request. It uses the same Locus
+session, action, status, recovery, projection, and publication authority as
+`bind_locus_websocket`; no physical HTTP connection identifies a session.
+The bearer capability is private runtime-local attachment authorization,
+separate from the retained session credential. Dispose the binding with its
+application or Locus host.
+
 The construction catalog classifies every application definition as `private`, `shared`, or `local`. Private and shared libraries must already exist in `locus.map`; local entries instead carry a detached initializer and never enter that authority map. Shared eligibility remains separate from authorization. A selected HTML document must be an authorized shared document. `defaultProjection`, when configured, is only a default request and still passes authorization.
 
 After construction, admit an atomic authority batch with `await locus.lib.add(definitions, { ownership })`. Ownership is a per-name `private | shared` object; omitted own entries default to `private`. Runtime local-definition admission is deliberately not part of this API in this release. Direct `map.addLibraries` on the managed authority remains fenced. A shared classification only makes a name eligible; it never changes an existing session grant.

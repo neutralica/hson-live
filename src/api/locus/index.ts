@@ -1,6 +1,8 @@
 export { hsonLocus } from "./locus.facade.js";
 export { create_locus, create_persistent_locus } from "./locus.public.js";
 export { bind_locus_websocket } from "./locus.websocket.js";
+export { bind_locus_http } from "./locus.http.js";
+export type { LocusHttpBinding } from "./locus.http.js";
 export type { LocusWebSocketLike } from "./locus.websocket.js";
 export { LocusPersistenceError, LocusPersistenceAppendUncertainError } from "./locus.persistence.error.js";
 export {

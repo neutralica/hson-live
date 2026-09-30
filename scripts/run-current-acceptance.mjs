@@ -12,8 +12,9 @@ const browser = new Set([
   "test:document-ssr-browser",
   "test:livemap-document-css-browser",
   "test:stylesheet-ingress-browser",
+  "test:echo-http-browser",
 ]);
-const network = new Set(["test:livehost-node-http2", "test:livehost-node-hosting"]);
+const network = new Set(["test:livehost-node-http2", "test:livehost-node-hosting", "test:echo-http", "test:echo-http2", "test:echo-http-completion"]);
 const environmentDependent = new Set([...browser, ...network]);
 const testNames = Object.keys(scripts).filter((name) => name.startsWith("test:"));
 const standard = new Set([...scripts.check.matchAll(/npm run (test:[\w-]+)/g)].map((match) => match[1]));

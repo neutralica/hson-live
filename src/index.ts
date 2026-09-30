@@ -149,6 +149,7 @@ export { DocumentMirrorError } from "./api/mirror/mirror.document.error.js";
 export { create_echo } from "./api/echo/echo.js";
 export { EchoSyncError, EchoSessionError } from "./api/echo/echo.error.js";
 export type { EchoWebSocketLike, EchoWebSocketConstructor, EchoWebSocketTransport, EchoWebSocketTransportOptions } from "./api/echo/echo.websocket.js";
+export type { EchoHttpTransport, EchoHttpTransportOptions } from "./api/echo/echo.http.js";
 export type {
   Echo,
   EchoActionFn,
@@ -171,6 +172,8 @@ export type {
 
 export { create_locus } from "./api/locus/locus.public.js";
 export { bind_locus_websocket } from "./api/locus/locus.websocket.js";
+export { bind_locus_http } from "./api/locus/locus.http.js";
+export type { LocusHttpBinding } from "./api/locus/locus.http.js";
 export type { LocusWebSocketLike } from "./api/locus/locus.websocket.js";
 export {
   LocusDisconnectedError,

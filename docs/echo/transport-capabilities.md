@@ -1,74 +1,108 @@
 # Echo transport capabilities
 
-Echo consumes one semantic transport object. Endpoint Echo needs finite
-operations and attachment observation; replica Echo additionally needs an
-ordered synchronization feed. The currently implemented concrete adapter is
-`hsonEcho.transport.websocket({ url, WebSocketConstructor? })`. The same object
-may serve either Echo composition, but one transport instance belongs to one Echo
-for its lifetime. Echo owns its semantic lifecycle, while the
-caller disposes the transport and its physical resources.
+Echo consumes one semantic transport object. An endpoint needs finite operations
+and attachment observation. A replica also needs one ordered synchronization
+feed. `hsonEcho.transport.websocket({ url, WebSocketConstructor? })` and
+`hsonEcho.transport.http({ endpoint, fetch?, credentials? })` are peer concrete
+adapters for that boundary. One transport instance belongs to one Echo for its
+lifetime. The caller disposes the transport after disposing Echo.
 
 ## Finite operations
 
-`operations.submit(request)` returns a promise with one of three results:
-`response` carries a typed authority outcome, including semantic rejection;
-`not-submitted` means the adapter can prove the request never entered its
-admission path; `uncertain` means it may have been admitted but its outcome was
-lost. Encoding, size admission, and aborts before physical send are `not-submitted`;
-an interruption after send is `uncertain`. Session creation is never retried
-automatically after uncertainty because its credential may exist only in the
-lost response. `EchoSessionError.delivery` and `echo.session.failure.delivery`
-expose that distinction. An explicit later create is a new session attempt.
-Actions keep a stable `clientId` and `requestId` across attempts, a fresh
-`attemptId` per retry, and retained status/deduplication at Locus. Independent
-finite requests need no global transport queue. Locus serializes authority
-mutation.
+`operations.submit(request)` returns `response` for a typed authority outcome,
+including semantic rejection. It returns `not-submitted` only when the adapter
+can prove no authority submission occurred, and `uncertain` when admission may
+have occurred but the response was lost. An already aborted signal or failed
+local encoding proves non-submission. A generic Fetch network failure does not.
+Echo never automatically repeats an uncertain session create, because its
+credential may exist only in a lost response. Action retries preserve the
+stable `clientId` and `requestId`, use a fresh `attemptId`, and consult Locus's
+shared deduplication and status authority.
+
+HTTP uses `POST {endpoint}` with one exact semantic JSON request and response.
+Session create and attach need the retained credential only for attach. The
+successful response carries a new attachment capability in the
+`x-hson-attachment` response header. Attached finite requests carry it in that
+same request header. The HTTP adapter stores it privately; Echo session state,
+`session.now()`, LiveMap state, Hson transfer, and URLs never contain it.
+`POST {endpoint}/sync` opens either a `recover` feed or an endpoint-only
+`{"type":"observe"}` control feed. Both use the same attachment capability.
+HTTP rejects other methods and paths without Locus admission. Finite and stream
+responses set `Cache-Control: no-store`; the stream has
+`Content-Type: application/x-ndjson` and `X-Content-Type-Options: nosniff`.
 
 ## Attachment and synchronization
 
-A retained session survives physical channel replacement. Its current logical
-attachment is the authorized presence at one epoch; a newer epoch fences the
-old attachment. Attachment notices report fencing, ending, and observation
-interruption. Endpoint Echo needs those notices without a replica map.
+A retained session, its logical attachment epoch, a synchronization
+subscription, and a physical connection are distinct. WebSocket carries all
+three semantic capabilities on one socket. HTTP uses independent finite
+requests and one continuing response for observation or replica recovery and
+live publication. A replica stream carries attachment notices and ordered
+current, replay, or reconcile output, then `recovery-caught-up`, then live
+commits, progress, and projection changes. It stays open at caught-up.
 
-A replica opens an ordered synchronization subscription. Opening establishes a
-feed, not caught-up readiness. Echo verifies recovery ID, authority identity,
-projection, and cursor continuity across current, replay, or reconcile material,
-then a `caught_up` boundary and continuing live commit/progress publication.
-Locus holds one current subscription sink per logical attachment. Replacing a
-subscription ends the displaced subscriber exactly once and fences old output.
-Opening accepts an optional abort signal; Echo aborts a pending open when
-recovery is replaced or disposed. Established subscriptions retain `cancel()`.
-Ending synchronization alone does not revoke the retained session. The physical
-stream or socket lifetime is adapter-specific. If a feed is interrupted, the replica loses
-caught-up readiness and can recover from its last applied authority cursor;
-the retained session and admitted document `completionRev` waits survive.
-Status and retry of the same logical action request remain available over the
-finite-operation capability while sync recovers; new replica work remains gated.
-Canonical publications are reliable and ordered. A slow consumer must interrupt
-and recover rather than silently drop a revision.
+The server issues a 256-bit capability from `crypto.getRandomValues` and keeps
+it as an opaque key to the current semantic attachment in a runtime-local Map.
+It is separate from the retained-session credential. Reattachment fences the
+old epoch, removes its capability immediately, and issues a new capability
+for the new epoch. Detach, goodbye, revocation, session fencing or expiration,
+and Locus disposal invalidate it. The server compares the trusted request
+principal with the attachment's original principal on every finite request
+and stream bind. The application must obtain that context from authentication;
+a caller-supplied principal string is not authentication. Capability lookup
+uses an exact Map key; there is no derived-token or secret-string comparison.
+Unknown capabilities receive a bounded empty admission response.
 
-The WebSocket adapter multiplexes operations, notices, and synchronization on
-one physical WebSocket. A physical close interrupts each capability and the
-stable client adapter can open another WebSocket for retained-session
-reattachment. That shared physical fate is adapter policy, not an Echo or Locus
-core requirement. The credential remains separate sensitive reattachment
-material; `session.now()` contains transferable, non-secret state and no route,
-transport, or attachment secret.
-Terminal adapter disposal notifies attachment and sync consumers before closing
-its resources; it does not dispose the Echo object itself.
+Replacing an HTTP stream uses the same Locus subscription generation as
+WebSocket recovery. Cancelling or losing one response ends only that
+subscription. The logical attachment and its capability remain usable, so
+finite status and retry can continue and a replica recovers at the same epoch
+from its last applied cursor. A failed stream clears caught-up readiness and
+gates new replica authoring. Losing the logical attachment instead requires
+retained-credential reattachment and a new epoch and capability. A finite
+operation failure does not end a healthy stream. A stale stream cannot publish
+after its epoch or subscription is fenced.
 
-## Later transports
+HTTP stream records are bounded NDJSON framing around the shared typed semantic
+codec; NDJSON is not canonical Hson state. The client decodes UTF-8 across
+chunks, bounds each record to the existing 64 MiB snapshot frame ceiling,
+rejects malformed records and mid-record EOF, and awaits each semantic output
+before reading the next. Ordinary request and finite response bodies use the
+existing 4 MiB live-wire limit. Locus retains its bounded synchronization
+queue. The HTTP response has a 64 MiB snapshot allowance plus one 4 MiB
+live-frame allowance; if the reader cannot
+keep up, the binder ends that subscription so the client can recover. It never
+silently drops a canonical revision or waits indefinitely for the network
+inside an authority transaction.
 
-HTTP/1 finite requests plus an open response stream, and HTTP/2 or HTTP/3
-multiplexed requests plus an ordered response stream, can implement the same
-semantic boundary. None is an Echo transport in Step 4A, and HTTP/3 has not
-been runtime tested. Logical attachment identity is independent of TCP, HTTP/2,
-or QUIC connection identity. Step 4B must add attachment-scoped authorization
-for independent HTTP requests and the concrete HTTP adapters.
+An HTTP attachment expires after 120 seconds without a received request;
+the binder closes its semantic attachment and normal retained-session
+detach/grace rules apply. A healthy client sends a private finite heartbeat
+every 30 seconds, so a quiet but active stream remains attached. The binder
+also writes a transport-local heartbeat record every 30 seconds so a stalled
+response encounters flow control. Heartbeats do not enter Hson state or Echo's
+semantic output. The browser adapter uses
+Fetch with `credentials: "same-origin"` by default; applications may pass a
+Fetch implementation or explicit Fetch credentials policy. Cross-origin use
+of the capability header requires the deployment's CORS preflight policy.
+Cookie-backed authentication still needs application origin and CSRF checks;
+the attachment capability does not replace them.
 
-Open HTTP representation delivery can also be composed directly from Locus
-publication and LiveHost streaming for applications without browser JavaScript;
-they do not instantiate JavaScript Echo. Future ephemeral game traffic may use
-an optional sibling stream or datagram subsystem. Echo canonical sync remains
-reliable and ordered and has no datagram interface.
+LiveHost stays generic. An application maps its authenticated
+`LiveHostApplicationContext` to `LocusConnectionContext` and calls
+`bind_locus_http(locus, { endpoint }).handle(request, context)`. The binder
+owns HTTP routing, capability admission, framing, and stream lifecycle; the
+existing Locus semantic attachment owns sessions, actions, recovery,
+projection, and publication. Proxy buffering and compression policy outside
+LiveHost must allow progressive response delivery.
+
+The same client adapter and binder run over HTTP/1 and HTTP/2. The HTTP/2
+runtime proof uses one session with a long-lived response and concurrent
+finite requests; no HTTP/2 stream or connection ID enters Echo or Locus.
+HTTP/3 reliable request/response streams are architecturally compatible with
+this boundary, but no HTTP/3 runtime or QUIC migration is implemented or
+tested. Echo does not add datagrams or unordered traffic.
+
+An application may separately serve streamed HTML or another open HTTP
+representation without JavaScript Echo or NDJSON. No-JavaScript continuation
+and Scout are separate work. Scout remains deferred.

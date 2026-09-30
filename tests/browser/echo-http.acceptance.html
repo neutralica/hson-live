@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<body>
+  <main><button></button></main>
+  <output id="result">running</output>
+  <script type="module">
+    import { continue_hosted_document, hsonEcho } from "./.echo-http.bundle.js";
+    const result = document.querySelector("#result");
+    let continuation;
+    let transport;
+    try {
+      const setup = await (await fetch("/setup", { cache: "no-store" })).json();
+      const root = document.querySelector("main");
+      const button = root.querySelector("button");
+      transport = hsonEcho.transport.http({ endpoint: "/_hson" });
+      continuation = await continue_hosted_document({ now: setup.now, credential: setup.credential,
+        transport, root, interactions: { local: {} } });
+      if (continuation.echo.sync.status !== "caught_up" || continuation.mirror.status !== "active") {
+        throw new Error("HTTP continuation did not converge.");
+      }
+      if (root !== document.querySelector("main") || button !== root.querySelector("button")) {
+        throw new Error("Existing SSR DOM was replaced.");
+      }
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      let handled = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        handled = (await (await fetch("/handled", { cache: "no-store" })).json()).handled;
+        if (handled) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (!handled) throw new Error("Locus interaction did not dispatch over HTTP.");
+      result.dataset.status = "pass";
+      result.textContent = "HTTP Echo browser continuation passed.";
+    } catch (cause) {
+      result.dataset.status = "fail";
+      result.textContent = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      continuation?.dispose();
+      continuation?.echo.dispose();
+      transport?.dispose();
+    }
+  </script>
+  <script>
+    (() => {
+      const result = document.querySelector("#result");
+      let reported = false;
+      const report = () => {
+        if (reported || (result.dataset.status !== "pass" && result.dataset.status !== "fail")) return;
+        reported = true;
+        fetch("/__result?status=" + encodeURIComponent(result.dataset.status)
+          + "&detail=" + encodeURIComponent(result.textContent ?? ""));
+      };
+      new MutationObserver(report).observe(result, { attributes: true, childList: true, subtree: true });
+      report();
+    })();
+  </script>
+</body>
+</html>

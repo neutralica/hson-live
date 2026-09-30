@@ -46,6 +46,8 @@ import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { decode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
+import { HOSTED_MAX_SNAPSHOT_BYTES } from "./livemap.hosted-limits.internal.js";
+export { HOSTED_MAX_SNAPSHOT_BYTES } from "./livemap.hosted-limits.internal.js";
 
 export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
 export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit" as const;
@@ -60,7 +62,6 @@ export const HOSTED_MAX_LIBRARIES = 1_024;
 export const HOSTED_MAX_LIBRARY_NAME_BYTES = 1_024;
 export const HOSTED_MAX_OPERATIONS = 100_000;
 export const HOSTED_MAX_COMMIT_BYTES = 16 * 1_024 * 1_024;
-export const HOSTED_MAX_SNAPSHOT_BYTES = 64 * 1_024 * 1_024;
 export const HOSTED_MAX_ISSUED_QUIDS = 1_000_000;
 
 const encoder = new TextEncoder();

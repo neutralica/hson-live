@@ -516,7 +516,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     let attachedContext: LocusConnectionContext | undefined;
     let requested: LocusRequestedProjection;
     const enteredConnection = [...connections].find((candidate) => candidate.sessionId === sessionId
-      && candidate.sessionEpoch !== undefined && candidate.subscription.live && !candidate.closed
+      && candidate.sessionEpoch !== undefined && !candidate.closed
       && !candidate.fenced && sessions.is_active(sessionId, candidate.sessionEpoch));
     try {
       suppliedContext = authorization_context_snapshot(context);
@@ -526,7 +526,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     return locus.run_exclusive(async () => {
       if (disposed || (expectedKey !== undefined && sessions.key(sessionId) !== expectedKey)) throw new LocusProjectionUnavailableError();
       const connection = [...connections].find((candidate) => candidate.sessionId === sessionId
-        && candidate.sessionEpoch !== undefined && candidate.subscription.live && !candidate.closed
+        && candidate.sessionEpoch !== undefined && !candidate.closed
         && !candidate.fenced && sessions.is_active(sessionId, candidate.sessionEpoch));
       if (connection !== enteredConnection) throw new LocusProjectionUnavailableError();
       const previous = sessions.projection(sessionId);
@@ -535,6 +535,8 @@ export function create_locus_hosted_aggregate_authority_internal<
         && candidate.sessionEpoch !== undefined && !candidate.closed && !candidate.fenced
         && sessions.is_active(sessionId, candidate.sessionEpoch));
       const serverOwned = !hasTransport() && serverSessionContexts.has(sessionId);
+      const ownedWithoutLiveFeed = connection !== undefined && !connection.subscription.live
+        && serverSessionContexts.has(sessionId) && expectedKey !== undefined;
       const serverContext = serverSessionContexts.get(sessionId);
       if (serverOwned && suppliedContext !== undefined && suppliedContext.principalId !== serverContext?.principalId) {
         throw new LocusProjectionUnavailableError();
@@ -542,7 +544,7 @@ export function create_locus_hosted_aggregate_authority_internal<
       const disconnected = connection === undefined && suppliedContext !== undefined
         && sessions.disconnected_with_principal(sessionId, suppliedContext);
       if (previous === undefined || (!serverOwned && !disconnected && (connection === undefined
-        || connection.effectiveProjection !== previous || connection.subscription.recoveryId === undefined
+        || connection.effectiveProjection !== previous || (!ownedWithoutLiveFeed && connection.subscription.recoveryId === undefined)
         || connection.sessionEpoch === undefined))) {
         throw new LocusProjectionUnavailableError();
       }
@@ -556,7 +558,7 @@ export function create_locus_hosted_aggregate_authority_internal<
             || !sessions.principal_matches(sessionId, authorizationContext)
           : disconnected ? suppliedContext === undefined || !sessions.disconnected_with_principal(sessionId, suppliedContext)
           : connection === undefined || epoch === undefined || !attachment_current(connection, sessionId, epoch)
-            || !connection.subscription.live || connection.effectiveProjection !== previous
+            || (!connection.subscription.live && !ownedWithoutLiveFeed) || connection.effectiveProjection !== previous
             || !sessions.principal_matches(sessionId, authorizationContext))) {
         throw new LocusProjectionUnavailableError();
       }
@@ -568,8 +570,12 @@ export function create_locus_hosted_aggregate_authority_internal<
       if (currentSequence === undefined) throw new LocusProjectionUnavailableError();
       if (next.compositionDigest === previous.compositionDigest) return Object.freeze({ changed: false, sequence: currentSequence,
         digest: previous.digest, authorityRev: locus.rev });
-      if (disconnected || serverOwned) {
+      if (disconnected || serverOwned || ownedWithoutLiveFeed) {
         const sequence = sessions.update_projection(sessionId, previous, next);
+        if (ownedWithoutLiveFeed && connection !== undefined) {
+          connection.effectiveProjection = next;
+          end_subscription(connection, connection.subscription, new Error("Locus projection changed during recovery."));
+        }
         return Object.freeze({ changed: true, sequence, digest: next.digest, authorityRev: locus.rev });
       }
       if (connection === undefined || connection.subscription.recoveryId === undefined) throw new LocusProjectionUnavailableError();

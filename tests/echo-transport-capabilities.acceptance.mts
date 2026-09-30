@@ -10,8 +10,8 @@ import { create_locus_hosted_aggregate_authority_internal } from "../src/api/loc
 import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { create_echo_websocket_transport, type EchoWebSocketLike } from "../src/api/echo/echo.websocket.ts";
-import { decodeEndpointMessage } from "../src/api/echo/echo.websocket-codec.internal.ts";
-import { decode_echo_hosted_aggregate_synchronization_frame_internal } from "../src/api/echo/echo.aggregate-websocket.internal.ts";
+import { decodeEndpointMessage } from "../src/api/echo/echo.semantic-codec.internal.ts";
+import { decode_echo_hosted_aggregate_synchronization_frame_internal } from "../src/api/echo/echo.aggregate-semantic-codec.internal.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { bind_node_locus_websocket } from "../src/api/locus/node/locus.node-socket.ts";
 

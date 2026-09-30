@@ -4,7 +4,6 @@ import type {
   EchoSyncDiagnostics,
   EchoSyncFailure,
   EchoSyncStatus,
-  EchoSyncStrategy,
   LocusActionPayloads,
 } from "../../types/locus.types.js";
 import type { LiveMap } from "../../types/livemap.types.js";
@@ -109,7 +108,6 @@ export function create_registry_echo<
   };
 
   let recoveryFailure: EchoSyncFailure | undefined;
-  let recoveryStrategy: EchoSyncStrategy | undefined;
 
   function failure(): EchoSyncFailure | undefined {
     const underlying = endpoint.replica.failure;
@@ -132,13 +130,12 @@ export function create_registry_echo<
   const sync = Object.freeze({
     get status() { return recoveryStatus(); },
     get failure() { return failure(); },
-    get strategy() { return recoveryStrategy; },
+    get strategy() { return endpoint.lastRecoveryOutcome; },
     async synchronize() {
       const previousIncarnation = endpoint.incarnationId;
       recoveryFailure = undefined;
       try {
         const result = await endpoint.recover();
-        recoveryStrategy = result.outcome;
         recoveryFailure = undefined;
         const incarnationId = endpoint.incarnationId;
         if (incarnationId === undefined) throw new Error("Aggregate synchronization completed without authority identity.");
@@ -164,7 +161,7 @@ export function create_registry_echo<
     debug(): EchoSyncDiagnostics {
       return Object.freeze({
         status: recoveryStatus(),
-        ...(recoveryStrategy === undefined ? {} : { strategy: recoveryStrategy }),
+        ...(endpoint.lastRecoveryOutcome === undefined ? {} : { strategy: endpoint.lastRecoveryOutcome }),
         logicalMapId,
         ...(endpoint.incarnationId === undefined ? {} : { incarnationId: endpoint.incarnationId }),
         ...(endpoint.lastAppliedRev === undefined ? {} : { lastAppliedRev: endpoint.lastAppliedRev }),
