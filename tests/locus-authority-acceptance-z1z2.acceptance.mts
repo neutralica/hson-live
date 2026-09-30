@@ -1,13 +1,14 @@
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { create_persistent_registry_locus } from "../src/api/locus/locus.registry.persistence.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import type { LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
 import { create_persistent_locus_hosted_aggregate_internal } from "../src/api/locus/locus.aggregate.persistence.ts";
 import { LocusPersistenceAppendUncertainError } from "../src/api/locus/locus.persistence.error.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { encode_locus_client_message } from "../src/api/locus/locus.protocol.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.aggregate.persistence.ts";
 
@@ -63,12 +64,12 @@ function pair() {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const received: Record<string, unknown>[] = [];
-  const client: LocusSocketLike = {
+  const client: LocusWebSocketLike = {
     send(raw) { for (const listener of toServer) listener(raw); }, close() {},
     onMessage(listener) { toClient.add(listener); return () => { toClient.delete(listener); }; },
     onClose() { return () => {}; },
   };
-  const socket: LocusSocketLike = {
+  const socket: LocusWebSocketLike = {
     send(raw) { received.push(JSON.parse(raw)); for (const listener of toClient) listener(raw); }, close() {},
     onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; },
@@ -79,9 +80,9 @@ async function settle() { await new Promise<void>((resolve) => setTimeout(resolv
 function messages(connection: ReturnType<typeof pair>, type: string) {
   return connection.received.filter((message) => message.type === type);
 }
-async function session(server: { connect: (socket: LocusSocketLike) => () => void; logicalMapId: string }, selected: "A" | "B", recover = true) {
+async function session(server: { logicalMapId: string }, selected: "A" | "B", recover = true) {
   const connection = pair();
-  const close = server.connect(connection.socket);
+  const close = bind_locus_websocket(server, connection.socket);
   connection.client.send(encode_locus_client_message({ type: "session-create", id: `create-${selected}`, projection: { libraries: [selected] } }));
   await settle();
   const created = messages(connection, "session-created")[0];
@@ -180,7 +181,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 // A resumably disconnected session remains in the preaccept roster.
 {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ map, libraries,
+  const server = create_locus_hosted_aggregate_authority_internal({ map, libraries,
     authorizeProjection: ({ requested }) => requested, maxWireBytes: 30_000 });
   const disconnected = await session(server, "A");
   disconnected.close();
@@ -189,7 +190,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   assert.equal(server.rev, 0);
   assert.equal(server.debug().retainedCommits, 0);
   const attached = pair();
-  server.connect(attached.socket);
+  bind_locus_websocket(server, attached.socket);
   attached.client.send(encode_locus_client_message({ type: "session-attach", id: "reattach-A", credential: disconnected.credential }));
   await settle();
   assert.equal(messages(attached, "session-attached").length, 1);
@@ -205,7 +206,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 // Revocation before the roster cut removes the session's future obligation.
 {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ map, libraries,
+  const server = create_locus_hosted_aggregate_authority_internal({ map, libraries,
     authorizeProjection: ({ requested }) => requested, maxWireBytes: 30_000 });
   const revoked = await session(server, "A");
   const sessionId = messages(revoked, "session-created")[0]?.sessionId;
@@ -220,7 +221,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 // request that would otherwise leave an unprovable future wrapper size.
 {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ map, libraries,
+  const server = create_locus_hosted_aggregate_authority_internal({ map, libraries,
     authorizeProjection: ({ requested }) => requested });
   const connection = await session(server, "A", false);
   connection.client.send(JSON.stringify({ type: "recover", id: "r".repeat(1_025), logicalMapId: server.logicalMapId }));
@@ -237,7 +238,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   const held = deferred();
   const entered = deferred();
   let hold = true;
-  const server = create_locus_hosted_aggregate_socket_internal({ map, libraries,
+  const server = create_locus_hosted_aggregate_authority_internal({ map, libraries,
     authorizeProjection: ({ requested }) => requested, maxWireBytes: 30_000,
     internal: { afterRecoveryCut: async () => { if (hold) { entered.resolve(); await held.promise; } } } });
   const recovering = await session(server, "A", false);
@@ -272,7 +273,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   const library = aggregate.libraries()[0]!;
   assert.throws(() => aggregate.acquireLocalProjectedIdentity(library, [], "00004b001"), /reserved/i);
   const connection = pair();
-  host.connect(connection.socket);
+  bind_locus_websocket(host, connection.socket);
   connection.client.send(encode_locus_client_message({ type: "session-create", id: "racing-create", projection: { libraries: ["A"] } }));
   authorization.resolve();
   await settle();

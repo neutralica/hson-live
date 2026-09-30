@@ -56,13 +56,13 @@ document, report, tenant, or other domain selector.
 
 ```ts
 import { create_locus } from "hson-live/locus";
-import { create_node_locus_socket } from "hson-live/locus/node";
+import { bind_node_locus_websocket } from "hson-live/locus/node";
 import { create_livehost_locus_registry } from "hson-live/livehost";
 import { start_node_application_host } from "hson-live/livehost/node";
 ```
 
 - `hson-live/locus` is the platform-neutral registry authority API.
-- `hson-live/locus/node` contains the Node socket adapter for session-projected Locus.
+- `hson-live/locus/node` contains the concrete Node WebSocket binder for session-projected Locus.
 - `hson-live/livehost` contains platform-neutral application/runtime contracts
   and the bounded registry service.
 - `hson-live/livehost/node` is the concrete Node application-host runtime and

@@ -1,15 +1,17 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
-import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import type { LocusHostedAggregateDataDraft, LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
@@ -47,9 +49,18 @@ function deferred(): Readonly<{ promise: Promise<void>; resolve: () => void }> {
   return Object.freeze({ promise, resolve });
 }
 
+async function sent_request(messages: readonly Record<string, unknown>[], type: string, previousId?: unknown): Promise<Record<string, unknown>> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const request = messages.findLast((message) => message.type === type && message.id !== previousId);
+    if (request !== undefined) return request;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`Expected ${type} request.`);
+}
+
 function socket_pair(): Readonly<{
-  client: LocusSocketLike;
-  server: LocusSocketLike;
+  client: LocusWebSocketLike;
+  server: LocusWebSocketLike;
   clientSent: Record<string, unknown>[];
   serverSent: Record<string, unknown>[];
   deliverToClient: (message: Record<string, unknown>) => void;
@@ -121,13 +132,13 @@ function state(draft: LocusHostedAggregateDraft): LocusHostedAggregateDataDraft 
 }
 
 function connect_endpoint(
-  server: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>,
+  server: ReturnType<typeof create_locus_hosted_aggregate_authority_internal>,
   credential?: string,
 ) {
   const pair = socket_pair();
-  server.connect(pair.server);
-  const client = create_echo_socket_client_internal({
-    socket: pair.client,
+  bind_locus_websocket(server, pair.server);
+  const client = create_echo_aggregate_client_internal({
+    transport: test_echo_transport(pair.client),
     logicalMapId: server.logicalMapId,
     ...(credential === undefined ? {} : { session: { credential } }),
   });
@@ -136,7 +147,7 @@ function connect_endpoint(
 }
 
 async function attach_replacement(
-  server: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>,
+  server: ReturnType<typeof create_locus_hosted_aggregate_authority_internal>,
   credential: string,
 ) {
   const replacement = connect_endpoint(server, credential);
@@ -152,7 +163,7 @@ await check("replacement after the recovery cut stops plan and body delivery and
   const entered = deferred();
   const release = deferred();
   let hold = true;
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
@@ -185,7 +196,7 @@ await check("replacement immediately before caught-up prevents completion and st
   const entered = deferred();
   const release = deferred();
   let hold = true;
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
@@ -219,7 +230,7 @@ await check("replacement after caught-up suppresses queued live drain", async ()
   const entered = deferred();
   const release = deferred();
   let caughtUpCount = 0;
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
@@ -254,11 +265,10 @@ await check("stale recovery identity cannot settle a replacement recovery on the
   const pair = socket_pair();
   const projected = make_projected_map();
   const mirror = projected.map;
-  const client = create_echo_socket_client_internal({ socket: pair.client, map: mirror });
+  const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), map: mirror });
   client.attachTransport();
   const created = client.session.create();
-  const createRequest = pair.clientSent.findLast((message) => message.type === "session-create");
-  assert.ok(createRequest);
+  const createRequest = await sent_request(pair.clientSent, "session-create");
   pair.deliverToClient({
     type: "session-created",
     format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
@@ -271,8 +281,7 @@ await check("stale recovery identity cannot settle a replacement recovery on the
   });
   await created;
   const recoveryA = client.connect();
-  const requestA = pair.clientSent.findLast((message) => message.type === "recover");
-  assert.ok(requestA);
+  const requestA = await sent_request(pair.clientSent, "recover");
   pair.deliverToClient({
     type: "session-fenced",
     format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
@@ -283,8 +292,7 @@ await check("stale recovery identity cannot settle a replacement recovery on the
   await assert.rejects(recoveryA, /fenced/i);
 
   const attached = client.session.reattach();
-  const attachRequest = pair.clientSent.findLast((message) => message.type === "session-attach");
-  assert.ok(attachRequest);
+  const attachRequest = await sent_request(pair.clientSent, "session-attach");
   pair.deliverToClient({
     type: "session-attached",
     format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
@@ -297,8 +305,7 @@ await check("stale recovery identity cannot settle a replacement recovery on the
   await attached;
   let replacementSettled = false;
   const recoveryB = client.connect().finally(() => { replacementSettled = true; });
-  const requestB = pair.clientSent.findLast((message) => message.type === "recover");
-  assert.ok(requestB);
+  const requestB = await sent_request(pair.clientSent, "recover", requestA.id);
   assert.notEqual(requestA.id, requestB.id);
   pair.deliverToClient({
     type: "recovery-caught-up",
@@ -341,7 +348,7 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
   const entered = deferred();
   const release = deferred();
   let hold = true;
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
@@ -357,7 +364,7 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
   const interrupted = first.client.connect();
   await entered.promise;
   first.pair.disconnect();
-  await assert.rejects(interrupted, /disconnect/i);
+  await assert.rejects(interrupted, /disconnect|interrupt/i);
   release.resolve();
   const replacement = connect_endpoint(server);
   assert.equal((await replacement.client.connect()).revision, 0);
@@ -369,13 +376,12 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
 await check("replica synchronization failure leaves the attached endpoint usable for unrelated actions", async () => {
   const pair = socket_pair();
   const projected = make_projected_map();
-  const client = create_echo_socket_client_internal({
-    socket: pair.client,
+  const client = create_echo_aggregate_client_internal({
+    transport: test_echo_transport(pair.client),
     map: projected.map,
   });
   const connecting = client.connect();
-  const create = pair.clientSent.findLast((message) => message.type === "session-create");
-  assert.ok(create);
+  const create = await sent_request(pair.clientSent, "session-create");
   pair.deliverToClient({
     type: "session-created",
     format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
@@ -386,9 +392,7 @@ await check("replica synchronization failure leaves the attached endpoint usable
     logicalMapId: client.logicalMapId,
     incarnationId: client.incarnationId,
   });
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  const recover = pair.clientSent.findLast((message) => message.type === "recover");
-  assert.ok(recover);
+  const recover = await sent_request(pair.clientSent, "recover");
   assert.ok(client.incarnationId);
   assert.ok(client.registryDigest);
   pair.deliverToClient({
@@ -407,8 +411,7 @@ await check("replica synchronization failure leaves the attached endpoint usable
   assert.equal(client.session.status, "attached");
 
   const action = client.action("endpoint.probe");
-  const request = pair.clientSent.findLast((message) => message.type === "action");
-  assert.ok(request);
+  const request = await sent_request(pair.clientSent, "action");
   assert.equal(typeof request.id, "string");
   assert.equal(typeof request.requestId, "string");
   assert.equal(typeof request.attemptId, "string");

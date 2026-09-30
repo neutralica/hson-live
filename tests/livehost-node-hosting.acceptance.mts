@@ -3,7 +3,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { request as node_request } from "node:http";
-import { create_locus, type LocusSocketLike } from "hson-live/locus";
+import { bind_locus_websocket, create_locus, type LocusWebSocketLike } from "hson-live/locus";
 import { hsonLiveMap } from "hson-live/livemap";
 import { Hson } from "hson-live/hson";
 import type {
@@ -176,7 +176,7 @@ const secureHeaders = Object.freeze({
   Authorization: "Bearer correct-horse-battery-staple",
 });
 
-function locus_socket(connection: LiveHostConnection): LocusSocketLike {
+function locus_socket(connection: LiveHostConnection): LocusWebSocketLike {
   return Object.freeze({
     send(message: string) { connection.send(message); },
     close(code?: number, reason?: string) { connection.close(code, reason); },
@@ -504,7 +504,7 @@ check("connection paths select applications without interpreting Locus topology"
           connection.close(1008, "Unknown application Locus.");
           return;
         }
-        locus.connect(locus_socket(connection));
+        bind_locus_websocket(locus, locus_socket(connection));
       },
     })]),
     dispose() {

@@ -1,10 +1,12 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_public_projection } from "./helpers/hosted-catalog.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
-import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_livemap_mirror_from_portable_aggregate_internal, make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
@@ -14,8 +16,8 @@ import { project_authority_snapshot, authority_projection_as_client_composition_
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
-import { create_locus_hosted_aggregate_socket_internal, derive_locus_hosted_progress_internal } from "../src/api/locus/locus.aggregate.socket.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import { create_locus_hosted_aggregate_authority_internal, derive_locus_hosted_progress_internal } from "../src/api/locus/locus.aggregate.authority.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import type { LiveMap } from "../src/types/livemap.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -161,8 +163,8 @@ await check("ordinary local registry LiveMap cannot advance authority position",
 });
 
 function socket_pair(): Readonly<{
-  client: LocusSocketLike;
-  server: LocusSocketLike;
+  client: LocusWebSocketLike;
+  server: LocusWebSocketLike;
   serverSent: string[];
   sendFromServer: (message: Readonly<Record<string, unknown>>) => void;
   replaceServerDelivery: (replace: (message: Readonly<Record<string, unknown>>) => readonly Readonly<Record<string, unknown>>[]) => void;
@@ -171,13 +173,13 @@ function socket_pair(): Readonly<{
   const serverMessages = new Set<(raw: string) => void>();
   const serverSent: string[] = [];
   let replacement: ((message: Readonly<Record<string, unknown>>) => readonly Readonly<Record<string, unknown>>[]) | undefined;
-  const client: LocusSocketLike = Object.freeze({
+  const client: LocusWebSocketLike = Object.freeze({
     send(raw: string) { for (const listener of [...serverMessages]) listener(raw); },
     close() {},
     onMessage(listener: (raw: string) => void) { clientMessages.add(listener); return () => clientMessages.delete(listener); },
     onClose() { return () => {}; },
   });
-  const server: LocusSocketLike = Object.freeze({
+  const server: LocusWebSocketLike = Object.freeze({
     send(raw: string) {
       serverSent.push(raw);
       const parsed: Readonly<Record<string, unknown>> = JSON.parse(raw);
@@ -217,10 +219,10 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
     source.commit([{ target: source.target(source.libraries()[0]!, ["value"]), kind: "set", value: revision }]);
   }
   const snapshot = source.captureHosted();
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(authority), map: authority });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(authority), map: authority });
   const pair = socket_pair();
-  server.connect(pair.server);
-  const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
+  bind_locus_websocket(server, pair.server);
+  const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId });
   const recovery = await client.connect();
   assert.equal(recovery.revision, 9);
   const map = client.map;
@@ -235,11 +237,13 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
   let commits = 0;
   map.commits.observe(() => { commits += 1; });
   pair.sendFromServer({ type: "commit", id, ...projection_fence(authority), commit: live_committed_value(origin, 1) });
+  await Promise.resolve();
   assert.equal(map.rev, 1);
   assert.equal(state.snap(["value"]), 1);
   pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: live_progress(snapshot, 10) });
   pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: live_progress(snapshot, 11) });
   assert.equal(map.rev, 1);
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(client.lastAppliedRev, 12);
   assert.equal(state.snap(["value"]), 1);
   assert.equal(commits, 1);
@@ -248,6 +252,7 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
   originReplica.advanceHostedProgress(progress(snapshot, 11));
   originReplica.dispose();
   pair.sendFromServer({ type: "commit", id, ...projection_fence(authority), commit: live_committed_value(origin, 2) });
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(map.rev, 2);
   assert.equal(client.lastAppliedRev, 13);
   assert.equal(state.snap(["value"]), 2);
@@ -269,7 +274,7 @@ await check("replay history processes commit, progress, commit, final progress b
   sourceReplica.advanceHostedProgress(progress(snapshot, 1));
   sourceReplica.dispose();
   const third = live_committed_value(source, 2);
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(authority), map: authority });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(authority), map: authority });
   const pair = socket_pair();
   pair.replaceServerDelivery((message) => {
     if (message.type === "recovery-plan") {
@@ -285,11 +290,11 @@ await check("replay history processes commit, progress, commit, final progress b
     if (message.type === "recovery-caught-up") return [Object.freeze({ ...message, throughRev: 4 })];
     return [message];
   });
-  server.connect(pair.server);
+  bind_locus_websocket(server, pair.server);
   const map = projected_client_map(authority);
   let commits = 0;
   map.commits.observe(() => { commits += 1; });
-  const client = create_echo_socket_client_internal({ socket: pair.client, map, logicalMapId: server.logicalMapId });
+  const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), map, logicalMapId: server.logicalMapId });
   const recovered = await client.connect();
   const state = map.lib("state");
   if (!("snap" in state)) throw new Error("Expected data Library.");
@@ -315,7 +320,7 @@ await check("reconcile synchronization drains buffered progress and graph tail t
   sourceReplica.advanceHostedProgress(progress(snapshot, 4));
   sourceReplica.dispose();
   const sixth = live_committed_value(source, 6);
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(authority), map: authority });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(authority), map: authority });
   const pair = socket_pair();
   pair.replaceServerDelivery((message) => {
     if (message.type === "recovery-snapshot") {
@@ -330,8 +335,8 @@ await check("reconcile synchronization drains buffered progress and graph tail t
     if (message.type === "recovery-caught-up") return [Object.freeze({ ...message, throughRev: 7 })];
     return [message];
   });
-  server.connect(pair.server);
-  const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
+  bind_locus_websocket(server, pair.server);
+  const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId });
   const recovered = await client.connect();
   const map = client.map;
   if (map === undefined) throw new Error("Expected snapshot-installed Echo map.");
@@ -363,10 +368,10 @@ await check("Echo rejects progress gaps, stale duplicates, and wrong authority f
   for (const scenario of cases) {
     const authority = make_map();
     const snapshot = internal_livemap_aggregate_authority(authority).captureHosted();
-    const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(authority), map: authority });
+    const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(authority), map: authority });
     const pair = socket_pair();
-    server.connect(pair.server);
-    const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
+    bind_locus_websocket(server, pair.server);
+    const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId });
     await client.connect();
     const id = JSON.parse(pair.serverSent.find((raw) => JSON.parse(raw).type === "recovery-caught-up")!).id;
     const base = live_progress(snapshot, 0);
@@ -375,9 +380,12 @@ await check("Echo rejects progress gaps, stale duplicates, and wrong authority f
       assert.equal(client.map?.rev, 0);
     }
     if (scenario.name === "jump after current position") {
-      assert.throws(() => pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: scenario.make(base) }), /malformed/i);
+      pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: scenario.make(base) });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.notEqual(client.diagnostics().status, "live", "malformed frame interrupts the feed");
     } else {
       pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: scenario.make(base) });
+      await new Promise<void>((resolve) => setImmediate(resolve));
       assert.equal(client.diagnostics().status, "failed", scenario.name);
     }
     assert.equal(client.map?.rev, 0, scenario.name);
@@ -390,15 +398,16 @@ await check("Echo rejects authority traffic stamped for another projection seque
   for (const stale of [{ projectionSequence: 1 }, { projectionDigest: "0".repeat(64) }]) {
     const authority = make_map();
     const snapshot = internal_livemap_aggregate_authority(authority).captureHosted();
-    const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(authority), map: authority });
+    const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(authority), map: authority });
     const pair = socket_pair();
-    server.connect(pair.server);
-    const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
+    bind_locus_websocket(server, pair.server);
+    const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId });
     await client.connect();
     const id = JSON.parse(pair.serverSent.find((raw) => JSON.parse(raw).type === "recovery-caught-up")!).id;
     const before = client.lastAppliedRev;
     pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), ...stale,
       progress: live_progress(snapshot, before ?? 0) });
+    await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(client.diagnostics().status, "failed");
     assert.equal(client.lastAppliedRev, before);
     client.dispose();
@@ -421,23 +430,29 @@ await check("completionRev waits through ordered progress while local identity s
     () => replica.failure,
   );
   let settled = false;
+  let settlements = 0;
   const pending = documentAuthority.enqueue(() => Object.freeze({
     name: "document.attrs.clear" as const,
     payload: { target: { kind: "path" as const, path: [0] } },
   }));
-  void pending.then(() => { settled = true; });
+  void pending.then(() => { settled = true; settlements += 1; });
   for (let turn = 0; turn < 8 && documentAuthority.pendingRevisionWaits() === 0; turn += 1) await Promise.resolve();
   assert.equal(documentAuthority.pendingRevisionWaits(), 1);
   assert.equal(map.rev, 0); // The acknowledged completion revision is not a stream event.
+  assert.equal(settled, false);
+  replica.markRecovering(); // Lost feed does not revoke an admitted completionRev wait.
+  assert.equal(documentAuthority.pendingRevisionWaits(), 1);
   assert.equal(settled, false);
   replica.advanceHostedProgress(progress(snapshot, 0));
   const quid = mirror.tree.find.byTag("main")!.quid;
   assert.equal(page.document.byQuid(quid)?.$_tag, "main");
   assert.equal(map.rev, 1);
   assert.equal(settled, false);
+  replica.markReady();
   replica.advanceHostedProgress(progress(snapshot, 1));
   await pending;
   assert.equal(settled, true);
+  assert.equal(settlements, 1);
   assert.equal(documentAuthority.pendingRevisionWaits(), 0);
   assert.equal(map.rev, 2);
   assert.equal(page.document.byQuid(quid)?.$_tag, "main");

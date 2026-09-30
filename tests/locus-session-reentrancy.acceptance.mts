@@ -1,3 +1,4 @@
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
 import { make_locus_session_manager } from "../src/api/locus/locus.session.ts";
 import { hsonLiveMap, hsonLocus } from "../src/index.ts";
@@ -53,7 +54,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
   let credential: string | undefined;
   let retained: import("../src/types/locus.types.ts").LocusSession | undefined;
   let fences = 0;
-  const stop = host.connect({ send(raw) {
+  const stop = bind_locus_websocket(host, { send(raw) {
     const frame = JSON.parse(raw);
     if (frame.type === "session-created") { id = frame.sessionId; credential = frame.credential; }
     if (frame.type === "session-fenced") {
@@ -66,6 +67,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
     }
   }, close() {}, onMessage(listener) { receive = listener; return () => {}; }, onClose() { return () => {}; } });
   receive?.(JSON.stringify({ type: "session-create", id: "first" }));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.ok(id && credential);
   retained = host.session.get(id)!;
   let events = 0;
@@ -80,7 +82,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
   else {
     const frames: string[] = [];
     let attach: ((raw: string) => void) | undefined;
-    const replacement = host.connect({ send(raw) { frames.push(raw); }, close() {},
+    const replacement = bind_locus_websocket(host, { send(raw) { frames.push(raw); }, close() {},
       onMessage(listener) { attach = listener; return () => {}; }, onClose() { return () => {}; } });
     attach?.(JSON.stringify({ type: "session-attach", id: "replacement", credential }));
     assert.equal(frames.some(raw => JSON.parse(raw).type === "session-attached"), false);
@@ -102,7 +104,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
     authorizeProjection: () => ({ libraries: ["state"] }) });
   const retained = await host.session.create({ libraries: ["state"] });
   let revoked: boolean | undefined;
-  host.connect({ send() {}, close() {},
+  bind_locus_websocket(host, { send() {}, close() {},
     onMessage() { return () => { revoked = retained.revoke(); }; }, onClose() { return () => {}; } });
   host.dispose();
   assert.equal(revoked, false);
@@ -123,12 +125,13 @@ for (const closeAt of ["fence-send", "fenced-listener", "attached-listener"] as 
   let credential: string | undefined;
   let closeDestination: (() => void) | undefined;
   let armed = true;
-  const stopFirst = host.connect({ send(raw) {
+  const stopFirst = bind_locus_websocket(host, { send(raw) {
     const frame = JSON.parse(raw);
     if (frame.type === "session-created") { sessionId = frame.sessionId; credential = frame.credential; }
     if (frame.type === "session-fenced" && closeAt === "fence-send" && armed) closeDestination?.();
   }, close() {}, onMessage(listener) { firstReceive = listener; return () => {}; }, onClose() { return () => {}; } });
   firstReceive?.(JSON.stringify({ type: "session-create", id: "first" }));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.ok(sessionId && credential);
   const retained = host.session.get(sessionId)!;
   host.session.onChange(event => {
@@ -139,9 +142,10 @@ for (const closeAt of ["fence-send", "fenced-listener", "attached-listener"] as 
     }
   });
   const destinationFrames: string[] = [];
-  closeDestination = host.connect({ send(raw) { destinationFrames.push(raw); }, close() {},
+  closeDestination = bind_locus_websocket(host, { send(raw) { destinationFrames.push(raw); }, close() {},
     onMessage(listener) { destinationReceive = listener; return () => {}; }, onClose() { return () => {}; } });
   destinationReceive?.(JSON.stringify({ type: "session-attach", id: "closed-destination", credential }));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   armed = false;
   assert.equal(destinationFrames.some(raw => JSON.parse(raw).type === "session-attached"), false, closeAt);
   const disconnected = host.session.debug().sessions.find(session => session.sessionId === sessionId);
@@ -153,9 +157,10 @@ for (const closeAt of ["fence-send", "fenced-listener", "attached-listener"] as 
 
   let validReceive: ((raw: string) => void) | undefined;
   const validFrames: string[] = [];
-  const stopValid = host.connect({ send(raw) { validFrames.push(raw); }, close() {},
+  const stopValid = bind_locus_websocket(host, { send(raw) { validFrames.push(raw); }, close() {},
     onMessage(listener) { validReceive = listener; return () => {}; }, onClose() { return () => {}; } });
   validReceive?.(JSON.stringify({ type: "session-attach", id: "valid-destination", credential }));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.ok(validFrames.some(raw => JSON.parse(raw).type === "session-attached"), closeAt);
   assert.equal(host.session.get(sessionId), retained);
   stopValid();

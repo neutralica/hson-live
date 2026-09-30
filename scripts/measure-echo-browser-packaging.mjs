@@ -6,8 +6,10 @@ const repositoryRoot = resolve(import.meta.dirname, "..");
 const require = createRequire(new URL("../editors/vscode-hson/package.json", import.meta.url));
 const { build } = require("esbuild");
 
-const socketSource = `
-  const socket = { send() {}, close() {}, onMessage() {}, onClose() {} };
+const transportSource = `
+  const transport = { operations: { async submit() { return { kind: "not-submitted" }; } },
+    attachment: { observe() { return () => {}; } },
+    synchronization: { async open() { return { cancel() {} }; } } };
 `;
 
 function outputKey(outputs, path) {
@@ -90,14 +92,14 @@ async function measure(name, source) {
 
 const endpoint = await measure("endpoint-only-public", `
   import { create_echo } from "hson-live/echo";
-  ${socketSource}
-  globalThis.__echo_measure__ = create_echo({ socket });
+  ${transportSource}
+  globalThis.__echo_measure__ = create_echo({ transport });
 `);
 const replica = await measure("replica-bearing-public", `
-  import { create_echo } from "hson-live/echo";
-  ${socketSource}
-  const map = globalThis.__supplied_live_map__;
-  globalThis.__echo_measure__ = create_echo({ socket, map, recovery: { logicalMapId: "measure-map" } });
+  import { hsonEcho } from "hson-live/echo";
+  ${transportSource}
+  const now = globalThis.__supplied_session_now__;
+  globalThis.__echo_measure__ = hsonEcho.init({ transport, now, credential: "measure-credential" });
 `);
 
 console.log(JSON.stringify({

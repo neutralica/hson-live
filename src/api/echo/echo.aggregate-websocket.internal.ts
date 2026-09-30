@@ -1,8 +1,6 @@
 import type { LocusActionPayloads, LocusClientMessage } from "../../types/locus.types.js";
 import { encode_locus_client_message } from "../locus/locus.protocol.js";
-import {
-  DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
-} from "../locus/locus.aggregate.js";
+import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES } from "../locus/locus.aggregate.protocol.js";
 import type { LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import type {
@@ -19,20 +17,11 @@ import { HsonSchema } from "../schema/hson-schema.js";
 import type { LiveMapLibraryAddOperation, LiveMapRootMode } from "../../types/livemap.types.js";
 import type { LocusProjectedLibraryContract } from "../locus/locus.projection.js";
 import type { LocusProjectionSystemFeature } from "../../types/locus.projection.types.js";
-import type { EchoEndpointConnection } from "./echo.client.js";
 import { admit_locus_local_initializers, locus_local_initializer_digest } from "../locus/locus.local-initializer.js";
 
 export type EchoHostedAggregateSynchronizationOutput =
   | LocusHostedAggregateSynchronizationOutput
   | LocusHostedAggregateCanonicalPublication;
-
-/** @internal Install aggregate framing only when the connection is the WebSocket adapter. */
-export function configure_echo_hosted_aggregate_websocket_internal<TActions extends LocusActionPayloads>(
-  connection: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, EchoHostedAggregateSynchronizationOutput>,
-): void {
-  connection.setSynchronizationDecoder?.(decode_echo_hosted_aggregate_synchronization_frame_internal);
-  connection.setMessageEncoder?.((message) => encode_echo_hosted_aggregate_request_frame_internal(message));
-}
 
 /** @internal Aggregate WebSocket request framing; semantic recovery keeps its cursor grouped. */
 export function encode_echo_hosted_aggregate_request_frame_internal(message: LocusClientMessage | LocusHostedAggregateSynchronizationRequest): string {

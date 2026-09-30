@@ -1,9 +1,11 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
-import { hsonLiveMap, hsonLocus, type LocusSocketLike } from "../src/index.ts";
-import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { hsonLiveMap, hsonLocus, type LocusWebSocketLike } from "../src/index.ts";
+import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { local_initializers } from "./helpers/client-projection.mts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { parse_document_stylesheet } from "../src/internal/css/parse-document-stylesheet.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
@@ -17,12 +19,12 @@ function pair() {
   const serverListeners = new Set<(raw: string) => void>();
   const clientListeners = new Set<(raw: string) => void>();
   const sent: string[] = [];
-  const client: LocusSocketLike = {
+  const client: LocusWebSocketLike = {
     send(raw) { for (const listener of [...serverListeners]) listener(raw); }, close() {},
     onMessage(listener) { clientListeners.add(listener); return () => { clientListeners.delete(listener); }; },
     onClose() { return () => {}; },
   };
-  const server: LocusSocketLike = {
+  const server: LocusWebSocketLike = {
     send(raw) { sent.push(raw); for (const listener of [...clientListeners]) listener(raw); }, close() {},
     onMessage(listener) { serverListeners.add(listener); return () => { serverListeners.delete(listener); }; },
     onClose() { return () => {}; },
@@ -50,8 +52,8 @@ const locus = hsonLocus.create({ map,
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ["page"] }),
 });
 const wire = pair();
-let detach = locus.connect(wire.server, { principalId: "alice" });
-const echo = create_echo_socket_client_internal({ socket: wire.client, logicalMapId: locus.logicalMapId,
+let detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
+const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(wire.client), logicalMapId: locus.logicalMapId,
   initializers: local_initializers({ localPage: { document: '<html <head/> <body/>/>' } }) });
 await echo.connect();
 const client = echo.map;
@@ -109,14 +111,14 @@ if (forbidden.type === "error") assert.equal(forbidden.error.code, "LOCUS_ACTION
 assert.match(ungranted.css.snapshot(), /UNGRANTED_CSS_SENTINEL/);
 echo.disconnect(); detach();
 await locus.mutate((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@keyframes pulse { from { opacity: 0; } to { opacity: 1; } }", page.css.list())); });
-detach = locus.connect(wire.server, { principalId: "alice" });
+detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 const recovered = await echo.connect();
 assert.equal(recovered.outcome, "replay");
 assert.match(clientPage.css.snapshot(), /@keyframes pulse/);
 assert.equal(localPage.css.snapshot(), localCss);
 echo.disconnect(); detach();
 await locus.session.get(sessionId)!.update({ libraries: ["page", "ungrantedPage"] }, { principalId: "alice" });
-detach = locus.connect(wire.server, { principalId: "alice" });
+detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 assert.ok(["current", "reconcile"].includes((await echo.connect()).outcome));
 const expanded = client.lib("ungrantedPage");
 if (expanded.mode !== "document") throw new Error("Expected expanded document.");
@@ -124,7 +126,7 @@ assert.match(expanded.css.snapshot(), /UNGRANTED_CSS_SENTINEL/);
 assert.match(expanded.css.snapshot(), /UNGRANTED_LIVE_CSS_SENTINEL/);
 echo.disconnect(); detach();
 await locus.session.get(sessionId)!.update({ libraries: ["ungrantedPage"] }, { principalId: "alice" });
-detach = locus.connect(wire.server, { principalId: "alice" });
+detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 assert.ok(["current", "reconcile"].includes((await echo.connect()).outcome));
 assert.throws(() => client.lib("page"), /Unknown/);
 assert.throws(() => clientPage.css.snapshot());
@@ -134,7 +136,7 @@ assert.equal(localPage.css.snapshot(), localCss);
 assert.throws(() => locus.session.get(sessionId)!.now({ html: "page" }), /unavailable/);
 echo.disconnect(); detach();
 await locus.session.get(sessionId)!.update({ libraries: ["page", "ungrantedPage"] }, { principalId: "alice" });
-detach = locus.connect(wire.server, { principalId: "alice" });
+detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 assert.ok(["current", "reconcile"].includes((await echo.connect()).outcome));
 const regranted = client.lib("page");
 if (regranted.mode !== "document") throw new Error("Expected regranted document.");
@@ -183,13 +185,13 @@ const fallbackPage = fallbackMap.lib("page"), fallbackHidden = fallbackMap.lib("
 if (fallbackPage.mode !== "document" || fallbackHidden.mode !== "document") throw new Error("Expected fallback documents.");
 fallbackPage.css.stylesheet("body { color: olive; }");
 fallbackHidden.css.stylesheet(".HIDDEN_FALLBACK_CSS_SENTINEL { color: red; }");
-const fallbackHost = create_locus_hosted_aggregate_socket_internal({ map: fallbackMap, maxHistoryBytes: 1,
+const fallbackHost = create_locus_hosted_aggregate_authority_internal({ map: fallbackMap, maxHistoryBytes: 1,
   libraries: [{ name: "page", ownership: "shared" }, { name: "hidden", ownership: "private" }],
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }) });
 const fallbackWire = pair();
-let stopFallback = fallbackHost.connect(fallbackWire.server);
-const fallbackEcho = create_echo_socket_client_internal({ socket: fallbackWire.client, logicalMapId: fallbackHost.logicalMapId,
+let stopFallback = bind_locus_websocket(fallbackHost, fallbackWire.server);
+const fallbackEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(fallbackWire.client), logicalMapId: fallbackHost.logicalMapId,
   initializers: local_initializers({ localPage: { document: '<html <head/> <body/>/>' } }) });
 await fallbackEcho.connect();
 const fallbackClient = fallbackEcho.map;
@@ -201,7 +203,7 @@ const fallbackLocalCss = fallbackLocal.css.snapshot();
 fallbackEcho.disconnect(); stopFallback();
 await fallbackHost.mutate((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@media screen { body { background: coral; } }", fallbackPage.css.list())); });
 await fallbackHost.mutate((draft) => { const selected = draft.lib("hidden"); if ("graph" in selected) selected.css(append(".HIDDEN_FALLBACK_TAIL_SENTINEL { color: blue; }", fallbackHidden.css.list())); });
-stopFallback = fallbackHost.connect(fallbackWire.server);
+stopFallback = bind_locus_websocket(fallbackHost, fallbackWire.server);
 assert.equal((await fallbackEcho.connect()).outcome, "reconcile");
 const fallbackProjected = fallbackClient.lib("page");
 if (fallbackProjected.mode !== "document") throw new Error("Expected fallback projected document.");
@@ -228,8 +230,8 @@ const firstAuthority = await create_persistent_locus({ map: restartMap, ...resta
 await firstAuthority.mutate((draft) => { draft.lib("page").css(append("body { color: maroon; }")); });
 await firstAuthority.checkpoint();
 const restartWire = pair();
-let stopRestart = firstAuthority.connect(restartWire.server);
-const restartEcho = create_echo_socket_client_internal({ socket: restartWire.client, logicalMapId: firstAuthority.logicalMapId,
+let stopRestart = bind_locus_websocket(firstAuthority, restartWire.server);
+const restartEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), logicalMapId: firstAuthority.logicalMapId,
   initializers: local_initializers({ localPage: { document: '<html <head/> <body/>/>' } }) });
 await restartEcho.connect();
 const restartClient = restartEcho.map;
@@ -256,8 +258,8 @@ await firstAuthority.mutate((draft) => { draft.lib("page").css(append("body { ba
 restartEcho.dispose();
 firstAuthority.dispose();
 const restarted = await create_persistent_locus({ map: restartInput(), ...restartOptions });
-stopRestart = restarted.connect(restartWire.server);
-const resumedEcho = create_echo_socket_client_internal({ socket: restartWire.client, map: restartClient,
+stopRestart = bind_locus_websocket(restarted, restartWire.server);
+const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), map: restartClient,
   logicalMapId: restarted.logicalMapId });
 assert.equal((await resumedEcho.connect()).outcome, "reconcile");
 const restartedProjected = restartClient.lib("page");

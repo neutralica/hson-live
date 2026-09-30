@@ -1,8 +1,9 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import assert from "node:assert/strict";
 import { hsonEcho } from "../src/index.ts";
-import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -33,7 +34,7 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 }
 
 function controlled_socket(): Readonly<{
-  socket: LocusSocketLike;
+  socket: LocusWebSocketLike;
   sent: Record<string, unknown>[];
   deliver: (message: Record<string, unknown>) => void;
 }> {
@@ -55,7 +56,8 @@ function controlled_socket(): Readonly<{
   });
 }
 
-function last_sent(pair: ReturnType<typeof controlled_socket>, type: string): Record<string, unknown> {
+async function last_sent(pair: ReturnType<typeof controlled_socket>, type: string): Promise<Record<string, unknown>> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
   const message = pair.sent.findLast((candidate) => candidate.type === type);
   if (message === undefined) throw new Error(`Expected a sent ${type} message.`);
   return message;
@@ -82,22 +84,22 @@ for (const epoch of [-1, 1.5, "1", null]) {
 for (const [name, corrupt] of malformedCreated) {
   await check(`public endpoint rejects hosted session-created with ${name}`, async () => {
     const pair = controlled_socket();
-    const echo = hsonEcho.create({ socket: pair.socket });
+    const echo = hsonEcho.create({ transport: test_echo_transport(pair.socket) });
     echo.connect();
     const pending = echo.session.create();
     let settled = false;
     void pending.then(() => { settled = true; }, () => { settled = true; });
     try {
       const reply = aggregate_message({
-        type: "session-created", id: last_sent(pair, "session-create").id,
+        type: "session-created", id: (await last_sent(pair, "session-create")).id,
         sessionId: "malformed-session", credential: "malformed-credential", epoch: 1,
         logicalMapId: "malformed-map", incarnationId: "malformed-incarnation",
       });
       corrupt(reply);
       pair.deliver(reply);
       await new Promise<void>((resolve) => setImmediate(resolve));
-      assert.equal(settled, false);
-      assert.equal(echo.session.status, "creating");
+      assert.equal(settled, true, "invalid wire input interrupts the pending request");
+      assert.equal(echo.session.status, "detached");
       assert.equal(echo.session.sessionId, undefined);
       assert.equal(echo.session.credential, undefined);
       assert.equal(echo.session.epoch, undefined);
@@ -114,10 +116,10 @@ for (const [name, corrupt] of malformedCreated) {
 
 await check("solo fencing rejects and clears a pending session waiter while stale completion stays inert", async () => {
   const pair = controlled_socket();
-  const echo = hsonEcho.create({ socket: pair.socket, session: {} });
+  const echo = hsonEcho.create({ transport: test_echo_transport(pair.socket), session: {} });
   echo.connect();
   const created = echo.session.create();
-  const createRequest = last_sent(pair, "session-create");
+  const createRequest = await last_sent(pair, "session-create");
   pair.deliver(aggregate_message({
     type: "session-created",
     id: createRequest.id,
@@ -130,7 +132,7 @@ await check("solo fencing rejects and clears a pending session waiter while stal
   await created;
 
   const goodbye = echo.session.goodbye();
-  const goodbyeRequest = last_sent(pair, "session-goodbye");
+  const goodbyeRequest = await last_sent(pair, "session-goodbye");
   pair.deliver(aggregate_message({
     type: "session-fenced",
     sessionId: "solo-session",
@@ -140,7 +142,7 @@ await check("solo fencing rejects and clears a pending session waiter while stal
   await assert.rejects(goodbye, (error: unknown) => error instanceof Error && /fenced/i.test(error.message));
 
   const replacement = echo.session.reattach();
-  const replacementRequest = last_sent(pair, "session-attach");
+  const replacementRequest = await last_sent(pair, "session-attach");
   pair.deliver(aggregate_message({ type: "session-ended", id: goodbyeRequest.id, sessionId: "solo-session", epoch: 1 }));
   assert.equal(echo.session.status, "attaching");
   pair.deliver(aggregate_message({ type: "session-attached", id: replacementRequest.id, sessionId: "solo-session", epoch: 2, logicalMapId: "solo-map", incarnationId: "solo-incarnation" }));
@@ -151,10 +153,10 @@ await check("solo fencing rejects and clears a pending session waiter while stal
 
 await check("aggregate fencing rejects and clears a pending session waiter while stale completion stays inert", async () => {
   const pair = controlled_socket();
-  const echo = create_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-fence" });
+  const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.socket), logicalMapId: "aggregate-fence" });
   echo.attachTransport();
   const created = echo.session.create();
-  const createRequest = last_sent(pair, "session-create");
+  const createRequest = await last_sent(pair, "session-create");
   pair.deliver(aggregate_message({
     type: "session-created",
     id: createRequest.id,
@@ -167,7 +169,7 @@ await check("aggregate fencing rejects and clears a pending session waiter while
   await created;
 
   const goodbye = echo.session.goodbye();
-  const goodbyeRequest = last_sent(pair, "session-goodbye");
+  const goodbyeRequest = await last_sent(pair, "session-goodbye");
   pair.deliver(aggregate_message({
     type: "session-fenced",
     sessionId: "aggregate-session",
@@ -177,7 +179,7 @@ await check("aggregate fencing rejects and clears a pending session waiter while
   await assert.rejects(goodbye, /fenced/i);
 
   const replacement = echo.session.reattach();
-  const replacementRequest = last_sent(pair, "session-attach");
+  const replacementRequest = await last_sent(pair, "session-attach");
   pair.deliver(aggregate_message({ type: "session-ended", id: goodbyeRequest.id, sessionId: "aggregate-session", epoch: 1 }));
   assert.equal(echo.session.status, "attaching");
   pair.deliver(aggregate_message({ type: "session-attached", id: replacementRequest.id, sessionId: "aggregate-session", epoch: 2, logicalMapId: "aggregate-fence", incarnationId: "aggregate-incarnation" }));
@@ -188,10 +190,10 @@ await check("aggregate fencing rejects and clears a pending session waiter while
 
 await check("aggregate session disposal rejects pending work and stale responses cannot resurrect it", async () => {
   const pair = controlled_socket();
-  const echo = create_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-dispose" });
+  const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.socket), logicalMapId: "aggregate-dispose" });
   echo.attachTransport();
   const pending = echo.session.create();
-  const request = last_sent(pair, "session-create");
+  const request = await last_sent(pair, "session-create");
   echo.session.dispose();
   echo.session.dispose();
   await assert.rejects(pending, /disposed/i);
@@ -212,10 +214,10 @@ await check("aggregate session disposal rejects pending work and stale responses
 
 await check("aggregate session ending settles goodbye, action, and status while preserving retry lineage", async () => {
   const pair = controlled_socket();
-  const echo = create_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-ended" });
+  const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.socket), logicalMapId: "aggregate-ended" });
   echo.attachTransport();
   const created = echo.session.create();
-  const createRequest = last_sent(pair, "session-create");
+  const createRequest = await last_sent(pair, "session-create");
   pair.deliver(aggregate_message({
     type: "session-created",
     id: createRequest.id,
@@ -230,7 +232,7 @@ await check("aggregate session ending settles goodbye, action, and status while 
   const action = echo.action("retained.action", { value: 1 });
   const status = echo.actionStatus(action.request.requestId);
   const goodbye = echo.session.goodbye();
-  const goodbyeRequest = last_sent(pair, "session-goodbye");
+  const goodbyeRequest = await last_sent(pair, "session-goodbye");
   pair.deliver(aggregate_message({ type: "session-ended", id: goodbyeRequest.id, sessionId: "ending-session", epoch: 1 }));
   await goodbye;
   await assert.rejects(action, /session ended/i);
@@ -238,7 +240,7 @@ await check("aggregate session ending settles goodbye, action, and status while 
   assert.equal(echo.session.status, "ended");
 
   const replacement = echo.session.create();
-  const replacementRequest = last_sent(pair, "session-create");
+  const replacementRequest = await last_sent(pair, "session-create");
   pair.deliver(aggregate_message({
     type: "session-created",
     id: replacementRequest.id,
@@ -250,7 +252,7 @@ await check("aggregate session ending settles goodbye, action, and status while 
   }));
   await replacement;
   const retry = echo.retryAction(action.request);
-  const retryRequest = last_sent(pair, "action");
+  const retryRequest = await last_sent(pair, "action");
   assert.equal(retryRequest.requestId, action.request.requestId);
   pair.deliver(aggregate_message({
     type: "ack",

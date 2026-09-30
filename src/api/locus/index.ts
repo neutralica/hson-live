@@ -1,12 +1,7 @@
 export { hsonLocus } from "./locus.facade.js";
 export { create_locus, create_persistent_locus } from "./locus.public.js";
-export { create_browser_locus_socket } from "./locus.browser-socket.js";
-export type {
-  BrowserLocusSocket,
-  BrowserLocusSocketStatus,
-  BrowserWebSocketConstructor,
-  BrowserWebSocketLike,
-} from "./locus.browser-socket.js";
+export { bind_locus_websocket } from "./locus.websocket.js";
+export type { LocusWebSocketLike } from "./locus.websocket.js";
 export { LocusPersistenceError, LocusPersistenceAppendUncertainError } from "./locus.persistence.error.js";
 export {
   decode_locus_graph_content,
@@ -29,7 +24,7 @@ export {
 export type * from "../../types/locus.shared.types.js";
 export type * from "../../types/live.trace.types.js";
 export type * from "../../types/locus.projection.types.js";
-export type { LocusSocketLike, LocusActionPayloads, LocusClientActionMessage } from "../../types/locus.protocol.types.js";
+export type { LocusActionPayloads, LocusClientActionMessage } from "../../types/locus.protocol.types.js";
 export type {
   LocusActionContext,
   LocusActionHandler,
@@ -50,7 +45,6 @@ export type {
   LocusSessionCreateOptions,
   LocusSessionNow,
   LocusSessionHtmlNow,
-  LocusConnection,
   Locus,
   LocusPersistenceAdapter,
   PersistentLocusOptions,

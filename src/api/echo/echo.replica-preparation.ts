@@ -24,7 +24,7 @@ export function prepare_echo_replica_internal<TActions extends LocusActionPayloa
   try {
     const prepared = create_lazy_replica_echo_internal<LiveMap, TActions>({
       map,
-      socket: options.socket,
+      transport: options.transport,
       session: { credential: options.credential },
       initialStateFingerprint: authority_projection_state_fingerprint_internal(now.libs),
       initialInitializerDigest: now.initializerDigest,

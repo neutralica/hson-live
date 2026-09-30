@@ -1,7 +1,9 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
-import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror, type LocusSocketLike } from "../src/index.ts";
+import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror, type LocusWebSocketLike } from "../src/index.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
-import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { client_library_source_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 
@@ -17,12 +19,12 @@ function sockets() {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const received: string[] = [];
-  const client: LocusSocketLike = {
+  const client: LocusWebSocketLike = {
     send(raw) { for (const listener of toServer) listener(raw); }, close() {},
     onMessage(listener) { toClient.add(listener); return () => { toClient.delete(listener); }; },
     onClose() { return () => {}; },
   };
-  const server: LocusSocketLike = {
+  const server: LocusWebSocketLike = {
     send(raw) { received.push(raw); for (const listener of toClient) listener(raw); }, close() {},
     onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; },
@@ -39,8 +41,8 @@ const locus = hsonLocus.create({ map: authority,
     allowNew || (name !== "newPublic" && name !== "page")) }),
 });
 const wire = sockets();
-locus.connect(wire.server);
-const echo = create_echo_socket_client_internal({ socket: wire.client, logicalMapId: locus.logicalMapId });
+bind_locus_websocket(locus, wire.server);
+const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(wire.client), logicalMapId: locus.logicalMapId });
 await echo.connect();
 const clientMap = echo.map;
 assert.ok(clientMap);
@@ -102,9 +104,10 @@ assert.equal((await echo.recover()).outcome, "current");
 assert.equal(echo.map, clientMap);
 
 const sessionWire = sockets();
-locus.connect(sessionWire.server);
+bind_locus_websocket(locus, sessionWire.server);
 sessionWire.client.send(JSON.stringify({ type: "session-create", id: "new-session",
   projection: { libraries: ["newPublic", "page"] } }));
+await Promise.resolve();
 assert.ok(sessionWire.received.some((raw) => JSON.parse(raw).type === "session-created"));
 sessionWire.client.send(JSON.stringify({ type: "recover", id: "new-recover", logicalMapId: locus.logicalMapId }));
 await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -141,8 +144,8 @@ const interactionLocus = hsonLocus.create({ map: interactionMap,
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }),
 });
 const interactionWire = sockets();
-interactionLocus.connect(interactionWire.server);
-const interactionEcho = create_echo_socket_client_internal({ socket: interactionWire.client,
+bind_locus_websocket(interactionLocus, interactionWire.server);
+const interactionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(interactionWire.client),
   logicalMapId: interactionLocus.logicalMapId });
 await interactionEcho.connect();
 const interactionClientMap = interactionEcho.map;
@@ -189,8 +192,8 @@ const collisionLocus = hsonLocus.create({ map: collisionMap,
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
 const collisionWire = sockets();
-collisionLocus.connect(collisionWire.server);
-const collisionEcho = create_echo_socket_client_internal({ socket: collisionWire.client,
+bind_locus_websocket(collisionLocus, collisionWire.server);
+const collisionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(collisionWire.client),
   logicalMapId: collisionLocus.logicalMapId });
 await collisionEcho.connect();
 const collisionClientMap = collisionEcho.map;
@@ -230,8 +233,8 @@ const revokeLocus = hsonLocus.create({ map: revokeMap,
   },
 });
 const revokeWire = sockets();
-revokeLocus.connect(revokeWire.server, { principalId: "alice", attachment: { role: "user" } });
-const revokeEcho = create_echo_socket_client_internal({ socket: revokeWire.client,
+bind_locus_websocket(revokeLocus, revokeWire.server, { principalId: "alice", attachment: { role: "user" } });
+const revokeEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(revokeWire.client),
   logicalMapId: revokeLocus.logicalMapId });
 await revokeEcho.connect();
 await revokeLocus.lib.add({ later: { data: { value: 2 } } }, { ownership: { later: "shared" } });
@@ -327,7 +330,7 @@ const inheritedExposure: Record<string, "shared"> = Object.create({ inherited: "
 await capturedLocus.lib.add({ inherited: { data: { secret: "INHERITED_EXPOSURE_SENTINEL" } } },
   { ownership: inheritedExposure });
 const capturedWire = sockets();
-capturedLocus.connect(capturedWire.server);
+bind_locus_websocket(capturedLocus, capturedWire.server);
 capturedWire.client.send(JSON.stringify({ type: "session-create", id: "captured-session",
   projection: { libraries: ["one", "inherited"] } }));
 capturedWire.client.send(JSON.stringify({ type: "recover", id: "captured-recover",

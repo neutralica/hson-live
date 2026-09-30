@@ -1,3 +1,5 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 // @hson-live-external-test
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
@@ -14,7 +16,7 @@ import {
   type HsonSchema,
   type InteractionDescriptor,
   type InteractionLocalBehaviors,
-  type LocusSocketLike,
+  type LocusWebSocketLike,
 } from "../src/index.ts";
 import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -31,8 +33,8 @@ const ButtonSchema: HsonSchema = Hson.schema`<type "document" tag "main" content
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 
 function socketPair(): Readonly<{
-  client: LocusSocketLike;
-  server: LocusSocketLike;
+  client: LocusWebSocketLike;
+  server: LocusWebSocketLike;
   delivered: readonly Readonly<{ type?: string; completionRev?: number }>[];
 }> {
   const clientMessages = new Set<(raw: string) => void>();
@@ -104,8 +106,8 @@ function socketPair(): Readonly<{
   assert.deepEqual(cut.local.map((entry) => entry.name), ["ui"]);
   const fresh = () => {
     const pair = socketPair();
-    const detach = locus.connect(pair.server);
-    return { shared: { credential: session.credential!, socket: pair.client }, detach };
+    const detach = bind_locus_websocket(locus, pair.server);
+    return { shared: { credential: session.credential!, transport: test_echo_transport(pair.client) }, detach };
   };
   let wire = fresh();
   const root = new FakeElement("main");
@@ -190,12 +192,12 @@ function socketPair(): Readonly<{
   assert.deepEqual(cut.local.map((entry) => entry.name), ["ui"]);
   const mixed = { ...cut, libs: { ...cut.libs, system: emptySession.now().libs.system } };
   const pair = socketPair();
-  const detach = locus.connect(pair.server);
+  const detach = bind_locus_websocket(locus, pair.server);
   const root = new FakeElement("main");
   const button = new FakeElement("button");
   root.appendChild(button);
   const continuation = await continue_hosted_document({ now: mixed, credential: session.credential!,
-    socket: pair.client, root: root as unknown as Element });
+    transport: test_echo_transport(pair.client), root: root as unknown as Element });
   assert.equal(continuation.echo.sync.strategy, "reconcile");
   const ui = continuation.echo.map.lib("ui");
   if (ui.mode === "document") throw new Error("Expected local data Library.");

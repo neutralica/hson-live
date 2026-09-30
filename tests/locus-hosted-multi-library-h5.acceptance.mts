@@ -1,3 +1,5 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
@@ -13,7 +15,7 @@ import {
 } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_livehost_locus_registry } from "../src/api/livehost/index.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
@@ -23,7 +25,7 @@ import { read_locus_retained_action_status_internal } from "../src/api/locus/loc
 import { encode_locus_portable_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.aggregate.persistence.ts";
 
@@ -66,8 +68,8 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 }
 
 function socket_pair(): Readonly<{
-  client: LocusSocketLike;
-  server: LocusSocketLike;
+  client: LocusWebSocketLike;
+  server: LocusWebSocketLike;
   clientSent: string[];
   serverSent: string[];
 }> {
@@ -220,10 +222,10 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   const pair = socket_pair();
   assert.equal(typeof locus.dispatchAction, "function");
   assert.equal("dispatch_action" in locus, false);
-  locus.connect(pair.server);
+  bind_locus_websocket(locus, pair.server);
   const clientMap = make_client_map(serverMap);
   const client = create_recovery_test_driver({
-    socket: pair.client,
+    transport: test_echo_transport(pair.client),
     map: clientMap,
   });
   assert.equal(typeof client.retryAction, "function");
@@ -335,10 +337,10 @@ await check("named document Echo authoring honors aggregate authorization and co
     authorizeAction: () => decisions.shift() ?? true,
   });
   const pair = socket_pair();
-  locus.connect(pair.server, { principalId: "principal-a" });
+  bind_locus_websocket(locus, pair.server, { principalId: "principal-a" });
   const clientMap = make_client_map(serverMap);
   const echo = create_recovery_test_driver({
-    socket: pair.client,
+    transport: test_echo_transport(pair.client),
     map: clientMap,
   });
   echo.connect();
@@ -368,7 +370,7 @@ await check("named Mirror text replacement carries empty portable lineage throug
   const serverMap = hsonLiveMap.fromLibraries(definitions);
   const locus = hsonLocus.create({ ...test_public_projection(serverMap), map: serverMap });
   const pair = socket_pair();
-  locus.connect(pair.server);
+  bind_locus_websocket(locus, pair.server);
   const clientMap = client_projection_map({
     authority: (() => {
       const captured = internal_livemap_aggregate_authority(serverMap).captureHosted();
@@ -380,7 +382,7 @@ await check("named Mirror text replacement carries empty portable lineage throug
       return project_authority_snapshot(captured, effective);
     })(), local: {},
   }) as typeof serverMap;
-  const echo = create_recovery_test_driver({ socket: pair.client, map: clientMap });
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: clientMap });
   echo.connect();
   await echo.session.create();
   await echo.completeRecovery();
@@ -405,7 +407,7 @@ await check("projected fallback restores the observed authority document in plac
   install_fake_document();
   const serverMap = make_map();
   const staleMap = make_client_map(serverMap);
-  const locus = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(serverMap), map: serverMap,
+  const locus = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(serverMap), map: serverMap,
     maxHistoryBytes: 4_000 });
   const stateHandle = staleMap.lib("state").at(["theme"]);
   const reflection = hsonMirror(staleMap.lib("page"));
@@ -419,8 +421,8 @@ await check("projected fallback restores the observed authority document in plac
     if ("graph" in page) page.graph(insert_item());
   });
   const first = socket_pair();
-  locus.connect(first.server);
-  const snapshotClient = create_recovery_test_driver({ socket: first.client, map: staleMap });
+  bind_locus_websocket(locus, first.server);
+  const snapshotClient = create_recovery_test_driver({ transport: test_echo_transport(first.client), map: staleMap });
   snapshotClient.connect();
   await snapshotClient.session.create();
   assert.equal((await snapshotClient.completeRecovery()).strategy, "reconcile");
@@ -444,8 +446,8 @@ await check("projected fallback restores the observed authority document in plac
     }
   });
   const second = socket_pair();
-  locus.connect(second.server);
-  const replayClient = create_recovery_test_driver({ socket: second.client, map: staleMap });
+  bind_locus_websocket(locus, second.server);
+  const replayClient = create_recovery_test_driver({ transport: test_echo_transport(second.client), map: staleMap });
   replayClient.connect();
   await replayClient.session.create();
   assert.equal((await replayClient.completeRecovery()).strategy, "replay");
@@ -478,7 +480,7 @@ await check("the public socket fails closed for malformed requests and an ahead 
   const map = make_map();
   const locus = hsonLocus.create({ ...test_public_projection(map), map });
   const pair = socket_pair();
-  locus.connect(pair.server);
+  bind_locus_websocket(locus, pair.server);
   pair.client.send("{");
   assert.equal(
     pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>).some((message) => message.type === "error"),
@@ -541,10 +543,10 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
     },
   });
   const first = socket_pair();
-  host.connect(first.server);
+  bind_locus_websocket(host, first.server);
   const clientMap = make_client_map(serverMap);
   const fallbackMap = make_client_map(serverMap);
-  const client = create_recovery_test_driver({ socket: first.client, map: clientMap });
+  const client = create_recovery_test_driver({ transport: test_echo_transport(first.client), map: clientMap });
   client.connect();
   await client.session.create();
   await client.completeRecovery();
@@ -611,8 +613,8 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   });
   assert.equal(restoredRetainedStatus.ok && restoredRetainedStatus.state, "unknown");
   const second = socket_pair();
-  restored.connect(second.server);
-  const recovered = create_recovery_test_driver({ socket: second.client, map: clientMap });
+  bind_locus_websocket(restored, second.server);
+  const recovered = create_recovery_test_driver({ transport: test_echo_transport(second.client), map: clientMap });
   const reconnectStarted = performance.now();
   recovered.connect();
   await recovered.session.create();
@@ -621,9 +623,9 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   assert.equal(second.serverSent.join("\n").includes(LOCUS_RESTART_A_QUID), false);
   assert.equal(second.serverSent.join("\n").includes(LOCUS_RESTART_B_QUID), false);
   const fallbackPair = socket_pair();
-  restored.connect(fallbackPair.server);
+  bind_locus_websocket(restored, fallbackPair.server);
   const fallback = create_recovery_test_driver({
-    socket: fallbackPair.client, map: fallbackMap,
+    transport: test_echo_transport(fallbackPair.client), map: fallbackMap,
   });
   fallback.connect();
   await fallback.session.create();

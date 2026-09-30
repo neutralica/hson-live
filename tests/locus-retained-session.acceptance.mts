@@ -1,7 +1,9 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
-import { hsonLiveMap, hsonLocus, hsonEcho, Hson, enable_interactions, type LocusSocketLike } from "../src/index.ts";
+import { hsonLiveMap, hsonLocus, hsonEcho, Hson, enable_interactions, type LocusWebSocketLike } from "../src/index.ts";
 import { decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.retained-session", title: "Retained session server-first cuts",
@@ -11,9 +13,9 @@ function pair() {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const frames: string[] = [];
-  const client: LocusSocketLike = { send(raw) { for (const listener of [...toServer]) listener(raw); }, close() {},
+  const client: LocusWebSocketLike = { send(raw) { for (const listener of [...toServer]) listener(raw); }, close() {},
     onMessage(listener) { toClient.add(listener); return () => { toClient.delete(listener); }; }, onClose() { return () => {}; } };
-  const server: LocusSocketLike = { send(raw) { frames.push(raw); for (const listener of [...toClient]) listener(raw); }, close() {},
+  const server: LocusWebSocketLike = { send(raw) { frames.push(raw); for (const listener of [...toClient]) listener(raw); }, close() {},
     onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; }, onClose() { return () => {}; } };
   return { client, server, frames };
 }
@@ -55,8 +57,8 @@ for (const forbidden of ["PRIVATE", "UNREQUESTED", "htmlDocument", session.crede
 for (const name of ["unknown", "secret", "state", "extra"]) assert.throws(() => session.now({ html: name }), /unavailable/i);
 assert.throws(() => session.now({ data: [] } as never), /only html/);
 const wire = pair();
-let detach = locus.connect(wire.server, { principalId: "alice" });
-const echo = await hsonEcho.init({ now: html, credential: session.credential!, socket: wire.client });
+let detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
+const echo = await hsonEcho.init({ now: html, credential: session.credential!, transport: test_echo_transport(wire.client) });
 assert.equal(echo.sync.strategy, "current");
 const id = echo.session.sessionId;
 assert.ok(id);
@@ -69,15 +71,16 @@ assert.equal(changed.changed, true);
 assert.deepEqual(session.now().libs.libraries.map(entry => entry.name), ["state"]);
 assert.throws(() => session.now({ html: "page" }), /unavailable/i);
 await locus.mutate(draft => { const state = draft.lib("state"); if ("at" in state) state.at(["value"]).set("LATER"); });
-detach = locus.connect(wire.server, { principalId: "alice" });
+detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 echo.connect(); await echo.session.reattach();
 assert.equal(echo.sync.strategy, "reconcile");
 assert.equal(locus.session.get(id), session);
 assert.equal(echo.sync.debug().lastAppliedRev, locus.rev);
 assert.deepEqual(session.now().libs.libraries.map(entry => entry.name), ["state"]);
 for (const raw of wire.frames) assert.equal(raw.includes("htmlDocument"), false);
-const wrong = pair(); const wrongDetach = locus.connect(wrong.server, { principalId: "mallory" });
+const wrong = pair(); const wrongDetach = bind_locus_websocket(locus, wrong.server, { principalId: "mallory" });
 wrong.client.send(JSON.stringify({ type: "session-attach", id: "wrong", credential: session.credential }));
+await Promise.resolve();
 assert.ok(wrong.frames.some(raw => JSON.parse(raw).type === "session-rejected"));
 wrongDetach();
 echo.disconnect(); detach();
@@ -133,8 +136,9 @@ assert.equal(requests.length, 2);
   const pending = retained.update({ libraries: ["state", "other"] });
   await started;
   const wire = pair();
-  const stop = host.connect(wire.server);
+  const stop = bind_locus_websocket(host, wire.server);
   wire.client.send(JSON.stringify({ type: "session-attach", id: "during-update", credential: retained.credential }));
+  await Promise.resolve();
   assert.ok(wire.frames.some(raw => JSON.parse(raw).type === "session-attached"));
   release?.();
   await assert.rejects(pending, { code: "LOCUS_PROJECTION_UNAVAILABLE" });
@@ -242,8 +246,8 @@ assert.equal(requests.length, 2);
   const retained = await host.session.create({ libraries: ["page", "state"], systemFeatures: ["interactions"] });
   const cut = retained.now({ html: "page" });
   const clientMap = client_projection_map({ authority: cut.libs, local: {} });
-  const wire = pair(); const stop = host.connect(wire.server);
-  const echo = create_recovery_test_driver({ socket: wire.client, map: clientMap, session: { credential: retained.credential } });
+  const wire = pair(); const stop = bind_locus_websocket(host, wire.server);
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(wire.client), map: clientMap, session: { credential: retained.credential } });
   echo.connect(); await echo.awaitReconnect();
   assert.equal(echo.sync.strategy, "current");
   assert.equal((await retained.update({ libraries: ["page", "state", "added"],
@@ -255,6 +259,8 @@ assert.equal(requests.length, 2);
   assert.deepEqual(change.systemFeatures, ["interactions"]);
   wire.server.send(JSON.stringify({ ...change, sequence: change.sequence + 1,
     previousDigest: change.projectionDigest, systemFeatures: [] }));
+  const syncStatus = (): string => echo.sync.status;
+  for (let turn = 0; turn < 20 && syncStatus() !== "failed"; turn++) await Promise.resolve();
   assert.equal(echo.sync.status, "failed");
   assert.ok(echo.sync.failure);
   assert.equal(echo.sync.debug().status, "failed");
@@ -274,8 +280,8 @@ assert.equal(requests.length, 2);
   assert.equal(cut.html, `<main>${text}</main>`);
   assert.ok(cut.libs.libraries.find(entry => entry.name === "page")!.root.payload.length > 4 * 1024 * 1024);
   const clientMap = client_projection_map({ authority: cut.libs, local: {} });
-  const wire = pair(); const stop = host.connect(wire.server);
-  const echo = create_recovery_test_driver({ socket: wire.client, map: clientMap, session: { credential: retained.credential } });
+  const wire = pair(); const stop = bind_locus_websocket(host, wire.server);
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(wire.client), map: clientMap, session: { credential: retained.credential } });
   echo.connect(); await echo.awaitReconnect();
   assert.equal(echo.sync.strategy, "current");
   assert.equal((await retained.update({ libraries: ["page"] })).changed, true);
@@ -289,7 +295,7 @@ assert.equal(requests.length, 2);
   assert.equal(clientMap.lib("extra").mode, "data-object");
   echo.disconnect(); stop();
   assert.equal((await retained.update({ libraries: ["page"] })).changed, true);
-  const reconnect = host.connect(wire.server);
+  const reconnect = bind_locus_websocket(host, wire.server);
   echo.connect(); await echo.awaitReconnect();
   assert.equal(echo.sync.strategy, "reconcile");
   assert.equal(echo.sync.status, "caught_up");

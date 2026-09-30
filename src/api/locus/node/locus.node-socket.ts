@@ -1,20 +1,20 @@
-import type { LocusSocketLike } from "../../../types/locus.types.js";
+import type { LocusConnectionContext, LocusDisposer } from "../../../types/locus.types.js";
+import { bind_locus_websocket, type LocusWebSocketLike } from "../locus.websocket.js";
 import WebSocket from "ws";
 
-export type NodeLocusSocketOptions = Readonly<{
+export type NodeLocusWebSocketOptions = Readonly<{
   onSend?: (message: string) => void;
   maxBufferedAmount?: number;
   onBackpressure?: () => void;
 }>;
 
 /** @experimental Concrete Node `ws` transport adapter for Locus. */
-export function create_node_locus_socket(
+export function bind_node_locus_websocket(
+  locus: object,
   websocket: WebSocket,
-  optionsOrOnSend?: NodeLocusSocketOptions | ((message: string) => void),
-): LocusSocketLike {
-  const options: NodeLocusSocketOptions = typeof optionsOrOnSend === "function"
-    ? { onSend: optionsOrOnSend }
-    : optionsOrOnSend ?? {};
+  context?: LocusConnectionContext,
+  options: NodeLocusWebSocketOptions = {},
+): LocusDisposer {
   let backpressureClosed = false;
   const close_after_error = (): void => {
     if (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING) {
@@ -27,9 +27,9 @@ export function create_node_locus_socket(
   websocket.once("error", close_after_error);
   websocket.once("close", stop_error_handling);
 
-  return Object.freeze({
+  const socket: LocusWebSocketLike = Object.freeze({
     send(message) {
-      if (websocket.readyState !== WebSocket.OPEN) return;
+      if (websocket.readyState !== WebSocket.OPEN) throw new Error("Locus WebSocket is not open.");
       if (
         options.maxBufferedAmount !== undefined
         && websocket.bufferedAmount > options.maxBufferedAmount
@@ -39,13 +39,14 @@ export function create_node_locus_socket(
           options.onBackpressure?.();
           websocket.close(1013, "Locus transport backpressure limit exceeded.");
         }
-        return;
+        throw new Error("Locus WebSocket backpressure limit exceeded.");
       }
       options.onSend?.(message);
       try {
         websocket.send(message);
       } catch {
         close_after_error();
+        throw new Error("Locus WebSocket send failed.");
       }
     },
     close(code, reason) {
@@ -79,4 +80,5 @@ export function create_node_locus_socket(
       };
     },
   });
+  return bind_locus_websocket(locus, socket, context);
 }

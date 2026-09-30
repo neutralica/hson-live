@@ -1,3 +1,5 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
@@ -21,7 +23,7 @@ import {
   type InteractionListener,
   type InteractionLocalBehavior,
 } from "../src/index.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
@@ -93,7 +95,7 @@ function map_fixture() {
   return map;
 }
 
-function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketLike }> {
+function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebSocketLike }> {
   const toClient = new Set<(raw: string) => void>();
   const toServer = new Set<(raw: string) => void>();
   const client = Object.freeze({
@@ -897,8 +899,8 @@ await check("public Echo dispatcher preserves exact payload through configured L
   const echoMap = client_projection_map({ authority: project_authority_snapshot(captured, effective),
     local: {} }) as typeof authorityMap;
   const pair = socket_pair();
-  locus.connect(pair.server);
-  const echo = create_recovery_test_driver({ socket: pair.client, map: echoMap });
+  bind_locus_websocket(locus, pair.server);
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: echoMap });
   await activate_echo(echo);
   assert.throws(() => add_interaction(echoMap, local("replica-write", "save")), /library mutation authority/i);
   const reflection = hsonMirror(echoMap.lib("page"));

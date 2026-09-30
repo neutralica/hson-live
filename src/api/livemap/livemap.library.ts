@@ -14,11 +14,10 @@ import type { LiveMapCssOp } from "../../types/livemap.types.js";
 /**
  * Opaque, map-local library authority. It intentionally has no string form:
  * public paths stay local to their canonical graph and never encode a library.
- * @internal
  */
 export type LiveMapLibraryIdentity = object;
 
-/** A graph-local coordinate; QUID resolution may later lower to this shape. @internal */
+/** A graph-local coordinate; QUID resolution may later lower to this shape. */
 export type LiveMapStructuralTarget = Readonly<{
   domain: "application";
   library: LiveMapLibraryIdentity;
@@ -26,7 +25,7 @@ export type LiveMapStructuralTarget = Readonly<{
   path: LivePath;
 }>;
 
-/** A coordinate in canonical Hson-owned state, outside application topology. @internal */
+/** A coordinate in canonical Hson-owned state, outside application topology. */
 export type LiveMapSystemTarget = Readonly<{
   domain: "system";
   system: LiveMapSystemIdentity;

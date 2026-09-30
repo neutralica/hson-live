@@ -33,7 +33,6 @@ import type {
   LocusSchema,
   LocusServerEventMessage,
   LocusSessionRejectCode,
-  LocusSocketLike,
 } from "./locus.protocol.types.js";
 import type { LocusLibraryCatalogEntry, LocusLibraryOwnership, LocusProjectionAuthorizer, LocusRequestedProjection } from "./locus.projection.types.js";
 import type {
@@ -48,6 +47,7 @@ import type {
   LocusSeq,
 } from "./locus.shared.types.js";
 import type { LiveTraceSink } from "./live.trace.types.js";
+import type { EchoEndpointTransport, EchoReplicaTransport } from "./echo.transport.types.js";
 
 
 type LocusDataMutationHandle<TValue> = Readonly<{
@@ -301,10 +301,6 @@ export type EchoActionPromise<
 
 export type LocusEventListener = (message: LocusServerEventMessage) => void;
 
-export type LocusConnection = LocusDisposer & Readonly<{
-  emitEvent: (event: string, payload: JsonValue) => void;
-}>;
-
 export type EchoActionFn<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = <TName extends keyof TActions & string>(
@@ -396,7 +392,7 @@ export type EchoSessionOptions = Readonly<{
 }>;
 
 type EchoCommonOptions = Readonly<{
-  socket: LocusSocketLike;
+  transport: EchoEndpointTransport;
   /**
    * Logical client identity used to scope retry-safe action requests.
    * The default is reload-safe. Reuse an explicit value only when reconnecting
@@ -413,7 +409,7 @@ export type EchoOptions = EchoCommonOptions & Readonly<{ map?: never; sync?: nev
 export type EchoInitOptions = Readonly<{
   now: LocusSessionNow | LocusSessionHtmlNow;
   credential: LocusSessionCredential;
-  socket: LocusSocketLike;
+  transport: EchoReplicaTransport;
   clientId?: LocusClientId;
 }>;
 
@@ -486,7 +482,6 @@ export type Locus<
   actionRequests: LocusActionDedupeInspector;
   mutate: (mutation: (draft: LocusMutationDraft<LocusInputs<TMap>>) => void | Promise<void>) => Promise<void>;
   dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusClientActionResult>;
-  connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;
 }>;
 

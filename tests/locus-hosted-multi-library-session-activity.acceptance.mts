@@ -1,10 +1,11 @@
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import { create_livehost_locus_registry_internal } from "../src/api/livehost/services/livehost.authority-registry.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { make_locus_activity_controller } from "../src/api/locus/locus.activity.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
@@ -77,7 +78,7 @@ function is_record(value: unknown): value is Record<string, unknown> {
 }
 
 function socket_fixture(): Readonly<{
-  socket: LocusSocketLike;
+  socket: LocusWebSocketLike;
   message: (message: Record<string, unknown>) => void;
   close: () => void;
   sent: readonly Record<string, unknown>[];
@@ -120,8 +121,9 @@ function created_credential(socket: ReturnType<typeof socket_fixture>): string {
   return created.credential;
 }
 
-function create_session(socket: ReturnType<typeof socket_fixture>, id = "session-create"): string {
+async function create_session(socket: ReturnType<typeof socket_fixture>, id = "session-create"): Promise<string> {
   socket.message({ type: "session-create", id });
+  await next_turn();
   return created_credential(socket);
 }
 
@@ -133,7 +135,7 @@ await check("aggregate recovery activity releases on success", async () => {
   const entered = deferred();
   const release = deferred();
   const activity = make_locus_activity_controller();
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
@@ -142,8 +144,8 @@ await check("aggregate recovery activity releases on success", async () => {
     },
   });
   const socket = socket_fixture();
-  server.connect(socket.socket);
-  create_session(socket);
+  bind_locus_websocket(server, socket.socket);
+  await create_session(socket);
   socket.message({ type: "recover", id: "recover-success", logicalMapId: server.logicalMapId });
   await entered.promise;
   assert.deepEqual(activity.public.snapshot(), {
@@ -161,7 +163,7 @@ await check("aggregate recovery activity releases on failure", async () => {
   const entered = deferred();
   const release = deferred();
   const activity = make_locus_activity_controller();
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
@@ -170,8 +172,8 @@ await check("aggregate recovery activity releases on failure", async () => {
     },
   });
   const socket = socket_fixture();
-  server.connect(socket.socket);
-  create_session(socket);
+  bind_locus_websocket(server, socket.socket);
+  await create_session(socket);
   socket.message({ type: "recover", id: "recover-failure", logicalMapId: server.logicalMapId });
   await entered.promise;
   assert.equal(activity.public.snapshot().recoveryCount, 1);
@@ -187,7 +189,7 @@ await check("aggregate recovery activity releases on disconnect", async () => {
   const entered = deferred();
   const release = deferred();
   const activity = make_locus_activity_controller();
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
@@ -196,8 +198,8 @@ await check("aggregate recovery activity releases on disconnect", async () => {
     },
   });
   const socket = socket_fixture();
-  server.connect(socket.socket);
-  create_session(socket);
+  bind_locus_websocket(server, socket.socket);
+  await create_session(socket);
   socket.message({ type: "recover", id: "recover-disconnect", logicalMapId: server.logicalMapId });
   await entered.promise;
   assert.equal(activity.public.snapshot().recoveryCount, 1);
@@ -214,7 +216,7 @@ await check("aggregate recovery activity releases when the session attachment is
   const entered = deferred();
   const release = deferred();
   const activity = make_locus_activity_controller();
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     libraries: test_application_catalog(make_map()),
     map: make_map(),
     sessions: { credential: () => "aggregate-recovery-fence-credential" },
@@ -224,13 +226,13 @@ await check("aggregate recovery activity releases when the session attachment is
     },
   });
   const first = socket_fixture();
-  server.connect(first.socket);
-  const credential = create_session(first);
+  bind_locus_websocket(server, first.socket);
+  const credential = await create_session(first);
   first.message({ type: "recover", id: "recover-fenced", logicalMapId: server.logicalMapId });
   await entered.promise;
   assert.equal(activity.public.snapshot().recoveryCount, 1);
   const replacement = socket_fixture();
-  server.connect(replacement.socket);
+  bind_locus_websocket(server, replacement.socket);
   replacement.message({ type: "session-attach", id: "attach-replacement", credential });
   assert.equal(activity.public.snapshot().recoveryCount, 0);
   assert.equal(first.sent.some((message) => message.type === "session-fenced"), true);
@@ -245,7 +247,7 @@ await check("aggregate recovery activity releases idempotently on authority disp
   const entered = deferred();
   const release = deferred();
   const activity = make_locus_activity_controller();
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     libraries: test_application_catalog(make_map()),
     map: make_map(),
     internal: {
@@ -254,8 +256,8 @@ await check("aggregate recovery activity releases idempotently on authority disp
     },
   });
   const socket = socket_fixture();
-  server.connect(socket.socket);
-  create_session(socket);
+  bind_locus_websocket(server, socket.socket);
+  await create_session(socket);
   socket.message({ type: "recover", id: "recover-dispose", logicalMapId: server.logicalMapId });
   await entered.promise;
   assert.equal(activity.public.snapshot().recoveryCount, 1);
@@ -268,7 +270,7 @@ await check("aggregate recovery activity releases idempotently on authority disp
   activity.dispose();
 });
 
-await check("disconnect retains one resumable session blocker until deterministic grace expiry", () => {
+await check("disconnect retains one resumable session blocker until deterministic grace expiry", async () => {
   const clock = controlled_schedule();
   const locus = hsonLocus.create({
     libraries: test_application_catalog(make_map()),
@@ -276,8 +278,8 @@ await check("disconnect retains one resumable session blocker until deterministi
     sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0001" },
   });
   const socket = socket_fixture();
-  locus.connect(socket.socket);
-  create_session(socket);
+  bind_locus_websocket(locus, socket.socket);
+  await create_session(socket);
   assert.deepEqual(
     [locus.activity.snapshot().connectionCount, locus.activity.snapshot().retainedSessionCount],
     [1, 1],
@@ -295,7 +297,7 @@ await check("disconnect retains one resumable session blocker until deterministi
   locus.dispose();
 });
 
-await check("repeated detach and reattach keeps exactly one logical-session blocker", () => {
+await check("repeated detach and reattach keeps exactly one logical-session blocker", async () => {
   const clock = controlled_schedule();
   let credentialId = 0;
   const locus = hsonLocus.create({
@@ -309,20 +311,20 @@ await check("repeated detach and reattach keeps exactly one logical-session bloc
     },
   });
   const first = socket_fixture();
-  locus.connect(first.socket);
-  const credential = create_session(first);
+  bind_locus_websocket(locus, first.socket);
+  const credential = await create_session(first);
   first.close();
   assert.equal(locus.activity.snapshot().retainedSessionCount, 1);
 
   const second = socket_fixture();
-  locus.connect(second.socket);
+  bind_locus_websocket(locus, second.socket);
   second.message({ type: "session-attach", id: "attach-2", credential });
   assert.equal(locus.activity.snapshot().retainedSessionCount, 1);
   second.close();
   assert.equal(locus.activity.snapshot().retainedSessionCount, 1);
 
   const third = socket_fixture();
-  locus.connect(third.socket);
+  bind_locus_websocket(locus, third.socket);
   third.message({ type: "session-attach", id: "attach-3", credential });
   assert.equal(locus.activity.snapshot().retainedSessionCount, 1);
   third.close();
@@ -332,7 +334,7 @@ await check("repeated detach and reattach keeps exactly one logical-session bloc
   locus.dispose();
 });
 
-await check("goodbye releases retained session activity exactly once", () => {
+await check("goodbye releases retained session activity exactly once", async () => {
   const clock = controlled_schedule();
   const locus = hsonLocus.create({
     libraries: test_application_catalog(make_map()),
@@ -342,8 +344,8 @@ await check("goodbye releases retained session activity exactly once", () => {
   const snapshots: number[] = [];
   locus.activity.onChange((snapshot) => snapshots.push(snapshot.retainedSessionCount));
   const socket = socket_fixture();
-  locus.connect(socket.socket);
-  create_session(socket);
+  bind_locus_websocket(locus, socket.socket);
+  await create_session(socket);
   socket.message({ type: "session-goodbye", id: "goodbye-1" });
   assert.equal(locus.session.debug().revokedSessionCount, 1);
   assert.equal(locus.activity.snapshot().retainedSessionCount, 0);
@@ -353,7 +355,7 @@ await check("goodbye releases retained session activity exactly once", () => {
   assert.equal(snapshots.filter((count) => count === 1).length, 1);
 });
 
-await check("authority disposal releases a live retained session before activity becomes terminal", () => {
+await check("authority disposal releases a live retained session before activity becomes terminal", async () => {
   const clock = controlled_schedule();
   const locus = hsonLocus.create({
     libraries: test_application_catalog(make_map()),
@@ -366,8 +368,8 @@ await check("authority disposal releases a live retained session before activity
     sessions: snapshot.retainedSessionCount,
   })));
   const socket = socket_fixture();
-  locus.connect(socket.socket);
-  create_session(socket);
+  bind_locus_websocket(locus, socket.socket);
+  await create_session(socket);
   assert.equal(locus.activity.snapshot().retainedSessionCount, 1);
   locus.dispose();
   assert.equal(locus.activity.snapshot().state, "disposed");
@@ -389,8 +391,8 @@ await check("retained session and admitted action own independent activity block
     actions: { slow: async () => { entered.resolve(); await release.promise; } },
   });
   const socket = socket_fixture();
-  locus.connect(socket.socket);
-  create_session(socket);
+  bind_locus_websocket(locus, socket.socket);
+  await create_session(socket);
   const action = locus.dispatchAction({ type: "action", id: "slow-1", name: "slow" });
   await entered.promise;
   socket.close();
@@ -434,8 +436,8 @@ await check("retained aggregate session blocks registry eviction until expiry", 
   assert.equal(acquired.ok, true);
   if (!acquired.ok) throw new Error("Expected aggregate authority acquisition.");
   const socket = socket_fixture();
-  acquired.value.locus.connect(socket.socket);
-  create_session(socket);
+  bind_locus_websocket(acquired.value.locus, socket.socket);
+  await create_session(socket);
   acquired.value.release();
   socket.close();
   const busy = await registry.evict("aggregate-session");

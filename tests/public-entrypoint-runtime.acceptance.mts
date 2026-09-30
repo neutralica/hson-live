@@ -275,8 +275,9 @@ const directHsonDataSources = new Map<string, string>([
   `],
   ["echo", `
     import { create_echo } from "hson-live/echo";
-    const socket = { send() {}, close() {}, onMessage() { return () => {}; }, onClose() { return () => {}; } };
-    const echo = create_echo({ socket });
+    const transport = { operations: { submit: async () => ({ kind: "not-submitted" }) },
+      attachment: { observe(listener) { listener({ kind: "available" }); return () => {}; } } };
+    const echo = create_echo({ transport });
     echo.connect();
     const call = echo.action("probe", { value: -0, nested: { constructor: true } });
     void call.catch(() => {});

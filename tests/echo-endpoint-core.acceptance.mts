@@ -1,10 +1,12 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, create_echo } from "../src/index.ts";
 import { hsonEcho } from "../src/api/echo/index.ts";
 import { hsonLocus } from "../src/api/locus/index.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { create_echo_endpoint_internal } from "../src/api/echo/echo.endpoint.ts";
-import type { LocusClientMessage, LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusClientMessage, LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -42,8 +44,8 @@ function last<TType extends LocusClientMessage["type"]>(
 }
 
 function socket_pair(holdReplies = false): Readonly<{
-  client: LocusSocketLike;
-  server: LocusSocketLike;
+  client: LocusWebSocketLike;
+  server: LocusWebSocketLike;
   serverSent: readonly string[];
   flushReplies: () => void;
 }> {
@@ -89,6 +91,11 @@ async function bounded<T>(promise: PromiseLike<T>): Promise<T> {
   }
 }
 
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100 && !predicate(); attempt++) await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.equal(predicate(), true);
+}
+
 await check("public endpoint-only Echo accepts the actual hosted Locus reply and can act", async () => {
   const map = hsonLiveMap.fromLibraries({
     state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` },
@@ -101,8 +108,8 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
     actions: { probe() { actions += 1; } },
   });
   const pair = socket_pair(true);
-  const detach = locus.connect(pair.server);
-  const echo = hsonEcho.create({ socket: pair.client });
+  const detach = bind_locus_websocket(locus, pair.server);
+  const echo = hsonEcho.create({ transport: test_echo_transport(pair.client) });
   try {
     assert.equal(echo.session.status, "idle");
     echo.connect();
@@ -110,6 +117,7 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
     assert.equal(echo.session.status, "creating");
     assert.equal(echo.session.credential, undefined);
     // Inspect only: flushReplies forwards the original encoder output byte for byte.
+    await waitFor(() => pair.serverSent.some((raw) => JSON.parse(raw).type === "session-created"));
     const wire = pair.serverSent.map((raw) => JSON.parse(raw)).find((reply) => reply.type === "session-created");
     assert.ok(wire);
     assert.equal(wire.format, LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT);
@@ -140,14 +148,34 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
   }
 });
 
+await check("endpoint-only Echo reattaches after attachment observation is interrupted", async () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+  const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }],
+    defaultProjection: { libraries: ["state"] } });
+  const pair = socket_pair();
+  let detach = bind_locus_websocket(locus, pair.server);
+  const transport = test_echo_transport(pair.client);
+  const echo = hsonEcho.create({ transport });
+  echo.connect();
+  const initial = await echo.session.create();
+  assert.equal(initial.epoch, 1);
+  pair.client.close();
+  await waitFor(() => echo.session.status === "detached");
+  detach();
+  detach = bind_locus_websocket(locus, pair.server);
+  await waitFor(() => echo.session.status === "attached" && echo.session.epoch === 2);
+  assert.equal(echo.session.sessionId, initial.sessionId);
+  echo.dispose(); transport.dispose(); detach(); locus.dispose();
+});
+
 await check("untyped endpoint Echo construction rejects replica arguments", () => {
   const pair = socket_pair();
   const createUntyped = (options: unknown): unknown => Reflect.apply(create_echo, undefined, [options]);
-  assert.throws(() => createUntyped({ socket: pair.client, map: Object.freeze({}) }), /endpoint-only/i);
-  assert.throws(() => createUntyped({ socket: pair.client, now: Object.freeze({}) }), /endpoint-only/i);
-  assert.throws(() => createUntyped({ socket: pair.client, recovery: {} }), /endpoint-only/i);
+  assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), map: Object.freeze({}) }), /endpoint-only/i);
+  assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), now: Object.freeze({}) }), /endpoint-only/i);
+  assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), recovery: {} }), /endpoint-only/i);
   assert.throws(
-    () => createUntyped({ socket: pair.client, map: Object.freeze({}), recovery: { logicalMapId: "untyped-map" } }),
+    () => createUntyped({ transport: test_echo_transport(pair.client), map: Object.freeze({}), recovery: { logicalMapId: "untyped-map" } }),
     /endpoint-only/i,
   );
 });
@@ -159,9 +187,9 @@ await check("the endpoint core operates without a map, registry, or synchronizat
   const sessionIds = ["session-create", "session-create", "session-attach", "session-reattach", "session-mismatch"];
   const endpoint = create_echo_endpoint_internal({
     operations: {
-      submit: (message) => { sent.push(message); },
-      onOutcome: () => () => {},
+      submit: (message) => { sent.push(message); return new Promise(() => {}); },
     },
+    attachment: { observe(listener) { listener({ kind: "available" }); return () => {}; } },
     clientId: "client-one",
     sessionRequired: true,
     ids: {

@@ -1,3 +1,5 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
@@ -5,15 +7,15 @@ import { performance } from "node:perf_hooks";
 import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import type { LiveMap } from "../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { encode_hosted_root, make_portable_aggregate_snapshot } from "../src/api/livemap/livemap.hosted.ts";
 import { encode_locus_graph_content, encode_locus_portable_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 import {
-  create_echo_socket_client_internal,
+  create_echo_aggregate_client_internal,
 } from "../src/api/echo/echo.aggregate-replica.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import type {
   LocusHostedAggregateDataDraft,
   LocusHostedAggregateDocumentDraft,
@@ -61,8 +63,8 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 }
 
 function socket_pair(): Readonly<{
-  client: LocusSocketLike;
-  server: LocusSocketLike;
+  client: LocusWebSocketLike;
+  server: LocusWebSocketLike;
   clientSent: string[];
   serverSent: string[];
   before_server_delivery: (listener: (message: Record<string, unknown>) => Record<string, unknown> | void) => void;
@@ -186,11 +188,11 @@ function insert_item(quid?: string) {
   });
 }
 
-async function attach(server: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>, options: Readonly<{ map?: LiveMap }> = {}) {
+async function attach(server: ReturnType<typeof create_locus_hosted_aggregate_authority_internal>, options: Readonly<{ map?: LiveMap }> = {}) {
   const pair = socket_pair();
-  server.connect(pair.server);
-  const client = create_echo_socket_client_internal({
-    socket: pair.client,
+  bind_locus_websocket(server, pair.server);
+  const client = create_echo_aggregate_client_internal({
+    transport: test_echo_transport(pair.client),
     logicalMapId: server.logicalMapId,
     ...options,
   });
@@ -201,7 +203,7 @@ async function attach(server: ReturnType<typeof create_locus_hosted_aggregate_so
 
 await check("actual socket aggregate bootstrap establishes one projected QUID-free client replica", async () => {
   const map = make_map(2);
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
   const attached = await attach(server);
   assert.equal(attached.recovery.outcome, "reconcile");
   assert.ok(attached.client.map);
@@ -217,14 +219,14 @@ await check("actual socket aggregate bootstrap establishes one projected QUID-fr
 });
 
 await check("a commit or wire discriminator cannot identify a hosted socket message", async () => {
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(make_map()), map: make_map() });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(make_map()), map: make_map() });
   const pair = socket_pair();
-  server.connect(pair.server);
+  bind_locus_websocket(server, pair.server);
   pair.before_server_delivery((message) => message.type === "recovery-snapshot"
     ? { ...message, format: "hson-locus-live-projected-client-wire" }
     : message);
-  const endpoint = create_echo_socket_client_internal({
-    socket: pair.client,
+  const endpoint = create_echo_aggregate_client_internal({
+    transport: test_echo_transport(pair.client),
     logicalMapId: server.logicalMapId,
   });
   await assert.rejects(endpoint.connect(), /synchronization failed|format|incompatible/i);
@@ -253,7 +255,7 @@ await check("projected bootstrap admission rejects generated authority QUID clai
 
 await check("custom socket action preserves one global projected commit", async () => {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({
+  const server = create_locus_hosted_aggregate_authority_internal({
     ...test_public_projection(map),
     map,
     actions: {
@@ -278,7 +280,7 @@ await check("custom socket action preserves one global projected commit", async 
 await check("retained global history recovers QUID-free aggregate effects without per-library cursors", async () => {
   const map = make_map();
   const stale = projected_client_map(map);
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
   await server.mutate((draft) => data(draft, "state").at(["theme"]).set("dark"));
   await server.mutate((draft) => {
     data(draft, "colors").at(["accent"]).set("#fff");
@@ -302,7 +304,7 @@ await check("retained global history recovers QUID-free aggregate effects withou
 await check("aggregate reconcile restores a retained mirror in place and converges selected page Mirror once", async () => {
   install_fake_document();
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map, maxHistoryBytes: 1 });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map, maxHistoryBytes: 1 });
   const stale = projected_client_map(map);
   const stateHandle = data_library(stale, "state").at(["theme"]);
   const pageHandle = page_library(stale).at([]);
@@ -327,7 +329,7 @@ await check("aggregate reconcile restores a retained mirror in place and converg
 await check("a state-only aggregate snapshot preserves unchanged document identity and Mirror resources", async () => {
   install_fake_document();
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map, maxHistoryBytes: 1 });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map, maxHistoryBytes: 1 });
   const stale = projected_client_map(map);
   set_livemap_document_quid_candidate_source_for_tests(page_library(stale).document, () => "000008299");
   const oldSubject = acquire_document_identity(page_library(stale).document, { kind: "path", path: validate_document_path([0]) });
@@ -348,7 +350,7 @@ await check("a state-only aggregate snapshot preserves unchanged document identi
 
 await check("socket document action requires a named document library and replays through the projected mirror", async () => {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
   const attached = await attach(server);
   const content = encode_locus_portable_graph_content(insert_item().content);
   await attached.client.action("document.content.insert", {
@@ -372,7 +374,7 @@ await check("socket document action requires a named document library and replay
 
 await check("aggregate action rejects generated QUID content before authority admission", async () => {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
   const attached = await attach(server);
   const before = internal_livemap_aggregate_authority(map).captureHosted();
   const ledger = livemap_identity_epoch_accounting(page_library(map).document);
@@ -391,7 +393,7 @@ await check("aggregate action rejects generated QUID content before authority ad
 
 await check("authority retains local issued-QUID history while client bootstrap omits the authority ledger", async () => {
   const map = make_map();
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
   await server.mutate((draft) => document(draft, "page").graph(insert_item()));
   set_livemap_document_quid_candidate_source_for_tests(page_library(map).document, () => QUID);
   acquire_document_identity(page_library(map).document, { kind: "path", path: validate_document_path([0, 0, 0]) });
@@ -415,11 +417,11 @@ await check("registry mismatch refuses replay against an existing topology and l
   const map = make_map();
   const stale = projected_client_map(map);
   const before = internal_livemap_aggregate_authority(stale).captureHosted();
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
   // The bad projected-registry claim changes the synchronization strategy without
   // changing this detached composed map.
   const pair = socket_pair();
-  server.connect(pair.server);
+  bind_locus_websocket(server, pair.server);
   pair.client.send(JSON.stringify({ type: "recover", id: "bootstrap-registry", logicalMapId: server.logicalMapId }));
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   const initialPlan = pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>)
@@ -447,8 +449,8 @@ await check("registry mismatch refuses replay against an existing topology and l
 await check("snapshot cut buffers an accepted aggregate tail and drains it in global order", async () => {
   const map = make_map();
   const stale = projected_client_map(map);
-  let server!: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>;
-  server = create_locus_hosted_aggregate_socket_internal({
+  let server!: ReturnType<typeof create_locus_hosted_aggregate_authority_internal>;
+  server = create_locus_hosted_aggregate_authority_internal({
     ...test_public_projection(map),
     map,
     maxHistoryBytes: 1,
@@ -471,7 +473,7 @@ await check("snapshot cut buffers an accepted aggregate tail and drains it in gl
 });
 
 await check("current recovery preserves the global cursor and projected mirror", async () => {
-  const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(make_map()), map: make_map() });
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(make_map()), map: make_map() });
   const attached = await attach(server);
   const mirror = attached.client.map;
   const recovered = await attached.client.connect();
@@ -483,8 +485,8 @@ await check("current recovery preserves the global cursor and projected mirror",
 });
 
 await check("H3 socket telemetry captures two/four-library bootstrap and effective four-megabyte live bound", async () => {
-  const two = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(make_map(2)), map: make_map(2) });
-  const four = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(make_map(4)), map: make_map(4) });
+  const two = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(make_map(2)), map: make_map(2) });
+  const four = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(make_map(4)), map: make_map(4) });
   const bootstrapTwo = await attach(two);
   const bootstrapFour = await attach(four);
   assert.equal(two.debug().effectiveLiveWireBytes, 4 * 1_024 * 1_024);

@@ -1,8 +1,10 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { capture_internal_document } from "./helpers/document-capture.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonMirror, hsonEcho, hsonLocus, hsonTransform, type HsonSchema } from "../src/index.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { compose_client_portable_aggregate_internal } from "../src/api/echo/echo.projection.ts";
@@ -38,7 +40,7 @@ function setup() {
   return { server, snapshot, client, engine, replica };
 }
 
-function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketLike; clientSent: string[]; drop: () => void }> {
+function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebSocketLike; clientSent: string[]; drop: () => void }> {
   const clientMessages = new Set<(raw: string) => void>();
   const serverMessages = new Set<(raw: string) => void>();
   const clientCloses = new Set<() => void>();
@@ -106,7 +108,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   initialState.at(["value"]).set(1);
   const locus = hsonLocus.create({ map: server, ...test_public_projection(server) });
   const pair = socket_pair();
-  locus.connect(pair.server);
+  bind_locus_websocket(locus, pair.server);
   const cut = internal_livemap_aggregate_authority(server).captureHosted();
   const requested = test_public_projection(server);
   const policy = make_locus_hosted_projection_policy(cut.registry, cut.authority,
@@ -123,7 +125,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   const localMirror = hsonMirror(panel);
   const localTree = localMirror.tree.node;
   assert.equal(client.rev, 0);
-  const echo = create_recovery_test_driver({ socket: pair.client, map: client });
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: client });
   echo.connect();
   await echo.session.create();
   await echo.completeRecovery();
@@ -143,7 +145,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   assert.equal(echo.sync.debug().lastAppliedRev, 1);
   assert.equal(localMirror.tree.node, localTree);
   await locus.mutate((draft) => { draft.lib("state").at(["value"]).set(4); });
-  locus.connect(pair.server);
+  bind_locus_websocket(locus, pair.server);
   echo.connect();
   await echo.awaitReconnect();
   assert.equal(echo.sync.strategy, "replay");

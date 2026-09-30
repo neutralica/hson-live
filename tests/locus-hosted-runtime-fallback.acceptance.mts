@@ -1,8 +1,10 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror,
-  type LocusSocketLike } from "../src/index.ts";
-import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+  type LocusWebSocketLike } from "../src/index.ts";
+import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { local_initializers } from "./helpers/client-projection.mts";
@@ -15,12 +17,12 @@ function pair() {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const serverSent: string[] = [];
-  const client: LocusSocketLike = {
+  const client: LocusWebSocketLike = {
     send(raw) { for (const listener of [...toServer]) listener(raw); }, close() {},
     onMessage(listener) { toClient.add(listener); return () => { toClient.delete(listener); }; },
     onClose() { return () => {}; },
   };
-  const server: LocusSocketLike = {
+  const server: LocusWebSocketLike = {
     send(raw) { serverSent.push(raw); for (const listener of [...toClient]) listener(raw); }, close() {},
     onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; },
@@ -29,15 +31,15 @@ function pair() {
 }
 
 const authority = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <p "Original"/>/>` } });
-const server = create_locus_hosted_aggregate_socket_internal({ map: authority,
+const server = create_locus_hosted_aggregate_authority_internal({ map: authority,
   libraries: [{ name: "page", ownership: "shared" }],
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   maxHistoryBytes: 1,
 });
 const wire = pair();
-let detach = server.connect(wire.server, { principalId: "alice" });
-const echo = create_echo_socket_client_internal({ socket: wire.client, logicalMapId: server.logicalMapId,
+let detach = bind_locus_websocket(server, wire.server, { principalId: "alice" });
+const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(wire.client), logicalMapId: server.logicalMapId,
   initializers: local_initializers({ preferences: { data: { theme: "dark" } } }) });
 await echo.connect();
 const map = echo.map;
@@ -68,7 +70,7 @@ await server.mutate((draft) => {
 await server.sessions.updateProjection(sessionId,
   { libraries: ["page", "added", "batchVisible"] }, { principalId: "alice" });
 const beforeFallback = wire.serverSent.length;
-detach = server.connect(wire.server, { principalId: "alice" });
+detach = bind_locus_websocket(server, wire.server, { principalId: "alice" });
 assert.equal((await echo.connect()).outcome, "reconcile");
 assert.equal(echo.map, map);
 assert.equal(map.lib("page"), page);
@@ -139,8 +141,8 @@ const persistent = await create_persistent_locus({ map: persistentAuthority, per
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
 const restartWire = pair();
-const detachBeforeRestart = persistent.connect(restartWire.server, { principalId: "alice" });
-const beforeRestartEcho = create_echo_socket_client_internal({ socket: restartWire.client,
+const detachBeforeRestart = bind_locus_websocket(persistent, restartWire.server, { principalId: "alice" });
+const beforeRestartEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client),
   logicalMapId: persistent.logicalMapId,
   initializers: local_initializers({ preferences: { data: { theme: "light" } } }) });
 await beforeRestartEcho.connect();
@@ -171,8 +173,8 @@ const resumed = await create_persistent_locus({ map: resumedAuthority, persisten
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
 const resumedWire = pair();
-const detachResumed = resumed.connect(resumedWire.server, { principalId: "alice" });
-const resumedEcho = create_echo_socket_client_internal({ socket: resumedWire.client,
+const detachResumed = bind_locus_websocket(resumed, resumedWire.server, { principalId: "alice" });
+const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(resumedWire.client),
   logicalMapId: resumed.logicalMapId, map: continuedMap });
 assert.equal((await resumedEcho.connect()).outcome, "reconcile");
 assert.equal(resumedEcho.map, continuedMap);
@@ -200,8 +202,8 @@ const detachedServer = hsonLocus.create({ map: detachedAuthority,
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
 const detachedWire = pair();
-let detachDetached = detachedServer.connect(detachedWire.server, { principalId: "alice" });
-const detachedEcho = create_echo_socket_client_internal({ socket: detachedWire.client,
+let detachDetached = bind_locus_websocket(detachedServer, detachedWire.server, { principalId: "alice" });
+const detachedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(detachedWire.client),
   logicalMapId: detachedServer.logicalMapId,
   initializers: local_initializers({ preferences: { data: { theme: "local" } } }) });
 await detachedEcho.connect();
@@ -215,7 +217,7 @@ detachedEcho.disconnect();
 detachDetached();
 const revBeforeDetachedContraction = detachedServer.rev;
 await detachedServer.session.get(detachedSession)!.update({ libraries: [] }, { principalId: "alice" });
-detachDetached = detachedServer.connect(detachedWire.server, { principalId: "alice" });
+detachDetached = bind_locus_websocket(detachedServer, detachedWire.server, { principalId: "alice" });
 assert.equal((await detachedEcho.connect()).outcome, "reconcile");
 assert.equal(detachedEcho.map, detachedMap);
 assert.equal(detachedEcho.lastAppliedRev, revBeforeDetachedContraction);
@@ -239,8 +241,8 @@ const cutServer = hsonLocus.create({ map: cutAuthority,
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
 const cutWire = pair();
-const detachCut = cutServer.connect(cutWire.server);
-const cutEcho = create_echo_socket_client_internal({ socket: cutWire.client,
+const detachCut = bind_locus_websocket(cutServer, cutWire.server);
+const cutEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(cutWire.client),
   logicalMapId: cutServer.logicalMapId });
 await cutEcho.connect();
 const cutSession = cutEcho.session.sessionId;
@@ -259,15 +261,15 @@ cutServer.dispose();
 process.stdout.write("ok - hosted cuts and bootstrap omit a revoked document immediately\n");
 
 const collisionAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
-const collisionServer = create_locus_hosted_aggregate_socket_internal({ map: collisionAuthority,
+const collisionServer = create_locus_hosted_aggregate_authority_internal({ map: collisionAuthority,
   libraries: [{ name: "anchor", ownership: "shared" }],
   defaultProjection: { libraries: ["anchor"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   maxHistoryBytes: 1,
 });
 const collisionWire = pair();
-let detachCollision = collisionServer.connect(collisionWire.server, { principalId: "alice" });
-const collisionEcho = create_echo_socket_client_internal({ socket: collisionWire.client,
+let detachCollision = bind_locus_websocket(collisionServer, collisionWire.server, { principalId: "alice" });
+const collisionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(collisionWire.client),
   logicalMapId: collisionServer.logicalMapId,
   initializers: local_initializers({ preferences: { data: { owner: "local" } } }) });
 await collisionEcho.connect();
@@ -284,7 +286,7 @@ await collisionServer.add_libraries({ preferences: { data: { owner: "authority" 
 await collisionServer.sessions.updateProjection(collisionSession,
   { libraries: ["anchor", "preferences"] }, { principalId: "alice" });
 const collisionRevision = collisionMap.rev;
-detachCollision = collisionServer.connect(collisionWire.server, { principalId: "alice" });
+detachCollision = bind_locus_websocket(collisionServer, collisionWire.server, { principalId: "alice" });
 await assert.rejects(collisionEcho.connect(), /collid/i);
 assert.equal(collisionMap.rev, collisionRevision);
 assert.equal(collisionMap.lib("preferences"), collisionLocal);
@@ -302,7 +304,7 @@ let releaseCut = (): void => {};
 const cutEntered = new Promise<void>((resolve) => { enteredCut = resolve; });
 const cutGate = new Promise<void>((resolve) => { releaseCut = resolve; });
 const tailAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
-const tailServer = create_locus_hosted_aggregate_socket_internal({ map: tailAuthority,
+const tailServer = create_locus_hosted_aggregate_authority_internal({ map: tailAuthority,
   libraries: [{ name: "anchor", ownership: "shared" }],
   defaultProjection: { libraries: ["anchor"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
@@ -311,8 +313,8 @@ const tailServer = create_locus_hosted_aggregate_socket_internal({ map: tailAuth
     if (cutCount === 2) { enteredCut(); await cutGate; } } },
 });
 const tailWire = pair();
-let detachTail = tailServer.connect(tailWire.server, { principalId: "alice" });
-const tailEcho = create_echo_socket_client_internal({ socket: tailWire.client,
+let detachTail = bind_locus_websocket(tailServer, tailWire.server, { principalId: "alice" });
+const tailEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(tailWire.client),
   logicalMapId: tailServer.logicalMapId });
 await tailEcho.connect();
 const tailMap = tailEcho.map;
@@ -325,7 +327,7 @@ await tailServer.add_libraries({ target: { data: { value: 2 } } }, { target: "sh
 await tailServer.sessions.updateProjection(tailSession,
   { libraries: ["anchor", "target"] }, { principalId: "alice" });
 const tailStart = tailWire.serverSent.length;
-detachTail = tailServer.connect(tailWire.server, { principalId: "alice" });
+detachTail = bind_locus_websocket(tailServer, tailWire.server, { principalId: "alice" });
 const recoveringTail = tailEcho.connect();
 await cutEntered;
 await assert.rejects(tailServer.sessions.updateProjection(tailSession,
@@ -338,6 +340,9 @@ await tailServer.mutate((draft) => {
 await tailServer.add_libraries({ hiddenTail: { data: { secret: "HIDDEN_FALLBACK_TAIL_SENTINEL" } } });
 releaseCut();
 assert.equal((await recoveringTail).outcome, "reconcile");
+for (let attempt = 0; attempt < 100 && (tailEcho.lastAppliedRev ?? -1) < tailServer.rev; attempt++) {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
 assert.equal(tailEcho.map, tailMap);
 assert.equal(tailEcho.lastAppliedRev, tailServer.rev);
 const tailTarget = tailMap.lib("target");
@@ -365,8 +370,8 @@ const interactionServer = hsonLocus.create({ map: interactionAuthority,
     systemFeatures: requested.systemFeatures }),
 });
 const interactionWire = pair();
-const detachInteraction = interactionServer.connect(interactionWire.server);
-const interactionEcho = create_echo_socket_client_internal({ socket: interactionWire.client,
+const detachInteraction = bind_locus_websocket(interactionServer, interactionWire.server);
+const interactionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(interactionWire.client),
   logicalMapId: interactionServer.logicalMapId });
 await interactionEcho.connect();
 const interactionMap = interactionEcho.map;
@@ -400,6 +405,7 @@ if (obsoleteAuthorityRev === undefined) throw new Error("Expected the Echo autho
 obsoleteCommit.commit.commit.prevRev = obsoleteAuthorityRev;
 obsoleteCommit.commit.commit.rev = obsoleteAuthorityRev + 1;
 interactionWire.server.send(JSON.stringify(obsoleteCommit));
+await new Promise<void>((resolve) => setImmediate(resolve));
 assert.equal(interactionEcho.diagnostics().status, "failed");
 assert.throws(() => interactionMap.lib("revoke"), /Unknown/);
 interactionEcho.dispose();
@@ -411,7 +417,7 @@ process.stdout.write("ok - revoked document Mirror terminates and unrelated inte
 
 const replaceAuthority = hsonLiveMap.fromLibraries({ A: { data: { value: 1 } },
   B: { data: { value: 2 } }, C: { data: { value: 3 } } });
-const replaceServer = create_locus_hosted_aggregate_socket_internal({ map: replaceAuthority,
+const replaceServer = create_locus_hosted_aggregate_authority_internal({ map: replaceAuthority,
   libraries: [{ name: "A", ownership: "shared" },
     { name: "B", ownership: "shared" }, { name: "C", ownership: "shared" }],
   defaultProjection: { libraries: ["A", "B"] },
@@ -419,8 +425,8 @@ const replaceServer = create_locus_hosted_aggregate_socket_internal({ map: repla
   maxHistoryBytes: 1,
 });
 const replaceWire = pair();
-let detachReplace = replaceServer.connect(replaceWire.server, { principalId: "alice" });
-const replaceEcho = create_echo_socket_client_internal({ socket: replaceWire.client,
+let detachReplace = bind_locus_websocket(replaceServer, replaceWire.server, { principalId: "alice" });
+const replaceEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(replaceWire.client),
   logicalMapId: replaceServer.logicalMapId,
   initializers: local_initializers({ preferences: { data: { value: "local" } } }) });
 await replaceEcho.connect();
@@ -436,7 +442,7 @@ replaceEcho.disconnect();
 detachReplace();
 await replaceServer.sessions.updateProjection(replaceSession, { libraries: ["A", "C"] },
   { principalId: "alice" });
-detachReplace = replaceServer.connect(replaceWire.server, { principalId: "alice" });
+detachReplace = bind_locus_websocket(replaceServer, replaceWire.server, { principalId: "alice" });
 assert.equal((await replaceEcho.connect()).outcome, "reconcile");
 assert.equal(replaceEcho.map, replaceMap);
 assert.equal(replaceMap.rev, replaceRev + 1);
@@ -456,7 +462,7 @@ process.stdout.write("ok - fallback replaces authority projection A,B with A,C a
 
 const boundedAuthority = hsonLiveMap.fromLibraries({ retained: { data: { payload: "r".repeat(4096) } },
   revoked: { data: { value: 1 } } });
-const boundedServer = create_locus_hosted_aggregate_socket_internal({ map: boundedAuthority,
+const boundedServer = create_locus_hosted_aggregate_authority_internal({ map: boundedAuthority,
   libraries: [{ name: "retained", ownership: "shared" },
     { name: "revoked", ownership: "shared" }],
   defaultProjection: { libraries: ["retained", "revoked"] },
@@ -464,8 +470,8 @@ const boundedServer = create_locus_hosted_aggregate_socket_internal({ map: bound
   maxWireBytes: 2048,
 });
 const boundedWire = pair();
-const detachBounded = boundedServer.connect(boundedWire.server);
-const boundedEcho = create_echo_socket_client_internal({ socket: boundedWire.client,
+const detachBounded = bind_locus_websocket(boundedServer, boundedWire.server);
+const boundedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(boundedWire.client),
   logicalMapId: boundedServer.logicalMapId });
 await boundedEcho.connect();
 const boundedMap = boundedEcho.map;

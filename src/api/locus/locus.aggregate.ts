@@ -35,8 +35,7 @@ import {
   register_interaction_draft_internal,
 } from "../../internal/interaction-storage.js";
 
-/** Maximum current hosted socket frame size. */
-export const DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES = 4 * 1_024 * 1_024;
+export { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES } from "./locus.aggregate.protocol.js";
 
 /** Complete exact living-authority history envelope, never a client message. */
 export type LocusHostedAggregateAuthorityEnvelope = Readonly<{

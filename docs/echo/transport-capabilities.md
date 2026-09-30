@@ -1,75 +1,60 @@
 # Echo transport capabilities
 
-Hosted registry Echo uses an internal transport-neutral model.
-Its hosted boundary separates finite authority operations from ordered
-downstream synchronization and binds both to one semantic authority/session.
-The currently supported public hosted adapter is WebSocket, which implements
-both capabilities through one physical connection.
+Echo consumes one semantic transport object. Endpoint Echo needs finite
+operations and attachment observation; replica Echo additionally needs an
+ordered synchronization feed. The currently implemented concrete adapter is
+`hsonEcho.transport.websocket({ url, WebSocketConstructor? })`. The same object
+may serve either Echo composition. Echo owns its semantic lifecycle, while the
+caller disposes the transport and its physical resources.
 
 ## Finite operations
 
-Finite operations include configured actions, retries, retained action-status
-queries, built-in document actions, and finite session-control exchanges. A
-logical action retains its `clientId` and `requestId`; each delivery attempt has
-its own `attemptId`. Locus remains responsible for validation, authorization,
-deduplication, canonical mutation, request ownership, and terminal results.
+`operations.submit(request)` returns a promise with one of three results:
+`response` carries a typed authority outcome, including semantic rejection;
+`not-submitted` means the adapter can prove the request never entered its
+admission path; `uncertain` means it may have been admitted but its outcome was
+lost. Actions keep a stable `clientId` and `requestId` across attempts, a fresh
+`attemptId` per retry, and retained status/deduplication at Locus. Independent
+finite requests need no global transport queue. Locus serializes authority
+mutation.
 
-Submitting an operation and delivering its typed outcome are independent
-internal capabilities. An outcome does not semantically depend on arriving
-through the physical attachment that submitted its request.
+## Attachment and synchronization
 
-## Ordered synchronization
+A retained session survives physical channel replacement. Its current logical
+attachment is the authorized presence at one epoch; a newer epoch fences the
+old attachment. Attachment notices report fencing, ending, and observation
+interruption. Endpoint Echo needs those notices without a replica map.
 
-Synchronization begins or resumes from replica revision and fence evidence and delivers a
-typed synchronization plan, current/replay/reconcile material, synchronization tail, caught-up
-boundary, and ordered live authority publications. Each authority revision in
-the Echo client stream carries either a graph commit or generic progress with
-no graph effect. Client commits contain portable application and system effects;
-replacement lineage expresses surviving subjects. Neither client graph content
-nor snapshots carry generated Locus QUIDs. Action `HsonData` is not used as a
-replacement commit format.
+A replica opens an ordered synchronization subscription. Opening establishes a
+feed, not caught-up readiness. Echo verifies recovery ID, authority identity,
+projection, and cursor continuity across current, replay, or reconcile material,
+then a `caught_up` boundary and continuing live commit/progress publication.
+Locus holds one current subscription sink per logical attachment. Replacing a
+subscription fences old output. If a feed is interrupted, the replica loses
+caught-up readiness and can recover from its last applied authority cursor;
+the retained session and admitted document `completionRev` waits survive.
+Canonical publications are reliable and ordered. A slow consumer must interrupt
+and recover rather than silently drop a revision.
 
-Locus installs live observation before synchronization transfer completes. Revisions
-accepted across that cut are retained as tail or pending-live output, so the
-internal seam does not turn synchronization into a separate fetch followed by a later
-subscription.
+The WebSocket adapter multiplexes operations, notices, and synchronization on
+one physical WebSocket. A physical close interrupts each capability and the
+stable client adapter can open another WebSocket for retained-session
+reattachment. That shared physical fate is adapter policy, not an Echo or Locus
+core requirement. The credential remains separate sensitive reattachment
+material; `session.now()` contains transferable, non-secret state and no route,
+transport, or attachment secret.
 
-Projected registry digest, selected-library identity, topology evidence, and
-global authority ordering is layered over this synchronization lifecycle. It
-do not define a second transport attachment. Hosted WebSocket envelope
-shape, format tags, exact `resultData` encoding, and frame byte limits remain
-adapter concerns.
+## Later transports
 
-## Authority/session binding
+HTTP/1 finite requests plus an open response stream, and HTTP/2 or HTTP/3
+multiplexed requests plus an ordered response stream, can implement the same
+semantic boundary. None is an Echo transport in Step 4A, and HTTP/3 has not
+been runtime tested. Logical attachment identity is independent of TCP, HTTP/2,
+or QUIC connection identity. Step 4B must add attachment-scoped authorization
+for independent HTTP requests and the concrete HTTP adapters.
 
-Finite operations and synchronization share one internal authority binding:
-the host-supplied principal, semantic Locus session, logical map, incarnation,
-and attachment epoch. The semantic session may survive replacement of a
-physical transport attachment. The attachment epoch fences stale attachments.
-An Echo `clientId` remains logical request-lineage identity and is not a
-security principal.
-
-Synchronization is semantic; reconnect is transport lifecycle. Authority settlement
-is likewise distinct from Echo replica convergence. AsyncLiveTree continues to
-wait for the accepted operation's `completionRev`, delivered later through
-ordered authority synchronization, and Mirror/DOM realization remains a
-separate convergence boundary.
-
-Generated QUID acquisition is local to the Echo or Locus runtime. It creates
-neither an authority revision nor an application commit. Retained historical
-identity-only authority commits are represented as generic progress in the
-client stream. Incremental replay retains Echo-local identities through each
-observed effect. Snapshot fallback converges state and revision with a fresh
-Echo-local identity epoch, fencing old subject handles. Authority history and
-persistence still read exact runtime identity internally until Phase 5.
-
-## Current scope
-
-The reusable Echo composition seam accepts finite-operation and synchronization
-capabilities independently, provided they carry the same private semantic
-binding. The capability seam is internal. It is not a transport registry, enum,
-or public plugin API. Public `EchoOptions.socket`, browser/Node socket adapters,
-and projected SSR bootstrap plus WebSocket continuation remain supported.
-WebSocket is still the only public hosted continuation adapter. No HTTP or
-streamed transport is implemented by this factoring, and public mixed-transport
-composition is not promised.
+Open HTTP representation delivery can also be composed directly from Locus
+publication and LiveHost streaming for applications without browser JavaScript;
+they do not instantiate JavaScript Echo. Future ephemeral game traffic may use
+an optional sibling stream or datagram subsystem. Echo canonical sync remains
+reliable and ordered and has no datagram interface.

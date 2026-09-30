@@ -91,7 +91,7 @@ const replica = create_echo_aggregate_replica_capability_internal(client);
 assert.equal(replica.clientProjection()?.revision, decoded.revision);
 replica.dispose();
 const echo = create_recovery_test_driver({ map: client,
-  socket: { send() {}, close() {}, onMessage() { return () => {}; }, onClose() { return () => {}; } } });
+  transport: test_echo_transport({ send() {}, close() {}, onMessage() { return () => {}; }, onClose() { return () => {}; } }) });
 assert.equal(echo.sync.debug().lastAppliedRev, decoded.revision);
 assert.equal(client.rev, 0);
 echo.dispose();
@@ -158,3 +158,4 @@ assert.equal(project_authority_snapshot(aggregate.captureHosted(), effective).re
 sessions.dispose();
 
 process.stdout.write("Step 6B authority projection snapshot acceptance passed.\n");
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";

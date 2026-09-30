@@ -13,7 +13,7 @@ import {
 import { hsonEcho, type Echo } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
 import { hsonLiveMap, type LiveMap, type LiveMapDocumentLibrary } from "hson-live/livemap";
-import { create_locus, type LocusSocketLike } from "hson-live/locus";
+import { create_locus } from "hson-live/locus";
 import { reflect_document } from "hson-live/mirror";
 import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "hson-live/ssr";
 import { hsonTransform, type TransformOutput } from "hson-live/transform";
@@ -21,7 +21,7 @@ import { hsonLiveTree, type ContentManager } from "hson-live/livetree";
 
 declare const userHtml: string;
 declare const documentMap: LiveMapDocumentLibrary;
-declare const socket: LocusSocketLike;
+declare const transport: import("hson-live/echo").EchoReplicaTransport;
 declare const root: Element;
 declare const libraries: LiveMap;
 declare const tree: ReturnType<typeof hsonLiveTree.fromHson>;
@@ -61,7 +61,7 @@ void decoded;
 void continue_document({ map: hostedMap, document: hostedMap.lib("page"), root });
 
 const retained = await hosted.session.create({ libraries: ["state", "page"] });
-const replica = await hsonEcho.init({ now: retained.now(), credential: retained.credential!, socket });
+const replica = await hsonEcho.init({ now: retained.now(), credential: retained.credential!, transport });
 void replica;
 void retained.now({ html: "page" });
 // @ts-expect-error One-map hosted continuation is no longer a public client-egress path.

@@ -1,9 +1,11 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, add_interaction, enable_interactions, encode_ssr_bootstrap,
   decode_ssr_bootstrap, type HsonSchema } from "../src/index.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
-import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
+import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
@@ -51,25 +53,27 @@ const locus = hsonLocus.create({ map,
 
 const serverSent: Array<Record<string, unknown>> = [];
 let receive: ((raw: string) => void) | undefined;
-const socket: LocusSocketLike = {
+const socket: LocusWebSocketLike = {
   send(raw) { serverSent.push(JSON.parse(raw) as Record<string, unknown>); }, close() {},
   onMessage(listener) { receive = listener; return () => { receive = undefined; }; },
   onClose() { return () => {}; },
 };
-const disconnect = locus.connect(socket);
+const disconnect = bind_locus_websocket(locus, socket);
 receive?.(JSON.stringify({ type: "session-create", id: "ssr", projection: { libraries: ["permittedData", "page"], systemFeatures: ["interactions"] } }));
+await new Promise<void>((resolve) => setImmediate(resolve));
 const created = serverSent.find((entry) => entry.type === "session-created");
 assert.ok(created && typeof created.sessionId === "string");
 const sessionId = created.sessionId;
 let receiveNoDefault: ((raw: string) => void) | undefined;
 const noDefaultSent: Array<Record<string, unknown>> = [];
-const noDefaultSocket: LocusSocketLike = {
+const noDefaultSocket: LocusWebSocketLike = {
   send(raw) { noDefaultSent.push(JSON.parse(raw) as Record<string, unknown>); }, close() {},
   onMessage(listener) { receiveNoDefault = listener; return () => { receiveNoDefault = undefined; }; },
   onClose() { return () => {}; },
 };
-const disconnectNoDefault = locus.connect(noDefaultSocket);
+const disconnectNoDefault = bind_locus_websocket(locus, noDefaultSocket);
 receiveNoDefault?.(JSON.stringify({ type: "session-create", id: "no-default", projection: { libraries: ["page"] } }));
+await new Promise<void>((resolve) => setImmediate(resolve));
 const noDefaultCreated = noDefaultSent.find((entry) => entry.type === "session-created");
 assert.ok(noDefaultCreated && typeof noDefaultCreated.sessionId === "string");
 const noDefaultSessionId = noDefaultCreated.sessionId;
@@ -128,19 +132,19 @@ assert.equal(next.html, cut.html);
 const serverListeners = new Set<(raw: string) => void>();
 const clientListeners = new Set<(raw: string) => void>();
 const downstream: string[] = [];
-const clientSocket: LocusSocketLike = {
+const clientSocket: LocusWebSocketLike = {
   send(raw) { for (const listener of [...serverListeners]) listener(raw); }, close() {},
   onMessage(listener) { clientListeners.add(listener); return () => { clientListeners.delete(listener); }; },
   onClose() { return () => {}; },
 };
-const serverSocket: LocusSocketLike = {
+const serverSocket: LocusWebSocketLike = {
   send(raw) { downstream.push(raw); for (const listener of [...clientListeners]) listener(raw); }, close() {},
   onMessage(listener) { serverListeners.add(listener); return () => { serverListeners.delete(listener); }; },
   onClose() { return () => {}; },
 };
 disconnect();
-let stopServer = locus.connect(serverSocket);
-const echoClient = create_echo_socket_client_internal({ socket: clientSocket,
+let stopServer = bind_locus_websocket(locus, serverSocket);
+const echoClient = create_echo_aggregate_client_internal({ transport: test_echo_transport(clientSocket),
   map: client, session: { credential: created.credential as string } });
 assert.equal(echoClient.lastAppliedRev, cut.libs.revision);
 const firstRecovery = await echoClient.connect();
@@ -158,7 +162,7 @@ for (const raw of downstream) {
 echoClient.disconnect();
 stopServer();
 await locus.mutate((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if ("at" in library) library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_AFTER_DISCONNECT"); });
-stopServer = locus.connect(serverSocket);
+stopServer = bind_locus_websocket(locus, serverSocket);
 const secondRecovery = await echoClient.connect();
 assert.equal(secondRecovery.outcome, "replay");
 assert.equal(echoClient.lastAppliedRev, cut.libs.revision + 2);
@@ -207,7 +211,7 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   let createReceiver: ((raw: string) => void) | undefined;
   let credential: string | undefined;
   let fallbackSessionId: string | undefined;
-  const creationSocket: LocusSocketLike = { send(raw) {
+  const creationSocket: LocusWebSocketLike = { send(raw) {
     const frame = JSON.parse(raw) as Record<string, unknown>;
     if (frame.type === "session-created") {
       credential = frame.credential as string;
@@ -215,8 +219,9 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
     }
   }, close() {}, onMessage(listener) { createReceiver = listener; return () => { createReceiver = undefined; }; },
   onClose() { return () => {}; } };
-  const stopCreation = fallbackLocus.connect(creationSocket);
+  const stopCreation = bind_locus_websocket(fallbackLocus, creationSocket);
   createReceiver?.(JSON.stringify({ type: "session-create", id: "hostile-fallback-session", projection: { libraries: ["permittedData", "page"], systemFeatures: ["interactions"] } }));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.ok(credential && fallbackSessionId);
   const ssr = fallbackLocus.session.get(fallbackSessionId)!.now({ html: "page" });
   const browserMap = client_projection_map({ authority: ssr.libs,
@@ -226,14 +231,14 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const wireFrames: string[] = [];
-  const browserSocket: LocusSocketLike = { send(raw) { for (const listener of [...toServer]) listener(raw); },
+  const browserSocket: LocusWebSocketLike = { send(raw) { for (const listener of [...toServer]) listener(raw); },
     close() {}, onMessage(listener) { toClient.add(listener); return () => { toClient.delete(listener); }; },
     onClose() { return () => {}; } };
-  const authoritySocket: LocusSocketLike = { send(raw) { wireFrames.push(raw); for (const listener of [...toClient]) listener(raw); },
+  const authoritySocket: LocusWebSocketLike = { send(raw) { wireFrames.push(raw); for (const listener of [...toClient]) listener(raw); },
     close() {}, onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; } };
-  let stopAuthority = fallbackLocus.connect(authoritySocket);
-  const browser = create_echo_socket_client_internal({ socket: browserSocket, map: browserMap,
+  let stopAuthority = bind_locus_websocket(fallbackLocus, authoritySocket);
+  const browser = create_echo_aggregate_client_internal({ transport: test_echo_transport(browserSocket), map: browserMap,
     session: { credential } });
   assert.equal(browser.lastAppliedRev, ssr.libs.revision);
   assert.equal((await browser.connect()).outcome, "current");
@@ -254,8 +259,11 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   await fallbackLocus.mutate((draft) => { const hidden = draft.lib("PRIVATE_NAME_SENTINEL");
     if ("at" in hidden) hidden.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_FALLBACK_SNAPSHOT_SENTINEL"); });
   const beforeFallback = wireFrames.length;
-  stopAuthority = fallbackLocus.connect(authoritySocket);
+  stopAuthority = bind_locus_websocket(fallbackLocus, authoritySocket);
   assert.equal((await browser.connect()).outcome, "reconcile");
+  for (let attempt = 0; attempt < 100 && (browser.lastAppliedRev ?? -1) < fallbackLocus.rev; attempt++) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
   assert.equal(browser.lastAppliedRev, fallbackLocus.rev);
   assert.equal(browser.map, browserMap);
   assert.equal(browserMap.lib("local"), localLibrary);
@@ -294,12 +302,13 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   let sessionId: string | undefined;
   let credential: string | undefined;
   const frames: string[] = [];
-  const socket: LocusSocketLike = { send(raw) { frames.push(raw); const message = JSON.parse(raw) as Record<string, unknown>;
+  const socket: LocusWebSocketLike = { send(raw) { frames.push(raw); const message = JSON.parse(raw) as Record<string, unknown>;
     if (message.type === "session-created") { sessionId = message.sessionId as string; credential = message.credential as string; }
   }, close() {}, onMessage(listener) { receive = listener; return () => { receive = undefined; }; },
   onClose() { return () => {}; } };
-  const stop = oneLocus.connect(socket);
+  const stop = bind_locus_websocket(oneLocus, socket);
   receive?.(JSON.stringify({ type: "session-create", id: "one-library", projection: { libraries: ["page"] } }));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   if (sessionId === undefined || credential === undefined) throw new Error("One-library session was unavailable.");
   const selectedId: string = sessionId;
   assert.deepEqual(Object.keys(oneLocus.session.get(selectedId)!.now()).sort(), ["format", "initializerDigest", "libs", "local", "sessionBinding"]);
@@ -309,20 +318,20 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   const oneBrowser = client_projection_map({ authority: selected.libs, local: {} });
   const onePairServer = new Set<(raw: string) => void>();
   const onePairClient = new Set<(raw: string) => void>();
-  const browserSocket: LocusSocketLike = { send(raw) { for (const listener of onePairServer) listener(raw); }, close() {},
+  const browserSocket: LocusWebSocketLike = { send(raw) { for (const listener of onePairServer) listener(raw); }, close() {},
     onMessage(listener) { onePairClient.add(listener); return () => { onePairClient.delete(listener); }; }, onClose() { return () => {}; } };
-  const authoritySocket: LocusSocketLike = { send(raw) { frames.push(raw); for (const listener of onePairClient) listener(raw); }, close() {},
+  const authoritySocket: LocusWebSocketLike = { send(raw) { frames.push(raw); for (const listener of onePairClient) listener(raw); }, close() {},
     onMessage(listener) { onePairServer.add(listener); return () => { onePairServer.delete(listener); }; }, onClose() { return () => {}; } };
   stop();
-  let stopOne = oneLocus.connect(authoritySocket);
-  const oneEcho = create_echo_socket_client_internal({ socket: browserSocket, map: oneBrowser,
+  let stopOne = bind_locus_websocket(oneLocus, authoritySocket);
+  const oneEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(browserSocket), map: oneBrowser,
     session: { credential } });
   assert.equal((await oneEcho.connect()).outcome, "current");
   await oneLocus.mutate((draft) => { const page = draft.lib("page"); if ("attrs" in page) page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "ONE_LIBRARY_LIVE"); });
   assert.equal(oneEcho.lastAppliedRev, oneLocus.rev);
   oneEcho.disconnect(); stopOne();
   await oneLocus.mutate((draft) => { const page = draft.lib("page"); if ("attrs" in page) page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "ONE_LIBRARY_RECOVERY"); });
-  stopOne = oneLocus.connect(authoritySocket);
+  stopOne = bind_locus_websocket(oneLocus, authoritySocket);
   assert.equal((await oneEcho.connect()).outcome, "replay");
   assert.equal(oneEcho.lastAppliedRev, oneLocus.rev);
   assert.equal(frames.some((raw) => raw.includes("ONE_LIBRARY_RECOVERY")), true);

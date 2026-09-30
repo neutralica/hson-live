@@ -20,7 +20,7 @@ const ROOT_EXPORTS = `
 ANY_DATA ANY_DOCUMENT AsyncLiveTree AsyncLiveTreeAttrs AsyncLiveTreeClasslist AsyncLiveTreeFlags AsyncLiveTreeForm AsyncLiveTreeId AsyncLiveTreeText LocusInteractionDescriptor
 AuthorityProjectionSnapshot BinaryDecodeOptions BrowserRealizationHtml DataLiveMapMode DecodedSsrBootstrap DetachedLiveContent DocumentContinuation DocumentContinuationError
 DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsrError Echo EchoActionFn EchoActionPromise EchoActionRequest
-EchoActionStatusResult EchoOptions EchoInitOptions EchoSyncError EchoRetryActionFn EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions
+EchoActionStatusResult EchoAttachmentEvent EchoEndpointTransport EchoReplicaTransport EchoSubmission EchoWebSocketConstructor EchoWebSocketLike EchoWebSocketTransport EchoWebSocketTransportOptions EchoOptions EchoInitOptions EchoSyncError EchoRetryActionFn EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions
 EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation LocusLibraryCatalogEntry LocusLibraryOwnership LocusLocalInitializer LocusSessionApi LocusSession LocusSessionCreateOptions LocusSessionNow LocusSessionHtmlNow Hson HsonCanonical
 HsonData HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData HsonSchemaMutationCandidate InteractionActionDispatcher
 InteractionActivationOptions InteractionDescriptor InteractionFailure InteractionListener InteractionLocalBehavior InteractionLocalBehaviors LiveHost
@@ -29,10 +29,10 @@ LiveHostLocusRegistryResult LiveHostPrincipal LiveHostRequestRoute LiveMap LiveM
 LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocumentLibrary LiveMapDocumentLibraryInput LiveMapDocumentLocation LiveMapDocumentMode LiveMapDocumentMutationError LiveMapDocumentStagingError LiveMapInput
 LiveMapLibraryAddOperation LiveMapLibraryDefinition LiveMapDefinitions LiveMapDynamicLibrary LiveMapKnownNames LiveMapLibraryInput LiveMapLibrarySchemaUseOperation LiveMapWithLibrarySchema LiveTree LiveTreeAlreadyAttachedError LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult LiveTreeLinkedIdentityRequiredError
 LiveTreeProtectedRootError LiveTreeQuidReuseError BrowserInteractionDescriptor Locus LocusActionContext LocusActionHandler LocusActionName LocusActionPayloads
-LocusActions LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError LocusConnection LocusDisconnectedError
-LocusDuplicateActionIdError LocusOptions LocusResult LocusSocketLike Mirror SchemaType SsrBootstrapCodecError SsrBootstrapCodecOptions
+LocusActions LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError LocusDisconnectedError
+LocusDuplicateActionIdError LocusOptions LocusResult LocusWebSocketLike Mirror SchemaType SsrBootstrapCodecError SsrBootstrapCodecOptions
 SsrBootstrapKind TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource TreeSelector activate_interactions
-add_interaction continue_document continue_hosted_document create_echo create_livehost_locus_registry create_locus decode_ssr_bootstrap enable_interactions
+add_interaction bind_locus_websocket continue_document continue_hosted_document create_echo create_livehost_locus_registry create_locus decode_ssr_bootstrap enable_interactions
 encode_ssr_bootstrap hson hsonCalc hsonEcho hsonLiveMap hsonLiveTree hsonLocus hsonMirror
 hsonTransform is_transform_error read_transform_error_details reflect_document remove_interaction replace_interaction
 `.trim().split(/\s+/).sort();
@@ -174,7 +174,7 @@ const ownerProofs = Object.freeze({
   "dist/api/mirror/index.d.ts": ["reflect_collection", "CollectionMirror", "CollectionMirrorErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoSync", "EchoSyncStrategy"],
   "dist/api/locus/index.d.ts": ["create_persistent_locus", "PersistentLocusOptions"],
-  "dist/api/locus/node/index.d.ts": ["create_node_locus_socket", "NodeLocusSocketOptions"],
+  "dist/api/locus/node/index.d.ts": ["bind_node_locus_websocket", "NodeLocusWebSocketOptions"],
   "dist/api/ssr/index.d.ts": ["BrowserRealizationHtml", "DocumentSsrError"],
   "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost"],
   "dist/api/livehost/node/index.d.ts": ["start_node_application_host", "NodeApplicationHostOptions"],

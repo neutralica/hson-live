@@ -181,13 +181,6 @@ export type LocusSchema<
   }>;
 }>;
 
-export type LocusSocketLike = Readonly<{
-  send: (message: string) => void;
-  close: (code?: number, reason?: string) => void;
-  onMessage: (listener: (message: string) => void) => LocusDisposer | void;
-  onClose: (listener: () => void) => LocusDisposer | void;
-}>;
-
 export type LocusClientActionMessageFor<
   TActions extends LocusActionPayloads,
   TName extends keyof TActions & string,

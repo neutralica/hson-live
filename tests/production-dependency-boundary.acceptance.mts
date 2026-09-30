@@ -105,10 +105,9 @@ check("public endpoint-only Echo initial browser graph excludes deferred replica
     stdin: {
       contents: `
         import { create_echo } from "hson-live/echo";
-        const socket = {
-          send() {}, close() {}, onMessage() {}, onClose() {},
-        };
-        globalThis.__endpoint_echo_boundary__ = create_echo({ socket });
+        const transport = { operations: { async submit() { return { kind: "not-submitted" }; } },
+          attachment: { observe() { return () => {}; } } };
+        globalThis.__endpoint_echo_boundary__ = create_echo({ transport });
       `,
       resolveDir: repositoryRoot,
       sourcefile: "endpoint-only-public.mjs",

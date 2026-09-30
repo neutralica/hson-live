@@ -12,10 +12,9 @@ import type {
   LocusActionPayloads,
   LocusClientId,
   LocusDisposer,
-  LocusSocketLike,
 } from "../../types/locus.types.js";
+import type { EchoReplicaTransport } from "../../types/echo.transport.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { EchoSyncError } from "./echo.error.js";
 import {
@@ -24,7 +23,7 @@ import {
   unregister_echo_document_authority,
 } from "./echo.document-authority-registry.js";
 import {
-  create_echo_endpoint_connection_internal,
+  create_echo_semantic_connection_internal,
   type EchoEndpointConnection,
 } from "./echo.client.js";
 
@@ -38,7 +37,7 @@ type EchoSyncResult = Readonly<{
   incarnationChanged: boolean;
 }>;
 export type ReplicaOptions<TMap extends EchoMap> = Readonly<{
-  socket: LocusSocketLike;
+  transport: EchoReplicaTransport;
   map: TMap;
   clientId?: LocusClientId;
   session?: EchoSessionOptions;
@@ -53,7 +52,7 @@ export type ReplicaStrategy = Readonly<{
   dispose: LocusDisposer;
 }>;
 type ReplicaComposition<TActions extends LocusActionPayloads> = Readonly<{
-  connection: EchoEndpointConnection<TActions, any, any>;
+  connection: EchoEndpointConnection<TActions>;
   management: EchoMapManagementLease;
 }>;
 type ReplicaInitializer = <TMap extends EchoMap, TActions extends LocusActionPayloads>(
@@ -77,25 +76,24 @@ export function create_lazy_replica_echo_internal<
 }> {
   const logicalMapId = internal_livemap_aggregate_authority(options.map).clientProjection()?.authority.logicalMapId;
   if (logicalMapId === undefined) throw new Error("Echo replica requires an admitted authority projection.");
-  const connection = create_echo_endpoint_connection_internal<TActions>({
-    socket: options.socket,
+  const connection = create_echo_semantic_connection_internal<TActions>({
+    transport: options.transport,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.session === undefined ? {} : { session: options.session }),
     ...({
-      endpointMessageFormat: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
       actionMessageId: "attempt" as const,
       operationLossError: (reason: "disconnect" | "fenced" | "ended") => new Error(reason === "ended"
         ? "Hosted aggregate Echo session ended before the pending operation completed."
         : reason === "fenced"
           ? "Hosted aggregate session attachment was fenced."
-          : "Hosted aggregate socket closed."),
+          : "Hosted aggregate transport interrupted."),
       additionalReady: () => !disposed && !pendingRecovery && strategy?.sync.status === "caught_up",
     }),
   });
   // Only the endpoint retains the reattachment credential. The deferred strategy
   // holds configuration without the sensitive session options.
   const strategyOptions: ReplicaOptions<TMap> = Object.freeze({
-    socket: options.socket,
+    transport: options.transport,
     map: options.map,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.initialStateFingerprint === undefined ? {} : { initialStateFingerprint: options.initialStateFingerprint }),
@@ -116,7 +114,7 @@ export function create_lazy_replica_echo_internal<
   let previouslyConnected = false;
   let established = false;
   let reconnecting: Promise<EchoSessionResult> | undefined;
-  const stopShellConnection = connection.onConnectionChange((connected) => {
+  const stopShellConnection = connection.onAvailabilityChange((connected) => {
     if (connected && !previouslyConnected && shellStatus === "failed" && strategy === undefined) {
       shellStatus = "idle";
       shellFailure = undefined;
@@ -124,6 +122,9 @@ export function create_lazy_replica_echo_internal<
     }
     previouslyConnected = connected;
     if (!connected && !disposed) shellStatus = "idle";
+    if (connected && established && echo.session.status === "detached" && !disposed) {
+      void reattachAndRecover().catch(() => {});
+    }
   });
 
   const initialize = (): Promise<ReplicaStrategy> => {
@@ -157,7 +158,7 @@ export function create_lazy_replica_echo_internal<
     if (disposed) {
       return Promise.reject(new EchoSyncError("LOCUS_SYNC_DISPOSED", "Echo synchronization is disposed."));
     }
-    if (!connection.connected) {
+    if (!connection.available) {
       return Promise.reject(new EchoSyncError("LOCUS_SYNC_DISCONNECTED", "Locus synchronization requires a connected transport."));
     }
     if (connection.endpoint.session.status !== "attached") {
@@ -254,7 +255,7 @@ export function create_lazy_replica_echo_internal<
 
   const echo = connection.echo;
   const disconnectReplica = (): void => {
-    if (connection.connected && echo.session.status === "attached") {
+    if (connection.available && echo.session.status === "attached") {
       void connection.endpoint.detachSession().catch(() => {});
     }
     echo.disconnect();

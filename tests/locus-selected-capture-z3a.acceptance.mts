@@ -1,10 +1,12 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
-import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { local_initializers } from "./helpers/client-projection.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { capture_selected_authority_projection_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
@@ -34,18 +36,18 @@ const { locus } = create_registry_locus_internal({ map, libraries,
 const serverListeners = new Set<(raw: string) => void>();
 const clientListeners = new Set<(raw: string) => void>();
 const sent: string[] = [];
-const clientSocket: LocusSocketLike = {
+const clientSocket: LocusWebSocketLike = {
   send(raw) { for (const listener of [...serverListeners]) listener(raw); }, close() {},
   onMessage(listener) { clientListeners.add(listener); return () => { clientListeners.delete(listener); }; },
   onClose() { return () => {}; },
 };
-const serverSocket: LocusSocketLike = {
+const serverSocket: LocusWebSocketLike = {
   send(raw) { sent.push(raw); for (const listener of [...clientListeners]) listener(raw); }, close() {},
   onMessage(listener) { serverListeners.add(listener); return () => { serverListeners.delete(listener); }; },
   onClose() { return () => {}; },
 };
-let detach = locus.connect(serverSocket);
-const echo = create_echo_socket_client_internal({ socket: clientSocket, logicalMapId: locus.logicalMapId,
+let detach = bind_locus_websocket(locus, serverSocket);
+const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(clientSocket), logicalMapId: locus.logicalMapId,
   initializers: local_initializers({ local: { data: { value: "LOCAL_SENTINEL" }, schema: Data } }) });
 const initial = await echo.connect();
 assert.equal(initial.outcome, "reconcile");
@@ -72,7 +74,7 @@ assert.equal(JSON.stringify(cut), oldCut);
 const nextCut = locus.session.get(session.sessionId)!.now({ html: "page" });
 assert.equal(nextCut.libs.revision, locus.rev);
 assert.match(nextCut.html, /PUBLIC_NEXT_SENTINEL/);
-detach = locus.connect(serverSocket);
+detach = bind_locus_websocket(locus, serverSocket);
 const recovered = await echo.connect();
 assert.equal(recovered.outcome, "reconcile");
 assert.equal(echo.lastAppliedRev, locus.rev);
@@ -97,8 +99,8 @@ locus.dispose();
 const { locus: zeroLocus } = create_registry_locus_internal({ map, libraries,
   defaultProjection: { libraries: [] }, authorizeProjection: () => ({ libraries: [] }),
 }, { maxHistoryBytes: 1 });
-let detachZero = zeroLocus.connect(serverSocket);
-const endpoint = create_echo_socket_client_internal({ socket: clientSocket, logicalMapId: zeroLocus.logicalMapId });
+let detachZero = bind_locus_websocket(zeroLocus, serverSocket);
+const endpoint = create_echo_aggregate_client_internal({ transport: test_echo_transport(clientSocket), logicalMapId: zeroLocus.logicalMapId });
 const zeroInitial = await endpoint.connect();
 assert.equal(zeroInitial.outcome, "reconcile");
 assert.equal(endpoint.map, undefined);
@@ -107,7 +109,7 @@ endpoint.disconnect();
 detachZero();
 await zeroLocus.mutate((draft) => { const privateLib = draft.lib("privateSignal");
   if ("at" in privateLib) privateLib.at(["value"]).set(`PRIVATE_ENDPOINT_SENTINEL${"z".repeat(3 * 1024 * 1024)}`); });
-detachZero = zeroLocus.connect(serverSocket);
+detachZero = bind_locus_websocket(zeroLocus, serverSocket);
 const zeroRecovered = await endpoint.connect();
 assert.equal(zeroRecovered.outcome, "reconcile");
 assert.equal(endpoint.map, undefined);

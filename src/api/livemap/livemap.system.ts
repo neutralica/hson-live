@@ -2,7 +2,7 @@ import type { HsonNode } from "../../core/types.js";
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 
-/** Opaque identity for one Hson-owned transactional state domain. @internal */
+/** Opaque identity for one Hson-owned transactional state domain. */
 export type LiveMapSystemIdentity = object;
 
 /** Canonical state outside the fixed application Library registry. @internal */

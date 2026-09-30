@@ -31,3 +31,16 @@ export type {
   EchoSessionStatus,
   EchoInitOptions,
 } from "./locus.core.types.js";
+export type {
+  EchoEndpointTransport,
+  EchoReplicaTransport,
+  EchoSubmission,
+  EchoAttachmentEvent,
+  EchoFiniteOperationRequest,
+  EchoFiniteOperationOutcome,
+  EchoSynchronizationRequest,
+  EchoSynchronizationOutput,
+  EchoSynchronizationObserver,
+  EchoSynchronizationSubscription,
+  EchoSynchronizationEnd,
+} from "./echo.transport.types.js";

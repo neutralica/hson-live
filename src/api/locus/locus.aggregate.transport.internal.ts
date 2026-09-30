@@ -5,7 +5,6 @@ import type { LocusProjectedLibraryContract } from "./locus.projection.js";
 import type { LocusProjectionSystemFeature } from "../../types/locus.projection.types.js";
 import type { LocusLiveProjectedWireEnvelope } from "./locus.live-projection.js";
 import type {
-  LocusDownstreamSink,
   LocusFiniteOperationRequest,
   LocusSemanticAttachment,
 } from "./locus.transport.internal.js";
@@ -24,7 +23,7 @@ export type LocusHostedAggregateRecoveryCursor = Readonly<{
   initialSessionBinding?: string;
 }>;
 
-/** @internal Aggregate topology evidence layered over the common synchronization lifecycle. */
+/** Aggregate topology evidence layered over the common synchronization lifecycle. */
 export type LocusHostedAggregateSynchronizationRequest = Readonly<{
   type: "recover";
   id: string;
@@ -79,15 +78,10 @@ export type LocusHostedAggregateCanonicalPublication =
   | Readonly<{ type: "progress"; id: string; projectionSequence: number; projectionDigest: string; progress: LocusHostedAggregateProgress }>
   | LocusHostedProjectionChange;
 
-export type LocusHostedAggregateDownstreamSink = LocusDownstreamSink<
-  LocusHostedAggregateSynchronizationOutput,
-  LocusHostedAggregateCanonicalPublication
->;
-
 /** @internal Common semantic attachment specialized only by aggregate recovery evidence. */
 export type LocusHostedAggregateSemanticAttachment<
   TActions extends LocusActionPayloads = LocusActionPayloads,
-> = LocusSemanticAttachment<TActions, LocusHostedAggregateSynchronizationRequest>;
+> = LocusSemanticAttachment<TActions>;
 
 export type LocusHostedAggregateFiniteOperationRequest<
   TActions extends LocusActionPayloads = LocusActionPayloads,

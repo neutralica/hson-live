@@ -1,6 +1,6 @@
 # Echo API reference
 
-Echo's internal operation and synchronization architecture is described in
+Echo's operation and synchronization architecture is described in
 [Transport capabilities](./transport-capabilities.md). The public hosted
 adapter remains WebSocket.
 
@@ -10,8 +10,9 @@ There is one public `Echo` type family with two compositions:
 ```ts
 import { create_echo, hsonEcho } from "hson-live/echo";
 
-const endpoint = create_echo({ socket });
-const replica = await hsonEcho.init({ now: sessionNow, credential, socket });
+const transport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" });
+const endpoint = create_echo({ transport });
+const replica = await hsonEcho.init({ now: sessionNow, credential, transport });
 ```
 
 `hsonEcho.create`, `hson.echo.create`, and `create_echo` construct an endpoint-only Echo. It exposes `clientId`, `session`,
@@ -59,8 +60,8 @@ client-local QUID through its
 LiveMap and Mirror. That demand does not contact Locus, advance `map.rev`, or
 publish an application commit.
 
-Transport connection, retained-session attachment, and replica synchronization remain
-separate internal layers. For a replica, `init()` performs all three before
+Transport availability, retained-session attachment, and replica synchronization remain
+separate layers. For a replica, `init()` performs all three before
 returning. After a disconnect, `echo.connect()` automatically reattaches the
 retained session and synchronizes through `caught_up`. `echo.session.reattach()`
 can be awaited when the caller needs that completion boundary; repeated calls
@@ -68,11 +69,11 @@ during the same reconnect share its work. Replica actions and status operations
 require `caught_up` readiness. Endpoint-only Echo retains explicit `connect()`
 and session operations without a replica synchronization subsystem.
 
-`disconnect()` detaches transport listeners and settles uncertain endpoint
-operations without ending the session, releasing map management, or closing a
-caller-owned socket. The Echo may reconnect. `echo.dispose()` is terminal and,
-for a replica-bearing Echo, releases exclusive management and clears its retained
-client credential.
+`disconnect()` detaches semantic observation and settles uncertain endpoint
+operations without ending the session or releasing map management. The Echo may
+reconnect. `echo.dispose()` is terminal and, for a replica-bearing Echo, releases
+exclusive management and clears its retained client credential. The caller
+separately calls `transport.dispose()` to close adapter-owned physical resources.
 
 An action's `completionRev` is the authoritative stream head at terminal
 settlement, interpreted with the current session's `logicalMapId` and

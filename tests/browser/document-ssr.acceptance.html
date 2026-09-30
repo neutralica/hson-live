@@ -13,7 +13,7 @@ import {
   Hson,
   continue_document,
   continue_hosted_document,
-  create_browser_locus_socket,
+  hsonEcho,
   decode_ssr_bootstrap,
   encode_ssr_bootstrap,
   hson,
@@ -317,13 +317,12 @@ try {
   check("browser hosted Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHostedLibraries.bootstrap) === state.encoded.libraries);
   check("hosted carrier is the projected hosted family", decodedHostedLibraries.kind === "hosted-projection");
   check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.libs.revision === state.libraries.libs.revision);
-  const librariesSocket = create_browser_locus_socket(state.librariesSocketUrl);
-  await librariesSocket.ready;
+  const librariesTransport = hsonEcho.transport.websocket({ url: state.librariesSocketUrl });
   let interactionCalls = 0;
   const librariesContinuation = await continue_hosted_document({
     now: { ...state.libraries, ...decodedHostedLibraries.bootstrap },
     credential: state.credential,
-    socket: librariesSocket.socket,
+    transport: librariesTransport,
     document: state.libraries.document,
     root: librariesRoot,
     interactions: { local: { clicker: () => { interactionCalls += 1; } } },
@@ -341,6 +340,14 @@ try {
   check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
   check("other public document converges", librariesEcho.map.lib("admin").at([]).attrs.get("data-recovered") === "admin");
   check("data Library converges", librariesEcho.map.lib("state").snap(["count"]) === 1);
+  const beforeReconnectEpoch = librariesEcho.session.epoch;
+  await fetch("/__close-libraries-socket");
+  for (let attempt = 0; attempt < 100 && !(librariesEcho.session.epoch > beforeReconnectEpoch
+    && librariesEcho.sync.status === "caught_up"); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  check("same Echo and transport reattach after physical WebSocket replacement",
+    librariesEcho.session.epoch > beforeReconnectEpoch && librariesEcho.sync.status === "caught_up");
   librariesButton.click();
   for (let attempt = 0; attempt < 50 && librariesEcho.map.lib("state").snap(["count"]) !== 5; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -363,7 +370,7 @@ try {
     && librariesMap.rev === hostedCssRev && hostedGlobalCss.list().length === 0);
   librariesContinuation.dispose();
   librariesEcho.dispose();
-  librariesSocket.dispose();
+  librariesTransport.dispose();
 
   const cssFrame = document.createElement("iframe");
   document.body.appendChild(cssFrame);
@@ -374,10 +381,9 @@ try {
   check("hosted CSS cut styles a browser without JavaScript", hostedStyle !== null
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(1, 2, 3)");
   const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut));
-  const cssBrowserSocket = create_browser_locus_socket(state.cssSocketUrl);
-  await cssBrowserSocket.ready;
+  const cssTransport = hsonEcho.transport.websocket({ url: state.cssSocketUrl });
   const cssContinued = await continue_hosted_document({ now: { ...state.cssCut, ...cssBootstrap.bootstrap },
-    credential: state.cssCredential, socket: cssBrowserSocket.socket, document: "page", root: hostedCssRoot });
+    credential: state.cssCredential, transport: cssTransport, document: "page", root: hostedCssRoot });
   const cssEcho = cssContinued.echo;
   const cssClientMap = cssEcho.map;
   check("hosted CSS replay updates adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
@@ -425,7 +431,7 @@ try {
     && !recreatedStyle.isConnected);
   cssContinued.dispose();
   cssEcho.dispose();
-  cssBrowserSocket.dispose();
+  cssTransport.dispose();
   cssFrame.remove();
 
   document.documentElement.dataset.status = "pass";

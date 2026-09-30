@@ -1,3 +1,5 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
 import { Hson, activate_interactions, add_interaction, enable_interactions, hsonEcho, hsonLiveMap, hsonLocus, hsonMirror, replace_interaction,
   type HsonSchema, type InteractionDescriptor, type InteractionListener, type LiveMap } from "../src/index.ts";
@@ -18,11 +20,11 @@ import { make_locus_hosted_projection_policy, normalize_locus_effective_projecti
 import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import { install_client_local_initializers_internal } from "../src/api/locus/locus.local-initializer.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 
 install_fake_document();
 
-function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketLike }> {
+function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebSocketLike }> {
   const toClient = new Set<(raw: string) => void>();
   const toServer = new Set<(raw: string) => void>();
   const client = Object.freeze({
@@ -397,8 +399,8 @@ for (const sharedFeature of [true, false]) {
   const locus = hsonLocus.create({ map: authority, ...test_public_projection(authority),
     authorizeAction: () => false, actions: { save: () => { executed += 1; } } });
   const pair = socket_pair();
-  locus.connect(pair.server);
-  const echo = create_recovery_test_driver({ socket: pair.client, map: client });
+  bind_locus_websocket(locus, pair.server);
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: client });
   echo.connect();
   await echo.session.create();
   await echo.completeRecovery();
@@ -420,8 +422,8 @@ for (const sharedFeature of [true, false]) {
   });
   const session = await locus.session.create({ libraries: ["page", "panel"] });
   const pair = socket_pair();
-  locus.connect(pair.server);
-  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, socket: pair.client });
+  let detach = bind_locus_websocket(locus, pair.server);
+  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   const beforeCursor = echo.sync.debug().lastAppliedRev;
   const beforeLocusRev = locus.rev;
   const beforeDigest = internal_livemap_aggregate_authority(echo.map).clientProjection()?.registry.digest;
@@ -446,11 +448,13 @@ for (const sharedFeature of [true, false]) {
   target.dispatchEvent(new Event("click"));
   assert.equal(calls, 2);
   echo.disconnect();
+  detach();
+  detach = bind_locus_websocket(locus, pair.server);
   echo.connect();
   await until(() => echo.sync.status === "caught_up");
   assert.equal(echo.sync.strategy, "current");
   assert.deepEqual(ids(echo.map), ["local-only"]);
-  dispose(); reflection.dispose(); echo.dispose(); locus.dispose();
+  dispose(); reflection.dispose(); echo.dispose(); detach(); locus.dispose();
   process.stdout.write("ok - local interactions leave public Echo current sync and authority state unchanged\n");
 }
 

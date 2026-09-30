@@ -1,9 +1,11 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson } from "../src/hson-authoring.ts";
 import { hsonLiveMap, type LiveMap } from "../src/api/livemap/index.ts";
-import { hsonLocus, type Locus, type LocusOptions, type LocusSocketLike } from "../src/api/locus/index.ts";
+import { hsonLocus, type Locus, type LocusOptions, type LocusWebSocketLike } from "../src/api/locus/index.ts";
 import { hsonEcho } from "../src/api/echo/index.ts";
 // Only the fallback authority uses the existing history-budget test hook.
 // Session creation, capture, composition, and Echo consumers use public APIs.
@@ -18,12 +20,12 @@ function socket_pair() {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const serverSent: string[] = [];
-  const client: LocusSocketLike = {
+  const client: LocusWebSocketLike = {
     send(raw) { for (const listener of [...toServer]) listener(raw); }, close() {},
     onMessage(listener) { toClient.add(listener); return () => { toClient.delete(listener); }; },
     onClose() { return () => {}; },
   };
-  const server: LocusSocketLike = {
+  const server: LocusWebSocketLike = {
     send(raw) { serverSent.push(raw); for (const listener of [...toClient]) listener(raw); }, close() {},
     onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; },
@@ -33,8 +35,9 @@ function socket_pair() {
 
 async function session(locus: Locus) {
   const pair = socket_pair();
-  const detach = locus.connect(pair.server);
+  const detach = bind_locus_websocket(locus, pair.server);
   pair.client.send(JSON.stringify({ type: "session-create", id: "session-cut" }));
+  await Promise.resolve();
   const created = pair.serverSent.map((raw) => JSON.parse(raw)).find((message) => message.type === "session-created");
   assert.ok(created && typeof created.sessionId === "string" && typeof created.credential === "string");
   const sessionId: string = created.sessionId;
@@ -94,8 +97,8 @@ for (const strategy of ["replay", "reconcile"] as const) {
   initial.detach();
   assert.deepEqual(initial.capability.now().libs, snapshot, "disconnected retained session remains available");
   const pair = socket_pair();
-  let detach = locus.connect(pair.server);
-  const echo = create_recovery_test_driver({ socket: pair.client, map: client, session: { credential: initial.credential } });
+  let detach = bind_locus_websocket(locus, pair.server);
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: client, session: { credential: initial.credential } });
   echo.connect();
   await echo.session.reattach();
   assert.equal((await echo.completeRecovery()).strategy, "current");
@@ -108,7 +111,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
   await locus.mutate((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_OFFLINE"));
   assert.equal(echo.sync.debug().lastAppliedRev, snapshot.revision);
   assert.equal(JSON.stringify(snapshot), retained, "captured artifact is detached from later mutations");
-  detach = locus.connect(pair.server);
+  detach = bind_locus_websocket(locus, pair.server);
   echo.connect(); await echo.awaitReconnect();
   assert.equal(echo.sync.strategy, strategy);
   assert.equal(echo.sync.debug().lastAppliedRev, locus.rev);

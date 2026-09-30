@@ -1,20 +1,18 @@
-import { create_browser_locus_socket, create_locus, hsonLocus,
-  type LocusSocketLike, type Locus, type LocusSessionId, type AuthorityProjectionSnapshot } from "hson-live/locus";
+import { bind_locus_websocket, create_locus, hsonLocus,
+  type LocusWebSocketLike, type Locus, type LocusSessionId, type AuthorityProjectionSnapshot } from "hson-live/locus";
 import { hsonLiveMap } from "hson-live/livemap";
-import { hsonEcho } from "hson-live/echo";
+import { hsonEcho, type EchoReplicaTransport } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
 
-declare const websocketUrl: string;
-declare const BrowserSocket: Parameters<typeof create_browser_locus_socket>[1];
-declare const socket: LocusSocketLike;
-void create_browser_locus_socket(websocketUrl, BrowserSocket);
-void socket;
+declare const socket: LocusWebSocketLike;
+declare const transport: EchoReplicaTransport;
 const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
 const locus: Locus<typeof map> = create_locus({ map, libraries: [{ name: "page", ownership: "shared" }] });
 void [locus, hsonLocus];
+void bind_locus_websocket(locus, socket);
 const retained = await locus.session.create({ libraries: ["page"] });
 const snapshot: AuthorityProjectionSnapshot = retained.now().libs;
-void hsonEcho.init({ now: retained.now(), credential: retained.credential!, socket });
+void hsonEcho.init({ now: retained.now(), credential: retained.credential!, transport });
 // @ts-expect-error Retained cuts have no family narrowing.
 retained.now({ data: [] });
 // @ts-expect-error The public plural namespace is retired.

@@ -18,7 +18,7 @@ import {
   unregister_echo_document_authority,
   type EchoDocumentAuthority,
 } from "./echo.document-authority.js";
-import { create_echo_socket_client_internal } from "./echo.aggregate-replica.js";
+import { create_echo_aggregate_client_internal } from "./echo.aggregate-replica.js";
 import { encode_locus_portable_graph_content } from "../locus/locus.graph-content-codec.js";
 import type { EchoEndpointConnection } from "./echo.client.js";
 import type {
@@ -26,7 +26,6 @@ import type {
   LocusHostedAggregateSynchronizationOutput,
   LocusHostedAggregateSynchronizationRequest,
 } from "../locus/locus.aggregate.transport.internal.js";
-import { configure_echo_hosted_aggregate_websocket_internal } from "./echo.aggregate-websocket.internal.js";
 
 /** Bind Echo authority to the projected portion of one fixed client registry. */
 export function create_registry_echo<
@@ -35,15 +34,14 @@ export function create_registry_echo<
 >(
   options: ReplicaOptions<TMap>,
   composition: Readonly<{
-    connection: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, LocusHostedAggregateSynchronizationOutput | LocusHostedAggregateCanonicalPublication>;
+    connection: EchoEndpointConnection<TActions>;
     management: EchoMapManagementLease;
   }>,
 ): ReplicaStrategy {
   const logicalMapId = internal_livemap_aggregate_authority(options.map).clientProjection()?.authority.logicalMapId;
   if (logicalMapId === undefined) throw new Error("Echo replica requires an admitted authority projection.");
-  configure_echo_hosted_aggregate_websocket_internal(composition.connection);
-  const endpoint = create_echo_socket_client_internal<TActions>({
-    socket: options.socket,
+  const endpoint = create_echo_aggregate_client_internal<TActions>({
+    transport: options.transport,
     map: options.map,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     connection: composition.connection,

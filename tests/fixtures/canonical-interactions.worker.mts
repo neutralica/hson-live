@@ -1,3 +1,5 @@
+import { test_echo_transport } from "../helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "../helpers/replica-driver.mts";
 import { client_projection_map } from "../helpers/client-projection.mts";
 import { parentPort } from "node:worker_threads";
@@ -16,7 +18,7 @@ import {
   type InteractionDescriptor,
   type InteractionListener,
 } from "../../src/index.ts";
-import type { LocusSocketLike } from "../../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../../src/types/locus.types.ts";
 import { link_node_to_el } from "../../src/api/livetree/utils/node-map-helpers.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../../src/api/locus/locus.authority-projection-snapshot.ts";
@@ -41,7 +43,7 @@ function make_map() {
   });
 }
 
-function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketLike }> {
+function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebSocketLike }> {
   const toClient = new Set<(raw: string) => void>();
   const toServer = new Set<(raw: string) => void>();
   return Object.freeze({
@@ -83,8 +85,8 @@ const effective = await normalize_locus_effective_projection(policy, configured.
 const replicaMap = client_projection_map({ authority: project_authority_snapshot(captured, effective),
   local: {} }) as typeof authorityMap;
 const pair = socket_pair();
-locus.connect(pair.server);
-const echo = create_recovery_test_driver({ socket: pair.client, map: replicaMap });
+bind_locus_websocket(locus, pair.server);
+const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: replicaMap });
 echo.connect();
 await echo.session.create();
 await echo.completeRecovery();

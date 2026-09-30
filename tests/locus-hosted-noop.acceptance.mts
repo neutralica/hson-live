@@ -1,12 +1,14 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, validate_document_path, type LiveMap } from "../src/api/livemap/index.ts";
-import { hsonLocus, create_persistent_locus, type LocusOptions, type LocusSocketLike } from "../src/api/locus/index.ts";
+import { hsonLocus, create_persistent_locus, type LocusOptions, type LocusWebSocketLike } from "../src/api/locus/index.ts";
 import { hsonEcho } from "../src/api/echo/index.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
 import { create_locus_hosted_aggregate_internal, type LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -19,12 +21,12 @@ function socket_pair() {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const sent: Record<string, unknown>[] = [];
-  const client: LocusSocketLike = {
+  const client: LocusWebSocketLike = {
     send(raw) { for (const listener of [...toServer]) listener(raw); }, close() {},
     onMessage(listener) { toClient.add(listener); return () => { toClient.delete(listener); }; },
     onClose() { return () => {}; },
   };
-  const server: LocusSocketLike = {
+  const server: LocusWebSocketLike = {
     send(raw) { sent.push(JSON.parse(raw)); for (const listener of [...toClient]) listener(raw); }, close() {},
     onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; },
@@ -71,7 +73,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
   const locus = strategy === "replay" ? hsonLocus.create(options(map))
     : create_registry_locus_internal(options(map), { maxHistoryBytes: 1 }).locus;
   const pair = socket_pair();
-  const endpoint = hsonEcho.create({ socket: pair.client });
+  const endpoint = hsonEcho.create({ transport: test_echo_transport(pair.client) });
   let detach = () => {};
   let commits = 0;
   let feeds = 0;
@@ -84,7 +86,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     assert.deepEqual(map.capture(), initial);
     assert.deepEqual([map.rev, locus.rev, commits, feeds], [0, 0, 0, 0]);
 
-    detach = locus.connect(pair.server);
+    detach = bind_locus_websocket(locus, pair.server);
     endpoint.connect();
     await endpoint.session.create();
     const sessionId = endpoint.session.sessionId;
@@ -102,8 +104,8 @@ for (const strategy of ["replay", "reconcile"] as const) {
 
     const client = client_projection_map({ authority: snapshot, local: {} });
     endpoint.dispose(); detach();
-    detach = locus.connect(pair.server);
-    const echo = create_recovery_test_driver({ socket: pair.client, map: client, session: { credential } });
+    detach = bind_locus_websocket(locus, pair.server);
+    const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: client, session: { credential } });
     try {
       echo.connect(); await echo.session.reattach();
       assert.equal((await echo.completeRecovery()).strategy, "current");
@@ -147,7 +149,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
       await locus.mutate(draft => data_draft(draft, "game").at(["ready"]).set(true));
       assert.equal(locus.rev, 3);
       assert.equal(echo.sync.debug().lastAppliedRev, 2);
-      detach = locus.connect(pair.server);
+      detach = bind_locus_websocket(locus, pair.server);
       echo.connect(); await echo.awaitReconnect();
       assert.equal(echo.sync.strategy, strategy);
       assert.equal(echo.sync.debug().lastAppliedRev, 3);
@@ -213,9 +215,9 @@ for (const strategy of ["replay", "reconcile"] as const) {
 // Recovery without session-create establishes a non-resumable projected session.
 {
   const map = make_map();
-  const host = create_locus_hosted_aggregate_socket_internal({ ...options(map), actions: {} });
+  const host = create_locus_hosted_aggregate_authority_internal({ ...options(map), actions: {} });
   const pair = socket_pair();
-  const detach = host.connect(pair.server);
+  const detach = bind_locus_websocket(host, pair.server);
   try {
     pair.client.send(JSON.stringify({ type: "recover", id: "ephemeral", logicalMapId: host.logicalMapId }));
     await new Promise<void>(resolve => setImmediate(resolve));
@@ -247,8 +249,8 @@ for (const strategy of ["replay", "reconcile"] as const) {
   const map = make_map();
   const locus = await create_persistent_locus({ ...options(map), persistence });
   const pair = socket_pair();
-  const detach = locus.connect(pair.server);
-  const echo = hsonEcho.create({ socket: pair.client });
+  const detach = bind_locus_websocket(locus, pair.server);
+  const echo = hsonEcho.create({ transport: test_echo_transport(pair.client) });
   try {
     const state = persistence.state(locus.logicalMapId);
     assert.ok(state);

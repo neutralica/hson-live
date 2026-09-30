@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import { Hson, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus } from "../dist/index.js";
+import { bind_node_locus_websocket } from "../dist/api/locus/node/index.js";
 import { parse_hson_exact_runtime } from "../dist/internal/exact-runtime-hson-codec.js";
 import { admit_exact_runtime_livemap_libraries } from "../dist/internal/exact-runtime-node-admission.js";
 
@@ -132,12 +133,7 @@ try {
     librariesSocketServer.once("listening", resolveListen);
     librariesSocketServer.once("error", rejectListen);
   });
-  librariesSocketServer.on("connection", (socket) => librariesLocus.connect({
-    send(raw) { socket.send(raw); },
-    close(code, reason) { socket.close(code, reason); },
-    onMessage(listener) { const handler = (data) => listener(data.toString()); socket.on("message", handler); return () => socket.off("message", handler); },
-    onClose(listener) { socket.on("close", listener); return () => socket.off("close", listener); },
-  }));
+  librariesSocketServer.on("connection", (socket) => bind_node_locus_websocket(librariesLocus, socket));
   const librariesSocketAddress = librariesSocketServer.address();
   if (librariesSocketAddress === null || typeof librariesSocketAddress === "string") throw new Error("Libraries browser socket server has no TCP address.");
   const librariesSocketUrl = `ws://127.0.0.1:${librariesSocketAddress.port}`;
@@ -158,11 +154,7 @@ try {
     cssSocketServer.once("listening", resolveListen);
     cssSocketServer.once("error", rejectListen);
   });
-  cssSocketServer.on("connection", (socket) => cssLocus.connect({
-    send(raw) { socket.send(raw); }, close(code, reason) { socket.close(code, reason); },
-    onMessage(listener) { const handler = (data) => listener(data.toString()); socket.on("message", handler); return () => socket.off("message", handler); },
-    onClose(listener) { socket.on("close", listener); return () => socket.off("close", listener); },
-  }));
+  cssSocketServer.on("connection", (socket) => bind_node_locus_websocket(cssLocus, socket));
   const cssSocketAddress = cssSocketServer.address();
   if (cssSocketAddress === null || typeof cssSocketAddress === "string") throw new Error("Styled browser socket server has no TCP address.");
   const cssSocketUrl = `ws://127.0.0.1:${cssSocketAddress.port}`;
@@ -171,6 +163,11 @@ try {
   const browserResult = new Promise((resolveResult) => { reportResult = resolveResult; });
   server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    if (url.pathname === "/__close-libraries-socket") {
+      for (const socket of librariesSocketServer.clients) socket.close(1012, "Reconnect acceptance probe.");
+      response.writeHead(204); response.end();
+      return;
+    }
     if (url.pathname === "/__state") {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ local, localSelection, full, libraries, librariesSocketUrl, credential: retained.credential,

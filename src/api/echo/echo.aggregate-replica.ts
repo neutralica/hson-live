@@ -11,8 +11,8 @@ import type {
   EchoSession,
   EchoSessionOptions,
   LocusActionPayloads,
-  LocusSocketLike,
 } from "../../types/locus.types.js";
+import type { EchoReplicaTransport, EchoSynchronizationSubscription, EchoSynchronizationEnd } from "../../types/echo.transport.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { make_livemap_libraries, make_livemap_client_composition_from_portable_aggregate_internal } from "../livemap/livemap.libraries.js";
@@ -20,9 +20,8 @@ import { admit_locus_local_initializers, install_client_local_initializers_inter
 import { decode_locus_live_projected_envelope_internal, type LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
 import { AUTHORITY_PROJECTION_SNAPSHOT_FORMAT, admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, replace_client_projection_identity_internal, advance_client_projection_identity_internal, client_projection_identity_internal, client_projection_features_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { locus_projection_contract_digest } from "../locus/locus.projection.js";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import {
-  create_echo_endpoint_connection_internal,
+  create_echo_semantic_connection_internal,
   type EchoEndpointConnection,
 } from "./echo.client.js";
 import type {
@@ -32,18 +31,15 @@ import {
   create_echo_aggregate_replica_capability_internal,
   type EchoAggregateReplicaCapability,
 } from "./echo.aggregate-replica.lifecycle.js";
-import {
-  configure_echo_hosted_aggregate_websocket_internal,
-  type EchoHostedAggregateSynchronizationOutput,
-} from "./echo.aggregate-websocket.internal.js";
+import type { EchoSynchronizationOutput } from "../../types/echo.transport.types.js";
 
 
 type HostedPlanOutcome = "current" | "replay" | "reconcile" | "reject";
-type AggregateSynchronizationOutput = EchoHostedAggregateSynchronizationOutput;
+type AggregateSynchronizationOutput = EchoSynchronizationOutput;
 
 /** @internal */
-export type EchoSocketClientOptions<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
-  socket: LocusSocketLike;
+export type EchoAggregateClientOptions<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
+  transport: EchoReplicaTransport<TActions>;
   /** Required for an unbootstrapped Echo; an existing mirror supplies it. */
   logicalMapId?: string;
   /** An existing aggregate mirror is restored in place during snapshot recovery. */
@@ -54,7 +50,7 @@ export type EchoSocketClientOptions<TActions extends LocusActionPayloads = Locus
   actionStatusId?: () => string;
   session?: EchoSessionOptions;
   /** @internal Common public Echo shell supplied by deferred replica composition. */
-  connection?: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
+  connection?: EchoEndpointConnection<TActions>;
   /** @internal Management acquired synchronously by the public Echo shell. */
   management?: EchoMapManagementLease;
   /** Unverified transferred current-state evidence; cleared after the first caught-up synchronization. */
@@ -66,13 +62,13 @@ export type EchoSocketClientOptions<TActions extends LocusActionPayloads = Locus
 }>;
 
 /** @internal */
-export type EchoSocketRecovery = Readonly<{
+export type EchoAggregateRecovery = Readonly<{
   outcome: Exclude<HostedPlanOutcome, "reject">;
   revision: number;
 }>;
 
 /** @internal */
-export type EchoSocketClient = Readonly<{
+export type EchoAggregateClient = Readonly<{
   /** Undefined until an aggregate bootstrap snapshot has passed every validation check. */
   readonly map: LiveMap | undefined;
   readonly logicalMapId: string;
@@ -84,11 +80,11 @@ export type EchoSocketClient = Readonly<{
   readonly replica: EchoAggregateReplicaCapability;
   readonly clientId: string;
   readonly session: EchoSession;
-  /** @internal Direct aggregate socket orchestration for mechanism proofs. */
-  connect: () => Promise<EchoSocketRecovery>;
+  /** @internal Direct aggregate synchronization orchestration for mechanism proofs. */
+  connect: () => Promise<EchoAggregateRecovery>;
   attachTransport: () => LocusDisposer;
   disconnect: () => void;
-  recover: () => Promise<EchoSocketRecovery>;
+  recover: () => Promise<EchoAggregateRecovery>;
   action: (name: string, payload?: JsonValue) => Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }>;
   retryAction: (request: EchoActionRequest) => Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }>;
   actionStatus: (requestId: string) => Promise<EchoActionStatusResult>;
@@ -101,14 +97,14 @@ export type EchoSocketClient = Readonly<{
 }>;
 
 /** @internal Aggregate replica/recovery capability composed with the common endpoint. */
-export function create_echo_socket_client_internal<
+export function create_echo_aggregate_client_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoSocketClientOptions<TActions>): EchoSocketClient {
+>(options: EchoAggregateClientOptions<TActions>): EchoAggregateClient {
   if (options.connection !== undefined) {
     return create_registry_echo_semantic_client_internal(Object.freeze({ ...options, connection: options.connection }), false);
   }
-  const connection = create_echo_endpoint_connection_internal<TActions>({
-    socket: options.socket,
+  const connection = create_echo_semantic_connection_internal<TActions>({
+    transport: options.transport,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.session === undefined ? {} : { session: options.session }),
     ids: {
@@ -116,26 +112,24 @@ export function create_echo_socket_client_internal<
       ...(options.actionAttemptId === undefined ? {} : { actionAttemptId: options.actionAttemptId }),
       ...(options.actionStatusId === undefined ? {} : { actionStatusId: options.actionStatusId }),
     },
-    endpointMessageFormat: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
     actionMessageId: "attempt",
     operationLossError: (reason) => new Error(reason === "ended"
       ? "Hosted aggregate Echo session ended before the pending operation completed."
       : reason === "fenced"
         ? "Hosted aggregate session attachment was fenced."
-        : "Hosted aggregate socket closed."),
-  }) as EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
-  configure_echo_hosted_aggregate_websocket_internal(connection);
+        : "Hosted aggregate transport interrupted."),
+  });
   return create_registry_echo_semantic_client_internal(Object.freeze({ ...options, connection }), true);
 }
 
 function create_registry_echo_semantic_client_internal<
   TActions extends LocusActionPayloads,
 >(
-  options: EchoSocketClientOptions<TActions> & Readonly<{
-    connection: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
+  options: EchoAggregateClientOptions<TActions> & Readonly<{
+    connection: EchoEndpointConnection<TActions>;
   }>,
   ownsConnection: boolean,
-): EchoSocketClient {
+): EchoAggregateClient {
   let map = options.map;
   const replica = create_echo_aggregate_replica_capability_internal(map, options.management);
   let logicalMapId = options.logicalMapId;
@@ -165,18 +159,19 @@ function create_registry_echo_semantic_client_internal<
   }
   if (logicalMapId === undefined || logicalMapId.length === 0) {
     replica.dispose();
-    throw new Error("Hosted aggregate socket Echo requires logicalMapId before bootstrap.");
+    throw new Error("Hosted aggregate Echo requires logicalMapId before bootstrap.");
   }
   const clientLogicalMapId = logicalMapId;
   let status: "idle" | "recovering" | "live" | "failed" | "closed" = "idle";
-  let connected = false;
+  let attachmentAvailable = false;
+  let syncSubscription: EchoSynchronizationSubscription | undefined;
   const compositionDisposers: LocusDisposer[] = [];
   let nextId = 0;
   let recovery: Readonly<{
     id: string;
     sessionId: string;
     sessionEpoch: number;
-    resolve: (value: EchoSocketRecovery) => void;
+    resolve: (value: EchoAggregateRecovery) => void;
     reject: (reason: Error) => void;
     outcome?: Exclude<HostedPlanOutcome, "reject">;
     projectionDigest?: string;
@@ -190,28 +185,36 @@ function create_registry_echo_semantic_client_internal<
   const endpoint = options.connection.endpoint;
   const clientId = endpoint.clientId;
 
-  compositionDisposers.push(options.connection.synchronization.onOutput((output) => {
-    try {
-      receiveReplica(output);
-    } catch (cause) {
-      failReplica(cause instanceof Error ? cause : new Error("Hosted aggregate replica failed."));
-    }
-  }));
   compositionDisposers.push(options.connection.onAttachmentLost((reason, error) => {
     if (reason !== "disconnect") interruptRecovery(error);
   }));
-  compositionDisposers.push(options.connection.onConnectionChange((nextConnected) => {
+  compositionDisposers.push(options.connection.onAvailabilityChange((nextConnected) => {
       if (nextConnected) {
-        connected = true;
+        attachmentAvailable = true;
         return;
       }
-      if (!connected) return;
-      connected = false;
-      const error = new Error("Hosted aggregate socket Echo disconnected.");
+      if (!attachmentAvailable) return;
+      attachmentAvailable = false;
+      const error = new Error("Hosted aggregate Echo disconnected.");
       interruptRecovery(error);
-      replica.markFailed(error);
+      syncSubscription?.cancel();
+      syncSubscription = undefined;
+      replica.markRecovering();
       if (status !== "closed") status = "idle";
   }));
+
+  function onSyncEnd(end: EchoSynchronizationEnd): void {
+    syncSubscription = undefined;
+    if (status === "closed" || end.kind === "cancelled") return;
+    interruptRecovery(end.cause instanceof Error ? end.cause : new Error("Hosted aggregate synchronization interrupted."));
+    replica.markRecovering();
+    status = "idle";
+    queueMicrotask(() => {
+      if (attachmentAvailable && status === "idle" && endpoint.session.status === "attached") {
+        void recover_feed().catch(() => {});
+      }
+    });
+  }
 
   function next(prefix: string): string {
     nextId += 1;
@@ -250,9 +253,9 @@ function create_registry_echo_semantic_client_internal<
     return options.connection.echo.connect();
   }
 
-  function recover_wire(): Promise<EchoSocketRecovery> {
-    if (status === "closed") return Promise.reject(new Error("Hosted aggregate socket Echo is closed."));
-    if (!connected) return Promise.reject(new Error("Hosted aggregate synchronization requires a connected transport."));
+  function recover_feed(): Promise<EchoAggregateRecovery> {
+    if (status === "closed") return Promise.reject(new Error("Hosted aggregate Echo is closed."));
+    if (!attachmentAvailable) return Promise.reject(new Error("Hosted aggregate synchronization requires a connected transport."));
     if (recovery !== undefined) return Promise.reject(new Error("Hosted aggregate synchronization is already in progress."));
     if (endpoint.session.status !== "attached" || endpoint.session.sessionId === undefined || endpoint.session.epoch === undefined) {
       return Promise.reject(new Error("Hosted aggregate synchronization requires an attached session."));
@@ -277,7 +280,7 @@ function create_registry_echo_semantic_client_internal<
     const id = next("recover");
     const recoverySessionId = endpoint.session.sessionId;
     const recoverySessionEpoch = endpoint.session.epoch;
-    return new Promise<EchoSocketRecovery>((resolve, reject) => {
+    return new Promise<EchoAggregateRecovery>((resolve, reject) => {
       recovery = Object.freeze({
         id,
         sessionId: recoverySessionId,
@@ -298,17 +301,26 @@ function create_registry_echo_semantic_client_internal<
             ...(initialInitializerDigest === undefined ? {} : { initialInitializerDigest }),
             ...(initialSessionBinding === undefined ? {} : { initialSessionBinding }) }) }),
       });
-      options.connection.synchronization.begin(request);
+      void options.transport.synchronization.open(request, Object.freeze({
+        onOutput(output) {
+          try { receiveReplica(output); }
+          catch (cause) { failReplica(cause instanceof Error ? cause : new Error("Hosted aggregate replica failed.")); }
+        },
+        onEnd: onSyncEnd,
+      })).then((subscription) => {
+        if (status === "closed" || (recovery?.id !== id && liveRecovery?.id !== id)) subscription.cancel();
+        else syncSubscription = subscription;
+      }, (cause) => onSyncEnd(Object.freeze({ kind: "interrupted", cause })));
     });
   }
 
-  async function connect_client(): Promise<EchoSocketRecovery> {
+  async function connect_client(): Promise<EchoAggregateRecovery> {
     attachTransport();
     if (endpoint.session.status !== "attached") {
       if (endpoint.session.credential === undefined) await endpoint.session.create();
       else await endpoint.session.reattach(endpoint.session.credential);
     }
-    return recover_wire();
+    return recover_feed();
   }
 
   function receiveReplica(message: AggregateSynchronizationOutput): void {
@@ -423,7 +435,7 @@ function create_registry_echo_semantic_client_internal<
       }
       return;
     }
-    throw new Error("Unknown hosted aggregate socket message.");
+    throw new Error("Unknown hosted aggregate synchronization output.");
   }
 
   function assert_projection_message(message: Readonly<{ projectionSequence: number; projectionDigest: string }>,
@@ -633,7 +645,7 @@ function create_registry_echo_semantic_client_internal<
 
   function wait_until_ready(): Promise<void> {
     if (status === "live" && endpoint.ready) return Promise.resolve();
-    if (status === "closed") return Promise.reject(new Error("Hosted aggregate socket Echo is closed."));
+    if (status === "closed") return Promise.reject(new Error("Hosted aggregate Echo is closed."));
     return new Promise((resolve, reject) => { readyWaiters.add(Object.freeze({ resolve, reject })); });
   }
 
@@ -658,16 +670,18 @@ function create_registry_echo_semantic_client_internal<
     connect: connect_client,
     attachTransport,
     disconnect,
-    recover: recover_wire,
-    action: action as EchoSocketClient["action"],
-    retryAction: retryAction as EchoSocketClient["retryAction"],
+    recover: recover_feed,
+    action: action as EchoAggregateClient["action"],
+    retryAction: retryAction as EchoAggregateClient["retryAction"],
     actionStatus,
     wait_until_ready,
     dispose: () => {
       if (status === "closed") return;
       status = "closed";
+      syncSubscription?.cancel();
+      syncSubscription = undefined;
       if (ownsConnection) disconnect();
-      const error = new Error("Hosted aggregate socket Echo is closed.");
+      const error = new Error("Hosted aggregate Echo is closed.");
       interruptRecovery(error);
       if (ownsConnection) options.connection.echo.dispose();
       while (compositionDisposers.length > 0) compositionDisposers.pop()?.();

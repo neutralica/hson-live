@@ -1,5 +1,6 @@
 export { create_echo } from "./echo.js";
 export { hsonEcho } from "./echo.facade.js";
+export type { EchoWebSocketLike, EchoWebSocketConstructor, EchoWebSocketTransport, EchoWebSocketTransportOptions } from "./echo.websocket.js";
 export type {
   Echo,
   EchoActionFn,
@@ -20,5 +21,16 @@ export type {
   EchoSessionResult,
   EchoSessionStatus,
   EchoRetryActionFn,
+  EchoEndpointTransport,
+  EchoReplicaTransport,
+  EchoSubmission,
+  EchoAttachmentEvent,
+  EchoFiniteOperationRequest,
+  EchoFiniteOperationOutcome,
+  EchoSynchronizationRequest,
+  EchoSynchronizationOutput,
+  EchoSynchronizationObserver,
+  EchoSynchronizationSubscription,
+  EchoSynchronizationEnd,
 } from "../../types/echo.types.js";
 export { EchoSyncError, EchoSessionError } from "./echo.error.js";

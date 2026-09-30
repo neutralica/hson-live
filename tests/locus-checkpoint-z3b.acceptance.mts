@@ -1,3 +1,5 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
@@ -5,7 +7,7 @@ import { Hson, add_interaction, enable_interactions, hsonEcho, hsonLiveMap,
   type HsonSchema, type InteractionDescriptor } from "../src/index.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { capture_selected_authority_projection_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
@@ -21,7 +23,7 @@ const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const Page: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
 const Buttons: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "button" content "empty">>>`;
 
-function socket_pair(): { client: LocusSocketLike; server: LocusSocketLike; serverSent: string[] } {
+function socket_pair(): { client: LocusWebSocketLike; server: LocusWebSocketLike; serverSent: string[] } {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const serverSent: string[] = [];
@@ -91,8 +93,8 @@ await case_("restart reapplies deployment local definitions without persisting c
   const locus = await create_persistent_locus({ ...options,
     map: hsonLiveMap.fromLibraries({ public: { data: { value: 1 } } }) });
   const session = await locus.session.create({ libraries: ["public", "ui"] });
-  const pair = socket_pair(); const detach = locus.connect(pair.server);
-  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, socket: pair.client });
+  const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
+  const echo = await hsonEcho.init({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   const ui = echo.map.lib("ui");
   if (ui.mode === "document") throw new Error("Expected local data Library.");
   const authorityRev = locus.rev;
@@ -109,8 +111,8 @@ await case_("restart reapplies deployment local definitions without persisting c
     map: hsonLiveMap.fromLibraries({ public: { data: { value: 0 } } }) });
   assert.throws(() => restored.map.lib("ui"), /Unknown/i);
   const freshSession = await restored.session.create({ libraries: ["public", "ui"] });
-  const freshPair = socket_pair(); const detachFresh = restored.connect(freshPair.server);
-  const fresh = await hsonEcho.init({ now: freshSession.now(), credential: freshSession.credential!, socket: freshPair.client });
+  const freshPair = socket_pair(); const detachFresh = bind_locus_websocket(restored, freshPair.server);
+  const fresh = await hsonEcho.init({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
   const freshUi = fresh.map.lib("ui");
   if (freshUi.mode === "document") throw new Error("Expected local data Library.");
   assert.equal(freshUi.snap(["value"]), 0);
@@ -392,8 +394,8 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   if (!("snap" in publicLibrary)) throw new Error("Expected public data Library.");
   assert.equal(publicLibrary.snap(["value"]), "tiny");
   const pair = socket_pair();
-  restored.connect(pair.server);
-  const client = create_recovery_test_driver({ socket: pair.client, map: clientMap });
+  bind_locus_websocket(restored, pair.server);
+  const client = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: clientMap });
   client.connect();
   await client.session.create();
   assert.equal((await client.completeRecovery()).strategy, "reconcile");

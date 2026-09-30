@@ -1,14 +1,16 @@
+import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
+import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import { encode_locus_client_message } from "../src/api/locus/locus.protocol.ts";
-import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES, type LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
-import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { project_locus_live_transition_internal, LOCUS_LIVE_PROJECTED_WIRE_FORMAT } from "../src/api/locus/locus.live-projection.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 
 const Schema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const map = hsonLiveMap.fromLibraries({
@@ -17,7 +19,7 @@ const map = hsonLiveMap.fromLibraries({
   PRIVATE_NAME_SENTINEL: { data: { value: "PRIVATE_ROOT_SENTINEL" }, schema: Schema },
   UNSELECTED_NAME_SENTINEL: { data: { value: "UNSELECTED_ROOT_SENTINEL" }, schema: Schema },
 });
-const server = create_locus_hosted_aggregate_socket_internal({ map, libraries: [
+const server = create_locus_hosted_aggregate_authority_internal({ map, libraries: [
   { name: "A", ownership: "shared" },
   { name: "B", ownership: "shared" },
   { name: "PRIVATE_NAME_SENTINEL", ownership: "private" },
@@ -32,12 +34,12 @@ function pair() {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const received: string[] = [];
-  const client: LocusSocketLike = {
+  const client: LocusWebSocketLike = {
     send(raw) { for (const listener of toServer) listener(raw); }, close() {},
     onMessage(listener) { toClient.add(listener); return () => { toClient.delete(listener); }; },
     onClose() { return () => {}; },
   };
-  const socket: LocusSocketLike = {
+  const socket: LocusWebSocketLike = {
     send(raw) { received.push(raw); for (const listener of toClient) listener(raw); }, close() {},
     onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; },
@@ -47,7 +49,7 @@ function pair() {
 async function settle() { await new Promise<void>((resolve) => setTimeout(resolve, 0)); }
 async function session(selection: string) {
   const connection = pair();
-  server.connect(connection.socket);
+  bind_locus_websocket(server, connection.socket);
   connection.client.send(encode_locus_client_message({ type: "session-create", id: `create-${selection}`,
     projection: { libraries: [selection] } }));
   await settle();
@@ -99,8 +101,8 @@ for (const connection of [a, b]) {
   assert.equal(raw.includes("PRIVATE"), false);
 }
 const echoPair = pair();
-server.connect(echoPair.socket);
-const echo = create_echo_socket_client_internal({ socket: echoPair.client, logicalMapId: server.logicalMapId });
+bind_locus_websocket(server, echoPair.socket);
+const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(echoPair.client), logicalMapId: server.logicalMapId });
 assert.equal((await echo.connect()).revision, 2);
 assert.equal(echo.lastAppliedRev, 2);
 assert.equal(echo.map?.rev, 0);
@@ -171,7 +173,7 @@ const beforeRejectedEcho = live(echoPair).length;
 await assert.rejects(() => server.mutate((draft) => {
   data(draft, "A").at(["value"]).set(oversizedVisible);
   data(draft, "B").at(["value"]).set("SMALL_B_REJECTED_SENTINEL");
-}), /Hosted aggregate socket message exceeds its configured byte limit/);
+}), /Hosted aggregate publication exceeds its configured byte limit/);
 assert.equal(server.rev, 4);
 assert.equal(map.rev, 4);
 assert.equal(echo.lastAppliedRev, 4);
@@ -214,11 +216,11 @@ const projectedBytes = new TextEncoder().encode(JSON.stringify({ type: "commit",
     commit: projected.commit }, format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT })).byteLength;
 assert.ok(projectedBytes > oldBytes + 1);
 const tightMap = hsonLiveMap.fromLibraries({ A: { data: { value: "A0" }, schema: Schema } });
-const tightServer = create_locus_hosted_aggregate_socket_internal({ map: tightMap, libraries: [{ name: "A", ownership: "shared" }],
+const tightServer = create_locus_hosted_aggregate_authority_internal({ map: tightMap, libraries: [{ name: "A", ownership: "shared" }],
   defaultProjection: { libraries: ["A"] }, authorizeProjection: () => ({ libraries: ["A"] }),
   maxWireBytes: oldBytes + 1 });
 const tightConnection = pair();
-tightServer.connect(tightConnection.socket);
+bind_locus_websocket(tightServer, tightConnection.socket);
 tightConnection.client.send(encode_locus_client_message({ type: "session-create", id: "tight-create" }));
 await settle();
 tightConnection.client.send(JSON.stringify({ type: "recover", id: "tight-recover", logicalMapId: tightServer.logicalMapId }));
@@ -244,7 +246,7 @@ const interactionServer = hsonLocus.create({ map: interactionMap, libraries: [
 ], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
 authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
 const interactionConnection = pair();
-interactionServer.connect(interactionConnection.socket);
+bind_locus_websocket(interactionServer, interactionConnection.socket);
 interactionConnection.client.send(encode_locus_client_message({ type: "session-create", id: "interaction-create" }));
 await settle();
 interactionConnection.client.send(JSON.stringify({ type: "recover", id: "interaction-recover", logicalMapId: interactionServer.logicalMapId }));

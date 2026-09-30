@@ -6,3 +6,4 @@ export type * from "./live.trace.types.js";
 export type * from "./locus.protocol.types.js";
 export type * from "./locus.projection.types.js";
 export type * from "./locus.core.types.js";
+export type { LocusWebSocketLike } from "../api/locus/locus.websocket.js";

@@ -16,42 +16,22 @@ import type {
   LocusSessionId,
 } from "../../types/locus.types.js";
 
-/** @internal Finite commands, queries, and session-control requests. */
-export type LocusFiniteOperationRequest<
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-> = LocusClientActionMessage<TActions> | Extract<LocusClientMessage<TActions>, {
-  type: "action-status" | "session-create" | "session-attach" | "session-detach" | "session-goodbye";
-}>;
+export type LocusFiniteOperationRequest<TActions extends LocusActionPayloads = LocusActionPayloads> =
+  LocusClientActionMessage<TActions> | Extract<LocusClientMessage<TActions>, {
+    type: "action-status" | "session-create" | "session-attach" | "session-detach" | "session-goodbye";
+  }>;
 
-/** @internal Typed finite authority outcomes and session-control outcomes. */
 export type LocusFiniteOperationOutcome = Extract<LocusServerMessage, {
-  type: "ack" | "error" | "action-status" | "session-created" | "session-attached" | "session-detached" | "session-rejected" | "session-fenced" | "session-ended";
+  type: "ack" | "error" | "action-status" | "session-created" | "session-attached"
+    | "session-detached" | "session-rejected" | "session-ended";
 }>;
-
-/** @internal Recovery establishment and recovery-transfer output. */
 export type LocusSynchronizationOutput = LocusHostedAggregateSynchronizationOutput;
-
-/** @internal Ordered canonical publication after a caught-up boundary. */
 export type LocusCanonicalPublication = LocusHostedAggregateCanonicalPublication;
-
-/** @internal Non-canonical application event output. */
 export type LocusTransientEventOutput = Extract<LocusServerMessage, { type: "event" }>;
+export type LocusAttachmentNotice = Extract<LocusServerMessage, { type: "session-fenced" | "session-ended" }>;
+export type LocusOrderedSynchronizationOutput = LocusSynchronizationOutput | LocusCanonicalPublication;
+export type LocusOrderedSynchronizationSink = (output: LocusOrderedSynchronizationOutput) => void | Promise<void>;
 
-/**
- * Internal typed downstream sink. Transport adapters frame these semantic
- * outputs; Locus authority never needs to know how their bytes are carried.
- */
-export type LocusDownstreamSink<
-  TSynchronization = LocusSynchronizationOutput,
-  TPublication = LocusCanonicalPublication,
-> = Readonly<{
-  finite: (outcome: LocusFiniteOperationOutcome) => void;
-  synchronization: (output: TSynchronization) => void;
-  publication: (publication: TPublication) => void;
-  event: (event: LocusTransientEventOutput) => void;
-}>;
-
-/** @internal Authority/session evidence shared by operations and synchronization. */
 export type LocusAuthoritySessionBinding = Readonly<{
   principalId: string | undefined;
   logicalMapId: LocusLogicalMapId;
@@ -61,53 +41,54 @@ export type LocusAuthoritySessionBinding = Readonly<{
   readonly attached: boolean;
 }>;
 
-/**
- * Internal semantic attachment. A WebSocket is one adapter for this shape;
- * future finite-operation and synchronization transports may be composed
- * around the same authority/session binding.
- */
-export type LocusSemanticAttachment<
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-  TSynchronizationRequest = LocusHostedAggregateSynchronizationRequest,
-> = Readonly<{
+/** One logical authorized attachment; no physical connection or stream is required. */
+export type LocusSemanticAttachment<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
   binding: LocusAuthoritySessionBinding;
   operations: Readonly<{
-    submit: (request: LocusFiniteOperationRequest<TActions>) => void | Promise<void>;
+    submit: (request: LocusFiniteOperationRequest<TActions>) => Promise<LocusFiniteOperationOutcome>;
   }>;
   synchronization: Readonly<{
-    begin: (request: TSynchronizationRequest) => void;
-    cancel: () => void;
+    open: (request: LocusHostedAggregateSynchronizationRequest, sink: LocusOrderedSynchronizationSink,
+      onEnd?: (cause?: unknown) => void) => LocusDisposer;
   }>;
   emit_event: (event: string, payload: JsonValue) => void;
   close: (hostShutdown?: boolean) => void;
 }>;
 
 export type LocusSemanticAttachmentOptions = Readonly<{
-  downstream: LocusDownstreamSink;
+  notice: (event: LocusAttachmentNotice) => void;
   connection?: LocusConnectionContext;
-  /** Adapter-owned physical listener cleanup, invoked when the attachment ends. */
   onClose?: LocusDisposer;
 }>;
 
-type BoundSemanticAttachmentFactory = (
-  options: LocusSemanticAttachmentOptions,
-) => LocusSemanticAttachment;
-
+type BoundSemanticAttachmentFactory = (options: LocusSemanticAttachmentOptions) => LocusSemanticAttachment;
 const semanticAttachmentFactories = new WeakMap<object, BoundSemanticAttachmentFactory>();
+const publicationByteLimits = new WeakMap<object, number>();
 
-export function register_locus_semantic_attachment_internal<
-  TActions extends LocusActionPayloads = LocusActionPayloads,
->(
+export function register_locus_semantic_attachment_internal<TActions extends LocusActionPayloads = LocusActionPayloads>(
   locus: object,
   factory: (options: LocusSemanticAttachmentOptions) => LocusSemanticAttachment<TActions>,
+  maxWireBytes: number,
 ): void {
   semanticAttachmentFactories.set(locus, factory as unknown as BoundSemanticAttachmentFactory);
+  publicationByteLimits.set(locus, maxWireBytes);
 }
 
-/** Attach typed operation and synchronization capabilities to one Locus authority. */
-export function attach_locus_semantic_transport_internal<
-  TActions extends LocusActionPayloads = LocusActionPayloads,
->(
+export function alias_locus_semantic_attachment_internal(target: object, source: object): void {
+  const factory = semanticAttachmentFactories.get(source);
+  const limit = publicationByteLimits.get(source);
+  if (factory === undefined || limit === undefined) throw new Error("Locus semantic attachment authority is unavailable.");
+  semanticAttachmentFactories.set(target, factory);
+  publicationByteLimits.set(target, limit);
+}
+
+export function locus_publication_byte_limit_internal(locus: object): number {
+  const limit = publicationByteLimits.get(locus);
+  if (limit === undefined) throw new Error("Locus publication limit is unavailable.");
+  return limit;
+}
+
+export function attach_locus_semantic_transport_internal<TActions extends LocusActionPayloads = LocusActionPayloads>(
   locus: object,
   options: LocusSemanticAttachmentOptions,
 ): LocusSemanticAttachment<TActions> {
@@ -116,10 +97,7 @@ export function attach_locus_semantic_transport_internal<
   return factory(options) as LocusSemanticAttachment<TActions>;
 }
 
-/** @internal No-op attachment returned by unavailable authority runtimes. */
-export function inert_locus_semantic_attachment_internal<
-  TActions extends LocusActionPayloads = LocusActionPayloads,
->(
+export function inert_locus_semantic_attachment_internal<TActions extends LocusActionPayloads = LocusActionPayloads>(
   logicalMapId: LocusLogicalMapId,
   incarnationId: LocusIncarnationId,
   principalId?: string,
@@ -134,8 +112,8 @@ export function inert_locus_semantic_attachment_internal<
   });
   return Object.freeze({
     binding,
-    operations: Object.freeze({ submit: () => {} }),
-    synchronization: Object.freeze({ begin: () => {}, cancel: () => {} }),
+    operations: Object.freeze({ submit: async () => { throw new Error("Locus attachment is unavailable."); } }),
+    synchronization: Object.freeze({ open: () => () => {} }),
     emit_event: () => {},
     close: () => {},
   });

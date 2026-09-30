@@ -148,6 +148,7 @@ export { DocumentMirrorError } from "./api/mirror/mirror.document.error.js";
 
 export { create_echo } from "./api/echo/echo.js";
 export { EchoSyncError, EchoSessionError } from "./api/echo/echo.error.js";
+export type { EchoWebSocketLike, EchoWebSocketConstructor, EchoWebSocketTransport, EchoWebSocketTransportOptions } from "./api/echo/echo.websocket.js";
 export type {
   Echo,
   EchoActionFn,
@@ -162,9 +163,15 @@ export type {
   EchoSessionOptions,
   EchoSessionResult,
   EchoSessionStatus,
+  EchoEndpointTransport,
+  EchoReplicaTransport,
+  EchoSubmission,
+  EchoAttachmentEvent,
 } from "./types/echo.types.js";
 
 export { create_locus } from "./api/locus/locus.public.js";
+export { bind_locus_websocket } from "./api/locus/locus.websocket.js";
+export type { LocusWebSocketLike } from "./api/locus/locus.websocket.js";
 export {
   LocusDisconnectedError,
   LocusDuplicateActionIdError,
@@ -177,7 +184,6 @@ export type {
   LocusActivityKind,
   LocusActivitySnapshot,
   LocusActivityState,
-  LocusConnection,
   Locus,
   LocusSessionApi,
   LocusSession,
@@ -189,7 +195,6 @@ export type {
   LocusActions,
   LocusOptions,
   LocusResult,
-  LocusSocketLike,
 } from "./types/locus.types.js";
 
 export { create_livehost_locus_registry } from "./api/livehost/services/livehost.authority-registry.js";

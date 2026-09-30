@@ -99,7 +99,7 @@ Continuation calls `activate_interactions`; it does not call
 For hosted continuation, deliver the explicit `session.now({ html: "page" })`
 result and its credential separately. If a text carrier is needed, decode the
 projected state and place it back in the cut's `libs` field. Pass the cut,
-credential, socket, and existing root Element to `continue_hosted_document`.
+credential, transport, and existing root Element to `continue_hosted_document`.
 The document name is explicit in the HTML-bearing cut; a separate `document`
 name can select among multiple projected documents.
 

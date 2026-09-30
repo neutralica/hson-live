@@ -49,6 +49,6 @@ Server-first creation uses ownership and authorization filtering and needs no br
 
 Hosted `libs` is an admitted `hson-authority-projection-snapshot`; `local` is a distinct set of fingerprinted initializers. Encode the whole `now` object using the SSR codec's `hosted-projection` family so text carriers retain both. Local `map.cut().libs` uses the distinct `libraries` family. Credentials are absent and must be handed off independently.
 
-The browser passes structured `now`, a separate credential, socket, and existing root to `continue_hosted_document`. The helper prepares Echo, initializes missing local libraries, adopts the explicit shared document, binds Mirror, and completes sync. The transfer codec remains optional when a carrier needs text.
+The browser passes structured `now`, a separate credential, transport, and existing root to `continue_hosted_document`. The helper prepares Echo, initializes missing local libraries, adopts the explicit shared document, binds Mirror, and completes sync. The transfer codec remains optional when a carrier needs text.
 
 The application owns its shell, routing, asset tags, headers, CSP, and carrier placement. Encode this `now` composition beside its HTML. Framework privacy filtering protects library scope; the application still controls the contents it authors into permitted libraries and arbitrary responses.

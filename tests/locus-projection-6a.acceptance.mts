@@ -3,7 +3,7 @@ import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts
 import { Hson, hsonLiveMap, hsonLocus, enable_interactions, type HsonSchema } from "../src/index.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { decode_locus_message } from "../src/api/locus/locus.protocol.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection, HOSTED_PROJECTION_EGRESS_COMPLETE } from "../src/api/locus/locus.projection.ts";
 import type { LocusLibraryCatalogEntry, LocusProjectionAuthorization } from "../src/types/locus.types.ts";
@@ -42,13 +42,16 @@ function grant(principal?: string): LocusProjectionAuthorization {
   return {};
 }
 
-function attachment(server: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>, principalId: string) {
+function attachment(server: ReturnType<typeof create_locus_hosted_aggregate_authority_internal>, principalId: string) {
   const finite: Array<{ type: string; readonly [field: string]: unknown }> = [];
-  const attached = server.attach({
-    finite: (message) => { finite.push(message); },
-    synchronization: () => {}, publication: () => {}, event: () => {},
-  }, { principalId });
-  return { attached, finite };
+  const attached = server.attach((notice) => { finite.push(notice); }, { principalId });
+  return { attached: Object.freeze({ ...attached, operations: Object.freeze({
+    async submit(request: Parameters<typeof attached.operations.submit>[0]) {
+      const outcome = await attached.operations.submit(request);
+      finite.push(outcome);
+      return outcome;
+    },
+  }) }), finite };
 }
 
 assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
@@ -152,7 +155,7 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 // Session creation stores one frozen effective scope. Reattachment reuses it; revocation fences it.
 {
   const authority = map();
-  const server = create_locus_hosted_aggregate_socket_internal({ map: authority, libraries: CATALOG,
+  const server = create_locus_hosted_aggregate_authority_internal({ map: authority, libraries: CATALOG,
     authorizeProjection: ({ connection }) => grant(connection?.principalId) });
   const first = attachment(server, "alice");
   await first.attached.operations.submit({ type: "session-create", id: "a", projection: { libraries: ["page"] } });
@@ -192,14 +195,18 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 // second request on the same attachment cannot replace that pending scope.
 {
   let decide: ((grant: LocusProjectionAuthorization) => void) | undefined;
-  const server = create_locus_hosted_aggregate_socket_internal({ map: map(), libraries: CATALOG,
+  const server = create_locus_hosted_aggregate_authority_internal({ map: map(), libraries: CATALOG,
     authorizeProjection: () => new Promise<LocusProjectionAuthorization>((resolve) => { decide = resolve; }) });
   const context = { principalId: "alice" };
   const finite: Array<{ type: string; readonly [field: string]: unknown }> = [];
-  const client = { attached: server.attach({
-    finite: (message) => { finite.push(message); },
-    synchronization: () => {}, publication: () => {}, event: () => {},
-  }, context), finite };
+  const rawAttachment = server.attach(() => {}, context);
+  const client = { attached: Object.freeze({ ...rawAttachment, operations: Object.freeze({
+    async submit(request: Parameters<typeof rawAttachment.operations.submit>[0]) {
+      const outcome = await rawAttachment.operations.submit(request);
+      finite.push(outcome);
+      return outcome;
+    },
+  }) }), finite };
   const pending = client.attached.operations.submit({ type: "session-create", id: "pending",
     projection: { libraries: ["page"] } });
   assert.equal(server.sessions.debug().activeSessionCount, 0);

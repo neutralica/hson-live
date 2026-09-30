@@ -1,5 +1,5 @@
 import {
-  create_node_locus_socket,
+  bind_node_locus_websocket,
 } from "hson-live/locus/node";
 import type { LiveHostApplication } from "hson-live/livehost";
 import {
@@ -8,12 +8,13 @@ import {
 // @ts-expect-error One-map socket adapters moved exclusively to the Locus Node entrypoint.
 import { create_node_livehost_socket } from "hson-live/livehost/node";
 // @ts-expect-error Locus socket adapters are not re-exported by the future-host Node entrypoint.
-import { create_node_locus_socket as misplaced_locus_socket } from "hson-live/livehost/node";
+import { bind_node_locus_websocket as misplaced_locus_socket } from "hson-live/livehost/node";
 
 declare const application: LiveHostApplication;
-declare const websocket: Parameters<typeof create_node_locus_socket>[0];
+declare const websocket: Parameters<typeof bind_node_locus_websocket>[1];
 
-void create_node_locus_socket(websocket);
+declare const locus: object;
+void bind_node_locus_websocket(locus, websocket);
 void start_node_application_host({ applications: [application] });
 void create_node_livehost_socket;
 void misplaced_locus_socket;

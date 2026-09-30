@@ -1,5 +1,5 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import { ExactDataCarrier, admit_hson_data_input, hson_data_text, encode_hson_data_internal } from "../data/hson-data.js";
+import { ExactDataCarrier, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
 import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
@@ -25,9 +25,7 @@ import type {
   LocusLibraryOwnership,
   LocusProjectionAuthorizer,
   LocusRequestedProjection,
-  LocusSocketLike,
 } from "../../types/locus.types.js";
-import { decode_locus_message } from "./locus.protocol.js";
 import { is_locus_json_value } from "./locus.protocol.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
@@ -60,7 +58,6 @@ import {
   type LocusHostedAggregateGateInput,
   type LocusHostedAggregateAuthorityEnvelope,
 } from "./locus.aggregate.js";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "./locus.aggregate.protocol.js";
 import {
   admit_locus_aggregate_external_action,
   type LocusAggregateExternalActionAttempt,
@@ -75,15 +72,25 @@ import {
   register_locus_retained_action_status_internal,
 } from "./locus.action-status.internal.js";
 import type {
-  LocusHostedAggregateDownstreamSink,
   LocusHostedAggregateProgress,
   LocusHostedProjectionChange,
   LocusHostedAggregateSemanticAttachment,
 } from "./locus.aggregate.transport.internal.js";
-import type { LocusFiniteOperationRequest } from "./locus.transport.internal.js";
+import type {
+  LocusFiniteOperationRequest,
+  LocusFiniteOperationOutcome,
+  LocusAttachmentNotice,
+  LocusOrderedSynchronizationSink,
+  LocusOrderedSynchronizationOutput,
+} from "./locus.transport.internal.js";
+import { register_locus_semantic_attachment_internal } from "./locus.transport.internal.js";
 
 /** The established Locus retained live-history budget. */
 export const DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES = 4 * 1_024 * 1_024;
+const MAX_SYNCHRONIZATION_BUFFER_BYTES = HOSTED_MAX_SNAPSHOT_BYTES + DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES;
+// Reserve room for a concrete transport's envelope before an authority write is admitted.
+// The WebSocket adapter still enforces its exact encoded-frame limit at the edge.
+const MAX_PUBLICATION_ENVELOPE_RESERVE_BYTES = 128;
 /** Recovery IDs are admitted by UTF-8 bytes; preaccept uses their maximum JSON expansion. */
 const MAX_RECOVERY_REQUEST_ID_BYTES = 1_024;
 const WORST_CASE_RECOVERY_ID = "\u0000".repeat(MAX_RECOVERY_REQUEST_ID_BYTES);
@@ -132,18 +139,35 @@ type HostedRecoveryAttachment = Readonly<{
   sessionId: string;
   epoch: number;
   projection: LocusEffectiveProjection;
+  subscription: HostedSynchronizationSubscription;
 }>;
 
-type HostedConnection = {
-  readonly downstream: LocusHostedAggregateDownstreamSink;
-  readonly onClose?: LocusDisposer;
+type HostedSynchronizationSubscription = {
   recoveryId: string | undefined;
   recovering: boolean;
   live: boolean;
   readonly pendingLive: LocusHostedAggregateAuthorityEnvelope[];
+  pendingLiveBytes: number;
+  readonly queue: Array<Readonly<{ output: LocusOrderedSynchronizationOutput; bytes: number }>>;
+  queuedBytes: number;
+  draining: boolean;
+  sink?: LocusOrderedSynchronizationSink;
+  onEnd?: (cause?: unknown) => void;
+  releaseRecoveryActivity?: LocusDisposer;
+};
+
+function empty_subscription(): HostedSynchronizationSubscription {
+  return { recoveryId: undefined, recovering: false, live: false, pendingLive: [], pendingLiveBytes: 0,
+    queue: [], queuedBytes: 0, draining: false };
+}
+
+type HostedAttachment = {
+  readonly notice: (event: LocusAttachmentNotice) => void;
+  readonly pendingFinite: Map<string, Readonly<{ resolve: (outcome: LocusFiniteOperationOutcome) => void; reject: (cause: unknown) => void }>>;
+  readonly onClose?: LocusDisposer;
+  subscription: HostedSynchronizationSubscription;
   closed: boolean;
   releaseActivity?: LocusDisposer;
-  releaseRecoveryActivity?: LocusDisposer;
   readonly context?: LocusConnectionContext;
   sessionId: string | undefined;
   sessionEpoch: number | undefined;
@@ -206,7 +230,7 @@ function is_hosted_aggregate_downstream_output(value: unknown): value is Readonl
     && typeof value.type === "string";
 }
 
-export type LocusHostedAggregateSocketOptions<
+export type LocusHostedAggregateAuthorityOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   map: LiveMap;
@@ -245,10 +269,9 @@ export type LocusHostedAggregateSocketServer<
   readonly incarnationId: string;
   readonly registryDigest: string;
   readonly rev: number;
-  connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusDisposer;
-  /** @internal Typed operation/synchronization attachment below the socket adapter. */
+  /** @internal Typed operation/synchronization attachment below concrete transport adapters. */
   attach: (
-    downstream: LocusHostedAggregateDownstreamSink,
+    notice: (event: LocusAttachmentNotice) => void,
     context?: LocusConnectionContext,
     onClose?: LocusDisposer,
   ) => LocusHostedAggregateSemanticAttachment<TActions>;
@@ -276,10 +299,10 @@ export type LocusHostedAggregateSocketServer<
  * Aggregate transport authority. It deliberately owns one aggregate
  * Locus, one global retained history and one map-wide recovery cut.
  */
-export function create_locus_hosted_aggregate_socket_internal<
+export function create_locus_hosted_aggregate_authority_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
-  options: LocusHostedAggregateSocketOptions<TActions>,
+  options: LocusHostedAggregateAuthorityOptions<TActions>,
 ): LocusHostedAggregateSocketServer<TActions> {
   const maxWireBytes = bounded(
     options.maxWireBytes,
@@ -310,7 +333,7 @@ export function create_locus_hosted_aggregate_socket_internal<
   let historyBaseRevision = initial.revision;
   let retainedBytes = 0;
   const history: HostedHistoryEntry[] = [];
-  const connections = new Set<HostedConnection>();
+  const connections = new Set<HostedAttachment>();
   const preparedLiveEvents = new WeakMap<object, ReadonlyMap<string, LocusLiveProjectedEvent>>();
   const preparedSystemRoots = new WeakMap<object, Readonly<{ before?: HsonNode; after?: HsonNode }>>();
   let admissionBarrier: Promise<void> | undefined;
@@ -338,7 +361,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       const events = new Map<string, LocusLiveProjectedEvent>();
       const roster = [...sessions.resumable_projections()];
       for (const connection of connections) {
-        if (connection.closed || connection.sessionResumable || (!connection.live && !connection.recovering)
+        if (connection.closed || connection.sessionResumable || (!connection.subscription.live && !connection.subscription.recovering)
           || connection.sessionId === undefined || connection.effectiveProjection === undefined) continue;
         roster.push(Object.freeze({ sessionId: connection.sessionId, projection: connection.effectiveProjection }));
       }
@@ -346,8 +369,8 @@ export function create_locus_hosted_aggregate_socket_internal<
         const event = project_locus_live_transition_internal(commit, effective, beforeSystem, afterSystem);
         const live = projected_output(WORST_CASE_RECOVERY_ID, event, effective,
           sessions.projection_sequence(sessionId) ?? 0);
-        encode_downstream_message(live, maxWireBytes);
-        encode_downstream_message(live.type === "progress"
+        assert_bounded_publication(live, maxWireBytes);
+        assert_bounded_publication(live.type === "progress"
           ? Object.freeze({ ...live, type: "recovery-progress", phase: "tail", progress: live.progress })
           : Object.freeze({ ...live, type: "recovery-commit", phase: "tail", commit: live.commit }), maxWireBytes);
         events.set(sessionId, event);
@@ -403,8 +426,16 @@ export function create_locus_hosted_aggregate_socket_internal<
     for (const connection of [...connections]) {
       if (connection.closed || connection.sessionId === undefined || connection.sessionEpoch === undefined
         || !sessions.is_active(connection.sessionId, connection.sessionEpoch)) continue;
-      if (connection.recovering) connection.pendingLive.push(envelope);
-      else if (connection.live && connection.recoveryId !== undefined) {
+      if (connection.subscription.recovering) {
+        const bytes = encoded_bytes(envelope);
+        if (connection.subscription.pendingLiveBytes + bytes > MAX_SYNCHRONIZATION_BUFFER_BYTES) {
+          close_failed_publication(connection);
+          continue;
+        }
+        connection.subscription.pendingLiveBytes += bytes;
+        connection.subscription.pendingLive.push(envelope);
+      }
+      else if (connection.subscription.live && connection.subscription.recoveryId !== undefined) {
         const effective = connection.effectiveProjection;
         const event = events?.get(connection.sessionId);
         if (effective === undefined || event === undefined) {
@@ -484,7 +515,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     let attachedContext: LocusConnectionContext | undefined;
     let requested: LocusRequestedProjection;
     const enteredConnection = [...connections].find((candidate) => candidate.sessionId === sessionId
-      && candidate.sessionEpoch !== undefined && candidate.live && !candidate.closed
+      && candidate.sessionEpoch !== undefined && candidate.subscription.live && !candidate.closed
       && !candidate.fenced && sessions.is_active(sessionId, candidate.sessionEpoch));
     try {
       suppliedContext = authorization_context_snapshot(context);
@@ -494,7 +525,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     return locus.run_exclusive(async () => {
       if (disposed || (expectedKey !== undefined && sessions.key(sessionId) !== expectedKey)) throw new LocusProjectionUnavailableError();
       const connection = [...connections].find((candidate) => candidate.sessionId === sessionId
-        && candidate.sessionEpoch !== undefined && candidate.live && !candidate.closed
+        && candidate.sessionEpoch !== undefined && candidate.subscription.live && !candidate.closed
         && !candidate.fenced && sessions.is_active(sessionId, candidate.sessionEpoch));
       if (connection !== enteredConnection) throw new LocusProjectionUnavailableError();
       const previous = sessions.projection(sessionId);
@@ -510,7 +541,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       const disconnected = connection === undefined && suppliedContext !== undefined
         && sessions.disconnected_with_principal(sessionId, suppliedContext);
       if (previous === undefined || (!serverOwned && !disconnected && (connection === undefined
-        || connection.effectiveProjection !== previous || connection.recoveryId === undefined
+        || connection.effectiveProjection !== previous || connection.subscription.recoveryId === undefined
         || connection.sessionEpoch === undefined))) {
         throw new LocusProjectionUnavailableError();
       }
@@ -524,7 +555,7 @@ export function create_locus_hosted_aggregate_socket_internal<
             || !sessions.principal_matches(sessionId, authorizationContext)
           : disconnected ? suppliedContext === undefined || !sessions.disconnected_with_principal(sessionId, suppliedContext)
           : connection === undefined || epoch === undefined || !attachment_current(connection, sessionId, epoch)
-            || !connection.live || connection.effectiveProjection !== previous
+            || !connection.subscription.live || connection.effectiveProjection !== previous
             || !sessions.principal_matches(sessionId, authorizationContext))) {
         throw new LocusProjectionUnavailableError();
       }
@@ -540,11 +571,11 @@ export function create_locus_hosted_aggregate_socket_internal<
         const sequence = sessions.update_projection(sessionId, previous, next);
         return Object.freeze({ changed: true, sequence, digest: next.digest, authorityRev: locus.rev });
       }
-      if (connection === undefined || connection.recoveryId === undefined) throw new LocusProjectionUnavailableError();
+      if (connection === undefined || connection.subscription.recoveryId === undefined) throw new LocusProjectionUnavailableError();
       const snapshot = capture_selected_authority_projection_snapshot(options.map, next);
       const topology = projection_change_topology(added, snapshot);
       const event: LocusHostedProjectionChange = Object.freeze({
-        type: "projection-change", id: connection.recoveryId,
+        type: "projection-change", id: connection.subscription.recoveryId,
         logicalMapId: locus.logicalMapId, incarnationId: locus.incarnationId,
         authorityRev: locus.rev, sequence: currentSequence + 1,
         previousDigest: previous.digest, projectionDigest: next.digest,
@@ -554,10 +585,10 @@ export function create_locus_hosted_aggregate_socket_internal<
         local: next.local, initializerDigest: next.initializerDigest,
         ...(reconcile ? { reconciliation: snapshot } : topology === undefined ? {} : { topology }),
       });
-      encode_downstream_message(event, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes);
+      assert_bounded_publication(event, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes);
       const sequence = sessions.update_projection(sessionId, previous, next);
       connection.effectiveProjection = next;
-      try { send(connection, event, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes); }
+      try { send(connection, event); }
       catch (cause) {
         sessions.revoke(sessionId);
         close_failed_publication(connection);
@@ -567,8 +598,8 @@ export function create_locus_hosted_aggregate_socket_internal<
     });
   }
 
-  function projected_live_output(connection: HostedConnection, event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection) {
-    const id = connection.recoveryId;
+  function projected_live_output(connection: HostedAttachment, event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection) {
+    const id = connection.subscription.recoveryId;
     if (id === undefined) throw new Error("Live publication has no recovery identity.");
     return projected_output(id, event, effective,
       connection.sessionId === undefined ? 0 : sessions.projection_sequence(connection.sessionId) ?? 0);
@@ -589,17 +620,49 @@ export function create_locus_hosted_aggregate_socket_internal<
       }) });
   }
 
-  function close_failed_publication(connection: HostedConnection): void {
-    if (connection.closed) return;
-    connection.closed = true;
+  function close_failed_publication(connection: HostedAttachment,
+    subscription = connection.subscription): void {
+    if (connection.closed || connection.subscription !== subscription) return;
     stop_recovery(connection);
-    connections.delete(connection);
-    if (connection.sessionId !== undefined && connection.sessionEpoch !== undefined) {
-      sessions.detach(connection.sessionId, connection.sessionEpoch);
+    subscription.sink = undefined;
+    subscription.queue.length = 0;
+    subscription.queuedBytes = 0;
+    connection.subscription = empty_subscription();
+    try { subscription.onEnd?.(new Error("Locus synchronization subscription failed.")); }
+    catch { /* Adapter failure is isolated from authority work. */ }
+  }
+
+  function enqueue_sync(connection: HostedAttachment, output: LocusOrderedSynchronizationOutput): void {
+    const subscription = connection.subscription;
+    if (subscription.sink === undefined) return;
+    const bytes = encoded_bytes(output);
+    if (subscription.queuedBytes + bytes > MAX_SYNCHRONIZATION_BUFFER_BYTES) {
+      close_failed_publication(connection);
+      return;
     }
-    connection.releaseActivity?.();
-    connection.releaseActivity = undefined;
-    try { connection.onClose?.(); } catch { /* Transport cleanup is isolated. */ }
+    subscription.queuedBytes += bytes;
+    subscription.queue.push(Object.freeze({ output, bytes }));
+    const drain = (): void => {
+      if (subscription.draining || connection.subscription !== subscription || subscription.sink === undefined) return;
+      while (subscription.queue.length > 0) {
+        const queued = subscription.queue.shift()!;
+        let delivery: void | Promise<void>;
+        try { delivery = subscription.sink(queued.output); }
+        catch { close_failed_publication(connection, subscription); return; }
+        if (delivery !== undefined) {
+          subscription.draining = true;
+          void Promise.resolve(delivery).then(() => {
+            if (connection.subscription !== subscription) return;
+            subscription.queuedBytes -= queued.bytes;
+            subscription.draining = false;
+            drain();
+          }, () => close_failed_publication(connection, subscription));
+          return;
+        }
+        subscription.queuedBytes -= queued.bytes;
+      }
+    };
+    drain();
   }
 
   function fault_authority(): void {
@@ -651,32 +714,40 @@ export function create_locus_hosted_aggregate_socket_internal<
     retainedBytes += decision.entry.bytes;
   }
 
-  function send(connection: HostedConnection, message: unknown, _limit = maxWireBytes): void {
+  function send(connection: HostedAttachment, message: unknown): void {
     if (connection.closed) return;
     if (!is_hosted_aggregate_downstream_output(message)) {
       throw new Error("Hosted aggregate semantic output is malformed.");
     }
     const semantic: Record<string, unknown> = { ...message };
-    if (semantic.type === "commit" || semantic.type === "progress" || semantic.type === "projection-change") {
-      connection.downstream.publication(semantic as Parameters<LocusHostedAggregateDownstreamSink["publication"]>[0]);
+    if (semantic.type === "session-fenced") {
+      connection.notice(semantic as LocusAttachmentNotice);
       return;
     }
-    if (semantic.type === "recovery-plan"
+    if (semantic.type === "commit" || semantic.type === "progress" || semantic.type === "projection-change"
+      || semantic.type === "recovery-plan"
       || semantic.type === "recovery-snapshot"
       || semantic.type === "recovery-commit"
       || semantic.type === "recovery-progress"
       || semantic.type === "recovery-caught-up") {
-      connection.downstream.synchronization(semantic as Parameters<LocusHostedAggregateDownstreamSink["synchronization"]>[0]);
+      enqueue_sync(connection, semantic as LocusOrderedSynchronizationOutput);
       return;
     }
     if (semantic.type === "synchronization-failure") {
-      connection.downstream.synchronization(semantic as Parameters<LocusHostedAggregateDownstreamSink["synchronization"]>[0]);
+      enqueue_sync(connection, semantic as LocusOrderedSynchronizationOutput);
       return;
     }
-    connection.downstream.finite(semantic as Parameters<LocusHostedAggregateDownstreamSink["finite"]>[0]);
+    const outcome = semantic as LocusFiniteOperationOutcome;
+    const id = outcome.id;
+    if (id === undefined) return;
+    const pending = connection.pendingFinite.get(id);
+    if (pending !== undefined) {
+      connection.pendingFinite.delete(id);
+      pending.resolve(outcome);
+    }
   }
 
-  function attachment_current(connection: HostedConnection, sessionId: string, epoch: number): boolean {
+  function attachment_current(connection: HostedAttachment, sessionId: string, epoch: number): boolean {
     return !connection.closed
       && !connection.fenced
       && connection.sessionId === sessionId
@@ -684,27 +755,29 @@ export function create_locus_hosted_aggregate_socket_internal<
       && sessions.is_active(sessionId, epoch);
   }
 
-  function recovery_attachment_current(connection: HostedConnection, recovery: HostedRecoveryAttachment): boolean {
-    return connection.recoveryId === recovery.id
+  function recovery_attachment_current(connection: HostedAttachment, recovery: HostedRecoveryAttachment): boolean {
+    return connection.subscription === recovery.subscription
+      && connection.subscription.recoveryId === recovery.id
       && attachment_current(connection, recovery.sessionId, recovery.epoch);
   }
 
-  function recovery_delivery_current(connection: HostedConnection, recovery: HostedRecoveryAttachment): boolean {
-    return connection.recovering && recovery_attachment_current(connection, recovery)
+  function recovery_delivery_current(connection: HostedAttachment, recovery: HostedRecoveryAttachment): boolean {
+    return connection.subscription.recovering && recovery_attachment_current(connection, recovery)
       && sessions.projection(recovery.sessionId) === recovery.projection
       && connection.effectiveProjection === recovery.projection;
   }
 
-  function stop_recovery(connection: HostedConnection): void {
-    connection.recovering = false;
-    connection.live = false;
-    connection.recoveryId = undefined;
-    connection.pendingLive.length = 0;
-    connection.releaseRecoveryActivity?.();
-    connection.releaseRecoveryActivity = undefined;
+  function stop_recovery(connection: HostedAttachment): void {
+    connection.subscription.recovering = false;
+    connection.subscription.live = false;
+    connection.subscription.recoveryId = undefined;
+    connection.subscription.pendingLive.length = 0;
+    connection.subscription.pendingLiveBytes = 0;
+    connection.subscription.releaseRecoveryActivity?.();
+    connection.subscription.releaseRecoveryActivity = undefined;
   }
 
-  function reject(connection: HostedConnection, code: string, message: string, id?: string): void {
+  function reject(connection: HostedAttachment, code: string, message: string, id?: string): void {
     send(connection, Object.freeze({
       type: "synchronization-failure",
       error: Object.freeze({ code, message, ...(id === undefined ? {} : { cause: Object.freeze({ id }) }) }),
@@ -715,7 +788,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     return project_locus_live_transition_internal(entry.envelope.commit, effective, entry.beforeSystem, entry.afterSystem);
   }
 
-  function send_projected_recovery_event(connection: HostedConnection, id: string, phase: "body" | "tail",
+  function send_projected_recovery_event(connection: HostedAttachment, id: string, phase: "body" | "tail",
     event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection, projectionSequence: number): void {
     const live = projected_output(id, event, effective, projectionSequence);
     send(connection, live.type === "progress"
@@ -723,7 +796,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       : Object.freeze({ ...live, type: "recovery-commit", phase, commit: live.commit }));
   }
 
-  async function recover(connection: HostedConnection, request: Extract<HostedRequest, { type: "recover" }>): Promise<void> {
+  async function recover(connection: HostedAttachment, request: Extract<HostedRequest, { type: "recover" }>): Promise<void> {
     if (utf8_bytes(request.id) > MAX_RECOVERY_REQUEST_ID_BYTES || request.id.length === 0) {
       reject(connection, "LOCUS_PROTOCOL_INVALID", "Hosted recovery request ID exceeds its byte limit.");
       return;
@@ -739,7 +812,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
     const cursor = request.cursor;
     const sameIncarnation = cursor?.incarnationId === locus.incarnationId;
-    if (connection.recovering) {
+    if (connection.subscription.recovering) {
       reject(connection, "LOCUS_SYNC_IN_PROGRESS", "Hosted aggregate synchronization is already in progress.", request.id);
       return;
     }
@@ -764,13 +837,14 @@ export function create_locus_hosted_aggregate_socket_internal<
       sessionId: connection.sessionId,
       epoch: connection.sessionEpoch,
       projection: effective,
+      subscription: connection.subscription,
     });
 
-    connection.recoveryId = request.id;
-    connection.recovering = true;
-    connection.live = false;
-    connection.pendingLive.length = 0;
-    connection.releaseRecoveryActivity = options.internal?.acquireRecoveryActivity?.();
+    connection.subscription.recoveryId = request.id;
+    connection.subscription.recovering = true;
+    connection.subscription.live = false;
+    connection.subscription.pendingLive.length = 0;
+    connection.subscription.releaseRecoveryActivity = options.internal?.acquireRecoveryActivity?.();
     let outcome: Exclude<HostedPlanOutcome, "reject">;
     let reason: HostedReconcileReason | undefined;
     let snapshot: AuthorityProjectionSnapshot | undefined;
@@ -786,9 +860,9 @@ export function create_locus_hosted_aggregate_socket_internal<
         code: "LOCUS_SESSION_NOW_BINDING_MISMATCH",
         message: "Transferred current state belongs to a different retained session.",
       }, sessions.projection_sequence(connection.sessionId) ?? 0));
-      connection.recovering = false;
-      connection.releaseRecoveryActivity?.();
-      connection.releaseRecoveryActivity = undefined;
+      connection.subscription.recovering = false;
+      connection.subscription.releaseRecoveryActivity?.();
+      connection.subscription.releaseRecoveryActivity = undefined;
       return;
     }
     if (cursor?.initialInitializerDigest !== undefined
@@ -797,9 +871,9 @@ export function create_locus_hosted_aggregate_socket_internal<
         code: "LOCUS_INITIALIZER_INTEGRITY_MISMATCH",
         message: "Transferred local initializers do not match the retained session.",
       }, sessions.projection_sequence(connection.sessionId) ?? 0));
-      connection.recovering = false;
-      connection.releaseRecoveryActivity?.();
-      connection.releaseRecoveryActivity = undefined;
+      connection.subscription.recovering = false;
+      connection.subscription.releaseRecoveryActivity?.();
+      connection.subscription.releaseRecoveryActivity = undefined;
       return;
     }
     const sameProjectedRegistry = cursor?.registryDigest === replayRegistryDigest;
@@ -860,7 +934,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         type: "recovery-snapshot",
         id: request.id,
         snapshot,
-      }), HOSTED_MAX_SNAPSHOT_BYTES);
+      }));
       if (!recovery_delivery_current(connection, activeRecovery)) return;
     } else {
       for (const entry of replay) {
@@ -886,7 +960,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         local: effective.local, initializerDigest: effective.initializerDigest,
         ...(reconcile ? { reconciliation: headSnapshot } : topology === undefined ? {} : { topology }),
       });
-      send(connection, change, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes);
+      send(connection, change);
       if (!recovery_delivery_current(connection, activeRecovery)) return;
     }
     await options.internal?.beforeRecoveryCaughtUp?.();
@@ -904,20 +978,21 @@ export function create_locus_hosted_aggregate_socket_internal<
     if (!recovery_delivery_current(connection, activeRecovery)) return;
     await options.internal?.afterRecoveryCaughtUp?.();
     if (!recovery_delivery_current(connection, activeRecovery)) return;
-    while (connection.pendingLive.length > 0) {
+    while (connection.subscription.pendingLive.length > 0) {
       if (!recovery_delivery_current(connection, activeRecovery)) return;
-      const pending = connection.pendingLive.shift();
+      const pending = connection.subscription.pendingLive.shift();
       if (pending === undefined) continue;
+      connection.subscription.pendingLiveBytes -= encoded_bytes(pending);
       if (pending.commit.prevRev < cut) continue;
       const roots = preparedSystemRoots.get(pending.commit);
       const event = project_locus_live_transition_internal(pending.commit, effective, roots?.before, roots?.after);
       send(connection, projected_live_output(connection, event, effective));
       if (!recovery_delivery_current(connection, activeRecovery)) return;
     }
-    connection.recovering = false;
-    connection.live = true;
-    connection.releaseRecoveryActivity?.();
-    connection.releaseRecoveryActivity = undefined;
+    connection.subscription.recovering = false;
+    connection.subscription.live = true;
+    connection.subscription.releaseRecoveryActivity?.();
+    connection.subscription.releaseRecoveryActivity = undefined;
   }
 
   function replay_after(revision: number, head: number): readonly HostedHistoryEntry[] | undefined {
@@ -958,7 +1033,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     return Object.freeze(base);
   }
 
-  function session_attachment(connection: HostedConnection): Readonly<{ fence: (sessionId: string, epoch: number) => void }> {
+  function session_attachment(connection: HostedAttachment): Readonly<{ fence: (sessionId: string, epoch: number) => void }> {
     return Object.freeze({
       fence(sessionId, epoch): void {
         if (connection.sessionId !== sessionId || connection.sessionEpoch !== epoch || connection.fenced) return;
@@ -970,11 +1045,13 @@ export function create_locus_hosted_aggregate_socket_internal<
         }));
         connection.fenced = true;
         stop_recovery(connection);
+        for (const pending of connection.pendingFinite.values()) pending.reject(new Error("Locus attachment fenced."));
+        connection.pendingFinite.clear();
       },
     });
   }
 
-  function bind_session(connection: HostedConnection, resumable: boolean,
+  function bind_session(connection: HostedAttachment, resumable: boolean,
     capturedContext?: LocusConnectionContext): boolean | Promise<boolean> {
     if (connection.sessionId !== undefined) {
       return connection.sessionEpoch !== undefined
@@ -1027,7 +1104,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     return finish(projection);
   }
 
-  function session_create(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-create" }>,
+  function session_create(connection: HostedAttachment, request: Extract<HostedRequest, { type: "session-create" }>,
     capturedContext?: LocusConnectionContext): void | Promise<void> {
     if (connection.sessionId !== undefined || connection.establishing) {
       send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "This transport already owns a Locus session." }));
@@ -1084,7 +1161,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     finish(projection);
   }
 
-  function session_attach(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-attach" }>): void {
+  function session_attach(connection: HostedAttachment, request: Extract<HostedRequest, { type: "session-attach" }>): void {
     if (connection.closed || connection.fenced) return;
     if (Object.prototype.hasOwnProperty.call(request, "projection")) {
       send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "A different projection requires a new Locus session." }));
@@ -1137,7 +1214,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     }));
   }
 
-  function session_goodbye(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-goodbye" }>): void {
+  function session_goodbye(connection: HostedAttachment, request: Extract<HostedRequest, { type: "session-goodbye" }>): void {
     if (connection.sessionId === undefined || connection.sessionEpoch === undefined) {
       send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "This transport does not own a Locus session." }));
       return;
@@ -1154,7 +1231,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     stop_recovery(connection);
   }
 
-  function session_detach(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-detach" }>): void {
+  function session_detach(connection: HostedAttachment, request: Extract<HostedRequest, { type: "session-detach" }>): void {
     if (connection.sessionId === undefined || connection.sessionEpoch === undefined || connection.fenced) {
       send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED",
         message: "This transport does not own an active Locus session." }));
@@ -1172,7 +1249,7 @@ export function create_locus_hosted_aggregate_socket_internal<
   }
 
   function send_action_result(
-    connection: HostedConnection,
+    connection: HostedAttachment,
     response: LocusClientActionResult,
   ): void {
     send(connection, response);
@@ -1289,9 +1366,13 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
   }
 
-  async function action(connection: HostedConnection, request: Extract<HostedRequest, { type: "action" }>): Promise<void> {
+  async function action(connection: HostedAttachment, request: Extract<HostedRequest, { type: "action" }>): Promise<void> {
     const binding = bind_session(connection, false);
-    if (!(binding instanceof Promise ? await binding : binding) || connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
+    if (!(binding instanceof Promise ? await binding : binding) || connection.sessionId === undefined || connection.sessionEpoch === undefined) {
+      if (!connection.closed && !connection.fenced) send(connection, Object.freeze({ type: "session-rejected", id: request.id,
+        code: "LOCUS_SESSION_NOT_ATTACHED", message: "Locus session attachment is unavailable." }));
+      return;
+    }
     const capturedSessionId = connection.sessionId;
     const capturedEpoch = connection.sessionEpoch;
     const origin = Object.freeze({
@@ -1389,10 +1470,13 @@ export function create_locus_hosted_aggregate_socket_internal<
     return Object.freeze({ type: "error", id: request.id, ok: false, seq: outcome.seq, completionRev: outcome.completionRev, error: outcome.error });
   }
 
-  async function action_status(connection: HostedConnection, request: Extract<HostedRequest, { type: "action-status" }>): Promise<void> {
+  async function action_status(connection: HostedAttachment, request: Extract<HostedRequest, { type: "action-status" }>): Promise<void> {
     const binding = bind_session(connection, false);
-    if (!(binding instanceof Promise ? await binding : binding)) return;
-    if (connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
+    if (!(binding instanceof Promise ? await binding : binding) || connection.sessionId === undefined || connection.sessionEpoch === undefined) {
+      if (!connection.closed && !connection.fenced) send(connection, Object.freeze({ type: "session-rejected", id: request.id,
+        code: "LOCUS_SESSION_NOT_ATTACHED", message: "Locus session attachment is unavailable." }));
+      return;
+    }
     const capturedSessionId = connection.sessionId;
     const capturedEpoch = connection.sessionEpoch;
     if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
@@ -1420,10 +1504,10 @@ export function create_locus_hosted_aggregate_socket_internal<
     }));
   }
 
-  function dispatch_request(connection: HostedConnection, request: HostedRequest): void | Promise<void> {
+  function dispatch_request(connection: HostedAttachment, request: HostedRequest): void | Promise<void> {
     if (request.type === "recover") {
       void recover(connection, request).catch(() => {
-        if (connection.closed || connection.fenced || connection.recoveryId !== request.id) return;
+        if (connection.closed || connection.fenced || connection.subscription.recoveryId !== request.id) return;
         stop_recovery(connection);
         reject(connection, "LOCUS_SYNC_FAILED", "Hosted aggregate synchronization failed.", request.id);
       });
@@ -1451,7 +1535,7 @@ export function create_locus_hosted_aggregate_socket_internal<
   }
 
   function attach(
-    downstream: LocusHostedAggregateDownstreamSink,
+    notice: (event: LocusAttachmentNotice) => void,
     context?: LocusConnectionContext,
     onClose?: LocusDisposer,
   ): LocusHostedAggregateSemanticAttachment<TActions> {
@@ -1471,20 +1555,18 @@ export function create_locus_hosted_aggregate_socket_internal<
           get attachmentEpoch() { return undefined; },
           get attached() { return false; },
         }),
-        operations: Object.freeze({ submit: () => {} }),
-        synchronization: Object.freeze({ begin: () => {}, cancel: () => {} }),
+        operations: Object.freeze({ submit: async () => { throw new Error("Locus is disposed."); } }),
+        synchronization: Object.freeze({ open: () => () => {} }),
         emit_event: () => {},
         close: () => {},
       });
     }
     const releaseConnectionActivity = options.internal?.acquireConnectionActivity?.();
-    const connection: HostedConnection = {
-      downstream,
+    const connection: HostedAttachment = {
+      notice,
+      pendingFinite: new Map(),
+      subscription: empty_subscription(),
       ...(onClose === undefined ? {} : { onClose }),
-      recoveryId: undefined,
-      recovering: false,
-      live: false,
-      pendingLive: [],
       closed: false,
       sessionId: undefined,
       sessionEpoch: undefined,
@@ -1499,6 +1581,9 @@ export function create_locus_hosted_aggregate_socket_internal<
       if (connection.closed) return;
       connection.closed = true;
       stop_recovery(connection);
+      connection.subscription.sink = undefined;
+      for (const pending of connection.pendingFinite.values()) pending.reject(new Error("Locus attachment closed."));
+      connection.pendingFinite.clear();
       connections.delete(connection);
       if (connection.sessionId !== undefined && connection.sessionEpoch !== undefined) {
         sessions.detach(connection.sessionId, connection.sessionEpoch);
@@ -1526,61 +1611,46 @@ export function create_locus_hosted_aggregate_socket_internal<
     return Object.freeze({
       binding,
       operations: Object.freeze({
-        submit(request: LocusFiniteOperationRequest<TActions>) {
-          return dispatch_request(connection, request as Exclude<HostedRequest, { type: "recover" }>);
+        submit(request: LocusFiniteOperationRequest<TActions>): Promise<LocusFiniteOperationOutcome> {
+          if (connection.closed) return Promise.reject(new Error("Locus attachment closed."));
+          const id = request.id;
+          if (connection.pendingFinite.has(id)) return Promise.reject(new Error("Duplicate Locus operation ID."));
+          return new Promise((resolve, reject) => {
+            connection.pendingFinite.set(id, Object.freeze({ resolve, reject }));
+            try {
+              void Promise.resolve(dispatch_request(connection, request as Exclude<HostedRequest, { type: "recover" }>)).catch((cause) => {
+                if (connection.pendingFinite.get(id) === undefined) return;
+                connection.pendingFinite.delete(id);
+                reject(cause);
+              });
+            } catch (cause) {
+              connection.pendingFinite.delete(id);
+              reject(cause);
+            }
+          });
         },
       }),
       synchronization: Object.freeze({
-        begin(request: Extract<HostedRequest, { type: "recover" }>) { void dispatch_request(connection, request); },
-        cancel: () => stop_recovery(connection),
+        open(request: Extract<HostedRequest, { type: "recover" }>, sink: LocusOrderedSynchronizationSink,
+          onEnd?: (cause?: unknown) => void) {
+          stop_recovery(connection);
+          connection.subscription.sink = undefined;
+          const subscription = empty_subscription();
+          subscription.sink = sink;
+          subscription.onEnd = onEnd;
+          connection.subscription = subscription;
+          void dispatch_request(connection, request);
+          return () => {
+            if (connection.subscription !== subscription) return;
+            stop_recovery(connection);
+            subscription.sink = undefined;
+            connection.subscription = empty_subscription();
+          };
+        },
       }),
       emit_event: () => {},
       close: dispose,
     });
-  }
-
-  function connect(socket: LocusSocketLike, context?: LocusConnectionContext): LocusDisposer {
-    if (disposed) return () => {};
-    let stopMessage: LocusDisposer | void;
-    let stopClose: LocusDisposer | void;
-    let listenersOpen = true;
-    const stopListeners = (): void => {
-      if (!listenersOpen) return;
-      listenersOpen = false;
-      stopMessage?.();
-      stopClose?.();
-    };
-    const semantic = attach({
-      finite: (message) => socket.send(encode_downstream_message(message, maxWireBytes)),
-      synchronization: (message) => socket.send(encode_downstream_message(message, message.type === "recovery-snapshot" ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes)),
-      publication: (message) => socket.send(encode_downstream_message(message,
-        message.type === "projection-change" && message.reconciliation !== undefined
-          ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes)),
-      event: () => {},
-    }, context, stopListeners);
-    try {
-      stopMessage = socket.onMessage((raw) => {
-        let request: HostedRequest;
-        try {
-          request = decode_request(raw, maxWireBytes);
-        } catch (cause) {
-          socket.send(JSON.stringify(Object.freeze({
-            type: "error",
-            format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-            code: "LOCUS_PROTOCOL_INVALID",
-            message: locus_client_error_message(cause, "Malformed hosted protocol message."),
-          })));
-          return;
-        }
-        if (request.type === "recover") semantic.synchronization.begin(request);
-        else void semantic.operations.submit(request as LocusFiniteOperationRequest<TActions>);
-      });
-      stopClose = socket.onClose(semantic.close);
-    } catch (error) {
-      semantic.close();
-      throw error;
-    }
-    return semantic.close;
   }
 
   const server = Object.freeze({
@@ -1589,7 +1659,6 @@ export function create_locus_hosted_aggregate_socket_internal<
     incarnationId: locus.incarnationId,
     get registryDigest() { return locus.registryDigest; },
     get rev() { return locus.rev; },
-    connect,
     attach,
     mutate: locus.mutate,
     add_libraries,
@@ -1637,51 +1706,10 @@ export function create_locus_hosted_aggregate_socket_internal<
       ingress.connection?.principalId,
     );
   });
+  register_locus_semantic_attachment_internal(server,
+    ({ notice, connection, onClose }) => attach(notice, connection, onClose), maxWireBytes);
   return server;
 }
-
-function encode_downstream_message(message: unknown, limit: number): string {
-  const semantic = exact_record(message, "Hosted aggregate semantic output");
-  let framed: Readonly<Record<string, unknown>>;
-  if (semantic.type === "synchronization-failure" && is_record(semantic.error)) {
-    const cause = is_record(semantic.error.cause) ? semantic.error.cause : undefined;
-    framed = Object.freeze({
-      type: "error",
-      format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-      ...(typeof cause?.id === "string" ? { id: cause.id } : {}),
-      code: typeof semantic.error.code === "string" ? semantic.error.code : "LOCUS_SYNC_FAILED",
-      message: semantic.error.message,
-    });
-  } else if (semantic.type === "ack" && Object.hasOwn(semantic, "result")) {
-    const { result, ...rest } = semantic;
-    framed = Object.freeze({
-      ...rest,
-      format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-      ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as ExactDataCarrier) }),
-    });
-  } else if (semantic.type === "action-status" && is_record(semantic.outcome)
-    && semantic.outcome.state === "succeeded" && Object.hasOwn(semantic.outcome, "result")) {
-    const { result, ...outcome } = semantic.outcome;
-    framed = Object.freeze({
-      ...semantic,
-      format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-      outcome: Object.freeze({
-        ...outcome,
-        ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as ExactDataCarrier) }),
-      }),
-    });
-  } else {
-    framed = Object.freeze({ ...semantic, format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT });
-  }
-  const raw = JSON.stringify(framed);
-  if (utf8_bytes(raw) > limit) throw new Error("Hosted aggregate socket message exceeds its configured byte limit.");
-  return raw;
-}
-
-function is_record(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 
 /** Derive replica progress from exact authority history without rewriting that history. */
 export function derive_locus_hosted_progress_internal(envelope: LocusHostedAggregateAuthorityEnvelope): LocusHostedAggregateProgress | undefined {
@@ -1694,72 +1722,6 @@ export function derive_locus_hosted_progress_internal(envelope: LocusHostedAggre
     prevRev: commit.prevRev,
     rev: commit.rev,
   });
-}
-
-function decode_request(raw: string, maxWireBytes: number): HostedRequest {
-  if (typeof raw !== "string" || utf8_bytes(raw) > maxWireBytes) throw new Error("Hosted aggregate request is malformed or exceeds its byte limit.");
-  const value = exact_record(JSON.parse(raw), "Hosted aggregate request");
-  if (value.type === "recover") {
-    const hasCursor = Object.hasOwn(value, "incarnationId") || Object.hasOwn(value, "registryDigest")
-      || Object.hasOwn(value, "projectionDigest") || Object.hasOwn(value, "projectionSequence")
-      || Object.hasOwn(value, "lastAppliedRev") || Object.hasOwn(value, "initialStateFingerprint")
-      || Object.hasOwn(value, "initialInitializerDigest") || Object.hasOwn(value, "initialSessionBinding");
-    exact_keys(value, hasCursor
-      ? ["type", "id", "logicalMapId", "incarnationId", "registryDigest", "projectionDigest", "projectionSequence", "lastAppliedRev",
-        ...(Object.hasOwn(value, "initialStateFingerprint") ? ["initialStateFingerprint"] : []),
-        ...(Object.hasOwn(value, "initialInitializerDigest") ? ["initialInitializerDigest"] : []),
-        ...(Object.hasOwn(value, "initialSessionBinding") ? ["initialSessionBinding"] : [])]
-      : ["type", "id", "logicalMapId"], "Hosted recovery request");
-    const id = required_string(value.id);
-    const logicalMapId = required_string(value.logicalMapId);
-    if (id === undefined || logicalMapId === undefined) throw new Error("Hosted recovery request requires non-empty id and logicalMapId.");
-    if (utf8_bytes(id) > MAX_RECOVERY_REQUEST_ID_BYTES) throw new Error("Hosted recovery request ID exceeds its byte limit.");
-    if (!hasCursor) return Object.freeze({ type: "recover", id, logicalMapId });
-    const incarnationId = required_string(value.incarnationId);
-    const registryDigest = required_digest(value.registryDigest);
-    const projectionDigest = required_digest(value.projectionDigest);
-    const projectionSequence = required_revision(value.projectionSequence);
-    const lastAppliedRev = required_revision(value.lastAppliedRev);
-    const initialStateFingerprint = Object.hasOwn(value, "initialStateFingerprint")
-      ? required_digest(value.initialStateFingerprint) : undefined;
-    const initialInitializerDigest = Object.hasOwn(value, "initialInitializerDigest")
-      ? required_digest(value.initialInitializerDigest) : undefined;
-    const initialSessionBinding = Object.hasOwn(value, "initialSessionBinding")
-      ? required_string(value.initialSessionBinding) : undefined;
-    if (incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined
-      || projectionSequence === undefined || lastAppliedRev === undefined
-      || (Object.hasOwn(value, "initialStateFingerprint") && initialStateFingerprint === undefined)
-      || (Object.hasOwn(value, "initialInitializerDigest") && initialInitializerDigest === undefined)
-      || (Object.hasOwn(value, "initialSessionBinding")
-        && (initialSessionBinding === undefined || !/^[a-f0-9]{32}$/u.test(initialSessionBinding)))) throw new Error("Hosted recovery cursor is malformed.");
-    return Object.freeze({ type: "recover", id, logicalMapId,
-      cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, projectionSequence, lastAppliedRev,
-        ...(initialStateFingerprint === undefined ? {} : { initialStateFingerprint }),
-        ...(initialInitializerDigest === undefined ? {} : { initialInitializerDigest }),
-        ...(initialSessionBinding === undefined ? {} : { initialSessionBinding }) }) });
-  }
-  if (value.type === "session-create" || value.type === "session-goodbye" || value.type === "session-detach") {
-    const decoded = decode_locus_message(raw);
-    if (!decoded.ok || (decoded.value.type !== "session-create" && decoded.value.type !== "session-goodbye"
-      && decoded.value.type !== "session-detach")) throw new Error(decoded.ok ? "Hosted session request is malformed." : decoded.error.message);
-    return decoded.value;
-  }
-  if (value.type === "session-attach") {
-    const decoded = decode_locus_message(raw);
-    if (!decoded.ok || decoded.value.type !== "session-attach") throw new Error(decoded.ok ? "Hosted session-attach request is malformed." : decoded.error.message);
-    return decoded.value;
-  }
-  if (value.type === "action-status") {
-    const decoded = decode_locus_message(raw);
-    if (!decoded.ok || decoded.value.type !== "action-status") throw new Error(decoded.ok ? "Hosted action-status request is malformed." : decoded.error.message);
-    return decoded.value;
-  }
-  if (value.type === "action") {
-    const decoded = decode_locus_message(raw);
-    if (!decoded.ok || decoded.value.type !== "action") throw new Error(decoded.ok ? "Hosted action request is malformed." : decoded.error.message);
-    return decoded.value;
-  }
-  throw new Error("Hosted aggregate request type is unknown.");
 }
 
 function document_action_target(
@@ -1840,6 +1802,12 @@ function encoded_bytes(value: unknown): number {
   return utf8_bytes(JSON.stringify(value));
 }
 
+function assert_bounded_publication(value: unknown, limit: number): void {
+  if (encoded_bytes(value) + MAX_PUBLICATION_ENVELOPE_RESERVE_BYTES > limit) {
+    throw new Error("Hosted aggregate publication exceeds its configured byte limit.");
+  }
+}
+
 function utf8_bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
@@ -1852,21 +1820,6 @@ function exact_record(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function exact_keys(value: Readonly<Record<string, unknown>>, expected: readonly string[], label: string): void {
-  const actual = Object.keys(value);
-  if (actual.length !== expected.length || !expected.every((key) => Object.hasOwn(value, key))) {
-    throw new Error(`${label} contains missing or unexpected fields.`);
-  }
-}
-
 function required_string(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function required_digest(value: unknown): string | undefined {
-  return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value) ? value : undefined;
-}
-
-function required_revision(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }

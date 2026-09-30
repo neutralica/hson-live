@@ -71,8 +71,8 @@ const localContinuation: DocumentContinuation = continue_document({
 });
 declare const continuationCut: import("hson-live").LocusSessionNow;
 declare const continuationCredential: import("hson-live/locus").LocusSessionCredential;
-declare const continuationSocket: import("hson-live").LocusSocketLike;
-const hostedContinuation: Promise<HostedDocumentContinuation> = continue_hosted_document({ now: continuationCut, credential: continuationCredential, socket: continuationSocket, root: continuationRoot });
+declare const continuationTransport: import("hson-live").EchoReplicaTransport;
+const hostedContinuation: Promise<HostedDocumentContinuation> = continue_hosted_document({ now: continuationCut, credential: continuationCredential, transport: continuationTransport, root: continuationRoot });
 void localContinuation.map;
 void localContinuation.tree;
 void localContinuation.mirror;
@@ -399,7 +399,6 @@ import type { DocumentBindingSource } from "hson-live/livetree";
 import {
   LocusAuthorityError,
   hsonLocus as hostSubpath,
-  type LocusConnection,
   type LocusClientId,
   type LocusAuthorityErrorCode,
   type Locus,
@@ -409,8 +408,6 @@ void (0 as unknown as LocusClientId);
 declare const multiLocus: Locus;
 declare const multiActionContext: LocusActionContext;
 declare const soloLocus: Locus;
-declare const soloConnection: LocusConnection;
-declare const librariesConnection: LocusConnection;
 void soloLocus.dispatchAction;
 void multiLocus.dispatchAction;
 void multiLocus.lib.add({ runtimeState: { data: { count: 1 } } },
@@ -418,17 +415,11 @@ void multiLocus.lib.add({ runtimeState: { data: { count: 1 } } },
 void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] });
 void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] },
   { principalId: "alice" });
-void soloConnection.emitEvent("event", null);
-void librariesConnection.emitEvent("event", null);
 void multiActionContext.emitEvent("event", null);
 // @ts-expect-error Removed snake_case one-map method has no alias.
 void soloLocus.dispatch_action;
 // @ts-expect-error Removed snake_case multi-library method has no alias.
 void multiLocus.dispatch_action;
-// @ts-expect-error Removed snake_case connection method has no alias.
-void soloConnection.emit_event;
-// @ts-expect-error Removed snake_case connection method has no alias.
-void librariesConnection.emit_event;
 // @ts-expect-error Removed snake_case multi-library context method has no alias.
 void multiActionContext.emit_event;
 // @ts-expect-error Echo construction belongs to hson-live/echo.

@@ -6,7 +6,6 @@ import type {
 import type {
   LocusActionPayloads,
   LocusClientActionMessage,
-  LocusConnection,
   LocusConnectionContext,
   Locus,
   LocusActionContext,
@@ -22,13 +21,14 @@ import { alias_locus_retained_action_status_internal } from "./locus.action-stat
 import { make_locus_activity_controller } from "./locus.activity.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import {
-  create_locus_hosted_aggregate_socket_internal,
-} from "./locus.aggregate.socket.js";
+  create_locus_hosted_aggregate_authority_internal,
+} from "./locus.aggregate.authority.js";
 import type { LocusHostedAggregateGateInput } from "./locus.aggregate.js";
 import { cut_hosted_projection } from "../../internal/document-cut.js";
 import { capture_selected_authority_projection_snapshot } from "./locus.authority-projection-snapshot.js";
 import { LocusProjectionUnavailableError } from "./locus.projection.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
+import { register_locus_semantic_attachment_internal } from "./locus.transport.internal.js";
 
 function establish_authority_identity(
   map: LiveMap,
@@ -123,7 +123,7 @@ export function create_registry_locus_internal<
     };
   }
 
-  const authority = create_locus_hosted_aggregate_socket_internal({
+  const authority = create_locus_hosted_aggregate_authority_internal({
     map: options.map,
     libraries: options.libraries,
     ...(options.defaultProjection === undefined ? {} : { defaultProjection: options.defaultProjection }),
@@ -176,12 +176,6 @@ export function create_registry_locus_internal<
     } finally {
       release();
     }
-  };
-
-  const connect: Locus<TMap, TActions>["connect"] = (socket, _context?: LocusConnectionContext) => {
-    if (disposed) return Object.assign(() => {}, { emitEvent: () => {} });
-    const stop = authority.connect(socket, _context);
-    return Object.assign(stop, { emitEvent: () => {} }) as LocusConnection;
   };
 
   function with_client_capture<TResult>(sessionId: LocusSessionId, key: object,
@@ -260,7 +254,6 @@ export function create_registry_locus_internal<
     actionRequests: authority.actionRequests,
     mutate,
     dispatchAction,
-    connect,
     dispose: () => {
       if (disposed) return;
       disposed = true;
@@ -272,6 +265,8 @@ export function create_registry_locus_internal<
       activity.dispose();
     },
   });
+  register_locus_semantic_attachment_internal(locus, ({ notice, connection, onClose }) =>
+    authority.attach(notice, connection, onClose), authority.debug().effectiveLiveWireBytes);
   alias_locus_remote_action_admission_internal(locus, authority);
   alias_locus_retained_action_status_internal(locus, authority);
   return Object.freeze({ locus, run_exclusive: authority.run_exclusive });

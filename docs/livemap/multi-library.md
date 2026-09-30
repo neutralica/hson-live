@@ -86,7 +86,7 @@ const locus = hsonLocus.create({
 
 One `context.mutate(...)` call stages all selected-Library writes as one atomic action. Each Library keeps its own HsonSchema; initial state, server action preparation, client replay, reconciliation, and durable restart validate those Schemas.
 
-For a client, `await hsonEcho.init({ now, credential, socket })` admits the
+For a client, `await hsonEcho.init({ now, credential, transport })` admits the
 authorized current session composition and returns an attached, caught-up
 replica. `now.libs` contains the visible shared authority registry and its
 contracts; `now.local` contains authorized local initializers. Excluded
