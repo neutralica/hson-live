@@ -1,6 +1,6 @@
 # LiveMap registries
 
-`hsonLiveMap.fromLibraries(...)` creates one LiveMap authority with initial named libraries at revision 0. A one-library LiveMap uses the same API. Local code may admit more libraries later with `map.addLibraries(...)`.
+`hsonLiveMap.fromLibraries(...)` creates one standalone LiveMap with initial named libraries at revision 0. A one-library LiveMap uses the same API. Local code may admit more libraries later with `map.addLibraries(...)`.
 
 ```ts
 const map = hsonLiveMap.fromLibraries({
@@ -74,7 +74,7 @@ generated identity and does not inherit source QUID claims or issued history.
 
 ## Hosted use
 
-Attach the map through the normal Locus API. No hosted-specific map constructor or transaction DSL is required.
+Advanced composition can supply an existing map through the same Locus constructor. Ordinary Locus construction supplies definitions in its catalog and lets Locus create the map.
 
 ```ts
 const locus = hsonLocus.create({
@@ -136,6 +136,6 @@ library input.
 
 Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics for a one-library registry Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.
 
-`create_persistent_locus({ map, logicalMapId, persistence })` supports a growing authority registry. Calling that same ordinary constructor after a restart with the same `logicalMapId` reconstructs persisted application and authority state before the Locus is used. The deployment must supply the ownership catalog for every restored authority library because hosted policy and local initializer definitions are not persisted. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch.
+`await hsonLocus.create({ libraries, logicalMapId, persistence })` supports a growing authority registry. Calling that same ordinary constructor after a restart with the same `logicalMapId` reconstructs persisted application and authority state before the Locus is used. The deployment must supply the ownership catalog for every restored authority library because hosted policy and local initializer definitions are not persisted. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch.
 
 Hosted authority topology grows through explicit `locus.lib.add(...)` admissions; authorized projection changes update client-visible topology. Public Library removal, replacement, and rename remain unsupported, as do a default Library and cross-Library QUID transfer. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. A projected named document Library may be bound through Mirror; supported hosted LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay.

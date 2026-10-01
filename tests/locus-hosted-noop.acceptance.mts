@@ -4,7 +4,7 @@ import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, validate_document_path, type LiveMap } from "../src/api/livemap/index.ts";
-import { hsonLocus, create_persistent_locus, type LocusOptions, type LocusWebSocketLike } from "../src/api/locus/index.ts";
+import { hsonLocus, type LocusOptions, type LocusWebSocketLike } from "../src/api/locus/index.ts";
 import { hsonEcho } from "../src/api/echo/index.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
 import { create_locus_hosted_aggregate_internal, type LocusHostedAggregateStageWriter } from "../src/api/locus/locus.aggregate.ts";
@@ -248,7 +248,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 {
   const persistence = new MemoryCheckpointAdapter();
   const map = make_map();
-  const locus = await create_persistent_locus({ ...options(map), persistence });
+  const locus = await hsonLocus.create({ ...options(map), persistence });
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);
   const echo = hsonEcho.create({ transport: test_echo_transport(pair.client) });
@@ -333,7 +333,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 {
   const persistence = new MemoryCheckpointAdapter();
   const map = make_map();
-  const locus = await create_persistent_locus({ ...options(map), persistence });
+  const locus = await hsonLocus.create({ ...options(map), persistence });
   try {
     await locus.stage.lib("game").at(["ready"]).set(false);
     assert.equal(persistence.appendCalls.length, 1);

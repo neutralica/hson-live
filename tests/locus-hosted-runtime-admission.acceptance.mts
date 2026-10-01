@@ -2,7 +2,6 @@ import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror, type LocusWebSocketLike } from "../src/index.ts";
-import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { client_library_source_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
@@ -255,7 +254,7 @@ const durableMap = hsonLiveMap.create();
 
 const reservedAdapter = new MemoryCheckpointAdapter();
 const reservedMap = hsonLiveMap.create();
-const reserved = await create_persistent_locus({ map: reservedMap, persistence: reservedAdapter,
+const reserved = await hsonLocus.create({ map: reservedMap, persistence: reservedAdapter,
   logicalMapId: "local-name-reservation", libraries: [
     { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
   ], authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
@@ -276,7 +275,7 @@ for (const ownership of ["private", "shared"] as const) {
 reserved.dispose();
 
 const adapter = new MemoryCheckpointAdapter();
-const durable = await create_persistent_locus({ map: durableMap, libraries: [],
+const durable = await hsonLocus.create({ map: durableMap, libraries: [],
   persistence: adapter, logicalMapId: "public-hosted-admission" });
 await durable.lib.add({ first: { data: { value: 1 } }, second: { data: { value: 2 } } },
   { ownership: { first: "shared" } });
@@ -289,7 +288,7 @@ assert.equal(durable.rev, 1);
 assert.throws(() => durableMap.lib("refused"), /Unknown/);
 durable.dispose();
 const resumedMap = hsonLiveMap.create();
-const resumed = await create_persistent_locus({ map: resumedMap, persistence: adapter,
+const resumed = await hsonLocus.create({ map: resumedMap, persistence: adapter,
   logicalMapId: "public-hosted-admission", libraries: [
     { name: "first", ownership: "shared" },
     { name: "second", ownership: "private" },
@@ -301,13 +300,13 @@ assert.equal(resumedFirst.snap(["value"]), 1);
 resumed.dispose();
 const sortedAdapter = new MemoryCheckpointAdapter();
 const sortedInitial = hsonLiveMap.fromLibraries({ middle: { data: { value: 1 } } });
-const sortedLocus = await create_persistent_locus({ map: sortedInitial, persistence: sortedAdapter,
+const sortedLocus = await hsonLocus.create({ map: sortedInitial, persistence: sortedAdapter,
   logicalMapId: "sorted-hosted-admission", libraries: [{ name: "middle", ownership: "shared" }] });
 await sortedLocus.lib.add({ aardvark: { data: { value: 2 } } },
   { ownership: { aardvark: "shared" } });
 sortedLocus.dispose();
 const sortedRestartMap = hsonLiveMap.fromLibraries({ middle: { data: { value: 0 } } });
-const sortedRestart = await create_persistent_locus({ map: sortedRestartMap, persistence: sortedAdapter,
+const sortedRestart = await hsonLocus.create({ map: sortedRestartMap, persistence: sortedAdapter,
   logicalMapId: "sorted-hosted-admission", libraries: [
     { name: "middle", ownership: "shared" },
     { name: "aardvark", ownership: "shared" },

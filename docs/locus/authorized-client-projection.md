@@ -4,10 +4,9 @@ Locus owns a single current authority map containing private and shared librarie
 
 ```ts
 const locus = hsonLocus.create({
-  map,
   libraries: [
-    { name: "page", ownership: "shared" },
-    { name: "credentials", ownership: "private" },
+    { name: "page", ownership: "shared", definition: { document: "<main/>", schema: PageSchema } },
+    { name: "credentials", ownership: "private", definition: { data: { token: "secret" }, schema: CredentialsSchema } },
     { name: "ui", ownership: "local", initializer: { data: { open: false }, schema: UiSchema } },
   ],
   authorizeProjection: () => ({ libraries: ["page"], writableDocuments: [] }),

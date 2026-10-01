@@ -5,7 +5,7 @@ import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonEcho, hsonLiveMap,
   type HsonSchema, type InteractionDescriptor } from "../src/index.ts";
-import { create_persistent_locus } from "../src/api/locus/index.ts";
+import { hsonLocus } from "../src/api/locus/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
@@ -45,7 +45,7 @@ const libraries = [{ name: "public", ownership: "shared" as const },
   { name: "private", ownership: "private" as const }];
 
 async function host(adapter: MemoryCheckpointAdapter, logicalMapId: string) {
-  return create_persistent_locus({ map: make_map(), persistence: adapter, logicalMapId, libraries,
+  return hsonLocus.create({ map: make_map(), persistence: adapter, logicalMapId, libraries,
     defaultProjection: { libraries: ["public"] }, authorizeProjection: () => ({ libraries: ["public"] }) });
 }
 
@@ -64,14 +64,14 @@ async function case_(name: string, run: () => Promise<void>) {
 await case_("empty authority checkpoint restores without a placeholder library", async () => {
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-empty";
-  const locus = await create_persistent_locus({
+  const locus = await hsonLocus.create({
     map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, libraries: [],
   });
   const manifest = active(adapter, id);
   assert.deepEqual(manifest.registry.libraries, []);
   assert.deepEqual(manifest.chunks, []);
   locus.dispose();
-  const restored = await create_persistent_locus({
+  const restored = await hsonLocus.create({
     map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, libraries: [],
   });
   assert.ok(restored);
@@ -90,7 +90,7 @@ await case_("restart reapplies deployment local definitions without persisting c
   const options = { persistence: adapter, logicalMapId: id, libraries,
     authorizeProjection: ({ requested }: { requested: { libraries: readonly string[] } }) =>
       ({ libraries: requested.libraries }) };
-  const locus = await create_persistent_locus({ ...options,
+  const locus = await hsonLocus.create({ ...options,
     map: hsonLiveMap.fromLibraries({ public: { data: { value: 1 } } }) });
   const session = await locus.session.create({ libraries: ["public", "ui"] });
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
@@ -107,7 +107,7 @@ await case_("restart reapplies deployment local definitions without persisting c
   assert.equal(JSON.stringify(adapter.state(id)).includes('value 12>'), false);
   echo.dispose(); detach(); locus.dispose();
 
-  const restored = await create_persistent_locus({ ...options,
+  const restored = await hsonLocus.create({ ...options,
     map: hsonLiveMap.fromLibraries({ public: { data: { value: 0 } } }) });
   assert.throws(() => restored.map.lib("ui"), /Unknown/i);
   const freshSession = await restored.session.create({ libraries: ["public", "ui"] });
@@ -120,12 +120,12 @@ await case_("restart reapplies deployment local definitions without persisting c
 
   const conflictAdapter = new MemoryCheckpointAdapter();
   const conflictId = "z3b-restored-local-collision";
-  const oldDeployment = await create_persistent_locus({ map: hsonLiveMap.create(),
+  const oldDeployment = await hsonLocus.create({ map: hsonLiveMap.create(),
     persistence: conflictAdapter, logicalMapId: conflictId, libraries: [] });
   await oldDeployment.lib.add({ ui: { data: { value: 9 } } });
   await oldDeployment.checkpoint();
   oldDeployment.dispose();
-  await assert.rejects(create_persistent_locus({ map: hsonLiveMap.create(),
+  await assert.rejects(hsonLocus.create({ map: hsonLiveMap.create(),
     persistence: conflictAdapter, logicalMapId: conflictId, libraries: [
       { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
     ] }), /collid|catalog|authority|topology/i);
@@ -353,7 +353,7 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
     { name: "page", ownership: "shared" as const },
     ...names.map((library) => ({ name: library, ownership: "private" as const }))];
   const id = "z3b-large";
-  const locus = await create_persistent_locus({ map, persistence: adapter, logicalMapId: id, libraries,
+  const locus = await hsonLocus.create({ map, persistence: adapter, logicalMapId: id, libraries,
     defaultProjection: { libraries: ["public", "page"] },
     authorizeProjection: () => ({ libraries: ["public", "page"] }) });
   const authority = internal_livemap_aggregate_authority(map);
@@ -380,7 +380,7 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   assert.ok([...adapter.chunks.values()].every((entry) => !entry.payload.includes("issuedQuids")));
   locus.dispose();
   const restoredMap = hsonLiveMap.fromLibraries(inputs);
-  const restored = await create_persistent_locus({ map: restoredMap, persistence: adapter, logicalMapId: id, libraries,
+  const restored = await hsonLocus.create({ map: restoredMap, persistence: adapter, logicalMapId: id, libraries,
     defaultProjection: { libraries: ["public", "page"] },
     authorizeProjection: () => ({ libraries: ["public", "page"] }) });
   assert.equal(restored.rev, count);

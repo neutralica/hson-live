@@ -5,7 +5,6 @@ import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hso
   type LocusWebSocketLike } from "../src/index.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
-import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { local_initializers } from "./helpers/client-projection.mts";
 
@@ -135,7 +134,7 @@ server.dispose();
 
 const adapter = new MemoryCheckpointAdapter();
 const persistentAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
-const persistent = await create_persistent_locus({ map: persistentAuthority, persistence: adapter,
+const persistent = await hsonLocus.create({ map: persistentAuthority, persistence: adapter,
   logicalMapId: "runtime-fallback-restart", libraries: [{ name: "anchor", ownership: "shared" }],
   defaultProjection: { libraries: ["anchor"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
@@ -163,7 +162,7 @@ await persistent.checkpoint();
 beforeRestartEcho.dispose();
 persistent.dispose();
 const resumedAuthority = hsonLiveMap.create();
-const resumed = await create_persistent_locus({ map: resumedAuthority, persistence: adapter,
+const resumed = await hsonLocus.create({ map: resumedAuthority, persistence: adapter,
   logicalMapId: "runtime-fallback-restart", libraries: [
     { name: "anchor", ownership: "shared" },
     { name: "durablePublic", ownership: "shared" },

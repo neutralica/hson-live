@@ -32,7 +32,7 @@ try {
     [livemap, ["hsonLiveMap", "LiveMapDocumentInstallError"]],
     [reflect, ["hsonMirror", "reflect_document", "DocumentMirrorError"]],
     [echo, ["hsonEcho", "create_echo", "EchoSessionError"]],
-    [locus, ["hsonLocus", "create_locus", "LocusAuthorityError"]],
+    [locus, ["hsonLocus", "LocusAuthorityError"]],
     [ssr, ["encode_ssr_bootstrap", "DocumentSsrError"]],
     [livehost, ["create_livehost_locus_registry"]],
   ] as const;

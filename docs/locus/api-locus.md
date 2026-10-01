@@ -3,17 +3,13 @@
 `Locus` governs one application library registry and separate system state. The registry may grow while the authority runs. A hosted client obtains an authorized session projection before receiving framework state.
 
 ```ts
-import { create_locus } from "hson-live/locus";
-import { hsonLiveMap } from "hson-live/livemap";
+import { hsonLocus } from "hson-live/locus";
 
-const map = hsonLiveMap.fromLibraries({
-  page: { document: "<main/>" },
-});
-const locus = create_locus({
-  map,
-  libraries: [{ name: "page", ownership: "shared" }],
+const locus = hsonLocus.create({
+  libraries: [{ name: "page", ownership: "shared", definition: { document: "<main/>" } }],
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
+const map = locus.map;
 ```
 
 ## HTTP binding
@@ -50,19 +46,19 @@ progress when disposed. Its idle lease is refreshed by admitted requests and
 stream opens; expiry releases the logical attachment under ordinary retained
 session grace rules.
 
-The construction catalog classifies every application definition as `private`, `shared`, or `local`. Private and shared libraries must already exist in `locus.map`; local entries instead carry a detached initializer and never enter that authority map. Shared eligibility remains separate from authorization. A selected HTML document must be an authorized shared document. `defaultProjection`, when configured, is only a default request and still passes authorization.
+The construction catalog classifies every application definition as `private`, `shared`, or `local`. For ordinary creation, private and shared entries carry `definition`; Locus builds them in `locus.map`. Local entries carry `initializer` and never enter that authority map. Advanced callers may supply an existing `map` and omit the private/shared definitions from the catalog; the supplied object becomes `locus.map`. Shared eligibility remains separate from authorization. A selected HTML document must be an authorized shared document. `defaultProjection`, when configured, is only a default request and still passes authorization.
 
 After construction, admit an atomic authority batch with `await locus.lib.add(definitions, { ownership })`. Ownership is a per-name `private | shared` object; omitted own entries default to `private`. Runtime local-definition admission is deliberately not part of this API in this release. Direct `map.addLibraries` on the managed authority remains fenced. A shared classification only makes a name eligible; it never changes an existing session grant.
 
 `await session.update({ libraries: ["page", "newPage"] })` reauthorizes a retained scope against current topology with the ordinary `authorizeProjection` callback. A connected session uses its attachment's current trusted context. A server-created session can use its creation context; an ordinary disconnected connection-created session requires current trusted context as the second argument, for example `{ principalId: "alice" }`. Principal continuity is enforced. Requests select libraries and system features; read and write grants come from the authorizer. Successful changes advance the session contract sequence and digest without creating an authority revision. Removed library handles become stale; a later grant produces new handles.
 
-`create_persistent_locus` uses the same catalog. Durable authority checkpoints contain private/shared current state and never evolving client-owned local state. Ownership and local initializer definitions remain deployment configuration in this release. Application code may read `locus.map` and private state for server work, and remains responsible for arbitrary HTML or `Response` values it writes itself.
+`await hsonLocus.create({ libraries, persistence, logicalMapId })` uses the same catalog. Durable authority checkpoints contain private/shared current state and never evolving client-owned local state. Ownership and local initializer definitions remain deployment configuration in this release. Application code may read `locus.map` and private state for server work, and remains responsible for arbitrary HTML or `Response` values it writes itself.
 
 A restored persistent runtime gives reconnecting clients a projected snapshot for cursors at or before its loaded revision. This reestablishes client identity after restart even when durable authority revision and incarnation are unchanged.
 
 ## Persistence
 
-`create_persistent_locus` and `locus.checkpoint()` write complete authority state in the internal `hson-locus-durable-aggregate-checkpoint` format. One active manifest names ordered, bounded chunks for every application Library root, every complete Schema, and the separate system-state root. The chunks contain semantic state with no generated QUID, identity epoch, issued ledger, or client ownership catalog. A deployment supplies and validates the catalog again after restart. Checkpoint chunks are server-side storage records and must not be sent to clients.
+`hsonLocus.create({ persistence, ... })` and `locus.checkpoint()` write complete authority state in the internal `hson-locus-durable-aggregate-checkpoint` format. One active manifest names ordered, bounded chunks for every application Library root, every complete Schema, and the separate system-state root. The chunks contain semantic state with no generated QUID, identity epoch, issued ledger, or client ownership catalog. A deployment supplies and validates the catalog again after restart. Checkpoint chunks are server-side storage records and must not be sent to clients.
 
 Each encoded chunk is at most 1 MiB. A manifest is at most 16 MiB and describes at most 65,536 chunks. A large root spans multiple chunks; checkpoint encoding and restore do not construct a complete 64 MiB snapshot blob or require one root to fit the old 4 MiB exact-value default. These are practical storage bounds, not an unlimited authority-size guarantee. Explicit `captureHosted()` still produces a bounded monolithic artifact for its separate purpose.
 

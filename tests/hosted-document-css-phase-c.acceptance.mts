@@ -6,7 +6,6 @@ import { hsonLiveMap, hsonLocus, type LocusWebSocketLike } from "../src/index.ts
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { local_initializers } from "./helpers/client-projection.mts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
-import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { parse_document_stylesheet } from "../src/internal/css/parse-document-stylesheet.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { create_persistent_locus_hosted_aggregate_internal,
@@ -226,7 +225,7 @@ const restartOptions = {
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 };
-const firstAuthority = await create_persistent_locus({ map: restartMap, ...restartOptions });
+const firstAuthority = await hsonLocus.create({ map: restartMap, ...restartOptions });
 await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { color: maroon; }")); });
 await firstAuthority.checkpoint();
 const restartWire = pair();
@@ -257,7 +256,7 @@ restartEcho.disconnect(); stopRestart();
 await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { background: silver; }", restartPage.css.list())); });
 restartEcho.dispose();
 firstAuthority.dispose();
-const restarted = await create_persistent_locus({ map: restartInput(), ...restartOptions });
+const restarted = await hsonLocus.create({ map: restartInput(), ...restartOptions });
 stopRestart = bind_locus_websocket(restarted, restartWire.server);
 const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), map: restartClient,
   logicalMapId: restarted.logicalMapId });

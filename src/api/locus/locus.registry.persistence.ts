@@ -35,6 +35,8 @@ function set_initial_authority(
   if (logicalMapId === undefined && incarnationId === undefined) return;
   const aggregate = internal_livemap_aggregate_authority(map);
   const position = aggregate.hostedPosition();
+  if ((logicalMapId === undefined || logicalMapId === position.authority.logicalMapId)
+    && (incarnationId === undefined || incarnationId === position.authority.incarnationId)) return;
   if (position.revision !== 0) {
     throw new LocusPersistenceError(
       "LOCUS_PERSISTED_STATE_INVALID",
@@ -73,6 +75,7 @@ async function persistent_view<
   initialize: boolean,
 ): Promise<PersistentLocus<TMap, TActions>> {
   const exposureAuthority = internal_livemap_aggregate_authority(options.map);
+  const suppliedAuthority = exposureAuthority.hostedPosition().authority;
   make_locus_hosted_projection_policy(exposureAuthority.hostedRegistry(), exposureAuthority.hostedPosition().authority,
     options.libraries, options.defaultProjection, options.authorizeProjection, options.map);
   if (initialize) {
@@ -81,6 +84,9 @@ async function persistent_view<
       await write_semantic_checkpoint(internal_livemap_aggregate_authority(options.map).captureSemanticCheckpoint(),
         options.persistence as LocusHostedAggregatePersistenceAdapter);
     } catch (cause) {
+      if (exposureAuthority.hostedPosition().revision === 0) {
+        exposureAuthority.setInitialHostedAuthority(suppliedAuthority);
+      }
       throw new LocusPersistenceError(
         "LOCUS_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
         "Hosted registry Locus initial checkpoint could not be stored.",
@@ -96,7 +102,8 @@ async function persistent_view<
       return rest;
     })();
   const records = new WeakMap<HostedAggregateCommit, object>();
-  const runtime = create_registry_locus_internal(managedOptions as LocusOptions<TMap, TActions>, {
+  const runtime = (() => {
+    try { return create_registry_locus_internal(managedOptions as LocusOptions<TMap, TActions>, {
     ...(initialize ? {} : { recoveryFloorRevision: options.map.rev }),
     prepareGate: ({ commit }) => {
       if (!commit.changed) return;
@@ -110,7 +117,13 @@ async function persistent_view<
       if (record === undefined) throw new Error("Prepared durable aggregate record is unavailable.");
       return append_durable_commit(persistence, record);
     },
-  });
+    }); } catch (cause) {
+      if (initialize && exposureAuthority.hostedPosition().revision === 0) {
+        exposureAuthority.setInitialHostedAuthority(suppliedAuthority);
+      }
+      throw cause;
+    }
+  })();
   let checkpointTail = Promise.resolve();
   const checkpoint = (): Promise<void> => {
     const run = checkpointTail.then(async () => {
@@ -144,6 +157,9 @@ export async function create_persistent_registry_locus<
   options: PersistentLocusOptions<TMap, TActions>,
 ): Promise<PersistentLocus<TMap, TActions>> {
   const initialAuthority = internal_livemap_aggregate_authority(options.map);
+  const probe = Object.freeze({});
+  initialAuthority.claimManagement(probe);
+  initialAuthority.releaseManagement(probe);
   const initial = initialAuthority.hostedPosition();
   const logicalMapId = options.logicalMapId ?? initial.authority.logicalMapId;
   const restored = await load_persistent_locus_hosted_aggregate_internal(logicalMapId, {

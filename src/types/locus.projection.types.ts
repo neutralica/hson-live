@@ -9,8 +9,11 @@ export type LocusLibraryCatalogEntry =
   | Readonly<{
     name: string;
     ownership: "private" | "shared";
+    /** Initial authority state for Locus-owned construction. Omit when adopting a map. */
+    definition?: import("./livemap.types.js").LiveMapLibraryDefinition;
     initializer?: never;
-    css?: never;
+    /** Initial document stylesheet; valid only for a document definition. */
+    css?: import("./document-css.types.js").DocumentCssRecord;
   }>
   | Readonly<{
     name: string;

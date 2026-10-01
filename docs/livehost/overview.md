@@ -55,7 +55,7 @@ document, report, tenant, or other domain selector.
 ## Public packages
 
 ```ts
-import { create_locus } from "hson-live/locus";
+import { hsonLocus } from "hson-live/locus";
 import { bind_node_locus_websocket } from "hson-live/locus/node";
 import { create_livehost_locus_registry } from "hson-live/livehost";
 import { start_node_application_host } from "hson-live/livehost/node";

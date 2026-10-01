@@ -13,7 +13,7 @@ import {
 import { hsonEcho, type Echo } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
 import { hsonLiveMap, type LiveMap, type LiveMapDocumentLibrary } from "hson-live/livemap";
-import { create_locus } from "hson-live/locus";
+import { hsonLocus } from "hson-live/locus";
 import { reflect_document } from "hson-live/mirror";
 import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "hson-live/ssr";
 import { hsonTransform, type TransformOutput } from "hson-live/transform";
@@ -52,7 +52,7 @@ binding.dispose();
 
 const hostedMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>",
   schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
-const hosted = create_locus({ map: hostedMap, libraries: [{ name: "page", ownership: "shared" }] });
+const hosted = hsonLocus.create({ map: hostedMap, libraries: [{ name: "page", ownership: "shared" }] });
 void hosted;
 
 const localSsr = libraries.cut({ html: "page" });

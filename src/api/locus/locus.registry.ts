@@ -40,6 +40,8 @@ function establish_authority_identity(
   if (logicalMapId === undefined && incarnationId === undefined) return;
   const aggregate = internal_livemap_aggregate_authority(map);
   const position = aggregate.hostedPosition();
+  if ((logicalMapId === undefined || logicalMapId === position.authority.logicalMapId)
+    && (incarnationId === undefined || incarnationId === position.authority.incarnationId)) return;
   if (position.revision !== 0) {
     throw new Error("A hosted registry Locus identity may be set only before its first transition.");
   }
@@ -83,8 +85,15 @@ export function create_registry_locus_internal<
   const startingPosition = startingAuthority.hostedPosition();
   make_locus_hosted_projection_policy(startingAuthority.hostedRegistry(), startingPosition.authority,
     options.libraries, options.defaultProjection, options.authorizeProjection, options.map);
+  const probe = Object.freeze({});
+  startingAuthority.claimManagement(probe);
+  startingAuthority.releaseManagement(probe);
+  let authorityForCleanup: Readonly<{ dispose: () => void }> | undefined;
+  let activityForCleanup: Readonly<{ dispose: () => void }> | undefined;
+  try {
   establish_authority_identity(options.map, options.logicalMapId, options.incarnationId);
   const activity = make_locus_activity_controller();
+  activityForCleanup = activity;
   let actionSequence = 0;
   let disposed = false;
   const actions: Record<string, (
@@ -148,6 +157,7 @@ export function create_registry_locus_internal<
       acquireRecoveryActivity: () => activity.acquire("recovery"),
     }),
   });
+  authorityForCleanup = authority;
   const capabilities = new Map<LocusSessionId, LocusSession>();
   const retainedSessionReleases = new Map<string, () => void>();
   const stopSessionActivity = authority.sessions.onChange((event) => {
@@ -280,4 +290,12 @@ export function create_registry_locus_internal<
   alias_locus_remote_action_admission_internal(locus, authority);
   alias_locus_retained_action_status_internal(locus, authority);
   return Object.freeze({ locus, run_exclusive: authority.run_exclusive });
+  } catch (cause) {
+    authorityForCleanup?.dispose();
+    activityForCleanup?.dispose();
+    if (startingAuthority.hostedPosition().revision === 0) {
+      startingAuthority.setInitialHostedAuthority(startingPosition.authority);
+    }
+    throw cause;
+  }
 }

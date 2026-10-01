@@ -171,7 +171,6 @@ export type {
   EchoAttachmentEvent,
 } from "./types/echo.types.js";
 
-export { create_locus } from "./api/locus/locus.public.js";
 export { bind_locus_websocket } from "./api/locus/locus.websocket.js";
 export { bind_locus_http } from "./api/locus/locus.http.js";
 export type { LocusHttpBinding } from "./api/locus/locus.http.js";
@@ -199,6 +198,8 @@ export type {
   LocusActionHandler,
   LocusActions,
   LocusOptions,
+  LocusOwnedLibraryCatalogEntry,
+  LocusOwnedOptions,
   LocusResult,
 } from "./types/locus.types.js";
 

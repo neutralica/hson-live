@@ -1,4 +1,4 @@
-import { Hson, hson, hsonLiveMap, hsonLocus, create_locus, create_echo,
+import { Hson, hson, hsonLiveMap, hsonLocus, create_echo,
   continue_document, continue_hosted_document, encode_ssr_bootstrap, decode_ssr_bootstrap, create_livehost_locus_registry,
   type Locus, type LiveMap, type LiveMapDocumentLibrary } from "hson-live";
 import { bind_locus_websocket, type LocusWebSocketLike } from "hson-live/locus";
@@ -10,7 +10,7 @@ declare const documentLibrary: LiveMapDocumentLibrary;
 declare const element: Element;
 declare const socket: LocusWebSocketLike;
 const registry = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
-const locus = create_locus({ map: registry, libraries: [{ name: "page", ownership: "shared" }] });
+const locus = hsonLocus.create({ map: registry, libraries: [{ name: "page", ownership: "shared" }] });
 const checked: Locus<typeof registry> = locus;
 void (0 as unknown as Locus | LiveMap);
 void [hson, hsonLocus, checked, create_echo, continue_document({ map: registry, root: element }),
@@ -21,5 +21,5 @@ import { decode_locus_bootstrap } from "hson-live/locus";
 // @ts-expect-error The sessionless Locus wire codec is retired.
 import { encode_locus_message } from "hson-live/locus";
 // @ts-expect-error A document library cannot become a hosted Locus.
-create_locus({ map: documentLibrary });
+hsonLocus.create({ map: documentLibrary });
 void [decode_locus_bootstrap, encode_locus_message];

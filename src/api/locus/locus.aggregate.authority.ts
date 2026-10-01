@@ -339,6 +339,11 @@ export function create_locus_hosted_aggregate_authority_internal<
   const preparedSystemRoots = new WeakMap<object, Readonly<{ before?: HsonNode; after?: HsonNode }>>();
   let admissionBarrier: Promise<void> | undefined;
   let releaseAdmissionBarrier: (() => void) | undefined;
+  let releaseOnConstructionFailure: (() => void) | undefined;
+  let releaseSessionsOnConstructionFailure: (() => void) | undefined;
+  let releaseActionsOnConstructionFailure: (() => void) | undefined;
+  try {
+  let sessions!: ReturnType<typeof make_locus_session_manager>;
   const locus = create_locus_hosted_aggregate_internal({
     map: options.map,
     ...(options.actions === undefined ? {} : { actions: options.actions }),
@@ -391,14 +396,17 @@ export function create_locus_hosted_aggregate_authority_internal<
     onFault: () => fault_authority(),
     uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
   });
+  releaseOnConstructionFailure = locus.dispose;
   let seq = 0;
   let generatedSessionId = 0;
-  const sessions = make_locus_session_manager(options.sessions);
+  sessions = make_locus_session_manager(options.sessions);
+  releaseSessionsOnConstructionFailure = sessions.dispose;
   const actionRequests = make_locus_action_dedupe_store(
     () => locus.rev,
     () => seq,
     options.actionDedupe,
   );
+  releaseActionsOnConstructionFailure = actionRequests.dispose;
   const acquireActionActivity = options.internal?.acquireActionActivity ?? (() => () => {});
   const acquireEphemeralSessionActivity = options.internal?.acquireSessionActivity ?? (() => () => {});
 
@@ -1733,6 +1741,12 @@ export function create_locus_hosted_aggregate_authority_internal<
   register_locus_semantic_attachment_internal(server,
     ({ notice, connection, onClose }) => attach(notice, connection, onClose), maxWireBytes);
   return server;
+  } catch (cause) {
+    releaseActionsOnConstructionFailure?.();
+    releaseSessionsOnConstructionFailure?.();
+    releaseOnConstructionFailure?.();
+    throw cause;
+  }
 }
 
 /** Derive replica progress from exact authority history without rewriting that history. */

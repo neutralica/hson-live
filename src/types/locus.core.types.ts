@@ -6,6 +6,8 @@ import type {
   LiveMapStagedWriter,
   LiveMapSynchronousAuthoring,
   LiveMapDefinitions,
+  LiveMapLibraryDefinition,
+  LiveMapKnownDefinitions,
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
@@ -73,7 +75,7 @@ export type LocusActions<
   [TName in keyof TActions & string]: LocusActionHandler<TActions[TName], TMap, TActions>;
 }>;
 
-/** Locus construction with authority state in `map` and one complete application catalog. */
+/** Advanced Locus construction over a supplied authority map and complete catalog. */
 export type LocusOptions<
   TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -94,6 +96,26 @@ export type LocusOptions<
   actionDedupe?: LocusActionDedupeOptions;
   schema?: Pick<LocusSchema<JsonValue | undefined, TActions>, "actions">;
   authorizeAction?: LocusActionAuthorizer<TActions>;
+}>;
+
+/** One catalog supplies both authority definitions and projection ownership. */
+export type LocusOwnedLibraryCatalogEntry =
+  | Readonly<{ name: string; ownership: "private" | "shared"; definition: LiveMapLibraryDefinition;
+    css?: import("./document-css.types.js").DocumentCssRecord; initializer?: never }>
+  | Extract<LocusLibraryCatalogEntry, { ownership: "local" }>;
+
+export type LocusOwnedMapDefinitions<TCatalog extends readonly LocusOwnedLibraryCatalogEntry[]> =
+  LiveMapKnownDefinitions<{
+    readonly [TName in Extract<TCatalog[number], { definition: LiveMapLibraryDefinition }>["name"]]:
+      Extract<TCatalog[number], { name: TName; definition: LiveMapLibraryDefinition }>["definition"];
+  }>;
+
+export type LocusOwnedOptions<
+  TCatalog extends readonly LocusOwnedLibraryCatalogEntry[],
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = Omit<LocusOptions<LiveMap<LocusOwnedMapDefinitions<TCatalog>>, TActions>, "map" | "libraries"> & Readonly<{
+  map?: never;
+  libraries: TCatalog;
 }>;
 
 export type LocusActionDedupeSchedule = (
@@ -439,6 +461,11 @@ export type PersistentLocusOptions<
 > = LocusOptions<TMap, TActions> & Readonly<{
   persistence: LocusPersistenceAdapter;
 }>;
+
+export type PersistentLocusOwnedOptions<
+  TCatalog extends readonly LocusOwnedLibraryCatalogEntry[],
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = LocusOwnedOptions<TCatalog, TActions> & Readonly<{ persistence: LocusPersistenceAdapter }>;
 
 export type PersistentLocus<
   TMap extends LiveMap = LiveMap,

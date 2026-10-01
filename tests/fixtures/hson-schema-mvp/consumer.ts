@@ -22,7 +22,7 @@ const dynamicInteractionFields: HsonCanonical = hsonTransform.fromJson({ args: [
 const certifiedInteractionFields: HsonData<typeof InteractionFieldsSchema> = InteractionFieldsSchema.certify(dynamicInteractionFields);
 const relationalUnique: HsonData<typeof RelationalUniqueSchema> = Hson.data`<cells [<position "top-right" body "a">, <position "top-left" body "b">]>`;
 
-const libraries = hsonLiveMap.fromLibraries({
+const definitions = {
   user: {
     data: { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", key: "abc", status: "ready", phase: "playing", turn: "player2", zero: 0, negativeZero: -0, signedZeroChoice: -0, flags: [true], pair: ["x", 2], account: { kind: "admin", level: 3 } },
     schema: UserSchema,
@@ -31,7 +31,8 @@ const libraries = hsonLiveMap.fromLibraries({
     data: { value: "root", age: 2, children: [] },
     schema: TreeSchema,
   },
-});
+};
+const libraries = hsonLiveMap.fromLibraries(definitions);
 const libraryName: string = libraries.lib("user").at(["name"]).snap();
 const librarySchema: typeof UserSchema = libraries.lib("user").schema.get();
 libraries.lib("user").at(["name"]).set("Grace");
@@ -58,6 +59,23 @@ const hostedLibraries = hsonLocus.create({
   },
 });
 const hostedLibraryName: string = hostedLibraries.map.lib("user").at(["name"]).snap();
+const owned = hsonLocus.create({ libraries: [
+  { name: "user", ownership: "shared", definition: definitions.user },
+  { name: "tree", ownership: "private", definition: definitions.tree },
+], actions: {
+  rename(context) {
+    context.stage.lib("user").at(["name"]).set("Mira");
+    // @ts-expect-error Owned actions retain generated Schema write types.
+    context.stage.lib("user").at(["name"]).set(37);
+  },
+} });
+const ownedMap: typeof libraries = owned.map;
+owned.map.lib("user").at(["name"]).set("Mira");
+owned.stage.lib("user").at(["name"]).set("Mira");
+owned.stage((stage) => { stage.lib("user").at(["name"]).set("Mira"); });
+// @ts-expect-error Owned construction preserves generated Schema write types.
+owned.stage.lib("user").at(["name"]).set(37);
+void ownedMap;
 
 void authored;
 void certified;

@@ -127,16 +127,14 @@ not the same promise as Echo revision convergence.
 ### 5. Hosted library-registry authority and replica
 
 ```ts
-import { create_locus } from "hson-live/locus";
+import { hsonLocus } from "hson-live/locus";
 import { hsonEcho } from "hson-live/echo";
 import { hsonLiveMap } from "hson-live/livemap";
 import { Hson } from "hson-live";
 
 const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
-const authorityMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
-const authority = create_locus({
-  map: authorityMap,
-  libraries: [{ name: "page", ownership: "shared" }],
+const authority = hsonLocus.create({
+  libraries: [{ name: "page", ownership: "shared", definition: { document: "<main/>", schema: PageSchema } }],
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
 const session = await authority.session.create({ libraries: ["page"] });

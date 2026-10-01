@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { Hson, hsonLiveMap, hsonLocus, enable_interactions, type HsonSchema } from "../src/index.ts";
-import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { decode_locus_message } from "../src/api/locus/locus.protocol.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -231,14 +230,14 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 // The deployment supplies the catalog again on restart; durable authority records contain no ownership classification.
 {
   const adapter = new MemoryCheckpointAdapter();
-  const first = await create_persistent_locus({ map: map(), libraries: CATALOG, logicalMapId: "projection-persist", persistence: adapter });
+  const first = await hsonLocus.create({ map: map(), libraries: CATALOG, logicalMapId: "projection-persist", persistence: adapter });
   await first.checkpoint();
   const checkpoint = adapter.state("projection-persist")?.checkpoint;
   assert.equal(JSON.stringify(checkpoint).includes("private"), false);
   assert.equal(JSON.stringify(checkpoint).includes("shared"), false);
   first.dispose();
-  await assert.rejects(() => create_persistent_locus({ map: map(), libraries: CATALOG.slice(0, 2), logicalMapId: "projection-persist", persistence: adapter }), /missing.*credentials/i);
-  const restored = await create_persistent_locus({ map: map(), libraries: CATALOG, logicalMapId: "projection-persist", persistence: adapter });
+  await assert.rejects(() => hsonLocus.create({ map: map(), libraries: CATALOG.slice(0, 2), logicalMapId: "projection-persist", persistence: adapter }), /missing.*credentials/i);
+  const restored = await hsonLocus.create({ map: map(), libraries: CATALOG, logicalMapId: "projection-persist", persistence: adapter });
   restored.dispose();
 }
 

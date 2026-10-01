@@ -1,5 +1,4 @@
 export { hsonLocus } from "./locus.facade.js";
-export { create_locus, create_persistent_locus } from "./locus.public.js";
 export { bind_locus_websocket } from "./locus.websocket.js";
 export { bind_locus_http } from "./locus.http.js";
 export type { LocusHttpBinding } from "./locus.http.js";
@@ -32,6 +31,8 @@ export type {
   LocusActionHandler,
   LocusActions,
   LocusOptions,
+  LocusOwnedLibraryCatalogEntry,
+  LocusOwnedOptions,
   LocusActionDedupeSchedule,
   LocusActionDedupeOptions,
   LocusActionDedupeDiagnostics,
@@ -51,6 +52,7 @@ export type {
   LocusStage,
   LocusPersistenceAdapter,
   PersistentLocusOptions,
+  PersistentLocusOwnedOptions,
   PersistentLocus,
   LocusActivityKind,
   LocusActivityState,

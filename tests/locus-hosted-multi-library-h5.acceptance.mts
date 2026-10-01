@@ -14,7 +14,6 @@ import {
   type HsonSchema,
 } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
-import { create_persistent_locus } from "../src/api/locus/index.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_livehost_locus_registry } from "../src/api/livehost/index.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
@@ -523,7 +522,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   install_fake_document();
   const persistence = new MemoryPersistence();
   const serverMap = make_map();
-  const host = await create_persistent_locus({
+  const host = await hsonLocus.create({
     ...test_public_projection(serverMap),
     map: serverMap,
     logicalMapId: "h5-persisted-map",
@@ -578,7 +577,7 @@ draft.lib("page").graph(insert_item()); })();
 
   const restoredMap = make_map();
   const restartStarted = performance.now();
-  const restored = await create_persistent_locus({
+  const restored = await hsonLocus.create({
     ...test_public_projection(restoredMap),
     map: restoredMap,
     logicalMapId: "h5-persisted-map",
@@ -649,7 +648,7 @@ draft.lib("page").graph(insert_item()); })();
   restored.dispose();
 
   await assert.rejects(
-    () => create_persistent_locus({ libraries: test_application_catalog(hsonLiveMap.fromLibraries({
+    () => hsonLocus.create({ libraries: test_application_catalog(hsonLiveMap.fromLibraries({
         state: { data: { theme: "light", count: 0 }, schema: StateSchema },
       })),
       map: hsonLiveMap.fromLibraries({
@@ -663,7 +662,7 @@ draft.lib("page").graph(insert_item()); })();
 
   persistence.corrupt();
   await assert.rejects(
-    () => create_persistent_locus({
+    () => hsonLocus.create({
     ...test_public_projection(make_map()), map: make_map(), logicalMapId: "h5-persisted-map", persistence }),
     /persisted state is invalid/i,
   );
@@ -672,7 +671,7 @@ draft.lib("page").graph(insert_item()); })();
 await check("public hosted failures reject before acceptance and leave the aggregate unchanged", async () => {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_locus({
+  const host = await hsonLocus.create({
     ...test_public_projection(map),
     map,
     persistence,

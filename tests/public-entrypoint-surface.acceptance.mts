@@ -30,9 +30,9 @@ LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocu
 LiveMapLibraryAddOperation LiveMapLibraryDefinition LiveMapDefinitions LiveMapDynamicLibrary LiveMapKnownNames LiveMapLibraryInput LiveMapLibrarySchemaUseOperation LiveMapStagedWriter LiveMapWithLibrarySchema LiveTree LiveTreeAlreadyAttachedError LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult LiveTreeLinkedIdentityRequiredError
 LiveTreeProtectedRootError LiveTreeQuidReuseError BrowserInteractionDescriptor Locus LocusActionContext LocusActionHandler LocusActionName LocusActionPayloads
 LocusActions LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError LocusDisconnectedError LocusHttpBinding
-LocusDuplicateActionIdError LocusOptions LocusResult LocusStage LocusWebSocketLike Mirror SchemaType SsrBootstrapCodecError SsrBootstrapCodecOptions
+LocusDuplicateActionIdError LocusOptions LocusOwnedLibraryCatalogEntry LocusOwnedOptions LocusResult LocusStage LocusWebSocketLike Mirror SchemaType SsrBootstrapCodecError SsrBootstrapCodecOptions
 SsrBootstrapKind TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource TreeSelector activate_interactions
-add_interaction bind_locus_http bind_locus_websocket continue_document continue_hosted_document create_echo create_livehost_locus_registry create_locus decode_ssr_bootstrap enable_interactions
+add_interaction bind_locus_http bind_locus_websocket continue_document continue_hosted_document create_echo create_livehost_locus_registry decode_ssr_bootstrap enable_interactions
 encode_ssr_bootstrap hson hsonCalc hsonEcho hsonLiveMap hsonLiveTree hsonLocus hsonMirror
 hsonTransform is_transform_error read_transform_error_details reflect_document remove_interaction replace_interaction
 `.trim().split(/\s+/).sort();
@@ -179,7 +179,7 @@ const ownerProofs = Object.freeze({
   "dist/api/livemap/index.d.ts": ["LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
   "dist/api/mirror/index.d.ts": ["reflect_collection", "CollectionMirror", "CollectionMirrorErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoSync", "EchoSyncStrategy"],
-  "dist/api/locus/index.d.ts": ["create_persistent_locus", "PersistentLocusOptions"],
+  "dist/api/locus/index.d.ts": ["PersistentLocusOwnedOptions", "PersistentLocusOptions"],
   "dist/api/locus/node/index.d.ts": ["bind_node_locus_websocket", "NodeLocusWebSocketOptions"],
   "dist/api/ssr/index.d.ts": ["BrowserRealizationHtml", "DocumentSsrError"],
   "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost"],
@@ -284,7 +284,7 @@ await check("all retained overlapping runtime values preserve strict identity", 
     livemap: ["hsonLiveMap", "LiveMapDocumentAttributeNotFoundError", "LiveMapDocumentIdentityProvenanceError", "LiveMapDocumentIdentityRegistrationError", "LiveMapDocumentInstallError", "LiveMapDocumentMutationError", "LiveMapDocumentStagingError"],
     mirror: ["hsonMirror", "reflect_document", "DocumentMirrorError"],
     echo: ["hsonEcho", "create_echo", "EchoSyncError", "EchoSessionError"],
-    locus: ["hsonLocus", "create_locus", "LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusAuthorityError"],
+    locus: ["hsonLocus", "LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusAuthorityError"],
     ssr: ["decode_ssr_bootstrap", "DocumentSsrError", "encode_ssr_bootstrap", "SsrBootstrapCodecError"],
     livehost: ["create_livehost_locus_registry"],
   } as const;
