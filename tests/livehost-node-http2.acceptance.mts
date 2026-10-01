@@ -167,6 +167,48 @@ check("secure HTTP/2 shares Web request/response adaptation and HTTP/1 fallback"
   } finally { session.destroy(); await host.dispose(); }
 });
 
+check("HTTP/2 Request.signal survives normal completion and aborts on stream reset", async () => {
+  const started = deferred<Request>();
+  const aborted = deferred<void>();
+  const host = await start_node_application_host({ port: 0, http2: tls, applications: [{
+    name: "h2-request-signal", requests: [
+      ...["GET", "POST"].map((method) => ({ method, path: "/normal", async handle(request: Request) {
+        await request.text();
+        assert.equal(request.signal.aborted, false);
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(request.signal.aborted, false);
+        return new Response("ok");
+      } })),
+      { method: "POST", path: "/cancel", async handle(request) {
+        assert.equal(request.signal.aborted, false);
+        started.resolve(request);
+        await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => {
+          aborted.resolve(undefined);
+          resolve();
+        }, { once: true }));
+        return new Response(null, { status: 204 });
+      } },
+    ], dispose() {},
+  }] });
+  const session = connect_h2(host.httpUrl, { ca: tls.cert, servername: "localhost" });
+  try {
+    const normal = await h2_result(session, "/normal");
+    assert.equal(normal.headers[":status"], 200);
+    assert.equal(normal.body, "ok");
+    const posted = await h2_result(session, "/normal", "POST", "complete");
+    assert.equal(posted.headers[":status"], 200);
+    assert.equal(posted.body, "ok");
+    const stream = session.request({ ":path": "/cancel", ":method": "POST" }, { endStream: false });
+    stream.on("error", () => undefined);
+    stream.write("partial upload");
+    const active = await within(started.promise);
+    assert.equal(active.signal.aborted, false);
+    stream.close(h2_constants.NGHTTP2_CANCEL);
+    await within(aborted.promise);
+    assert.equal(active.signal.aborted, true);
+  } finally { session.destroy(); await host.dispose(); }
+});
+
 check("HTTP/2 filters connection-specific and Connection-nominated response headers", async () => {
   const host = await start_node_application_host({ port: 0, http2: tls, applications: [{
     name: "h2-headers", requests: [{ method: "GET", path: "/headers", handle() {

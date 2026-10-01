@@ -321,7 +321,7 @@ function request_has_body(request: NodeRequest): boolean {
     || Number(request.headers["content-length"] ?? "0") !== 0;
 }
 
-function make_web_request(request: NodeRequest, url: URL): Request {
+function make_web_request(request: NodeRequest, url: URL, signal?: AbortSignal): Request {
   const headers = new Headers();
   for (const [name, value] of Object.entries(request.headers)) {
     if (value === undefined || name.startsWith(":")) continue;
@@ -332,12 +332,43 @@ function make_web_request(request: NodeRequest, url: URL): Request {
     }
   }
   const method = request.method ?? "GET";
-  const init: RequestInit & { duplex?: "half" } = { method, headers };
+  const init: RequestInit & { duplex?: "half" } = { method, headers, ...(signal === undefined ? {} : { signal }) };
   if (method !== "GET" && method !== "HEAD" && request_has_body(request)) {
     init.body = Readable.toWeb(request) as ReadableStream<Uint8Array>;
     init.duplex = "half";
   }
   return new Request(url, init);
+}
+
+function bind_request_cancellation(request: NodeRequest, response: NodeResponse): Readonly<{
+  signal: AbortSignal;
+  abort: () => void;
+  cleanup: () => void;
+}> {
+  const controller = new AbortController();
+  const abort = (): void => { controller.abort(); };
+  const request_closed = (): void => {
+    // IncomingMessage also closes after an ordinary, fully received upload.
+    if (request instanceof Http2ServerRequest) {
+      if (request.stream.rstCode !== 0) abort();
+    } else if (!request.complete) abort();
+  };
+  const response_closed = (): void => {
+    if (!response.writableEnded) abort();
+  };
+  request.once("aborted", abort);
+  request.once("close", request_closed);
+  response.once("close", response_closed);
+  if (request.aborted || response.destroyed) abort();
+  return {
+    signal: controller.signal,
+    abort,
+    cleanup: () => {
+      request.off("aborted", abort);
+      request.off("close", request_closed);
+      response.off("close", response_closed);
+    },
+  };
 }
 
 function apply_web_response_headers(target: NodeResponse, headers: Headers): void {
@@ -639,6 +670,7 @@ export async function start_node_application_host(
   let stopping = false;
   let pendingHandshakes = 0;
   const activeConnections = new Map<WebSocket, ActiveConnection>();
+  const activeRequests = new Set<ReturnType<typeof bind_request_cancellation>>();
   const websocketServer = new WebSocketServer({ noServer: true, maxPayload: limits.maxPayloadBytes });
 
   const security_for = (application: LiveHostApplication): NodeApplicationSecurity =>
@@ -687,6 +719,19 @@ export async function start_node_application_host(
     code: rejection.code,
   });
 
+  const application_is_ready = (application: LiveHostApplication): boolean => {
+    try {
+      return application.ready?.() ?? true;
+    } catch (error) {
+      try {
+        log({ type: "http-dispatch", application: application.name, route: "GET /healthz",
+          transport: "http", outcome: "rejected", code: "NODE_HOST_READINESS_FAILED",
+          error: error instanceof Error ? error.message : String(error) });
+      } catch { /* A logging callback cannot turn a failed readiness check into an unfinished health response. */ }
+      return false;
+    }
+  };
+
   const handle_request = (request: NodeRequest, response: NodeResponse): void => {
     void (async () => {
       if (request instanceof Http2ServerRequest) {
@@ -725,7 +770,7 @@ export async function start_node_application_host(
       if (request.method === "GET" && requestUrl.pathname === "/healthz") {
         const applicationHealth = applications.map((application) => ({
           name: application.name,
-          ready: application.ready?.() ?? true,
+          ready: application_is_ready(application),
         }));
         const ready = applicationHealth.every((application) => application.ready);
         log({ type: "http-dispatch", route: "GET /healthz", transport: "http", outcome: "accepted" });
@@ -773,8 +818,10 @@ export async function start_node_application_host(
         proxyInterpretation: normalized.value.proxyInterpretation,
         outcome: "accepted",
       });
+      const lifetime = bind_request_cancellation(request, response);
+      activeRequests.add(lifetime);
       try {
-        const webRequest = make_web_request(request, normalized.value.url);
+        const webRequest = make_web_request(request, normalized.value.url, lifetime.signal);
         const webResponse = await registered.route.handle(
           webRequest,
           application_context(normalized.value, authorization.value),
@@ -788,6 +835,9 @@ export async function start_node_application_host(
         }
         response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
         response.end("Application request failed.\n");
+      } finally {
+        lifetime.cleanup();
+        activeRequests.delete(lifetime);
       }
     })();
   };
@@ -1046,6 +1096,7 @@ export async function start_node_application_host(
     operational = false;
     clearInterval(heartbeat);
     log({ type: "shutdown-start" });
+    for (const lifetime of activeRequests) lifetime.abort();
     const serverClosed = new Promise<void>((resolve, reject) => {
       server.close((error) => error === undefined ? resolve() : reject(error));
     });
@@ -1096,7 +1147,7 @@ export async function start_node_application_host(
     url: `${secure ? "wss" : "ws"}://${bindHost}:${port}`,
     httpUrl: `${scheme}://${bindHost}:${port}`,
     applicationNames: Object.freeze(applications.map((application) => application.name)),
-    ready: () => operational && !stopping && applications.every((application) => application.ready?.() ?? true),
+    ready: () => operational && !stopping && applications.every(application_is_ready),
     connectionCount(applicationName?: string) {
       return [...activeConnections.values()]
         .filter((connection) => applicationName === undefined || connection.application === applicationName)

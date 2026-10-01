@@ -120,7 +120,8 @@ for ordered replica synchronization or endpoint control observation, alongside
 independent finite operation requests. LiveHost only writes the Web response
 with normal backpressure; it does not interpret Echo or Locus messages.
 An application serving no-JavaScript streamed HTML can use a different response
-representation and need not construct JavaScript Echo. Scout is deferred.
+representation and need not construct JavaScript Echo. Scout exists as optional
+application/page-response continuation ignition; LiveHost does not emit it.
 
 ## Authentication and authorization
 

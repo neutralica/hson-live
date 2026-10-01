@@ -2,7 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, bind_locus_http } from "../dist/index.js";
+import { Hson, hsonLocus, bind_locus_http } from "../dist/index.js";
 import { start_node_application_host } from "../dist/api/livehost/node/index.js";
 
 const root = resolve(import.meta.dirname, "..");
@@ -33,16 +33,16 @@ try {
   const html = await readFile(resolve(root, "tests/browser/echo-http.acceptance.html"));
   const javascript = await readFile(bundlePath);
   const schema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
-  const map = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema } });
-  enable_interactions(map);
-  add_interaction(map, {
+  const interaction = {
     id: "http-click", subject: { library: "page", path: [0, 0, 0] }, kind: "locus", key: "save",
     payload: Hson.data.from({ value: 1 }),
     listener: { event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
-  });
+  };
   let handled = false;
-  locus = hsonLocus.create({ map, libraries: [{ name: "page", ownership: "shared" }],
+  locus = hsonLocus.create({
+    shared: [{ name: "page", definition: { document: "<main <button/>/>", schema } }],
+    interactions: [interaction],
     defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
     authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
     actions: { save: () => { handled = true; } },

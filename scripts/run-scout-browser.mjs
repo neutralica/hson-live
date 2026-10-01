@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, bind_locus_http } from "../dist/index.js";
+import { Hson, hsonLocus, bind_locus_http } from "../dist/index.js";
 import { bind_node_locus_websocket } from "../dist/api/locus/node/index.js";
 import { start_node_application_host } from "../dist/api/livehost/node/index.js";
 
@@ -41,23 +41,24 @@ try {
   bundle("tests/browser/scout-registration.entry.mjs", registrationPath);
   const script = await readFile(bundlePath);
   const registrationScript = await readFile(registrationPath);
-  const map = hsonLiveMap.fromLibraries({ page: { document:
-    '<html <head <script src="/bundle.js" defer/>/> <body <main <button/>/>/>/>' } });
-  enable_interactions(map);
-  add_interaction(map, {
+  const interaction = {
     id: "scout-click", subject: { library: "page", path: [0, 0, 1, 0, 0, 0, 0] },
     kind: "locus", key: "save", payload: Hson.data.from(null),
     listener: { event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
-  });
+  };
   let handled = 0;
   let httpCalls = 0;
   let setupCalls = 0;
-  locus = hsonLocus.create({ map, libraries: [{ name: "page", ownership: "shared" }],
+  locus = hsonLocus.create({
+    shared: [{ name: "page", definition: { document:
+      '<html <head <script src="/bundle.js" defer/>/> <body <main <button/>/>/>/>' } }],
+    interactions: [interaction],
     defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
     authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
     actions: { save: () => { handled += 1; } },
   });
+  const map = locus.map;
   socketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolveListen, rejectListen) => {
     socketServer.once("listening", resolveListen);

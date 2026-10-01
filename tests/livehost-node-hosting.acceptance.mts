@@ -235,6 +235,114 @@ check("zero-Locus application receives Web Request and returns Web Response", as
   assert.equal(disposed, 1);
 });
 
+check("HTTP/1 Request.signal tracks disconnects, uploads, and normal completion", async () => {
+  let started = deferred<Request>();
+  let aborted = deferred<void>();
+  const host = await start_node_application_host({ port: 0, applications: [{
+    name: "request-signal", requests: [
+      ...["GET", "POST"].map((method) => ({ method, path: "/normal", async handle(request: Request) {
+        await request.text();
+        assert.equal(request.signal.aborted, false);
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(request.signal.aborted, false);
+        return new Response("ok");
+      } })),
+      ...["GET", "POST"].map((method) => ({ method, path: "/cancel", async handle(request: Request) {
+        assert.equal(request.signal.aborted, false);
+        started.resolve(request);
+        await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => {
+          aborted.resolve(undefined);
+          resolve();
+        }, { once: true }));
+        return new Response(null, { status: 204 });
+      } })),
+    ], dispose() {},
+  }] });
+  try {
+    assert.equal(await (await fetch(`${host.httpUrl}/normal`)).text(), "ok");
+    assert.equal(await (await fetch(`${host.httpUrl}/normal`, { method: "POST", body: "complete" })).text(), "ok");
+    for (const method of ["GET", "POST"]) {
+      const client = node_request(`${host.httpUrl}/cancel`, { method });
+      client.on("error", () => undefined);
+      if (method === "POST") client.write("partial upload");
+      else client.end();
+      const active = await started.promise;
+      assert.equal(active.signal.aborted, false);
+      client.destroy();
+      await aborted.promise;
+      assert.equal(active.signal.aborted, true);
+      started = deferred<Request>();
+      aborted = deferred<void>();
+    }
+  } finally { await host.dispose(); }
+});
+
+check("host shutdown aborts an in-flight Request.signal", async () => {
+  const started = deferred<Request>();
+  const aborted = deferred<void>();
+  const host = await start_node_application_host({ port: 0, shutdownTimeoutMs: 2_000, applications: [{
+    name: "shutdown-signal", requests: [{ method: "GET", path: "/wait", async handle(request) {
+      started.resolve(request);
+      await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => {
+        aborted.resolve(undefined);
+        resolve();
+      }, { once: true }));
+      return new Response("stopped");
+    } }], dispose() {},
+  }] });
+  const client = node_request(`${host.httpUrl}/wait`);
+  client.on("error", () => undefined);
+  client.end();
+  try {
+    const active = await started.promise;
+    assert.equal(active.signal.aborted, false);
+    const shutdown = host.dispose();
+    await aborted.promise;
+    assert.equal(active.signal.aborted, true);
+    client.destroy();
+    await shutdown;
+  } finally { client.destroy(); await host.dispose(); }
+});
+
+check("throwing readiness is contained and health stays bounded", async () => {
+  const unhandled: unknown[] = [];
+  const onUnhandled = (error: unknown): void => { unhandled.push(error); };
+  process.on("unhandledRejection", onUnhandled);
+  let failing = false;
+  let ordinaryReady = true;
+  const events: NodeHostOperationalEvent[] = [];
+  const host = await start_node_application_host({ port: 0, applications: [
+    { name: "ready-a", requests: [], ready: () => ordinaryReady, dispose() {} },
+    { name: "ready-b", requests: [], ready: () => {
+      if (failing) throw new Error("private readiness detail");
+      return true;
+    }, dispose() {} },
+  ], log: (event) => events.push(event) });
+  try {
+    const health = async (status: number, expected: boolean): Promise<void> => {
+      const response = await fetch(`${host.httpUrl}/healthz`);
+      assert.equal(response.status, status);
+      const body = await response.json();
+      assert.equal(body.ready, expected);
+      assert.equal(body.applications.length, 2);
+      assert.doesNotMatch(JSON.stringify(body), /private readiness detail|stack/);
+    };
+    await health(200, true);
+    ordinaryReady = false;
+    await health(503, false);
+    ordinaryReady = true;
+    failing = true;
+    await health(503, false);
+    assert.equal(host.ready(), false);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+    assert.ok(events.some((event) => event.code === "NODE_HOST_READINESS_FAILED"));
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+    await host.dispose();
+  }
+});
+
 check("Web Response bytes begin streaming before the source completes", async () => {
   const releaseTail = deferred<void>();
   const firstObserved = deferred<void>();

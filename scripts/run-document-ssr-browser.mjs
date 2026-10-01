@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { Hson, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus } from "../dist/index.js";
+import { Hson, encode_ssr_bootstrap, hson, hsonLocus } from "../dist/index.js";
 import { bind_node_locus_websocket } from "../dist/api/locus/node/index.js";
 import { parse_hson_exact_runtime } from "../dist/internal/exact-runtime-hson-codec.js";
 import { admit_exact_runtime_livemap_libraries } from "../dist/internal/exact-runtime-node-admission.js";
@@ -77,41 +77,35 @@ try {
   const StateSchema = Hson.schema`<type "data" content <count "number">>`;
   const PageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>`;
   const AdminSchema = Hson.schema`<type "document" tag "aside" attrs <props <data-recovered <optional "string">>> content "empty">`;
-  const librariesMap = hson.liveMap.fromLibraries({
-    state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema },
-    admin: { document: "<aside/>", schema: AdminSchema },
-  });
-  enable_interactions(librariesMap);
-  add_interaction(librariesMap, Object.freeze({
+  const browserInteraction = Object.freeze({
     id: "ssr-click",
     subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "browser",
     key: "clicker",
     args: Hson.data.from(null),
-  }));
-  add_interaction(librariesMap, Object.freeze({
+  });
+  const authorityInteraction = Object.freeze({
     id: "ssr-authoritative",
     subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "locus",
     key: "state.interaction",
     payload: Hson.data.from(null),
-  }));
+  });
   librariesLocus = hsonLocus.create({
-    map: librariesMap,
     sessions: {},
-    libraries: [
-      { name: "state", ownership: "shared" },
-      { name: "page", ownership: "shared" },
-      { name: "admin", ownership: "shared" },
+    shared: [
+      { name: "state", definition: { data: { count: 0 }, schema: StateSchema } },
+      { name: "page", definition: { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema } },
+      { name: "admin", definition: { document: "<aside/>", schema: AdminSchema } },
     ],
+    interactions: [browserInteraction, authorityInteraction],
     defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] },
     authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }),
     actions: {
-      "state.increment": (context) => context.mutate((draft) => draft.lib("state").at(["count"]).set(2)),
-      "state.interaction": (context) => context.mutate((draft) => draft.lib("state").at(["count"]).set(5)),
+      "state.increment": (context) => context.stage.lib("state").at(["count"]).set(2),
+      "state.interaction": (context) => context.stage.lib("state").at(["count"]).set(5),
     },
   });
   const retained = await librariesLocus.session.create({ libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] });
@@ -122,10 +116,10 @@ try {
     full: encode_ssr_bootstrap(full.libs),
     libraries: encode_ssr_bootstrap(libraries),
   });
-  await librariesLocus.mutate((draft) => {
+  await librariesLocus.stage((draft) => {
     draft.lib("state").at(["count"]).set(1);
-    draft.lib("page").attrs.set({ kind: "path", path: [0] }, "data-recovered", "page");
-    draft.lib("admin").attrs.set({ kind: "path", path: [0] }, "data-recovered", "admin");
+    draft.lib("page").at([0]).attrs.set("data-recovered", "page");
+    draft.lib("admin").at([0]).attrs.set("data-recovered", "admin");
   });
 
   librariesSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
@@ -138,16 +132,16 @@ try {
   if (librariesSocketAddress === null || typeof librariesSocketAddress === "string") throw new Error("Libraries browser socket server has no TCP address.");
   const librariesSocketUrl = `ws://127.0.0.1:${librariesSocketAddress.port}`;
 
-  const cssMap = hson.liveMap.fromLibraries({ page: { document: '<html <head/> <body <p id="hosted-css-target" "hosted"/>/>/>' } });
-  cssMap.lib("page").css.sel("#hosted-css-target").set.color("rgb(1, 2, 3)");
-  cssLocus = hsonLocus.create({ map: cssMap,
-    libraries: [{ name: "page", ownership: "shared" }],
+  cssLocus = hsonLocus.create({
+    shared: [{ name: "page", definition: { document: '<html <head/> <body <p id="hosted-css-target" "hosted"/>/>/>' } }],
     defaultProjection: { libraries: ["page"] },
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
   });
+  await cssLocus.stage((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
+    rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(1, 2, 3)"]] } }); });
   const cssSession = await cssLocus.session.create({ libraries: ["page"] });
   const cssCut = cssSession.now({ html: "page" });
-  await cssLocus.mutate((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
+  await cssLocus.stage((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
     rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(4, 5, 6)"]] } }); });
   cssSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolveListen, rejectListen) => {
@@ -175,7 +169,7 @@ try {
       return;
     }
     if (url.pathname === "/__css-mutate") {
-      await cssLocus.mutate((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
+      await cssLocus.stage((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
         rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(7, 8, 9)"]] } }); });
       response.writeHead(204).end();
       return;
