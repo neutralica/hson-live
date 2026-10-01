@@ -79,6 +79,8 @@ export type LiveMapTransitionController = Readonly<{
   discardAuthority: (transition: PreparedLiveMapAuthorityTransition) => void;
   invalidate: () => void;
   assertPublicMutationAllowed: () => void;
+  /** Fence direct writes while one synchronous public batch describes commands. */
+  withPublicBatch: <T>(callback: () => T) => T;
   /** The owner currently executing a privileged transition, if any. @internal */
   managedExecutionOwner: () => object | undefined;
   claimManagement: (owner: object, schedule: LiveMapManagedMutationScheduler<object>) => void;
@@ -107,6 +109,7 @@ export function make_livemap_transition_controller(
   }> | undefined;
   let managedExecutionOwner: object | undefined;
   let reserved: PreparedLiveMapAuthorityTransition | undefined;
+  let publicBatchActive = false;
 
   function authority_record_for(
     transition: PreparedLiveMapAuthorityTransition,
@@ -218,6 +221,18 @@ export function make_livemap_transition_controller(
     if (record.state !== "discarded") record.state = "discarded";
   }
 
+  const assertPublicMutationAllowed = (): void => {
+    if (publicBatchActive) throw new LiveMapTransitionError(
+      "LIVEMAP_MANAGED_MUTATION_REJECTED",
+      "Direct LiveMap mutation is unavailable during an active batch.",
+    );
+    if (management === undefined || managedExecutionOwner === management.owner) return;
+    throw new LiveMapTransitionError(
+      "LIVEMAP_MANAGED_MUTATION_REJECTED",
+      "LiveMap mutation is controlled by an exclusive Locus authority.",
+    );
+  };
+
   return Object.freeze({
     prepareAuthority,
     acceptAuthority,
@@ -235,12 +250,20 @@ export function make_livemap_transition_controller(
       );
       generation += 1;
     },
-    assertPublicMutationAllowed(): void {
-      if (management === undefined || managedExecutionOwner === management.owner) return;
-      throw new LiveMapTransitionError(
+    assertPublicMutationAllowed,
+    withPublicBatch<T>(callback: () => T): T {
+      if (publicBatchActive) throw new LiveMapTransitionError(
         "LIVEMAP_MANAGED_MUTATION_REJECTED",
-        "LiveMap mutation is controlled by an exclusive Locus authority.",
+        "Nested LiveMap batch is unavailable.",
       );
+      if (management !== undefined) throw new LiveMapTransitionError(
+        "LIVEMAP_MANAGED_MUTATION_REJECTED",
+        "LiveMap batch is unavailable while this map is managed.",
+      );
+      assertPublicMutationAllowed();
+      publicBatchActive = true;
+      try { return callback(); }
+      finally { publicBatchActive = false; }
     },
     managedExecutionOwner: () => managedExecutionOwner,
     claimManagement(owner, schedule): void {

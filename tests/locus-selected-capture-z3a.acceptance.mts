@@ -68,8 +68,8 @@ const localHandle = local.at(["value"]);
 echo.disconnect();
 detach();
 localHandle.set("LOCAL_AFTER_DISCONNECT");
-await locus.mutate((draft) => { const page = draft.lib("page"); if ("attrs" in page) page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "PUBLIC_NEXT_SENTINEL"); });
-await locus.mutate((draft) => { const privateLib = draft.lib("privateSignal"); if ("at" in privateLib) privateLib.at(["value"]).set(`PRIVATE_SMALL_COMMIT_SENTINEL${"q".repeat(2 * 1024 * 1024)}`); });
+await locus.stage((draft) => { const page = draft.lib("page"); if ("attrs" in page) page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "PUBLIC_NEXT_SENTINEL"); });
+await locus.stage((draft) => { const privateLib = draft.lib("privateSignal"); privateLib.at(["value"]).set(`PRIVATE_SMALL_COMMIT_SENTINEL${"q".repeat(2 * 1024 * 1024)}`); });
 assert.equal(JSON.stringify(cut), oldCut);
 const nextCut = locus.session.get(session.sessionId)!.now({ html: "page" });
 assert.equal(nextCut.libs.revision, locus.rev);
@@ -107,8 +107,8 @@ assert.equal(endpoint.map, undefined);
 assert.equal(endpoint.lastAppliedRev, zeroLocus.rev);
 endpoint.disconnect();
 detachZero();
-await zeroLocus.mutate((draft) => { const privateLib = draft.lib("privateSignal");
-  if ("at" in privateLib) privateLib.at(["value"]).set(`PRIVATE_ENDPOINT_SENTINEL${"z".repeat(3 * 1024 * 1024)}`); });
+await zeroLocus.stage((draft) => { const privateLib = draft.lib("privateSignal");
+  privateLib.at(["value"]).set(`PRIVATE_ENDPOINT_SENTINEL${"z".repeat(3 * 1024 * 1024)}`); });
 detachZero = bind_locus_websocket(zeroLocus, serverSocket);
 const zeroRecovered = await endpoint.connect();
 assert.equal(zeroRecovered.outcome, "reconcile");
@@ -151,8 +151,8 @@ const persistent = await create_persistent_locus({ map: persistentMap, persisten
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
-await persistent.mutate((draft) => { const privateLib = draft.lib("privateSignal");
-  if ("at" in privateLib) privateLib.at(["value"]).set("p".repeat(5 * 1024 * 1024)); });
+await persistent.stage((draft) => { const privateLib = draft.lib("privateSignal");
+  privateLib.at(["value"]).set("p".repeat(5 * 1024 * 1024)); });
 assert.equal(persistence.appendCalls.length, 1);
 await persistent.checkpoint();
 persistent.dispose();

@@ -14,9 +14,9 @@ import {
   restore_persistent_locus_hosted_aggregate_internal,
 } from "../src/api/locus/locus.aggregate.persistence.ts";
 import type {
-  LocusHostedAggregateDataDraft,
-  LocusHostedAggregateDocumentDraft,
-  LocusHostedAggregateDraft,
+  LocusHostedAggregateDataStage,
+  LocusHostedAggregateDocumentStage,
+  LocusHostedAggregateStageWriter,
 } from "../src/api/locus/locus.aggregate.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
@@ -77,13 +77,13 @@ function make_map() {
   });
 }
 
-function data(draft: LocusHostedAggregateDraft, name: string): LocusHostedAggregateDataDraft {
+function data(draft: LocusHostedAggregateStageWriter, name: string): LocusHostedAggregateDataStage {
   const library = draft.lib(name);
-  if (!("at" in library)) throw new Error(`Expected data Library ${name}.`);
+  if (library.mode === "document") throw new Error(`Expected data Library ${name}.`);
   return library;
 }
 
-function document(draft: LocusHostedAggregateDraft, name: string): LocusHostedAggregateDocumentDraft {
+function document(draft: LocusHostedAggregateStageWriter, name: string): LocusHostedAggregateDocumentStage {
   const library = draft.lib(name);
   if (!("graph" in library)) throw new Error(`Expected document Library ${name}.`);
   return library;
@@ -158,7 +158,7 @@ await check("initial durable aggregate cut and atomic cross-library tail omit ge
   assert.ok(initial.checkpoint.chunks.length > 0);
   assert.deepEqual(initial.commits, []);
 
-  const accepted = await host.mutate((draft) => {
+  const accepted = await host.stage((draft) => {
     data(draft, "state").at(["theme"]).set("dark");
     data(draft, "colors").at(["accent"]).set("#fff");
     document(draft, "page").graph(insert_item());
@@ -187,7 +187,7 @@ await check("append failure and an invalid later library leave the entire aggreg
   host.on_commit((commit) => accepted.push(commit));
   adapter.failAppend = new Error("durability unavailable");
   await assert.rejects(
-    () => host.mutate((draft) => document(draft, "page").graph(insert_item())),
+    () => host.stage((draft) => document(draft, "page").graph(insert_item())),
     (error: unknown) => error instanceof LocusPersistenceError && error.code === "LOCUS_PERSISTENCE_APPEND_FAILED",
   );
   assert.deepEqual(internal_livemap_aggregate_authority(map).captureHosted(), before);
@@ -195,7 +195,7 @@ await check("append failure and an invalid later library leave the entire aggreg
   assert.deepEqual(accepted, []);
 
   await assert.rejects(
-    () => host.mutate((draft) => {
+    () => host.stage((draft) => {
       data(draft, "state").at(["theme"]).set("dark");
       data(draft, "colors").at(["accent"]).set(1 as never);
     }),
@@ -210,11 +210,11 @@ await check("checkpoint captures one revision while later commits remain in the 
   const adapter = new MemoryPersistenceAdapter();
   const map = make_map();
   const host = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter });
-  await host.mutate((draft) => data(draft, "state").at(["count"]).set(1));
+  await host.stage((draft) => data(draft, "state").at(["count"]).set(1));
   const pending = adapter.deferCheckpoint();
   const checkpoint = host.checkpoint();
   await tick();
-  const queued = host.mutate((draft) => {
+  const queued = host.stage((draft) => {
     data(draft, "colors").at(["accent"]).set("#fff");
     document(draft, "page").graph(insert_item());
   });
@@ -243,12 +243,12 @@ await check("checkpoint-pruned generated identity is absent after fresh-runtime 
     logicalMapId: "h4-restart",
     incarnationId: "h4-restart-incarnation",
   });
-  await host.mutate((draft) => document(draft, "page").graph(insert_item()));
+  await host.stage((draft) => document(draft, "page").graph(insert_item()));
   const localAuthority = internal_livemap_aggregate_authority(map);
   const localPage = localAuthority.libraries()[2];
   if (localPage === undefined) throw new Error("Expected document Library.");
   localAuthority.acquireLocalDocumentIdentity(localPage, validate_document_path([0, 0, 0]), RETIRED_QUID);
-  await host.mutate((draft) => document(draft, "page").graph(remove_item()));
+  await host.stage((draft) => document(draft, "page").graph(remove_item()));
   const oldOwner = internal_livemap_aggregate_authority(map).identityEpoch().owner;
   await host.checkpoint();
   const persisted = adapter.state("h4-restart")!;
@@ -323,8 +323,8 @@ await check("fresh-runtime local identity follows movement and explicit replacem
   const host = await create_persistent_locus_hosted_aggregate_internal({
     map, persistence: adapter, logicalMapId: "h4-lineage", incarnationId: "h4-lineage-incarnation",
   });
-  await host.mutate((draft) => document(draft, "page").graph(insert_item()));
-  await host.mutate((draft) => document(draft, "page").graph({
+  await host.stage((draft) => document(draft, "page").graph(insert_item()));
+  await host.stage((draft) => document(draft, "page").graph({
     domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0]) },
     index: 1, content: { $_tag: "item", $_content: [] },
   }));
@@ -340,11 +340,11 @@ await check("fresh-runtime local identity follows movement and explicit replacem
   assert.equal(authority.resolveQuid("000008307"), undefined);
   authority.acquireLocalDocumentIdentity(page, validate_document_path([0, 0, 0]), RESTART_DOCUMENT_QUID);
   assert.equal(restored.rev, 2);
-  await restored.mutate((draft) => document(draft, "page").graph({
+  await restored.stage((draft) => document(draft, "page").graph({
     domain: "graph", op: "move-content", target: { kind: "path", path: validate_document_path([0, 0]) }, from: 0, to: 1,
   }));
   assert.deepEqual(authority.resolveQuid(RESTART_DOCUMENT_QUID)?.path, [0, 0, 1]);
-  await restored.mutate((draft) => document(draft, "page").graph({
+  await restored.stage((draft) => document(draft, "page").graph({
     domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([0, 0]) },
     index: 1, replacement: { $_tag: "item", $_attrs: { title: "continued" }, $_content: [] },
     lineage: [{ source: validate_document_path([]), destination: validate_document_path([]) }],
@@ -375,11 +375,11 @@ await check("fresh-runtime local identity follows movement and explicit replacem
   const replayPage = replayAuthority.libraries()[2];
   if (replayPage === undefined) throw new Error("Expected replayed document Library.");
   replayAuthority.acquireLocalDocumentIdentity(replayPage, validate_document_path([0, 0, 1]), "000008309");
-  await replayed.mutate((draft) => document(draft, "page").graph({
+  await replayed.stage((draft) => document(draft, "page").graph({
     domain: "graph", op: "remove-content", target: { kind: "path", path: validate_document_path([0, 0]) }, index: 1,
   }));
   assert.equal(replayAuthority.resolveQuid("000008309"), undefined);
-  await assert.rejects(() => replayed.mutate((draft) => document(draft, "page").graph({
+  await assert.rejects(() => replayed.stage((draft) => document(draft, "page").graph({
     domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0]) },
     index: 1, content: { $_tag: "item", $_meta: { quid: "000008309" }, $_content: [] },
   })), /QUID|reuse|identity/i);
@@ -408,7 +408,7 @@ await check("transactional interaction state and path descriptors survive checkp
   });
   const checkpointRev = host.rev;
   assert.deepEqual(interaction_paths(map), [[0, 0, 1]]);
-  await host.mutate((draft) => document(draft, "page").graph({
+  await host.stage((draft) => document(draft, "page").graph({
     domain: "graph", op: "move-content", target: { kind: "path", path: validate_document_path([0, 0]) }, from: 1, to: 0,
   }));
   assert.equal(host.rev, checkpointRev + 1);
@@ -438,7 +438,7 @@ await check("digest and authority mismatches in checkpoint or tail reject before
     logicalMapId: "h4-fences",
     incarnationId: "h4-fences-incarnation",
   });
-  await host.mutate((draft) => data(draft, "state").at(["theme"]).set("dark"));
+  await host.stage((draft) => data(draft, "state").at(["theme"]).set("dark"));
   const valid = adapter.state("h4-fences")!;
   host.dispose();
 

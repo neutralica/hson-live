@@ -81,7 +81,7 @@ There is one interaction system root. Its shared partition `S` contains descript
 
 `kind` chooses execution, independently of ownership. `"browser"` calls the activation-side behavior table (named `local` in the current activation options); it does not assert a browser-only platform. `"locus"` calls the supplied dispatcher. Hosted Echo composition normally dispatches through `echo.action`, where Locus authorizes the action independently. Shared/browser, shared/locus, local/browser, and local/locus are all valid.
 
-Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. Shared authoring still belongs in an authority mutation draft, where document edits and descriptor maintenance can commit atomically.
+Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. Shared authoring belongs in a Locus `stage` or action `ctx.stage`, where document edits and descriptor maintenance can commit atomically.
 
 The descriptor ID identifies only the descriptor. The subject uses the fixed application document Library name and canonical numeric document path. Runtime-local QUIDs may follow an activated subject but are never serialized into interaction state.
 

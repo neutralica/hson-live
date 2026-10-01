@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type LiveMap } from "../src/index.ts";
 import type { JsonValue } from "../src/core/types.ts";
-import type { LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
+import type { LocusHostedAggregateStageWriter } from "../src/api/locus/locus.aggregate.ts";
 import {
   create_persistent_locus_hosted_aggregate_internal,
   load_persistent_locus_hosted_aggregate_internal,
@@ -25,9 +25,9 @@ function data_value(map: LiveMap, name: string, key: string): unknown {
   return library.snap([key]);
 }
 
-function set_data(draft: LocusHostedAggregateDraft, name: string, key: string, value: JsonValue): void {
+function set_data(draft: LocusHostedAggregateStageWriter, name: string, key: string, value: JsonValue): void {
   const library = draft.lib(name);
-  if (!("at" in library)) throw new Error("Expected a data Library draft.");
+  if (library.mode === "document") throw new Error("Expected a data Library draft.");
   library.at([key]).set(value);
 }
 
@@ -56,7 +56,7 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
   assert.deepEqual(addA.topology?.operation.libraries.map((item) => item.name), ["A"]);
   assert.equal(addA.topology?.operation.libraries[0]?.schema, '<type "data">');
   assert.equal(data_value(map, "A", "count"), 0);
-  await locus.mutate((draft) => { set_data(draft, "A", "count", 1); });
+  await locus.stage((draft) => { set_data(draft, "A", "count", 1); });
 
   const beforeBatch = locus.registryDigest;
   const batch = await locus.add_libraries_internal({
@@ -67,7 +67,7 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
   assert.equal(batch.rev, 3);
   assert.equal(batch.previousRegistryDigest, beforeBatch);
   assert.deepEqual(batch.topology?.operation.libraries.map((item) => item.name), ["B", "C"]);
-  await locus.mutate((draft) => { set_data(draft, "C", "value", "C1"); });
+  await locus.stage((draft) => { set_data(draft, "C", "value", "C1"); });
   assert.deepEqual(emitted, [1, 2, 3, 4]);
   assert.equal(map.rev, 4);
   const fromFullTail = await load_persistent_locus_hosted_aggregate_internal(id, { persistence: adapter });
@@ -110,7 +110,7 @@ await case_("checkpoint-before-add tail and checkpoint-after-add restore the sam
   });
   const initialDigest = locus.registryDigest;
   await locus.add_libraries_internal({ later: { data: { value: 2 } } });
-  await locus.mutate((draft) => { set_data(draft, "later", "value", 3); });
+  await locus.stage((draft) => { set_data(draft, "later", "value", 3); });
   const laterDigest = locus.registryDigest;
   assert.notEqual(laterDigest, initialDigest);
   assert.equal(adapter.state(id)?.checkpoint.registryDigest, initialDigest);
@@ -222,7 +222,7 @@ await case_("tampered topology digest and reordered tail fail closed on restart"
     map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id,
   });
   await locus.add_libraries_internal({ A: { data: { value: 0 } } });
-  await locus.mutate((draft) => { set_data(draft, "A", "value", 1); });
+  await locus.stage((draft) => { set_data(draft, "A", "value", 1); });
   locus.dispose();
   const good = adapter.state(id);
   assert.ok(good);

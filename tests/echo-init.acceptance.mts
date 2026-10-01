@@ -70,9 +70,9 @@ for (const [expected, advance, truncateHistory] of [
     : hsonLocus.create(options);
   const session = await locus.session.create({ libraries: ["state"] });
   const cut = session.now();
-  if (advance) await locus.mutate((draft) => {
+  if (advance) await locus.stage((draft) => {
     const state = draft.lib("state");
-    if (!("at" in state)) throw new Error("Expected a data draft.");
+
     state.at(["value"]).set(1);
   });
   const pair = socket_pair();
@@ -202,9 +202,9 @@ for (const [expected, advance, truncateHistory] of [
   assert.equal(a.now().local[0]!.root.payload.includes("value 0>"), true);
   valid.disconnect(); second.disconnect();
   detachValid(); detachSecond();
-  await locus.mutate((draft) => {
+  await locus.stage((draft) => {
     const state = draft.lib("state");
-    if ("at" in state) state.at(["value"]).set(1);
+    state.at(["value"]).set(1);
   });
   detachValid = bind_locus_websocket(locus, validPair.server);
   detachSecond = bind_locus_websocket(locus, secondPair.server);
@@ -309,9 +309,9 @@ for (const [mutate, truncateHistory] of [[false, false], [true, false], [true, t
   detach();
   assert.equal(locus.session.debug().sessions[0]!.state, "disconnected");
   assert.equal(locus.session.debug().sessions[0]!.transportAttached, false);
-  if (mutate) await locus.mutate((draft) => {
+  if (mutate) await locus.stage((draft) => {
     const state = draft.lib("state");
-    if ("at" in state) state.at(["value"]).set(1);
+    state.at(["value"]).set(1);
   });
   pair.holdCaughtUp();
   detach = bind_locus_websocket(locus, pair.server);
@@ -538,9 +538,9 @@ for (const stage of ["message", "close"] as const) {
 
   echo.disconnect();
   detach();
-  await locus.mutate((draft) => {
+  await locus.stage((draft) => {
     const state = draft.lib("state");
-    if ("at" in state) state.at(["value"]).set(1);
+    state.at(["value"]).set(1);
   });
   detach = bind_locus_websocket(locus, pair.server);
   echo.connect();

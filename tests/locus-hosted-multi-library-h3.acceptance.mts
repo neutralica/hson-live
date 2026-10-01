@@ -17,9 +17,9 @@ import {
 } from "../src/api/echo/echo.aggregate-replica.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import type {
-  LocusHostedAggregateDataDraft,
-  LocusHostedAggregateDocumentDraft,
-  LocusHostedAggregateDraft,
+  LocusHostedAggregateDataStage,
+  LocusHostedAggregateDocumentStage,
+  LocusHostedAggregateStageWriter,
 } from "../src/api/locus/locus.aggregate.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -143,13 +143,13 @@ function projected_client_map(authority: LiveMap): LiveMap {
   return client_projection_map({ authority: project_authority_snapshot(captured, effective), local: {} });
 }
 
-function data(draft: LocusHostedAggregateDraft, name: string): LocusHostedAggregateDataDraft {
+function data(draft: LocusHostedAggregateStageWriter, name: string): LocusHostedAggregateDataStage {
   const selected = draft.lib(name);
-  if (!("at" in selected)) throw new Error(`Expected data library ${name}.`);
+  if (selected.mode === "document") throw new Error(`Expected data library ${name}.`);
   return selected;
 }
 
-function document(draft: LocusHostedAggregateDraft, name: string): LocusHostedAggregateDocumentDraft {
+function document(draft: LocusHostedAggregateStageWriter, name: string): LocusHostedAggregateDocumentStage {
   const selected = draft.lib(name);
   if (!("graph" in selected)) throw new Error(`Expected document library ${name}.`);
   return selected;
@@ -259,10 +259,8 @@ await check("custom socket action preserves one global projected commit", async 
     ...test_public_projection(map),
     map,
     actions: {
-      "theme.all": async (context) => context.mutate((draft) => {
-        data(draft, "state").at(["theme"]).set("dark");
-        data(draft, "colors").at(["theme"]).set("blue");
-      }),
+      "theme.all": async (context) => (() => { const draft = context.stage; data(draft, "state").at(["theme"]).set("dark");
+data(draft, "colors").at(["theme"]).set("blue"); })(),
     },
   });
   const attached = await attach(server);
@@ -271,7 +269,7 @@ await check("custom socket action preserves one global projected commit", async 
   assert.equal(clientMap.rev, 1);
   assert.equal(data_library(clientMap, "state").snap(["theme"]), "dark");
   assert.equal(data_library(clientMap, "colors").snap(["theme"]), "blue");
-  await server.mutate((draft) => data(draft, "colors").at(["accent"]).set("#fff"));
+  await server.stage((draft) => data(draft, "colors").at(["accent"]).set("#fff"));
   assert.equal(clientMap.rev, 2);
   assert.equal(data_library(clientMap, "colors").snap(["accent"]), "#fff");
   server.dispose();
@@ -281,8 +279,8 @@ await check("retained global history recovers QUID-free aggregate effects withou
   const map = make_map();
   const stale = projected_client_map(map);
   const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
-  await server.mutate((draft) => data(draft, "state").at(["theme"]).set("dark"));
-  await server.mutate((draft) => {
+  await server.stage((draft) => data(draft, "state").at(["theme"]).set("dark"));
+  await server.stage((draft) => {
     data(draft, "colors").at(["accent"]).set("#fff");
     document(draft, "page").graph(insert_item());
   });
@@ -309,7 +307,7 @@ await check("aggregate reconcile restores a retained mirror in place and converg
   const stateHandle = data_library(stale, "state").at(["theme"]);
   const pageHandle = page_library(stale).at([]);
   const reflected = hsonMirror(page_library(stale));
-  await server.mutate((draft) => {
+  await server.stage((draft) => {
     data(draft, "state").at(["theme"]).set("dark");
     document(draft, "page").graph(insert_item());
   });
@@ -335,7 +333,7 @@ await check("a state-only aggregate snapshot preserves unchanged document identi
   const oldSubject = acquire_document_identity(page_library(stale).document, { kind: "path", path: validate_document_path([0]) });
   const oldEpoch = livemap_identity_epoch_accounting(page_library(stale).document).epoch;
   const reflected = hsonMirror(page_library(stale));
-  await server.mutate((draft) => data(draft, "state").at(["theme"]).set("dark"));
+  await server.stage((draft) => data(draft, "state").at(["theme"]).set("dark"));
   const attached = await attach(server, { map: stale });
   assert.equal(attached.recovery.outcome, "reconcile");
   assert.equal(reflected.sourceRevision, 1);
@@ -394,10 +392,10 @@ await check("aggregate action rejects generated QUID content before authority ad
 await check("authority retains local issued-QUID history while client bootstrap omits the authority ledger", async () => {
   const map = make_map();
   const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
-  await server.mutate((draft) => document(draft, "page").graph(insert_item()));
+  await server.stage((draft) => document(draft, "page").graph(insert_item()));
   set_livemap_document_quid_candidate_source_for_tests(page_library(map).document, () => QUID);
   acquire_document_identity(page_library(map).document, { kind: "path", path: validate_document_path([0, 0, 0]) });
-  await server.mutate((draft) => document(draft, "page").content.remove({ kind: "path", path: validate_document_path([0]) }, 0));
+  await server.stage((draft) => document(draft, "page").content.remove({ kind: "path", path: validate_document_path([0]) }, 0));
   const attached = await attach(server);
   const mirror = attached.client.map!;
   const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(mirror).captureHosted());
@@ -405,7 +403,7 @@ await check("authority retains local issued-QUID history while client bootstrap 
   assert.equal("identity" in snapshot, false);
   assert.equal(JSON.stringify(snapshot).includes(QUID), false);
   await assert.rejects(
-    () => server.mutate((draft) => document(draft, "page").graph(insert_item(QUID))),
+    () => server.stage((draft) => document(draft, "page").graph(insert_item(QUID))),
     /QUID|reuse|identity/i,
   );
   assert.equal(attached.client.lastAppliedRev, 2);
@@ -456,14 +454,14 @@ await check("snapshot cut buffers an accepted aggregate tail and drains it in gl
     maxHistoryBytes: 1,
     internal: {
       afterRecoveryCut: async () => {
-        await server.mutate((draft) => {
+        await server.stage((draft) => {
           data(draft, "state").at(["theme"]).set("dark");
           data(draft, "colors").at(["accent"]).set("#fff");
         });
       },
     },
   });
-  await server.mutate((draft) => data(draft, "state").at(["count"]).set(1));
+  await server.stage((draft) => data(draft, "state").at(["count"]).set(1));
   const attached = await attach(server, { map: stale });
   assert.equal(attached.recovery.outcome, "reconcile");
   assert.equal(attached.client.lastAppliedRev, 2);

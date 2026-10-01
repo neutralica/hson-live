@@ -202,20 +202,18 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
     map: serverMap,
     actions: {
       "theme.all": async (context) => {
-        await context.mutate((draft) => {
-          draft.lib("state").at(["theme"]).set("dark");
-          draft.lib("colors").at(["theme"]).set("blue");
-          draft.lib("page").graph(insert_item());
-        });
+        await (() => { const draft = context.stage; draft.lib("state").at(["theme"]).set("dark");
+draft.lib("colors").at(["theme"]).set("blue");
+draft.lib("page").graph(insert_item()); })();
         return Hson.data.from("ok");
       },
       "state.only": async (context) => {
         assert.equal(typeof context.emitEvent, "function");
         assert.equal("emit_event" in context, false);
-        await context.mutate((draft) => draft.lib("state").at(["count"]).set(1));
+        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(1); })();
       },
       invalid: async (context) => {
-        await context.mutate((draft) => draft.lib("state").at(["count"]).set("invalid"));
+        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set("invalid"); })();
       },
     },
   });
@@ -413,11 +411,11 @@ await check("projected fallback restores the observed authority document in plac
   const reflection = hsonMirror(staleMap.lib("page"));
   const staleMain = reflected_document_element(reflection);
   const staleMainNode = staleMain.node;
-  await locus.mutate((draft) => { const state = draft.lib("state"); if ("at" in state) state.at(["theme"]).set("x".repeat(6_000)); });
-  await locus.mutate((draft) => {
+  await locus.stage((draft) => { const state = draft.lib("state"); if (state.mode !== "document") state.at(["theme"]).set("x".repeat(6_000)); });
+  await locus.stage((draft) => {
     const state = draft.lib("state");
     const page = draft.lib("page");
-    if ("at" in state) state.at(["theme"]).set("dark");
+    if (state.mode !== "document") state.at(["theme"]).set("dark");
     if ("graph" in page) page.graph(insert_item());
   });
   const first = socket_pair();
@@ -436,10 +434,10 @@ await check("projected fallback restores the observed authority document in plac
   assert.notEqual(restoredMain.node, staleMainNode);
   snapshotClient.dispose();
 
-  await locus.mutate((draft) => {
+  await locus.stage((draft) => {
     const state = draft.lib("state");
     const page = draft.lib("page");
-    if ("at" in state) state.at(["count"]).set(2);
+    if (state.mode !== "document") state.at(["count"]).set(2);
     if ("graph" in page) {
       page.graph(remove_item());
       page.graph(insert_item());
@@ -532,13 +530,11 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
     persistence,
     actions: {
       "state.page": async (context) => {
-        await context.mutate((draft) => {
-          draft.lib("state").at(["count"]).set(2);
-          draft.lib("page").graph(insert_item());
-        });
+        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(2);
+draft.lib("page").graph(insert_item()); })();
       },
       "page.retire": async (context) => {
-        await context.mutate((draft) => draft.lib("page").graph(remove_item()));
+        await (() => { const draft = context.stage; draft.lib("page").graph(remove_item()); })();
       },
     },
   });
@@ -589,10 +585,8 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
     persistence,
     actions: {
       "state.page": async (context) => {
-        await context.mutate((draft) => {
-          draft.lib("state").at(["count"]).set(3);
-          draft.lib("page").graph(insert_item());
-        });
+        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(3);
+draft.lib("page").graph(insert_item()); })();
       },
     },
   });
@@ -684,7 +678,7 @@ await check("public hosted failures reject before acceptance and leave the aggre
     persistence,
     actions: {
       increment: async (context) => {
-        await context.mutate((draft) => draft.lib("state").at(["count"]).set(1));
+        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(1); })();
       },
     },
   });

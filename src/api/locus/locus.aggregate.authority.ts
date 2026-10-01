@@ -53,8 +53,8 @@ import {
   create_locus_hosted_aggregate_internal,
   type LocusHostedAggregate,
   type LocusHostedAggregateAction,
-  type LocusHostedAggregateDocumentDraft,
-  type LocusHostedAggregateDraft,
+  type LocusHostedAggregateDocumentStage,
+  type LocusHostedAggregateStageWriter,
   type LocusHostedAggregateGateInput,
   type LocusHostedAggregateAuthorityEnvelope,
 } from "./locus.aggregate.js";
@@ -276,7 +276,7 @@ export type LocusHostedAggregateSocketServer<
     context?: LocusConnectionContext,
     onClose?: LocusDisposer,
   ) => LocusHostedAggregateSemanticAttachment<TActions>;
-  mutate: LocusHostedAggregate["mutate"];
+  stage: LocusHostedAggregate["stage"];
   add_libraries: (definitions: LiveMapDefinitions, ownership?: Readonly<Record<string, Exclude<LocusLibraryOwnership, "local">>>) => Promise<void>;
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
@@ -1285,7 +1285,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         const { payload: _wirePayload, ...requestWithoutPayload } = request;
         const validated = validate_action_request(Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: hson_data_text(payload) }) }), origin);
         if (!validated.ok || validated.executeDocument === undefined) throw new Error(validated.ok ? "Hosted document action resolution was lost." : validated.message);
-        await locus.mutate(validated.executeDocument);
+        await locus.stage(validated.executeDocument);
         result = undefined;
       } else {
         const { payload: _wirePayload, ...requestWithoutPayload } = request;
@@ -1413,7 +1413,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   function validate_action_request(
     request: Extract<HostedRequest, { type: "action" }>,
     origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
-  ): Readonly<{ ok: true; payload: ExactDataCarrier | undefined; executeDocument?: (draft: LocusHostedAggregateDraft) => void }> | Readonly<{ ok: false; code: string; message: string }> {
+  ): Readonly<{ ok: true; payload: ExactDataCarrier | undefined; executeDocument?: (draft: LocusHostedAggregateStageWriter) => void }> | Readonly<{ ok: false; code: string; message: string }> {
     try {
       const admittedPayload = request.payload === undefined ? undefined : admit_hson_data_input(request.payload);
       if (is_document_action(request.name)) {
@@ -1440,7 +1440,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         return Object.freeze({
           ok: true,
           payload: ExactDataCarrier.from(normalized),
-          executeDocument: (draft: LocusHostedAggregateDraft) => {
+          executeDocument: (draft: LocusHostedAggregateStageWriter) => {
             const target = draft.lib(libraryName);
             if (!("graph" in target)) throw new Error("Hosted document action library is not a document Library.");
             resolution.execute(document_action_target(target, aggregate, identity));
@@ -1684,7 +1684,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     get registryDigest() { return locus.registryDigest; },
     get rev() { return locus.rev; },
     attach,
-    mutate: locus.mutate,
+    stage: locus.stage,
     add_libraries,
     dispatch_action: locus.dispatch_action,
     dispatch_message,
@@ -1749,7 +1749,7 @@ export function derive_locus_hosted_progress_internal(envelope: LocusHostedAggre
 }
 
 function document_action_target(
-  draft: LocusHostedAggregateDocumentDraft,
+  draft: LocusHostedAggregateDocumentStage,
   aggregate: ReturnType<typeof internal_livemap_aggregate_authority>,
   identity: object,
 ): LocusDocumentActionTarget {

@@ -3,22 +3,12 @@
 
 import type {
   LiveMap,
-  LiveMapDocumentAttributeValue,
-  LiveMapDocumentAttrs,
-  LiveMapDocumentContent,
-  LiveMapDocumentCommitTarget,
-  LiveMapDataLibraryInput,
-  LiveMapGraphOp,
-  LiveMapInput,
+  LiveMapStagedWriter,
+  LiveMapSynchronousAuthoring,
   LiveMapDefinitions,
-  LiveMapPathValue,
-  LiveMapSetValue,
-  LiveMapWriteValue,
-  LivePath,
 } from "./livemap.types.js";
-import type { LiveMapProjectedGraphEnsureQuidOp } from "../api/livemap/livemap.identity.types.js";
 import type { JsonValue } from "../core/types.js";
-import type { HsonData, SchemaType } from "../api/transform/transform.types.js";
+import type { HsonData } from "../api/transform/transform.types.js";
 import type {
   LocusActionAuthorizer,
   LocusActionOrigin,
@@ -50,78 +40,17 @@ import type { LiveTraceSink } from "./live.trace.types.js";
 import type { EchoEndpointTransport, EchoReplicaTransport } from "./echo.transport.types.js";
 
 
-type LocusDataMutationHandle<TValue> = Readonly<{
-  at: <const TPath extends LivePath>(
-    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => LocusDataMutationHandle<LiveMapPathValue<TValue, TPath>>;
-  set: (value: LiveMapSetValue<TValue>) => void;
-  replace: (value: LiveMapWriteValue<TValue>) => void;
-  delete: () => void;
-}>;
-
-type LocusDataMutationDraft<TValue> = Readonly<{
-  at: <const TPath extends LivePath>(
-    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => LocusDataMutationHandle<LiveMapPathValue<TValue, TPath>>;
-}>;
-
-type LocusDataMutationDraftForInput<TInput> =
-  TInput extends LiveMapDataLibraryInput<infer TSchema>
-    ? LocusDataMutationDraft<SchemaType<TSchema>>
-    : never;
-
-type LocusBroadDataMutationDraft = Readonly<{
-  at: (path: LivePath) => Readonly<{
-    set: (value: JsonValue) => void;
-    replace: (value: JsonValue) => void;
-    delete: () => void;
-  }>;
-}>;
-
-type LocusDocumentGraphMutation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
-
-type LocusDocumentMutationDraft = Readonly<{
-  css: (operation: import("./livemap.types.js").LiveMapCssOp) => void;
-  graph: (operation: LocusDocumentGraphMutation) => void;
-  attrs: Readonly<{
-    set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => void;
-    drop: (target: LiveMapDocumentCommitTarget, name: string) => void;
-    replace: (target: LiveMapDocumentCommitTarget, attrs: LiveMapDocumentAttrs) => void;
-  }>;
-  content: Readonly<{
-    replace: (target: LiveMapDocumentCommitTarget, index: number, replacement: LiveMapDocumentContent) => void;
-    insert: (target: LiveMapDocumentCommitTarget, index: number, content: LiveMapDocumentContent) => void;
-    remove: (target: LiveMapDocumentCommitTarget, index: number) => void;
-    move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => void;
-  }>;
-}>;
-
-type LocusMutationDraftForInput<TInput> =
-  TInput extends LiveMapDataLibraryInput
-    ? LocusDataMutationDraftForInput<TInput>
-    : TInput extends Readonly<{ document: string | import("../core/types.js").HsonNode }>
-      ? LocusDocumentMutationDraft
-      : LocusBroadDataMutationDraft | LocusDocumentMutationDraft;
-
-/** Inferred only inside a Locus registry mutation callback. */
-type LocusMutationDraft<TLibraries extends LiveMapDefinitions> = Readonly<{
-  lib: {
-    <TLibrary extends Extract<keyof TLibraries, string>>(
-      name: TLibrary,
-    ): LocusMutationDraftForInput<TLibraries[TLibrary]>;
-    (name: string): LocusBroadDataMutationDraft | LocusDocumentMutationDraft;
-  };
-}>;
-
-type LocusInputs<TMap extends LiveMap> =
-  TMap extends LiveMap<infer TLibraries> ? TLibraries : LiveMapInput;
+/** One authoritative submission surface: direct setters admit, callback setters only stage. */
+export type LocusStage<TMap extends LiveMap> =
+  LiveMapSynchronousAuthoring<LiveMapStagedWriter<TMap, void>, Promise<void>>
+  & LiveMapStagedWriter<TMap, Promise<void>>;
 
 /** Ordinary Locus action context for one fixed library-registry LiveMap. */
 export type LocusActionContext<
   TMap extends LiveMap = LiveMap,
 > = Readonly<{
   map: TMap;
-  mutate: (mutation: (draft: LocusMutationDraft<LocusInputs<TMap>>) => void) => Promise<void>;
+  stage: LiveMapStagedWriter<TMap, void>;
   seq: LocusSeq;
   origin: LocusActionOrigin;
   emitEvent: (event: string, payload: JsonValue) => boolean;
@@ -481,7 +410,7 @@ export type Locus<
   }>;
   session: LocusSessionApi;
   actionRequests: LocusActionDedupeInspector;
-  mutate: (mutation: (draft: LocusMutationDraft<LocusInputs<TMap>>) => void | Promise<void>) => Promise<void>;
+  stage: LocusStage<TMap>;
   dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusClientActionResult>;
   dispose: LocusDisposer;
 }>;

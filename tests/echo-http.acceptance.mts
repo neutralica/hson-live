@@ -122,9 +122,9 @@ try {
     const ui = replica.map.lib("ui");
     if (ui.mode === "document") throw new Error("Expected local data library.");
     ui.at(["value"]).set(23);
-    await locus.mutate((draft) => {
+    await locus.stage((draft) => {
       const state = draft.lib("state");
-      if (!("at" in state)) throw new Error("Expected data draft.");
+
       state.at(["value"]).set(1);
     });
     for (let i = 0; i < 100 && replica.sync.debug().lastAppliedRev !== locus.rev; i++) {
@@ -136,9 +136,9 @@ try {
     interruptSync?.();
     for (let i = 0; i < 100 && resumeRecovery === undefined; i++) await new Promise((resolve) => setTimeout(resolve, 10));
     assert.ok(resumeRecovery, "replacement recovery waits before admission");
-    await locus.mutate((draft) => {
+    await locus.stage((draft) => {
       const state = draft.lib("state");
-      if (!("at" in state)) throw new Error("Expected data draft.");
+
       state.at(["value"]).set(2);
     });
     releaseRecovery();

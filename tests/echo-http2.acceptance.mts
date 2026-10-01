@@ -107,9 +107,9 @@ try {
   const failed = await transport.operations.submit({ type: "action-status", id: "h2-cancelled",
     clientId: "client", requestId: "unknown" }, { signal: aborted.signal });
   assert.equal(failed.kind, "not-submitted");
-  await locus.mutate((draft) => {
+  await locus.stage((draft) => {
     const state = draft.lib("state");
-    if (!("at" in state)) throw new Error("Expected data draft.");
+
     state.at(["value"]).set(1);
   });
   for (let i = 0; i < 100 && replica.sync.debug().lastAppliedRev !== locus.rev; i++) {
@@ -124,9 +124,9 @@ try {
   inFlightAbort.abort();
   releaseFinite?.();
   assert.equal((await inFlight).kind, "uncertain", "in-flight finite cancellation cannot prove non-submission");
-  await locus.mutate((draft) => {
+  await locus.stage((draft) => {
     const state = draft.lib("state");
-    if (!("at" in state)) throw new Error("Expected data draft.");
+
     state.at(["value"]).set(2);
   });
   for (let i = 0; i < 100 && replica.sync.debug().lastAppliedRev !== locus.rev; i++) {

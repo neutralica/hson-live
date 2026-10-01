@@ -37,6 +37,7 @@ import type {
   LiveMapGraphCommit,
   LiveMapGraphOp,
   LiveMapCommit,
+  LiveMapStagedWriter,
   LiveMapSetValue,
   LiveMapWriteValue,
   LivePath,
@@ -95,6 +96,8 @@ import type { LiveMapProjectedPropagation } from "./livemap.projected-propagatio
 import type { LiveMapSemanticCheckpoint } from "./livemap.internal.js";
 import type { PreparedLiveMapAuthorityTransition } from "./livemap.authority.js";
 import { deliver_livemap_observers } from "./livemap.observer-delivery.js";
+import { is_staged_thenable, make_livemap_staged_writer } from "./livemap.staged.js";
+import type { LiveMapAggregateWrite } from "./livemap.library.js";
 
 type NamedLibrary = Readonly<{
   name: string;
@@ -432,9 +435,29 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
 
   const lib = Object.freeze((name: string) => selected(name));
 
+  const batch = (callback: (writer: LiveMapStagedWriter<LiveMap, void>) => unknown): LiveMapCommit => {
+    if (clientSnapshot !== undefined) throw new Error("LiveMap batch is unavailable on a client composition map.");
+    let writes: readonly LiveMapAggregateWrite[] = [];
+    aggregate.withPublicBatch(() => {
+      const staged = make_livemap_staged_writer<LiveMap>(aggregate);
+      try {
+        const result = callback(staged.writer);
+        if (is_staged_thenable(result)) {
+          void Promise.resolve(result).catch(() => {});
+          throw new TypeError("LiveMap batch callback must be synchronous.");
+        }
+        writes = staged.writes();
+      } finally {
+        staged.close();
+      }
+    });
+    return public_commit(aggregate.commit(writes));
+  };
+
   const libraries = Object.freeze({
     get rev() { return aggregate.inspect().revision; },
     lib,
+    batch,
     addLibraries,
     replay: (commit: LiveMapCommit): LiveMapCommit => {
       if (commit.kind !== "map" || !commit.changed || commit.prevRev !== aggregate.inspect().revision

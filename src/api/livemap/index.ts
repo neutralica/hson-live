@@ -73,6 +73,7 @@ export type {
   LiveMapLibrarySchemaUseOperation,
   LiveMapDynamicLibrary,
   LiveMapCommit,
+  LiveMapStagedWriter,
   LiveMapLibraryPathHandle,
   LiveMapLibraryFeedEvent,
   LiveMapLibraryObjectPathHandle,

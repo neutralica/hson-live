@@ -10,7 +10,7 @@ import { create_locus_hosted_aggregate_authority_internal } from "../src/api/loc
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
-import type { LocusHostedAggregateDataDraft, LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
+import type { LocusHostedAggregateDataStage, LocusHostedAggregateStageWriter } from "../src/api/locus/locus.aggregate.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -125,9 +125,9 @@ function make_projected_map() {
     projectionDigest: snapshot.projectionDigest };
 }
 
-function state(draft: LocusHostedAggregateDraft): LocusHostedAggregateDataDraft {
+function state(draft: LocusHostedAggregateStageWriter): LocusHostedAggregateDataStage {
   const selected = draft.lib("state");
-  if (!("at" in selected)) throw new Error("Expected state data library.");
+  if (selected.mode === "document") throw new Error("Expected state data library.");
   return selected;
 }
 
@@ -249,7 +249,7 @@ await check("replacement after caught-up suppresses queued live drain", async ()
   await caughtUp;
   const credential = first.client.session.credential;
   assert.ok(credential);
-  await server.mutate((draft) => state(draft).at(["value"]).set(1));
+  await server.stage((draft) => state(draft).at(["value"]).set(1));
   assert.equal(server.rev, 1);
   const replacement = await attach_replacement(server, credential);
   release.resolve();

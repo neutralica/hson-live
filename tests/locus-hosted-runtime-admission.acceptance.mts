@@ -91,9 +91,9 @@ const cut = locus.session.get(sessionId)!.now({ html: "page" });
 assert.match(cut.html, /RUNTIME_PAGE_SENTINEL/);
 assert.ok(JSON.stringify(cut.libs).includes("newPublic"));
 assert.equal(JSON.stringify(cut.libs).includes("PRIVATE_ROOT_SENTINEL"), false);
-await locus.mutate((draft) => {
+await locus.stage((draft) => {
   const library = draft.lib("newPublic");
-  if (!("at" in library)) throw new Error("Expected data Library.");
+  if (library.mode === "document") throw new Error("Expected data Library.");
   library.at(["count"]).set(3);
 });
 assert.equal(echo.lastAppliedRev, locus.rev);
@@ -160,7 +160,7 @@ await interactionLocus.lib.add({ nextPage: { document: Hson.document`<main <butt
 const listener = Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
   passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false,
   stopImmediatePropagation: false });
-await interactionLocus.mutate((draft) => add_interaction(draft, {
+await interactionLocus.stage((draft) => add_interaction(draft, {
   id: "next-button", subject: { library: "nextPage", path: [99] }, listener,
   kind: "browser", key: "NEW_INTERACTION_SENTINEL", args: Hson.data.from(null),
 }));

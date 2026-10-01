@@ -72,7 +72,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
   };
   const locus = strategy === "replay" ? hsonLocus.create(options)
     : create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus;
-  await locus.mutate((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_ADVANCED"));
+  await locus.stage((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_ADVANCED"));
   const initial = await session(locus);
   const sentBefore = initial.pair.serverSent.length;
   const snapshot = initial.capability.now().libs;
@@ -107,8 +107,8 @@ for (const strategy of ["replay", "reconcile"] as const) {
   const localHandle = local.at(["value"]);
   echo.disconnect(); detach();
   localHandle.set("LOCAL_OFFLINE");
-  await locus.mutate((draft) => draft.lib("visible").at(["value"]).set("RECOVERED"));
-  await locus.mutate((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_OFFLINE"));
+  await locus.stage((draft) => draft.lib("visible").at(["value"]).set("RECOVERED"));
+  await locus.stage((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_OFFLINE"));
   assert.equal(echo.sync.debug().lastAppliedRev, snapshot.revision);
   assert.equal(JSON.stringify(snapshot), retained, "captured artifact is detached from later mutations");
   detach = bind_locus_websocket(locus, pair.server);

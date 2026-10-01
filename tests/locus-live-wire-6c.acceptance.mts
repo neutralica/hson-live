@@ -5,7 +5,7 @@ import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, typ
 import { encode_locus_client_message } from "../src/api/locus/locus.protocol.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
-import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES, type LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
+import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES, type LocusHostedAggregateStageWriter } from "../src/api/locus/locus.aggregate.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
@@ -25,9 +25,9 @@ const server = create_locus_hosted_aggregate_authority_internal({ map, libraries
   { name: "PRIVATE_NAME_SENTINEL", ownership: "private" },
   { name: "UNSELECTED_NAME_SENTINEL", ownership: "shared" },
 ], defaultProjection: { libraries: ["A"] }, authorizeProjection: () => ({ libraries: ["A", "B"] }) });
-function data(draft: LocusHostedAggregateDraft, name: string) {
+function data(draft: LocusHostedAggregateStageWriter, name: string) {
   const library = draft.lib(name);
-  if (!("at" in library)) throw new Error("Expected data library.");
+  if (library.mode === "document") throw new Error("Expected data library.");
   return library;
 }
 function pair() {
@@ -67,7 +67,7 @@ function live(connection: Awaited<ReturnType<typeof session>>) {
     return message.type === "commit" || message.type === "progress";
   });
 }
-await server.mutate((draft) => {
+await server.stage((draft) => {
   data(draft, "A").at(["value"]).set("VISIBLE_A_SENTINEL");
   data(draft, "B").at(["value"]).set("VISIBLE_B_SENTINEL");
   data(draft, "PRIVATE_NAME_SENTINEL").at(["value"]).set("PRIVATE_SENTINEL");
@@ -88,7 +88,7 @@ for (const text of [firstA, firstB]) {
 assert.equal(firstA.includes("VISIBLE_B_SENTINEL"), false);
 assert.equal(firstB.includes("VISIBLE_A_SENTINEL"), false);
 assert.equal(JSON.parse(firstA).commit.commit.rev, JSON.parse(firstB).commit.commit.rev);
-await server.mutate((draft) => data(draft, "PRIVATE_NAME_SENTINEL").at(["value"]).set("PRIVATE_SENTINEL_2"));
+await server.stage((draft) => data(draft, "PRIVATE_NAME_SENTINEL").at(["value"]).set("PRIVATE_SENTINEL_2"));
 assert.equal(live(a).length, 2);
 assert.equal(live(b).length, 2);
 for (const connection of [a, b]) {
@@ -110,7 +110,7 @@ assert.equal(echo.map?.rev, 0);
 const wireLimit = DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES;
 const privatePayload = `PRIVATE_OVERSIZE_WIRE_SENTINEL_${"x".repeat(4_500_000)}`;
 assert.ok(new TextEncoder().encode(privatePayload).byteLength > wireLimit);
-const privateCommit = await server.mutate((draft) => {
+const privateCommit = await server.stage((draft) => {
   data(draft, "PRIVATE_NAME_SENTINEL").at(["value"]).set(privatePayload);
 });
 assert.ok(privateCommit);
@@ -133,7 +133,7 @@ for (const connection of [a, b, echoPair]) {
 assert.equal(echo.lastAppliedRev, 3);
 assert.equal(echo.map?.rev, 0);
 
-const mixedCommit = await server.mutate((draft) => {
+const mixedCommit = await server.stage((draft) => {
   data(draft, "PRIVATE_NAME_SENTINEL").at(["value"]).set("PRIVATE_AFTER_MIXED");
   data(draft, "A").at(["value"]).set("SMALL_A_MIXED_SENTINEL");
   data(draft, "B").at(["value"]).set("SMALL_B_MIXED_SENTINEL");
@@ -170,7 +170,7 @@ const oversizedVisible = `VISIBLE_OVERSIZE_WIRE_SENTINEL_${"y".repeat(4_500_000)
 const beforeRejected = live(a).length;
 const beforeRejectedB = live(b).length;
 const beforeRejectedEcho = live(echoPair).length;
-await assert.rejects(() => server.mutate((draft) => {
+await assert.rejects(() => server.stage((draft) => {
   data(draft, "A").at(["value"]).set(oversizedVisible);
   data(draft, "B").at(["value"]).set("SMALL_B_REJECTED_SENTINEL");
 }), /Hosted aggregate publication exceeds its configured byte limit/);
@@ -186,7 +186,7 @@ const authorityB = map.lib("B");
 if (!("snap" in authorityB)) throw new Error("Expected B data library.");
 assert.equal(authorityB.snap(["value"]), "SMALL_B_MIXED_SENTINEL");
 
-const ordinary = await server.mutate((draft) => data(draft, "A").at(["value"]).set("SMALL_A_AFTER_REJECTION"));
+const ordinary = await server.stage((draft) => data(draft, "A").at(["value"]).set("SMALL_A_AFTER_REJECTION"));
 assert.equal(ordinary?.prevRev, 4);
 assert.equal(ordinary.rev, 5);
 assert.equal(JSON.parse(live(a)[4]!).commit.commit.rev, 5);
@@ -226,9 +226,9 @@ await settle();
 tightConnection.client.send(JSON.stringify({ type: "recover", id: "tight-recover", logicalMapId: tightServer.logicalMapId }));
 await settle();
 assert.ok(tightConnection.received.some((raw) => JSON.parse(raw).type === "recovery-caught-up"));
-await assert.rejects(() => tightServer.mutate((draft) => {
+await assert.rejects(() => tightServer.stage((draft) => {
   const library = draft.lib("A");
-  if (!("at" in library)) throw new Error("Expected data library.");
+  if (library.mode === "document") throw new Error("Expected data library.");
   library.at(["value"]).set("A1");
 }));
 assert.equal(tightMap.rev, 0);
@@ -254,7 +254,7 @@ await settle();
 const listener = Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
   passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false,
   stopImmediatePropagation: false });
-await interactionServer.mutate((draft) => {
+await interactionServer.stage((draft) => {
   add_interaction(draft, { id: "visible", subject: { library: "page", path: [99] }, listener,
     kind: "browser", key: "VISIBLE_INTERACTION_WIRE_SENTINEL", args: Hson.data.from(null) });
   add_interaction(draft, { id: "hidden", subject: { library: "hiddenDoc", path: [99] }, listener,
@@ -265,7 +265,7 @@ assert.equal(JSON.parse(interactionWire).type, "commit");
 assert.ok(interactionWire.includes("VISIBLE_INTERACTION_WIRE_SENTINEL"));
 assert.equal(interactionWire.includes("HIDDEN_INTERACTION_WIRE_SENTINEL"), false);
 assert.equal(interactionWire.includes("hiddenDoc"), false);
-await interactionServer.mutate((draft) => {
+await interactionServer.stage((draft) => {
   add_interaction(draft, { id: "hidden-two", subject: { library: "hiddenDoc", path: [98] }, listener,
     kind: "browser", key: "HIDDEN_INTERACTION_TWO_WIRE_SENTINEL", args: Hson.data.from(null) });
 });

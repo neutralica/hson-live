@@ -81,7 +81,7 @@ for (const raw of [...wire.sent, JSON.stringify(cut)]) {
 assert.ok(wire.sent.every((raw) => raw.length < 10_000), "Private CSS must not inflate the projected bootstrap.");
 const append = (css: string, existing: readonly string[] = []) => ({ domain: "css" as const, kind: "append" as const,
   stylesheet: parse_document_stylesheet(css, existing) });
-await locus.mutate((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@media screen { p { background: navy; } }", page.css.list())); });
+await locus.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@media screen { p { background: navy; } }", page.css.list())); });
 assert.match(clientPage.css.snapshot(), /background:navy/);
 assert.equal(client.rev, localRev + 1);
 const live = wire.sent.at(-1) ?? "";
@@ -90,8 +90,8 @@ assert.equal(live.includes("PRIVATE_CSS_SENTINEL"), false);
 assert.equal(live.includes("UNGRANTED_CSS_SENTINEL"), false);
 const beforeHidden = wire.sent.length;
 const localRevBeforeHidden = client.rev;
-await locus.mutate((draft) => { const selected = draft.lib("privatePage"); if ("graph" in selected) selected.css(append(".PRIVATE_LIVE_CSS_SENTINEL { color: black; }", privatePage.css.list())); });
-await locus.mutate((draft) => { const selected = draft.lib("ungrantedPage"); if ("graph" in selected) selected.css(append(".UNGRANTED_LIVE_CSS_SENTINEL { color: yellow; }", ungranted.css.list())); });
+await locus.stage((draft) => { const selected = draft.lib("privatePage"); if ("graph" in selected) selected.css(append(".PRIVATE_LIVE_CSS_SENTINEL { color: black; }", privatePage.css.list())); });
+await locus.stage((draft) => { const selected = draft.lib("ungrantedPage"); if ("graph" in selected) selected.css(append(".UNGRANTED_LIVE_CSS_SENTINEL { color: yellow; }", ungranted.css.list())); });
 for (const raw of wire.sent.slice(beforeHidden)) {
   assert.equal(raw.includes("PRIVATE_LIVE_CSS_SENTINEL"), false);
   assert.equal(raw.includes("UNGRANTED_LIVE_CSS_SENTINEL"), false);
@@ -110,7 +110,7 @@ assert.equal(forbidden.type, "error");
 if (forbidden.type === "error") assert.equal(forbidden.error.code, "LOCUS_ACTION_FORBIDDEN");
 assert.match(ungranted.css.snapshot(), /UNGRANTED_CSS_SENTINEL/);
 echo.disconnect(); detach();
-await locus.mutate((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@keyframes pulse { from { opacity: 0; } to { opacity: 1; } }", page.css.list())); });
+await locus.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@keyframes pulse { from { opacity: 0; } to { opacity: 1; } }", page.css.list())); });
 detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 const recovered = await echo.connect();
 assert.equal(recovered.outcome, "replay");
@@ -149,9 +149,9 @@ const adapter = new MemoryCheckpointAdapter();
 const durable = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
 const persistent = await create_persistent_locus_hosted_aggregate_internal({ map: durable, persistence: adapter,
   logicalMapId: "hosted-css-phase-c" });
-await persistent.mutate((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { color: purple; }")); });
+await persistent.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { color: purple; }")); });
 await persistent.checkpoint();
-await persistent.mutate((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { background: teal; }", ["stylesheet:1"])); });
+await persistent.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { background: teal; }", ["stylesheet:1"])); });
 const state = adapter.state("hosted-css-phase-c");
 if (state === undefined) throw new Error("Missing durable state.");
 const restored = await restore_persistent_locus_hosted_aggregate_internal("hosted-css-phase-c", state, { persistence: adapter });
@@ -163,7 +163,7 @@ assert.match(restoredPage.css.snapshot(), /background:teal/);
 const durableCss = restoredPage.css.snapshot();
 const beforeFailureRev = restored.rev;
 adapter.failAppend = new Error("CSS append rejected");
-await assert.rejects(() => restored.mutate((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { margin: 9px; }", restoredPage.css.list())); }),
+await assert.rejects(() => restored.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { margin: 9px; }", restoredPage.css.list())); }),
   { code: "LOCUS_PERSISTENCE_APPEND_FAILED" });
 assert.equal(restored.rev, beforeFailureRev);
 assert.equal(restoredPage.css.snapshot(), durableCss);
@@ -201,8 +201,8 @@ if (fallbackLocal.mode !== "document") throw new Error("Expected local fallback 
 fallbackLocal.css.stylesheet("body { color: cyan; }");
 const fallbackLocalCss = fallbackLocal.css.snapshot();
 fallbackEcho.disconnect(); stopFallback();
-await fallbackHost.mutate((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@media screen { body { background: coral; } }", fallbackPage.css.list())); });
-await fallbackHost.mutate((draft) => { const selected = draft.lib("hidden"); if ("graph" in selected) selected.css(append(".HIDDEN_FALLBACK_TAIL_SENTINEL { color: blue; }", fallbackHidden.css.list())); });
+await fallbackHost.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@media screen { body { background: coral; } }", fallbackPage.css.list())); });
+await fallbackHost.stage((draft) => { const selected = draft.lib("hidden"); if ("graph" in selected) selected.css(append(".HIDDEN_FALLBACK_TAIL_SENTINEL { color: blue; }", fallbackHidden.css.list())); });
 stopFallback = bind_locus_websocket(fallbackHost, fallbackWire.server);
 assert.equal((await fallbackEcho.connect()).outcome, "reconcile");
 const fallbackProjected = fallbackClient.lib("page");
@@ -227,7 +227,7 @@ const restartOptions = {
   authorizeProjection: () => ({ libraries: ["page"] }),
 };
 const firstAuthority = await create_persistent_locus({ map: restartMap, ...restartOptions });
-await firstAuthority.mutate((draft) => { draft.lib("page").css(append("body { color: maroon; }")); });
+await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { color: maroon; }")); });
 await firstAuthority.checkpoint();
 const restartWire = pair();
 let stopRestart = bind_locus_websocket(firstAuthority, restartWire.server);
@@ -246,7 +246,7 @@ if (beforeRejectedClientCss.mode !== "document") throw new Error("Expected proje
 const beforeRejectedCss = beforeRejectedClientCss.css.snapshot();
 const beforeRejectedWire = restartWire.sent.length;
 restartAdapter.failAppend = new Error("CSS durable acceptance rejected");
-await assert.rejects(() => firstAuthority.mutate((draft) => { draft.lib("page").css(append("body { margin: 11px; }", restartPage.css.list())); }),
+await assert.rejects(() => firstAuthority.stage((draft) => { draft.lib("page").css(append("body { margin: 11px; }", restartPage.css.list())); }),
   { code: "LOCUS_PERSISTENCE_APPEND_FAILED" });
 assert.equal(firstAuthority.rev, beforeRejectedCssRev);
 assert.equal(restartMap.rev, beforeRejectedCssRev);
@@ -254,7 +254,7 @@ assert.equal(restartEcho.lastAppliedRev, beforeRejectedCssRev);
 assert.equal(beforeRejectedClientCss.css.snapshot(), beforeRejectedCss);
 assert.equal(restartWire.sent.length, beforeRejectedWire);
 restartEcho.disconnect(); stopRestart();
-await firstAuthority.mutate((draft) => { draft.lib("page").css(append("body { background: silver; }", restartPage.css.list())); });
+await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { background: silver; }", restartPage.css.list())); });
 restartEcho.dispose();
 firstAuthority.dispose();
 const restarted = await create_persistent_locus({ map: restartInput(), ...restartOptions });

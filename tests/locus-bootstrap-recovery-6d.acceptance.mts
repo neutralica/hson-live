@@ -85,7 +85,7 @@ function data_library(map: LiveMap | undefined, name: string) {
 
 {
   const { map, server } = fixture();
-  await server.mutate((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if ("at" in library) library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_REV_ONE"); });
+  await server.stage((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if (library.mode !== "document") library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_REV_ONE"); });
   const pair = socket_pair();
   let detachServer = bind_locus_websocket(server, pair.server);
   const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId,
@@ -107,9 +107,9 @@ function data_library(map: LiveMap | undefined, name: string) {
   detachServer();
   localHandle.set("LOCAL_DISCONNECTED");
   assert.equal(client.lastAppliedRev, 1);
-  await server.mutate((draft) => { const library = draft.lib("visible"); if ("at" in library) library.at(["value"]).set("VISIBLE_REPLAY_SENTINEL"); });
-  await server.mutate((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if ("at" in library) library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_REPLAY_SENTINEL"); });
-  await server.mutate((draft) => { const library = draft.lib("UNSELECTED_NAME_SENTINEL"); if ("at" in library) library.at(["UNSELECTED_SCHEMA_SENTINEL"]).set("UNSELECTED_REPLAY_SENTINEL"); });
+  await server.stage((draft) => { const library = draft.lib("visible"); if (library.mode !== "document") library.at(["value"]).set("VISIBLE_REPLAY_SENTINEL"); });
+  await server.stage((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if (library.mode !== "document") library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_REPLAY_SENTINEL"); });
+  await server.stage((draft) => { const library = draft.lib("UNSELECTED_NAME_SENTINEL"); if (library.mode !== "document") library.at(["UNSELECTED_SCHEMA_SENTINEL"]).set("UNSELECTED_REPLAY_SENTINEL"); });
   detachServer = bind_locus_websocket(server, pair.server);
   const recovered = await client.connect();
   assert.equal(recovered.outcome, "replay");
@@ -136,11 +136,11 @@ function data_library(map: LiveMap | undefined, name: string) {
     if (afterCuts === 2) await mutateDuringCut?.();
   });
   mutateDuringCut = async () => {
-    await server.mutate((draft) => {
+    await server.stage((draft) => {
       const visible = draft.lib("visible");
       const hidden = draft.lib("PRIVATE_NAME_SENTINEL");
-      if ("at" in visible) visible.at(["value"]).set("VISIBLE_TAIL_SENTINEL");
-      if ("at" in hidden) hidden.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_TAIL_SENTINEL");
+      if (visible.mode !== "document") visible.at(["value"]).set("VISIBLE_TAIL_SENTINEL");
+      if (hidden.mode !== "document") hidden.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_TAIL_SENTINEL");
     });
   };
   const pair = socket_pair();
@@ -154,8 +154,8 @@ function data_library(map: LiveMap | undefined, name: string) {
   client.disconnect();
   detachServer();
   localHandle.set("LOCAL_DURING_FALLBACK");
-  await server.mutate((draft) => { const library = draft.lib("visible"); if ("at" in library) library.at(["value"]).set("VISIBLE_FALLBACK_SENTINEL"); });
-  await server.mutate((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if ("at" in library) library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_FALLBACK_SENTINEL"); });
+  await server.stage((draft) => { const library = draft.lib("visible"); if (library.mode !== "document") library.at(["value"]).set("VISIBLE_FALLBACK_SENTINEL"); });
+  await server.stage((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if (library.mode !== "document") library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_FALLBACK_SENTINEL"); });
   detachServer = bind_locus_websocket(server, pair.server);
   const result = await client.connect();
   assert.equal(result.outcome, "reconcile");
@@ -195,7 +195,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   assert.equal(client.lastAppliedRev, 0);
   client.disconnect();
   detachServer();
-  await server.mutate((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if ("at" in library) library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_ENDPOINT_SENTINEL"); });
+  await server.stage((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if (library.mode !== "document") library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_ENDPOINT_SENTINEL"); });
   detachServer = bind_locus_websocket(server, pair.server);
   const recovered = await client.connect();
   assert.equal(recovered.outcome, "replay");
@@ -225,9 +225,9 @@ function data_library(map: LiveMap | undefined, name: string) {
   const handle = data_library(sameMap, "local").at(["value"]);
   client.disconnect(); detach();
   handle.set("LOCAL_ONLY_DISCONNECTED");
-  await server.mutate((draft) => {
+  await server.stage((draft) => {
     const hidden = draft.lib("PRIVATE_NAME_SENTINEL");
-    if ("at" in hidden) hidden.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_LOCAL_ONLY_SENTINEL");
+    if (hidden.mode !== "document") hidden.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_LOCAL_ONLY_SENTINEL");
   });
   detach = bind_locus_websocket(server, pair.server);
   assert.equal((await client.connect()).outcome, "reconcile");
@@ -292,13 +292,13 @@ function data_library(map: LiveMap | undefined, name: string) {
   const listener = Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
     passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false,
     stopImmediatePropagation: false });
-  await server.mutate((draft) => {
+  await server.stage((draft) => {
     add_interaction(draft, { id: "visible", subject: { library: "page", path: [99] }, listener,
       kind: "browser", key: "VISIBLE_INTERACTION_REPLAY_SENTINEL", args: Hson.data.from(null) });
     add_interaction(draft, { id: "hidden", subject: { library: "PRIVATE_NAME_SENTINEL", path: [99] }, listener,
       kind: "browser", key: "PRIVATE_INTERACTION_REPLAY_SENTINEL", args: Hson.data.from(null) });
   });
-  await server.mutate((draft) => {
+  await server.stage((draft) => {
     add_interaction(draft, { id: "hidden-again", subject: { library: "PRIVATE_NAME_SENTINEL", path: [98] }, listener,
       kind: "browser", key: "PRIVATE_INTERACTION_ONLY_SENTINEL", args: Hson.data.from(null) });
   });
@@ -333,13 +333,13 @@ function data_library(map: LiveMap | undefined, name: string) {
   fallback.disconnect();
   detach[2]?.();
   data_library(fallback.map, "local").at(["value"]).set("LOCAL_FALLBACK_DIVERGENCE");
-  await server.mutate((draft) => { const library = draft.lib("visible"); if ("at" in library) library.at(["value"]).set("VISIBLE_ONE"); });
-  await server.mutate((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if ("at" in library) library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_LARGE_" + "x".repeat(6_000)); });
+  await server.stage((draft) => { const library = draft.lib("visible"); if (library.mode !== "document") library.at(["value"]).set("VISIBLE_ONE"); });
+  await server.stage((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if (library.mode !== "document") library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_LARGE_" + "x".repeat(6_000)); });
   replay.disconnect();
   detach[1]?.();
   data_library(replay.map, "local").at(["value"]).set("LOCAL_REPLAY_DIVERGENCE");
   data_library(live.map, "local").at(["value"]).set("LOCAL_LIVE_DIVERGENCE");
-  await server.mutate((draft) => { const library = draft.lib("visible"); if ("at" in library) library.at(["value"]).set("VISIBLE_FINAL"); });
+  await server.stage((draft) => { const library = draft.lib("visible"); if (library.mode !== "document") library.at(["value"]).set("VISIBLE_FINAL"); });
   detach[1] = bind_locus_websocket(server, pairs[1]!.server);
   detach[2] = bind_locus_websocket(server, pairs[2]!.server);
   const replayResult = await replay.connect();
@@ -377,10 +377,10 @@ function data_library(map: LiveMap | undefined, name: string) {
   const listener = Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
     passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false,
     stopImmediatePropagation: false });
-  const add = (draft: Parameters<Parameters<typeof server.mutate>[0]>[0], id: string, library: string, key: string) =>
+  const add = (draft: Parameters<Parameters<typeof server.stage>[0]>[0], id: string, library: string, key: string) =>
     add_interaction(draft, { id, subject: { library, path: [99] }, listener,
       kind: "browser", key, args: Hson.data.from(null) });
-  await server.mutate((draft) => {
+  await server.stage((draft) => {
     add(draft, "visible-start", "page", "VISIBLE_INTERACTION_BOOTSTRAP_SENTINEL");
     add(draft, "hidden-start", "PRIVATE_NAME_SENTINEL", "PRIVATE_INTERACTION_BOOTSTRAP_SENTINEL");
   });
@@ -398,14 +398,14 @@ function data_library(map: LiveMap | undefined, name: string) {
     assert.equal(bootstrap.includes("PRIVATE_INTERACTION_BOOTSTRAP_SENTINEL"), false);
   }
   fallback.disconnect(); detach[2]?.();
-  await server.mutate((draft) => add(draft, "visible-second", "page", "VISIBLE_INTERACTION_SECOND_SENTINEL"));
-  await server.mutate((draft) => {
+  await server.stage((draft) => add(draft, "visible-second", "page", "VISIBLE_INTERACTION_SECOND_SENTINEL"));
+  await server.stage((draft) => {
     const privateData = draft.lib("privateData");
-    if ("at" in privateData) privateData.at(["value"]).set("PRIVATE_EVICTION_SENTINEL" + "x".repeat(250_000));
+    if (privateData.mode !== "document") privateData.at(["value"]).set("PRIVATE_EVICTION_SENTINEL" + "x".repeat(250_000));
   });
   replay.disconnect(); detach[1]?.();
-  await server.mutate((draft) => add(draft, "visible-third", "page", "VISIBLE_INTERACTION_THIRD_SENTINEL"));
-  await server.mutate((draft) => add(draft, "hidden-second", "PRIVATE_NAME_SENTINEL", "PRIVATE_INTERACTION_TAIL_SENTINEL"));
+  await server.stage((draft) => add(draft, "visible-third", "page", "VISIBLE_INTERACTION_THIRD_SENTINEL"));
+  await server.stage((draft) => add(draft, "hidden-second", "PRIVATE_NAME_SENTINEL", "PRIVATE_INTERACTION_TAIL_SENTINEL"));
   bind_locus_websocket(server, pairs[1]!.server);
   bind_locus_websocket(server, pairs[2]!.server);
   assert.equal((await replay.connect()).outcome, "replay");
@@ -447,7 +447,7 @@ for (const mode of ["reconcile", "replay"] as const) {
   const original = data_library(client.map, "visible").snap(["value"]);
   client.disconnect();
   detachServer();
-  await server.mutate((draft) => { const library = draft.lib("visible"); if ("at" in library) library.at(["value"]).set("VISIBLE_MALFORMED_SOURCE"); });
+  await server.stage((draft) => { const library = draft.lib("visible"); if (library.mode !== "document") library.at(["value"]).set("VISIBLE_MALFORMED_SOURCE"); });
   pair.transformServer((message) => {
     if (mode === "reconcile" && message.type === "recovery-snapshot") {
       const snapshot = message.snapshot as Record<string, unknown>;
@@ -475,9 +475,9 @@ for (const mode of ["reconcile", "replay"] as const) {
   let createTail: (() => Promise<void>) | undefined;
   const { server } = fixture(1, async () => { cuts += 1; if (cuts === 2) await createTail?.(); });
   createTail = async () => {
-    await server.mutate((draft) => {
+    await server.stage((draft) => {
       const visible = draft.lib("visible");
-      if ("at" in visible) visible.at(["value"]).set("VISIBLE_TAIL_FAILURE_SENTINEL");
+      if (visible.mode !== "document") visible.at(["value"]).set("VISIBLE_TAIL_FAILURE_SENTINEL");
     });
   };
   const pair = socket_pair();
@@ -485,9 +485,9 @@ for (const mode of ["reconcile", "replay"] as const) {
   const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId });
   await client.connect();
   client.disconnect(); detach();
-  await server.mutate((draft) => {
+  await server.stage((draft) => {
     const visible = draft.lib("visible");
-    if ("at" in visible) visible.at(["value"]).set("VISIBLE_SNAPSHOT_BEFORE_BAD_TAIL");
+    if (visible.mode !== "document") visible.at(["value"]).set("VISIBLE_SNAPSHOT_BEFORE_BAD_TAIL");
   });
   pair.transformServer((message) => message.type === "commit"
     ? { ...message, commit: { ...(message.commit as Record<string, unknown>), format: "invalid-tail-format" } }
@@ -552,7 +552,7 @@ for (const mode of ["reconcile", "replay"] as const) {
   assert.equal(completion.pendingRevisionWaits(), 1);
   panel.document.attrs.set({ kind: "path", path: [0] }, "title", "LOCAL_DOCUMENT_DISCONNECTED");
   assert.equal(completionSettled, false);
-  await server.mutate((draft) => {
+  await server.stage((draft) => {
     const projected = draft.lib("page");
     if ("graph" in projected) projected.graph({ domain: "graph", op: "set-attr", target: { kind: "path", path: validate_document_path([0]) }, name: "title", value: "PROJECTED_DOCUMENT_FALLBACK" });
   });
@@ -609,12 +609,12 @@ for (const mode of ["reconcile", "replay"] as const) {
   const localQuid = localMirror.tree.find.must.byTag("aside").quid;
   client.disconnect(); detach();
   panel.document.attrs.set({ kind: "path", path: [0] }, "title", "LOCAL_DOCUMENT_REPLAY_SURVIVES");
-  await server.mutate((draft) => {
+  await server.stage((draft) => {
     const projected = draft.lib("page");
     if ("graph" in projected) projected.graph({ domain: "graph", op: "set-attr",
       target: { kind: "path", path: validate_document_path([0]) }, name: "title", value: "PROJECTED_DOCUMENT_REPLAY" });
   });
-  await server.mutate((draft) => {
+  await server.stage((draft) => {
     const hidden = draft.lib("PRIVATE_NAME_SENTINEL");
     if ("graph" in hidden) hidden.graph({ domain: "graph", op: "set-attr",
       target: { kind: "path", path: validate_document_path([0]) }, name: "title", value: "PRIVATE_DOCUMENT_REPLAY" });

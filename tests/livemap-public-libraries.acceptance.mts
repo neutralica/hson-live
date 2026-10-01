@@ -63,6 +63,69 @@ function node(value: unknown) {
   return value;
 }
 
+check("batch groups ordered cross-library writes into one public commit", () => {
+  const map = create_map();
+  const observed: LiveMapCommit[] = [];
+  map.commits.observe(commit => { observed.push(commit); });
+  const commit = map.batch(batch => {
+    batch.lib("state").at(["count"]).set(2);
+    batch.lib("colors").at(["primary"]).set("red");
+    batch.lib("state").at(["count"]).set(3);
+    batch.lib("page").graph({ domain: "graph", op: "set-attr",
+      target: { kind: "path", path: validate_document_path([0]) }, name: "title", value: "batched" });
+    assert.equal(map.rev, 0);
+    assert.equal(map.lib("state").at(["count"]).snap(), 1);
+  });
+  assert.equal(commit.changed, true);
+  assert.equal(commit.rev, 1);
+  assert.deepEqual(commit.operations.map(entry => entry.library), ["state", "colors", "state", "page"]);
+  assert.equal(map.rev, 1);
+  assert.equal(observed.length, 1);
+  assert.equal(map.lib("state").at(["count"]).snap(), 3);
+});
+
+check("batch validates the final Schema candidate and installs nothing on failure", () => {
+  const map = create_map();
+  const repaired = map.batch(batch => {
+    batch.lib("state").at(["count"]).set("temporarily invalid" as never);
+    batch.lib("state").at(["count"]).set(4);
+  });
+  assert.equal(repaired.rev, 1);
+  assert.throws(() => map.batch(batch => {
+    batch.lib("colors").at(["primary"]).set("green");
+    batch.lib("state").at(["count"]).set("invalid" as never);
+  }));
+  assert.equal(map.rev, 1);
+  assert.equal(map.lib("colors").at(["primary"]).snap(), "blue");
+  assert.equal(map.batch(() => {}).changed, false);
+  assert.equal(map.batch(batch => { batch.lib("state").at(["count"]).set(4); }).changed, false);
+  assert.equal(map.rev, 1);
+});
+
+check("batch rejects async, nested, direct, and escaped writes", () => {
+  const map = create_map();
+  let escaped: { set(value: number): void } | undefined;
+  assert.throws(() => map.batch(batch => {
+    escaped = batch.lib("state").at(["count"]);
+    map.lib("state").at(["count"]).set(2);
+  }), /batch/i);
+  assert.equal(map.rev, 0);
+  assert.throws(() => escaped?.set(2), /expired/i);
+  assert.throws(() => map.batch(() => { map.batch(() => {}); }), /nested/i);
+  assert.throws(() => map.batch(batch => {
+    batch.lib("state").at(["count"]).set(3);
+    throw new Error("callback failed");
+  }), /callback failed/);
+  assert.throws(() => map.batch((async () => {}) as never), /synchronous/i);
+  let asyncHandle: { set(value: number): void } | undefined;
+  assert.throws(() => map.batch(((batch: Parameters<Parameters<typeof map.batch>[0]>[0]) => {
+    asyncHandle = batch.lib("state").at(["count"]);
+    return Promise.resolve();
+  }) as never), /synchronous/i);
+  assert.throws(() => asyncHandle?.set(2), /expired/i);
+  assert.equal(map.rev, 0);
+});
+
 check("fromLibraries establishes fixed named data and document Libraries", () => {
   const map = create_map();
   assert.equal(map.rev, 0);

@@ -55,16 +55,16 @@ echo.disconnect();
 detach();
 await server.add_libraries({ added: { data: { value: 1 } },
   hidden: { data: { secret: "HIDDEN_FALLBACK_SENTINEL" } } }, { added: "shared" });
-await server.mutate((draft) => {
+await server.stage((draft) => {
   const added = draft.lib("added");
-  if (!("at" in added)) throw new Error("Expected data Library.");
+  if (added.mode === "document") throw new Error("Expected data Library.");
   added.at(["value"]).set(2);
 });
 await server.add_libraries({ batchHidden: { data: { secret: "BATCH_HIDDEN_FALLBACK_SENTINEL" } },
   batchVisible: { data: { value: 6 } } }, { batchVisible: "shared" });
-await server.mutate((draft) => {
+await server.stage((draft) => {
   const visible = draft.lib("batchVisible");
-  if (!("at" in visible)) throw new Error("Expected batch data Library.");
+  if (visible.mode === "document") throw new Error("Expected batch data Library.");
   visible.at(["value"]).set(7);
 });
 await server.sessions.updateProjection(sessionId,
@@ -154,9 +154,9 @@ detachBeforeRestart();
 await persistent.lib.add({ durablePublic: { data: { value: 4 } },
   durableHidden: { data: { secret: `DURABLE_HIDDEN_FALLBACK_SENTINEL${"x".repeat(1024 * 1024)}` } } },
 { ownership: { durablePublic: "shared" } });
-await persistent.mutate((draft) => {
+await persistent.stage((draft) => {
   const publicLibrary = draft.lib("durablePublic");
-  if (!("at" in publicLibrary)) throw new Error("Expected durable public data Library.");
+  if (publicLibrary.mode === "document") throw new Error("Expected durable public data Library.");
   publicLibrary.at(["value"]).set(5);
 });
 await persistent.checkpoint();
@@ -332,9 +332,9 @@ const recoveringTail = tailEcho.connect();
 await cutEntered;
 await assert.rejects(tailServer.sessions.updateProjection(tailSession,
   { libraries: ["anchor"] }, { principalId: "alice" }), /unavailable/i);
-await tailServer.mutate((draft) => {
+await tailServer.stage((draft) => {
   const target = draft.lib("target");
-  if (!("at" in target)) throw new Error("Expected queued target data Library.");
+  if (target.mode === "document") throw new Error("Expected queued target data Library.");
   target.at(["value"]).set(3);
 });
 await tailServer.add_libraries({ hiddenTail: { data: { secret: "HIDDEN_FALLBACK_TAIL_SENTINEL" } } });
@@ -380,7 +380,7 @@ const keep = interactionMap.lib("keep"), revoke = interactionMap.lib("revoke");
 if (keep.mode !== "document" || revoke.mode !== "document") throw new Error("Expected document Libraries.");
 const keepMirror = hsonMirror(keep), revokedMirror = hsonMirror(revoke);
 const keepTree = keepMirror.tree.node;
-await interactionServer.mutate((draft) => add_interaction(draft, {
+await interactionServer.stage((draft) => add_interaction(draft, {
   id: "revoked-listener", subject: { library: "revoke", path: [99] },
   listener: { event: "click", target: "element", capture: false, once: false, passive: false,
     missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },

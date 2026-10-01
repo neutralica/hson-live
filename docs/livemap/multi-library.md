@@ -50,6 +50,17 @@ attached across unrelated global revisions and reconcile replacement.
 
 Multi-library mutations return `LiveMapCommit`. It holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Every operation is `{ library, operation }`; the library name is public and the engine's opaque library identity is never exposed. A local `addLibraries(...)` batch contributes one `library-add` operation with ordered definitions and advances revision once. A hosted Locus retains one global revision and complete authority commit history as its registry grows. Echo receives one ordered client stream in which a revision has either a graph commit or generic progress without a graph effect.
 
+An ordinary selected write installs immediately and synchronously. To describe several writes as one map transition, use `map.batch(callback)`:
+
+```ts
+const commit = map.batch(batch => {
+  batch.lib("state").at(["count"]).set(1);
+  batch.lib("colors").at(["primary"]).replace("green");
+});
+```
+
+The callback is synchronous and its setters return `void`; the outer call returns one `LiveMapCommit`. The writes are ordered, final affected Library candidates are Schema-validated, and failure installs none of them. Reads through `map` during the callback see the installed state. Batch handles expire when the callback exits. Nested batches and direct writes on the same map during a batch are rejected. `batch` is callback-only; ordinary `map.lib(...).at(...).set(...)` remains the single-write form. `set` keeps its selected graph meaning in both contexts, including its shallow object patch behavior; `replace` remains exact replacement.
+
 There is no default Library on a multi-map and no public removal, replacement, or rename operation. `map.addLibraries(...)` changes local topology; `locus.lib.add(...)` admits hosted authority topology through its durable gate and ownership policy. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
 
 `map.capture()` synchronously returns one detached `LiveMapSnapshot`.
@@ -75,16 +86,29 @@ const locus = hsonLocus.create({
   authorizeProjection: () => ({ libraries: ["state", "colors"] }),
   actions: {
     async "theme.all"(context) {
-      await context.mutate((draft) => {
-        draft.lib("state").at(["count"]).set(1);
-        draft.lib("colors").at(["primary"]).set("green");
-      });
+      context.stage.lib("state").at(["count"]).set(1);
+      context.stage.lib("colors").at(["primary"]).set("green");
     },
   },
 });
 ```
 
-One `context.mutate(...)` call stages all selected-Library writes as one atomic action. Each Library keeps its own HsonSchema; initial state, server action preparation, client replay, reconciliation, and durable restart validate those Schemas.
+An action handler may await application work, then use `context.stage` for synchronous writes into that action's one candidate. The action returns before authority preparation, durable admission where configured, installation, and publication. Each Library keeps its own HsonSchema; initial state, server action preparation, client replay, reconciliation, and durable restart validate those Schemas.
+
+Outside an action, use the callable `locus.stage` for authoritative writes:
+
+```ts
+await locus.stage.lib("state").at(["count"]).set(1);
+
+await locus.stage(stage => {
+  stage.lib("state").at(["count"]).set(2);
+  stage.lib("colors").at(["primary"]).set("blue");
+});
+```
+
+A direct terminal setter returns `Promise<void>` for one authority transition. The grouped callback stages synchronously, and its outer call returns `Promise<void>` after the same authority admission path. Stage callbacks must be synchronous; await external work before entering one. Nested or direct stages invoked during an active stage callback are rejected. `locus.map` remains the actual managed LiveMap for reads, cuts, rendering, and observers; its direct mutation routes, including `map.batch`, are fenced while Locus owns it.
+
+Staged scopes are write-oriented. They offer selected `set`, `replace`, and `delete`, bounded document location/content/attribute operations, portable document graph operations, stylesheet operations, and canonical interaction helpers. They do not expose candidate-backed reads, `update`, or read-dependent shape helpers. Reads through `map` or `locus.map` during authoring see committed state, not earlier staged writes. Stage handles expire when the callback exits.
 
 For a client, `await hsonEcho.create({ now, credential, transport })` admits the
 authorized current session composition and returns an attached, caught-up

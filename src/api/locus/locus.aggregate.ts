@@ -1,39 +1,19 @@
 import type { JsonValue } from "../../core/types.js";
 import { ExactDataCarrier } from "../data/hson-data.js";
 import type {
-  LiveMapDocumentAttributeValue,
-  LiveMapDocumentAttrs,
-  LiveMapDocumentCommitTarget,
-  LiveMapDocumentContent,
-  LiveMapGraphOp,
   LiveMap,
   LiveMapDefinitions,
-  LivePath,
+  LiveMapStagedWriter,
+  LiveMapSynchronousAuthoring,
 } from "../../types/livemap.types.js";
 import type { LocusActionOrigin, LocusClientActionMessage } from "../../types/locus.types.js";
-import {
-  internal_livemap_aggregate_authority,
-  type InternalLiveMapAggregateAuthority,
-} from "../livemap/livemap.internal.js";
-import type {
-  LiveMapAggregateWrite,
-  LiveMapLibraryIdentity,
-} from "../livemap/livemap.library.js";
+import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import {
   type HostedAggregateCommit,
 } from "../livemap/livemap.hosted.js";
-import { admit_public_document_graph_operation } from "../livemap/livemap.document.mutation.js";
 import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
 import { prepare_hosted_livemap_library_add_internal } from "../livemap/livemap.libraries.js";
-import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
-import {
-  is_ordered_projected_object,
-  type OrderedProjectedValue,
-} from "../../core/ordered-projected-value.js";
-import {
-  INTERACTION_RESERVED_LIBRARY_KEY,
-  register_interaction_draft_internal,
-} from "../../internal/interaction-storage.js";
+import { is_staged_thenable, make_livemap_staged_writer } from "../livemap/livemap.staged.js";
 
 export { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES } from "./locus.aggregate.protocol.js";
 
@@ -45,37 +25,9 @@ export type LocusHostedAggregateAuthorityEnvelope = Readonly<{
   commit: HostedAggregateCommit;
 }>;
 
-export type LocusHostedAggregateDataDraft = Readonly<{
-  at: (path: LivePath) => Readonly<{
-    set: (value: JsonValue) => void;
-    replace: (value: JsonValue) => void;
-    delete: () => void;
-  }>;
-}>;
-
-type LocusHostedAggregateDocumentGraphMutation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
-
-export type LocusHostedAggregateDocumentDraft = Readonly<{
-  /** Stage an existing portable document stylesheet operation at this Library's authority gate. */
-  css: (operation: import("../../types/livemap.types.js").LiveMapCssOp) => void;
-  /** The selected library is separate from the document-local graph target. */
-  graph: (operation: LocusHostedAggregateDocumentGraphMutation) => void;
-  attrs: Readonly<{
-    set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => void;
-    drop: (target: LiveMapDocumentCommitTarget, name: string) => void;
-    replace: (target: LiveMapDocumentCommitTarget, attrs: LiveMapDocumentAttrs) => void;
-  }>;
-  content: Readonly<{
-    replace: (target: LiveMapDocumentCommitTarget, index: number, replacement: LiveMapDocumentContent) => void;
-    insert: (target: LiveMapDocumentCommitTarget, index: number, content: LiveMapDocumentContent) => void;
-    remove: (target: LiveMapDocumentCommitTarget, index: number) => void;
-    move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => void;
-  }>;
-}>;
-
-export type LocusHostedAggregateDraft = Readonly<{
-  lib: (name: string) => LocusHostedAggregateDataDraft | LocusHostedAggregateDocumentDraft;
-}>;
+export type LocusHostedAggregateStageWriter = LiveMapStagedWriter<LiveMap, void>;
+export type LocusHostedAggregateDocumentStage = Extract<ReturnType<LocusHostedAggregateStageWriter["lib"]>, Readonly<{ mode: "document" }>>;
+export type LocusHostedAggregateDataStage = Exclude<ReturnType<LocusHostedAggregateStageWriter["lib"]>, LocusHostedAggregateDocumentStage>;
 
 export type LocusHostedAggregateActionContext = Readonly<{
   map: LiveMap;
@@ -84,7 +36,7 @@ export type LocusHostedAggregateActionContext = Readonly<{
    * Add work to this action's one aggregate candidate. Nothing becomes visible
    * until the action returns and the single prepared transition is accepted.
    */
-  mutate: (mutation: (draft: LocusHostedAggregateDraft) => void) => Promise<void>;
+  stage: LocusHostedAggregateStageWriter;
 }>;
 
 export type LocusHostedAggregateAction = (
@@ -128,7 +80,7 @@ export type LocusHostedAggregate = Readonly<{
   readonly incarnationId: string;
   readonly registryDigest: string;
   readonly rev: number;
-  mutate: (mutation: (draft: LocusHostedAggregateDraft) => void | Promise<void>) => Promise<HostedAggregateCommit | undefined>;
+  stage: LiveMapSynchronousAuthoring<LocusHostedAggregateStageWriter, Promise<HostedAggregateCommit | undefined>>;
   /** @internal Stage one ordinary LiveMap library-add batch through this authority's gate. */
   add_libraries_internal: (definitions: LiveMapDefinitions, afterInstall?: () => void) => Promise<HostedAggregateCommit>;
   dispatch_action: (name: string, payload?: ExactDataCarrier | JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
@@ -229,14 +181,20 @@ export function create_locus_hosted_aggregate_internal(
   };
 
   const enqueue = <T>(
-    operation: (draft: LocusHostedAggregateDraft) => T | Promise<T>,
+    operation: (writer: LocusHostedAggregateStageWriter) => T | Promise<T>,
+    synchronous = false,
   ): Promise<Readonly<{ result: T; commit: HostedAggregateCommit | undefined }>> => {
     const run = async (): Promise<Readonly<{ result: T; commit: HostedAggregateCommit | undefined }>> => {
       if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
-      const accumulator = make_managed_aggregate_draft(aggregate);
+      const accumulator = make_livemap_staged_writer<LiveMap>(aggregate);
       let result: T;
       try {
-        result = await operation(accumulator.draft);
+        const submitted = operation(accumulator.writer);
+        if (synchronous && is_staged_thenable(submitted)) {
+          void Promise.resolve(submitted).catch(() => {});
+          throw new TypeError("Locus stage callback must be synchronous.");
+        }
+        result = synchronous ? submitted as T : await submitted;
       } finally {
         accumulator.close();
       }
@@ -257,8 +215,8 @@ export function create_locus_hosted_aggregate_internal(
     incarnationId: snapshot.authority.incarnationId,
     get registryDigest() { return aggregate.hostedPosition().registryDigest; },
     get rev() { return options.map.rev; },
-    async mutate(mutation) {
-      return (await enqueue(mutation)).commit;
+    async stage(callback) {
+      return (await enqueue(callback, true)).commit;
     },
     add_libraries_internal(definitions, afterInstall) {
       const run = async (): Promise<HostedAggregateCommit> => {
@@ -277,11 +235,11 @@ export function create_locus_hosted_aggregate_internal(
       const action = options.actions?.[name];
       if (action === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);
       const admittedPayload = payload === undefined ? undefined : ExactDataCarrier.from(payload);
-      return (await enqueue(async (draft) => {
+      return (await enqueue(async (writer) => {
         const context: LocusHostedAggregateActionContext = Object.freeze({
           map: options.map,
           origin,
-          mutate: async (mutation) => { mutation(draft); },
+          stage: writer,
         });
         return action(context, admittedPayload, message);
       })).result;
@@ -304,123 +262,5 @@ export function create_locus_hosted_aggregate_internal(
       disposed = true;
       if (!faulted && !reservedDecision) aggregate.releaseManagement(owner);
     },
-  });
-}
-
-function make_managed_aggregate_draft(
-  aggregate: InternalLiveMapAggregateAuthority,
-): Readonly<{
-  draft: LocusHostedAggregateDraft;
-  writes: () => readonly LiveMapAggregateWrite[];
-  close: () => void;
-}> {
-  const registry = aggregate.hostedRegistry();
-  const identities = aggregate.libraries();
-  const byName = new Map<string, Readonly<{ identity: LiveMapLibraryIdentity; mode: string }>>();
-  let applicationIndex = 0;
-  for (let index = 0; index < registry.libraries.length; index += 1) {
-    const library = registry.libraries[index];
-    if (library === undefined) {
-      throw new Error("Hosted aggregate registry identity binding is unavailable.");
-    }
-    if (library.scope !== "hson-internal") {
-      const identity = identities[applicationIndex];
-      applicationIndex += 1;
-      if (identity === undefined) throw new Error("Hosted application registry identity binding is unavailable.");
-      byName.set(library.name, Object.freeze({ identity, mode: library.mode }));
-    }
-  }
-  const writes: LiveMapAggregateWrite[] = [];
-  let open = true;
-  const assert_open = (): void => {
-    if (!open) throw new Error("Hosted aggregate Locus draft is expired.");
-  };
-  const selected = (name: string): LocusHostedAggregateDataDraft | LocusHostedAggregateDocumentDraft => {
-    assert_open();
-    const binding = byName.get(name);
-    if (binding === undefined) throw new Error(`Unknown hosted aggregate Library ${JSON.stringify(name)}.`);
-    if (binding.mode === "document") {
-      const graph = (operation: LiveMapGraphOp): void => {
-        assert_open();
-        admit_public_document_graph_operation(operation);
-        const path = operation.op === "replace-root" ? [] : operation.target.path;
-        writes.push(Object.freeze({
-          target: aggregate.target(binding.identity, path),
-          kind: "graph",
-          operation,
-        }));
-      };
-      const attrs: LocusHostedAggregateDocumentDraft["attrs"] = Object.freeze({
-        set: (target, name, value) => graph(Object.freeze({ domain: "graph", op: "set-attr", target, name, value })),
-        drop: (target, name) => graph(Object.freeze({ domain: "graph", op: "remove-attr", target, name })),
-        replace: (target, attrs) => graph(Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs })),
-      });
-      const content: LocusHostedAggregateDocumentDraft["content"] = Object.freeze({
-        replace: (target, index, replacement) => graph(Object.freeze({ domain: "graph", op: "replace-content", target, index, replacement })),
-        insert: (target, index, content) => graph(Object.freeze({ domain: "graph", op: "insert-content", target, index, content })),
-        remove: (target, index) => graph(Object.freeze({ domain: "graph", op: "remove-content", target, index })),
-        move: (target, from, to) => graph(Object.freeze({ domain: "graph", op: "move-content", target, from, to })),
-      });
-      return Object.freeze({
-        css: (operation: import("../../types/livemap.types.js").LiveMapCssOp) => {
-          assert_open();
-          writes.push(Object.freeze({ target: aggregate.target(binding.identity, []), kind: "css", operation }));
-        },
-        graph,
-        attrs,
-        content,
-      });
-    }
-    return Object.freeze({
-      at(path) {
-        const target = aggregate.target(binding.identity, path);
-        return Object.freeze({
-          set(value) {
-            assert_open();
-            writes.push(Object.freeze({ target, kind: "set", value }));
-          },
-          replace(value) {
-            assert_open();
-            writes.push(Object.freeze({ target, kind: "replace", value }));
-          },
-          delete() {
-            assert_open();
-            writes.push(Object.freeze({ target, kind: "delete" }));
-          },
-        });
-      },
-    });
-  };
-  const draft = Object.freeze({ lib: selected });
-  const interactionSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-  if (interactionSystem !== undefined) {
-    const interactionRoot = projected_value_from_hson_node(aggregate.systemRoot(interactionSystem));
-    if (!is_ordered_projected_object(interactionRoot)) {
-      throw new Error("Canonical interaction Library root is malformed.");
-    }
-    const initialInteractionValue = interactionRoot.entries.find(([name]) => name === "descriptors")?.[1];
-    if (initialInteractionValue === undefined) {
-      throw new Error("Canonical interaction descriptor collection is missing.");
-    }
-    let interactionValue: OrderedProjectedValue = initialInteractionValue;
-    register_interaction_draft_internal(
-      draft,
-      interactionSystem,
-      () => interactionValue,
-      (value) => {
-        assert_open();
-        interactionValue = value;
-        writes.push(Object.freeze({
-          target: aggregate.systemTarget(interactionSystem, ["descriptors"]),
-          kind: "replace",
-          value,
-        }));
-      },
-    );
-  }
-  return Object.freeze({
-    draft,
-    writes: () => Object.freeze([...writes]),
-    close: () => { open = false; },
   });
 }

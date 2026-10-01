@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { create_persistent_registry_locus } from "../src/api/locus/locus.registry.persistence.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
-import type { LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
+import type { LocusHostedAggregateStageWriter } from "../src/api/locus/locus.aggregate.ts";
 import { create_persistent_locus_hosted_aggregate_internal } from "../src/api/locus/locus.aggregate.persistence.ts";
 import { LocusPersistenceAppendUncertainError } from "../src/api/locus/locus.persistence.error.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -23,9 +23,9 @@ const libraries = [
   { name: "A", ownership: "shared" as const },
   { name: "B", ownership: "shared" as const },
 ];
-function set_value(draft: LocusHostedAggregateDraft, name: "A" | "B", value: string) {
+function set_value(draft: LocusHostedAggregateStageWriter, name: "A" | "B", value: string) {
   const library = draft.lib(name);
-  if (!("at" in library)) throw new Error("Expected data Library.");
+  if (library.mode === "document") throw new Error("Expected data Library.");
   library.at(["value"]).set(value);
 }
 function deferred() {
@@ -108,7 +108,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const a = await session(host, "A");
   const b = await session(host, "B");
   const huge = "X".repeat(4_500_000);
-  await assert.rejects(host.mutate((draft) => {
+  await assert.rejects(host.stage((draft) => {
     draft.lib("A").at(["value"]).set(huge);
     draft.lib("B").at(["value"]).set("B-small");
   }), /byte limit/i);
@@ -120,7 +120,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
     assert.equal(messages(connection, "commit").length, 0);
     assert.equal(messages(connection, "progress").length, 0);
   }
-  await host.mutate((draft) => {
+  await host.stage((draft) => {
     draft.lib("A").at(["value"]).set("A-small");
     draft.lib("B").at(["value"]).set("B-small");
   });
@@ -148,10 +148,10 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const host = await create_persistent_registry_locus({ map, libraries,
     logicalMapId: "z1z2-clean-append", persistence });
   persistence.mode = "clean";
-  await assert.rejects(host.mutate((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
+  await assert.rejects(host.stage((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
   assert.equal(map.rev, 0);
   assert.equal(persistence.commits.length, 0);
-  await host.mutate((draft) => draft.lib("A").at(["value"]).set("A2"));
+  await host.stage((draft) => draft.lib("A").at(["value"]).set("A2"));
   assert.equal(map.rev, 1);
   assert.equal(persistence.commits.length, 1);
   host.dispose();
@@ -165,10 +165,10 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const host = await create_persistent_registry_locus({ map, libraries,
     logicalMapId: "z1z2-uncertain-append", persistence });
   persistence.mode = "uncertain";
-  await assert.rejects(host.mutate((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
+  await assert.rejects(host.stage((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
   assert.equal(map.rev, 0);
   assert.equal(persistence.commits.length, 1);
-  await assert.rejects(host.mutate((draft) => draft.lib("A").at(["value"]).set("A2")), /faulted/i);
+  await assert.rejects(host.stage((draft) => draft.lib("A").at(["value"]).set("A2")), /faulted/i);
   assert.equal(persistence.appendCalls.length, 1);
   host.dispose();
   const restored = await create_persistent_registry_locus({ map: make_map(), libraries,
@@ -186,7 +186,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const disconnected = await session(server, "A");
   disconnected.close();
   assert.equal(server.sessions.debug().disconnectedSessionCount, 1);
-  await assert.rejects(server.mutate((draft) => set_value(draft, "A", "X".repeat(40_000))), /byte limit/i);
+  await assert.rejects(server.stage((draft) => set_value(draft, "A", "X".repeat(40_000))), /byte limit/i);
   assert.equal(server.rev, 0);
   assert.equal(server.debug().retainedCommits, 0);
   const attached = pair();
@@ -198,7 +198,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   await settle();
   assert.equal(messages(attached, "recovery-caught-up").length, 1);
   assert.equal(messages(attached, "error").some((message) => message.code === "LOCUS_SYNC_FAILED"), false);
-  await server.mutate((draft) => set_value(draft, "A", "A-small"));
+  await server.stage((draft) => set_value(draft, "A", "A-small"));
   assert.equal(server.rev, 1);
   server.dispose();
 }
@@ -212,7 +212,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const sessionId = messages(revoked, "session-created")[0]?.sessionId;
   if (typeof sessionId !== "string") throw new Error("Expected session ID.");
   assert.equal(server.sessions.revoke(sessionId), true);
-  await server.mutate((draft) => set_value(draft, "A", "X".repeat(40_000)));
+  await server.stage((draft) => set_value(draft, "A", "X".repeat(40_000)));
   assert.equal(server.rev, 1);
   server.dispose();
 }
@@ -244,10 +244,10 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const recovering = await session(server, "A", false);
   recovering.client.send(JSON.stringify({ type: "recover", id: "recover-A", logicalMapId: server.logicalMapId }));
   await entered.promise;
-  await assert.rejects(server.mutate((draft) => set_value(draft, "A", "X".repeat(40_000))), /byte limit/i);
+  await assert.rejects(server.stage((draft) => set_value(draft, "A", "X".repeat(40_000))), /byte limit/i);
   assert.equal(server.rev, 0);
   assert.equal(server.debug().retainedCommits, 0);
-  await server.mutate((draft) => set_value(draft, "A", "A-small"));
+  await server.stage((draft) => set_value(draft, "A", "A-small"));
   assert.equal(server.rev, 1);
   hold = false;
   held.resolve();
@@ -267,7 +267,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
     logicalMapId: "z1z2-reservation", persistence,
     authorizeProjection: async ({ requested }) => { await authorization.promise; return requested; } });
   const pending = persistence.deferNextAppend();
-  const mutation = host.mutate((draft) => draft.lib("A").at(["value"]).set("A1"));
+  const mutation = host.stage((draft) => draft.lib("A").at(["value"]).set("A1"));
   await pending.entered;
   const aggregate = internal_livemap_aggregate_authority(map);
   const library = aggregate.libraries()[0]!;
@@ -301,9 +301,9 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
     logicalMapId: "z1z2-postinstall-fault",
     beforeAccept: () => ({ install: () => { throw new Error("injected postinstall fault"); } }),
   });
-  await assert.rejects(host.mutate((draft) => set_value(draft, "A", "A1")), /injected postinstall fault/i);
+  await assert.rejects(host.stage((draft) => set_value(draft, "A", "A1")), /injected postinstall fault/i);
   assert.equal(persistence.state("z1z2-postinstall-fault")?.commits.length, 1);
-  await assert.rejects(host.mutate((draft) => set_value(draft, "A", "A2")), /faulted/i);
+  await assert.rejects(host.stage((draft) => set_value(draft, "A", "A2")), /faulted/i);
   host.dispose();
   const restored = await create_persistent_registry_locus({ map: make_map(), libraries,
     logicalMapId: "z1z2-postinstall-fault", persistence });

@@ -2732,6 +2732,7 @@ function make_livemap_registry_engine(
     handle: make_internal_path_authority,
     resolveQuid: (quid) => aggregate_quid_locations(libraryRegistry.all()).get(quid),
     prepare: prepare_authority_transition,
+    withPublicBatch: transitionController.withPublicBatch,
     prepareManaged: (owner, writes) => transitionController.runManaged(
       owner,
       () => prepare_authority_transition(writes),

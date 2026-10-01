@@ -325,7 +325,7 @@ await check("application payload decoding precedes authorization and mutation", 
     actions: {
       validated: async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
-        await context.mutate((draft) => draft.lib("state").at(["value"]).set(value.value));
+        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
       },
     },
     schema: {
@@ -365,7 +365,7 @@ await check("resumable session reattachment retains one projected aggregate auth
     actions: {
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
-        await context.mutate((draft) => draft.lib("state").at(["value"]).set(value.value));
+        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
       },
     },
   });
@@ -412,7 +412,7 @@ await check("retry, dedupe conflict, and action status use the hosted request co
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
         executions += 1;
-        await context.mutate((draft) => draft.lib("state").at(["value"]).set(value.value));
+        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
       },
     },
   });
@@ -515,14 +515,12 @@ await check("built-ins and single- or cross-library application actions share on
     actions: {
       "state.only": async (context) => {
         order.push("state");
-        await context.mutate((draft) => draft.lib("state").at(["value"]).set(1));
+        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(1); })();
       },
       "cross.library": async (context) => {
         order.push("cross");
-        await context.mutate((draft) => {
-          draft.lib("state").at(["value"]).set(2);
-          draft.lib("other").at(["value"]).set(2);
-        });
+        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(2);
+draft.lib("other").at(["value"]).set(2); })();
       },
     },
   });
@@ -611,7 +609,7 @@ await check("replacement after admission retains the outcome but fences late del
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;
-        await context.mutate((draft) => draft.lib("state").at(["value"]).set(9));
+        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(9); })();
       },
     },
   });
@@ -663,7 +661,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;
-        await context.mutate((draft) => draft.lib("state").at(["value"]).set(11));
+        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(11); })();
       },
     },
   });

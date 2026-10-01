@@ -534,7 +534,7 @@ function persistent_view(
     get incarnationId() { return locus.incarnationId; },
     get registryDigest() { return locus.registryDigest; },
     get rev() { return locus.rev; },
-    mutate: locus.mutate,
+    stage: locus.stage,
     add_libraries_internal: locus.add_libraries_internal,
     dispatch_action: locus.dispatch_action,
     on_commit: locus.on_commit,

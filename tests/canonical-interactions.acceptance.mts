@@ -362,26 +362,22 @@ await check("document and interaction effects accept or reject as one authority 
     libraries: test_application_catalog(map),
     map,
     actions: {
-      mixed: (context) => context.mutate((draft) => {
-        draft.lib("page").graph(Object.freeze({
+      mixed: (context) => (() => { const draft = context.stage; draft.lib("page").graph(Object.freeze({
           domain: "graph",
           op: "set-attr",
           target: Object.freeze({ kind: "path", path: validate_document_path([0]) }),
           name: "title",
           value: "accepted",
         }));
-        add_interaction(draft, local("mixed", "run"));
-      }),
-      invalid: (context) => context.mutate((draft) => {
-        draft.lib("page").graph(Object.freeze({
+add_interaction(draft, local("mixed", "run")); })(),
+      invalid: (context) => (() => { const draft = context.stage; draft.lib("page").graph(Object.freeze({
           domain: "graph",
           op: "set-attr",
           target: Object.freeze({ kind: "path", path: validate_document_path([0]) }),
           name: "blocked",
           value: "rejected",
         }));
-        add_interaction(draft, { ...local("invalid", "run"), subject: { library: "page", path: [-1] } });
-      }),
+add_interaction(draft, { ...local("invalid", "run"), subject: { library: "page", path: [-1] } }); })(),
     },
   });
 
@@ -404,6 +400,32 @@ await check("document and interaction effects accept or reject as one authority 
   locus.dispose();
 });
 
+await check("batch and stage each admit document movement with interaction maintenance once", async () => {
+  const standalone = hsonLiveMap.fromLibraries({ page: { document: "<main <button id=one/> <button id=two/>/>" } });
+  enable_interactions(standalone);
+  const moved = Object.freeze({ domain: "graph" as const, op: "move-content" as const,
+    target: Object.freeze({ kind: "path" as const, path: validate_document_path([0, 0]) }), from: 0, to: 1 });
+  const batchCommit = standalone.batch(batch => {
+    batch.lib("page").graph(moved);
+    add_interaction(batch, local("batch-move", "run"));
+  });
+  assert.equal(batchCommit.rev, 1);
+  assert.equal(standalone.rev, 1);
+  assert.match(JSON.stringify(internal_livemap_aggregate_authority(standalone).captureHosted()), /batch-move/);
+
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<main <button id=one/> <button id=two/>/>" } });
+  enable_interactions(map);
+  const locus = hsonLocus.create({ map, libraries: test_application_catalog(map) });
+  try {
+    await locus.stage(stage => {
+      stage.lib("page").graph(moved);
+      add_interaction(stage, local("stage-move", "run"));
+    });
+    assert.equal(locus.rev, 1);
+    assert.match(JSON.stringify(internal_livemap_aggregate_authority(map).captureHosted()), /stage-move/);
+  } finally { locus.dispose(); }
+});
+
 await check("Locus staging authors hidden descriptors while direct managed writes are fenced", async () => {
   const map = map_fixture();
   const descriptor = local("managed", "run", Hson.data.from(-0));
@@ -411,9 +433,9 @@ await check("Locus staging authors hidden descriptors while direct managed write
     libraries: test_application_catalog(map),
     map,
     actions: {
-      add: (context) => context.mutate((draft) => add_interaction(draft, descriptor)),
-      replace: (context) => context.mutate((draft) => replace_interaction(draft, local("managed", "next"))),
-      remove: (context) => context.mutate((draft) => remove_interaction(draft, "managed")),
+      add: (context) => (() => { const draft = context.stage; add_interaction(draft, descriptor); })(),
+      replace: (context) => (() => { const draft = context.stage; replace_interaction(draft, local("managed", "next")); })(),
+      remove: (context) => (() => { const draft = context.stage; remove_interaction(draft, "managed"); })(),
     },
   });
   assert.throws(() => add_interaction(map, descriptor), /exclusive Locus authority/i);

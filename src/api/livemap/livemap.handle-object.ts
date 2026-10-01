@@ -29,7 +29,7 @@ import {
 import { livemap_projected_propagation, type LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
 import { LiveMapProjectedMutationError } from "./livemap.error.js";
 
-type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "batch">;
+type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete">;
 
 /** Object-scoped helpers backed by the canonical ordered carrier. */
 export function make_livemap_object_api<

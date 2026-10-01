@@ -48,11 +48,12 @@ const hostedLibraries = hsonLocus.create({
   ],
   actions: {
     async rename(context) {
-      await context.mutate((draft) => {
+      {
+        const draft = context.stage;
         draft.lib("user").at(["name"]).set("Lin");
-        // @ts-expect-error Hosted managed drafts retain generated Schema mutation types.
+        // @ts-expect-error Hosted stage retains generated Schema write types.
         draft.lib("user").at(["name"]).set(37);
-      });
+      }
     },
   },
 });

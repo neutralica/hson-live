@@ -68,9 +68,9 @@ detach();
 
 await locus.lib.add({ newState: { data: { value: 1 } } },
   { ownership: { newState: "shared" } });
-await locus.mutate((draft) => {
+await locus.stage((draft) => {
   const state = draft.lib("newState");
-  if (!("at" in state)) throw new Error("Expected data Library.");
+  if (state.mode === "document") throw new Error("Expected data Library.");
   state.at(["value"]).set(2);
 });
 await locus.lib.add({ privateState: { data: { secret: "PRIVATE_REPLAY_ROOT_SENTINEL",
@@ -81,9 +81,9 @@ await locus.lib.add({ privateState: { data: { secret: "PRIVATE_REPLAY_ROOT_SENTI
     UNGRANTED_REPLAY_SCHEMA_SENTINEL: "ungranted" },
     schema: Hson.schema`<type "data" content <secret "string" UNGRANTED_REPLAY_SCHEMA_SENTINEL "string">>` } },
 { ownership: { nextState: "shared", ungrantedState: "shared" } });
-await locus.mutate((draft) => {
+await locus.stage((draft) => {
   const next = draft.lib("nextState"), hidden = draft.lib("privateState");
-  if (!("at" in next) || !("at" in hidden)) throw new Error("Expected data Libraries.");
+  if (next.mode === "document" || hidden.mode === "document") throw new Error("Expected data Libraries.");
   next.at(["value"]).set(4);
   hidden.at(["secret"]).set("PRIVATE_REPLAY_WRITE_SENTINEL");
 });
@@ -242,9 +242,9 @@ assert.ok(tailSession);
 tailEcho.disconnect();
 detachTail();
 await tailServer.add_libraries({ added: { data: { value: 1 } } }, { added: "shared" });
-await tailServer.mutate((draft) => {
+await tailServer.stage((draft) => {
   const added = draft.lib("added");
-  if (!("at" in added)) throw new Error("Expected added data Library.");
+  if (added.mode === "document") throw new Error("Expected added data Library.");
   added.at(["value"]).set(2);
 });
 await tailServer.sessions.updateProjection(tailSession, { libraries: ["anchor", "added"] },
@@ -255,9 +255,9 @@ const tailRecovery = tailEcho.connect();
 await cutEntered;
 await assert.rejects(tailServer.sessions.updateProjection(tailSession,
   { libraries: ["anchor", "added"] }, { principalId: "alice" }), /projection.*unavailable/i);
-await tailServer.mutate((draft) => {
+await tailServer.stage((draft) => {
   const added = draft.lib("added");
-  if (!("at" in added)) throw new Error("Expected added data Library.");
+  if (added.mode === "document") throw new Error("Expected added data Library.");
   added.at(["value"]).set(3);
 });
 await tailServer.add_libraries({ hiddenTail: { data: { secret: "HIDDEN_TAIL_SENTINEL" } } });
@@ -333,7 +333,7 @@ interactionEcho.disconnect();
 detachInteraction();
 await interactionServer.lib.add({ nextPage: { document: Hson.document`<main <button "Next"/>/>` } },
   { ownership: { nextPage: "shared" } });
-await interactionServer.mutate((draft) => add_interaction(draft, {
+await interactionServer.stage((draft) => add_interaction(draft, {
   id: "recovered-button", subject: { library: "nextPage", path: [99] },
   listener: { event: "click", target: "element", capture: false, once: false, passive: false,
     missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },

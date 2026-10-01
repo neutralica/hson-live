@@ -176,6 +176,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   handle: (library: LiveMapLibraryIdentity, path: LivePath) => InternalLiveMapPathAuthority;
   resolveQuid: (quid: string) => LiveMapStructuralTarget | undefined;
   prepare: (writes: readonly LiveMapAggregateWrite[]) => PreparedLiveMapAuthorityTransition;
+  withPublicBatch: <T>(callback: () => T) => T;
   /** Prepare through the Locus-owned management claim. @internal */
   prepareManaged: (
     owner: object,

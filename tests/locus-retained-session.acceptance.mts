@@ -70,7 +70,7 @@ const changed = await session.update({ libraries: ["state"] });
 assert.equal(changed.changed, true);
 assert.deepEqual(session.now().libs.libraries.map(entry => entry.name), ["state"]);
 assert.throws(() => session.now({ html: "page" }), /unavailable/i);
-await locus.mutate(draft => { const state = draft.lib("state"); if ("at" in state) state.at(["value"]).set("LATER"); });
+await locus.stage(draft => { const state = draft.lib("state"); state.at(["value"]).set("LATER"); });
 detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 echo.connect(); await echo.session.reattach();
 assert.equal(echo.sync.strategy, "reconcile");

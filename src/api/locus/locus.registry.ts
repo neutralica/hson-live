@@ -2,6 +2,7 @@ import type { JsonValue } from "../../core/types.js";
 import { hson_data_text, type ExactDataCarrier } from "../data/hson-data.js";
 import type {
   LiveMap,
+  LiveMapStagedWriter,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
@@ -29,6 +30,7 @@ import { capture_selected_authority_projection_snapshot } from "./locus.authorit
 import { LocusProjectionUnavailableError } from "./locus.projection.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 import { register_locus_semantic_attachment_internal } from "./locus.transport.internal.js";
+import { make_locus_stage } from "./locus.stage.js";
 
 function establish_authority_identity(
   map: LiveMap,
@@ -98,11 +100,11 @@ export function create_registry_locus_internal<
       const aggregateContext = context as Readonly<{
         map: LiveMap;
         origin: LocusActionContext<TMap>["origin"];
-        mutate: (mutation: (draft: unknown) => void) => Promise<void>;
+        stage: LiveMapStagedWriter<LiveMap, void>;
       }>;
       const publicContext: LocusActionContext<TMap> = Object.freeze({
         map: aggregateContext.map as TMap,
-        mutate: async (mutation) => aggregateContext.mutate(mutation as (draft: unknown) => void),
+        stage: aggregateContext.stage as LiveMapStagedWriter<TMap, void>,
         seq: actionSequence,
         origin: aggregateContext.origin,
         // Aggregate transport does not carry application events. Keep the
@@ -160,14 +162,22 @@ export function create_registry_locus_internal<
     release?.();
   });
 
-  const mutate: Locus<TMap, TActions>["mutate"] = async (mutation) => {
+  let authoringStage = false;
+  const submitStage = async (callback: (writer: LiveMapStagedWriter<LiveMap, void>) => void): Promise<void> => {
+    if (authoringStage) throw new Error("Nested or direct Locus stage during an active stage callback is forbidden.");
     const release = activity.acquire("mutation");
     try {
-      await authority.mutate((draft) => mutation(draft as never));
+      await authority.stage((writer) => {
+        if (authoringStage) throw new Error("Nested Locus stage is forbidden.");
+        authoringStage = true;
+        try { return callback(writer); }
+        finally { authoringStage = false; }
+      });
     } finally {
       release();
     }
   };
+  const stage = make_locus_stage(options.map, submitStage);
 
   const dispatchAction: Locus<TMap, TActions>["dispatchAction"] = async (message) => {
     const release = activity.acquire("action");
@@ -252,7 +262,7 @@ export function create_registry_locus_internal<
       dispose: authority.sessions.dispose,
     }),
     actionRequests: authority.actionRequests,
-    mutate,
+    stage,
     dispatchAction,
     dispose: () => {
       if (disposed) return;

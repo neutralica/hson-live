@@ -286,40 +286,6 @@ export type LiveMapReplaceFn<TValue = JsonValue | undefined> = {
   ): LiveMapCoreCommit<LiveMapDataOp>;
 };
 
-export type LiveMapBatchReplaceFn<TValue = JsonValue | undefined> = {
-  (value: NoInfer<LiveMapWriteValue<TValue>>): LiveMapBatchTx<TValue>;
-  <const TPath extends LivePath>(
-    path: TPath,
-    value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>,
-  ): LiveMapBatchTx<TValue>;
-};
-
-/**
- * Synchronous transaction handle passed to `map.batch(...)`.
- *
- * Batch is an explicit grouping envelope, not automatic notification
- * coalescing. The transaction mirrors Core semantics: `replace` performs exact
- * endpoint replacement, while object-valued `set` and `setMany` perform shallow
- * sibling-preserving object writes.
- */
-export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
-  /** Set a resolved data path; plain objects expand into shallow child sets. */
-  set: <const TPath extends LivePath>(
-    path: TPath,
-    value: NoInfer<LiveMapPathSetValue<TValue, TPath>>,
-  ) => LiveMapBatchTx<TValue>;
-  /** Exact root replacement, or exact endpoint replacement at a data path. */
-  replace: LiveMapBatchReplaceFn<TValue>;
-  /** Shallow object set that expands values into child-path sets and preserves unspecified siblings. */
-  setMany: <const TPath extends LivePath>(
-    path: TPath,
-    values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
-  ) => LiveMapBatchTx<TValue>;
-  splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapBatchTx<TValue>;
-  /** Delete the data path. */
-  delete: (path: LivePath) => LiveMapBatchTx<TValue>;
-}>;
-
 export type LiveMapCore<
   TValue = JsonValue | undefined,
   TMode extends LiveMapRootMode = LiveMapRootMode,
@@ -346,8 +312,6 @@ export type LiveMapCore<
   /** Exact root replacement, or exact endpoint replacement at a data path; `set([])` remains invalid. */
   replace: LiveMapReplaceFn<TValue>;
   delete: (path: LivePath) => LiveMapCoreCommit<LiveMapDataOp>;
-  /** Explicit synchronous transaction grouping for one commit. */
-  batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCoreCommit<LiveMapDataOp>;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
   commits: LiveMapCommitObserverApi;
   sub: LiveMapSubApi<TValue>;
@@ -1646,6 +1610,113 @@ type LiveMapLibrarySelector<TMap> = [LiveMapEffectiveKnownNames<TMap>] extends [
       (name: string): LiveMapDynamicLibrary;
     };
 
+/** Write-only data location used while one map-wide transition is being described. */
+export type LiveMapStagedDataPath<TValue, TResult> = Readonly<{
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => LiveMapStagedDataPath<LiveMapPathValue<TValue, TPath>, TResult>;
+  set: (value: LiveMapSetValue<TValue>) => TResult;
+  replace: (value: LiveMapWriteValue<TValue>) => TResult;
+  delete: () => TResult;
+}>;
+
+type LiveMapStagedDataLibrary<TValue, TResult> = Readonly<{
+  readonly mode: DataLiveMapMode;
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => LiveMapStagedDataPath<LiveMapPathValue<TValue, TPath>, TResult>;
+}>;
+
+type LiveMapStagedDocumentLocation<TDescriptor, TResult> = Readonly<{
+  at: <const TPath extends readonly number[]>(
+    path: TPath & ([InternalDocumentDescriptorEndpoint<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>>] extends [never]
+      ? never : unknown),
+  ) => LiveMapStagedDocumentLocation<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>, TResult>;
+}> & ([TDescriptor] extends [InternalDocumentRootDescriptor<unknown>]
+  ? Readonly<Record<never, never>>
+  : Readonly<{
+      replace: (value: InternalDocumentWritableItem<TDescriptor>) => TResult;
+      delete: () => TResult;
+    }>) & ([TDescriptor] extends [Readonly<{ kind: "element" }>]
+  ? LiveMapStagedDocumentContent<TDescriptor, TResult> & LiveMapStagedDocumentAttrs<TDescriptor, TResult>
+  : [TDescriptor] extends [InternalDocumentRootDescriptor<unknown>]
+    ? LiveMapStagedDocumentContent<TDescriptor, TResult>
+    : Readonly<Record<never, never>>);
+
+type LiveMapStagedDocumentContent<TDescriptor, TResult> = Readonly<{
+  insert: (index: number, value: InternalDocumentInsertItem<TDescriptor>) => TResult;
+  move: (from: number, to: number) => TResult;
+}>;
+
+type LiveMapStagedDocumentAttrs<TDescriptor, TResult> =
+  InternalDocumentLocationAttrsEvidence<TDescriptor> extends infer TAttrs
+    ? Readonly<{ attrs: Readonly<{
+        set: <const TName extends InternalAttrsName<TAttrs>>(
+          name: TName,
+          value: NoInfer<InternalAttrWriteValue<TAttrs, TName>>,
+        ) => TResult;
+        drop: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => TResult;
+        replace: (values: InternalAttrsReplaceInput<TAttrs>) => TResult;
+      }> }>
+    : never;
+
+type LiveMapStagedDocumentGraphOperation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
+
+type LiveMapStagedDocumentLibrary<TEvidence, TResult> = Readonly<{
+  readonly mode: "document";
+  at: <const TPath extends readonly number[]>(
+    path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never] ? never : unknown),
+  ) => LiveMapStagedDocumentLocation<InternalDocumentLogicalPathDescriptor<TEvidence, TPath>, TResult>;
+  /** Lower-level portable graph operation for authority operations without a selected form. */
+  graph: (operation: LiveMapStagedDocumentGraphOperation) => TResult;
+  /** Portable target operations needed by hosted document actions. */
+  attrs: Readonly<{
+    set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => TResult;
+    drop: (target: LiveMapDocumentCommitTarget, name: string) => TResult;
+    replace: (target: LiveMapDocumentCommitTarget, attrs: LiveMapDocumentAttrs) => TResult;
+  }>;
+  content: Readonly<{
+    replace: (target: LiveMapDocumentCommitTarget, index: number, replacement: LiveMapDocumentContent) => TResult;
+    insert: (target: LiveMapDocumentCommitTarget, index: number, content: LiveMapDocumentContent) => TResult;
+    remove: (target: LiveMapDocumentCommitTarget, index: number) => TResult;
+    move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => TResult;
+  }>;
+  /** Portable stylesheet operation; full staged CSS reads are not exposed. */
+  css: (operation: LiveMapCssOp) => TResult;
+}>;
+
+type LiveMapStagedLibraryForInput<TInput, TResult> =
+  TInput extends LiveMapDataLibraryInput<infer TSchema>
+    ? LiveMapStagedDataLibrary<SchemaType<TSchema>, TResult>
+    : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
+      ? LiveMapStagedDocumentLibrary<SchemaType<TSchema>, TResult>
+      : TInput extends Readonly<{ data: unknown }>
+        ? LiveMapStagedDataLibrary<JsonValue, TResult>
+        : TInput extends Readonly<{ document: unknown }>
+          ? LiveMapStagedDocumentLibrary<HsonNode, TResult>
+          : never;
+
+type LiveMapDynamicStagedLibrary<TResult> =
+  | LiveMapStagedDataLibrary<JsonValue, TResult>
+  | LiveMapStagedDocumentLibrary<HsonNode, TResult>;
+
+/** One temporary writer; terminal results reflect its execution context. */
+export type LiveMapStagedWriter<TMap extends LiveMap, TResult> = Readonly<{
+  lib: [LiveMapEffectiveKnownNames<TMap>] extends [never]
+    ? (name: string) => LiveMapDynamicStagedLibrary<TResult>
+    : {
+        <TLibrary extends LiveMapEffectiveKnownNames<TMap>>(
+          name: TLibrary,
+        ): LiveMapStagedLibraryForInput<LiveMapEffectiveDefinitions<TMap>[TLibrary], TResult>;
+        (name: string): LiveMapDynamicStagedLibrary<TResult>;
+      };
+}>;
+
+/** Synchronous callback whose return cannot contain a Promise. */
+export type LiveMapSynchronousAuthoring<TWriter, TResult> = <TCallback extends (writer: TWriter) => unknown>(
+  callback: TCallback & (Extract<ReturnType<TCallback>, PromiseLike<unknown>> extends never ? unknown : never),
+) => TResult;
+
 type LiveMapKnownFamilyNames<TMap, TFamily extends "data" | "document"> = {
   [TName in LiveMapEffectiveKnownNames<TMap>]: LiveMapEffectiveDefinitions<TMap>[TName] extends Readonly<Record<TFamily, unknown>> ? TName : never;
 }[LiveMapEffectiveKnownNames<TMap>];
@@ -1697,6 +1768,8 @@ export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
   readonly [liveMapLibrariesType]: TLibraries;
   readonly rev: number;
   readonly lib: LiveMapLibrarySelector<this>;
+  /** Describe one synchronous, map-wide atomic transition. */
+  batch: LiveMapSynchronousAuthoring<LiveMapStagedWriter<this, void>, LiveMapCommit>;
   /** Admit one atomic batch of new libraries into this map's registry. */
   addLibraries<const TDefinitions extends LiveMapDefinitions>(
     definitions: TDefinitions & (Extract<keyof LiveMapKnownDefinitions<TDefinitions>, keyof LiveMapKnownDefinitions<TLibraries>> extends never

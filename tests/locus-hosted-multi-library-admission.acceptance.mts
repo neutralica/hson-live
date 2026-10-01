@@ -35,11 +35,10 @@ await check("bound aggregate admission preserves atomic completion, authorizatio
     },
     actions: { cross: async (context, payload) => {
       executions += 1; const value = (payload?.materialize() as { value: number }).value;
-      await context.mutate((draft) => {
-        const state = draft.lib("state"), other = draft.lib("other");
-        if (!("at" in state) || !("at" in other)) throw new Error("Expected data libraries.");
-        state.at(["value"]).set(value); other.at(["value"]).set(value);
-      });
+      await (() => { const draft = context.stage; const state = draft.lib("state"), other = draft.lib("other");
+if (state.mode === "document" || other.mode === "document") throw new Error("Expected data libraries.");
+state.at(["value"]).set(value);
+other.at(["value"]).set(value); })();
       return { accepted: true };
     } },
   });
@@ -60,7 +59,9 @@ await check("aggregate whole-action FIFO remains ahead of the common admission s
     held: async (context, payload) => {
       const value = payload?.scalar(); if (typeof value !== "number") throw new Error("Expected numeric action data.");
       entered.push(value); if (value === 1) await gate.promise;
-      await context.mutate((draft) => { const state = draft.lib("state"); if (!("at" in state)) throw new Error("Expected data library."); state.at(["value"]).set(value); });
+      await (() => { const draft = context.stage; const state = draft.lib("state");
+if (state.mode === "document") throw new Error("Expected data library.");
+state.at(["value"]).set(value); })();
       return payload;
     },
   } });

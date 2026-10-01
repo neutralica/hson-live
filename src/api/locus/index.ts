@@ -48,6 +48,7 @@ export type {
   LocusSessionNow,
   LocusSessionHtmlNow,
   Locus,
+  LocusStage,
   LocusPersistenceAdapter,
   PersistentLocusOptions,
   PersistentLocus,

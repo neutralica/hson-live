@@ -28,7 +28,7 @@ import {
 import { hson_data_text_from_value } from "../data/hson-data.js";
 
 
-type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "at" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch" | "splice" | "rev">;
+type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "at" | "set" | "replace" | "setMany" | "delete" | "feed" | "splice" | "rev" | "capture">;
 
 type LiveMapPathHandleInternals = Readonly<{
   core: LiveMapPathHandleCore;
@@ -328,5 +328,7 @@ function propagate_delete_core(
   if (path_is_prefix(sourcePath, deletePath) && sourceValue !== undefined) {
     return core.replace(targetPath, sourceValue);
   }
-  return core.batch(() => {});
+  const current = core.capture();
+  return Object.freeze({ changed: false, prevRev: current.rev, rev: current.rev, ops: Object.freeze([]),
+    format: current.format, payload: current.payload });
 }

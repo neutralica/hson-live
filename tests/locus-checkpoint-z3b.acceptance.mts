@@ -170,10 +170,10 @@ await case_("two data and two document libraries retain system interactions and 
   add_interaction(map, Object.freeze({ id: "z3b-click", subject: { library: "pageA", path: [0, 0, 1] },
     listener, kind: "browser", key: "run", args: null }));
   const locus = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter });
-  await locus.mutate((draft) => {
+  await locus.stage((draft) => {
     for (const [name, value] of [["dataA", "A1"], ["dataB", "B1"]] as const) {
       const library = draft.lib(name);
-      if (!("at" in library)) throw new Error("Expected data Library.");
+      if (library.mode === "document") throw new Error("Expected data Library.");
       library.at(["value"]).set(value);
     }
     const page = draft.lib("pageB");
@@ -182,7 +182,7 @@ await case_("two data and two document libraries retain system interactions and 
       index: 0, content: { $_tag: "_hson_elem", $_content: [{ $_tag: "item", $_content: [] }] } });
   });
   await locus.checkpoint();
-  await locus.mutate((draft) => {
+  await locus.stage((draft) => {
     const page = draft.lib("pageB");
     if (!("graph" in page)) throw new Error("Expected document Library.");
     page.graph({ domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([0, 0]) },
@@ -214,14 +214,14 @@ await case_("preactivation failures preserve old checkpoint and complete tail", 
     const adapter = new MemoryCheckpointAdapter();
     const locus = await host(adapter, id);
     const old = active(adapter, id).checkpointId;
-    await locus.mutate((draft) => { draft.lib("private").at(["value"]).set("R1"); });
+    await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
     if (phase === "chunk") adapter.failChunk = new Error("chunk failure");
     if (phase === "manifest") adapter.failManifest = new Error("manifest failure");
     if (phase === "activation") adapter.failActivation = "before";
     await assert.rejects(locus.checkpoint());
     assert.equal(active(adapter, id).checkpointId, old);
     assert.equal(adapter.state(id)?.commits.length, 1);
-    await locus.mutate((draft) => { draft.lib("private").at(["value"]).set("R2"); });
+    await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R2"); });
     locus.dispose();
     const restored = await host(adapter, id);
     assert.equal(restored.rev, 2);
@@ -234,7 +234,7 @@ await case_("uncertain activation reconciles; redundant covered tail survives a 
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-activation";
   const locus = await host(adapter, id);
-  await locus.mutate((draft) => { draft.lib("private").at(["value"]).set("R1"); });
+  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
   adapter.failActivation = "after";
   adapter.failPrune = new Error("crash before cleanup");
   await assert.rejects(locus.checkpoint());
@@ -263,12 +263,12 @@ await case_("unreconcilable activation outcome closes the authority until reload
   const adapter = new UnreadableActivation();
   const id = "z3b-uncertain";
   const locus = await host(adapter, id);
-  await locus.mutate((draft) => { draft.lib("private").at(["value"]).set("R1"); });
+  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
   adapter.fail = true;
   await assert.rejects(locus.checkpoint(), (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
       && error.code === "LOCUS_PERSISTENCE_CHECKPOINT_UNCERTAIN");
-  await assert.rejects(locus.mutate((draft) => { draft.lib("private").at(["value"]).set("R2"); }), /disposed|closed/i);
+  await assert.rejects(locus.stage((draft) => { draft.lib("private").at(["value"]).set("R2"); }), /disposed|closed/i);
   const restored = await host(adapter, id);
   assert.equal(restored.rev, 1);
   assert.equal(restored.map.lib("private").snap(["value"]), "R1");
@@ -279,12 +279,12 @@ await case_("later commits remain in tail while checkpoint chunks are blocked", 
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-concurrent";
   const locus = await host(adapter, id);
-  await locus.mutate((draft) => { draft.lib("private").at(["value"]).set("R1"); });
+  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
   const paused = adapter.deferChunk();
   const checkpoint = locus.checkpoint();
   await paused.entered;
-  await locus.mutate((draft) => { draft.lib("private").at(["value"]).set("R2"); });
-  await locus.mutate((draft) => { draft.lib("private").at(["value"]).set("R3"); });
+  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R2"); });
+  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R3"); });
   paused.release();
   await checkpoint;
   assert.equal(active(adapter, id).rev, 1);
@@ -365,9 +365,9 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   const initialProjection = capture_selected_authority_projection_snapshot(map, effective);
   const clientMap = client_projection_map({ authority: initialProjection, local: {} });
   const value = "x".repeat(4 * 1024 * 1024 + 512 * 1024);
-  for (const name of names) await locus.mutate((draft) => {
+  for (const name of names) await locus.stage((draft) => {
     const library = draft.lib(name);
-    if (!("at" in library)) throw new Error("Expected data Library.");
+    if (library.mode === "document") throw new Error("Expected data Library.");
     library.at(["value"]).set(value);
   });
   assert.ok(names.length * value.length > 64 * 1024 * 1024);

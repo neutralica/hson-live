@@ -144,7 +144,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   assert.equal(pair.clientSent.length, sentDuringOffline);
   assert.equal(echo.sync.debug().lastAppliedRev, 1);
   assert.equal(localMirror.tree.node, localTree);
-  await locus.mutate((draft) => { draft.lib("state").at(["value"]).set(4); });
+  await locus.stage((draft) => { draft.lib("state").at(["value"]).set(4); });
   bind_locus_websocket(locus, pair.server);
   echo.connect();
   await echo.awaitReconnect();
