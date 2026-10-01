@@ -24,15 +24,25 @@ export {
 } from "./locus.authority.js";
 export type * from "../../types/locus.shared.types.js";
 export type * from "../../types/live.trace.types.js";
-export type * from "../../types/locus.projection.types.js";
+export type {
+  AuthorityProjectionSnapshot,
+  LocusLocalInitializer,
+  LocusProjectionSystemFeature,
+  LocusRequestedProjection,
+  LocusProjectionAuthorizationContext,
+  LocusProjectionAuthorization,
+  LocusProjectionAuthorizer,
+} from "../../types/locus.projection.types.js";
 export type { LocusActionPayloads, LocusClientActionMessage } from "../../types/locus.protocol.types.js";
 export type {
   LocusActionContext,
   LocusActionHandler,
   LocusActions,
-  LocusOptions,
-  LocusOwnedLibraryCatalogEntry,
-  LocusOwnedOptions,
+  LocusAuthorityLibraryDefinition,
+  LocusLocalLibraryDefinition,
+  LocusRuntimeLibraryAdditions,
+  LocusDefinitionOptions,
+  LocusResumeOptions,
   LocusActionDedupeSchedule,
   LocusActionDedupeOptions,
   LocusActionDedupeDiagnostics,
@@ -51,9 +61,6 @@ export type {
   Locus,
   LocusStage,
   LocusPersistenceAdapter,
-  PersistentLocusOptions,
-  PersistentLocusOwnedOptions,
-  PersistentLocus,
   LocusActivityKind,
   LocusActivityState,
   LocusActivitySnapshot,

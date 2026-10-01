@@ -9,8 +9,9 @@ import { create_live_inspector } from "hson-live/diagnostics";
 declare const documentLibrary: LiveMapDocumentLibrary;
 declare const element: Element;
 declare const socket: LocusWebSocketLike;
-const registry = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
-const locus = hsonLocus.create({ map: registry, libraries: [{ name: "page", ownership: "shared" }] });
+const pageDefinition = { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` };
+const registry = hsonLiveMap.fromLibraries({ page: pageDefinition });
+const locus = hsonLocus.create({ shared: [{ name: "page", definition: pageDefinition }] });
 const checked: Locus<typeof registry> = locus;
 void (0 as unknown as Locus | LiveMap);
 void [hson, hsonLocus, checked, create_echo, continue_document({ map: registry, root: element }),

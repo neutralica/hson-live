@@ -42,10 +42,9 @@ libraries.lib("user").at(["name"]).set(37);
 const dynamicLibraryName: string = "users";
 void dynamicLibraryName;
 const hostedLibraries = hsonLocus.create({
-  map: libraries,
-  libraries: [
-    { name: "user", ownership: "shared" },
-    { name: "tree", ownership: "shared" },
+  shared: [
+    { name: "user", definition: definitions.user },
+    { name: "tree", definition: definitions.tree },
   ],
   actions: {
     async rename(context) {
@@ -59,10 +58,8 @@ const hostedLibraries = hsonLocus.create({
   },
 });
 const hostedLibraryName: string = hostedLibraries.map.lib("user").at(["name"]).snap();
-const owned = hsonLocus.create({ libraries: [
-  { name: "user", ownership: "shared", definition: definitions.user },
-  { name: "tree", ownership: "private", definition: definitions.tree },
-], actions: {
+const owned = hsonLocus.create({ shared: [{ name: "user", definition: definitions.user }],
+  private: [{ name: "tree", definition: definitions.tree }], actions: {
   rename(context) {
     context.stage.lib("user").at(["name"]).set("Mira");
     // @ts-expect-error Owned actions retain generated Schema write types.
@@ -72,7 +69,7 @@ const owned = hsonLocus.create({ libraries: [
 const ownedMap: typeof libraries = owned.map;
 owned.map.lib("user").at(["name"]).set("Mira");
 owned.stage.lib("user").at(["name"]).set("Mira");
-owned.stage((stage) => { stage.lib("user").at(["name"]).set("Mira"); });
+owned.stage((loc) => { loc.lib("user").at(["name"]).set("Mira"); });
 // @ts-expect-error Owned construction preserves generated Schema write types.
 owned.stage.lib("user").at(["name"]).set(37);
 void ownedMap;

@@ -10,7 +10,7 @@ import type {
   LocusConnectionContext,
   Locus,
   LocusActionContext,
-  LocusOptions,
+  LocusRegistryOptions,
   LocusSessionId,
   LocusSession,
   LocusSessionNow,
@@ -59,7 +59,7 @@ export function create_registry_locus<
   TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
-  options: LocusOptions<TMap, TActions>,
+  options: LocusRegistryOptions<TMap, TActions>,
 ): Locus<TMap, TActions> {
   return create_registry_locus_internal(options).locus;
 }
@@ -69,13 +69,15 @@ export function create_registry_locus_internal<
   TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
-  options: LocusOptions<TMap, TActions>,
+  options: LocusRegistryOptions<TMap, TActions>,
   internal: Readonly<{
     gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
     prepareGate?: (input: LocusHostedAggregateGateInput) => void;
     maxHistoryBytes?: number;
     recoveryFloorRevision?: number;
     afterRecoveryCut?: () => void | Promise<void>;
+    runtimeOwnership?: Map<string, "private" | "shared">;
+    onDispose?: (locus: Locus<TMap, TActions>) => void;
   }> = {},
 ): Readonly<{
   locus: Locus<TMap, TActions>;
@@ -136,6 +138,7 @@ export function create_registry_locus_internal<
 
   const authority = create_locus_hosted_aggregate_authority_internal({
     map: options.map,
+    ...(internal.runtimeOwnership === undefined ? {} : { runtimeOwnership: internal.runtimeOwnership }),
     libraries: options.libraries,
     ...(options.defaultProjection === undefined ? {} : { defaultProjection: options.defaultProjection }),
     ...(options.authorizeProjection === undefined ? {} : { authorizeProjection: options.authorizeProjection }),
@@ -187,7 +190,8 @@ export function create_registry_locus_internal<
       release();
     }
   };
-  const stage = make_locus_stage(options.map, submitStage);
+  const stage = make_locus_stage(options.map, submitStage,
+    (definitions, ownership) => authority.add_libraries(definitions, ownership));
 
   const dispatchAction: Locus<TMap, TActions>["dispatchAction"] = async (message) => {
     const release = activity.acquire("action");
@@ -251,9 +255,6 @@ export function create_registry_locus_internal<
 
   const locus = Object.freeze({
     map: options.map,
-    lib: Object.freeze({ add: (definitions: import("../../types/livemap.types.js").LiveMapDefinitions,
-      admission?: Readonly<{ ownership?: Readonly<Record<string, "private" | "shared">> }>) =>
-      authority.add_libraries(definitions, admission?.ownership) }),
     logicalMapId: authority.logicalMapId,
     incarnationId: authority.incarnationId,
     get rev() { return authority.rev; },
@@ -283,6 +284,7 @@ export function create_registry_locus_internal<
       retainedSessionReleases.clear();
       capabilities.clear();
       activity.dispose();
+      internal.onDispose?.(locus);
     },
   });
   register_locus_semantic_attachment_internal(locus, ({ notice, connection, onClose }) =>

@@ -1,10 +1,10 @@
 import type { JsonValue } from "../../core/types.js";
 import type {
-  LiveMap, LiveMapCssOp, LiveMapDocumentAttributeValue, LiveMapDocumentAttrs,
+  LiveMap, LiveMapDefinitions, LiveMapCssOp, LiveMapDocumentAttributeValue, LiveMapDocumentAttrs,
   LiveMapDocumentCommitTarget, LiveMapDocumentContent, LiveMapGraphOp,
   LiveMapStagedWriter, LivePath,
 } from "../../types/livemap.types.js";
-import type { LocusStage } from "../../types/locus.core.types.js";
+import type { LocusRuntimeLibraryAdditions, LocusStage } from "../../types/locus.core.types.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 
@@ -28,6 +28,7 @@ type RuntimeDocumentLocation = Readonly<{
 export function make_locus_stage<TMap extends LiveMap>(
   map: TMap,
   submit: (callback: (writer: Writer) => void) => Promise<void>,
+  addLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>) => Promise<void>,
 ): LocusStage<TMap> {
   const selected_document = (writer: Writer, name: string): Document => {
     const selected = writer.lib(name);
@@ -68,6 +69,30 @@ export function make_locus_stage<TMap extends LiveMap>(
   const direct = Object.assign(
     (callback: (writer: Writer) => void): Promise<void> => submit(callback),
     {
+      addLibraries(additions: LocusRuntimeLibraryAdditions): Promise<void> {
+        if (typeof additions !== "object" || additions === null || Array.isArray(additions)
+          || Reflect.ownKeys(additions).some((key) => key !== "private" && key !== "shared")) {
+          return Promise.reject(new TypeError("Locus runtime additions require private/shared groups."));
+        }
+        const definitions: Record<string, LiveMapDefinitions[string]> = Object.create(null);
+        const ownership: Record<string, "private" | "shared"> = Object.create(null);
+        for (const group of ["private", "shared"] as const) {
+          const entries = additions[group];
+          if (entries === undefined) continue;
+          if (!Array.isArray(entries)) return Promise.reject(new TypeError("Locus runtime library group must be an array."));
+          for (const entry of entries) {
+            if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !entry.name
+              || Object.hasOwn(definitions, entry.name) || entry.definition === undefined || entry.css !== undefined
+              || Reflect.ownKeys(entry).some((key) => key !== "name" && key !== "definition")) {
+              return Promise.reject(new TypeError("Locus runtime Library addition is invalid or duplicated."));
+            }
+            definitions[entry.name] = entry.definition;
+            ownership[entry.name] = group;
+          }
+        }
+        if (Object.keys(definitions).length === 0) return Promise.reject(new TypeError("Locus runtime addition requires a Library."));
+        return addLibraries(definitions, ownership);
+      },
       lib(name: string) {
         const selected = map.lib(name);
         if (selected.mode !== "document") {

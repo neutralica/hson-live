@@ -1,3 +1,4 @@
+import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -43,11 +44,7 @@ function require_map(client: Readonly<{ map: LiveMap | undefined }>): LiveMap {
 }
 
 const authority = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <p "Existing"/>/>` } });
-const locus = hsonLocus.create({ map: authority,
-  libraries: [{ name: "page", ownership: "shared" }],
-  defaultProjection: { libraries: ["page"] },
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-});
+const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(authority, [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const wire = pair();
 let detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(wire.client), logicalMapId: locus.logicalMapId,
@@ -66,21 +63,17 @@ assert.ok(sessionId);
 echo.disconnect();
 detach();
 
-await locus.lib.add({ newState: { data: { value: 1 } } },
-  { ownership: { newState: "shared" } });
+await locus.stage.addLibraries({ shared: [{ name: "newState", definition: { data: { value: 1 } } }] });
 await locus.stage((draft) => {
   const state = draft.lib("newState");
   if (state.mode === "document") throw new Error("Expected data Library.");
   state.at(["value"]).set(2);
 });
-await locus.lib.add({ privateState: { data: { secret: "PRIVATE_REPLAY_ROOT_SENTINEL",
+await locus.stage.addLibraries({ private: [{ name: "privateState", definition: { data: { secret: "PRIVATE_REPLAY_ROOT_SENTINEL",
     PRIVATE_REPLAY_SCHEMA_SENTINEL: "private" },
-    schema: Hson.schema`<type "data" content <secret "string" PRIVATE_REPLAY_SCHEMA_SENTINEL "string">>` },
-  nextState: { data: { value: 3 } },
-  ungrantedState: { data: { secret: "UNGRANTED_REPLAY_ROOT_SENTINEL",
+    schema: Hson.schema`<type "data" content <secret "string" PRIVATE_REPLAY_SCHEMA_SENTINEL "string">>` } }], shared: [{ name: "nextState", definition: { data: { value: 3 } } }, { name: "ungrantedState", definition: { data: { secret: "UNGRANTED_REPLAY_ROOT_SENTINEL",
     UNGRANTED_REPLAY_SCHEMA_SENTINEL: "ungranted" },
-    schema: Hson.schema`<type "data" content <secret "string" UNGRANTED_REPLAY_SCHEMA_SENTINEL "string">>` } },
-{ ownership: { nextState: "shared", ungrantedState: "shared" } });
+    schema: Hson.schema`<type "data" content <secret "string" UNGRANTED_REPLAY_SCHEMA_SENTINEL "string">>` } }] });
 await locus.stage((draft) => {
   const next = draft.lib("nextState"), hidden = draft.lib("privateState");
   if (next.mode === "document" || hidden.mode === "document") throw new Error("Expected data Libraries.");
@@ -92,7 +85,7 @@ await assert.rejects(locus.session.get(sessionId)!.update({ libraries: ["page", 
 const projection = await locus.session.get(sessionId)!.update({ libraries: ["page", "newState", "nextState"] }, { principalId: "alice" });
 assert.equal(projection.changed, true);
 assert.equal(projection.authorityRev, authorityRevBeforeProjection);
-assert.equal(authority.rev, authorityRevBeforeProjection);
+assert.equal(locus.map.rev, authorityRevBeforeProjection);
 const beforeReplay = wire.serverSent.length;
 detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 const recovery = await echo.connect();
@@ -113,7 +106,7 @@ assert.equal(next.snap(["value"]), 4);
 assert.throws(() => clientMap.lib("privateState"), /Unknown/);
 assert.throws(() => clientMap.lib("ungrantedState"), /Unknown/);
 const replayWire = wire.serverSent.slice(beforeReplay);
-const privateRegistryDigest = internal_livemap_aggregate_authority(authority).captureHosted().registry.digest;
+const privateRegistryDigest = internal_livemap_aggregate_authority(locus.map).captureHosted().registry.digest;
 for (const encoded of replayWire) {
   assert.equal(encoded.includes(privateRegistryDigest), false);
   for (const hidden of ["privateState", "ungrantedState", "PRIVATE_REPLAY_ROOT_SENTINEL",
@@ -133,11 +126,7 @@ locus.dispose();
 process.stdout.write("ok - retained reconnect installs current grant after hidden history without rebuilding the client\n");
 
 const currentAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
-const currentServer = hsonLocus.create({ map: currentAuthority,
-  libraries: [{ name: "anchor", ownership: "shared" }],
-  defaultProjection: { libraries: ["anchor"] },
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-});
+const currentServer = hsonLocus.create({ ...authority_groups_from_map_fixture(currentAuthority, [{ name: "anchor", ownership: "shared" }]), defaultProjection: { libraries: ["anchor"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const currentWire = pair();
 let detachCurrent = bind_locus_websocket(currentServer, currentWire.server, { principalId: "alice" });
 const currentEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(currentWire.client),
@@ -146,8 +135,7 @@ await currentEcho.connect();
 const currentMap = require_map(currentEcho);
 const currentSession = currentEcho.session.sessionId;
 assert.ok(currentSession);
-await currentServer.lib.add({ later: { data: { value: 9 } } },
-  { ownership: { later: "shared" } });
+await currentServer.stage.addLibraries({ shared: [{ name: "later", definition: { data: { value: 9 } } }] });
 assert.equal(currentEcho.lastAppliedRev, currentServer.rev);
 assert.throws(() => currentMap.lib("later"), /Unknown/);
 currentEcho.disconnect();
@@ -281,8 +269,7 @@ tailServer.dispose();
 process.stdout.write("ok - queued live writes and hidden topology follow retained recovery in order\n");
 
 const emptyAuthority = hsonLiveMap.create();
-const emptyServer = hsonLocus.create({ map: emptyAuthority, libraries: [],
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const emptyServer = hsonLocus.create({ ...authority_groups_from_map_fixture(emptyAuthority, []), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const emptyWire = pair();
 let detachEmpty = bind_locus_websocket(emptyServer, emptyWire.server, { principalId: "alice" });
 const emptyEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(emptyWire.client),
@@ -293,8 +280,7 @@ const emptySession = emptyEcho.session.sessionId;
 assert.ok(emptySession);
 emptyEcho.disconnect();
 detachEmpty();
-await emptyServer.lib.add({ first: { data: { value: 7 } } },
-  { ownership: { first: "shared" } });
+await emptyServer.stage.addLibraries({ shared: [{ name: "first", definition: { data: { value: 7 } } }] });
 await emptyServer.session.get(emptySession)!.update({ libraries: ["first"] }, { principalId: "alice" });
 detachEmpty = bind_locus_websocket(emptyServer, emptyWire.server, { principalId: "alice" });
 assert.equal((await emptyEcho.connect()).outcome, "replay");
@@ -310,12 +296,8 @@ process.stdout.write("ok - an empty projected client gains its first Library thr
 
 const interactionAuthority = hsonLiveMap.fromLibraries({ basePage: { document: Hson.document`<main/>` } });
 enable_interactions(interactionAuthority);
-const interactionServer = hsonLocus.create({ map: interactionAuthority,
-  libraries: [{ name: "basePage", ownership: "shared" }],
-  defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] },
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
-    systemFeatures: requested.systemFeatures }),
-});
+const interactionServer = hsonLocus.create({ ...authority_groups_from_map_fixture(interactionAuthority, [{ name: "basePage", ownership: "shared" }]), defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
+    systemFeatures: requested.systemFeatures }) });
 const interactionWire = pair();
 let detachInteraction = bind_locus_websocket(interactionServer, interactionWire.server, { principalId: "alice" });
 const interactionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(interactionWire.client),
@@ -331,8 +313,7 @@ const interactionSession = interactionEcho.session.sessionId;
 assert.ok(interactionSession);
 interactionEcho.disconnect();
 detachInteraction();
-await interactionServer.lib.add({ nextPage: { document: Hson.document`<main <button "Next"/>/>` } },
-  { ownership: { nextPage: "shared" } });
+await interactionServer.stage.addLibraries({ shared: [{ name: "nextPage", definition: { document: Hson.document`<main <button "Next"/>/>` } }] });
 await interactionServer.stage((draft) => add_interaction(draft, {
   id: "recovered-button", subject: { library: "nextPage", path: [99] },
   listener: { event: "click", target: "element", capture: false, once: false, passive: false,

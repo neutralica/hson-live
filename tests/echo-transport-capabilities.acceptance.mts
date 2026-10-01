@@ -1,3 +1,4 @@
+import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import { EventEmitter } from "node:events";
@@ -209,7 +210,7 @@ await check("reentrant subscription replacement cannot install an orphan sink", 
 await check("Node Locus WebSocket binding forwards finite operations and releases listeners", async () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
-  const locus = hsonLocus.create({ ...test_public_projection(map), map });
+  const locus = hsonLocus.create(authority_definition_from_fixture_options({ ...test_public_projection(map), map }));
   class NodeSocket extends EventEmitter {
     readyState: number = WebSocket.OPEN;
     bufferedAmount = 0;

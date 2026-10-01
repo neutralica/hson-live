@@ -1,6 +1,6 @@
 # Locus overview
 
-Locus owns one private/shared authority registry plus separate system state and a deployment catalog of local initializers. Authority topology can grow through `locus.lib.add`; local definitions remain construction configuration. A one-library authority uses the same session, authorization, socket, current-state, and live publication machinery as a larger registry.
+Locus owns one private/shared authority registry plus separate system state and deployment-defined local initializers. Authority topology can grow through `locus.stage.addLibraries({ private, shared })`; local definitions remain construction-time-only. A one-library authority uses the same session, authorization, socket, current-state, and live publication machinery as a larger registry.
 
 At session creation, Locus normalizes an authorized composition from the catalog, request, and read authorizer. Each grant is an exact set of shared names and local initializer names. `session.now()` materializes shared current state and authorized local initializers separately. Retained synchronization installs missed shared topology in place; when replay is unsafe, reconcile updates only the shared partition. Local state is initialized when absent and thereafter preserved.
 

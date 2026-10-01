@@ -1,7 +1,7 @@
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
-import { create_persistent_registry_locus } from "../src/api/locus/locus.registry.persistence.ts";
+import { resume_registry_locus } from "../src/api/locus/locus.registry.persistence.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import type { LocusHostedAggregateStageWriter } from "../src/api/locus/locus.aggregate.ts";
 import { create_persistent_locus_hosted_aggregate_internal } from "../src/api/locus/locus.aggregate.persistence.ts";
@@ -100,7 +100,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
 {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_registry_locus({ map, libraries,
+  const host = await resume_registry_locus({ map, libraries,
     defaultProjection: { libraries: ["A"] }, authorizeProjection: ({ requested }) => requested,
     logicalMapId: "z1z2-persistent-rejection", persistence });
   let installed = 0;
@@ -132,7 +132,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   assert.equal(messages(b, "commit").length, 1);
   host.dispose();
   const restoredMap = make_map();
-  const restored = await create_persistent_registry_locus({ map: restoredMap, libraries,
+  const restored = await resume_registry_locus({ map: restoredMap, libraries,
     logicalMapId: "z1z2-persistent-rejection", persistence });
   assert.equal(restored.rev, 1);
   assert.equal(restoredMap.lib("A").snap(["value"]), "A-small");
@@ -145,7 +145,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
 {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_registry_locus({ map, libraries,
+  const host = await resume_registry_locus({ map, libraries,
     logicalMapId: "z1z2-clean-append", persistence });
   persistence.mode = "clean";
   await assert.rejects(host.stage((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
@@ -162,7 +162,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
 {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_registry_locus({ map, libraries,
+  const host = await resume_registry_locus({ map, libraries,
     logicalMapId: "z1z2-uncertain-append", persistence });
   persistence.mode = "uncertain";
   await assert.rejects(host.stage((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
@@ -171,7 +171,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   await assert.rejects(host.stage((draft) => draft.lib("A").at(["value"]).set("A2")), /faulted/i);
   assert.equal(persistence.appendCalls.length, 1);
   host.dispose();
-  const restored = await create_persistent_registry_locus({ map: make_map(), libraries,
+  const restored = await resume_registry_locus({ map: make_map(), libraries,
     logicalMapId: "z1z2-uncertain-append", persistence });
   assert.equal(restored.rev, 1);
   assert.equal(restored.map.lib("A").snap(["value"]), "A1");
@@ -263,7 +263,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const persistence = new MemoryPersistence();
   const map = make_map();
   const authorization = deferred();
-  const host = await create_persistent_registry_locus({ map, libraries,
+  const host = await resume_registry_locus({ map, libraries,
     logicalMapId: "z1z2-reservation", persistence,
     authorizeProjection: async ({ requested }) => { await authorization.promise; return requested; } });
   const pending = persistence.deferNextAppend();
@@ -305,7 +305,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   assert.equal(persistence.state("z1z2-postinstall-fault")?.commits.length, 1);
   await assert.rejects(host.stage((draft) => set_value(draft, "A", "A2")), /faulted/i);
   host.dispose();
-  const restored = await create_persistent_registry_locus({ map: make_map(), libraries,
+  const restored = await resume_registry_locus({ map: make_map(), libraries,
     logicalMapId: "z1z2-postinstall-fault", persistence });
   assert.equal(restored.rev, 1);
   restored.dispose();

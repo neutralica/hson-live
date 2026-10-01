@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -41,15 +42,13 @@ if (page.mode !== "document" || privatePage.mode !== "document" || ungranted.mod
 page.css.stylesheet("p { color: rgb(1, 2, 3) !important; }");
 privatePage.css.stylesheet(`.PRIVATE_CSS_SENTINEL { color: red; --blob: ${"x".repeat(25_000)}; }`);
 ungranted.css.stylesheet(".UNGRANTED_CSS_SENTINEL { color: blue; }");
-const locus = hsonLocus.create({ map,
-  libraries: [
+const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [
     { name: "page", ownership: "shared" },
     { name: "privatePage", ownership: "private" },
     { name: "ungrantedPage", ownership: "shared" },
-  ],
-  defaultProjection: { libraries: ["page"] },
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ["page"] }),
-});
+  ]), defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ["page"] }) });
+const managedPage = locus.map.lib("page");
+if (managedPage.mode !== "document") throw new Error("Expected managed document.");
 const wire = pair();
 let detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(wire.client), logicalMapId: locus.logicalMapId,
@@ -62,7 +61,7 @@ if (clientPage.mode !== "document" || localPage.mode !== "document") throw new E
 const initial = clientPage.css.snapshot();
 assert.match(initial, /rgb\(1,2,3\)/);
 assert.throws(() => clientPage.css.clearAll(), /hosted|managed|projection|authority/i);
-assert.throws(() => page.css.clearAll(), /hosted|managed|authority/i);
+assert.throws(() => managedPage.css.clearAll(), /hosted|managed|authority/i);
 localPage.css.stylesheet("body { color: green; }");
 const localCss = localPage.css.snapshot();
 const localRev = client.rev;
@@ -225,9 +224,11 @@ const restartOptions = {
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 };
-const firstAuthority = await hsonLocus.create({ map: restartMap, ...restartOptions });
+const firstAuthority = await hsonLocus.resume(authority_definition_from_fixture_options({ map: restartMap, ...restartOptions }));
+const managedRestartPage = firstAuthority.map.lib("page");
+if (managedRestartPage.mode !== "document") throw new Error("Expected managed restart document.");
 await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { color: maroon; }")); });
-await firstAuthority.checkpoint();
+await hsonLocus.checkpoint(firstAuthority);
 const restartWire = pair();
 let stopRestart = bind_locus_websocket(firstAuthority, restartWire.server);
 const restartEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), logicalMapId: firstAuthority.logicalMapId,
@@ -245,18 +246,18 @@ if (beforeRejectedClientCss.mode !== "document") throw new Error("Expected proje
 const beforeRejectedCss = beforeRejectedClientCss.css.snapshot();
 const beforeRejectedWire = restartWire.sent.length;
 restartAdapter.failAppend = new Error("CSS durable acceptance rejected");
-await assert.rejects(() => firstAuthority.stage((draft) => { draft.lib("page").css(append("body { margin: 11px; }", restartPage.css.list())); }),
+await assert.rejects(() => firstAuthority.stage((draft) => { draft.lib("page").css(append("body { margin: 11px; }", managedRestartPage.css.list())); }),
   { code: "LOCUS_PERSISTENCE_APPEND_FAILED" });
 assert.equal(firstAuthority.rev, beforeRejectedCssRev);
-assert.equal(restartMap.rev, beforeRejectedCssRev);
+assert.equal(firstAuthority.map.rev, beforeRejectedCssRev);
 assert.equal(restartEcho.lastAppliedRev, beforeRejectedCssRev);
 assert.equal(beforeRejectedClientCss.css.snapshot(), beforeRejectedCss);
 assert.equal(restartWire.sent.length, beforeRejectedWire);
 restartEcho.disconnect(); stopRestart();
-await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { background: silver; }", restartPage.css.list())); });
+await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { background: silver; }", managedRestartPage.css.list())); });
 restartEcho.dispose();
 firstAuthority.dispose();
-const restarted = await hsonLocus.create({ map: restartInput(), ...restartOptions });
+const restarted = await hsonLocus.resume(authority_definition_from_fixture_options({ map: restartInput(), ...restartOptions }));
 stopRestart = bind_locus_websocket(restarted, restartWire.server);
 const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), map: restartClient,
   logicalMapId: restarted.logicalMapId });

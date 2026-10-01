@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { Hson, bind_locus_http, hsonEcho, hsonLiveMap, hsonLocus } from "../src/index.ts";
 import { start_node_application_host } from "../src/api/livehost/node/livehost.node-application-host.ts";
@@ -14,9 +15,7 @@ events.case_begin("completion", "Admitted document completion waits across lost 
 
 const schema = Hson.schema`<type "document" tag "main" content "empty">`;
 const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema } });
-const locus = hsonLocus.create({ map, libraries: [{ name: "page", ownership: "shared" }],
-  defaultProjection: { libraries: ["page"] },
-  authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
+const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
 const application: LiveHostApplication = { name: "echo-completion",
   requests: ["/_hson", "/_hson/sync"].map((path) => ({ method: "POST", path,

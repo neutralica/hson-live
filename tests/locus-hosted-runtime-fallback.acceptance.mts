@@ -1,3 +1,4 @@
+import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
@@ -134,11 +135,7 @@ server.dispose();
 
 const adapter = new MemoryCheckpointAdapter();
 const persistentAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
-const persistent = await hsonLocus.create({ map: persistentAuthority, persistence: adapter,
-  logicalMapId: "runtime-fallback-restart", libraries: [{ name: "anchor", ownership: "shared" }],
-  defaultProjection: { libraries: ["anchor"] },
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-});
+const persistent = await hsonLocus.resume({ ...authority_groups_from_map_fixture(persistentAuthority, [{ name: "anchor", ownership: "shared" }]), persistence: adapter, logicalMapId: "runtime-fallback-restart", defaultProjection: { libraries: ["anchor"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const restartWire = pair();
 const detachBeforeRestart = bind_locus_websocket(persistent, restartWire.server, { principalId: "alice" });
 const beforeRestartEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client),
@@ -150,24 +147,21 @@ assert.ok(continuedMap);
 const continuedLocal = continuedMap.lib("preferences");
 beforeRestartEcho.disconnect();
 detachBeforeRestart();
-await persistent.lib.add({ durablePublic: { data: { value: 4 } },
-  durableHidden: { data: { secret: `DURABLE_HIDDEN_FALLBACK_SENTINEL${"x".repeat(1024 * 1024)}` } } },
-{ ownership: { durablePublic: "shared" } });
+await persistent.stage.addLibraries({
+  shared: [{ name: "durablePublic", definition: { data: { value: 4 } } }],
+  private: [{ name: "durableHidden", definition: { data: { secret: `DURABLE_HIDDEN_FALLBACK_SENTINEL${"x".repeat(1024 * 1024)}` } } }],
+});
 await persistent.stage((draft) => {
   const publicLibrary = draft.lib("durablePublic");
   if (publicLibrary.mode === "document") throw new Error("Expected durable public data Library.");
   publicLibrary.at(["value"]).set(5);
 });
-await persistent.checkpoint();
+await hsonLocus.checkpoint(persistent);
 beforeRestartEcho.dispose();
 persistent.dispose();
-const resumedAuthority = hsonLiveMap.create();
-const resumed = await hsonLocus.create({ map: resumedAuthority, persistence: adapter,
-  logicalMapId: "runtime-fallback-restart", libraries: [
-    { name: "anchor", ownership: "shared" },
-    { name: "durablePublic", ownership: "shared" },
-    { name: "durableHidden", ownership: "private" },
-  ],
+const resumed = await hsonLocus.resume({
+  shared: [{ name: "anchor", definition: { data: { value: 1 } } }],
+  persistence: adapter, logicalMapId: "runtime-fallback-restart",
   defaultProjection: { libraries: ["anchor", "durablePublic"] },
   authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
 });
@@ -195,11 +189,7 @@ process.stdout.write("ok - durable restart fallback preserves the composed clien
 
 const detachedAuthority = hsonLiveMap.fromLibraries({ alpha: { data: { value: 1 } },
   beta: { data: { value: 2 } } });
-const detachedServer = hsonLocus.create({ map: detachedAuthority,
-  libraries: [{ name: "alpha", ownership: "shared" }, { name: "beta", ownership: "shared" }],
-  defaultProjection: { libraries: ["alpha", "beta"] },
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-});
+const detachedServer = hsonLocus.create({ ...authority_groups_from_map_fixture(detachedAuthority, [{ name: "alpha", ownership: "shared" }, { name: "beta", ownership: "shared" }]), defaultProjection: { libraries: ["alpha", "beta"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const detachedWire = pair();
 let detachDetached = bind_locus_websocket(detachedServer, detachedWire.server, { principalId: "alice" });
 const detachedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(detachedWire.client),
@@ -233,12 +223,8 @@ process.stdout.write("ok - disconnected contraction falls back to an empty proje
 
 const cutAuthority = hsonLiveMap.fromLibraries({ firstPage: { document: Hson.document`<main <p "First"/>/>` },
   secondPage: { document: Hson.document`<main <p "Second"/>/>` } });
-const cutServer = hsonLocus.create({ map: cutAuthority,
-  libraries: [{ name: "firstPage", ownership: "shared" },
-    { name: "secondPage", ownership: "shared" }],
-  defaultProjection: { libraries: ["firstPage", "secondPage"] },
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-});
+const cutServer = hsonLocus.create({ ...authority_groups_from_map_fixture(cutAuthority, [{ name: "firstPage", ownership: "shared" },
+    { name: "secondPage", ownership: "shared" }]), defaultProjection: { libraries: ["firstPage", "secondPage"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const cutWire = pair();
 const detachCut = bind_locus_websocket(cutServer, cutWire.server);
 const cutEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(cutWire.client),
@@ -361,13 +347,9 @@ process.stdout.write("ok - queued writes follow fallback topology and hidden tai
 const interactionAuthority = hsonLiveMap.fromLibraries({ keep: { document: Hson.document`<main/>` },
   revoke: { document: Hson.document`<main <button "Revoke"/>/>` } });
 enable_interactions(interactionAuthority);
-const interactionServer = hsonLocus.create({ map: interactionAuthority,
-  libraries: [{ name: "keep", ownership: "shared" },
-    { name: "revoke", ownership: "shared" }],
-  defaultProjection: { libraries: ["keep", "revoke"], systemFeatures: ["interactions"] },
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
-    systemFeatures: requested.systemFeatures }),
-});
+const interactionServer = hsonLocus.create({ ...authority_groups_from_map_fixture(interactionAuthority, [{ name: "keep", ownership: "shared" },
+    { name: "revoke", ownership: "shared" }]), defaultProjection: { libraries: ["keep", "revoke"], systemFeatures: ["interactions"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
+    systemFeatures: requested.systemFeatures }) });
 const interactionWire = pair();
 const detachInteraction = bind_locus_websocket(interactionServer, interactionWire.server);
 const interactionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(interactionWire.client),

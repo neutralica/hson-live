@@ -1,3 +1,4 @@
+import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -45,8 +46,7 @@ const libraries = [{ name: "public", ownership: "shared" as const },
   { name: "private", ownership: "private" as const }];
 
 async function host(adapter: MemoryCheckpointAdapter, logicalMapId: string) {
-  return hsonLocus.create({ map: make_map(), persistence: adapter, logicalMapId, libraries,
-    defaultProjection: { libraries: ["public"] }, authorizeProjection: () => ({ libraries: ["public"] }) });
+  return hsonLocus.resume({ ...authority_definition_from_fixture_options({ map: make_map(), persistence: adapter, logicalMapId, libraries, defaultProjection: { libraries: ["public"] } }), authorizeProjection: () => ({ libraries: ["public"] }) });
 }
 
 function active(adapter: MemoryCheckpointAdapter, id: string): LocusHostedAggregatePersistedManifest {
@@ -64,16 +64,12 @@ async function case_(name: string, run: () => Promise<void>) {
 await case_("empty authority checkpoint restores without a placeholder library", async () => {
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-empty";
-  const locus = await hsonLocus.create({
-    map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, libraries: [],
-  });
+  const locus = await hsonLocus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
   const manifest = active(adapter, id);
   assert.deepEqual(manifest.registry.libraries, []);
   assert.deepEqual(manifest.chunks, []);
   locus.dispose();
-  const restored = await hsonLocus.create({
-    map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, libraries: [],
-  });
+  const restored = await hsonLocus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
   assert.ok(restored);
   assert.equal(restored.rev, 0);
   assert.deepEqual(restored.map.capture().registry.libraries, []);
@@ -90,8 +86,8 @@ await case_("restart reapplies deployment local definitions without persisting c
   const options = { persistence: adapter, logicalMapId: id, libraries,
     authorizeProjection: ({ requested }: { requested: { libraries: readonly string[] } }) =>
       ({ libraries: requested.libraries }) };
-  const locus = await hsonLocus.create({ ...options,
-    map: hsonLiveMap.fromLibraries({ public: { data: { value: 1 } } }) });
+  const locus = await hsonLocus.resume(authority_definition_from_fixture_options({ ...options,
+    map: hsonLiveMap.fromLibraries({ public: { data: { value: 1 } } }) }));
   const session = await locus.session.create({ libraries: ["public", "ui"] });
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
@@ -101,14 +97,14 @@ await case_("restart reapplies deployment local definitions without persisting c
   ui.at(["value"]).set(12);
   assert.equal(locus.rev, authorityRev);
   assert.equal(adapter.appendCalls.length, 0);
-  await locus.checkpoint();
+  await hsonLocus.checkpoint(locus);
   const manifest = active(adapter, id);
   assert.deepEqual(manifest.registry.libraries.map((entry) => entry.name), ["public"]);
   assert.equal(JSON.stringify(adapter.state(id)).includes('value 12>'), false);
   echo.dispose(); detach(); locus.dispose();
 
-  const restored = await hsonLocus.create({ ...options,
-    map: hsonLiveMap.fromLibraries({ public: { data: { value: 0 } } }) });
+  const restored = await hsonLocus.resume(authority_definition_from_fixture_options({ ...options,
+    map: hsonLiveMap.fromLibraries({ public: { data: { value: 0 } } }) }));
   assert.throws(() => restored.map.lib("ui"), /Unknown/i);
   const freshSession = await restored.session.create({ libraries: ["public", "ui"] });
   const freshPair = socket_pair(); const detachFresh = bind_locus_websocket(restored, freshPair.server);
@@ -120,15 +116,13 @@ await case_("restart reapplies deployment local definitions without persisting c
 
   const conflictAdapter = new MemoryCheckpointAdapter();
   const conflictId = "z3b-restored-local-collision";
-  const oldDeployment = await hsonLocus.create({ map: hsonLiveMap.create(),
-    persistence: conflictAdapter, logicalMapId: conflictId, libraries: [] });
-  await oldDeployment.lib.add({ ui: { data: { value: 9 } } });
-  await oldDeployment.checkpoint();
+  const oldDeployment = await hsonLocus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: conflictAdapter, logicalMapId: conflictId });
+  await oldDeployment.stage.addLibraries({ private: [{ name: "ui", definition: { data: { value: 9 } } }] });
+  await hsonLocus.checkpoint(oldDeployment);
   oldDeployment.dispose();
-  await assert.rejects(hsonLocus.create({ map: hsonLiveMap.create(),
-    persistence: conflictAdapter, logicalMapId: conflictId, libraries: [
+  await assert.rejects(hsonLocus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), [
       { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
-    ] }), /collid|catalog|authority|topology/i);
+    ]), persistence: conflictAdapter, logicalMapId: conflictId }), /collid|catalog|authority|topology/i);
 });
 
 await case_("checkpoint chunks exclude runtime QUID identity and restore fresh identity", async () => {
@@ -141,7 +135,7 @@ await case_("checkpoint chunks exclude runtime QUID identity and restore fresh i
   const quid = "0000ab123";
   authority.acquireLocalProjectedIdentity(library, [], quid);
   const owner = authority.identityEpoch().owner;
-  await locus.checkpoint();
+  await hsonLocus.checkpoint(locus);
   assert.ok([...adapter.chunks.values()].every((chunk) => !chunk.payload.includes(quid)
     && !chunk.payload.includes("issuedQuids") && !chunk.payload.includes("identityEpoch")));
   locus.dispose();
@@ -218,7 +212,7 @@ await case_("preactivation failures preserve old checkpoint and complete tail", 
     if (phase === "chunk") adapter.failChunk = new Error("chunk failure");
     if (phase === "manifest") adapter.failManifest = new Error("manifest failure");
     if (phase === "activation") adapter.failActivation = "before";
-    await assert.rejects(locus.checkpoint());
+    await assert.rejects(hsonLocus.checkpoint(locus));
     assert.equal(active(adapter, id).checkpointId, old);
     assert.equal(adapter.state(id)?.commits.length, 1);
     await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R2"); });
@@ -237,7 +231,7 @@ await case_("uncertain activation reconciles; redundant covered tail survives a 
   await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
   adapter.failActivation = "after";
   adapter.failPrune = new Error("crash before cleanup");
-  await assert.rejects(locus.checkpoint());
+  await assert.rejects(hsonLocus.checkpoint(locus));
   assert.equal(active(adapter, id).rev, 1);
   assert.equal(adapter.state(id)?.commits.length, 1);
   locus.dispose();
@@ -265,7 +259,7 @@ await case_("unreconcilable activation outcome closes the authority until reload
   const locus = await host(adapter, id);
   await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
   adapter.fail = true;
-  await assert.rejects(locus.checkpoint(), (error: unknown) =>
+  await assert.rejects(hsonLocus.checkpoint(locus), (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
       && error.code === "LOCUS_PERSISTENCE_CHECKPOINT_UNCERTAIN");
   await assert.rejects(locus.stage((draft) => { draft.lib("private").at(["value"]).set("R2"); }), /disposed|closed/i);
@@ -281,7 +275,7 @@ await case_("later commits remain in tail while checkpoint chunks are blocked", 
   const locus = await host(adapter, id);
   await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
   const paused = adapter.deferChunk();
-  const checkpoint = locus.checkpoint();
+  const checkpoint = hsonLocus.checkpoint(locus);
   await paused.entered;
   await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R2"); });
   await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R3"); });
@@ -300,7 +294,7 @@ await case_("missing and corrupt chunks, bad descriptors, schema and tail gaps f
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-integrity";
   const locus = await host(adapter, id);
-  await locus.checkpoint();
+  await hsonLocus.checkpoint(locus);
   locus.dispose();
   const valid = adapter.state(id)!;
   const manifest = active(adapter, id);
@@ -353,16 +347,14 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
     { name: "page", ownership: "shared" as const },
     ...names.map((library) => ({ name: library, ownership: "private" as const }))];
   const id = "z3b-large";
-  const locus = await hsonLocus.create({ map, persistence: adapter, logicalMapId: id, libraries,
-    defaultProjection: { libraries: ["public", "page"] },
-    authorizeProjection: () => ({ libraries: ["public", "page"] }) });
-  const authority = internal_livemap_aggregate_authority(map);
+  const locus = await hsonLocus.resume({ ...authority_definition_from_fixture_options({ map, persistence: adapter, logicalMapId: id, libraries, defaultProjection: { libraries: ["public", "page"] } }), authorizeProjection: () => ({ libraries: ["public", "page"] }) });
+  const authority = internal_livemap_aggregate_authority(locus.map);
   const policy = make_locus_hosted_projection_policy(authority.hostedRegistry(), authority.hostedPosition().authority,
     libraries, { libraries: ["public", "page"] },
     () => ({ libraries: ["public", "page"] }));
   const effective = normalize_locus_effective_projection(policy, { libraries: ["public", "page"] });
   if (effective instanceof Promise) throw new Error("Expected synchronous projection policy.");
-  const initialProjection = capture_selected_authority_projection_snapshot(map, effective);
+  const initialProjection = capture_selected_authority_projection_snapshot(locus.map, effective);
   const clientMap = client_projection_map({ authority: initialProjection, local: {} });
   const value = "x".repeat(4 * 1024 * 1024 + 512 * 1024);
   for (const name of names) await locus.stage((draft) => {
@@ -371,8 +363,8 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
     library.at(["value"]).set(value);
   });
   assert.ok(names.length * value.length > 64 * 1024 * 1024);
-  assert.throws(() => internal_livemap_aggregate_authority(map).captureHosted(), /bound|limit|payload/i);
-  await locus.checkpoint();
+  assert.throws(() => internal_livemap_aggregate_authority(locus.map).captureHosted(), /bound|limit|payload/i);
+  await hsonLocus.checkpoint(locus);
   const manifest = active(adapter, id);
   assert.equal(manifest.rev, count);
   assert.ok(manifest.chunks.length > count);
@@ -380,11 +372,9 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   assert.ok([...adapter.chunks.values()].every((entry) => !entry.payload.includes("issuedQuids")));
   locus.dispose();
   const restoredMap = hsonLiveMap.fromLibraries(inputs);
-  const restored = await hsonLocus.create({ map: restoredMap, persistence: adapter, logicalMapId: id, libraries,
-    defaultProjection: { libraries: ["public", "page"] },
-    authorizeProjection: () => ({ libraries: ["public", "page"] }) });
+  const restored = await hsonLocus.resume({ ...authority_definition_from_fixture_options({ map: restoredMap, persistence: adapter, logicalMapId: id, libraries, defaultProjection: { libraries: ["public", "page"] } }), authorizeProjection: () => ({ libraries: ["public", "page"] }) });
   assert.equal(restored.rev, count);
-  assert.equal(restored.map, restoredMap);
+  assert.notEqual(restored.map, restoredMap);
   for (const name of names) {
     const library = restored.map.lib(name);
     if (!("snap" in library)) throw new Error("Expected data Library.");

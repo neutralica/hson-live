@@ -1,3 +1,4 @@
+import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -146,14 +147,10 @@ const persistentMap = hsonLiveMap.fromLibraries({
   page: { document: '<main <p "PERSISTENT_PUBLIC"/>/>', schema: Page },
   privateSignal: { data: { value: "small" }, schema: Data },
 });
-const persistent = await hsonLocus.create({ map: persistentMap, persistence,
-  libraries: [{ name: "page", ownership: "shared" }, { name: "privateSignal", ownership: "private" }],
-  defaultProjection: { libraries: ["page"] },
-  authorizeProjection: () => ({ libraries: ["page"] }),
-});
+const persistent = await hsonLocus.resume({ ...authority_groups_from_map_fixture(persistentMap, [{ name: "page", ownership: "shared" }, { name: "privateSignal", ownership: "private" }]), persistence, defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }) });
 await persistent.stage((draft) => { const privateLib = draft.lib("privateSignal");
   privateLib.at(["value"]).set("p".repeat(5 * 1024 * 1024)); });
 assert.equal(persistence.appendCalls.length, 1);
-await persistent.checkpoint();
+await hsonLocus.checkpoint(persistent);
 persistent.dispose();
 process.stdout.write("Z3A selected capture acceptance passed.\n");

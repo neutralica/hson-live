@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
@@ -102,12 +103,7 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
     state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` },
   });
   let actions = 0;
-  const locus = hsonLocus.create({
-    map,
-    libraries: [{ name: "state", ownership: "shared" }],
-    defaultProjection: { libraries: ["state"] },
-    actions: { probe() { actions += 1; } },
-  });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, actions: { probe() { actions += 1; } } });
   const pair = socket_pair(true);
   const detach = bind_locus_websocket(locus, pair.server);
   const echo = hsonEcho.create({ transport: test_echo_transport(pair.client) });
@@ -151,8 +147,7 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
 
 await check("endpoint-only Echo reattaches after attachment observation is interrupted", async () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }],
-    defaultProjection: { libraries: ["state"] } });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] } });
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
   const transport = test_echo_transport(pair.client);
@@ -171,8 +166,7 @@ await check("endpoint-only Echo reattaches after attachment observation is inter
 
 await check("terminal WebSocket transport disposal invalidates an attached endpoint Echo", async () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }],
-    defaultProjection: { libraries: ["state"] } });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] } });
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);
   const transport = test_echo_transport(pair.client);

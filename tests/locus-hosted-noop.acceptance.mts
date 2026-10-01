@@ -1,10 +1,13 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, validate_document_path, type LiveMap } from "../src/api/livemap/index.ts";
-import { hsonLocus, type LocusOptions, type LocusWebSocketLike } from "../src/api/locus/index.ts";
+import { hsonLocus, type LocusWebSocketLike } from "../src/api/locus/index.ts";
+import type { LocusRegistryOptions } from "../src/types/locus.core.types.ts";
+import type { LocusActionContext } from "../src/types/locus.core.types.ts";
 import { hsonEcho } from "../src/api/echo/index.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
 import { create_locus_hosted_aggregate_internal, type LocusHostedAggregateStageWriter } from "../src/api/locus/locus.aggregate.ts";
@@ -56,7 +59,7 @@ function data(map: LiveMap, name: string) {
   return library;
 }
 
-function options(map: ReturnType<typeof make_map>): LocusOptions<typeof map> {
+function options(map: ReturnType<typeof make_map>): LocusRegistryOptions<typeof map> {
   return { map,
     libraries: [{ name: "game", ownership: "shared" },
       { name: "private", ownership: "private" }, { name: "page", ownership: "shared" }],
@@ -70,9 +73,10 @@ function options(map: ReturnType<typeof make_map>): LocusOptions<typeof map> {
 // Only reconcile uses an internal history-budget hook. Mutation, session
 // creation, capture, client composition, action completion, and recovery are public.
 for (const strategy of ["replay", "reconcile"] as const) {
-  const map = make_map();
-  const locus = strategy === "replay" ? hsonLocus.create(options(map))
+  let map = make_map();
+  const locus = strategy === "replay" ? hsonLocus.create(authority_definition_from_fixture_options(options(map)))
     : create_registry_locus_internal(options(map), { maxHistoryBytes: 1 }).locus;
+  if (strategy === "replay") map = locus.map;
   const pair = socket_pair();
   const endpoint = hsonEcho.create({ transport: test_echo_transport(pair.client) });
   let detach = () => {};
@@ -248,7 +252,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 {
   const persistence = new MemoryCheckpointAdapter();
   const map = make_map();
-  const locus = await hsonLocus.create({ ...options(map), persistence });
+  const locus = await hsonLocus.resume(authority_definition_from_fixture_options({ ...options(map), persistence }));
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);
   const echo = hsonEcho.create({ transport: test_echo_transport(pair.client) });
@@ -277,8 +281,9 @@ for (const strategy of ["replay", "reconcile"] as const) {
 }
 
 {
-  const map = make_map();
-  const locus = hsonLocus.create(options(map));
+  let map = make_map();
+  const locus = hsonLocus.create(authority_definition_from_fixture_options(options(map)));
+  map = locus.map;
   let escaped: { set(value: boolean): void } | undefined;
   try {
     assert.throws(() => map.batch(() => {}), /managed|Locus authority/i);
@@ -332,8 +337,9 @@ for (const strategy of ["replay", "reconcile"] as const) {
 
 {
   const persistence = new MemoryCheckpointAdapter();
-  const map = make_map();
-  const locus = await hsonLocus.create({ ...options(map), persistence });
+  let map = make_map();
+  const locus = await hsonLocus.resume(authority_definition_from_fixture_options({ ...options(map), persistence }));
+  map = locus.map;
   try {
     await locus.stage.lib("game").at(["ready"]).set(false);
     assert.equal(persistence.appendCalls.length, 1);
@@ -354,14 +360,15 @@ for (const strategy of ["replay", "reconcile"] as const) {
 }
 
 {
-  const map = make_map();
-  const locus = hsonLocus.create({ ...options(map), actions: {
-    afterAwait: async ctx => {
+  let map = make_map();
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...options(map) }), actions: {
+    afterAwait: async (ctx: LocusActionContext<typeof map>) => {
       const input = await Promise.resolve(false);
       ctx.stage.lib("game").at(["ready"]).set(input);
       ctx.stage.lib("private").at(["ready"]).set(input);
     },
   } });
+  map = locus.map;
   try {
     const outcome = await locus.dispatchAction({ type: "action", id: "after-await", name: "afterAwait" });
     assert.equal(outcome.type, "ack");
@@ -374,8 +381,9 @@ for (const strategy of ["replay", "reconcile"] as const) {
 
 {
   const schema = Hson.schema`<type "data" content <count "number">>`;
-  const map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema } });
-  const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }] });
+  let map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema } });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]) });
+  map = locus.map;
   try {
     await locus.stage(stage => {
       stage.lib("state").at(["count"]).set("temporary" as never);

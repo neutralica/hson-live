@@ -1,3 +1,4 @@
+import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -106,10 +107,10 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   const server = authority();
   const initialState = server.lib("state");
   initialState.at(["value"]).set(1);
-  const locus = hsonLocus.create({ map: server, ...test_public_projection(server) });
+  const locus = hsonLocus.create(authority_definition_from_fixture_options({ map: server, ...test_public_projection(server) }));
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
-  const cut = internal_livemap_aggregate_authority(server).captureHosted();
+  const cut = internal_livemap_aggregate_authority(locus.map).captureHosted();
   const requested = test_public_projection(server);
   const policy = make_locus_hosted_projection_policy(cut.registry, cut.authority,
     requested.libraries, requested.defaultProjection, requested.authorizeProjection);
@@ -134,7 +135,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   ui.at(["value"]).set(1);
   assert.equal(client.rev, before + 1);
   assert.equal(pair.clientSent.length, sentBefore);
-  assert.equal(echo.sync.debug().lastAppliedRev, 1);
+  assert.equal(echo.sync.debug().lastAppliedRev, 0);
   echo.disconnect();
   const sentDuringOffline = pair.clientSent.length;
   pair.drop();
@@ -142,7 +143,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   panel.document.attrs.set({ kind: "path", path: [0] }, "title", "offline");
   assert.equal(client.rev, before + 3);
   assert.equal(pair.clientSent.length, sentDuringOffline);
-  assert.equal(echo.sync.debug().lastAppliedRev, 1);
+  assert.equal(echo.sync.debug().lastAppliedRev, 0);
   assert.equal(localMirror.tree.node, localTree);
   await locus.stage((draft) => { draft.lib("state").at(["value"]).set(4); });
   bind_locus_websocket(locus, pair.server);
@@ -150,7 +151,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   await echo.awaitReconnect();
   assert.equal(echo.sync.strategy, "replay");
   assert.equal(echo.map, client);
-  assert.equal(echo.sync.debug().lastAppliedRev, 2);
+  assert.equal(echo.sync.debug().lastAppliedRev, 1);
   assert.equal(client.rev, before + 4);
   assert.equal(ui.at(["value"]).snap(), 2);
   const projectedState = client.lib("state");

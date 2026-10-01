@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonEcho, hsonLiveMap, hsonLocus, bind_locus_http, bind_locus_websocket } from "../src/index.ts";
 import WebSocket from "ws";
@@ -13,11 +14,8 @@ const events = create_test_event_emitter("echo.http");
 events.case_begin("http1", "HTTP/1 finite operations and continuing synchronization");
 
 const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" },
-  { name: "ui", ownership: "local", initializer: { data: { value: 0 } } }],
-  defaultProjection: { libraries: ["state", "ui"] },
-  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-  actions: { echo: (_context, payload) => payload } });
+const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" },
+  { name: "ui", ownership: "local", initializer: { data: { value: 0 } } }]), defaultProjection: { libraries: ["state", "ui"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }), actions: { echo: (_context, payload) => payload } });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
 const application: LiveHostApplication = {
   name: "echo-http",
@@ -251,7 +249,7 @@ try {
   assert.equal(locus.session.get(credentialSession.sessionId)?.revoke(), true);
 
   const otherMap = hsonLiveMap.fromLibraries({ other: { data: 0 } });
-  const otherLocus = hsonLocus.create({ map: otherMap, libraries: [{ name: "other", ownership: "shared" }] });
+  const otherLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(otherMap, [{ name: "other", ownership: "shared" }]) });
   const otherBinding = bind_locus_http(otherLocus, { endpoint: "/_hson" });
   try {
     const wrongAuthority = await otherBinding.handle(new Request(endpoint, { method: "POST",

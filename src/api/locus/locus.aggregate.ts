@@ -50,6 +50,7 @@ export type LocusHostedAggregateGateInput = Readonly<{
   commit: HostedAggregateCommit;
   baseRevision: number;
   nextRevision: number;
+  libraryOwnershipAdded?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[];
 }>;
 
 export type LocusHostedAggregatePreaccept = Readonly<{
@@ -82,7 +83,8 @@ export type LocusHostedAggregate = Readonly<{
   readonly rev: number;
   stage: LiveMapSynchronousAuthoring<LocusHostedAggregateStageWriter, Promise<HostedAggregateCommit | undefined>>;
   /** @internal Stage one ordinary LiveMap library-add batch through this authority's gate. */
-  add_libraries_internal: (definitions: LiveMapDefinitions, afterInstall?: () => void) => Promise<HostedAggregateCommit>;
+  add_libraries_internal: (definitions: LiveMapDefinitions, afterInstall?: () => void,
+    ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[]) => Promise<HostedAggregateCommit>;
   dispatch_action: (name: string, payload?: ExactDataCarrier | JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
@@ -113,6 +115,7 @@ export function create_locus_hosted_aggregate_internal(
   const accept_prepared = async (
     transition: PreparedLiveMapAuthorityTransition,
     afterInstall?: () => void,
+    libraryOwnershipAdded?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[],
   ): Promise<HostedAggregateCommit> => {
     const hosted = transition.commit.hosted;
     if (hosted === undefined) {
@@ -126,7 +129,8 @@ export function create_locus_hosted_aggregate_internal(
       return hosted;
     }
     const gateInput = Object.freeze({ transition, commit: hosted,
-      baseRevision: transition.baseRevision, nextRevision: transition.nextRevision });
+      baseRevision: transition.baseRevision, nextRevision: transition.nextRevision,
+      ...(libraryOwnershipAdded === undefined ? {} : { libraryOwnershipAdded }) });
     let releaseReservation: (() => void) | undefined;
     let preaccept: LocusHostedAggregatePreaccept | void;
     try {
@@ -218,14 +222,14 @@ export function create_locus_hosted_aggregate_internal(
     async stage(callback) {
       return (await enqueue(callback, true)).commit;
     },
-    add_libraries_internal(definitions, afterInstall) {
+    add_libraries_internal(definitions, afterInstall, ownership) {
       const run = async (): Promise<HostedAggregateCommit> => {
         if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
         const prepared = prepare_hosted_livemap_library_add_internal(options.map, owner, definitions);
         return accept_prepared(prepared.transition, () => {
           prepared.afterInstall();
           afterInstall?.();
-        });
+        }, ownership);
       };
       const next = tail.then(run, run);
       tail = next.then(() => undefined, () => undefined);

@@ -45,7 +45,8 @@ import type { EchoEndpointTransport, EchoReplicaTransport } from "./echo.transpo
 /** One authoritative submission surface: direct setters admit, callback setters only stage. */
 export type LocusStage<TMap extends LiveMap> =
   LiveMapSynchronousAuthoring<LiveMapStagedWriter<TMap, void>, Promise<void>>
-  & LiveMapStagedWriter<TMap, Promise<void>>;
+  & LiveMapStagedWriter<TMap, Promise<void>>
+  & Readonly<{ addLibraries: (additions: LocusRuntimeLibraryAdditions) => Promise<void> }>;
 
 /** Ordinary Locus action context for one fixed library-registry LiveMap. */
 export type LocusActionContext<
@@ -75,14 +76,10 @@ export type LocusActions<
   [TName in keyof TActions & string]: LocusActionHandler<TActions[TName], TMap, TActions>;
 }>;
 
-/** Advanced Locus construction over a supplied authority map and complete catalog. */
-export type LocusOptions<
+type LocusConfigurationOptions<
   TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
-  map: TMap;
-  /** Every map library is private/shared; local entries carry detached initializers. */
-  libraries: readonly LocusLibraryCatalogEntry[];
   /** Optional request used when a session supplies no request. Never implies all libraries. */
   defaultProjection?: LocusRequestedProjection;
   /** Absent authorizer grants no read, system-feature, or built-in write scope. */
@@ -98,24 +95,71 @@ export type LocusOptions<
   authorizeAction?: LocusActionAuthorizer<TActions>;
 }>;
 
-/** One catalog supplies both authority definitions and projection ownership. */
-export type LocusOwnedLibraryCatalogEntry =
-  | Readonly<{ name: string; ownership: "private" | "shared"; definition: LiveMapLibraryDefinition;
-    css?: import("./document-css.types.js").DocumentCssRecord; initializer?: never }>
-  | Extract<LocusLibraryCatalogEntry, { ownership: "local" }>;
-
-export type LocusOwnedMapDefinitions<TCatalog extends readonly LocusOwnedLibraryCatalogEntry[]> =
-  LiveMapKnownDefinitions<{
-    readonly [TName in Extract<TCatalog[number], { definition: LiveMapLibraryDefinition }>["name"]]:
-      Extract<TCatalog[number], { name: TName; definition: LiveMapLibraryDefinition }>["definition"];
-  }>;
-
-export type LocusOwnedOptions<
-  TCatalog extends readonly LocusOwnedLibraryCatalogEntry[],
+/** Internal composition record after Locus has constructed its authoritative map. */
+export type LocusRegistryOptions<
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
-> = Omit<LocusOptions<LiveMap<LocusOwnedMapDefinitions<TCatalog>>, TActions>, "map" | "libraries"> & Readonly<{
+> = LocusConfigurationOptions<TMap, TActions> & Readonly<{
+  map: TMap;
+  /** Every map library is private/shared; local entries carry detached initializers. */
+  libraries: readonly LocusLibraryCatalogEntry[];
+}>;
+
+export type LocusAuthorityLibraryDefinition = Readonly<{
+  name: string;
+  definition: LiveMapLibraryDefinition;
+  css?: import("./document-css.types.js").DocumentCssRecord;
+}>;
+
+export type LocusLocalLibraryDefinition = Readonly<{
+  name: string;
+  initializer: LiveMapLibraryDefinition;
+  css?: import("./document-css.types.js").DocumentCssRecord;
+}>;
+
+export type LocusRuntimeLibraryAdditions = Readonly<{
+  private?: readonly Readonly<Omit<LocusAuthorityLibraryDefinition, "css"> & { css?: never }>[];
+  shared?: readonly Readonly<Omit<LocusAuthorityLibraryDefinition, "css"> & { css?: never }>[];
+}>;
+
+export type LocusMapDefinitions<
+  TPrivate extends readonly LocusAuthorityLibraryDefinition[],
+  TShared extends readonly LocusAuthorityLibraryDefinition[],
+> = LiveMapKnownDefinitions<{
+  readonly [TName in (TPrivate[number] | TShared[number])["name"]]:
+    Extract<TPrivate[number] | TShared[number], { name: TName }>["definition"];
+}>;
+
+type LocusTupleDuplicateNames<TEntries extends readonly Readonly<{ name: string }>[], TSeen extends string = never> =
+  number extends TEntries["length"] ? never
+    : TEntries extends readonly [infer TFirst, ...infer TRest]
+      ? TFirst extends Readonly<{ name: string }>
+        ? TRest extends readonly Readonly<{ name: string }>[]
+          ? TFirst["name"] extends TSeen
+            ? TFirst["name"] | LocusTupleDuplicateNames<TRest, TSeen>
+            : LocusTupleDuplicateNames<TRest, TSeen | TFirst["name"]>
+          : never
+        : never
+      : never;
+
+export type LocusDefinitionNameCheck<
+  TPrivate extends readonly LocusAuthorityLibraryDefinition[],
+  TShared extends readonly LocusAuthorityLibraryDefinition[],
+  TLocal extends readonly LocusLocalLibraryDefinition[],
+> = [LocusTupleDuplicateNames<[...TPrivate, ...TShared, ...TLocal]>] extends [never] ? unknown : never;
+
+export type LocusDefinitionOptions<
+  TPrivate extends readonly LocusAuthorityLibraryDefinition[] = readonly LocusAuthorityLibraryDefinition[],
+  TShared extends readonly LocusAuthorityLibraryDefinition[] = readonly LocusAuthorityLibraryDefinition[],
+  TLocal extends readonly LocusLocalLibraryDefinition[] = readonly LocusLocalLibraryDefinition[],
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = LocusConfigurationOptions<LiveMap<LocusMapDefinitions<TPrivate, TShared>>, TActions> & Readonly<{
   map?: never;
-  libraries: TCatalog;
+  libraries?: never;
+  private?: TPrivate;
+  shared?: TShared;
+  local?: TLocal;
+  interactions?: readonly import("./interaction.descriptor.types.js").InteractionDescriptor[];
 }>;
 
 export type LocusActionDedupeSchedule = (
@@ -426,10 +470,6 @@ export type Locus<
   readonly incarnationId: LocusIncarnationId;
   readonly rev: number;
   activity: LocusActivity;
-  lib: Readonly<{
-    /** One durable authority topology transition; omitted ownership is private. */
-    add: (definitions: LiveMapDefinitions, options?: Readonly<{ ownership?: Readonly<Record<string, Exclude<LocusLibraryOwnership, "local">>> }>) => Promise<void>;
-  }>;
   session: LocusSessionApi;
   actionRequests: LocusActionDedupeInspector;
   stage: LocusStage<TMap>;
@@ -455,23 +495,13 @@ export interface LocusPersistenceAdapter {
   pruneCommitsThrough(logicalMapId: string, checkpointId: string, rev: number): Promise<void>;
 }
 
-export type PersistentLocusOptions<
-  TMap extends LiveMap,
+export type LocusResumeOptions<
+  TPrivate extends readonly LocusAuthorityLibraryDefinition[] = readonly LocusAuthorityLibraryDefinition[],
+  TShared extends readonly LocusAuthorityLibraryDefinition[] = readonly LocusAuthorityLibraryDefinition[],
+  TLocal extends readonly LocusLocalLibraryDefinition[] = readonly LocusLocalLibraryDefinition[],
   TActions extends LocusActionPayloads = LocusActionPayloads,
-> = LocusOptions<TMap, TActions> & Readonly<{
+> = LocusDefinitionOptions<TPrivate, TShared, TLocal, TActions> & Readonly<{
   persistence: LocusPersistenceAdapter;
-}>;
-
-export type PersistentLocusOwnedOptions<
-  TCatalog extends readonly LocusOwnedLibraryCatalogEntry[],
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-> = LocusOwnedOptions<TCatalog, TActions> & Readonly<{ persistence: LocusPersistenceAdapter }>;
-
-export type PersistentLocus<
-  TMap extends LiveMap = LiveMap,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-> = Locus<TMap, TActions> & Readonly<{
-  checkpoint: () => Promise<void>;
 }>;
 
 export type LocusActivityKind =

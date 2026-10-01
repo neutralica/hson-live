@@ -4,11 +4,9 @@ Locus owns a single current authority map containing private and shared librarie
 
 ```ts
 const locus = hsonLocus.create({
-  libraries: [
-    { name: "page", ownership: "shared", definition: { document: "<main/>", schema: PageSchema } },
-    { name: "credentials", ownership: "private", definition: { data: { token: "secret" }, schema: CredentialsSchema } },
-    { name: "ui", ownership: "local", initializer: { data: { open: false }, schema: UiSchema } },
-  ],
+  shared: [{ name: "page", definition: { document: "<main/>", schema: PageSchema } }],
+  private: [{ name: "credentials", definition: { data: { token: "secret" }, schema: CredentialsSchema } }],
+  local: [{ name: "ui", initializer: { data: { open: false }, schema: UiSchema } }],
   authorizeProjection: () => ({ libraries: ["page"], writableDocuments: [] }),
 });
 ```
@@ -29,4 +27,4 @@ Hosted continuation receives the admitted `now` composition, credential, transpo
 
 The active formats identify distinct contracts: `hson-authority-projection-snapshot` for projected state, `hson-locus-live-projected-client-commit` and `hson-locus-live-projected-client-wire` for live and retained effects, `hson-locus-hosted-aggregate-message` for the hosted socket, and `hson-ssr-bootstrap` for projected hosted SSR. Local SSR uses the distinct `libraries` payload family. Unknown format identities and malformed payloads reject.
 
-Durable persistence stores complete private/shared authority state without generated QUIDs or ownership policy. Local initializer definitions remain deployment configuration and evolving local state remains client-owned.
+Durable persistence stores complete private/shared authority state without generated QUIDs. The Locus durable envelope retains ownership for runtime-added libraries; source definitions retain ownership for originals. Local initializer definitions remain deployment configuration and evolving local state remains client-owned.

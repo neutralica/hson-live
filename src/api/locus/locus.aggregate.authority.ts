@@ -235,6 +235,8 @@ export type LocusHostedAggregateAuthorityOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   map: LiveMap;
+  /** Durable runtime additions, updated in the accepted install boundary. @internal */
+  runtimeOwnership?: Map<string, "private" | "shared">;
   libraries: readonly LocusLibraryCatalogEntry[];
   defaultProjection?: LocusRequestedProjection;
   authorizeProjection?: LocusProjectionAuthorizer;
@@ -477,13 +479,14 @@ export function create_locus_hosted_aggregate_authority_internal<
     await locus.add_libraries_internal(capturedDefinitions, () => {
       const nextRegistry = aggregate.hostedRegistry();
       projectionPolicy.installRuntimeOwnership(entries, nextRegistry);
+      for (const entry of entries) options.runtimeOwnership?.set(entry.name, entry.ownership);
       const bindings = aggregate.libraries();
       for (const entry of entries) {
         const index = nextRegistry.libraries.findIndex((candidate) => candidate.name === entry.name);
         const identity = bindings[index];
         if (identity !== undefined) identitiesByName.set(entry.name, identity);
       }
-    });
+    }, entries);
   }
 
   // Server-created sessions have an attachment fence, but require no transport.

@@ -1,3 +1,4 @@
+import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
@@ -198,10 +199,10 @@ check("Schema attachment preserves retained facades, locations, identity epoch, 
 
 check("Locus-managed authority rejects synchronous attachment", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
-  const locus = hsonLocus.create({ map, ...test_public_projection(map) });
-  const before = map.capture();
-  assert.throws(() => map.lib("state").schema.use(StateSchema), /authority|controlled|managed/i);
-  assert.deepEqual(map.capture(), before);
+  const locus = hsonLocus.create(authority_definition_from_fixture_options({ map, ...test_public_projection(map) }));
+  const before = locus.map.capture();
+  assert.throws(() => locus.map.lib("state").schema.use(StateSchema), /authority|controlled|managed/i);
+  assert.deepEqual(locus.map.capture(), before);
   locus.dispose();
 });
 

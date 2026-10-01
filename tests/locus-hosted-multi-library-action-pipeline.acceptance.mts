@@ -1,3 +1,4 @@
+import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -144,13 +145,9 @@ install_fake_document();
 
 await check("aggregate application handlers receive session origin externally and direct origin for trusted dispatch", async () => {
   const origins: unknown[] = [];
-  const locus = hsonLocus.create({
-    ...test_public_projection(make_map()),
-    map: make_map(),
-    actions: {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }), actions: {
       probe(context) { origins.push(context.origin); },
-    },
-  });
+    } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
   const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus.map) });
@@ -215,13 +212,9 @@ await check("independent aggregate endpoints use reload-safe client and request 
 });
 
 await check("aggregate retry request payloads detach nested records and arrays from caller mutation", async () => {
-  const locus = hsonLocus.create({
-    ...test_public_projection(make_map()),
-    map: make_map(),
-    actions: {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }), actions: {
       stable: (_context, payload) => payload,
-    },
-  });
+    } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
   const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus.map) });
@@ -271,15 +264,15 @@ await check("aggregate retry request payloads detach nested records and arrays f
 await check("named document denial is terminal without mutation and the next queued request proceeds", async () => {
   const authority = make_map();
   const decisions: unknown[] = [];
-  const locus = hsonLocus.create({
+  const locus = hsonLocus.create(authority_definition_from_fixture_options({
     ...test_public_projection(authority),
     map: authority,
-    authorizeAction(context) {
+    authorizeAction(context: Parameters<import("../src/types/locus.protocol.types.ts").LocusActionAuthorizer>[0]) {
       decisions.push(context);
       const payload = context.payload === undefined ? undefined : Hson.data.materialize(context.payload) as { name?: string };
       return payload?.name !== "blocked";
     },
-  });
+  }));
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server, { principalId: "principal-a", attachment: { transport: "test" } });
   const echoMap = make_projected_map(locus.map);
@@ -293,9 +286,9 @@ await check("named document denial is terminal without mutation and the next que
   });
   assert.equal(denied.type, "error");
   if (denied.type === "error") assert.equal(denied.delivery, "rejected");
-  assert.equal(authority.rev, 0);
+  assert.equal(locus.map.rev, 0);
   assert.equal(echoMap.rev, 0);
-  assert.equal(authority.lib("page").document.attrs.get({ kind: "path", path: [0] }, "blocked"), undefined);
+  assert.equal(locus.map.lib("page").document.attrs.get({ kind: "path", path: [0] }, "blocked"), undefined);
   const accepted = await echo.action("document.attrs.set", {
     library: "page",
     target: { kind: "path", path: [0] },
@@ -303,7 +296,7 @@ await check("named document denial is terminal without mutation and the next que
     value: "accepted",
   });
   assert.equal(accepted.type, "ack");
-  assert.equal(authority.rev, 1);
+  assert.equal(locus.map.rev, 1);
   assert.equal(echoMap.rev, 1);
   const projectedPage = echoMap.lib("page");
   if (projectedPage.mode !== "document") throw new Error("Expected projected page document.");
@@ -319,24 +312,18 @@ await check("named document denial is terminal without mutation and the next que
 await check("application payload decoding precedes authorization and mutation", async () => {
   const authority = make_map();
   let authorizations = 0;
-  const locus = hsonLocus.create({
-    ...test_public_projection(authority),
-    map: authority,
-    actions: {
-      validated: async (context, payload) => {
-        const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
-        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
-      },
-    },
-    schema: {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, schema: {
       actions: {
         validated: {
           payload: (value: unknown): value is HsonData => typeof value === "string" && typeof (Hson.data.materialize(value as HsonData) as { value?: unknown }).value === "number",
         },
       },
-    },
-    authorizeAction() { authorizations += 1; return true; },
-  });
+    }, authorizeAction() { authorizations += 1; return true; } }), actions: {
+      validated: async (context, payload) => {
+        const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
+        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
+      },
+    } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
   const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus.map) });
@@ -345,11 +332,11 @@ await check("application payload decoding precedes authorization and mutation", 
   assert.equal(invalid.type, "error");
   if (invalid.type === "error") assert.equal(invalid.error.code, "LOCUS_SCHEMA_INVALID_PAYLOAD");
   assert.equal(authorizations, 0);
-  assert.equal(authority.rev, 0);
+  assert.equal(locus.map.rev, 0);
   const accepted = await echo.action("validated", { value: 3 });
   assert.equal(accepted.type, "ack");
   assert.equal(authorizations, 1);
-  assert.equal(authority.lib("state").snap(["value"]), 3);
+  assert.equal(locus.map.lib("state").snap(["value"]), 3);
   echo.dispose();
   locus.dispose();
 });
@@ -357,18 +344,12 @@ await check("application payload decoding precedes authorization and mutation", 
 await check("resumable session reattachment retains one projected aggregate authority domain", async () => {
   const authority = make_map();
   let sessionNumber = 0;
-  const locus = hsonLocus.create({
-    ...test_public_projection(authority),
-    map: authority,
-    sessionId: () => `aggregate-session-${++sessionNumber}`,
-    sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" },
-    actions: {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessionId: () => `aggregate-session-${++sessionNumber}`, sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" } }), actions: {
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
         await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
       },
-    },
-  });
+    } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server, { principalId: "principal-a" });
   const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "stable-aggregate-client" });
@@ -395,8 +376,8 @@ await check("resumable session reattachment retains one projected aggregate auth
   assert.equal(second.session.incarnationId, locus.incarnationId);
   assert.equal(second.session.debug().reattachCount, 1);
   await second.action("state.set", { value: 2 });
-  assert.equal(authority.lib("state").snap(["value"]), 2);
-  assert.equal(authority.rev, 2);
+  assert.equal(locus.map.lib("state").snap(["value"]), 2);
+  assert.equal(locus.map.rev, 2);
   second.dispose();
   locus.dispose();
 });
@@ -404,18 +385,13 @@ await check("resumable session reattachment retains one projected aggregate auth
 await check("retry, dedupe conflict, and action status use the hosted request contract", async () => {
   const authority = make_map();
   let executions = 0;
-  const locus = hsonLocus.create({
-    ...test_public_projection(authority),
-    map: authority,
-    sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" },
-    actions: {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" } }), actions: {
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
         executions += 1;
         await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
       },
-    },
-  });
+    } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server);
   const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "dedupe-client" });
@@ -423,12 +399,12 @@ await check("retry, dedupe conflict, and action status use the hosted request co
   const credential = first.session.credential;
   firstPair.dropNextActionResult();
   const pending = first.action("state.set", { value: 7 });
-  await wait_for_revision(authority, 1);
+  await wait_for_revision(locus.map, 1);
   firstPair.disconnect();
   await assert.rejects(pending, /closed|interrupted/i);
   const stable = pending.request;
   first.dispose();
-  assert.equal(authority.rev, 1);
+  assert.equal(locus.map.rev, 1);
   assert.equal(executions, 1);
 
   const secondPair = socket_pair();
@@ -438,7 +414,7 @@ await check("retry, dedupe conflict, and action status use the hosted request co
   const retried = await second.retryAction(stable);
   assert.equal(retried.type, "ack");
   if (retried.type === "ack") assert.equal(retried.delivery, "cached");
-  assert.equal(authority.rev, 1);
+  assert.equal(locus.map.rev, 1);
   assert.equal(executions, 1);
   const status = await second.actionStatus(stable.requestId);
   assert.equal(status.state, "succeeded");
@@ -446,7 +422,7 @@ await check("retry, dedupe conflict, and action status use the hosted request co
   const conflict = await second.retryAction(Object.freeze({ requestId: stable.requestId, name: "state.set", payload: { value: 8 } }));
   assert.equal(conflict.type, "error");
   if (conflict.type === "error") assert.equal(conflict.error.code, "LOCUS_ACTION_REQUEST_ID_CONFLICT");
-  assert.equal(authority.rev, 1);
+  assert.equal(locus.map.rev, 1);
   second.dispose();
   locus.dispose();
 });
@@ -454,16 +430,12 @@ await check("retry, dedupe conflict, and action status use the hosted request co
 await check("aggregate retained action lineage enforces exact principal continuity", async () => {
   const authority = make_map();
   let executions = 0;
-  const locus = hsonLocus.create({
-    ...test_public_projection(authority),
-    map: authority,
-    actions: {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }), actions: {
       owned() {
         executions += 1;
         return { owner: "alice" };
       },
-    },
-  });
+    } });
   const alicePair = socket_pair();
   bind_locus_websocket(locus, alicePair.server, { principalId: "alice" });
   const alice = create_recovery_test_driver({
@@ -509,10 +481,7 @@ await check("aggregate retained action lineage enforces exact principal continui
 await check("built-ins and single- or cross-library application actions share one FIFO and revision stream", async () => {
   const authority = make_map();
   const order: string[] = [];
-  const locus = hsonLocus.create({
-    ...test_public_projection(authority),
-    map: authority,
-    actions: {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }), actions: {
       "state.only": async (context) => {
         order.push("state");
         await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(1); })();
@@ -522,15 +491,14 @@ await check("built-ins and single- or cross-library application actions share on
         await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(2);
 draft.lib("other").at(["value"]).set(2); })();
       },
-    },
-  });
+    } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
   const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus.map) });
   await activate_echo(echo);
   const revisions: number[] = [];
   const libraries: string[][] = [];
-  const stop = authority.commits.observe((commit) => {
+  const stop = locus.map.commits.observe((commit) => {
     revisions.push(commit.rev);
     libraries.push(commit.operations.map((operation) => operation.library));
   });
@@ -542,7 +510,7 @@ draft.lib("other").at(["value"]).set(2); })();
   assert.deepEqual(order, ["state", "cross"]);
   assert.deepEqual(revisions, [1, 2, 3]);
   assert.deepEqual(libraries, [["state"], ["page"], ["state", "other"]]);
-  assert.equal(authority.rev, 3);
+  assert.equal(locus.map.rev, 3);
   assert.equal(echo.map.rev, 3);
   stop();
   echo.dispose();
@@ -553,17 +521,11 @@ await check("replacement during authorization cannot cross aggregate admission",
   const authorizationEntered = deferred();
   const authorizationRelease = deferred();
   let executions = 0;
-  const locus = hsonLocus.create({
-    ...test_public_projection(make_map()),
-    map: make_map(),
-    sessions: { graceMs: 10_000, credential: () => "aggregate-auth-fence-credential" },
-    authorizeAction: async () => {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map(), sessions: { graceMs: 10_000, credential: () => "aggregate-auth-fence-credential" } }), authorizeAction: async () => {
       authorizationEntered.resolve();
       await authorizationRelease.promise;
       return true;
-    },
-    actions: { held: () => { executions += 1; } },
-  });
+    }, actions: { held: () => { executions += 1; } } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server, { principalId: "alice" });
   const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "auth-fence-client" });
@@ -601,18 +563,13 @@ await check("replacement after admission retains the outcome but fences late del
   const handlerEntered = deferred();
   const handlerRelease = deferred();
   const authority = make_map();
-  const locus = hsonLocus.create({
-    ...test_public_projection(authority),
-    map: authority,
-    sessions: { graceMs: 10_000, credential: () => "aggregate-post-admit-credential" },
-    actions: {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-post-admit-credential" } }), actions: {
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;
         await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(9); })();
       },
-    },
-  });
+    } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server, { principalId: "alice" });
   const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "post-admit-client" });
@@ -638,8 +595,8 @@ await check("replacement after admission retains the outcome but fences late del
   const recovered = await second.retryAction(pending.request);
   assert.equal(recovered.type, "ack");
   if (recovered.type === "ack") assert.ok(recovered.delivery === "joined" || recovered.delivery === "cached");
-  assert.equal(authority.rev, 1);
-  assert.equal(authority.lib("state").snap(["value"]), 9);
+  assert.equal(locus.map.rev, 1);
+  assert.equal(locus.map.lib("state").snap(["value"]), 9);
   assert.equal(recovered.completionRev, 1);
   assert.equal((await second.actionStatus(pending.request.requestId)).state, "succeeded");
   assert.equal(locus.activity.snapshot().actionCount, 0);
@@ -653,18 +610,13 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   const handlerEntered = deferred();
   const handlerRelease = deferred();
   const authority = make_map();
-  const locus = hsonLocus.create({
-    ...test_public_projection(authority),
-    map: authority,
-    sessions: { graceMs: 10_000, credential: () => "aggregate-disconnect-credential" },
-    actions: {
+  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-disconnect-credential" } }), actions: {
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;
         await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(11); })();
       },
-    },
-  });
+    } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server, { principalId: "alice" });
   const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "disconnect-client" });
@@ -691,7 +643,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   const recovered = await second.retryAction(pending.request);
   assert.equal(recovered.type, "ack");
   assert.equal(recovered.completionRev, 1);
-  assert.equal(authority.lib("state").snap(["value"]), 11);
+  assert.equal(locus.map.lib("state").snap(["value"]), 11);
   assert.equal(locus.activity.snapshot().actionCount, 0);
   first.dispose();
   second.dispose();

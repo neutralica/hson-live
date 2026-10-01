@@ -41,6 +41,7 @@ export type LocusHostedAggregatePersistedManifest = Readonly<{
   rev: number;
   registry: Readonly<{ format: "hson-hosted-registry"; libraries: readonly Omit<HostedRegistryEntry, "schema">[]; digest: string }>;
   chunks: readonly CheckpointChunkDescriptor[];
+  locus: Readonly<{ runtimeOwnership: readonly LocusDurableOwnershipEntry[] }>;
 }>;
 type AnyCheckpoint = LocusHostedAggregatePersistedManifest;
 
@@ -52,7 +53,10 @@ export type LocusHostedAggregatePersistedCommit = Readonly<{
   mapKind: "hosted-aggregate";
   registryDigest: string;
   commit: LocusDurableAggregateCommit;
+  locus: Readonly<{ libraryOwnershipAdded: readonly LocusDurableOwnershipEntry[] }>;
 }>;
+
+export type LocusDurableOwnershipEntry = Readonly<{ name: string; ownership: "private" | "shared" }>;
 
 /** Internal adapter port; it stores opaque authoritative aggregate records. */
 export interface LocusHostedAggregatePersistenceAdapter {
@@ -81,6 +85,7 @@ export type LocusHostedAggregatePersistedState = Readonly<{
 /** Internal durable aggregate authority; it never lowers into solo Locus. */
 export type PersistentLocusHostedAggregate = Omit<LocusHostedAggregate, "run_exclusive"> & Readonly<{
   checkpoint: () => Promise<void>;
+  runtimeOwnership: readonly LocusDurableOwnershipEntry[];
 }>;
 
 /** Internal construction options for one hosted authority registry. */
@@ -101,11 +106,12 @@ export type RestorePersistentLocusHostedAggregateOptions = Omit<
 type ValidatedHostedAggregateState = Readonly<{
   checkpoint: AnyCheckpoint;
   map: LiveMap;
+  runtimeOwnership: readonly LocusDurableOwnershipEntry[];
 }>;
 
 function exact_keys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  const actual = Object.keys(value);
-  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+  const actual = Reflect.ownKeys(value);
+  return actual.length === keys.length && actual.every((key) => typeof key === "string" && keys.includes(key));
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -130,6 +136,19 @@ function invalid_state(cause?: unknown): LocusPersistenceError {
   );
 }
 
+function ownership_entries(value: unknown): readonly LocusDurableOwnershipEntry[] {
+  if (!Array.isArray(value)) throw invalid_state();
+  const names = new Set<string>();
+  return Object.freeze(value.map((item) => {
+    const entry = record(item);
+    if (entry === undefined || !exact_keys(entry, ["name", "ownership"])
+      || typeof entry.name !== "string" || !entry.name || names.has(entry.name)
+      || (entry.ownership !== "private" && entry.ownership !== "shared")) throw invalid_state();
+    names.add(entry.name);
+    return Object.freeze({ name: entry.name, ownership: entry.ownership });
+  }));
+}
+
 function persistence_failure(
   code: "LOCUS_PERSISTENCE_APPEND_FAILED" | "LOCUS_PERSISTENCE_APPEND_UNCERTAIN" | "LOCUS_PERSISTENCE_CHECKPOINT_FAILED" | "LOCUS_PERSISTENCE_CHECKPOINT_UNCERTAIN" | "LOCUS_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
   message: string,
@@ -152,7 +171,11 @@ function checkpoint_id(): string {
 export async function write_semantic_checkpoint(
   checkpoint: LiveMapSemanticCheckpoint,
   adapter: LocusHostedAggregatePersistenceAdapter,
+  runtimeOwnership: readonly LocusDurableOwnershipEntry[] = [],
 ): Promise<void> {
+  const ownership = ownership_entries(runtimeOwnership);
+  const present = new Set(checkpoint.registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name));
+  if (ownership.some((entry) => !present.has(entry.name))) throw invalid_state();
   const id = checkpoint_id();
   const previous = await adapter.load(checkpoint.authority.logicalMapId);
   if (previous !== undefined) {
@@ -163,7 +186,8 @@ export async function write_semantic_checkpoint(
     if (expected.revision !== checkpoint.revision
       || expected.registry.digest !== checkpoint.registry.digest
       || JSON.stringify(expected.registry) !== JSON.stringify(checkpoint.registry)
-      || JSON.stringify(expected.libraries) !== JSON.stringify(checkpoint.libraries)) throw invalid_state();
+      || JSON.stringify(expected.libraries) !== JSON.stringify(checkpoint.libraries)
+      || JSON.stringify(validated.runtimeOwnership) !== JSON.stringify(ownership)) throw invalid_state();
   }
   const expectedId = previous === undefined ? undefined : active_checkpoint_id(previous.checkpoint);
   const descriptors: CheckpointChunkDescriptor[] = [];
@@ -195,6 +219,7 @@ export async function write_semantic_checkpoint(
     rev: checkpoint.revision,
     registry: Object.freeze({ format: "hson-hosted-registry", libraries: Object.freeze(metadata), digest: checkpoint.registry.digest }),
     chunks: Object.freeze(descriptors),
+    locus: Object.freeze({ runtimeOwnership: ownership }),
   });
   if (new TextEncoder().encode(JSON.stringify(manifest)).byteLength > CHECKPOINT_MAX_MANIFEST_BYTES) {
     throw new Error("Checkpoint manifest exceeds its supported bound.");
@@ -222,7 +247,7 @@ export async function write_semantic_checkpoint(
 }
 
 export function assert_checkpoint_manifest(value: Record<string, unknown>, requestedLogicalMapId: string): LocusHostedAggregatePersistedManifest {
-  if (!exact_keys(value, ["format", "checkpointId", "logicalMapId", "incarnationId", "mapKind", "registryDigest", "rev", "registry", "chunks"])
+  if (!exact_keys(value, ["format", "checkpointId", "logicalMapId", "incarnationId", "mapKind", "registryDigest", "rev", "registry", "chunks", "locus"])
     || value.format !== "hson-locus-durable-aggregate-checkpoint"
     || typeof value.checkpointId !== "string" || !/^[0-9a-f-]{36}$/u.test(value.checkpointId)
     || value.logicalMapId !== requestedLogicalMapId || requestedLogicalMapId.length > CHECKPOINT_MAX_MANIFEST_BYTES
@@ -249,6 +274,10 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
       || !valid_digest(entry.schemaDigest) || entry.rootCodec !== "hson-exact-value") throw invalid_state();
     names.add(entry.name);
   }
+  const locus = record(value.locus);
+  if (locus === undefined || !exact_keys(locus, ["runtimeOwnership"])) throw invalid_state();
+  const ownership = ownership_entries(locus.runtimeOwnership);
+  if (ownership.some((entry) => !names.has(entry.name))) throw invalid_state();
   let position = 0;
   const ids = new Set<string>();
   for (const entry of registry.libraries as readonly Record<string, unknown>[]) {
@@ -323,7 +352,8 @@ async function restore_manifest(
   return make_livemap_mirror_from_semantic_checkpoint_internal(semantic);
 }
 
-function hosted_commit(commit: HostedAggregateCommit): LocusHostedAggregatePersistedCommit {
+function hosted_commit(commit: HostedAggregateCommit,
+  libraryOwnershipAdded: readonly LocusDurableOwnershipEntry[] = []): LocusHostedAggregatePersistedCommit {
   const projected = make_portable_aggregate_commit(commit);
   if (projected === undefined) throw new Error("Runtime-local identity demand cannot become durable authority history.");
   const { format: _clientFormat, ...semantic } = projected;
@@ -334,11 +364,16 @@ function hosted_commit(commit: HostedAggregateCommit): LocusHostedAggregatePersi
     mapKind: "hosted-aggregate",
     registryDigest: commit.registryDigest,
     commit: Object.freeze({ ...semantic, format: "hson-livemap-durable-commit" }),
+    locus: Object.freeze({ libraryOwnershipAdded: ownership_entries(libraryOwnershipAdded) }),
   });
 }
 
-export function durable_aggregate_commit(commit: HostedAggregateCommit): LocusHostedAggregatePersistedCommit {
-  return hosted_commit(commit);
+export function durable_aggregate_commit(commit: HostedAggregateCommit,
+  libraryOwnershipAdded: readonly LocusDurableOwnershipEntry[] = []): LocusHostedAggregatePersistedCommit {
+  const names = commit.topology?.operation.libraries.map((entry) => entry.name) ?? [];
+  const ownership = ownership_entries(libraryOwnershipAdded);
+  if (names.length !== ownership.length || names.some((name, index) => ownership[index]?.name !== name)) throw invalid_state();
+  return hosted_commit(commit, ownership);
 }
 
 function durable_aggregate_commit_as_client(commit: LocusDurableAggregateCommit): PortableAggregateCommit {
@@ -354,7 +389,7 @@ function assert_commit_fence(
 ): LocusDurableAggregateCommit {
   const persisted = record(value);
   if (persisted === undefined || !exact_keys(persisted, [
-    "format", "logicalMapId", "incarnationId", "mapKind", "registryDigest", "commit",
+    "format", "logicalMapId", "incarnationId", "mapKind", "registryDigest", "commit", "locus",
   ])
     || persisted.format !== "hson-locus-durable-aggregate-record"
     || persisted.logicalMapId !== checkpoint.logicalMapId
@@ -364,6 +399,13 @@ function assert_commit_fence(
   }
   const commitRecord = record(persisted.commit);
   if (commitRecord === undefined) throw invalid_state();
+  const locus = record(persisted.locus);
+  if (locus === undefined || !exact_keys(locus, ["libraryOwnershipAdded"])) throw invalid_state();
+  const ownership = ownership_entries(locus.libraryOwnershipAdded);
+  const topologyNames = record(commitRecord.topology)?.operation;
+  const added = record(topologyNames)?.libraries;
+  const names = Array.isArray(added) ? added.map((entry) => record(entry)?.name) : [];
+  if (ownership.length !== names.length || names.some((name, index) => ownership[index]?.name !== name)) throw invalid_state();
   const topology = Object.hasOwn(commitRecord, "topology");
   if (!(topology
     ? exact_keys(commitRecord, ["format", "authority", "previousRegistryDigest", "registryDigest", "topology", "prevRev", "rev", "operations"])
@@ -402,6 +444,7 @@ async function validate_hosted_aggregate_state(
 
     const map = await restore_manifest(checkpoint, adapter);
     const aggregate = internal_livemap_aggregate_authority(map);
+    const runtimeOwnership = new Map(checkpoint.locus.runtimeOwnership.map((entry) => [entry.name, entry.ownership] as const));
     if (aggregate.hostedPosition().registryDigest !== checkpoint.registryDigest
       || aggregate.hostedPosition().revision !== checkpoint.rev) throw invalid_state();
 
@@ -430,6 +473,11 @@ async function validate_hosted_aggregate_state(
       if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
       const commit = assert_commit_fence(item, checkpoint, expectedPrevRev, expectedRegistryDigest);
       if (commit.topology !== undefined) {
+        const additions = ownership_entries(record(maybe?.locus)?.libraryOwnershipAdded);
+        for (const entry of additions) {
+          if (runtimeOwnership.has(entry.name)) throw invalid_state();
+          runtimeOwnership.set(entry.name, entry.ownership);
+        }
         const replayed = map.replay(Object.freeze({ kind: "map", changed: true,
           prevRev: commit.prevRev, rev: commit.rev,
           operations: Object.freeze([commit.topology]) }));
@@ -445,7 +493,9 @@ async function validate_hosted_aggregate_state(
     }
     if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
     if (map.rev !== expectedPrevRev) throw invalid_state();
-    return Object.freeze({ checkpoint, map });
+    const names = new Set(aggregate.hostedRegistry().libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name));
+    if ([...runtimeOwnership.keys()].some((name) => !names.has(name))) throw invalid_state();
+    return Object.freeze({ checkpoint, map, runtimeOwnership: Object.freeze([...runtimeOwnership].map(([name, ownership]) => Object.freeze({ name, ownership }))) });
   } catch (cause) {
     if (cause instanceof LocusPersistenceError) throw cause;
     throw invalid_state(cause);
@@ -481,9 +531,9 @@ function make_durability_gate(
 }> {
   const records = new WeakMap<HostedAggregateCommit, LocusHostedAggregatePersistedCommit>();
   return Object.freeze({
-    prepareGate: ({ commit }) => {
+    prepareGate: ({ commit, libraryOwnershipAdded }) => {
       if (!commit.changed) return;
-      const record = hosted_commit(commit);
+      const record = durable_aggregate_commit(commit, libraryOwnershipAdded);
       JSON.stringify(record);
       records.set(commit, record);
     },
@@ -508,13 +558,18 @@ function make_durability_gate(
 function persistent_view(
   locus: LocusHostedAggregate,
   adapter: LocusHostedAggregatePersistenceAdapter,
+  runtimeOwnership: readonly LocusDurableOwnershipEntry[] = [],
 ): PersistentLocusHostedAggregate {
+  const ownershipByName = new Map(runtimeOwnership.map((entry) => [entry.name, entry.ownership] as const));
   let checkpointTail = Promise.resolve();
   const checkpoint = (): Promise<void> => {
     const run = checkpointTail.then(async () => {
-      const captured = await locus.run_exclusive(() => internal_livemap_aggregate_authority(locus.map).captureSemanticCheckpoint());
+      const captured = await locus.run_exclusive(() => Object.freeze({
+        map: internal_livemap_aggregate_authority(locus.map).captureSemanticCheckpoint(),
+        ownership: Object.freeze([...ownershipByName].map(([name, ownership]) => Object.freeze({ name, ownership }))),
+      }));
     try {
-      await write_semantic_checkpoint(captured, adapter);
+      await write_semantic_checkpoint(captured.map, adapter, captured.ownership);
     } catch (cause) {
       if (cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_CHECKPOINT_UNCERTAIN") locus.dispose();
       throw persistence_failure(
@@ -535,10 +590,18 @@ function persistent_view(
     get registryDigest() { return locus.registryDigest; },
     get rev() { return locus.rev; },
     stage: locus.stage,
-    add_libraries_internal: locus.add_libraries_internal,
+    add_libraries_internal(definitions, afterInstall, ownership) {
+      return locus.add_libraries_internal(definitions, () => {
+        afterInstall?.();
+        for (const entry of ownership ?? []) ownershipByName.set(entry.name, entry.ownership);
+      }, ownership);
+    },
     dispatch_action: locus.dispatch_action,
     on_commit: locus.on_commit,
     checkpoint,
+    get runtimeOwnership() {
+      return Object.freeze([...ownershipByName].map(([name, ownership]) => Object.freeze({ name, ownership })));
+    },
     dispose: locus.dispose,
   });
 }
@@ -598,7 +661,7 @@ export async function restore_persistent_locus_hosted_aggregate_internal(
     locus.dispose();
     throw invalid_state();
   }
-  return persistent_view(locus, persistence);
+  return persistent_view(locus, persistence, validated.runtimeOwnership);
 }
 
 /** Load one aggregate state through its adapter, then reconstruct it atomically. */

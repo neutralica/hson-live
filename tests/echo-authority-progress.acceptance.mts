@@ -1,3 +1,4 @@
+import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -481,7 +482,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     const options = { ...test_public_projection(authority), map: authority };
     const locus = strategy === "reconcile"
       ? create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus
-      : hsonLocus.create(options);
+      : hsonLocus.create(authority_definition_from_fixture_options(options));
     const session = await locus.session.create({ libraries: ["state", "page"] });
     const notices = new Set<(event: EchoAttachmentEvent) => void>();
     const attachment = attach_locus_semantic_transport_internal(locus, {
@@ -572,7 +573,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     assert.equal(plans.at(-1), strategy);
     assert.equal(settlements, 1);
     assert.equal(dispatches, 2, "retry uses the existing logical request");
-    assert.equal(authority.rev, 1);
+    assert.equal(locus.map.rev, 1);
     assert.equal(echo.sync.debug().lastAppliedRev, 1);
     echo.dispose(); attachment.close(); locus.dispose();
   });

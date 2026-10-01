@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -39,17 +40,14 @@ return map;
 
 const map = hostile_map();
 
-const locus = hsonLocus.create({ map,
-  libraries: [
+const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [
     { name: "page", ownership: "shared" },
     { name: "permittedData", ownership: "shared" },
     { name: "PRIVATE_NAME_SENTINEL", ownership: "private" },
     { name: "privatePage", ownership: "private" },
     { name: "UNSELECTED_NAME_SENTINEL", ownership: "shared" },
     { name: "unselectedPage", ownership: "shared" },
-  ],
-  authorizeProjection: () => ({ libraries: ["page", "permittedData", "unselectedPage"], systemFeatures: ["interactions"] }),
-});
+  ]), authorizeProjection: () => ({ libraries: ["page", "permittedData", "unselectedPage"], systemFeatures: ["interactions"] }) });
 
 const serverSent: Array<Record<string, unknown>> = [];
 let receive: ((raw: string) => void) | undefined;
@@ -295,9 +293,10 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
 // recovery machinery. It gains no implicit libraries, projection, or document.
 {
   const oneMap = hsonLiveMap.fromLibraries({ page: { document: '<main <p "ONE_LIBRARY_HTML"/>/>', schema: Page } });
-  assert.throws(() => hsonLocus.create({ map: oneMap, libraries: [] }), /application library catalog/i);
-  const oneLocus = hsonLocus.create({ map: oneMap, libraries: [{ name: "page", ownership: "shared" }],
-    authorizeProjection: () => ({ libraries: ["page"] }) });
+  const emptyLocus = hsonLocus.create({});
+  assert.equal(emptyLocus.map.capture().registry.libraries.length, 0);
+  emptyLocus.dispose();
+  const oneLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(oneMap, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"] }) });
   let receive: ((raw: string) => void) | undefined;
   let sessionId: string | undefined;
   let credential: string | undefined;

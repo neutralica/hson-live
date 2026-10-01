@@ -1,3 +1,4 @@
+import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { Hson, hsonLiveMap, hsonLocus, enable_interactions, type HsonSchema } from "../src/index.ts";
@@ -55,25 +56,24 @@ function attachment(server: ReturnType<typeof create_locus_hosted_aggregate_auth
 
 assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 
-// Every application library requires exactly one explicit classification; system state does not.
+// Grouped construction owns every authority Library and rejects ambiguous names.
 {
   const authority = map();
   enable_interactions(authority);
-  assert.throws(() => hsonLocus.create({ map: authority, libraries: JSON.parse("null") }), /application library catalog is required/i);
-  assert.throws(() => hsonLocus.create({ map: authority, libraries: CATALOG.slice(0, 2) }), /missing.*credentials/i);
-  assert.throws(() => hsonLocus.create({ map: authority, libraries: [...CATALOG, { name: "unknown", ownership: "shared" }] }), /unknown authority Library/i);
-  assert.throws(() => hsonLocus.create({ map: authority, libraries: [...CATALOG, CATALOG[0]!] }), /duplicate/i);
-  assert.throws(() => hsonLocus.create({ map: authority, libraries: [...CATALOG,
-    { name: "page", ownership: "private" }] }), /duplicate/i);
-  assert.throws(() => hsonLocus.create({ map: authority, libraries: JSON.parse('[{"name":"page","ownership":"bogus"}]') }), /invalid|ownership/i);
-  assert.throws(() => hsonLocus.create({ map: authority, libraries: [{ name: "page", ownership: "shared" }] }), /missing/i);
-  const hosted = hsonLocus.create({ map: authority, libraries: CATALOG });
+  assert.throws(() => hsonLocus.create({ libraries: CATALOG } as never), /grouped/i);
+  assert.throws(() => hsonLocus.create({ shared: [{ name: "page", definition: { document: "<main/>" } }],
+    local: [{ name: "page", initializer: { document: "<aside/>" } }] } as never), /duplicate/i);
+  assert.throws(() => hsonLocus.create({ shared: [{ name: "page", definition: { document: "<main/>" },
+    ownership: "private" }] } as never), /unsupported/i);
+  const hosted = hsonLocus.create({ ...authority_groups_from_map_fixture(authority, CATALOG) });
   hosted.dispose();
 
   const one = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
-  assert.throws(() => hsonLocus.create({ map: one, libraries: [] }), /missing.*page/i);
-  hsonLocus.create({ map: one, libraries: [{ name: "page", ownership: "private" }] }).dispose();
-  const allPrivate = hsonLocus.create({ map: map(), libraries: CATALOG.map((entry) => ({ name: entry.name, ownership: "private" as const })) });
+  const empty = hsonLocus.create({});
+  assert.deepEqual(empty.map.capture().registry.libraries, []);
+  empty.dispose();
+  hsonLocus.create({ ...authority_groups_from_map_fixture(one, [{ name: "page", ownership: "private" }]) }).dispose();
+  const allPrivate = hsonLocus.create({ ...authority_groups_from_map_fixture(map(), CATALOG.map((entry) => ({ name: entry.name, ownership: "private" as const }))) });
   allPrivate.dispose();
 }
 
@@ -227,17 +227,17 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   server.dispose();
 }
 
-// The deployment supplies the catalog again on restart; durable authority records contain no ownership classification.
+// The source definition supplies original ownership; checkpoint metadata carries runtime additions only.
 {
   const adapter = new MemoryCheckpointAdapter();
-  const first = await hsonLocus.create({ map: map(), libraries: CATALOG, logicalMapId: "projection-persist", persistence: adapter });
-  await first.checkpoint();
+  const first = await hsonLocus.resume({ ...authority_groups_from_map_fixture(map(), CATALOG), logicalMapId: "projection-persist", persistence: adapter });
+  await hsonLocus.checkpoint(first);
   const checkpoint = adapter.state("projection-persist")?.checkpoint;
   assert.equal(JSON.stringify(checkpoint).includes("private"), false);
   assert.equal(JSON.stringify(checkpoint).includes("shared"), false);
   first.dispose();
-  await assert.rejects(() => hsonLocus.create({ map: map(), libraries: CATALOG.slice(0, 2), logicalMapId: "projection-persist", persistence: adapter }), /missing.*credentials/i);
-  const restored = await hsonLocus.create({ map: map(), libraries: CATALOG, logicalMapId: "projection-persist", persistence: adapter });
+  await assert.rejects(() => hsonLocus.resume({ ...authority_groups_from_map_fixture(map(), CATALOG.slice(0, 2)), logicalMapId: "projection-persist", persistence: adapter }), /source definition conflicts/i);
+  const restored = await hsonLocus.resume({ ...authority_groups_from_map_fixture(map(), CATALOG), logicalMapId: "projection-persist", persistence: adapter });
   restored.dispose();
 }
 

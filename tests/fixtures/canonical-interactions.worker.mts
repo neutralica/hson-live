@@ -1,3 +1,5 @@
+import { authority_definition_from_fixture_options } from "../helpers/locus-definition-fixture.mts";
+import type { LocusActionContext } from "../../src/types/locus.core.types.ts";
 import { test_echo_transport } from "../helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "../helpers/replica-driver.mts";
@@ -73,12 +75,10 @@ const descriptor: InteractionDescriptor = Object.freeze({
 add_interaction(authorityMap, descriptor);
 let handled: HsonData | undefined;
 const configured = test_public_projection(authorityMap);
-const locus = hsonLocus.create({
-  map: authorityMap,
-  ...configured,
-  actions: { save: (_context, payload) => { handled = payload; } },
-});
-const captured = internal_livemap_aggregate_authority(authorityMap).captureHosted();
+const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ map: authorityMap, ...configured }),
+  interactions: [descriptor],
+  actions: { save: (_context: LocusActionContext, payload: HsonData | undefined) => { handled = payload; } } });
+const captured = internal_livemap_aggregate_authority(locus.map).captureHosted();
 const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
   configured.libraries, configured.defaultProjection, configured.authorizeProjection);
 const effective = await normalize_locus_effective_projection(policy, configured.defaultProjection);

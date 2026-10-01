@@ -1,3 +1,4 @@
+import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
@@ -272,11 +273,7 @@ await check("aggregate recovery activity releases idempotently on authority disp
 
 await check("disconnect retains one resumable session blocker until deterministic grace expiry", async () => {
   const clock = controlled_schedule();
-  const locus = hsonLocus.create({
-    libraries: test_application_catalog(make_map()),
-    map: make_map(),
-    sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0001" },
-  });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0001" } });
   const socket = socket_fixture();
   bind_locus_websocket(locus, socket.socket);
   await create_session(socket);
@@ -300,16 +297,12 @@ await check("disconnect retains one resumable session blocker until deterministi
 await check("repeated detach and reattach keeps exactly one logical-session blocker", async () => {
   const clock = controlled_schedule();
   let credentialId = 0;
-  const locus = hsonLocus.create({
-    libraries: test_application_catalog(make_map()),
-    map: make_map(),
-    sessions: {
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), sessions: {
       graceMs: 100,
       now: clock.now,
       schedule: clock.schedule,
       credential: () => `aggregate-credential-${String(++credentialId).padStart(4, "0")}`,
-    },
-  });
+    } });
   const first = socket_fixture();
   bind_locus_websocket(locus, first.socket);
   const credential = await create_session(first);
@@ -336,11 +329,7 @@ await check("repeated detach and reattach keeps exactly one logical-session bloc
 
 await check("goodbye releases retained session activity exactly once", async () => {
   const clock = controlled_schedule();
-  const locus = hsonLocus.create({
-    libraries: test_application_catalog(make_map()),
-    map: make_map(),
-    sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0002" },
-  });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0002" } });
   const snapshots: number[] = [];
   locus.activity.onChange((snapshot) => snapshots.push(snapshot.retainedSessionCount));
   const socket = socket_fixture();
@@ -357,11 +346,7 @@ await check("goodbye releases retained session activity exactly once", async () 
 
 await check("authority disposal releases a live retained session before activity becomes terminal", async () => {
   const clock = controlled_schedule();
-  const locus = hsonLocus.create({
-    libraries: test_application_catalog(make_map()),
-    map: make_map(),
-    sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0005" },
-  });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0005" } });
   const snapshots: Readonly<{ state: string; sessions: number }>[] = [];
   locus.activity.onChange((snapshot) => snapshots.push(Object.freeze({
     state: snapshot.state,
@@ -384,12 +369,7 @@ await check("retained session and admitted action own independent activity block
   const clock = controlled_schedule();
   const entered = deferred();
   const release = deferred();
-  const locus = hsonLocus.create({
-    libraries: test_application_catalog(make_map()),
-    map: make_map(),
-    sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0003" },
-    actions: { slow: async () => { entered.resolve(); await release.promise; } },
-  });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0003" }, actions: { slow: async () => { entered.resolve(); await release.promise; } } });
   const socket = socket_fixture();
   bind_locus_websocket(locus, socket.socket);
   await create_session(socket);
@@ -421,12 +401,7 @@ await check("retained aggregate session blocks registry eviction until expiry", 
     maxLoci: 1,
     idleMs: 100,
     create(key: string) {
-      return hsonLocus.create({
-        libraries: test_application_catalog(make_map()),
-        map: make_map(),
-        logicalMapId: key,
-        sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0004" },
-      });
+      return hsonLocus.create({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), logicalMapId: key, sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0004" } });
     },
   }, {
     now: clock.now,

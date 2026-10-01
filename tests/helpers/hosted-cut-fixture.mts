@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./locus-definition-fixture.mts";
 import { Hson, hsonLiveMap, hsonLocus, encode_ssr_bootstrap, decode_ssr_bootstrap, type HsonSchema } from "../../src/index.ts";
 
 const Page: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
@@ -10,11 +11,8 @@ export async function hosted_cut_fixture() {
     data: { data: { value: "WORKER_DATA_SENTINEL" }, schema: Data },
     private: { data: { value: "WORKER_PRIVATE_SENTINEL" }, schema: Data },
   });
-  const locus = hsonLocus.create({ map, logicalMapId: "worker-projection-map", incarnationId: "worker-projection-incarnation",
-    libraries: [{ name: "page", ownership: "shared" }, { name: "data", ownership: "shared" },
-      { name: "private", ownership: "private" }],
-    authorizeProjection: () => ({ libraries: ["page", "data"] }),
-  });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }, { name: "data", ownership: "shared" },
+      { name: "private", ownership: "private" }]), logicalMapId: "worker-projection-map", incarnationId: "worker-projection-incarnation", authorizeProjection: () => ({ libraries: ["page", "data"] }) });
   const session = await locus.session.create({ libraries: ["data", "page"] });
   const cut = session.now({ html: "page" });
   const encoded = encode_ssr_bootstrap(cut);

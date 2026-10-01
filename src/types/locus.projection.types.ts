@@ -1,15 +1,15 @@
 import type { LocusConnectionContext } from "./locus.protocol.types.js";
 import type { LiveMapRootMode } from "./livemap.types.js";
 
-/** Deployment ownership for one application library. Never part of Hson or a Schema. */
+/** Internal deployment/runtime ownership for one application library. Never part of Hson or a Schema. */
 export type LocusLibraryOwnership = "private" | "shared" | "local";
 
-/** One explicit application-catalog entry. Local initializers never enter `locus.map`. */
+/** Internal normalized catalog entry. Local initializers never enter `locus.map`. */
 export type LocusLibraryCatalogEntry =
   | Readonly<{
     name: string;
     ownership: "private" | "shared";
-    /** Initial authority state for Locus-owned construction. Omit when adopting a map. */
+    /** Initial authority definition when supplied by grouped construction. */
     definition?: import("./livemap.types.js").LiveMapLibraryDefinition;
     initializer?: never;
     /** Initial document stylesheet; valid only for a document definition. */

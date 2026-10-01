@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, type LiveMap } from "../src/index.ts";
+import { Hson, hsonLiveMap, type LiveMap, type LiveMapDefinitions } from "../src/index.ts";
 import type { JsonValue } from "../src/core/types.ts";
 import type { LocusHostedAggregateStageWriter } from "../src/api/locus/locus.aggregate.ts";
 import {
@@ -7,6 +7,7 @@ import {
   load_persistent_locus_hosted_aggregate_internal,
   type LocusHostedAggregatePersistedCommit,
   type LocusHostedAggregatePersistedState,
+  type PersistentLocusHostedAggregate,
 } from "../src/api/locus/locus.aggregate.persistence.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { deferred, MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
@@ -31,6 +32,11 @@ function set_data(draft: LocusHostedAggregateStageWriter, name: string, key: str
   library.at([key]).set(value);
 }
 
+function add_private(locus: PersistentLocusHostedAggregate, definitions: LiveMapDefinitions) {
+  return locus.add_libraries_internal(definitions, undefined,
+    Object.keys(definitions).map((name) => ({ name, ownership: "private" as const })));
+}
+
 async function case_(name: string, run: () => Promise<void>): Promise<void> {
   await run();
   process.stdout.write(`ok - ${name}\n`);
@@ -47,7 +53,7 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
   assert.throws(() => map.addLibraries({ bypass: { data: 0 } }), /Locus authority|controlled|managed/i);
   assert.equal(map.rev, 0);
 
-  const addA = await locus.add_libraries_internal({ A: { data: { count: 0 } } });
+  const addA = await add_private(locus, { A: { data: { count: 0 } } });
   assert.equal(addA.prevRev, 0);
   assert.equal(addA.rev, 1);
   assert.equal(addA.previousRegistryDigest, emptyDigest);
@@ -59,7 +65,7 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
   await locus.stage((draft) => { set_data(draft, "A", "count", 1); });
 
   const beforeBatch = locus.registryDigest;
-  const batch = await locus.add_libraries_internal({
+  const batch = await add_private(locus, {
     B: { data: { value: "B0" } },
     C: { data: { value: "C0" } },
   });
@@ -79,7 +85,7 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
   await locus.checkpoint();
   assert.equal(adapter.state(id)?.checkpoint.rev, 4);
   assert.equal(adapter.state(id)?.checkpoint.registryDigest, locus.registryDigest);
-  const addD = await locus.add_libraries_internal({ D: { document: Hson.document`<main/>` } });
+  const addD = await add_private(locus, { D: { document: Hson.document`<main/>` } });
   assert.equal(addD.rev, 5);
   assert.equal(adapter.state(id)?.commits.length, 1);
   const finalDigest = locus.registryDigest;
@@ -109,7 +115,7 @@ await case_("checkpoint-before-add tail and checkpoint-after-add restore the sam
     persistence: adapter, logicalMapId: id,
   });
   const initialDigest = locus.registryDigest;
-  await locus.add_libraries_internal({ later: { data: { value: 2 } } });
+  await add_private(locus, { later: { data: { value: 2 } } });
   await locus.stage((draft) => { set_data(draft, "later", "value", 3); });
   const laterDigest = locus.registryDigest;
   assert.notEqual(laterDigest, initialDigest);
@@ -146,7 +152,7 @@ await case_("prepared topology stays invisible while the durable append is pendi
     map, persistence: adapter, logicalMapId: "topology-pending-append",
   });
   const digest = locus.registryDigest;
-  const pending = locus.add_libraries_internal({ held: { data: { value: 1 } } });
+  const pending = add_private(locus, { held: { data: { value: 1 } } });
   await adapter.entered.promise;
   assert.equal(map.rev, 0);
   assert.equal(locus.registryDigest, digest);
@@ -169,7 +175,7 @@ await case_("failed durable topology append leaves authority and publication unt
   const published: number[] = [];
   const stop = locus.on_commit((commit) => published.push(commit.rev));
   adapter.failAppend = new Error("append failed");
-  await assert.rejects(locus.add_libraries_internal({ rejected: { data: { value: 1 } } }), /append/i);
+  await assert.rejects(add_private(locus, { rejected: { data: { value: 1 } } }), /append/i);
   assert.equal(locus.rev, 0);
   assert.equal(map.rev, 0);
   assert.equal(locus.registryDigest, digest);
@@ -177,19 +183,19 @@ await case_("failed durable topology append leaves authority and publication unt
   assert.deepEqual(adapter.state(locus.logicalMapId)?.commits, []);
   assert.throws(() => map.lib("rejected"), /Unknown/);
   const numberSchema = Hson.schema`<type "data" content <value "number">>`;
-  await assert.rejects(locus.add_libraries_internal({
+  await assert.rejects(add_private(locus, {
     valid: { data: { value: 1 } },
     invalid: { data: { value: "wrong" }, schema: numberSchema },
   }), /Schema|number/i);
   assert.equal(locus.rev, 0);
   assert.throws(() => map.lib("valid"), /Unknown/);
-  await locus.add_libraries_internal({ accepted: { data: { value: 2 } } });
+  await add_private(locus, { accepted: { data: { value: 2 } } });
   assert.deepEqual(published, [1]);
   assert.equal(locus.rev, 1);
   const identity = internal_livemap_aggregate_authority(map).libraries()[0];
   assert.ok(identity);
   internal_livemap_aggregate_authority(map).acquireLocalProjectedIdentity(identity, [], "0000ab123");
-  await locus.add_libraries_internal({ later: { data: { value: 3 } } });
+  await add_private(locus, { later: { data: { value: 3 } } });
   assert.equal(JSON.stringify(adapter.state(locus.logicalMapId)).includes("0000ab123"), false);
   stop();
   locus.dispose();
@@ -202,7 +208,7 @@ await case_("failed checkpoint after an accepted addition preserves the old mani
     map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id,
   });
   const oldCheckpoint = adapter.state(id)?.checkpoint.checkpointId;
-  await locus.add_libraries_internal({ A: { data: { value: 1 } } });
+  await add_private(locus, { A: { data: { value: 1 } } });
   adapter.failManifest = new Error("manifest failed");
   await assert.rejects(locus.checkpoint(), /checkpoint/i);
   assert.equal(adapter.state(id)?.checkpoint.checkpointId, oldCheckpoint);
@@ -221,7 +227,7 @@ await case_("tampered topology digest and reordered tail fail closed on restart"
   const locus = await create_persistent_locus_hosted_aggregate_internal({
     map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id,
   });
-  await locus.add_libraries_internal({ A: { data: { value: 0 } } });
+  await add_private(locus, { A: { data: { value: 0 } } });
   await locus.stage((draft) => { set_data(draft, "A", "value", 1); });
   locus.dispose();
   const good = adapter.state(id);

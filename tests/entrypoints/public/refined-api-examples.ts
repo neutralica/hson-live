@@ -50,9 +50,10 @@ void content;
 const binding = reflect_document(documentMap);
 binding.dispose();
 
-const hostedMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>",
-  schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
-const hosted = hsonLocus.create({ map: hostedMap, libraries: [{ name: "page", ownership: "shared" }] });
+const hostedPageDefinition = { document: "<main/>",
+  schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` };
+const hostedMap = hsonLiveMap.fromLibraries({ page: hostedPageDefinition });
+const hosted = hsonLocus.create({ shared: [{ name: "page", definition: hostedPageDefinition }] });
 void hosted;
 
 const localSsr = libraries.cut({ html: "page" });

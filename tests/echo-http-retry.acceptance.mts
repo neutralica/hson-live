@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { bind_locus_http, hsonEcho, hsonLiveMap, hsonLocus } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -9,8 +10,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 const events = create_test_event_emitter("echo.http-retry");
 events.case_begin("delayed-retry", "temporary stream-open failures wait and later recover");
 const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }],
-  defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const retained = await locus.session.create({ libraries: ["state"] }, { connection: { principalId: "alice" } });
 const binder = bind_locus_http(locus, { endpoint: "/_hson" });
 let interrupt: (() => void) | undefined;

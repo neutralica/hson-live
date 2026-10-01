@@ -1,3 +1,4 @@
+import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { bind_locus_http, hsonEcho, hsonLiveMap, hsonLocus } from "../src/index.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT as format } from "../src/api/locus/locus.aggregate.protocol.ts";
@@ -137,8 +138,7 @@ events.case_end("dispose", "pass");
 
 events.case_begin("pending-sync-dispose", "transport disposal interrupts a pending stream open");
 const pendingMap = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const pendingLocus = hsonLocus.create({ map: pendingMap, libraries: [{ name: "state", ownership: "shared" }],
-  defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+const pendingLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(pendingMap, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const pendingBinder = bind_locus_http(pendingLocus, { endpoint: "/_hson" });
 let streamStarted: (() => void) | undefined;
 const streamOpening = new Promise<void>((resolve) => { streamStarted = resolve; });
@@ -168,8 +168,7 @@ events.case_end("pending-sync-dispose", "pass");
 
 events.case_begin("replica-dispose", "live replica loses readiness on transport disposal");
 const replicaMap = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const replicaLocus = hsonLocus.create({ map: replicaMap, libraries: [{ name: "state", ownership: "shared" }],
-  defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+const replicaLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(replicaMap, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const retained = await replicaLocus.session.create({ libraries: ["state"] });
 const replicaBinder = bind_locus_http(replicaLocus, { endpoint: "/_hson" });
 const replicaTransport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: (input, init) =>

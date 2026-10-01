@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import {
@@ -455,13 +456,14 @@ check("the public commit family preserves future cross-library operation order",
   assert.deepEqual(proof.operations.map((entry) => entry.library), ["state", "colors", "state"]);
 });
 
-check("ordinary Locus accepts and exclusively manages a public registry map", () => {
+check("ordinary Locus constructs and exclusively manages its authority map", () => {
   const map = create_map();
-  const locus = hsonLocus.create({ libraries: test_application_catalog(map), map });
-  assert.equal(locus.map, map);
-  assert.throws(() => map.lib("state").at(["count"]).set(2), /exclusive Locus authority/i);
-  locus.dispose();
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)) });
+  assert.notEqual(locus.map, map);
+  assert.throws(() => locus.map.lib("state").at(["count"]).set(2), /exclusive Locus authority/i);
   assert.equal(map.lib("state").at(["count"]).set(2).rev, 1);
+  locus.dispose();
+  assert.equal(locus.map.lib("state").at(["count"]).set(2).rev, 1);
 });
 
 if (false) {

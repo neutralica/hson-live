@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import { decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
@@ -340,8 +341,7 @@ await check("aggregate-scale roots are consumable without changing ordinary exac
 await check("hosted rendering preserves its fence and produces the existing aggregate recovery cursor", async () => {
   const map = hosted_map_fixture();
   enable_interactions(map);
-  const locus = hsonLocus.create({ libraries: test_application_catalog(map), map,
-    authorizeProjection: () => ({ libraries: ["state", "page"] }) });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)), authorizeProjection: () => ({ libraries: ["state", "page"] }) });
   const session = await authorized_session(locus, ["state", "page"]);
   const ssr = locus.session.get(session.sessionId)!.now({ html: "page" });
   assert.equal(ssr.document, "page");
@@ -374,8 +374,7 @@ await check("HTML cut retains complete transferable state", async () => {
   assert.equal(data(install_libraries_snapshot(rendered.libs).map, "state").snap(["count"]), 0);
   assert.equal(typeof encode_ssr_bootstrap(rendered.libs), "string");
   const hostedMap = hosted_map_fixture();
-  const locus = hsonLocus.create({ libraries: test_application_catalog(hostedMap), map: hostedMap,
-    authorizeProjection: () => ({ libraries: ["state", "page"] }) });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(hostedMap, test_application_catalog(hostedMap)), authorizeProjection: () => ({ libraries: ["state", "page"] }) });
   const session = await authorized_session(locus, ["state", "page"]);
   const hosted = locus.session.get(session.sessionId)!.now({ html: "page" });
   assert.equal(hosted.document, "page");
@@ -389,8 +388,7 @@ await check("Libraries rendering selection and hosted cuts preserve the aggregat
   const map = map_fixture(true);
   assert.notEqual(map.cut({ html: "page" }).html, (map as import("../src/types/livemap.types.ts").LiveMap).cut({ html: "admin" }).html);
   const hostedMap = hosted_map_fixture(true);
-  const locus = hsonLocus.create({ libraries: test_application_catalog(hostedMap), map: hostedMap,
-    authorizeProjection: () => ({ libraries: ["page", "admin"] }) });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(hostedMap, test_application_catalog(hostedMap)), authorizeProjection: () => ({ libraries: ["page", "admin"] }) });
   const session = await authorized_session(locus, ["page", "admin"]);
   assert.deepEqual(Object.keys(locus.session.get(session.sessionId)!.now()).sort(), ["format", "initializerDigest", "libs", "local", "sessionBinding"]);
   const cut = locus.session.get(session.sessionId)!.now({ html: "page" });

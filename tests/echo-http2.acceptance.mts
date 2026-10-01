@@ -1,3 +1,4 @@
+import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { connect, constants, type ClientHttp2Session } from "node:http2";
@@ -17,8 +18,7 @@ events.case_begin("multiplex", "HTTP/2 stream and independent finite request");
 const cert = await readFile(new URL("./fixtures/livehost-tls/cert.pem", import.meta.url));
 const key = await readFile(new URL("./fixtures/livehost-tls/key.pem", import.meta.url));
 const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const locus = hsonLocus.create({ map, libraries: [{ name: "state", ownership: "shared" }],
-  defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
 let releaseFinite: (() => void) | undefined;
 let finiteEntered: (() => void) | undefined;

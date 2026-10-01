@@ -9,8 +9,6 @@ export { Hson } from "./hson-authoring.js";
 export { ANY_DATA, ANY_DOCUMENT } from "./api/schema/hson-schema.js";
 export type {
   AuthorityProjectionSnapshot,
-  LocusLibraryCatalogEntry,
-  LocusLibraryOwnership,
   LocusLocalInitializer,
 } from "./types/locus.projection.types.js";
 export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, SchemaType } from "./api/transform/transform.types.js";
@@ -197,9 +195,11 @@ export type {
   LocusActionContext,
   LocusActionHandler,
   LocusActions,
-  LocusOptions,
-  LocusOwnedLibraryCatalogEntry,
-  LocusOwnedOptions,
+  LocusAuthorityLibraryDefinition,
+  LocusLocalLibraryDefinition,
+  LocusRuntimeLibraryAdditions,
+  LocusDefinitionOptions,
+  LocusResumeOptions,
   LocusResult,
 } from "./types/locus.types.js";
 

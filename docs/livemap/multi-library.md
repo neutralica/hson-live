@@ -53,15 +53,15 @@ Multi-library mutations return `LiveMapCommit`. It holds one map-wide `prevRev`/
 An ordinary selected write installs immediately and synchronously. To describe several writes as one map transition, use `map.batch(callback)`:
 
 ```ts
-const commit = map.batch(batch => {
-  batch.lib("state").at(["count"]).set(1);
-  batch.lib("colors").at(["primary"]).replace("green");
+const commit = map.batch(map => {
+  map.lib("state").at(["count"]).set(1);
+  map.lib("colors").at(["primary"]).replace("green");
 });
 ```
 
 The callback is synchronous and its setters return `void`; the outer call returns one `LiveMapCommit`. The writes are ordered, final affected Library candidates are Schema-validated, and failure installs none of them. Reads through `map` during the callback see the installed state. Batch handles expire when the callback exits. Nested batches and direct writes on the same map during a batch are rejected. `batch` is callback-only; ordinary `map.lib(...).at(...).set(...)` remains the single-write form. `set` keeps its selected graph meaning in both contexts, including its shallow object patch behavior; `replace` remains exact replacement.
 
-There is no default Library on a multi-map and no public removal, replacement, or rename operation. `map.addLibraries(...)` changes local topology; `locus.lib.add(...)` admits hosted authority topology through its durable gate and ownership policy. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
+There is no default Library on a multi-map and no public removal, replacement, or rename operation. `map.addLibraries(...)` changes local topology; `locus.stage.addLibraries({ private, shared })` admits hosted authority topology through its durable gate and ownership policy. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
 
 `map.capture()` synchronously returns one detached `LiveMapSnapshot`.
 It contains the complete ordered registry, QUID-free public and hidden roots,
@@ -74,14 +74,13 @@ generated identity and does not inherit source QUID claims or issued history.
 
 ## Hosted use
 
-Advanced composition can supply an existing map through the same Locus constructor. Ordinary Locus construction supplies definitions in its catalog and lets Locus create the map.
+Locus constructs its managed authoritative map from private and shared definitions. Local initializers remain outside that map.
 
 ```ts
 const locus = hsonLocus.create({
-  map,
-  libraries: [
-    { name: "state", ownership: "shared" },
-    { name: "colors", ownership: "shared" },
+  shared: [
+    { name: "state", definition: { data: { count: 0 }, schema: StateSchema } },
+    { name: "colors", definition: { data: { primary: "blue" }, schema: ColorsSchema } },
   ],
   authorizeProjection: () => ({ libraries: ["state", "colors"] }),
   actions: {
@@ -100,9 +99,9 @@ Outside an action, use the callable `locus.stage` for authoritative writes:
 ```ts
 await locus.stage.lib("state").at(["count"]).set(1);
 
-await locus.stage(stage => {
-  stage.lib("state").at(["count"]).set(2);
-  stage.lib("colors").at(["primary"]).set("blue");
+await locus.stage(loc => {
+  loc.lib("state").at(["count"]).set(2);
+  loc.lib("colors").at(["primary"]).set("blue");
 });
 ```
 
@@ -136,6 +135,6 @@ library input.
 
 Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics for a one-library registry Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.
 
-`await hsonLocus.create({ libraries, logicalMapId, persistence })` supports a growing authority registry. Calling that same ordinary constructor after a restart with the same `logicalMapId` reconstructs persisted application and authority state before the Locus is used. The deployment must supply the ownership catalog for every restored authority library because hosted policy and local initializer definitions are not persisted. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch.
+`await hsonLocus.resume({ private, shared, local, logicalMapId, persistence })` restores an existing durable authority or establishes the declared initial authority durably. Source definitions govern original libraries and local initializers. Durable Locus state supplies ownership for libraries added at runtime, so the deployment does not redeclare them. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch. `hsonLocus.checkpoint(locus)` compacts durable state when needed; accepted commits restore without a manual checkpoint.
 
-Hosted authority topology grows through explicit `locus.lib.add(...)` admissions; authorized projection changes update client-visible topology. Public Library removal, replacement, and rename remain unsupported, as do a default Library and cross-Library QUID transfer. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. A projected named document Library may be bound through Mirror; supported hosted LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay.
+Hosted authority topology grows through explicit `locus.stage.addLibraries({ private, shared })` admissions; authorized projection changes update client-visible topology. Local definitions are construction-time-only. Public Library removal, replacement, and rename remain unsupported, as do a default Library and cross-Library QUID transfer. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. A projected named document Library may be bound through Mirror; supported hosted LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay.
