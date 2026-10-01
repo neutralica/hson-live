@@ -107,7 +107,7 @@ name can select among multiple projected documents.
 const continuation = await continue_hosted_document({
   now,
   credential,
-  socket,
+  transport,
   document: selectedDocumentName,
   root: document.querySelector("main")!,
 });
@@ -118,9 +118,13 @@ continuation.dispose();
 continuation.echo.dispose();
 ```
 
-Continuation constructs a managed Echo replica from the session's current composition. It first admits
-the existing DOM at its captured revision and binds Mirror, then completes
-Echo synchronization. It
+Continuation internally reserves the exact root and prepares an unsynchronized
+Echo replica and projected document before reading the application's DOM. Its
+one-shot start then admits the existing DOM at the captured revision and binds
+Mirror before attaching and synchronizing Echo. Abandoning the internal
+preparation releases the root reservation and prepared Echo; the caller still
+owns the supplied transport. The public `continue_hosted_document` call composes
+these same stages without exposing the preparation controller. It
 resolves only when Echo is caught up and Mirror is active at the current map
 revision. Compatible replay therefore advances the already-adopted nodes in
 place. An incompatible root epoch fails closed through existing Mirror
@@ -134,7 +138,7 @@ only local capabilities and an optional failure observer:
 const continuation = await continue_hosted_document({
   now,
   credential,
-  socket,
+  transport,
   root,
   interactions: {
     local: { reveal: () => showPanel() },

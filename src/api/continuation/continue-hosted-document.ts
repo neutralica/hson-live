@@ -1,4 +1,5 @@
 import type { HsonData } from "../transform/transform.types.js";
+import type { HsonNode } from "../../core/types.js";
 import { prepare_echo_replica_internal } from "../echo/echo.replica-preparation.js";
 import { echo_document_authority_for } from "../echo/echo.document-authority.js";
 import { admit_authority_projection_snapshot, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
@@ -26,21 +27,27 @@ export async function continue_hosted_document(options: HostedContinuationOption
 
 /** @internal Lazy package-root composition point. */
 export async function continue_hosted_document_internal(options: HostedContinuationOptions): Promise<HostedDocumentContinuation> {
+  return prepare_hosted_document_internal(options).start();
+}
+
+type PreparedHostedDocument = Readonly<{
+  start: () => Promise<HostedDocumentContinuation>;
+  dispose: () => void;
+}>;
+
+/** Prepare a hosted replica and reserve its exact root without inspecting the DOM. @internal */
+export function prepare_hosted_document_internal(options: HostedContinuationOptions): PreparedHostedDocument {
   if (typeof options !== "object" || options === null) {
     throw new TypeError("Hosted document continuation options must be an object.");
   }
   validate_continuation_root(options.root);
   validate_interaction_shape(options.interactions);
   const releaseRoot = reserve_continuation_root(options.root);
-  let prepared: ReturnType<typeof prepare_echo_replica_internal>;
-  try { prepared = prepare_echo_replica_internal(options); }
-  catch (cause) { releaseRoot(); throw cause; }
-  const echo = prepared.echo;
-  let adoption: ExactDocumentAdoption | undefined;
-  let reflect: ReturnType<typeof reflect_existing_document_in_runtime> | undefined;
-  let disposeInteractions: (() => void) | undefined;
-  let disposeCssBinding: (() => void) | undefined;
+  let prepared: ReturnType<typeof prepare_echo_replica_internal> | undefined;
   try {
+    prepared = prepare_echo_replica_internal(options);
+    const replica = prepared;
+    const echo = replica.echo;
     const documentName = options.document ?? ("document" in options.now ? options.now.document : undefined);
     const explicitDocument = documentName === undefined ? undefined : echo.map.lib(documentName);
     if (explicitDocument !== undefined && explicitDocument.mode !== "document") {
@@ -70,8 +77,59 @@ export async function continue_hosted_document_internal(options: HostedContinuat
     }
     const revision = resolved.selected.rev;
     const canonicalRoot = resolved.selected.root();
+    const root = options.root;
+    const interactions = options.interactions;
+    let state: "prepared" | "starting" | "started" | "failed" | "disposed" = "prepared";
+    return Object.freeze({
+      async start(): Promise<HostedDocumentContinuation> {
+        if (state !== "prepared") throw new Error(`Hosted continuation cannot start from ${state} state.`);
+        state = "starting";
+        try {
+          const continuation = await start_hosted_document({
+            prepared: replica, resolved, revision, canonicalRoot, root, interactions, releaseRoot,
+          });
+          state = "started";
+          return continuation;
+        } catch (cause) {
+          state = "failed";
+          throw cause;
+        }
+      },
+      dispose(): void {
+        if (state === "disposed" || state === "failed") return;
+        if (state !== "prepared") throw new Error(`Hosted continuation preparation cannot dispose from ${state} state.`);
+        state = "disposed";
+        releaseRoot();
+        echo.dispose();
+      },
+    });
+  } catch (cause) {
+    releaseRoot();
+    try { prepared?.echo.dispose(); } catch { /* Preserve preparation failure. */ }
+    throw cause;
+  }
+}
+
+type HostedStart = Readonly<{
+  prepared: ReturnType<typeof prepare_echo_replica_internal>;
+  resolved: ReturnType<typeof resolve_continuation_document>;
+  revision: number;
+  canonicalRoot: HsonNode;
+  root: Element;
+  interactions: HostedContinuationOptions["interactions"];
+  releaseRoot: () => void;
+}>;
+
+async function start_hosted_document(context: HostedStart): Promise<HostedDocumentContinuation> {
+  const { prepared, resolved, revision, canonicalRoot, root, interactions, releaseRoot } = context;
+  const echo = prepared.echo;
+  let adoption: ExactDocumentAdoption | undefined;
+  let reflect: ReturnType<typeof reflect_existing_document_in_runtime> | undefined;
+  let disposeInteractions: (() => void) | undefined;
+  let disposeCssBinding: (() => void) | undefined;
+  try {
     try {
-      adoption = adopt_exact_existing_document(canonicalRoot, options.root, resolved.selected.css.snapshot());
+      adoption = adopt_exact_existing_document(canonicalRoot, root, resolved.selected.css.snapshot());
       if (resolved.selected.rev !== revision) {
         throw new Error("Canonical document revision changed during exact DOM adoption.");
       }
@@ -107,7 +165,7 @@ export async function continue_hosted_document_internal(options: HostedContinuat
     } catch (cause) {
       throw new DocumentContinuationError("mirror", cause);
     }
-    if (options.interactions !== undefined) {
+    if (interactions !== undefined) {
       try {
         const dispatch = async (actionKey: string, payload: HsonData): Promise<void> => {
           const outcome = await echo.action(actionKey, payload);
@@ -122,9 +180,9 @@ export async function continue_hosted_document_internal(options: HostedContinuat
           map: resolved.aggregate,
           tree: adoption.tree,
           document: continuation_document_library_name(resolved.aggregate, resolved.selected),
-          local: options.interactions.local,
+          local: interactions.local,
           dispatch,
-          ...(options.interactions.onFailure === undefined ? {} : { onFailure: options.interactions.onFailure }),
+          ...(interactions.onFailure === undefined ? {} : { onFailure: interactions.onFailure }),
         });
       } catch (cause) {
         throw new DocumentContinuationError("interactions", cause);
