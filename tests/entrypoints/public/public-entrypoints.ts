@@ -44,7 +44,8 @@ import {
 } from "hson-live";
 
 declare const scoutProvider: ScoutProvider;
-configure_scout(scoutProvider);
+const scoutContinuation: Promise<HostedDocumentContinuation> = configure_scout(scoutProvider);
+void scoutContinuation;
 // @ts-expect-error Scout's browser registration is deliberately absent from the root entrypoint.
 import { configure_scout as rootScoutConfiguration } from "hson-live";
 void rootScoutConfiguration;

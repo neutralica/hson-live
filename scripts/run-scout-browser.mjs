@@ -74,7 +74,7 @@ try {
   const scoutSuffix = "<hson-scout hidden></hson-scout>";
   const page = (scenario) => {
     if (scenario === "registration") return '<!doctype html><html><head><script defer src="/registration.js"></script></head><body></body></html>';
-    const count = scenario === "duplicates" ? 2
+    const count = scenario === "duplicates-four" ? 4 : scenario === "duplicates" ? 2
       : scenario === "no-scout" || scenario === "provider-first" || scenario === "manual-collision" ? 0 : 1;
     const suffix = scenario === "malformed-attribute" ? '<hson-scout hidden endpoint="wrong"></hson-scout>'
       : scenario === "malformed-child" ? "<hson-scout hidden>content</hson-scout>"
@@ -107,7 +107,8 @@ try {
         results.get(scenario)?.({ status: url.searchParams.get("status"), detail: url.searchParams.get("detail") });
         return new Response(null, { status: 204 });
       } },
-      ...["registration", "no-scout", "scout-first", "provider-first", "duplicates", "manual-collision",
+      ...["registration", "no-scout", "scout-first", "provider-first", "duplicates", "duplicates-four",
+        "removed-waiting", "removed-pending", "cross-document-move", "manual-collision",
         "preparing-collision", "provider-failure", "preparation-failure", "start-failure",
         "malformed-attribute", "malformed-child", "malformed-no-hidden", "http", "websocket"]
         .map((scenario) => ({ method: "GET", path: `/${scenario}`, handle: () => new Response(page(scenario),
@@ -120,6 +121,7 @@ try {
   host = await start_node_application_host({ port: 0, applications: [application] });
   const chrome = chrome_executable();
   const scenarios = ["registration", "no-scout", "scout-first", "provider-first", "duplicates",
+    "duplicates-four", "removed-waiting", "removed-pending", "cross-document-move",
     "manual-collision", "preparing-collision", "provider-failure", "preparation-failure", "start-failure",
     "malformed-attribute", "malformed-child", "malformed-no-hidden", "http", "websocket"];
   for (const scenario of process.env.HSON_SCOUT_SCENARIO === undefined ? scenarios

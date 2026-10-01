@@ -73,6 +73,132 @@ case_run("foreign custom-element ownership fails explicitly", `
   }
 `);
 
+const fakeBrowser = `
+  const definitions = new Map();
+  globalThis.HTMLElement = class HTMLElement {
+    constructor() {
+      this.isConnected = false;
+      this.ownerDocument = undefined;
+      this.attributes = [{ name: "hidden", value: "" }];
+      this.childNodes = [];
+      this.removals = 0;
+    }
+    getAttribute(name) { return name === "hidden" ? "" : null; }
+    remove() {
+      this.isConnected = false;
+      this.removals += 1;
+      this.disconnectedCallback?.();
+    }
+  };
+  globalThis.customElements = {
+    get(name) { return definitions.get(name); },
+    define(name, constructor) { definitions.set(name, constructor); },
+  };
+  const { configure_scout } = await import("hson-live/scout");
+  const Scout = definitions.get("hson-scout");
+  function connect(doc, element = new Scout()) {
+    element.ownerDocument = doc;
+    element.isConnected = true;
+    element.connectedCallback();
+    return element;
+  }
+`;
+
+case_run("removed waiting Scout releases its claim for a replacement", `
+  ${fakeBrowser}
+  const doc = {};
+  const first = connect(doc);
+  const loser = connect(doc);
+  first.remove();
+  await Promise.resolve();
+  let calls = 0;
+  configure_scout(() => { calls += 1; return new Promise(() => {}); });
+  let secondConfigurationRejected = false;
+  try { configure_scout(() => new Promise(() => {})); }
+  catch { secondConfigurationRejected = true; }
+  const replacement = connect(doc);
+  if (calls !== 1 || !replacement.isConnected || first.removals !== 1
+    || loser.isConnected || !secondConfigurationRejected) {
+    throw new Error("Removed waiting Scout blocked replacement");
+  }
+`);
+
+case_run("late provider work cannot revive a removed Scout", `
+  ${fakeBrowser}
+  const doc = {};
+  const first = connect(doc);
+  let resolveFirst;
+  let calls = 0;
+  configure_scout(() => {
+    calls += 1;
+    return calls === 1
+      ? new Promise((resolve) => { resolveFirst = resolve; })
+      : new Promise(() => {});
+  });
+  first.remove();
+  await Promise.resolve();
+  const replacement = connect(doc);
+  resolveFirst({ root: { ownerDocument: doc } });
+  await Promise.resolve();
+  await Promise.resolve();
+  if (calls !== 2 || !replacement.isConnected) {
+    throw new Error("Stale provider result affected replacement");
+  }
+`);
+
+case_run("same-document movement keeps one claim and provider call", `
+  ${fakeBrowser}
+  const doc = {};
+  const scout = connect(doc);
+  let calls = 0;
+  configure_scout(() => { calls += 1; return new Promise(() => {}); });
+  scout.remove();
+  connect(doc, scout);
+  await Promise.resolve();
+  if (calls !== 1 || !scout.isConnected) throw new Error("Move duplicated Scout ignition");
+`);
+
+case_run("cross-document movement cancels the old claim and makes the moved Scout inert", `
+  ${fakeBrowser}
+  const firstDocument = {};
+  const secondDocument = {};
+  const moved = connect(firstDocument);
+  let resolveFirst;
+  let calls = 0;
+  configure_scout(() => {
+    calls += 1;
+    return calls === 1
+      ? new Promise((resolve) => { resolveFirst = resolve; })
+      : new Promise(() => {});
+  });
+  moved.remove();
+  moved.ownerDocument = secondDocument;
+  moved.adoptedCallback();
+  connect(secondDocument, moved);
+  resolveFirst({ root: { ownerDocument: secondDocument } });
+  await Promise.resolve();
+  const freshFirst = connect(firstDocument);
+  const freshSecond = connect(secondDocument);
+  if (calls !== 2 || !freshFirst.isConnected || !freshSecond.isConnected) {
+    throw new Error("Moved Scout claimed its new document or blocked fresh claims");
+  }
+  freshFirst.remove();
+  await Promise.resolve();
+  if (calls !== 3) throw new Error("Fresh second-document Scout could not ignite");
+`);
+
+case_run("four Scouts leave only one claimant", `
+  ${fakeBrowser}
+  const doc = {};
+  const scouts = Array.from({ length: 4 }, () => connect(doc));
+  let calls = 0;
+  configure_scout(() => { calls += 1; return new Promise(() => {}); });
+  if (calls !== 1 || !scouts[0].isConnected
+    || scouts.slice(1).some((scout) => scout.isConnected || scout.removals !== 1)) {
+    throw new Error("Duplicate Scouts performed work or remained connected");
+  }
+`);
+
 events.case_begin("root output has no Scout import", "root output has no Scout import");
 assert.doesNotMatch(readFileSync(resolve(repositoryRoot, "dist/index.js"), "utf8"), /api\/scout/);
 events.case_end("root output has no Scout import", "pass");

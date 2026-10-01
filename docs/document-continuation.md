@@ -256,20 +256,36 @@ configuration out of the element and canonical document:
 import { configure_scout } from "hson-live/scout";
 import { hsonEcho } from "hson-live";
 
-configure_scout(async () => {
+const transport = hsonEcho.transport.http({ endpoint: "/_hson" });
+const continuationPromise = configure_scout(async () => {
   const { now, credential } = await loadApplicationSession();
   return {
     now,
     credential,
-    transport: hsonEcho.transport.http({ endpoint: "/_hson" }),
+    transport,
     root: document.documentElement,
   };
 });
+
+const continuation = await continuationPromise;
+// When the application is finished:
+continuation.dispose();
+continuation.echo.dispose();
+transport.dispose();
 ```
 
 The example chooses HTTP in application code. The same provider can supply a
 WebSocket or other `EchoReplicaTransport`; Scout does not inspect it. Configure
-once per browser runtime. A second provider is rejected.
+once per browser runtime. A second provider is rejected. The returned Promise
+waits for Scout to complete hosted continuation, so it remains pending until a
+Scout connects. It resolves to the ordinary `HostedDocumentContinuation` and
+rejects on terminal provider, preparation, or start failure. If an active manual
+continuation makes Scout redundant, Scout removes itself and the Promise rejects
+with the root collision; the manual continuation remains active. Applications
+should observe this Promise to handle failures. Continuation, Echo, and transport
+disposal retain their ordinary separate ownership rules. One configuration
+delivers one page ignition result; Scouts in other Documents do not start a
+second unowned continuation after that result settles.
 
 For a full-document response, the application/page envelope appends the fixed
 Scout suffix **after** its authored closing `</body>` and before `</html>`:
@@ -291,12 +307,17 @@ When the browser runtime is present, Scout validates its empty `hidden`
 declaration, calls the provider once, and prepares hosted continuation without
 adopting the DOM. It then removes itself before the prepared controller starts
 exact adoption, Mirror, Echo synchronization, interactions, and CSS binding.
-A provider or preparation failure leaves Scout hidden in place and reports a
-browser error. After handoff, ordinary continuation cleanup handles failure;
-Scout does not return or own disposal. A module-internal document record keeps
-the in-flight and completed continuation reachable after removal. The element
-has no Shadow DOM or page lifecycle callbacks. A second Scout in the same
-document is removed without another provider call. If a manual continuation
-already owns the exact root, Scout is redundant and removes itself; distinct
-manual roots retain their normal behavior. A restored BFCache page relies on
-its existing continuation, not on Scout running again.
+A provider or preparation failure leaves Scout hidden in place and rejects the
+configured Promise. After handoff, ordinary continuation cleanup handles start
+failure. Scout keeps only a weak document-keyed consumed marker after success;
+the application receives and owns the continuation result. Disposing it does
+not reset Scout ignition for that Document. A disconnected pre-handoff Scout
+releases its claim, and a replacement invokes the same configured provider for
+its own attempt. Late results from the abandoned attempt are ignored. A
+same-document move preserves the claim; moving a claimed Scout to another
+Document cancels it and makes that element inert. The element has no Shadow DOM
+or page lifecycle callbacks. A second Scout in the same document is removed
+without another provider call. If a manual continuation already owns the exact
+root, Scout is redundant and removes itself; distinct manual roots retain their
+normal behavior. A restored BFCache page relies on its existing continuation,
+not on Scout running again.
