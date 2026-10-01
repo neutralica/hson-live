@@ -107,6 +107,7 @@ type ValidatedHostedAggregateState = Readonly<{
   checkpoint: AnyCheckpoint;
   map: LiveMap;
   runtimeOwnership: readonly LocusDurableOwnershipEntry[];
+  prefix?: Readonly<{ map: LiveMapSemanticCheckpoint; runtimeOwnership: readonly LocusDurableOwnershipEntry[] }>;
 }>;
 
 function exact_keys(value: Record<string, unknown>, keys: readonly string[]): boolean {
@@ -181,13 +182,14 @@ export async function write_semantic_checkpoint(
   if (previous !== undefined) {
     if (previous.checkpoint.incarnationId !== checkpoint.authority.incarnationId
       || previous.checkpoint.rev > checkpoint.revision) throw invalid_state();
-    const validated = await validate_hosted_aggregate_state(checkpoint.authority.logicalMapId, previous, adapter);
-    const expected = internal_livemap_aggregate_authority(validated.map).captureSemanticCheckpoint();
-    if (expected.revision !== checkpoint.revision
-      || expected.registry.digest !== checkpoint.registry.digest
-      || JSON.stringify(expected.registry) !== JSON.stringify(checkpoint.registry)
-      || JSON.stringify(expected.libraries) !== JSON.stringify(checkpoint.libraries)
-      || JSON.stringify(validated.runtimeOwnership) !== JSON.stringify(ownership)) throw invalid_state();
+    const validated = await validate_hosted_aggregate_state(checkpoint.authority.logicalMapId, previous, adapter, checkpoint.revision);
+    const expected = validated.prefix;
+    if (expected === undefined || expected.map.revision !== checkpoint.revision
+      || JSON.stringify(expected.map.authority) !== JSON.stringify(checkpoint.authority)
+      || expected.map.registry.digest !== checkpoint.registry.digest
+      || JSON.stringify(expected.map.registry) !== JSON.stringify(checkpoint.registry)
+      || JSON.stringify(expected.map.libraries) !== JSON.stringify(checkpoint.libraries)
+      || JSON.stringify(expected.runtimeOwnership) !== JSON.stringify(ownership)) throw invalid_state();
   }
   const expectedId = previous === undefined ? undefined : active_checkpoint_id(previous.checkpoint);
   const descriptors: CheckpointChunkDescriptor[] = [];
@@ -433,6 +435,7 @@ async function validate_hosted_aggregate_state(
   requestedLogicalMapId: string,
   value: unknown,
   adapter: LocusHostedAggregatePersistenceAdapter,
+  prefixRevision?: number,
 ): Promise<ValidatedHostedAggregateState> {
   try {
     const state = record(value);
@@ -445,8 +448,11 @@ async function validate_hosted_aggregate_state(
     const map = await restore_manifest(checkpoint, adapter);
     const aggregate = internal_livemap_aggregate_authority(map);
     const runtimeOwnership = new Map(checkpoint.locus.runtimeOwnership.map((entry) => [entry.name, entry.ownership] as const));
+    const capturePrefix = () => Object.freeze({ map: aggregate.captureSemanticCheckpoint(),
+      runtimeOwnership: Object.freeze([...runtimeOwnership].map(([name, ownership]) => Object.freeze({ name, ownership }))) });
     if (aggregate.hostedPosition().registryDigest !== checkpoint.registryDigest
       || aggregate.hostedPosition().revision !== checkpoint.rev) throw invalid_state();
+    let prefix = prefixRevision === checkpoint.rev ? capturePrefix() : undefined;
 
     let expectedPrevRev = checkpoint.rev;
     let expectedRegistryDigest = checkpoint.registryDigest;
@@ -490,12 +496,15 @@ async function validate_hosted_aggregate_state(
       if (aggregate.hostedPosition().registryDigest !== commit.registryDigest) throw invalid_state();
       expectedRegistryDigest = commit.registryDigest;
       expectedPrevRev += 1;
+      if (expectedPrevRev === prefixRevision) prefix = capturePrefix();
     }
     if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
     if (map.rev !== expectedPrevRev) throw invalid_state();
+    if (prefixRevision !== undefined && prefix === undefined) throw invalid_state();
     const names = new Set(aggregate.hostedRegistry().libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name));
     if ([...runtimeOwnership.keys()].some((name) => !names.has(name))) throw invalid_state();
-    return Object.freeze({ checkpoint, map, runtimeOwnership: Object.freeze([...runtimeOwnership].map(([name, ownership]) => Object.freeze({ name, ownership }))) });
+    return Object.freeze({ checkpoint, map, runtimeOwnership: Object.freeze([...runtimeOwnership].map(([name, ownership]) => Object.freeze({ name, ownership }))),
+      ...(prefix === undefined ? {} : { prefix }) });
   } catch (cause) {
     if (cause instanceof LocusPersistenceError) throw cause;
     throw invalid_state(cause);

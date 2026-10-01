@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus } from "../src/index.ts";
-import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
+import { MemoryCheckpointAdapter, deferred } from "./helpers/memory-checkpoint-adapter.mts";
 import type { LocusHostedAggregatePersistedState } from "../src/api/locus/locus.aggregate.persistence.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -133,6 +133,46 @@ await assert.rejects(held.stage.addLibraries({ shared: [{ name: "C", definition:
 assert.equal(held.rev, 0);
 assert.throws(() => held.map.lib("C"), /Unknown LiveMap Library/);
 held.dispose();
+const missingIdentityStorage = new MemoryCheckpointAdapter();
+// @ts-expect-error Durable resume requires a stable logicalMapId.
+await assert.rejects(hsonLocus.resume({ shared: definition.shared, persistence: missingIdentityStorage }), /stable logicalMapId/i);
+await assert.rejects(hsonLocus.resume({ shared: definition.shared, logicalMapId: " ",
+  persistence: missingIdentityStorage }), /stable logicalMapId/i);
+assert.equal(missingIdentityStorage.states.size, 0);
+
+class DelayedPreflightAdapter extends MemoryCheckpointAdapter {
+  blockNextLoad = false;
+  readonly entered = deferred();
+  readonly release = deferred();
+  override async load(logicalMapId: string) {
+    if (this.blockNextLoad) {
+      this.blockNextLoad = false;
+      this.entered.resolve();
+      await this.release.promise;
+    }
+    return super.load(logicalMapId);
+  }
+}
+const racingStorage = new DelayedPreflightAdapter();
+const racingDefinition = { logicalMapId: "checkpoint-prefix-race",
+  shared: [{ name: "state", definition: { data: { value: 0 } } }] } as const;
+const racing = await hsonLocus.resume({ ...racingDefinition, persistence: racingStorage });
+racingStorage.blockNextLoad = true;
+const compacting = hsonLocus.checkpoint(racing);
+await racingStorage.entered.promise;
+await racing.stage.lib("state").at(["value"]).set(1);
+await racing.stage.lib("state").at(["value"]).set(2);
+await racing.stage.addLibraries({ shared: [{ name: "later", definition: { data: { value: 3 } } }] });
+racingStorage.release.resolve();
+await compacting;
+assert.equal(racingStorage.state(racingDefinition.logicalMapId)?.checkpoint.rev, 0);
+assert.deepEqual(racingStorage.state(racingDefinition.logicalMapId)?.commits.map((entry) => entry.commit.rev), [1, 2, 3]);
+racing.dispose();
+const racingRestored = await hsonLocus.resume({ ...racingDefinition, persistence: racingStorage });
+assert.equal(racingRestored.rev, 3);
+assert.equal(read(racingRestored, "state"), 2);
+assert.equal(read(racingRestored, "later"), 3);
+racingRestored.dispose();
 const validation = hsonLocus.create({});
 await assert.rejects(validation.stage.addLibraries({}), /requires a Library/i);
 // @ts-expect-error Local runtime additions are intentionally absent.

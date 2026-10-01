@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLocus, type InteractionDescriptor } from "../src/index.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
+import { node_to_json_value } from "../src/api/livemap/livemap.editor.ts";
+import { decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 
 const Count = Hson.schema`<type "data" content <value "number">>`;
 const Secret = Hson.schema`<type "data" content <token "string">>`;
@@ -38,6 +40,33 @@ const styled = hsonLocus.create({ shared: [{ name: "page", definition: { documen
   logicalMapId: "styled-authority" });
 assert.match(styled.map.lib("page").css.snapshot(), /color:red/);
 styled.dispose();
+const combinedDefinition = { shared: [{ name: "page", definition: { document: "<main <button/>/>" }, css }],
+  interactions: [descriptor], logicalMapId: "combined-interactions-css" } as const;
+const combined = hsonLocus.create(combinedDefinition);
+assert.equal(combined.rev, 2); // CSS then descriptor; enabling the system slot creates no revision.
+assert.match(combined.map.lib("page").css.snapshot(), /color:red/);
+const combinedSystem = combined.map.capture().libraries.find((entry) => entry.name === "@hson/canonical-interactions");
+assert.ok(combinedSystem);
+const combinedValue = node_to_json_value(decode_hosted_root(combinedSystem.root));
+if (typeof combinedValue !== "object" || combinedValue === null || Array.isArray(combinedValue)
+  || !Array.isArray(combinedValue.descriptors)) throw new Error("Initial interaction descriptors are missing.");
+assert.equal(combinedValue.descriptors.length, 1);
+assert.throws(() => combined.map.lib("page").css.clearAll(), /managed|authority/i);
+combined.dispose();
+const combinedStorage = new MemoryCheckpointAdapter();
+const combinedDurable = await hsonLocus.resume({ ...combinedDefinition, persistence: combinedStorage });
+assert.equal(combinedDurable.rev, 2);
+combinedDurable.dispose();
+const combinedRestored = await hsonLocus.resume({ ...combinedDefinition, persistence: combinedStorage });
+assert.equal(combinedRestored.rev, 2);
+assert.match(combinedRestored.map.lib("page").css.snapshot(), /color:red/);
+const restoredSystem = combinedRestored.map.capture().libraries.find((entry) => entry.name === "@hson/canonical-interactions");
+assert.ok(restoredSystem);
+const restoredValue = node_to_json_value(decode_hosted_root(restoredSystem.root));
+if (typeof restoredValue !== "object" || restoredValue === null || Array.isArray(restoredValue)
+  || !Array.isArray(restoredValue.descriptors)) throw new Error("Restored interaction descriptors are missing.");
+assert.equal(restoredValue.descriptors.length, 1);
+combinedRestored.dispose();
 const storage = new MemoryCheckpointAdapter();
 const durable = await hsonLocus.resume({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
   logicalMapId: "styled-durable", persistence: storage });

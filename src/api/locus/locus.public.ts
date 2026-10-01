@@ -110,6 +110,9 @@ export async function resume<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: LocusResumeOptions<TPrivate, TShared, TLocal, TActions> & LocusDefinitionNameCheck<TPrivate, TShared, TLocal>):
   Promise<Locus<LiveMap<LocusMapDefinitions<TPrivate, TShared>>, TActions>> {
+  if (typeof options?.logicalMapId !== "string" || options.logicalMapId.trim().length === 0) {
+    throw new TypeError("Locus resume requires a stable logicalMapId.");
+  }
   if (options.persistence === undefined) throw new TypeError("Locus persistence adapter is required.");
   return resume_registry_locus({ ...construct_locus_definition(options), persistence: options.persistence }) as
     Promise<Locus<LiveMap<LocusMapDefinitions<TPrivate, TShared>>, TActions>>;

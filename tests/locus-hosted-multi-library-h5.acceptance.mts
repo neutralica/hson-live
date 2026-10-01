@@ -653,7 +653,8 @@ draft.lib("page").graph(insert_item()); })();
 await check("public hosted failures reject before acceptance and leave the aggregate unchanged", async () => {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await hsonLocus.resume({ ...authority_definition_from_fixture_options({ ...test_public_projection(map), map, persistence }), actions: {
+  const host = await hsonLocus.resume({ ...authority_definition_from_fixture_options({ ...test_public_projection(map), map,
+    logicalMapId: "h5-failed-append", persistence }), actions: {
       increment: async (context) => {
         await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(1); })();
       },

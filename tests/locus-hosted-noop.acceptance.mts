@@ -252,7 +252,8 @@ for (const strategy of ["replay", "reconcile"] as const) {
 {
   const persistence = new MemoryCheckpointAdapter();
   const map = make_map();
-  const locus = await hsonLocus.resume(authority_definition_from_fixture_options({ ...options(map), persistence }));
+  const locus = await hsonLocus.resume(authority_definition_from_fixture_options({ ...options(map),
+    logicalMapId: "hosted-noop-checkpoint", persistence }));
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);
   const echo = hsonEcho.create({ transport: test_echo_transport(pair.client) });
@@ -331,14 +332,64 @@ for (const strategy of ["replay", "reconcile"] as const) {
     if (nestedGrouped === undefined) throw new Error("Nested grouped stage was not attempted.");
     await assert.rejects(nestedGrouped, /active stage/i);
     assert.equal(locus.rev, 3);
+    let nestedAddition: Promise<void> | undefined;
+    await locus.stage(() => {
+      nestedAddition = locus.stage.addLibraries({ shared: [{ name: "later",
+        definition: { data: { value: 1 } } }] });
+    });
+    if (nestedAddition === undefined) throw new Error("Nested library addition was not attempted.");
+    await assert.rejects(nestedAddition, /active stage/i);
+    assert.equal(locus.rev, 3);
+    assert.throws(() => locus.map.lib("later"), /Unknown/);
+    await locus.stage.addLibraries({ shared: [{ name: "later", definition: { data: { value: 1 } } }] });
+    assert.equal(locus.rev, 4);
+    assert.equal(locus.map.lib("later").mode, "data-object");
   } finally { locus.dispose(); }
   console.log("ok - callable stage direct/grouped, managed map fence, expiry, and reentrancy");
 }
 
 {
+  const locus = hsonLocus.create({ shared: [{ name: "page", definition: { document: "<main/>" } }],
+    actions: { tamper: async (ctx) => {
+      const command: Record<string, unknown> = { domain: "graph", op: "set-attr",
+        target: { kind: "path", path: validate_document_path([0]) }, name: "data-action", value: "captured" };
+      ctx.stage.lib("page").graph(command as never);
+      await Promise.resolve();
+      delete command.name;
+      delete command.value;
+      command.op = "ensure-quid";
+      command.quid = "012345678";
+    } },
+  });
+  const target = { kind: "path", path: validate_document_path([0]) } as const;
+  const grouped: Record<string, unknown> = { domain: "graph", op: "set-attr", target,
+    name: "title", value: "grouped" };
+  await locus.stage(stage => {
+    stage.lib("page").graph(grouped as never);
+    delete grouped.name;
+    delete grouped.value;
+    grouped.op = "ensure-quid";
+    grouped.quid = "012345678";
+  });
+  assert.equal(locus.map.lib("page").document.attrs.get(target, "title"), "grouped");
+  const action = await locus.dispatchAction({ type: "action", id: "graph-alias", name: "tamper" });
+  assert.equal(action.type, "ack");
+  assert.equal(locus.map.lib("page").document.attrs.get(target, "data-action"), "captured");
+  assert.equal(JSON.stringify(locus.map.lib("page").root()).includes("012345678"), false);
+  const rev = locus.rev;
+  await assert.rejects(locus.stage(stage => {
+    stage.lib("page").graph({ domain: "graph", op: "ensure-quid", target, quid: "012345678" } as never);
+  }), /generated identity/i);
+  assert.equal(locus.rev, rev);
+  locus.dispose();
+  console.log("ok - grouped and async-action graph commands are detached from caller mutation");
+}
+
+{
   const persistence = new MemoryCheckpointAdapter();
   let map = make_map();
-  const locus = await hsonLocus.resume(authority_definition_from_fixture_options({ ...options(map), persistence }));
+  const locus = await hsonLocus.resume(authority_definition_from_fixture_options({ ...options(map),
+    logicalMapId: "hosted-noop-durable-stage", persistence }));
   map = locus.map;
   try {
     await locus.stage.lib("game").at(["ready"]).set(false);

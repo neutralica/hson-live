@@ -48,6 +48,7 @@ import { livemap_document_identity_overlay_equal, livemap_document_identity_quid
 import { canonical_graph_equal } from "./livemap.document.install.js";
 import { classify_live_root_mode, prepare_livemap_root } from "./livemap.document.js";
 import {
+  admit_public_document_graph_operation,
   prepare_document_graph_operation,
   type PreparedDocumentMutation
 } from "./livemap.document.mutation.js";
@@ -916,6 +917,7 @@ function make_livemap_registry_engine(
         if (!is_aggregate_document_candidate(candidate)) {
           throw new Error("Aggregate graph operations require a document library.");
         }
+        if (write.publicStaged === true) admit_public_document_graph_operation(write.operation);
         const priorRoot = candidate.root;
         const priorOverlay = candidate.overlay;
         const planned = prepare_document_graph_operation(

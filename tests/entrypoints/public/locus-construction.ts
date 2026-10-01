@@ -39,9 +39,12 @@ void hsonLocus.create({ shared: [{ name: "count", definition: definitions.count 
   local: [{ name: "count", initializer: { data: 1 } }] });
 
 declare const provider: LocusPersistenceAdapter;
+// @ts-expect-error Durable resume requires a stable logicalMapId.
+void hsonLocus.resume({ shared: [{ name: "count", definition: definitions.count }], persistence: provider });
 const resumed = await hsonLocus.resume({
   shared: [{ name: "count", definition: definitions.count }],
   private: [{ name: "page", definition: definitions.page }],
+  logicalMapId: "locus-construction-entrypoint",
   persistence: provider,
 });
 const resumedName: LiveMapKnownNames<typeof resumed.map> = "page";

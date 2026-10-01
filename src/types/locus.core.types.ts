@@ -501,6 +501,7 @@ export type LocusResumeOptions<
   TLocal extends readonly LocusLocalLibraryDefinition[] = readonly LocusLocalLibraryDefinition[],
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = LocusDefinitionOptions<TPrivate, TShared, TLocal, TActions> & Readonly<{
+  logicalMapId: LocusLogicalMapId;
   persistence: LocusPersistenceAdapter;
 }>;
 

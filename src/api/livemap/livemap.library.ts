@@ -110,6 +110,8 @@ export type LiveMapAggregateWrite =
     target: LiveMapAuthorityTarget;
     kind: "graph";
     operation: import("../../types/livemap.types.js").LiveMapGraphOp;
+    /** Public staged commands are checked again at the transition boundary. */
+    publicStaged?: true;
   }>
   | Readonly<{
     target: LiveMapAuthorityTarget;

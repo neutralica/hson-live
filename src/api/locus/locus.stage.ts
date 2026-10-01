@@ -29,6 +29,7 @@ export function make_locus_stage<TMap extends LiveMap>(
   map: TMap,
   submit: (callback: (writer: Writer) => void) => Promise<void>,
   addLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>) => Promise<void>,
+  assertSubmissionAllowed: () => void,
 ): LocusStage<TMap> {
   const selected_document = (writer: Writer, name: string): Document => {
     const selected = writer.lib(name);
@@ -70,6 +71,8 @@ export function make_locus_stage<TMap extends LiveMap>(
     (callback: (writer: Writer) => void): Promise<void> => submit(callback),
     {
       addLibraries(additions: LocusRuntimeLibraryAdditions): Promise<void> {
+        try { assertSubmissionAllowed(); }
+        catch (cause) { return Promise.reject(cause); }
         if (typeof additions !== "object" || additions === null || Array.isArray(additions)
           || Reflect.ownKeys(additions).some((key) => key !== "private" && key !== "shared")) {
           return Promise.reject(new TypeError("Locus runtime additions require private/shared groups."));

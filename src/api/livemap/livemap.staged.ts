@@ -1,7 +1,9 @@
 import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
+import { clone_node } from "../../core/clone-node.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY, register_interaction_draft_internal } from "../../internal/interaction-storage.js";
 import { admit_public_document_graph_operation } from "./livemap.document.mutation.js";
 import { validate_document_path } from "./livemap.document.path.js";
@@ -100,9 +102,10 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   const document_library = (identity: LiveMapLibraryIdentity): StagedDocumentLibrary => {
     const graph = (operation: LiveMapGraphOp): void => {
       assert_open();
-      admit_public_document_graph_operation(operation);
-      const path = operation.op === "replace-root" ? [] : operation.target.path;
-      writes.push(Object.freeze({ target: aggregate.target(identity, path), kind: "graph", operation }));
+      const captured = clone_node(operation);
+      admit_public_document_graph_operation(captured);
+      const path = captured.op === "replace-root" ? [] : captured.target.path;
+      writes.push(Object.freeze({ target: aggregate.target(identity, path), kind: "graph", operation: captured, publicStaged: true }));
     };
     const location = (input: readonly number[]): StagedDocumentLocation => {
       assert_open();
@@ -152,7 +155,8 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
       }),
       css: (operation: LiveMapCssOp) => {
         assert_open();
-        writes.push(Object.freeze({ target: aggregate.target(identity, []), kind: "css", operation }));
+        writes.push(Object.freeze({ target: aggregate.target(identity, []), kind: "css",
+          operation: canonical_portable_document_css_op(operation) }));
       },
     });
     return staged;

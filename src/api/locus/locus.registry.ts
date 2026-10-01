@@ -176,8 +176,11 @@ export function create_registry_locus_internal<
   });
 
   let authoringStage = false;
-  const submitStage = async (callback: (writer: LiveMapStagedWriter<LiveMap, void>) => void): Promise<void> => {
+  const assertStageSubmissionAllowed = (): void => {
     if (authoringStage) throw new Error("Nested or direct Locus stage during an active stage callback is forbidden.");
+  };
+  const submitStage = async (callback: (writer: LiveMapStagedWriter<LiveMap, void>) => void): Promise<void> => {
+    assertStageSubmissionAllowed();
     const release = activity.acquire("mutation");
     try {
       await authority.stage((writer) => {
@@ -191,7 +194,7 @@ export function create_registry_locus_internal<
     }
   };
   const stage = make_locus_stage(options.map, submitStage,
-    (definitions, ownership) => authority.add_libraries(definitions, ownership));
+    (definitions, ownership) => authority.add_libraries(definitions, ownership), assertStageSubmissionAllowed);
 
   const dispatchAction: Locus<TMap, TActions>["dispatchAction"] = async (message) => {
     const release = activity.acquire("action");

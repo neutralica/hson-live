@@ -127,6 +127,55 @@ check("batch rejects async, nested, direct, and escaped writes", () => {
   assert.equal(map.rev, 0);
 });
 
+check("batch captures public graph commands and rejects direct identity claims", () => {
+  const map = create_map();
+  const target = { kind: "path", path: validate_document_path([0]) } as const;
+  const command: Record<string, unknown> = { domain: "graph", op: "set-attr", target,
+    name: "title", value: "captured" };
+  map.batch(batch => {
+    batch.lib("page").graph(command as never);
+    delete command.name;
+    delete command.value;
+    command.op = "ensure-quid";
+    command.quid = "012345678";
+  });
+  assert.equal(map.lib("page").document.attrs.get(target, "title"), "captured");
+  assert.equal(JSON.stringify(map.lib("page").root()).includes("012345678"), false);
+  const rev = map.rev;
+  assert.throws(() => map.batch(batch => {
+    batch.lib("page").graph({ domain: "graph", op: "ensure-quid", target, quid: "012345678" } as never);
+  }), /generated identity/i);
+  assert.equal(map.rev, rev);
+
+  const aggregate = internal_livemap_aggregate_authority(map);
+  const pageLibrary = aggregate.libraries()[2];
+  if (pageLibrary === undefined) throw new Error("Expected page library");
+  assert.throws(() => aggregate.commit([{
+    target: aggregate.target(pageLibrary, [0]), kind: "graph", publicStaged: true,
+    operation: { domain: "graph", op: "ensure-quid", target, quid: "012345678" },
+  } as never]), /generated identity/i);
+  assert.equal(map.rev, rev);
+});
+
+check("batch detaches nested graph targets and CSS definitions", () => {
+  const map = create_map();
+  const path = [0];
+  const graph = { domain: "graph", op: "set-attr", target: { kind: "path", path },
+    name: "title", value: "original target" };
+  const css = { domain: "css", kind: "property", name: "--original",
+    definition: { name: "--original", syn: "<number>", inh: false, init: "0" } };
+  map.batch(batch => {
+    batch.lib("page").graph(graph as never);
+    batch.lib("page").css(css as never);
+    path[0] = 1;
+    css.name = "--changed";
+    css.definition.name = "--changed";
+  });
+  assert.equal(map.lib("page").document.attrs.get({ kind: "path", path: validate_document_path([0]) }, "title"), "original target");
+  assert.match(map.lib("page").css.snapshot(), /@property --original/);
+  assert.equal(map.lib("page").css.snapshot().includes("--changed"), false);
+});
+
 check("fromLibraries establishes fixed named data and document Libraries", () => {
   const map = create_map();
   assert.equal(map.rev, 0);
