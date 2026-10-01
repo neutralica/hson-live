@@ -11,6 +11,7 @@ import { reflect_existing_document_in_runtime } from "../mirror/mirror.document.
 import { adopt_exact_existing_document, type ExactDocumentAdoption } from "./continuation.adopt.js";
 import {
   reserve_continuation_root,
+  activate_continuation_root,
   resolve_continuation_document,
   validate_continuation_root,
   validate_interaction_shape,
@@ -213,6 +214,7 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
       },
     });
     schedule_continuation_runtime_activation(adoption.activateRuntimeManagers, "promise-resolution");
+    activate_continuation_root(root);
     return result;
   } catch (cause) {
     try { disposeInteractions?.(); } catch { /* Preserve construction failure. */ }

@@ -148,6 +148,7 @@ const continuation = await continue_hosted_document({
 ```
 
 The ordinary `continuation.tree.async` remains the hosted authoring interface.
+
 Its existing pessimistic authority, completion-revision, and convergence
 semantics are unchanged. `continuation.mirror` remains visible because
 authority success does not imply that every later DOM realization succeeds.
@@ -238,3 +239,64 @@ has been returned or its hosted Promise has resolved. Their owned support DOM,
 including CssManager's style host, is noncanonical infrastructure and may appear
 after that publication boundary; a later manager failure does not retroactively
 reject or roll back the successful continuation.
+
+## Scout: optional declarative browser ignition
+
+Scout is an optional one-shot custom element that starts the same hosted
+continuation when the browser imports `hson-live/scout`. Its import registers
+`hson-scout` automatically; a page without the element does not continue
+automatically. Manual `continue_hosted_document` remains available.
+
+The application supplies ordinary hosted-continuation options through one
+provider. The provider can be configured before or after Scout connects and
+may load session material asynchronously. Keep credentials and transport
+configuration out of the element and canonical document:
+
+```ts
+import { configure_scout } from "hson-live/scout";
+import { hsonEcho } from "hson-live";
+
+configure_scout(async () => {
+  const { now, credential } = await loadApplicationSession();
+  return {
+    now,
+    credential,
+    transport: hsonEcho.transport.http({ endpoint: "/_hson" }),
+    root: document.documentElement,
+  };
+});
+```
+
+The example chooses HTTP in application code. The same provider can supply a
+WebSocket or other `EchoReplicaTransport`; Scout does not inspect it. Configure
+once per browser runtime. A second provider is rejected.
+
+For a full-document response, the application/page envelope appends the fixed
+Scout suffix **after** its authored closing `</body>` and before `</html>`:
+
+```html
+</body>
+<hson-scout hidden></hson-scout>
+</html>
+```
+
+For fragment SSR, the application first constructs the HTML/body envelope.
+Neither the canonical document nor `cut()`, `session.now()`, or generic Hson
+serialization contains Scout. The HTML parser places the after-body element
+as the final body child. With JavaScript disabled, it remains hidden and inert,
+but structural selectors such as `:last-child`, `:nth-child`, and `:empty` can
+observe that extra child.
+
+When the browser runtime is present, Scout validates its empty `hidden`
+declaration, calls the provider once, and prepares hosted continuation without
+adopting the DOM. It then removes itself before the prepared controller starts
+exact adoption, Mirror, Echo synchronization, interactions, and CSS binding.
+A provider or preparation failure leaves Scout hidden in place and reports a
+browser error. After handoff, ordinary continuation cleanup handles failure;
+Scout does not return or own disposal. A module-internal document record keeps
+the in-flight and completed continuation reachable after removal. The element
+has no Shadow DOM or page lifecycle callbacks. A second Scout in the same
+document is removed without another provider call. If a manual continuation
+already owns the exact root, Scout is redundant and removes itself; distinct
+manual roots retain their normal behavior. A restored BFCache page relies on
+its existing continuation, not on Scout running again.

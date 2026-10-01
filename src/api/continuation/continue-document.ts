@@ -15,6 +15,7 @@ import { echo_document_authority_for } from "../echo/echo.document-authority.js"
 import { adopt_exact_existing_document, type ExactDocumentAdoption } from "./continuation.adopt.js";
 import {
   reserve_continuation_root,
+  activate_continuation_root,
   resolve_continuation_document,
   validate_continuation_root,
   validate_interaction_shape,
@@ -122,6 +123,7 @@ export function continue_document(options: Readonly<{
       },
     });
     schedule_continuation_runtime_activation(adoption.activateRuntimeManagers, "synchronous-return");
+    activate_continuation_root(options.root);
     return result;
   } catch (cause) {
     try { disposeInteractions?.(); } catch { /* Preserve construction failure. */ }

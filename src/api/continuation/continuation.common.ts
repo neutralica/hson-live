@@ -4,7 +4,15 @@ import type {
   LiveMap,
 } from "../../types/livemap.types.js";
 
-const ACTIVE_CONTINUATION_ROOTS = new WeakSet<Element>();
+const CONTINUATION_ROOTS = new WeakMap<Element, "preparing" | "active">();
+
+/** @internal Exact-root reservation collision. */
+export class ContinuationRootReservedError extends Error {
+  constructor() {
+    super("This DOM root already has an active document continuation.");
+    this.name = "ContinuationRootReservedError";
+  }
+}
 
 export type ResolvedContinuationDocument = Readonly<{
   selected: LiveMapDocumentLibrary;
@@ -32,16 +40,29 @@ export function validate_continuation_root(root: unknown): asserts root is Eleme
 }
 
 export function reserve_continuation_root(root: Element): () => void {
-  if (ACTIVE_CONTINUATION_ROOTS.has(root)) {
-    throw new Error("This DOM root already has an active document continuation.");
+  if (CONTINUATION_ROOTS.has(root)) {
+    throw new ContinuationRootReservedError();
   }
-  ACTIVE_CONTINUATION_ROOTS.add(root);
+  CONTINUATION_ROOTS.set(root, "preparing");
   let released = false;
   return (): void => {
     if (released) return;
     released = true;
-    ACTIVE_CONTINUATION_ROOTS.delete(root);
+    CONTINUATION_ROOTS.delete(root);
   };
+}
+
+/** @internal Distinguish an established manual continuation from an in-flight root claim. */
+export function continuation_root_is_active(root: Element): boolean {
+  return CONTINUATION_ROOTS.get(root) === "active";
+}
+
+/** @internal Mark the exact root only after adoption and continuation establishment. */
+export function activate_continuation_root(root: Element): void {
+  if (CONTINUATION_ROOTS.get(root) !== "preparing") {
+    throw new Error("Continuation root was not reserved for preparation.");
+  }
+  CONTINUATION_ROOTS.set(root, "active");
 }
 
 function is_document_library(value: unknown): value is LiveMapDocumentLibrary {

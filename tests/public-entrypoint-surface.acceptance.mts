@@ -73,6 +73,7 @@ const PACKAGE_EXPORTS = `
 ./locus/node
 ./number
 ./mirror
+./scout
 ./ssr
 ./transform
 `.trim().split(/\s+/).sort();
@@ -86,6 +87,7 @@ const declarationFiles = [
   "dist/api/livemap/index.d.ts",
   "dist/api/livetree/index.d.ts",
   "dist/api/mirror/index.d.ts",
+  "dist/api/scout/index.d.ts",
   "dist/api/echo/index.d.ts",
   "dist/api/locus/index.d.ts",
   "dist/api/locus/node/index.d.ts",
@@ -131,6 +133,10 @@ await check("root declaration exports match the reviewed allowlist", () => {
 
 await check("diagnostics declaration exports match the reviewed allowlist", () => {
   assert.deepEqual(declaration_exports("dist/diagnostics/index.d.ts"), DIAGNOSTICS_EXPORTS);
+});
+
+await check("Scout declaration exposes only its provider and configuration call", () => {
+  assert.deepEqual(declaration_exports("dist/api/scout/index.d.ts"), ["ScoutProvider", "configure_scout"]);
 });
 
 await check("package exports match the reviewed allowlist", () => {

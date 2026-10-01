@@ -1,4 +1,5 @@
 import type { LiveMapHtmlCut } from "hson-live/livemap";
+import { configure_scout, type ScoutProvider } from "hson-live/scout";
 import {
   Hson,
   HsonData,
@@ -41,6 +42,12 @@ import {
   type BrowserInteractionDescriptor,
   type LocusInteractionDescriptor,
 } from "hson-live";
+
+declare const scoutProvider: ScoutProvider;
+configure_scout(scoutProvider);
+// @ts-expect-error Scout's browser registration is deliberately absent from the root entrypoint.
+import { configure_scout as rootScoutConfiguration } from "hson-live";
+void rootScoutConfiguration;
 
 import type { TransformOutput } from "hson-live/transform";
 // @ts-expect-error The retired projected-data options name was hard-removed.
