@@ -1,12 +1,12 @@
 # Locus overview
 
-Locus owns one private/shared authority registry plus separate system state and deployment-defined local initializers. Authority topology can grow through `locus.stage.addLibraries({ private, shared })`; local definitions remain construction-time-only. A one-library authority uses the same session, authorization, socket, current-state, and live publication machinery as a larger registry.
+Locus owns one private/shared authority registry plus separate system state and deployment-defined local initializers. Authority topology can grow through `locus.addLibraries({ private, shared })`. The current local initializer catalog is supplied at construction and may be granted to an already-running Echo later. A one-library authority uses the same session, authorization, socket, current-state, and live publication machinery as a larger registry.
 
 At session creation, Locus normalizes an authorized composition from the catalog, request, and read authorizer. Each grant is an exact set of shared names and local initializer names. `session.now()` materializes shared current state and authorized local initializers separately. Retained synchronization installs missed shared topology in place; when replay is unsafe, reconcile updates only the shared partition. Local state is initialized when absent and thereafter preserved.
 
 `session.now({ html: document })` binds HTML and shared authority state to one authority revision. Only a selected permitted shared document renders into HTML. The application may send HTML alone or place the whole `now` composition in an SSR carrier.
 
-Echo manages shared and local libraries inside one composed client LiveMap. Local roots, Schemas, CSS, and interaction descriptors are client-owned after initialization. Descriptor ownership follows the subject Library inside one canonical interaction root; `kind: "browser" | "locus"` chooses only the dispatch branch. The authority cursor and client `map.rev` are separate clocks, so local edits do not change Locus sync position.
+Echo owns shared and local libraries in one composed client state. Local roots, Schemas, CSS, and interaction descriptors are client-owned after initialization. Descriptor ownership follows the subject Library inside one canonical interaction root; `kind: "browser" | "locus"` chooses only the dispatch branch. `echo.rev` is the composed-state clock; `echo.sync.appliedRev` is the processed authority cursor. Local edits change only the former.
 
 Locus persistence and server-side authority access remain complete. The framework does not inspect arbitrary application HTML or JSON, so application code must avoid manually copying private values into a permitted document or response.
 

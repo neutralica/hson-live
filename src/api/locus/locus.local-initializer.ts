@@ -128,7 +128,7 @@ export function make_locus_application_catalog(
       || seen.has(entry.name)) throw new Error("Locus application library catalog contains an invalid or duplicate name.");
     seen.add(entry.name);
     if (entry.ownership === "local") {
-      if (authorityNames.has(entry.name)) throw new Error(`Local initializer ${JSON.stringify(entry.name)} collides with locus.map.`);
+      if (authorityNames.has(entry.name)) throw new Error(`Local initializer ${JSON.stringify(entry.name)} collides with Locus authority state.`);
       local.set(entry.name, canonical_local(entry));
       continue;
     }

@@ -1,3 +1,4 @@
+import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_map_fixture, authority_groups_from_catalog_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -104,19 +105,19 @@ for (const strategy of ["replay", "reconcile"] as const) {
   echo.connect();
   await echo.session.reattach();
   assert.equal((await echo.completeRecovery()).strategy, "current");
-  assert.equal(echo.sync.debug().lastAppliedRev, snapshot.revision);
+  assert.equal(echo.sync.appliedRev, snapshot.revision);
   const local = data(client, "local");
   const localHandle = local.at(["value"]);
   echo.disconnect(); detach();
   localHandle.set("LOCAL_OFFLINE");
   await locus.stage((draft) => draft.lib("visible").at(["value"]).set("RECOVERED"));
   await locus.stage((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_OFFLINE"));
-  assert.equal(echo.sync.debug().lastAppliedRev, snapshot.revision);
+  assert.equal(echo.sync.appliedRev, snapshot.revision);
   assert.equal(JSON.stringify(snapshot), retained, "captured artifact is detached from later mutations");
   detach = bind_locus_websocket(locus, pair.server);
   echo.connect(); await echo.awaitReconnect();
   assert.equal(echo.sync.strategy, strategy);
-  assert.equal(echo.sync.debug().lastAppliedRev, locus.rev);
+  assert.equal(echo.sync.appliedRev, locus.rev);
   assert.equal(echo.map, client);
   assert.equal(client.lib("local"), local);
   assert.equal(localHandle.snap(), "LOCAL_OFFLINE");

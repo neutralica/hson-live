@@ -36,7 +36,7 @@ const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, ["pag
     return { libraries: ["page", "state", "extra", "secret"], writableDocuments: ["page"] };
   }, sessions: { credential: () => "server-first-credential-0001", schedule: (_delay, callback) => { expiry = callback; return () => { expiry = undefined; }; } } });
 assert.equal("sessions" in locus, false);
-for (const retired of ["cut", "captureClient", "revokeSession"]) assert.equal(retired in locus, false);
+for (const retired of ["captureClient", "revokeSession"]) assert.equal(retired in locus, false);
 assert.equal("updateProjection" in locus.session, false);
 assert.equal(locus.session.debug().activeSessionCount, 0);
 const session = await locus.session.create({ libraries: ["page", "state", "secret"] }, { connection: { principalId: "alice" } });
@@ -72,7 +72,7 @@ detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 echo.connect(); await echo.session.reattach();
 assert.equal(echo.sync.strategy, "reconcile");
 assert.equal(locus.session.get(id), session);
-assert.equal(echo.sync.debug().lastAppliedRev, locus.rev);
+assert.equal(echo.sync.appliedRev, locus.rev);
 assert.deepEqual(session.now().libs.libraries.map(entry => entry.name), ["state"]);
 for (const raw of wire.frames) assert.equal(raw.includes("htmlDocument"), false);
 const wrong = pair(); const wrongDetach = bind_locus_websocket(locus, wrong.server, { principalId: "mallory" });

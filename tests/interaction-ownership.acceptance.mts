@@ -1,3 +1,4 @@
+import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -423,27 +424,27 @@ for (const sharedFeature of [true, false]) {
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
-  const beforeCursor = echo.sync.debug().lastAppliedRev;
+  const beforeCursor = echo.sync.appliedRev;
   const beforeLocusRev = locus.rev;
-  const beforeDigest = internal_livemap_aggregate_authority(echo.map).clientProjection()?.registry.digest;
-  add_interaction(echo.map, descriptor("local-only", "panel"));
-  assert.deepEqual(ids(echo.map), ["local-only"]);
+  const beforeDigest = internal_livemap_aggregate_authority(echo_map_internal(echo)).clientProjection()?.registry.digest;
+  add_interaction(echo_map_internal(echo), descriptor("local-only", "panel"));
+  assert.deepEqual(ids(echo_map_internal(echo)), ["local-only"]);
   assert.equal(locus.rev, beforeLocusRev);
-  assert.equal(echo.sync.debug().lastAppliedRev, beforeCursor);
-  assert.equal(internal_livemap_aggregate_authority(echo.map).clientProjection()?.registry.digest, beforeDigest);
+  assert.equal(echo.sync.appliedRev, beforeCursor);
+  assert.equal(internal_livemap_aggregate_authority(echo_map_internal(echo)).clientProjection()?.registry.digest, beforeDigest);
   assert.equal(internal_livemap_aggregate_authority(authority).systemState("@hson/canonical-interactions"), undefined);
-  const panel = echo.map.lib("panel");
-  const reflection = mirror_document(echo.map, "panel");
+  const panel = echo.lib("panel");
+  const reflection = mirror_document(echo_map_internal(echo), "panel");
   const target = new EventTarget();
   link_node_to_el(reflection.tree.find.must.byTag("button").node, target as unknown as Element);
   let calls = 0;
-  const dispose = activate_interactions({ map: echo.map, tree: reflection.tree, document: "panel",
+  const dispose = activate_interactions({ map: echo_map_internal(echo), tree: reflection.tree, document: "panel",
     local: { run: () => { calls += 1; } } });
   target.dispatchEvent(new Event("click"));
   await session.update({ libraries: ["page"] });
   await session.update({ libraries: ["page", "panel"] });
-  assert.equal(echo.map.lib("panel"), panel);
-  assert.deepEqual(ids(echo.map), ["local-only"]);
+  assert.equal(echo.lib("panel"), panel);
+  assert.deepEqual(ids(echo_map_internal(echo)), ["local-only"]);
   target.dispatchEvent(new Event("click"));
   assert.equal(calls, 2);
   echo.disconnect();
@@ -452,7 +453,7 @@ for (const sharedFeature of [true, false]) {
   echo.connect();
   await until(() => echo.sync.status === "caught_up");
   assert.equal(echo.sync.strategy, "current");
-  assert.deepEqual(ids(echo.map), ["local-only"]);
+  assert.deepEqual(ids(echo_map_internal(echo)), ["local-only"]);
   dispose(); reflection.dispose(); echo.dispose(); detach(); locus.dispose();
   process.stdout.write("ok - local interactions leave public Echo current sync and authority state unchanged\n");
 }

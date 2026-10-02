@@ -44,7 +44,7 @@ map.batch(async batch => { batch.lib("typed").at(["count"]).set(3); });
 map.batch.lib("typed");
 
 declare const locus: Locus<typeof map>;
-const direct: Promise<void> = locus.stage.lib("typed").at(["count"]).set(3);
+const direct: Promise<void> = locus.lib("typed").at(["count"]).set(3);
 const grouped: Promise<void> = locus.stage(stage => {
   const staged: void = stage.lib("typed").at(["count"]).set(4);
   void staged;
@@ -55,8 +55,8 @@ void grouped;
 // @ts-expect-error A stage callback cannot span awaits.
 locus.stage(async stage => { stage.lib("typed").at(["count"]).set(5); });
 // @ts-expect-error A Schema-governed direct setter rejects a string count.
-locus.stage.lib("typed").at(["count"]).set("wrong");
+locus.lib("typed").at(["count"]).set("wrong");
 // @ts-expect-error Stage has no nested batch namespace.
 locus.stage.batch(() => {});
 // @ts-expect-error Reads and updates are deliberately absent from staged locations.
-locus.stage.lib("typed").at(["count"]).update(value => value + 1);
+locus.lib("typed").at(["count"]).update(value => value + 1);

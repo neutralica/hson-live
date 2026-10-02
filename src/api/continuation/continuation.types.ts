@@ -5,6 +5,7 @@ import type {
 } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
 import type { DocumentMirror } from "../mirror/mirror.document.js";
+import type { EchoProjectedDocumentLibrary } from "../../types/governor.types.js";
 
 export type DocumentContinuation<TMap extends LiveMapDocumentLibrary = LiveMapDocumentLibrary> = Readonly<{
   map: TMap;
@@ -13,8 +14,7 @@ export type DocumentContinuation<TMap extends LiveMapDocumentLibrary = LiveMapDo
   dispose: () => void;
 }>;
 
-export type HostedDocumentContinuation<
-  TMap extends LiveMapDocumentLibrary = LiveMapDocumentLibrary,
-> = DocumentContinuation<TMap> & Readonly<{
+export type HostedDocumentContinuation = Omit<DocumentContinuation, "map"> & Readonly<{
+  map: EchoProjectedDocumentLibrary;
   echo: Echo<LiveMap>;
 }>;

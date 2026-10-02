@@ -1,3 +1,4 @@
+import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -294,7 +295,7 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
 {
   const oneMap = hsonLiveMap.fromLibraries({ page: { document: '<main <p "ONE_LIBRARY_HTML"/>/>', schema: Page } });
   const emptyLocus = hsonLocus.create({});
-  assert.equal(emptyLocus.map.capture().registry.libraries.length, 0);
+  assert.equal(locus_map_internal(emptyLocus).capture().registry.libraries.length, 0);
   emptyLocus.dispose();
   const oneLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(oneMap, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"] }) });
   let receive: ((raw: string) => void) | undefined;

@@ -1,3 +1,4 @@
+import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import type { LocusActionContext } from "../src/types/locus.core.types.ts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
@@ -378,7 +379,7 @@ add_interaction(draft, local("mixed", "run")); })(),
         }));
 add_interaction(draft, { ...local("invalid", "run"), subject: { library: "page", path: [-1] } }); })(),
     } });
-  map = locus.map;
+  map = locus_map_internal(locus);
   aggregate = internal_livemap_aggregate_authority(map);
 
   const accepted = await locus.dispatchAction({ type: "action", id: "mixed-accept", name: "mixed" });
@@ -422,7 +423,7 @@ await check("batch and stage each admit document movement with interaction maint
       add_interaction(stage, local("stage-move", "run"));
     });
     assert.equal(locus.rev, 1);
-    assert.match(JSON.stringify(internal_livemap_aggregate_authority(locus.map).captureHosted()), /stage-move/);
+    assert.match(JSON.stringify(internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted()), /stage-move/);
   } finally { locus.dispose(); }
 });
 
@@ -434,13 +435,13 @@ await check("Locus staging authors hidden descriptors while direct managed write
       replace: (context) => (() => { const draft = context.stage; replace_interaction(draft, local("managed", "next")); })(),
       remove: (context) => (() => { const draft = context.stage; remove_interaction(draft, "managed"); })(),
     } });
-  assert.throws(() => add_interaction(locus.map, descriptor), /exclusive Locus authority/i);
+  assert.throws(() => add_interaction(locus_map_internal(locus), descriptor), /exclusive Locus authority/i);
   assert.equal((await locus.dispatchAction({ type: "action", id: "managed-add", name: "add" })).type, "ack");
-  assert.equal(locus.map.rev, 1);
+  assert.equal(locus.rev, 1);
   assert.equal((await locus.dispatchAction({ type: "action", id: "managed-replace", name: "replace" })).type, "ack");
-  assert.equal(locus.map.rev, 2);
+  assert.equal(locus.rev, 2);
   assert.equal((await locus.dispatchAction({ type: "action", id: "managed-remove", name: "remove" })).type, "ack");
-  assert.equal(locus.map.rev, 3);
+  assert.equal(locus.rev, 3);
   locus.dispose();
 });
 
@@ -908,7 +909,7 @@ await check("public Echo dispatcher preserves exact payload through configured L
   const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...configured, map: authorityMap }),
     interactions: [authoritative("echo", "save", exact)],
     actions: { save: (_context: LocusActionContext, payload: HsonData | undefined) => { handled = payload; } } });
-  const captured = internal_livemap_aggregate_authority(locus.map).captureHosted();
+  const captured = internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted();
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
     configured.libraries, configured.defaultProjection, configured.authorizeProjection);
   const effective = await normalize_locus_effective_projection(policy, configured.defaultProjection);

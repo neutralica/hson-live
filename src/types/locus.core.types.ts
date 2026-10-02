@@ -10,6 +10,7 @@ import type {
   LiveMapKnownDefinitions,
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
+import type { GovernorLibrarySelector, GovernorReadLibrarySelector, GovernorCut, GovernorCommits, EchoLibrary } from "./governor.types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
 import type {
   LocusActionAuthorizer,
@@ -44,15 +45,13 @@ import type { EchoEndpointTransport, EchoReplicaTransport } from "./echo.transpo
 
 /** One authoritative submission surface: direct setters admit, callback setters only stage. */
 export type LocusStage<TMap extends LiveMap> =
-  LiveMapSynchronousAuthoring<LiveMapStagedWriter<TMap, void>, Promise<void>>
-  & LiveMapStagedWriter<TMap, Promise<void>>
-  & Readonly<{ addLibraries: (additions: LocusRuntimeLibraryAdditions) => Promise<void> }>;
+  LiveMapSynchronousAuthoring<LiveMapStagedWriter<TMap, void>, Promise<void>>;
 
-/** Ordinary Locus action context for one fixed library-registry LiveMap. */
+/** Ordinary Locus action context with governed reads and a staged writer. */
 export type LocusActionContext<
   TMap extends LiveMap = LiveMap,
 > = Readonly<{
-  map: TMap;
+  lib: GovernorReadLibrarySelector<TMap>;
   stage: LiveMapStagedWriter<TMap, void>;
   seq: LocusSeq;
   origin: LocusActionOrigin;
@@ -329,10 +328,11 @@ export type EchoSyncDiagnostics = Readonly<{
   strategy?: EchoSyncStrategy;
   logicalMapId?: LocusLogicalMapId;
   incarnationId?: LocusIncarnationId;
-  lastAppliedRev?: number;
 }>;
 
 export type EchoSync = Readonly<{
+  /** Latest contiguous authority revision processed by this replica. */
+  readonly appliedRev: number | undefined;
   readonly status: EchoSyncStatus;
   readonly failure: EchoSyncFailure | undefined;
   readonly strategy: EchoSyncStrategy | undefined;
@@ -420,7 +420,10 @@ export type Echo<
   actionStatus: (requestId: LocusActionRequestId) => Promise<EchoActionStatusResult>;
   dispose: LocusDisposer;
 }> & (TMap extends LiveMap ? Readonly<{
-  map: TMap;
+  readonly rev: number;
+  lib: (name: string) => EchoLibrary;
+  cut: GovernorCut;
+  commits: GovernorCommits;
   sync: EchoSync;
 }> : Readonly<{}>);
 
@@ -463,7 +466,10 @@ export type Locus<
   TMap extends LiveMap = LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
-  map: TMap;
+  lib: GovernorLibrarySelector<TMap>;
+  cut: GovernorCut;
+  commits: GovernorCommits;
+  addLibraries: (additions: LocusRuntimeLibraryAdditions) => Promise<void>;
   readonly logicalMapId: LocusLogicalMapId;
   readonly incarnationId: LocusIncarnationId;
   readonly rev: number;

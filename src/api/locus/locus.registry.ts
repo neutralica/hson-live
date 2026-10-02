@@ -31,6 +31,8 @@ import { LocusProjectionUnavailableError } from "./locus.projection.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 import { register_locus_semantic_attachment_internal } from "./locus.transport.internal.js";
 import { make_locus_stage } from "./locus.stage.js";
+import type { GovernorReadLibrarySelector } from "../../types/governor.types.js";
+import { register_locus_map_internal } from "../../internal/governor-maps.js";
 
 function establish_authority_identity(
   map: LiveMap,
@@ -103,6 +105,30 @@ export function create_registry_locus_internal<
     payload: ExactDataCarrier | undefined,
     message?: LocusClientActionMessage,
   ) => unknown | void | Promise<unknown | void>> = {};
+  const readLib = ((name: string) => {
+    const selected = options.map.lib(name);
+    if (selected.mode !== "document") return Object.freeze({
+      mode: selected.mode, get rev() { return selected.rev; }, root: () => selected.root(),
+      snap: selected.snap.bind(selected), schema: Object.freeze({ get: () => selected.schema.get() }),
+      at: (path: import("../../types/livemap.types.js").LivePath) => {
+        const raw = selected.at(path);
+        return Object.freeze({ get rev() { return raw.rev; }, path: () => raw.path(), snap: () => raw.snap(),
+          data: () => raw.data(), watch: raw.watch.bind(raw), kind: () => raw.kind() });
+      },
+    });
+    return Object.freeze({
+      mode: "document" as const, get rev() { return selected.rev; }, root: () => selected.root(),
+      render: () => selected.render(), commits: selected.commits,
+      schema: Object.freeze({ get: () => selected.schema.get() }),
+      css: Object.freeze({ snapshot: () => selected.css.snapshot(), has: (key: string) => selected.css.has(key),
+        list: () => selected.css.list(), get: (key: string) => selected.css.get(key) }),
+      at: (path: readonly number[]) => {
+        const raw = selected.at(path);
+        return Object.freeze({ get rev() { return raw.rev; }, path: () => raw.path(), snap: () => raw.snap(),
+          watch: raw.watch.bind(raw), kind: () => raw.kind() });
+      },
+    });
+  }) as GovernorReadLibrarySelector<TMap>;
 
   for (const [name, handler] of Object.entries(options.actions ?? {})) {
     if (handler === undefined) continue;
@@ -114,7 +140,7 @@ export function create_registry_locus_internal<
         stage: LiveMapStagedWriter<LiveMap, void>;
       }>;
       const publicContext: LocusActionContext<TMap> = Object.freeze({
-        map: aggregateContext.map as TMap,
+        lib: readLib,
         stage: aggregateContext.stage as LiveMapStagedWriter<TMap, void>,
         seq: actionSequence,
         origin: aggregateContext.origin,
@@ -193,7 +219,7 @@ export function create_registry_locus_internal<
       release();
     }
   };
-  const stage = make_locus_stage(options.map, submitStage,
+  const governed = make_locus_stage(options.map, submitStage,
     (definitions, ownership, css) => authority.add_libraries(definitions, ownership, css), assertStageSubmissionAllowed);
 
   const dispatchAction: Locus<TMap, TActions>["dispatchAction"] = async (message) => {
@@ -257,7 +283,10 @@ export function create_registry_locus_internal<
   }
 
   const locus = Object.freeze({
-    map: options.map,
+    lib: governed.lib,
+    cut: options.map.cut.bind(options.map),
+    commits: options.map.commits,
+    addLibraries: governed.addLibraries,
     logicalMapId: authority.logicalMapId,
     incarnationId: authority.incarnationId,
     get rev() { return authority.rev; },
@@ -276,7 +305,7 @@ export function create_registry_locus_internal<
       dispose: authority.sessions.dispose,
     }),
     actionRequests: authority.actionRequests,
-    stage,
+    stage: governed.stage,
     dispatchAction,
     dispose: () => {
       if (disposed) return;
@@ -290,6 +319,7 @@ export function create_registry_locus_internal<
       internal.onDispose?.(locus);
     },
   });
+  register_locus_map_internal(locus, options.map);
   register_locus_semantic_attachment_internal(locus, ({ notice, connection, onClose }) =>
     authority.attach(notice, connection, onClose), authority.debug().effectiveLiveWireBytes);
   alias_locus_remote_action_admission_internal(locus, authority);

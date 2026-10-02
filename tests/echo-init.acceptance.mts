@@ -1,3 +1,5 @@
+import { echo_map_internal } from "../src/internal/governor-maps.js";
+import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -99,12 +101,12 @@ for (const [expected, advance, truncateHistory] of [
   assert.equal(echo.session.status, "attached");
   assert.equal(echo.sync.status, "caught_up");
   assert.equal(echo.sync.strategy, expected);
-  assert.equal(echo.sync.debug().lastAppliedRev, locus.rev);
+  assert.equal(echo.sync.appliedRev, locus.rev);
   assert.equal(echo.session.credential, session.credential);
-  const state = echo.map.lib("state");
+  const state = echo.lib("state");
   if (state.mode === "document") throw new Error("Expected a data library.");
   assert.equal(state.snap(["value"]), expected === "current" ? 0 : 1);
-  assert.throws(() => state.at(["value"]).set(2), /authority|managed|controlled|reserved/i);
+  assert.equal("set" in state.at(["value"]), false, "projected data has no direct setter");
   echo.dispose();
   assert.equal(echo.session.credential, undefined);
   assert.equal(echo.sync.status, "disposed");
@@ -191,8 +193,9 @@ for (const [expected, advance, truncateHistory] of [
   assert.equal(valid.sync.status, "caught_up");
   const secondPair = socket_pair(); let detachSecond = bind_locus_websocket(locus, secondPair.server);
   const second = await hsonEcho.create({ now: b.now(), credential: b.credential!, transport: test_echo_transport(secondPair.client) });
-  const localA = valid.map.lib("ui"); const localB = second.map.lib("ui");
-  if (localA.mode === "document" || localB.mode === "document") throw new Error("Expected local data Libraries.");
+  const localA = valid.lib("ui"); const localB = second.lib("ui");
+  if (localA.mode === "document" || localB.mode === "document"
+    || localA.source !== "client-local" || localB.source !== "client-local") throw new Error("Expected local data Libraries.");
   const beforeLocal = locus.rev;
   localA.at(["value"]).set(12);
   localB.at(["value"]).set(20);
@@ -233,7 +236,7 @@ for (const [expected, advance, truncateHistory] of [
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonEcho.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
-  const state = echo.map.lib("state");
+  const state = echo.lib("state");
   if (state.mode === "document") throw new Error("Expected data.");
   assert.equal(state.snap(["value"]), 0);
   echo.dispose(); detach(); locus.dispose();
@@ -243,7 +246,8 @@ for (const [expected, advance, truncateHistory] of [
 {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
   map.lib("page").css.stylesheet("main { color: red; }");
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"] }) });
+  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]),
+    authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
   const session = await locus.session.create({ libraries: ["page"] });
   const cut = session.now();
   const forged = { ...cut, libs: { ...cut.libs, libraries: cut.libs.libraries.map((entry) => entry.css === undefined
@@ -254,7 +258,23 @@ for (const [expected, advance, truncateHistory] of [
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonEcho.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
-  assert.equal(echo.map.lib("page").css.snapshot(), map.lib("page").css.snapshot());
+  const projectedPage = echo.lib("page");
+  if (projectedPage.mode !== "document" || projectedPage.source !== "authority-projected")
+    throw new Error("Expected projected document.");
+  assert.equal(projectedPage.css.snapshot(), map.lib("page").css.snapshot());
+  const beforeHostedCss = echo.rev;
+  await projectedPage.css.stylesheet("main { color: blue; }");
+  assert.match(projectedPage.css.snapshot(), /blue/);
+  assert.equal(echo.rev, beforeHostedCss + 1);
+  assert.equal(echo.sync.appliedRev, locus.rev);
+  await projectedPage.css({ domain: "css", kind: "clear-all" });
+  assert.equal(projectedPage.css.snapshot(), "");
+  await projectedPage.at([]).attrs.set("title", "governed");
+  assert.equal(projectedPage.at([]).attrs.get("title"), "governed");
+  await projectedPage.at([]).insert(0, { $_tag: "p", $_content: [] });
+  await projectedPage.at([0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
+  assert.equal(projectedPage.at([0]).attrs.get("title"), "replaced");
+  await projectedPage.at([0]).delete();
   echo.dispose(); detach(); locus.dispose();
 }
 
@@ -475,7 +495,7 @@ for (const stage of ["message", "close"] as const) {
   const cssRule = first.local.find((entry) => entry.name === "panel")!.css!.rules[0]!;
   assert.throws(() => { (cssRule.declarations[0] as unknown as string[])[1] = "green"; }, TypeError);
   assert.match(JSON.stringify(immutableB.now().local), /red/);
-  assert.throws(() => locus.map.lib("ui"), /unknown/i, "local definitions never enter locus.map");
+  assert.throws(() => locus.lib("ui"), /unknown/i, "local definitions never enter locus_map_internal(locus)");
   assert.throws(() => hsonLocus.create({
     shared: [{ name: "state", definition: { data: { value: 0 }, schema: StateSchema } }],
     local: [{ name: "state", initializer: { data: { value: 9 }, schema: StateSchema } }],
@@ -492,34 +512,35 @@ for (const stage of ["message", "close"] as const) {
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
-  assert.throws(() => echo.map.lib("ui"), /unknown/i);
-  const beforeTopologyRev = echo.map.rev;
-  const beforeTopologyRegistry = echo.map.capture().registryDigest;
-  const beforeAuthorityCursor = echo.sync.debug().lastAppliedRev;
+  assert.throws(() => echo.lib("ui"), /unknown/i);
+  const beforeTopologyRev = echo.rev;
+  const beforeTopologyRegistry = echo_map_internal(echo).capture().registryDigest;
+  const beforeAuthorityCursor = echo.sync.appliedRev;
   let topologyCommits = 0;
-  const stopTopologyCommits = echo.map.commits.observe(() => { topologyCommits += 1; });
-  assert.throws(() => echo.map.addLibraries({ ui: { data: { value: 99 } } }), /managed|authority|controlled/i);
-  assert.throws(() => echo.map.addLibraries({ extraPage: { document: "<main/>" } }), /managed|authority|controlled/i);
+  const stopTopologyCommits = echo.commits.observe(() => { topologyCommits += 1; });
+  assert.throws(() => echo_map_internal(echo).addLibraries({ ui: { data: { value: 99 } } }), /managed|authority|controlled/i);
+  assert.throws(() => echo_map_internal(echo).addLibraries({ extraPage: { document: "<main/>" } }), /managed|authority|controlled/i);
   const replaySource = hsonLiveMap.create();
   const topologyCommit = replaySource.addLibraries({ replayedLocal: { data: { value: 99 } } });
-  assert.throws(() => echo.map.replay(topologyCommit), /managed|authority|controlled/i);
+  assert.throws(() => echo_map_internal(echo).replay(topologyCommit), /managed|authority|controlled/i);
   stopTopologyCommits();
-  assert.equal(echo.map.rev, beforeTopologyRev);
-  assert.equal(echo.map.capture().registryDigest, beforeTopologyRegistry);
-  assert.equal(echo.sync.debug().lastAppliedRev, beforeAuthorityCursor);
+  assert.equal(echo.rev, beforeTopologyRev);
+  assert.equal(echo_map_internal(echo).capture().registryDigest, beforeTopologyRegistry);
+  assert.equal(echo.sync.appliedRev, beforeAuthorityCursor);
   assert.equal(topologyCommits, 0);
-  assert.throws(() => echo.map.lib("extraPage"), /unknown/i);
-  assert.throws(() => echo.map.lib("replayedLocal"), /unknown/i);
+  assert.throws(() => echo.lib("extraPage"), /unknown/i);
+  assert.throws(() => echo.lib("replayedLocal"), /unknown/i);
 
   await session.update({ libraries: ["state", "ui", "panel"] });
   await until(() => {
-    try { return echo.map.lib("ui").mode === "data-object" && echo.map.lib("panel").mode === "document"; }
+    try { return echo.lib("ui").mode === "data-object" && echo.lib("panel").mode === "document"; }
     catch { return false; }
   });
-  const ui = echo.map.lib("ui");
-  const panel = echo.map.lib("panel");
+  const ui = echo.lib("ui");
+  const panel = echo.lib("panel");
   assert.equal(echo.sync.status, "caught_up", "a later authorized initializer grant remains healthy");
-  if (ui.mode === "document" || panel.mode !== "document") throw new Error("Local initializer mode mismatch.");
+  if (ui.mode === "document" || panel.mode !== "document"
+    || ui.source !== "client-local" || panel.source !== "client-local") throw new Error("Local initializer mode mismatch.");
   assert.equal(ui.snap(["value"]), 0);
   assert.match(JSON.stringify(panel.css.snapshot()), /red/);
   assert.deepEqual(session.now().libs.writableDocuments, [], "local documents cannot acquire server write authority");
@@ -527,14 +548,17 @@ for (const stage of ["message", "close"] as const) {
   ui.at(["value"]).set(12);
   panel.css.stylesheet("aside { color: blue; }");
   assert.equal(locus.rev, authorityRevBeforeLocal, "local mutation never enters authority history");
-  assert.doesNotThrow(() => ui.schema.use(LocalSchema));
+  assert.doesNotThrow(() => ui.schema.use(LocalSchema as never));
   assert.equal(ui.schema.get().toHson(), LocalSchema.toHson());
-  assert.throws(() => echo.map.lib("state").schema.use(StateSchema), /authority|projected|managed/i);
+  const projectedState = echo.lib("state");
+  assert.equal(projectedState.source, "authority-projected");
+  assert.equal("use" in projectedState.schema, false);
+  if (projectedState.mode !== "document") assert.equal(projectedState.at([]).at(["value"]).snap(), 0);
 
   await session.update({ libraries: ["state"] });
   assert.equal(ui.snap(["value"]), 12, "scope removal is non-destructive");
   await session.update({ libraries: ["state", "ui", "panel"] });
-  assert.equal(echo.map.lib("ui"), ui);
+  assert.equal(echo.lib("ui"), ui);
   assert.equal(ui.snap(["value"]), 12, "remove/re-add does not reapply the seed");
   assert.equal(ui.schema.get().toHson(), LocalSchema.toHson(), "re-add preserves the evolved local Schema");
 
@@ -550,8 +574,8 @@ for (const stage of ["message", "close"] as const) {
   assert.equal(echo.sync.strategy, "reconcile");
   assert.equal(ui.snap(["value"]), 12);
   assert.match(JSON.stringify(panel.css.snapshot()), /blue/);
-  const cssReplayRev = echo.map.rev;
-  const cssReplay = echo.map.replay({ kind: "map", changed: true, prevRev: cssReplayRev, rev: cssReplayRev + 1,
+  const cssReplayRev = echo.rev;
+  const cssReplay = echo_map_internal(echo).replay({ kind: "map", changed: true, prevRev: cssReplayRev, rev: cssReplayRev + 1,
     operations: [{ library: "panel", operation: { domain: "css", kind: "replace", stylesheet: validCss } }] });
   assert.equal(cssReplay.changed, true, "public replay of local CSS remains available");
   assert.match(JSON.stringify(panel.css.snapshot()), /red/);
@@ -559,12 +583,12 @@ for (const stage of ["message", "close"] as const) {
   const changedSeed = make_locus_application_catalog(hsonLiveMap.create(), [
     { name: "ui", ownership: "local", initializer: { data: { value: 5 } } },
   ]).local.get("ui")!;
-  install_client_local_initializers_internal(echo.map, [changedSeed]);
+  install_client_local_initializers_internal(echo_map_internal(echo), [changedSeed]);
   assert.equal(ui.snap(["value"]), 12, "a changed compatible seed never overwrites existing local state");
   const incompatibleSeed = make_locus_application_catalog(hsonLiveMap.create(), [
     { name: "ui", ownership: "local", initializer: { data: { value: 5 }, schema: LocalSchema } },
   ]).local.get("ui")!;
-  assert.throws(() => install_client_local_initializers_internal(echo.map, [incompatibleSeed]), /incompatible/i);
+  assert.throws(() => install_client_local_initializers_internal(echo_map_internal(echo), [incompatibleSeed]), /incompatible/i);
 
   const unauthorized = await locus.session.create({ libraries: ["state"] });
   assert.deepEqual(unauthorized.now().local, []);
@@ -577,10 +601,12 @@ for (const stage of ["message", "close"] as const) {
   const freshPair = socket_pair();
   const detachFresh = bind_locus_websocket(locus, freshPair.server);
   const fresh = await hsonEcho.create({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
-  const freshUi = fresh.map.lib("ui");
-  if (freshUi.mode === "document") throw new Error("Expected fresh local data Library.");
+  const freshUi = fresh.lib("ui");
+  if (freshUi.mode === "document" || freshUi.source !== "client-local") throw new Error("Expected fresh local data Library.");
   assert.equal(freshUi.snap(["value"]), 0);
-  assert.match(JSON.stringify(fresh.map.lib("panel").css.snapshot()), /red/);
+  const freshPanel = fresh.lib("panel");
+  if (freshPanel.mode !== "document") throw new Error("Expected fresh local document.");
+  assert.match(JSON.stringify(freshPanel.css.snapshot()), /red/);
   fresh.dispose(); detachFresh();
 
   const authorized = await locus.session.create({ libraries: ["state", "ui"] });
@@ -600,6 +626,80 @@ for (const stage of ["message", "close"] as const) {
     credential: authorized.credential!, transport: test_echo_transport(tamperPair.client) }), /initializer|integrity|sync/i);
 
   echo.dispose(); detachTamper(); detach(); locus.dispose();
+}
+
+// The composed clock and processed-authority cursor intentionally diverge.
+{
+  const map = hsonLiveMap.fromLibraries({
+    visible: { data: { value: 0 } }, hidden: { data: { value: 0 } },
+  });
+  const locus = create_registry_locus_internal({
+    map,
+    libraries: [
+      { name: "visible", ownership: "shared" },
+      { name: "hidden", ownership: "private" },
+      { name: "local", ownership: "local", initializer: { data: { value: 0 } } },
+    ],
+    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
+  }, { maxHistoryBytes: 1 }).locus;
+  const session = await locus.session.create({ libraries: ["visible"] });
+  const pair = socket_pair();
+  let detach = bind_locus_websocket(locus, pair.server);
+  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  assert.equal("map" in echo, false);
+  assert.equal(echo.sync.appliedRev, locus.rev);
+  assert.deepEqual(echo.cut().libs.libraries.map((entry) => entry.name), ["visible"]);
+  const composedCommits: number[] = [];
+  const stopComposedCommits = echo.commits.observe((commit) => composedCommits.push(commit.rev));
+
+  const initialRev = echo.rev;
+  await locus.lib("hidden").at(["value"]).set(1);
+  await until(() => echo.sync.appliedRev === locus.rev);
+  assert.equal(echo.rev, initialRev, "private progress has no composed-state commit");
+  assert.deepEqual(composedCommits, []);
+
+  await locus.lib("visible").at(["value"]).set(1);
+  await until(() => echo.sync.appliedRev === locus.rev);
+  assert.equal(echo.rev, initialRev + 1, "visible authority commit changes composed state");
+  assert.deepEqual(composedCommits, [echo.rev]);
+
+  const beforeGrantRev = echo.rev;
+  const beforeGrantApplied = echo.sync.appliedRev;
+  const beforeGrantAuthority = locus.rev;
+  await session.update({ libraries: ["visible", "local"] });
+  await until(() => { try { return echo.lib("local").source === "client-local"; } catch { return false; } });
+  assert.equal(echo.rev, beforeGrantRev + 1, "late initializer installs client-local topology");
+  assert.equal(echo.sync.appliedRev, beforeGrantApplied);
+  assert.equal(locus.rev, beforeGrantAuthority);
+  assert.deepEqual(echo.cut().libs.libraries.map((entry) => entry.name), ["visible", "local"]);
+
+  const local = echo.lib("local");
+  if (local.source !== "client-local" || local.mode === "document") throw new Error("Expected local data handle.");
+  const beforeLocalRev = echo.rev;
+  local.at(["value"]).set(2);
+  assert.equal(echo.rev, beforeLocalRev + 1);
+  assert.equal(echo.sync.appliedRev, beforeGrantApplied);
+
+  echo.disconnect(); detach();
+  const beforeSnapshotRev = echo.rev;
+  await locus.lib("hidden").at(["value"]).set(2);
+  detach = bind_locus_websocket(locus, pair.server);
+  echo.connect();
+  await echo.session.reattach();
+  assert.equal(echo.sync.strategy, "reconcile");
+  assert.equal(echo.sync.appliedRev, locus.rev, "snapshot installs recovered authority position");
+  assert.equal(echo.rev, beforeSnapshotRev, "unchanged composed state keeps its revision");
+  assert.equal(local.at(["value"]).snap(), 2);
+  assert.equal(composedCommits.at(-1), echo.rev);
+  const oldVisible = echo.lib("visible");
+  await session.update({ libraries: ["local"] });
+  await until(() => { try { echo.lib("visible"); return false; } catch { return true; } });
+  await session.update({ libraries: ["visible", "local"] });
+  await until(() => { try { return echo.lib("visible").source === "authority-projected"; } catch { return false; } });
+  assert.notEqual(echo.lib("visible"), oldVisible, "regranted projected library gets a fresh governed handle");
+  assert.equal(echo.lib("local"), local, "client-local handle retains identity across grant changes");
+  stopComposedCommits();
+  echo.dispose(); detach(); locus.dispose();
 }
 
 console.log("Echo initialization and sync current, replay, reconcile, local ownership, admission, QUID fencing, and failure cleanup passed.");

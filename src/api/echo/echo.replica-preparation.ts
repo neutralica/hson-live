@@ -11,6 +11,7 @@ export function prepare_echo_replica_internal<TActions extends LocusActionPayloa
   options: EchoReplicaOptions,
 ): Readonly<{
   echo: Echo<LiveMap, TActions>;
+  map: LiveMap;
   attach: () => Promise<void>;
   detach: () => Promise<void>;
   complete: () => Promise<void>;
@@ -33,6 +34,7 @@ export function prepare_echo_replica_internal<TActions extends LocusActionPayloa
     }, management);
     return Object.freeze({
       echo: prepared.echo,
+      map,
       async attach(): Promise<void> {
         prepared.echo.connect();
         await prepared.attach();

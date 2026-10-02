@@ -112,10 +112,10 @@ try {
 
     state.at(["value"]).set(1);
   });
-  for (let i = 0; i < 100 && replica.sync.debug().lastAppliedRev !== locus.rev; i++) {
+  for (let i = 0; i < 100 && replica.sync.appliedRev !== locus.rev; i++) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  assert.equal(replica.sync.debug().lastAppliedRev, locus.rev, "finite cancellation leaves sync alive");
+  assert.equal(replica.sync.appliedRev, locus.rev, "finite cancellation leaves sync alive");
   holdFinite = true;
   const inFlightAbort = new AbortController();
   const inFlight = transport.operations.submit({ type: "action-status", id: "h2-inflight",
@@ -129,10 +129,10 @@ try {
 
     state.at(["value"]).set(2);
   });
-  for (let i = 0; i < 100 && replica.sync.debug().lastAppliedRev !== locus.rev; i++) {
+  for (let i = 0; i < 100 && replica.sync.appliedRev !== locus.rev; i++) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  assert.equal(replica.sync.debug().lastAppliedRev, locus.rev, "in-flight finite cancellation leaves sync alive");
+  assert.equal(replica.sync.appliedRev, locus.rev, "in-flight finite cancellation leaves sync alive");
   const epoch = replica.session.epoch;
   holdFinite = true;
   enteredFinite = new Promise<void>((resolve) => { finiteEntered = resolve; });

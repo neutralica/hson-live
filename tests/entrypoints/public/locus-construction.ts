@@ -1,5 +1,5 @@
 import { Hson, hsonLocus } from "hson-live";
-import { hsonLiveMap, type LiveMapKnownNames } from "hson-live/livemap";
+import { hsonLiveMap } from "hson-live/livemap";
 import type { LocusPersistenceAdapter } from "hson-live/locus";
 
 const Count = Hson.schema`<type "data" content <value "number">>`;
@@ -15,33 +15,32 @@ const locus = hsonLocus.create({
   private: [{ name: "page", definition: definitions.page, css: sheet }],
   local: [{ name: "ui", initializer: { data: { selected: false } } }],
 });
-const sameMapType: typeof direct = locus.map;
-const knownName: LiveMapKnownNames<typeof locus.map> = "count";
-const documentName: LiveMapKnownNames<typeof locus.map> = "page";
-// @ts-expect-error Local initializers are absent from authoritative map type evidence.
-const localName: LiveMapKnownNames<typeof locus.map> = "ui";
-const page = locus.map.lib("page");
+const knownName = locus.lib("count");
+const documentName = locus.lib("page");
+const noPublicMap: "map" extends keyof typeof locus ? true : false = false;
+const page = locus.lib("page");
 if (page.mode !== "document") throw new Error("Library family inference failed.");
-void [sameMapType, knownName, documentName, localName, page];
-void locus.stage.lib("count").at(["value"]).set(2);
-void locus.stage.lib("page").css.stylesheet(sheet);
-void locus.stage.lib("page").css({ domain: "css", kind: "clear-all" });
-void locus.stage.addLibraries({ shared: [{ name: "laterPage", definition: definitions.page, css: sheet }] });
+void [knownName, documentName, page, noPublicMap];
+void locus.lib("count").at(["value"]).set(2);
+void locus.lib("page").css.stylesheet(sheet);
+void locus.lib("page").css({ domain: "css", kind: "clear-all" });
+void locus.addLibraries({ shared: [{ name: "laterPage", definition: definitions.page, css: sheet }] });
 // @ts-expect-error Data Libraries have no CSS handle.
-void locus.stage.lib("count").css;
+void locus.lib("count").css;
 // @ts-expect-error Data Library construction cannot carry CSS.
 void hsonLocus.create({ shared: [{ name: "bad", definition: definitions.count, css: sheet }] });
 // @ts-expect-error Data Library stage admission cannot carry CSS.
-void locus.stage.addLibraries({ shared: [{ name: "bad", definition: definitions.count, css: sheet }] });
+void locus.addLibraries({ shared: [{ name: "bad", definition: definitions.count, css: sheet }] });
 void locus.stage((loc) => { loc.lib("count").at(["value"]).set(3); });
-// @ts-expect-error Locus no longer has a separate library admission namespace.
-void locus.lib;
+const noStageLib: "lib" extends keyof typeof locus.stage ? true : false = false;
+const noStageAdmission: "addLibraries" extends keyof typeof locus.stage ? true : false = false;
+void [noStageLib, noStageAdmission];
 // @ts-expect-error Grouped stage callbacks cannot add topology.
 void locus.stage((loc) => { loc.addLibraries({ added: { data: 1 } }); });
 // @ts-expect-error LiveMap batches cannot add topology.
 direct.batch((map) => { map.addLibraries({ added: { data: 1 } }); });
 // @ts-expect-error Runtime Locus addition excludes local initializers.
-void locus.stage.addLibraries({ local: [{ name: "later", initializer: { data: 1 } }] });
+void locus.addLibraries({ local: [{ name: "later", initializer: { data: 1 } }] });
 // @ts-expect-error A fresh Locus cannot accept persistence.
 void hsonLocus.create({ shared: [{ name: "count", definition: definitions.count }], persistence: {} });
 // @ts-expect-error Literal duplicate names are rejected.
@@ -57,7 +56,7 @@ const resumed = await hsonLocus.resume({
   logicalMapId: "locus-construction-entrypoint",
   persistence: provider,
 });
-const resumedName: LiveMapKnownNames<typeof resumed.map> = "page";
+const resumedName = resumed.lib("page");
 void [resumedName, hsonLocus.checkpoint(resumed)];
 // @ts-expect-error Checkpointing is a Locus namespace operation.
 void resumed.checkpoint;

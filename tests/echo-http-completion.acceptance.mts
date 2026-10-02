@@ -1,3 +1,4 @@
+import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { Hson, bind_locus_http, hsonEcho, hsonLiveMap, hsonLocus } from "../src/index.ts";
@@ -62,12 +63,13 @@ try {
     { connection: { principalId: "development-anonymous" } });
   const echo = await hsonEcho.create({ now: retained.now(), credential: retained.credential!, transport });
   assert.equal(echo.sync.status, "caught_up");
-  const authority = echo_document_authority_for(echo.map.lib("page"));
+  const authority = echo_document_authority_for(echo_map_internal(echo).lib("page"));
   assert.ok(authority);
+  const page = echo.lib("page");
+  if (page.mode !== "document" || page.source !== "authority-projected") throw new Error("Expected projected document.");
   holdCommit = true;
   const epoch = echo.session.epoch;
-  const pending = authority.enqueue(() => Object.freeze({ name: "document.attrs.set" as const,
-    payload: { target: { kind: "path" as const, path: [0] }, name: "title", value: "restored" } }));
+  const pending = page.at([]).attrs.set("title", "restored");
   let settlements = 0;
   void pending.then(() => { settlements += 1; }, () => { settlements += 1; });
   for (let turn = 0; turn < 100 && (heldCommits === 0 || authority.pendingRevisionWaits() === 0); turn++) {
@@ -86,9 +88,7 @@ try {
   assert.equal(echo.session.epoch, epoch);
   assert.equal(echo.sync.status, "caught_up");
   assert.equal(settlements, 1);
-  const page = echo.map.lib("page");
-  if (page.mode !== "document") throw new Error("Expected document library.");
-  assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), "restored");
+  assert.equal(page.at([]).attrs.get("title"), "restored");
   echo.dispose();
 } finally {
   transport.dispose();

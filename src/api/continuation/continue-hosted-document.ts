@@ -50,11 +50,11 @@ export function prepare_hosted_document_internal(options: HostedContinuationOpti
     const replica = prepared;
     const echo = replica.echo;
     const documentName = options.document ?? ("document" in options.now ? options.now.document : undefined);
-    const explicitDocument = documentName === undefined ? undefined : echo.map.lib(documentName);
+    const explicitDocument = documentName === undefined ? undefined : replica.map.lib(documentName);
     if (explicitDocument !== undefined && explicitDocument.mode !== "document") {
       throw new Error("Explicit continuation selection is not a document library.");
     }
-    const resolved = resolve_continuation_document(echo.map, explicitDocument);
+    const resolved = resolve_continuation_document(replica.map, explicitDocument);
     if (resolved.aggregate === undefined) {
       throw new TypeError("Hosted continuation requires a projected library registry.");
     }
@@ -153,7 +153,7 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
       await prepared.attach();
       await prepared.complete();
       if (echo.sync.status !== "caught_up") throw new Error("Echo sync did not reach caught-up state.");
-      if (resolved.selected.rev !== echo.map.rev) {
+      if (resolved.selected.rev !== prepared.map.rev) {
         throw new Error("Echo, aggregate, and selected document revisions are not current together.");
       }
     } catch (cause) {
@@ -197,9 +197,13 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
     }
     adoption.commit();
     let disposed = false;
+    const selected = echo.lib(continuation_document_library_name(resolved.aggregate, resolved.selected));
+    if (selected.mode !== "document" || selected.source !== "authority-projected") {
+      throw new Error("Hosted continuation selected document is not authority-projected.");
+    }
     const result: HostedDocumentContinuation = Object.freeze({
       echo,
-      map: resolved.selected,
+      map: selected,
       tree: adoption.tree,
       mirror: reflect,
       dispose(): void {

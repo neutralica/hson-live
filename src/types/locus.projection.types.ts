@@ -4,7 +4,7 @@ import type { LiveMapRootMode } from "./livemap.types.js";
 /** Internal deployment/runtime ownership for one application library. Never part of Hson or a Schema. */
 export type LocusLibraryOwnership = "private" | "shared" | "local";
 
-/** Internal normalized catalog entry. Local initializers never enter `locus.map`. */
+/** Internal normalized catalog entry. Local initializers never enter authority state. */
 export type LocusLibraryCatalogEntry =
   | Readonly<{
     name: string;

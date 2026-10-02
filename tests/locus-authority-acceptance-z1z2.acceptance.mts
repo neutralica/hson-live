@@ -174,7 +174,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const restored = await resume_registry_locus({ map: make_map(), libraries,
     logicalMapId: "z1z2-uncertain-append", persistence });
   assert.equal(restored.rev, 1);
-  assert.equal(restored.map.lib("A").snap(["value"]), "A1");
+  assert.equal(restored.lib("A").snap(["value"]), "A1");
   restored.dispose();
 }
 

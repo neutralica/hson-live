@@ -1,3 +1,4 @@
+import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -150,7 +151,7 @@ await check("aggregate application handlers receive session origin externally an
     } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
-  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus.map) });
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus_map_internal(locus)) });
   await activate_echo(echo);
   const external = await echo.action("probe");
   assert.equal(external.type, "ack");
@@ -217,7 +218,7 @@ await check("aggregate retry request payloads detach nested records and arrays f
     } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
-  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus.map) });
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus_map_internal(locus)) });
   await activate_echo(echo);
 
   const payload = {
@@ -275,7 +276,7 @@ await check("named document denial is terminal without mutation and the next que
   }));
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server, { principalId: "principal-a", attachment: { transport: "test" } });
-  const echoMap = make_projected_map(locus.map);
+  const echoMap = make_projected_map(locus_map_internal(locus));
   const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: echoMap });
   await activate_echo(echo);
   const denied = await echo.action("document.attrs.set", {
@@ -286,9 +287,9 @@ await check("named document denial is terminal without mutation and the next que
   });
   assert.equal(denied.type, "error");
   if (denied.type === "error") assert.equal(denied.delivery, "rejected");
-  assert.equal(locus.map.rev, 0);
+  assert.equal(locus.rev, 0);
   assert.equal(echoMap.rev, 0);
-  assert.equal(locus.map.lib("page").document.attrs.get({ kind: "path", path: [0] }, "blocked"), undefined);
+  assert.equal(locus.lib("page").document.attrs.get({ kind: "path", path: [0] }, "blocked"), undefined);
   const accepted = await echo.action("document.attrs.set", {
     library: "page",
     target: { kind: "path", path: [0] },
@@ -296,7 +297,7 @@ await check("named document denial is terminal without mutation and the next que
     value: "accepted",
   });
   assert.equal(accepted.type, "ack");
-  assert.equal(locus.map.rev, 1);
+  assert.equal(locus.rev, 1);
   assert.equal(echoMap.rev, 1);
   const projectedPage = echoMap.lib("page");
   if (projectedPage.mode !== "document") throw new Error("Expected projected page document.");
@@ -326,17 +327,17 @@ await check("application payload decoding precedes authorization and mutation", 
     } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
-  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus.map) });
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus_map_internal(locus)) });
   await activate_echo(echo);
   const invalid = await echo.action("validated", { value: "wrong" } as never);
   assert.equal(invalid.type, "error");
   if (invalid.type === "error") assert.equal(invalid.error.code, "LOCUS_SCHEMA_INVALID_PAYLOAD");
   assert.equal(authorizations, 0);
-  assert.equal(locus.map.rev, 0);
+  assert.equal(locus.rev, 0);
   const accepted = await echo.action("validated", { value: 3 });
   assert.equal(accepted.type, "ack");
   assert.equal(authorizations, 1);
-  assert.equal(locus.map.lib("state").snap(["value"]), 3);
+  assert.equal(locus.lib("state").snap(["value"]), 3);
   echo.dispose();
   locus.dispose();
 });
@@ -352,7 +353,7 @@ await check("resumable session reattachment retains one projected aggregate auth
     } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server, { principalId: "principal-a" });
-  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "stable-aggregate-client" });
+  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus_map_internal(locus)), clientId: "stable-aggregate-client" });
   await activate_echo(first);
   const credential = first.session.credential;
   const sessionId = first.session.sessionId;
@@ -365,7 +366,7 @@ await check("resumable session reattachment retains one projected aggregate auth
   bind_locus_websocket(locus, secondPair.server, { principalId: "principal-a" });
   const second = create_recovery_test_driver({
     transport: test_echo_transport(secondPair.client),
-    map: make_projected_map(locus.map),
+    map: make_projected_map(locus_map_internal(locus)),
     clientId: "stable-aggregate-client",
     session: { credential },
   });
@@ -376,8 +377,8 @@ await check("resumable session reattachment retains one projected aggregate auth
   assert.equal(second.session.incarnationId, locus.incarnationId);
   assert.equal(second.session.debug().reattachCount, 1);
   await second.action("state.set", { value: 2 });
-  assert.equal(locus.map.lib("state").snap(["value"]), 2);
-  assert.equal(locus.map.rev, 2);
+  assert.equal(locus.lib("state").snap(["value"]), 2);
+  assert.equal(locus.rev, 2);
   second.dispose();
   locus.dispose();
 });
@@ -394,27 +395,27 @@ await check("retry, dedupe conflict, and action status use the hosted request co
     } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server);
-  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "dedupe-client" });
+  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus_map_internal(locus)), clientId: "dedupe-client" });
   await activate_echo(first);
   const credential = first.session.credential;
   firstPair.dropNextActionResult();
   const pending = first.action("state.set", { value: 7 });
-  await wait_for_revision(locus.map, 1);
+  await wait_for_revision(locus_map_internal(locus), 1);
   firstPair.disconnect();
   await assert.rejects(pending, /closed|interrupted/i);
   const stable = pending.request;
   first.dispose();
-  assert.equal(locus.map.rev, 1);
+  assert.equal(locus.rev, 1);
   assert.equal(executions, 1);
 
   const secondPair = socket_pair();
   bind_locus_websocket(locus, secondPair.server);
-  const second = create_recovery_test_driver({ transport: test_echo_transport(secondPair.client), map: make_projected_map(locus.map), clientId: "dedupe-client", session: { credential } });
+  const second = create_recovery_test_driver({ transport: test_echo_transport(secondPair.client), map: make_projected_map(locus_map_internal(locus)), clientId: "dedupe-client", session: { credential } });
   await activate_echo(second);
   const retried = await second.retryAction(stable);
   assert.equal(retried.type, "ack");
   if (retried.type === "ack") assert.equal(retried.delivery, "cached");
-  assert.equal(locus.map.rev, 1);
+  assert.equal(locus.rev, 1);
   assert.equal(executions, 1);
   const status = await second.actionStatus(stable.requestId);
   assert.equal(status.state, "succeeded");
@@ -422,7 +423,7 @@ await check("retry, dedupe conflict, and action status use the hosted request co
   const conflict = await second.retryAction(Object.freeze({ requestId: stable.requestId, name: "state.set", payload: { value: 8 } }));
   assert.equal(conflict.type, "error");
   if (conflict.type === "error") assert.equal(conflict.error.code, "LOCUS_ACTION_REQUEST_ID_CONFLICT");
-  assert.equal(locus.map.rev, 1);
+  assert.equal(locus.rev, 1);
   second.dispose();
   locus.dispose();
 });
@@ -440,7 +441,7 @@ await check("aggregate retained action lineage enforces exact principal continui
   bind_locus_websocket(locus, alicePair.server, { principalId: "alice" });
   const alice = create_recovery_test_driver({
     transport: test_echo_transport(alicePair.client),
-    map: make_projected_map(locus.map),
+    map: make_projected_map(locus_map_internal(locus)),
     clientId: "aggregate-owned-client",
   });
   await activate_echo(alice);
@@ -451,7 +452,7 @@ await check("aggregate retained action lineage enforces exact principal continui
   bind_locus_websocket(locus, nextAlicePair.server, { principalId: "alice" });
   const nextAlice = create_recovery_test_driver({
     transport: test_echo_transport(nextAlicePair.client),
-    map: make_projected_map(locus.map),
+    map: make_projected_map(locus_map_internal(locus)),
     clientId: "aggregate-owned-client",
   });
   await activate_echo(nextAlice);
@@ -462,7 +463,7 @@ await check("aggregate retained action lineage enforces exact principal continui
   bind_locus_websocket(locus, bobPair.server, { principalId: "bob" });
   const bob = create_recovery_test_driver({
     transport: test_echo_transport(bobPair.client),
-    map: make_projected_map(locus.map),
+    map: make_projected_map(locus_map_internal(locus)),
     clientId: "aggregate-owned-client",
   });
   await activate_echo(bob);
@@ -494,11 +495,11 @@ draft.lib("other").at(["value"]).set(2); })();
     } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
-  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus.map) });
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus_map_internal(locus)) });
   await activate_echo(echo);
   const revisions: number[] = [];
   const libraries: string[][] = [];
-  const stop = locus.map.commits.observe((commit) => {
+  const stop = locus.commits.observe((commit) => {
     revisions.push(commit.rev);
     libraries.push(commit.operations.map((operation) => operation.library));
   });
@@ -510,7 +511,7 @@ draft.lib("other").at(["value"]).set(2); })();
   assert.deepEqual(order, ["state", "cross"]);
   assert.deepEqual(revisions, [1, 2, 3]);
   assert.deepEqual(libraries, [["state"], ["page"], ["state", "other"]]);
-  assert.equal(locus.map.rev, 3);
+  assert.equal(locus.rev, 3);
   assert.equal(echo.map.rev, 3);
   stop();
   echo.dispose();
@@ -528,7 +529,7 @@ await check("replacement during authorization cannot cross aggregate admission",
     }, actions: { held: () => { executions += 1; } } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server, { principalId: "alice" });
-  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "auth-fence-client" });
+  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus_map_internal(locus)), clientId: "auth-fence-client" });
   await activate_echo(first);
   const credential = first.session.credential;
   assert.ok(credential);
@@ -540,7 +541,7 @@ await check("replacement during authorization cannot cross aggregate admission",
   bind_locus_websocket(locus, secondPair.server, { principalId: "alice" });
   const second = create_recovery_test_driver({
     transport: test_echo_transport(secondPair.client),
-    map: make_projected_map(locus.map),
+    map: make_projected_map(locus_map_internal(locus)),
     clientId: "auth-fence-client",
     session: { credential },
   });
@@ -572,7 +573,7 @@ await check("replacement after admission retains the outcome but fences late del
     } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server, { principalId: "alice" });
-  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "post-admit-client" });
+  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus_map_internal(locus)), clientId: "post-admit-client" });
   await activate_echo(first);
   const credential = first.session.credential;
   assert.ok(credential);
@@ -585,7 +586,7 @@ await check("replacement after admission retains the outcome but fences late del
   bind_locus_websocket(locus, secondPair.server, { principalId: "alice" });
   const second = create_recovery_test_driver({
     transport: test_echo_transport(secondPair.client),
-    map: make_projected_map(locus.map),
+    map: make_projected_map(locus_map_internal(locus)),
     clientId: "post-admit-client",
     session: { credential },
   });
@@ -595,8 +596,8 @@ await check("replacement after admission retains the outcome but fences late del
   const recovered = await second.retryAction(pending.request);
   assert.equal(recovered.type, "ack");
   if (recovered.type === "ack") assert.ok(recovered.delivery === "joined" || recovered.delivery === "cached");
-  assert.equal(locus.map.rev, 1);
-  assert.equal(locus.map.lib("state").snap(["value"]), 9);
+  assert.equal(locus.rev, 1);
+  assert.equal(locus.lib("state").snap(["value"]), 9);
   assert.equal(recovered.completionRev, 1);
   assert.equal((await second.actionStatus(pending.request.requestId)).state, "succeeded");
   assert.equal(locus.activity.snapshot().actionCount, 0);
@@ -619,7 +620,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
     } });
   const firstPair = socket_pair();
   bind_locus_websocket(locus, firstPair.server, { principalId: "alice" });
-  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus.map), clientId: "disconnect-client" });
+  const first = create_recovery_test_driver({ transport: test_echo_transport(firstPair.client), map: make_projected_map(locus_map_internal(locus)), clientId: "disconnect-client" });
   await activate_echo(first);
   const credential = first.session.credential;
   assert.ok(credential);
@@ -635,7 +636,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   bind_locus_websocket(locus, secondPair.server, { principalId: "alice" });
   const second = create_recovery_test_driver({
     transport: test_echo_transport(secondPair.client),
-    map: make_projected_map(locus.map),
+    map: make_projected_map(locus_map_internal(locus)),
     clientId: "disconnect-client",
     session: { credential },
   });
@@ -643,7 +644,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   const recovered = await second.retryAction(pending.request);
   assert.equal(recovered.type, "ack");
   assert.equal(recovered.completionRev, 1);
-  assert.equal(locus.map.lib("state").snap(["value"]), 11);
+  assert.equal(locus.lib("state").snap(["value"]), 11);
   assert.equal(locus.activity.snapshot().actionCount, 0);
   first.dispose();
   second.dispose();

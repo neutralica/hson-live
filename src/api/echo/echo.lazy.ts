@@ -17,6 +17,10 @@ import type { EchoReplicaTransport } from "../../types/echo.transport.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { EchoSyncError } from "./echo.error.js";
+import { make_echo_library_selector } from "./echo.governed.js";
+import { register_echo_map_internal } from "../../internal/governor-maps.js";
+import type { LiveMapDocumentLibrary } from "../../types/livemap.types.js";
+import type { EchoDocumentAuthority } from "./echo.document-authority-registry.js";
 import {
   create_deferred_echo_document_authority_internal,
   register_echo_document_authority,
@@ -50,6 +54,7 @@ export type ReplicaStrategy = Readonly<{
     synchronize: () => Promise<EchoSyncResult>;
   }>;
   dispose: LocusDisposer;
+  ensureDocumentAuthority: (selected: LiveMapDocumentLibrary) => EchoDocumentAuthority;
 }>;
 type ReplicaComposition<TActions extends LocusActionPayloads> = Readonly<{
   connection: EchoEndpointConnection<TActions>;
@@ -229,6 +234,9 @@ export function create_lazy_replica_echo_internal<
   };
 
   const sync = Object.freeze({
+    get appliedRev(): number | undefined {
+      return strategy?.sync.appliedRev ?? management.initialRecovery.lastAppliedRev;
+    },
     get status(): EchoSyncStatus {
       if (disposed) return "disposed";
       if (shellFailure !== undefined) return "failed";
@@ -246,14 +254,15 @@ export function create_lazy_replica_echo_internal<
         ...((details?.incarnationId ?? management.initialRecovery.incarnationId) === undefined ? {} : {
           incarnationId: details?.incarnationId ?? management.initialRecovery.incarnationId,
         }),
-        ...((details?.lastAppliedRev ?? management.initialRecovery.lastAppliedRev) === undefined ? {} : {
-          lastAppliedRev: details?.lastAppliedRev ?? management.initialRecovery.lastAppliedRev,
-        }),
       });
     },
   });
 
   const echo = connection.echo;
+  const lib = make_echo_library_selector(options.map, (selected) => {
+    if (strategy === undefined) throw new Error("Echo replica library authority is not ready.");
+    return strategy.ensureDocumentAuthority(selected);
+  });
   const disconnectReplica = (): void => {
     if (connection.available && echo.session.status === "attached") {
       void connection.endpoint.detachSession().catch(() => {});
@@ -261,7 +270,10 @@ export function create_lazy_replica_echo_internal<
     echo.disconnect();
   };
   const publicEcho = {
-    map: strategyOptions.map,
+    get rev() { return options.map.rev; },
+    lib,
+    cut: options.map.cut.bind(options.map),
+    commits: options.map.commits,
     sync,
     clientId: echo.clientId,
     session: Object.freeze({
@@ -308,8 +320,10 @@ export function create_lazy_replica_echo_internal<
       echo.dispose();
     },
   };
+  const governedEcho = Object.freeze(publicEcho) as unknown as Echo<TMap, TActions>;
+  register_echo_map_internal(governedEcho, options.map);
   return Object.freeze({
-    echo: Object.freeze(publicEcho) as unknown as Echo<TMap, TActions>,
+    echo: governedEcho,
     rawSession: echo.session,
     attach: () => echo.session.reattach(),
     detach: () => connection.endpoint.detachSession(),

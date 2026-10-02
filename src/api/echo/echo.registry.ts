@@ -6,7 +6,7 @@ import type {
   EchoSyncStatus,
   LocusActionPayloads,
 } from "../../types/locus.types.js";
-import type { LiveMap } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapDocumentLibrary } from "../../types/livemap.types.js";
 import type { ReplicaOptions, ReplicaStrategy } from "./echo.lazy.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { derive_replacement_lineage_for_action } from "../livemap/livemap.document.lineage.js";
@@ -49,14 +49,17 @@ export function create_registry_echo<
     ...(options.initialInitializerDigest === undefined ? {} : { initialInitializerDigest: options.initialInitializerDigest }),
     ...(options.initialSessionBinding === undefined ? {} : { initialSessionBinding: options.initialSessionBinding }),
   });
-  const documentAuthorities: ReadonlyArray<Readonly<{
+  const documentAuthorities: Array<Readonly<{
     map: object;
     authority: EchoDocumentAuthority;
-  }>> = (internal_livemap_aggregate_authority(options.map).clientProjection()?.registry
-    ?? internal_livemap_aggregate_authority(options.map).hostedRegistry()).libraries
-    .filter((entry) => entry.mode === "document")
-    .map((entry) => {
-      const map = options.map.lib(entry.name);
+  }>> = [];
+  const ensureDocumentAuthority = (map: LiveMapDocumentLibrary): EchoDocumentAuthority => {
+      const previous = documentAuthorities.find((entry) => entry.map === map);
+      if (previous !== undefined) return previous.authority;
+      const name = internal_livemap_aggregate_authority(options.map).hostedRegistry().libraries
+        .find((entry) => options.map.lib(entry.name) === map)?.name;
+      if (name === undefined) throw new Error("Projected document Library name is unavailable.");
+      const entry = { name };
       const authority = make_echo_document_authority(
         async (action, expectedIdentity) => {
           const payload: JsonValue = (action.name === "document.content.insert"
@@ -67,24 +70,19 @@ export function create_registry_echo<
           let pending = endpoint.action(action.name, payload);
           let result;
           while (true) {
-            try {
-              result = await pending;
-              break;
-            } catch {
+            try { result = await pending; break; }
+            catch {
               const stable = pending.request;
               await endpoint.wait_until_ready();
-              if (logicalMapId !== expectedIdentity.logicalMapId
-                || endpoint.incarnationId !== expectedIdentity.incarnationId) {
+              if (logicalMapId !== expectedIdentity.logicalMapId || endpoint.incarnationId !== expectedIdentity.incarnationId) {
                 throw new Error("Echo document authority stream identity became incompatible before retry.");
               }
               pending = endpoint.retryAction(stable);
             }
           }
-          return Object.freeze({
-            accepted: result.type === "ack" && result.ok === true,
+          return Object.freeze({ accepted: result.type === "ack" && result.ok === true,
             ...(result.completionRev === undefined ? {} : { completionRev: result.completionRev }),
-            ...(result.type === "error" ? { error: result.error } : {}),
-          });
+            ...(result.type === "error" ? { error: result.error } : {}) });
         },
         () => endpoint.lastAppliedRev ?? 0,
         (listener) => endpoint.observeAuthorityPosition(listener),
@@ -96,8 +94,13 @@ export function create_registry_echo<
         () => endpoint.replica.failure,
       );
       register_echo_document_authority(map, authority);
-      return Object.freeze({ map, authority });
-    });
+      documentAuthorities.push(Object.freeze({ map, authority }));
+      return authority;
+    };
+  (internal_livemap_aggregate_authority(options.map).clientProjection()?.registry
+    ?? internal_livemap_aggregate_authority(options.map).hostedRegistry()).libraries
+    .filter((entry) => entry.mode === "document")
+    .forEach((entry) => { ensureDocumentAuthority(options.map.lib(entry.name) as LiveMapDocumentLibrary); });
 
   const dispose = (): void => {
     for (const registration of documentAuthorities) {
@@ -128,6 +131,7 @@ export function create_registry_echo<
   }
 
   const sync = Object.freeze({
+    get appliedRev() { return endpoint.lastAppliedRev; },
     get status() { return recoveryStatus(); },
     get failure() { return failure(); },
     get strategy() { return endpoint.lastRecoveryOutcome; },
@@ -164,10 +168,9 @@ export function create_registry_echo<
         ...(endpoint.lastRecoveryOutcome === undefined ? {} : { strategy: endpoint.lastRecoveryOutcome }),
         logicalMapId,
         ...(endpoint.incarnationId === undefined ? {} : { incarnationId: endpoint.incarnationId }),
-        ...(endpoint.lastAppliedRev === undefined ? {} : { lastAppliedRev: endpoint.lastAppliedRev }),
       });
     },
   });
 
-  return Object.freeze({ sync, dispose });
+  return Object.freeze({ sync, dispose, ensureDocumentAuthority });
 }

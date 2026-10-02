@@ -31,7 +31,7 @@ consumers use the aggregate 64 MiB bound, with unchanged depth and node limits.
 
 ## Hosted session current state
 
-`locus.map` contains complete authority state. `locus.session` owns retained client sessions; each returned capability represents one authorized scope.
+`locus.cut(...)` captures complete authority state for server use. `locus.session` owns retained client sessions; each returned capability represents one authorized scope. A session cut cannot include private authority state.
 
 ```ts
 const session = await locus.session.create(

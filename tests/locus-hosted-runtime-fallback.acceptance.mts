@@ -147,7 +147,7 @@ assert.ok(continuedMap);
 const continuedLocal = continuedMap.lib("preferences");
 beforeRestartEcho.disconnect();
 detachBeforeRestart();
-await persistent.stage.addLibraries({
+await persistent.addLibraries({
   shared: [{ name: "durablePublic", definition: { data: { value: 4 } } }],
   private: [{ name: "durableHidden", definition: { data: { secret: `DURABLE_HIDDEN_FALLBACK_SENTINEL${"x".repeat(1024 * 1024)}` } } }],
 });

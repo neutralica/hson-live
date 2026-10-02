@@ -1,6 +1,6 @@
 # Authorized hosted client projection
 
-Locus owns a single current authority map containing private and shared libraries, plus a deployment catalog of canonical local initializers. Local definitions are not installed in `locus.map`, committed, checkpointed, or replayed. The session request and `authorizeProjection` decide which shared state and local initializers may be delivered. With no authorizer, all grants are empty.
+Locus owns current authority state containing private and shared libraries, plus a deployment catalog of canonical local initializers. Local definitions are not installed in authority state, committed, checkpointed, or replayed. The session request and `authorizeProjection` decide which shared state and local initializers may be delivered. With no authorizer, all grants are empty.
 
 ```ts
 const locus = hsonLocus.create({
@@ -21,7 +21,7 @@ A retained session stores one normalized effective composition, digest, and sequ
 
 Every accepted authority revision yields one session-specific projected commit or progress event. Reconcile derives the same current shared session view used by `session.now()` and updates only the shared partition in place. A scope update can add an authorized local initializer; Echo verifies and installs it once when absent. Retaining, removing, or re-adding the name preserves an existing client-owned instance. A changed compatible seed affects only new or missing instances; an incompatible mode or Schema fails clearly instead of migrating state.
 
-Hosted commit and progress frames carry the effective session projection sequence and digest. Echo checks both before applying semantic state. Projection changes use their own sequence and never fabricate an authority revision. Reconcile advances the authority cursor to its captured position; client `map.rev` changes only when semantic client state changes.
+Hosted commit and progress frames carry the effective session projection sequence and digest. Echo checks both before applying semantic state. Projection changes use their own sequence and never fabricate an authority revision. Reconcile advances the authority cursor to its captured position; client `echo.rev` changes only when semantic client state changes.
 
 Hosted continuation receives the admitted `now` composition, credential, transport, and explicit shared document being adopted. It initializes local definitions without treating them as the SSR document, adopts the shared DOM, binds Mirror, completes sync, then activates interactions. The one composed interaction root may contain synchronized shared descriptors and client-owned local descriptors. `now.local` does not seed descriptors; the client authors them after the local Library exists.
 

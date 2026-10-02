@@ -2,37 +2,29 @@ import type { JsonValue } from "../../core/types.js";
 import type {
   LiveMap, LiveMapDefinitions, LiveMapCssOp, LiveMapDocumentAttributeValue, LiveMapDocumentAttrs,
   LiveMapDocumentCommitTarget, LiveMapDocumentContent, LiveMapGraphOp,
-  LiveMapStagedWriter, LivePath,
+  LiveMapStagedWriter, LivePath, LiveMapDataLibrary, LiveMapDocumentLibrary,
 } from "../../types/livemap.types.js";
 import type { LocusRuntimeLibraryAdditions, LocusStage } from "../../types/locus.core.types.js";
+import type { GovernorLibrarySelector } from "../../types/governor.types.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { register_governed_document, governed_document_element_target, governed_document_slot,
+  governed_document_remove_slot, governed_document_insert_slot, governed_document_move_target } from "../../internal/governed-document.js";
 
 type Writer = LiveMapStagedWriter<LiveMap, void>;
 type Selected = ReturnType<Writer["lib"]>;
 type Document = Extract<Selected, Readonly<{ mode: "document" }>>;
 type Data = Exclude<Selected, Document>;
-type RuntimeDocumentLocation = Readonly<{
-  replace: (value: LiveMapDocumentContent) => void;
-  delete: () => void;
-  insert: (index: number, value: LiveMapDocumentContent) => void;
-  move: (from: number, to: number) => void;
-  attrs: Readonly<{
-    set: (name: string, value: LiveMapDocumentAttributeValue) => void;
-    drop: (name: string) => void;
-    replace: (values: LiveMapDocumentAttrs) => void;
-  }>;
-}>;
-
-/** Keep direct navigation separate from the one shared authority submission. */
+/** Governed selection shares one authority submission without exposing the subordinate map. */
 export function make_locus_stage<TMap extends LiveMap>(
   map: TMap,
   submit: (callback: (writer: Writer) => void) => Promise<void>,
-  addLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>,
+  submitLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>,
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>,
   assertSubmissionAllowed: () => void,
-): LocusStage<TMap> {
+): Readonly<{ stage: LocusStage<TMap>; lib: GovernorLibrarySelector<TMap>;
+  addLibraries: (additions: LocusRuntimeLibraryAdditions) => Promise<void> }> {
   const selected_document = (writer: Writer, name: string): Document => {
     const selected = writer.lib(name);
     if (selected.mode !== "document") throw new Error(`Staged Library ${JSON.stringify(name)} is not a document.`);
@@ -45,7 +37,14 @@ export function make_locus_stage<TMap extends LiveMap>(
   };
   const data_path = (name: string, path: LivePath) => {
     const stable = must_live_path(path);
+    const raw = (map.lib(name) as LiveMapDataLibrary).at(stable);
     return Object.freeze({
+      get rev() { return raw.rev; },
+      path: () => raw.path(),
+      snap: () => raw.snap(),
+      data: () => raw.data(),
+      watch: (listener: (value: JsonValue | undefined) => void) => raw.watch(listener),
+      kind: () => raw.kind(),
       at: (child: LivePath) => data_path(name, [...stable, ...must_live_path(child)]),
       set: (value: JsonValue) => submit(writer => { selected_data(writer, name).at(stable).set(value); }),
       replace: (value: JsonValue) => submit(writer => { selected_data(writer, name).at(stable).replace(value); }),
@@ -54,25 +53,51 @@ export function make_locus_stage<TMap extends LiveMap>(
   };
   const document_location = (name: string, path: readonly number[]) => {
     const stable = validate_document_path(path);
-    const selected = (writer: Writer): RuntimeDocumentLocation =>
-      selected_document(writer, name).at(stable as never) as unknown as RuntimeDocumentLocation;
+    const document = map.lib(name) as LiveMapDocumentLibrary;
+    const raw = document.at(stable);
     return Object.freeze({
+      get rev() { return raw.rev; },
+      path: () => raw.path(),
+      snap: () => raw.snap(),
+      watch: (listener: (value: unknown) => void) => raw.watch(listener),
+      kind: () => raw.kind(),
+      id: (id: string) => {
+        const found = raw.id(id);
+        return found === undefined ? undefined : document_location(name, found.path());
+      },
       at: (child: readonly number[]) => document_location(name, [...stable, ...validate_document_path(child)]),
-      replace: (value: LiveMapDocumentContent) => submit(writer => { selected(writer).replace(value); }),
-      delete: () => submit(writer => { selected(writer).delete(); }),
-      insert: (index: number, value: LiveMapDocumentContent) => submit(writer => { selected(writer).insert(index, value); }),
-      move: (from: number, to: number) => submit(writer => { selected(writer).move(from, to); }),
+      replace: (value: LiveMapDocumentContent) => submit(writer => {
+        const slot = governed_document_slot(document, stable);
+        selected_document(writer, name).content.replace(slot.target, slot.index, value);
+      }),
+      delete: () => submit(writer => {
+        const slot = governed_document_remove_slot(document, stable);
+        selected_document(writer, name).content.remove(slot.target, slot.index);
+      }),
+      insert: (index: number, value: LiveMapDocumentContent) => submit(writer => {
+        const slot = governed_document_insert_slot(document, stable, index, value);
+        selected_document(writer, name).content.insert(slot.target, slot.index, slot.content);
+      }),
+      move: (from: number, to: number) => submit(writer => {
+        selected_document(writer, name).content.move(governed_document_move_target(document, stable), from, to);
+      }),
       attrs: Object.freeze({
-        set: (attribute: string, value: LiveMapDocumentAttributeValue) => submit(writer => { selected(writer).attrs.set(attribute, value); }),
-        drop: (attribute: string) => submit(writer => { selected(writer).attrs.drop(attribute); }),
-        replace: (values: LiveMapDocumentAttrs) => submit(writer => { selected(writer).attrs.replace(values); }),
+        get: (attribute: string) => document.document.attrs.get(governed_document_element_target(document, stable), attribute),
+        has: (attribute: string) => document.document.attrs.has(governed_document_element_target(document, stable), attribute),
+        keys: () => document.document.attrs.keys(governed_document_element_target(document, stable)),
+        set: (attribute: string, value: LiveMapDocumentAttributeValue) => submit(writer => {
+          selected_document(writer, name).attrs.set(governed_document_element_target(document, stable), attribute, value);
+        }),
+        drop: (attribute: string) => submit(writer => {
+          selected_document(writer, name).attrs.drop(governed_document_element_target(document, stable), attribute);
+        }),
+        replace: (values: LiveMapDocumentAttrs) => submit(writer => {
+          selected_document(writer, name).attrs.replace(governed_document_element_target(document, stable), values);
+        }),
       }),
     });
   };
-  const direct = Object.assign(
-    (callback: (writer: Writer) => void): Promise<void> => submit(callback),
-    {
-      addLibraries(additions: LocusRuntimeLibraryAdditions): Promise<void> {
+  const addLibraries = (additions: LocusRuntimeLibraryAdditions): Promise<void> => {
         try { assertSubmissionAllowed(); }
         catch (cause) { return Promise.reject(cause); }
         if (typeof additions !== "object" || additions === null || Array.isArray(additions)
@@ -102,30 +127,26 @@ export function make_locus_stage<TMap extends LiveMap>(
           }
         }
         if (Object.keys(definitions).length === 0) return Promise.reject(new TypeError("Locus runtime addition requires a Library."));
-        return addLibraries(definitions, ownership, css);
-      },
-      lib(name: string) {
+        return submitLibraries(definitions, ownership, css);
+      };
+  const lib = (name: string) => {
         const selected = map.lib(name);
         if (selected.mode !== "document") {
-          return Object.freeze({ mode: selected.mode, at: (path: LivePath) => data_path(name, path) });
+          const data = selected as LiveMapDataLibrary;
+          return Object.freeze({ mode: data.mode, get rev() { return data.rev; }, root: () => data.root(),
+            snap: data.snap.bind(data), schema: Object.freeze({ get: () => data.schema.get() }),
+            at: (path: LivePath) => data_path(name, path) });
         }
-        return Object.freeze({
-          mode: "document" as const,
-          at: (path: readonly number[]) => document_location(name, path),
-          graph: (operation: LiveMapGraphOp) => submit(writer => { selected_document(writer, name).graph(operation as Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>); }),
-          css: Object.assign(
-            (operation: LiveMapCssOp) => submit(writer => { selected_document(writer, name).css(operation); }),
-            { stylesheet: (text: string) => submit(writer => { selected_document(writer, name).css.stylesheet(text); }) },
-          ),
-          attrs: Object.freeze({
-            set: (target: LiveMapDocumentCommitTarget, attribute: string, value: LiveMapDocumentAttributeValue) =>
-              submit(writer => { selected_document(writer, name).attrs.set(target, attribute, value); }),
-            drop: (target: LiveMapDocumentCommitTarget, attribute: string) =>
-              submit(writer => { selected_document(writer, name).attrs.drop(target, attribute); }),
-            replace: (target: LiveMapDocumentCommitTarget, values: LiveMapDocumentAttrs) =>
-              submit(writer => { selected_document(writer, name).attrs.replace(target, values); }),
-          }),
-          content: Object.freeze({
+        const document = selected as LiveMapDocumentLibrary;
+        const css = Object.assign(
+          (operation: LiveMapCssOp) => submit(writer => { selected_document(writer, name).css(operation); }),
+          { snapshot: () => document.css.snapshot(), has: (key: string) => document.css.has(key),
+            list: () => document.css.list(), get: (key: string) => document.css.get(key),
+            stylesheet: (text: string) => submit(writer => { selected_document(writer, name).css.stylesheet(text); }) },
+        );
+        const content = Object.assign(
+          () => document.document.content(),
+          {
             replace: (target: LiveMapDocumentCommitTarget, index: number, value: LiveMapDocumentContent) =>
               submit(writer => { selected_document(writer, name).content.replace(target, index, value); }),
             insert: (target: LiveMapDocumentCommitTarget, index: number, value: LiveMapDocumentContent) =>
@@ -134,10 +155,34 @@ export function make_locus_stage<TMap extends LiveMap>(
               submit(writer => { selected_document(writer, name).content.remove(target, index); }),
             move: (target: LiveMapDocumentCommitTarget, from: number, to: number) =>
               submit(writer => { selected_document(writer, name).content.move(target, from, to); }),
+          },
+        );
+        const handle = Object.freeze({
+          mode: "document" as const,
+          get rev() { return document.rev; },
+          root: () => document.root(),
+          render: () => document.render(),
+          commits: document.commits,
+          schema: Object.freeze({ get: () => document.schema.get() }),
+          at: (path: readonly number[]) => document_location(name, path),
+          css,
+          document: Object.freeze({ root: () => document.document.root(),
+            content,
+            attrs: Object.freeze({
+              get: document.document.attrs.get.bind(document.document.attrs),
+              has: document.document.attrs.has.bind(document.document.attrs),
+              keys: document.document.attrs.keys.bind(document.document.attrs),
+              set: (target: LiveMapDocumentCommitTarget, attribute: string, value: LiveMapDocumentAttributeValue) =>
+                submit(writer => { selected_document(writer, name).attrs.set(target, attribute, value); }),
+              drop: (target: LiveMapDocumentCommitTarget, attribute: string) =>
+                submit(writer => { selected_document(writer, name).attrs.drop(target, attribute); }),
+              replace: (target: LiveMapDocumentCommitTarget, values: LiveMapDocumentAttrs) =>
+                submit(writer => { selected_document(writer, name).attrs.replace(target, values); }),
+            }),
           }),
         });
-      },
-    },
-  );
-  return direct as unknown as LocusStage<TMap>;
+        register_governed_document(handle, document);
+        return handle;
+      };
+  return Object.freeze({ stage: submit as LocusStage<TMap>, lib: lib as GovernorLibrarySelector<TMap>, addLibraries });
 }

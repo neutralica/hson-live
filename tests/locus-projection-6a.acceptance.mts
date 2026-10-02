@@ -1,3 +1,4 @@
+import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
@@ -70,7 +71,7 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 
   const one = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
   const empty = hsonLocus.create({});
-  assert.deepEqual(empty.map.capture().registry.libraries, []);
+  assert.deepEqual(locus_map_internal(empty).capture().registry.libraries, []);
   empty.dispose();
   hsonLocus.create({ ...authority_groups_from_map_fixture(one, [{ name: "page", ownership: "private" }]) }).dispose();
   const allPrivate = hsonLocus.create({ ...authority_groups_from_map_fixture(map(), CATALOG.map((entry) => ({ name: entry.name, ownership: "private" as const }))) });

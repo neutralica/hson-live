@@ -61,7 +61,7 @@ const commit = map.batch(map => {
 
 The callback is synchronous and its setters return `void`; the outer call returns one `LiveMapCommit`. The writes are ordered, final affected Library candidates are Schema-validated, and failure installs none of them. Reads through `map` during the callback see the installed state. Batch handles expire when the callback exits. Nested batches and direct writes on the same map during a batch are rejected. `batch` is callback-only; ordinary `map.lib(...).at(...).set(...)` remains the single-write form. `set` keeps its selected graph meaning in both contexts, including its shallow object patch behavior; `replace` remains exact replacement.
 
-There is no default Library on a multi-map and no public removal, replacement, or rename operation. `map.addLibraries(...)` changes local topology; `locus.stage.addLibraries({ private, shared })` admits hosted authority topology through its durable gate and ownership policy. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
+There is no default Library on a multi-map and no public removal, replacement, or rename operation. `map.addLibraries(...)` changes local topology; `locus.addLibraries({ private, shared })` admits hosted authority topology through its durable gate and ownership policy. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
 
 `map.capture()` synchronously returns one detached `LiveMapSnapshot`.
 It contains the complete ordered registry, QUID-free public and hidden roots,
@@ -97,7 +97,7 @@ An action handler may await application work, then use `context.stage` for synch
 Outside an action, use the callable `locus.stage` for authoritative writes:
 
 ```ts
-await locus.stage.lib("state").at(["count"]).set(1);
+await locus.lib("state").at(["count"]).set(1);
 
 await locus.stage(loc => {
   loc.lib("state").at(["count"]).set(2);
@@ -105,9 +105,9 @@ await locus.stage(loc => {
 });
 ```
 
-A direct terminal setter returns `Promise<void>` for one authority transition. The grouped callback stages synchronously, and its outer call returns `Promise<void>` after the same authority admission path. Stage callbacks must be synchronous; await external work before entering one. Nested or direct stages invoked during an active stage callback are rejected. `locus.map` remains the actual managed LiveMap for reads, cuts, rendering, and observers; its direct mutation routes, including `map.batch`, are fenced while Locus owns it.
+A direct terminal setter returns `Promise<void>` for one authority transition. The grouped callback stages synchronously, and its outer call returns `Promise<void>` after the same authority admission path. Stage callbacks must be synchronous; await external work before entering one. Nested or direct stages invoked during an active stage callback are rejected. Locus owns reads, cuts, rendering, and commit observation directly; its subordinate LiveMap remains private.
 
-Staged scopes are write-oriented. They offer selected `set`, `replace`, and `delete`, bounded document location/content/attribute operations, portable document graph operations, stylesheet operations, and canonical interaction helpers. They do not expose candidate-backed reads, `update`, or read-dependent shape helpers. Reads through `map` or `locus.map` during authoring see committed state, not earlier staged writes. Stage handles expire when the callback exits.
+Staged scopes are write-oriented. They offer selected `set`, `replace`, and `delete`, bounded document location/content/attribute operations, portable document graph operations, stylesheet operations, and canonical interaction helpers. They do not expose candidate-backed reads, `update`, or read-dependent shape helpers. Reads through `locus.lib(name)` during authoring see committed state, not earlier staged writes. Stage handles expire when the callback exits.
 
 For a client, `await hsonEcho.create({ now, credential, transport })` admits the
 authorized current session composition and returns an attached, caught-up
@@ -116,12 +116,11 @@ contracts; `now.local` contains authorized local initializers. Excluded
 authority Library names and state remain unavailable. An action-only session
 with no projected application Libraries uses endpoint-only Echo without a LiveMap.
 
-Echo manages the authority-projected Libraries. Direct public mutation of
-projected Libraries remains gated. `map.rev` counts accepted graph transitions
-in this client runtime. Echo separately tracks the highest contiguous authority
-revision as its synchronization and completion cursor. An authority progress event
-advances that cursor without a graph commit, `map.rev` change, value
-observation, or Mirror work.
+Echo owns the composed replica. `echo.rev` counts changes to that composed
+state in this client runtime. `echo.sync.appliedRev` is the latest contiguous
+authority revision it processed. A progress-only authority revision advances
+that cursor without a composed-state commit, `echo.rev` change, value
+observation, or Mirror work. Local writes advance only `echo.rev`.
 
 Connection loss does not destroy the replica map or its bound Mirror resources.
 After reconnecting transport, awaiting `echo.session.reattach()` synchronizes
@@ -131,12 +130,12 @@ later writes; reconcile synchronizes the current authorized shared authority
 projection in place. Authorized local initializers are installed only when the
 named local instance is absent; later local state is client-owned and survives
 shared synchronization. `hsonEcho.create(...)` has no receiving-runtime local
-library input. Public `echo.map.addLibraries(...)` and topology-addition replay
-are unavailable on the composed replica map; additional client-local libraries
-must come from authorized local initializers in the session composition.
+library input. Echo has no public dynamic local-topology admission API in this
+pass. Authorized local initializers can arrive in later session grants and
+install into an already-running Echo.
 
 Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics for a one-library registry Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.
 
 `await hsonLocus.resume({ private, shared, local, logicalMapId, persistence })` restores an existing durable authority or establishes the declared initial authority durably. Source definitions govern original libraries and local initializers. Durable Locus state supplies ownership for libraries added at runtime, so the deployment does not redeclare them. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch. `hsonLocus.checkpoint(locus)` compacts durable state when needed; accepted commits restore without a manual checkpoint.
 
-Hosted authority topology grows through explicit `locus.stage.addLibraries({ private, shared })` admissions; authorized projection changes update client-visible topology. Local definitions are construction-time-only. Public Library removal, replacement, and rename remain unsupported, as do a default Library and cross-Library QUID transfer. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. A projected named document Library may be bound through Mirror; supported hosted LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay.
+Hosted authority topology grows through explicit `locus.addLibraries({ private, shared })` admissions; authorized projection changes update client-visible topology. The current local initializer catalog comes from Locus construction and may be granted later. Public Library removal, replacement, and rename remain unsupported, as do a default Library and cross-Library QUID transfer. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. A projected named document Library may be bound through Mirror; supported hosted LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay.

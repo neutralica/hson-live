@@ -27,8 +27,9 @@ The same `create` functions accept retained-session `now` state, its separate cr
 and a transport. It admits the shared authority state and authorized local
 initializers, constructs one composed client map, reattaches the session, and
 completes `current`, `replay`, or `reconcile` synchronization before resolving.
-The returned Echo exposes the endpoint capabilities plus `map` and read-only
-`sync` diagnostics: `status`, `failure`, `strategy`, and `debug()`. `strategy`
+The returned Echo exposes the endpoint capabilities plus `rev`, `lib(name)`,
+`cut(...)`, `commits.observe(...)`, and read-only `sync` state: `appliedRev`,
+`status`, `failure`, `strategy`, and `debug()`. `strategy`
 reports the latest completed recovery, including automatic same-attachment
 stream replacement.
 An initial transferred state is checked against authority content before
@@ -37,13 +38,25 @@ from a current authorized view. Local initializer fingerprints are verified
 against the retained session independently of the shared-state fingerprint.
 Later reconnects retain verified replica continuity and synchronize automatically.
 
-Library count is a LiveMap topology concern, not an Echo kind. The replica map
-contains the authorized libraries and contracts in the session current-state materialization. Echo orders
-authority effects with its own cursor.
+Library count is a topology concern, not an Echo kind. Echo composes authorized
+shared projections and client-local initializers in one replica state. The
+subordinate LiveMap remains internal. Echo orders authority effects with its
+own synchronization cursor.
+
+The clocks have different meanings:
+
+| Clock | Meaning |
+| --- | --- |
+| `locus.rev` | Revision of complete authority state. |
+| `echo.rev` | Revision of this Echo's composed client state. Local writes, visible projected commits, and composition-changing topology or reconciliation advance it. A new runtime starts a new composed clock. |
+| `echo.sync.appliedRev` | Latest contiguous authority revision Echo has processed. Local writes leave it unchanged; progress-only authority revisions can advance it while `echo.rev` stays fixed. |
+
+Echo does not maintain a reliable latest-known authority head. Interpret
+`appliedRev` with the authority identity/incarnation and sync status.
 
 ```text
-LiveTree ⇅ Mirror ⇅ replica LiveMap ⇅ Echo ⇅ Locus ⇅ Locus LiveMap
-                                   Echo ⇅ Locus
+LiveTree ⇅ Mirror ⇅ Echo ⇅ Locus
+                        authority state
 ```
 
 Echo serializes supported Mirror requests, lowers each at queue head against
@@ -63,7 +76,7 @@ or generic data proposals. Hosted data changes continue through
 application-defined Locus actions. A client-local QUID remains readable after
 replay while its subject survives. An unquidded Echo-bound node may acquire a
 client-local QUID through its
-LiveMap and Mirror. That demand does not contact Locus, advance `map.rev`, or
+LiveMap and Mirror. That demand does not contact Locus, advance `echo.rev`, or
 publish an application commit.
 
 Transport availability, retained-session attachment, and replica synchronization remain
@@ -97,10 +110,13 @@ settlement, interpreted with the current session's `logicalMapId` and
 `incarnationId`. Receipt of that result does not claim local replica or Mirror
 convergence. Echo processes one ordered authority stream: a graph commit applies
 an application effect, while generic progress advances the processed authority
-position without graph or DOM work. For a replica, `map.rev` is the local
-graph revision and Echo's internal authority cursor is the authority position. A
+position without graph or DOM work. For a replica, `echo.rev` is the local
+composed replica-state revision. `echo.sync.appliedRev` is the latest contiguous
+authority revision processed under Echo's current authority identity and
+synchronization status. A
 completion waiter settles only after Echo has processed every authority
-revision through `completionRev`, including progress-only revisions.
+revision through `completionRev`, including progress-only revisions. It does not
+compare `completionRev` to `echo.rev`.
 
 Configured actions preserve full canonical Hson data fidelity in both
 directions. `Echo.action(name, payload)` accepts strictly admissible ordinary
@@ -127,22 +143,27 @@ is strictly re-admitted, and that transformed `HsonData` is the single value
 seen by authorization and execution. Hson Schema action validators evaluate the
 underlying exact data carrier directly.
 
-Echo exposes its actual Schema-bound `LiveMap`, not a duplicate read-only map
-hierarchy. Public `echo.map.addLibraries(...)` and replay of `library-add`
-commits reject on a client-composed map. Shared-library mutation requires Locus
-authority. Authorized local initializers enter through session composition;
-their ordinary data, document, CSS, and Schema mutations remain client-owned.
+`echo.lib(name)` returns a source-discriminated handle. Check `source` for
+`"client-local"` or `"authority-projected"`, then `mode` for data or document.
+Reads are synchronous. Client-local data, document, CSS, and Schema writes use
+local synchronous LiveMap semantics. Projected data has no generic setter;
+application-defined Locus actions handle data changes. Supported projected
+document and CSS writes return promises, use Locus authorization, and wait for
+the operation's authority completion revision. Projected Schema attachment is
+unavailable. Echo has no public raw-map escape hatch or dynamic local-library
+admission operation in this pass.
 
-Replica graph changes are observed through LiveMap commit/sub/feed/watch
-facilities. Progress-only authority advancement emits no application commit or
-value/mutation observation; internal authority-position observers support Echo
-convergence and Mirror revision ordering.
+`echo.commits.observe(...)` reports composed-state commits; selected-library
+watches and document commits remain available. `echo.cut(...)` is a coherent cut
+of currently composed projected and local state. It is neither a full authority
+cut nor a session authorization artifact. Progress-only authority advancement
+emits no composed-state commit or value observation.
 Retained synchronization applies projected library additions before later writes,
 then reconciles any explicit disconnected grant expansion at the current cut.
 When retained history is unavailable, a current projected snapshot reconciles
 the authority-owned libraries in the existing map before queued live
 traffic. Bound Mirror/LiveTree resources remain.
-Hidden additions advance only the authority cursor. A session projection
+Hidden additions advance only `echo.sync.appliedRev`. A session projection
 contraction removes revoked authority libraries and makes their old handles
 stale, without changing authority revision.
 `EchoSync` has no `onChange` observation member. Echo has no topology-aware
@@ -155,6 +176,9 @@ adopted DOM, then completes synchronization through the same engine.
 Shared libraries remain managed by Locus. Local libraries are initialized only
 when absent and are thereafter client-owned: local root, Schema, and document
 CSS changes stay local and survive replay, reconcile, scope removal, and re-add.
+An already-running Echo can receive a later grant for a cataloged local
+initializer. Installing that local topology may advance `echo.rev`; the session
+contract change alone does not advance `locus.rev` or `echo.sync.appliedRev`.
 If the entire client runtime and its application persistence are lost, evolved
 local state is lost and a new replica starts from the currently authorized seed.
 Canonical interaction descriptors use one composed system root. Subject Library

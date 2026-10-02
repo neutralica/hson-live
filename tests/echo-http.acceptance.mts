@@ -117,18 +117,18 @@ try {
     assert.equal(replica.session.status, "attached");
     assert.equal(replica.sync.status, "caught_up");
     assert.equal(replica.sync.strategy, "current");
-    const ui = replica.map.lib("ui");
-    if (ui.mode === "document") throw new Error("Expected local data library.");
+    const ui = replica.lib("ui");
+    if (ui.mode === "document" || ui.source !== "client-local") throw new Error("Expected local data library.");
     ui.at(["value"]).set(23);
     await locus.stage((draft) => {
       const state = draft.lib("state");
 
       state.at(["value"]).set(1);
     });
-    for (let i = 0; i < 100 && replica.sync.debug().lastAppliedRev !== locus.rev; i++) {
+    for (let i = 0; i < 100 && replica.sync.appliedRev !== locus.rev; i++) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    assert.equal(replica.sync.debug().lastAppliedRev, locus.rev);
+    assert.equal(replica.sync.appliedRev, locus.rev);
     const attachmentEpoch = replica.session.epoch;
     pauseNextRecovery = true;
     interruptSync?.();
@@ -141,11 +141,11 @@ try {
     });
     releaseRecovery();
     for (let i = 0; i < 100 && (syncOpens < 2 || replica.sync.status !== "caught_up"
-      || replica.sync.debug().lastAppliedRev !== locus.rev); i++) {
+      || replica.sync.appliedRev !== locus.rev); i++) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.equal(replica.sync.strategy, "replay");
-    assert.equal(replica.sync.debug().lastAppliedRev, locus.rev);
+    assert.equal(replica.sync.appliedRev, locus.rev);
     pauseNextRecovery = true;
     interruptSync?.();
     for (let i = 0; i < 100 && resumeRecovery === undefined; i++) await new Promise((resolve) => setTimeout(resolve, 10));

@@ -1,3 +1,4 @@
+import { locus_map_internal } from "../src/internal/governor-maps.js";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus } from "../src/index.ts";
 import { MemoryCheckpointAdapter, deferred } from "./helpers/memory-checkpoint-adapter.mts";
@@ -19,14 +20,14 @@ for (const options of [
 ]) {
   const created = hsonLocus.create(options);
   assert.equal(created.rev, 0);
-  assert.equal("lib" in created, false);
+  assert.equal("lib" in created, true);
   created.dispose();
 }
 
 const definition = { shared: [{ name: "A", definition: { data: { value: 1 } } }],
   logicalMapId: "final-locus-model" } as const;
 const read = (locus: ReturnType<typeof hsonLocus.create>, name: string) => {
-  const library = locus.map.lib(name);
+  const library = locus.lib(name);
   if (library.mode === "document") throw new Error("Expected data Library.");
   return Hson.data.materialize(library.at(["value"]).data()!);
 };
@@ -35,8 +36,8 @@ const fresh = hsonLocus.create({ private: [{ name: "secret", definition: { data:
   shared: [{ name: "public", definition: { data: { value: 2 } } }],
   local: [{ name: "ui", initializer: { data: { selected: false } } }] });
 assert.equal(fresh.rev, 0);
-assert.deepEqual(fresh.map.capture().registry.libraries.map((entry) => entry.name), ["secret", "public"]);
-assert.throws(() => fresh.map.lib("ui"), /Unknown LiveMap Library/);
+assert.deepEqual(locus_map_internal(fresh).capture().registry.libraries.map((entry) => entry.name), ["secret", "public"]);
+assert.throws(() => fresh.lib("ui"), /Unknown LiveMap Library/);
 assert.throws(() => Reflect.apply(hsonLocus.create, undefined, [hsonLiveMap.create()]), /unsupported|grouped/i);
 await assert.rejects(hsonLocus.checkpoint(fresh), /no durable backing/i);
 // @ts-expect-error Literal duplicate names are rejected before runtime.
@@ -47,13 +48,13 @@ fresh.dispose();
 const storage = new MemoryCheckpointAdapter();
 const first = await hsonLocus.resume({ ...definition, persistence: storage });
 assert.equal(first.rev, 0);
-await first.stage.addLibraries({ private: [{ name: "B", definition: { data: { value: 2 } } }],
+await first.addLibraries({ private: [{ name: "B", definition: { data: { value: 2 } } }],
   shared: [{ name: "C", definition: { data: { value: 3 } } }] });
 assert.equal(first.rev, 1);
 assert.deepEqual(storage.appendCalls.at(-1)?.locus.libraryOwnershipAdded,
   [{ name: "B", ownership: "private" }, { name: "C", ownership: "shared" }]);
-const b = first.stage.lib("B");
-const c = first.stage.lib("C");
+const b = first.lib("B");
+const c = first.lib("C");
 if (b.mode === "document" || c.mode === "document") throw new Error("Expected data Libraries.");
 await b.at(["value"]).set(4);
 await c.at(["value"]).set(5);
@@ -129,9 +130,9 @@ await assert.rejects(hsonLocus.resume({ logicalMapId: definition.logicalMapId, p
 const failed = new MemoryCheckpointAdapter();
 const held = await hsonLocus.resume({ ...definition, persistence: failed });
 failed.failAppend = new Error("append unavailable");
-await assert.rejects(held.stage.addLibraries({ shared: [{ name: "C", definition: { data: {} } }] }), /append/i);
+await assert.rejects(held.addLibraries({ shared: [{ name: "C", definition: { data: {} } }] }), /append/i);
 assert.equal(held.rev, 0);
-assert.throws(() => held.map.lib("C"), /Unknown LiveMap Library/);
+assert.throws(() => held.lib("C"), /Unknown LiveMap Library/);
 held.dispose();
 const missingIdentityStorage = new MemoryCheckpointAdapter();
 // @ts-expect-error Durable resume requires a stable logicalMapId.
@@ -160,9 +161,9 @@ const racing = await hsonLocus.resume({ ...racingDefinition, persistence: racing
 racingStorage.blockNextLoad = true;
 const compacting = hsonLocus.checkpoint(racing);
 await racingStorage.entered.promise;
-await racing.stage.lib("state").at(["value"]).set(1);
-await racing.stage.lib("state").at(["value"]).set(2);
-await racing.stage.addLibraries({ shared: [{ name: "later", definition: { data: { value: 3 } } }] });
+await racing.lib("state").at(["value"]).set(1);
+await racing.lib("state").at(["value"]).set(2);
+await racing.addLibraries({ shared: [{ name: "later", definition: { data: { value: 3 } } }] });
 racingStorage.release.resolve();
 await compacting;
 assert.equal(racingStorage.state(racingDefinition.logicalMapId)?.checkpoint.rev, 0);
@@ -174,8 +175,8 @@ assert.equal(read(racingRestored, "state"), 2);
 assert.equal(read(racingRestored, "later"), 3);
 racingRestored.dispose();
 const validation = hsonLocus.create({});
-await assert.rejects(validation.stage.addLibraries({}), /requires a Library/i);
+await assert.rejects(validation.addLibraries({}), /requires a Library/i);
 // @ts-expect-error Local runtime additions are intentionally absent.
-await assert.rejects(validation.stage.addLibraries({ local: [{ name: "local", initializer: { data: 1 } }] }), /private\/shared/i);
+await assert.rejects(validation.addLibraries({ local: [{ name: "local", initializer: { data: 1 } }] }), /private\/shared/i);
 validation.dispose();
 console.log("ok - final Locus construction and durable ownership");

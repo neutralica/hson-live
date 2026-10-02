@@ -140,8 +140,8 @@ function socketPair(): Readonly<{
     root: root as unknown as Element,
     interactions: { local: {} },
   });
-  assert.equal(continuation.map, continuation.echo.map.lib("page"));
-  assert.equal(continuation.echo.map.lib("ui").mode, "data-object");
+  assert.equal(continuation.map, continuation.echo.lib("page"));
+  assert.equal(continuation.echo.lib("ui").mode, "data-object");
   button.dispatchEvent(new Event("click"));
   for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
   assert.equal(handled === Hson.data.from({ exact: true }), true);
@@ -195,14 +195,14 @@ function socketPair(): Readonly<{
   const continuation = await continue_hosted_document({ now: mixed, credential: session.credential!,
     transport: test_echo_transport(pair.client), root: root as unknown as Element });
   assert.equal(continuation.echo.sync.strategy, "reconcile");
-  const ui = continuation.echo.map.lib("ui");
-  if (ui.mode === "document") throw new Error("Expected local data Library.");
+  const ui = continuation.echo.lib("ui");
+  if (ui.mode === "document" || ui.source !== "client-local") throw new Error("Expected local data Library.");
   assert.equal(ui.snap(["value"]), 0);
   const authorityRev = locus.rev;
   ui.at(["value"]).set(12);
   assert.equal(locus.rev, authorityRev);
   assert.equal(ui.snap(["value"]), 12);
-  assert.equal(continuation.map, continuation.echo.map.lib("page"));
+  assert.equal(continuation.map, continuation.echo.lib("page"));
   assert.equal(get_node_for_el(button as unknown as Element) !== undefined, true);
   assert.equal(continuation.mirror.status, "active");
   continuation.dispose(); continuation.echo.dispose(); detach(); locus.dispose(); emptyLocus.dispose();

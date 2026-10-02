@@ -1,3 +1,4 @@
+import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -76,7 +77,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
   let map = make_map();
   const locus = strategy === "replay" ? hsonLocus.create(authority_definition_from_fixture_options(options(map)))
     : create_registry_locus_internal(options(map), { maxHistoryBytes: 1 }).locus;
-  if (strategy === "replay") map = locus.map;
+  if (strategy === "replay") map = locus_map_internal(locus);
   const pair = socket_pair();
   const endpoint = hsonEcho.create({ transport: test_echo_transport(pair.client) });
   let detach = () => {};
@@ -128,10 +129,10 @@ for (const strategy of ["replay", "reconcile"] as const) {
       assert.equal(action.completionRev, 0);
       assert.equal(action.seq, 1, "action sequencing is independent of authority revision");
       assert.equal(pair.sent.length, sent + 1, "only the action acknowledgement is sent");
-      assert.deepEqual([map.rev, locus.rev, commits, feeds, echo.sync.debug().lastAppliedRev], [0, 0, 0, 0, 0]);
+      assert.deepEqual([map.rev, locus.rev, commits, feeds, echo.sync.appliedRev], [0, 0, 0, 0, 0]);
 
       await locus.stage(draft => data_draft(draft, "game").at(["ready"]).set(false));
-      assert.deepEqual([map.rev, locus.rev, commits, feeds, echo.sync.debug().lastAppliedRev], [1, 1, 1, 1, 1]);
+      assert.deepEqual([map.rev, locus.rev, commits, feeds, echo.sync.appliedRev], [1, 1, 1, 1, 1]);
       assert.equal(data(client, "game").snap(["ready"]), false);
       assert.equal(pair.messages("commit").length, 1);
       assert.equal(pair.messages("commit")[0]?.projectionSequence, 0);
@@ -140,7 +141,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
       await locus.stage(draft => data_draft(draft, "private").at(["ready"]).set(true));
       assert.equal(pair.sent.length, privateNoopSent);
       await locus.stage(draft => data_draft(draft, "private").at(["ready"]).set(false));
-      assert.deepEqual([map.rev, locus.rev, commits, feeds, echo.sync.debug().lastAppliedRev], [2, 2, 2, 1, 2]);
+      assert.deepEqual([map.rev, locus.rev, commits, feeds, echo.sync.appliedRev], [2, 2, 2, 1, 2]);
       assert.equal(pair.messages("progress").length, 1);
       assert.equal(pair.messages("progress")[0]?.projectionSequence, 0);
       assert.equal(data(client, "game").snap(["ready"]), false);
@@ -153,11 +154,11 @@ for (const strategy of ["replay", "reconcile"] as const) {
       assert.equal(pair.sent.length, offlineSent);
       await locus.stage(draft => data_draft(draft, "game").at(["ready"]).set(true));
       assert.equal(locus.rev, 3);
-      assert.equal(echo.sync.debug().lastAppliedRev, 2);
+      assert.equal(echo.sync.appliedRev, 2);
       detach = bind_locus_websocket(locus, pair.server);
       echo.connect(); await echo.awaitReconnect();
       assert.equal(echo.sync.strategy, strategy);
-      assert.equal(echo.sync.debug().lastAppliedRev, 3);
+      assert.equal(echo.sync.appliedRev, 3);
       assert.equal(data(client, "game").snap(["ready"]), true);
       assert.equal(pair.messages("recovery-commit").length, strategy === "replay" ? 1 : 0);
       assert.equal(pair.messages("recovery-snapshot").length, strategy === "reconcile" ? 1 : 0);
@@ -170,7 +171,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
       await noop();
       assert.equal(pair.sent.length, emptySent);
       assert.deepEqual(locus.session.get(sessionId)!.now().libs, emptySnapshot);
-      assert.equal(echo.sync.debug().lastAppliedRev, 3);
+      assert.equal(echo.sync.appliedRev, 3);
       assert.deepEqual(await locus.session.get(sessionId)!.update({ libraries: [] }), {
         changed: false, sequence: 1, digest: empty.digest, authorityRev: 3,
       });
@@ -284,20 +285,20 @@ for (const strategy of ["replay", "reconcile"] as const) {
 {
   let map = make_map();
   const locus = hsonLocus.create(authority_definition_from_fixture_options(options(map)));
-  map = locus.map;
+  map = locus_map_internal(locus);
   let escaped: { set(value: boolean): void } | undefined;
   try {
     assert.throws(() => map.batch(() => {}), /managed|Locus authority/i);
-    await locus.stage.lib("game").at(["ready"]).set(true);
+    await locus.lib("game").at(["ready"]).set(true);
     assert.equal(locus.rev, 0);
-    await locus.stage.lib("game").at(["ready"]).set(false);
+    await locus.lib("game").at(["ready"]).set(false);
     assert.equal(locus.rev, 1);
     await locus.stage(stage => {
       escaped = stage.lib("game").at(["ready"]);
       stage.lib("game").at(["ready"]).set(true);
       stage.lib("private").at(["ready"]).set(false);
       assert.equal(locus.rev, 1);
-      assert.equal(locus.map.lib("game").at(["ready"]).snap(), false);
+      assert.equal(locus.lib("game").at(["ready"]).snap(), false);
     });
     assert.equal(locus.rev, 2);
     assert.equal(map.lib("game").at(["ready"]).snap(), true);
@@ -322,7 +323,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     let nested: Promise<void> | undefined;
     await locus.stage(stage => {
       stage.lib("game").at(["ready"]).set(false);
-      nested = locus.stage.lib("game").at(["ready"]).set(true);
+      nested = locus.lib("game").at(["ready"]).set(true);
     });
     if (nested === undefined) throw new Error("Nested stage was not attempted.");
     await assert.rejects(nested, /active stage/i);
@@ -334,16 +335,16 @@ for (const strategy of ["replay", "reconcile"] as const) {
     assert.equal(locus.rev, 3);
     let nestedAddition: Promise<void> | undefined;
     await locus.stage(() => {
-      nestedAddition = locus.stage.addLibraries({ shared: [{ name: "later",
+      nestedAddition = locus.addLibraries({ shared: [{ name: "later",
         definition: { data: { value: 1 } } }] });
     });
     if (nestedAddition === undefined) throw new Error("Nested library addition was not attempted.");
     await assert.rejects(nestedAddition, /active stage/i);
     assert.equal(locus.rev, 3);
-    assert.throws(() => locus.map.lib("later"), /Unknown/);
-    await locus.stage.addLibraries({ shared: [{ name: "later", definition: { data: { value: 1 } } }] });
+    assert.throws(() => locus.lib("later"), /Unknown/);
+    await locus.addLibraries({ shared: [{ name: "later", definition: { data: { value: 1 } } }] });
     assert.equal(locus.rev, 4);
-    assert.equal(locus.map.lib("later").mode, "data-object");
+    assert.equal(locus.lib("later").mode, "data-object");
   } finally { locus.dispose(); }
   console.log("ok - callable stage direct/grouped, managed map fence, expiry, and reentrancy");
 }
@@ -371,11 +372,11 @@ for (const strategy of ["replay", "reconcile"] as const) {
     grouped.op = "ensure-quid";
     grouped.quid = "012345678";
   });
-  assert.equal(locus.map.lib("page").document.attrs.get(target, "title"), "grouped");
+  assert.equal(locus.lib("page").document.attrs.get(target, "title"), "grouped");
   const action = await locus.dispatchAction({ type: "action", id: "graph-alias", name: "tamper" });
   assert.equal(action.type, "ack");
-  assert.equal(locus.map.lib("page").document.attrs.get(target, "data-action"), "captured");
-  assert.equal(JSON.stringify(locus.map.lib("page").root()).includes("012345678"), false);
+  assert.equal(locus.lib("page").document.attrs.get(target, "data-action"), "captured");
+  assert.equal(JSON.stringify(locus.lib("page").root()).includes("012345678"), false);
   const rev = locus.rev;
   await assert.rejects(locus.stage(stage => {
     stage.lib("page").graph({ domain: "graph", op: "ensure-quid", target, quid: "012345678" } as never);
@@ -390,9 +391,9 @@ for (const strategy of ["replay", "reconcile"] as const) {
   let map = make_map();
   const locus = await hsonLocus.resume(authority_definition_from_fixture_options({ ...options(map),
     logicalMapId: "hosted-noop-durable-stage", persistence }));
-  map = locus.map;
+  map = locus_map_internal(locus);
   try {
-    await locus.stage.lib("game").at(["ready"]).set(false);
+    await locus.lib("game").at(["ready"]).set(false);
     assert.equal(persistence.appendCalls.length, 1);
     persistence.failAppend = new Error("injected durable failure");
     await assert.rejects(locus.stage(stage => {
@@ -403,7 +404,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     assert.equal(map.lib("game").at(["ready"]).snap(), false);
     assert.equal(map.lib("private").at(["ready"]).snap(), true);
     persistence.failAppend = new Error("injected direct failure");
-    await assert.rejects(locus.stage.lib("game").at(["ready"]).set(true), /durably append/);
+    await assert.rejects(locus.lib("game").at(["ready"]).set(true), /durably append/);
     assert.equal(locus.rev, 1);
     assert.equal(map.lib("game").at(["ready"]).snap(), false);
   } finally { locus.dispose(); }
@@ -419,7 +420,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
       ctx.stage.lib("private").at(["ready"]).set(input);
     },
   } });
-  map = locus.map;
+  map = locus_map_internal(locus);
   try {
     const outcome = await locus.dispatchAction({ type: "action", id: "after-await", name: "afterAwait" });
     assert.equal(outcome.type, "ack");
@@ -434,7 +435,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
   const schema = Hson.schema`<type "data" content <count "number">>`;
   let map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema } });
   const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]) });
-  map = locus.map;
+  map = locus_map_internal(locus);
   try {
     await locus.stage(stage => {
       stage.lib("state").at(["count"]).set("temporary" as never);

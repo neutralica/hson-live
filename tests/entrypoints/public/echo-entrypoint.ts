@@ -13,14 +13,28 @@ declare const credential: LocusSessionCredential;
 const endpoint = create_echo({ transport: endpointTransport });
 void [endpoint.clientId, endpoint.session, endpoint.connect, endpoint.disconnect,
   endpoint.action, endpoint.retryAction, endpoint.actionStatus, endpoint.dispose];
-// @ts-expect-error Endpoint-only Echo has no map.
-endpoint.map;
+const endpointHasMap: "map" extends keyof typeof endpoint ? true : false = false;
 // @ts-expect-error Endpoint-only Echo has no synchronization diagnostics.
 endpoint.sync;
 const replica = await hsonEcho.create({ transport, now, credential });
-void [replica.map, replica.sync.status, replica.session, replica.connect, replica.disconnect];
+void [replica.rev, replica.lib, replica.cut, replica.commits, replica.sync.appliedRev,
+  replica.sync.status, replica.session, replica.connect, replica.disconnect];
 const namedReplica = await create_echo({ transport, now, credential });
-void [namedReplica.map, namedReplica.sync.status];
+void [namedReplica.rev, namedReplica.lib, namedReplica.sync.status];
+const replicaHasMap: "map" extends keyof typeof replica ? true : false = false;
+void [endpointHasMap, replicaHasMap];
+const selected = replica.lib("state");
+if (selected.source === "authority-projected" && selected.mode !== "document") {
+  selected.at(["value"]).snap();
+  // @ts-expect-error Projected data has no generic setter.
+  selected.at(["value"]).set(1);
+  // @ts-expect-error Projected Schema attachment is unavailable.
+  selected.schema.use;
+}
+if (selected.source === "client-local" && selected.mode !== "document") {
+  selected.at(["value"]).set(1);
+  selected.schema.use;
+}
 const httpOptions: EchoHttpTransportOptions = { endpoint: "/_hson" };
 const http = hsonEcho.transport.http(httpOptions);
 void [http.operations, http.synchronization, http.dispose];

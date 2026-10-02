@@ -12,7 +12,7 @@ map.addLibraries({ state: { data: initialState, schema } });
 // @ts-expect-error Dynamically admitted libraries still require mode narrowing for data operations.
 map.lib("state").snap();
 // @ts-expect-error Admission is an operation on LiveMap, not its selector.
-map.stage.addLibraries({ private: [{ name: "next", definition: { data: 1 } }] });
+map.addLibraries({ private: [{ name: "next", definition: { data: 1 } }] });
 // @ts-expect-error The factory does not admit libraries on an existing map.
 hsonLiveMap.addLibraries(map, { next: { data: 1 } });
 

@@ -92,7 +92,7 @@ assert.equal(replica.clientProjection()?.revision, decoded.revision);
 replica.dispose();
 const echo = create_recovery_test_driver({ map: client,
   transport: test_echo_transport({ send() {}, close() {}, onMessage() { return () => {}; }, onClose() { return () => {}; } }) });
-assert.equal(echo.sync.debug().lastAppliedRev, decoded.revision);
+assert.equal(echo.sync.appliedRev, decoded.revision);
 assert.equal(client.rev, 0);
 echo.dispose();
 assert.throws(() => client_projection_map({ authority: decoded,

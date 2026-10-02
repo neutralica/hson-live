@@ -4,12 +4,12 @@
 - Hardened the editor/compiler grammar model for incomplete Hson: added compiler-owned completion/introspection for HsonData members and Schema positions, grammar fallback behavior, interpolation-aware completion boundaries, and static HsonData-versus-HsonDocument mismatch diagnostics.
 - Refactored LiveMap around a fixed named-library registry rather than a solo-map model. The old solo LiveMap/one-library architectural path was progressively retired rather than retained as a compatibility facade.
 - Separated fixed application-library topology from transactional/system state and converged LiveMap on one map-global transition authority.
-- Introduced the explicit `private | shared | local` ownership catalog: private/shared current state remains in `locus.map`, while validated local definitions remain construction-time initializers outside authority state.
+- Introduced the explicit `private | shared | local` ownership catalog: private/shared current state belongs to Locus, while validated local initializers remain outside authority state.
 - Introduced authorized per-session projections so each hosted client receives only the libraries and capabilities granted to that session.
 - Retired the historical one-map hosted Locus protocol; even one-library hosted applications now use the registry-based Locus/projection architecture.
 - Made generated QUID identity runtime-local rather than durable application identity. Hosted client commits, snapshots, replay and synchronization became QUID-free; client runtimes establish their own local node identity.
 - Moved hosted continuity toward portable path/replacement lineage rather than relying on exact QUID continuity across authority, persistence and replicas.
-- Separated the client replica’s local `map.rev` from Echo’s authoritative sync position, allowing local state to coexist with authority replay/reconcile without conflating the two revision spaces.
+- Separated the client replica’s composed `echo.rev` from `echo.sync.appliedRev`, the contiguous authority revision Echo processed. Local state coexists with authority replay/reconcile without conflating the two clocks.
 - Reworked hosted synchronization around projected commits, authority-progress events and projected reconcile, while preserving client-owned local libraries in place.
 - Hardened hosted egress so private and unselected state cannot escape through bootstrap, live traffic, replay, fallback or cuts; wire-size limits are applied after per-session projection.
 - Reworked hosted SSR/current-state materialization around session projections. `session.now(...)` packages coherent shared authority state, authorized local initializers and any explicitly selected shared rendered document.

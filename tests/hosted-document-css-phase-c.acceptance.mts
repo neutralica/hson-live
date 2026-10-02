@@ -47,7 +47,7 @@ const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [
     { name: "privatePage", ownership: "private" },
     { name: "ungrantedPage", ownership: "shared" },
   ]), defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ["page"] }) });
-const managedPage = locus.map.lib("page");
+const managedPage = locus.lib("page");
 if (managedPage.mode !== "document") throw new Error("Expected managed document.");
 const wire = pair();
 let detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
@@ -61,7 +61,7 @@ if (clientPage.mode !== "document" || localPage.mode !== "document") throw new E
 const initial = clientPage.css.snapshot();
 assert.match(initial, /rgb\(1,2,3\)/);
 assert.throws(() => clientPage.css.clearAll(), /hosted|managed|projection|authority/i);
-assert.throws(() => managedPage.css.clearAll(), /hosted|managed|authority/i);
+assert.equal("clearAll" in managedPage.css, false);
 localPage.css.stylesheet("body { color: green; }");
 const localCss = localPage.css.snapshot();
 const localRev = client.rev;
@@ -225,7 +225,7 @@ const restartOptions = {
   authorizeProjection: () => ({ libraries: ["page"] }),
 };
 const firstAuthority = await hsonLocus.resume(authority_definition_from_fixture_options({ map: restartMap, ...restartOptions }));
-const managedRestartPage = firstAuthority.map.lib("page");
+const managedRestartPage = firstAuthority.lib("page");
 if (managedRestartPage.mode !== "document") throw new Error("Expected managed restart document.");
 await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { color: maroon; }")); });
 await hsonLocus.checkpoint(firstAuthority);
@@ -249,7 +249,7 @@ restartAdapter.failAppend = new Error("CSS durable acceptance rejected");
 await assert.rejects(() => firstAuthority.stage((draft) => { draft.lib("page").css(append("body { margin: 11px; }", managedRestartPage.css.list())); }),
   { code: "LOCUS_PERSISTENCE_APPEND_FAILED" });
 assert.equal(firstAuthority.rev, beforeRejectedCssRev);
-assert.equal(firstAuthority.map.rev, beforeRejectedCssRev);
+assert.equal(firstAuthority.rev, beforeRejectedCssRev);
 assert.equal(restartEcho.lastAppliedRev, beforeRejectedCssRev);
 assert.equal(beforeRejectedClientCss.css.snapshot(), beforeRejectedCss);
 assert.equal(restartWire.sent.length, beforeRejectedWire);

@@ -1,3 +1,4 @@
+import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -539,7 +540,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     });
     const echo = await bounded(hsonEcho.create({ now: session.now(), credential: session.credential!, transport }), 1_000,
       () => `Replica establishment stalled: ${JSON.stringify({ plans, binding: attachment.binding.attached })}`);
-    const documentAuthority = echo_document_authority_for(echo.map.lib("page"));
+    const documentAuthority = echo_document_authority_for(echo_map_internal(echo).lib("page"));
     assert.ok(documentAuthority);
     holdLive = true;
     const pending = documentAuthority.enqueue(() => Object.freeze({ name: "document.attrs.set" as const,
@@ -569,12 +570,12 @@ for (const strategy of ["replay", "reconcile"] as const) {
     releaseRecovery();
     for (let turn = 0; turn < 100 && echo.sync.status !== "caught_up"; turn++) await new Promise((resolve) => setTimeout(resolve, 1));
     await bounded(pending, 2_000,
-      () => `Completion stalled: ${JSON.stringify({ plans, status: echo.sync.status, rev: echo.sync.debug().lastAppliedRev, waits: documentAuthority.pendingRevisionWaits() })}`);
+      () => `Completion stalled: ${JSON.stringify({ plans, status: echo.sync.status, rev: echo.sync.appliedRev, waits: documentAuthority.pendingRevisionWaits() })}`);
     assert.equal(plans.at(-1), strategy);
     assert.equal(settlements, 1);
     assert.equal(dispatches, 2, "retry uses the existing logical request");
-    assert.equal(locus.map.rev, 1);
-    assert.equal(echo.sync.debug().lastAppliedRev, 1);
+    assert.equal(locus.rev, 1);
+    assert.equal(echo.sync.appliedRev, 1);
     echo.dispose(); attachment.close(); locus.dispose();
   });
 }

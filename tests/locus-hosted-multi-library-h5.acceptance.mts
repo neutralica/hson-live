@@ -1,3 +1,5 @@
+import { echo_map_internal } from "../src/internal/governor-maps.js";
+import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -206,6 +208,9 @@ draft.lib("page").graph(insert_item()); })();
       },
       "state.only": async (context) => {
         assert.equal(typeof context.emitEvent, "function");
+        assert.equal("map" in context, false);
+        const current = context.lib("state");
+        assert.notEqual(current.snap(["count"]), undefined);
         assert.equal("emit_event" in context, false);
         await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(1); })();
       },
@@ -213,7 +218,7 @@ draft.lib("page").graph(insert_item()); })();
         await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set("invalid"); })();
       },
     } });
-  serverMap = locus.map;
+  serverMap = locus_map_internal(locus);
   const pair = socket_pair();
   assert.equal(typeof locus.dispatchAction, "function");
   assert.equal("dispatch_action" in locus, false);
@@ -240,7 +245,7 @@ draft.lib("page").graph(insert_item()); })();
   const bootstrapMs = performance.now() - started;
   assert.equal(bootstrap.strategy, "current");
   assert.equal(client.map, clientMap);
-  assert.equal(client.map.rev, 0);
+  assert.equal(client.rev, 0);
   assert.throws(() => clientMap.lib("state").at(["count"]).set(9), /library mutation authority/i);
   assert.equal("subscribe" in client, false);
   assert.equal("unsubscribe" in client, false);
@@ -255,12 +260,18 @@ draft.lib("page").graph(insert_item()); })();
   assert.equal(wrongLibrary.type, "error");
   if (wrongLibrary.type === "error") assert.match(wrongLibrary.error.message, /document/i);
   assert.deepEqual([serverMap.rev, clientMap.rev], [0, 0]);
-  const page = client.map.lib("page");
+  const page = client.lib("page");
+  if (page.mode !== "document") throw new Error("Expected document Library.");
   const reflection = hsonMirror(page);
   const stateValues: unknown[] = [];
   const colorsValues: unknown[] = [];
-  const stopState = client.map.commits.observe((commit) => stateValues.push([client.map.lib("state").snap(["theme"]), commit.rev]));
-  const stopColors = client.map.commits.observe((commit) => colorsValues.push([client.map.lib("colors").snap(["theme"]), commit.rev]));
+  const theme = (name: string) => {
+    const library = client.lib(name);
+    if (library.mode === "document") throw new Error("Expected data Library.");
+    return library.snap(["theme"]);
+  };
+  const stopState = client.commits.observe((commit) => stateValues.push([theme("state"), commit.rev]));
+  const stopColors = client.commits.observe((commit) => colorsValues.push([theme("colors"), commit.rev]));
   const aggregateStarted = performance.now();
   const themeAll = await client.action("theme.all");
   assert.equal(themeAll.type, "ack");
@@ -269,7 +280,7 @@ draft.lib("page").graph(insert_item()); })();
   assert.deepEqual([serverMap.rev, clientMap.rev], [1, 1]);
   assert.equal(clientMap.lib("state").snap(["theme"]), "dark");
   assert.equal(clientMap.lib("colors").snap(["theme"]), "blue");
-  assert.equal(page.document.byQuid(QUID), undefined);
+  assert.equal(clientMap.lib("page").document.byQuid(QUID), undefined);
   const serverAuthority = internal_livemap_aggregate_authority(serverMap);
   const serverPage = serverAuthority.libraries()[2];
   if (serverPage === undefined) throw new Error("Expected server page Library.");
@@ -291,7 +302,7 @@ draft.lib("page").graph(insert_item()); })();
   const stateOnlyMs = performance.now() - stateOnlyStarted;
   assert.equal(reflection.sourceRevision, 2);
   assert.equal(reflection.diagnostics().updatesApplied, 1);
-  assert.equal(client.sync.debug().lastAppliedRev, 2);
+  assert.equal(client.sync.appliedRev, 2);
   const reflectedMain = reflected_document_element(reflection);
   const reflectedWrite = reflectedMain.async.attrs.set("title", "echoed");
   assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), undefined);
@@ -327,7 +338,7 @@ await check("named document Echo authoring honors aggregate authorization and co
   const decisions = [false, true];
   let serverMap = make_map();
   const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }), authorizeAction: () => decisions.shift() ?? true });
-  serverMap = locus.map;
+  serverMap = locus_map_internal(locus);
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server, { principalId: "principal-a" });
   const clientMap = make_client_map(serverMap);
@@ -361,7 +372,7 @@ await check("named Mirror text replacement carries empty portable lineage throug
   const definitions = { page: { document: "<main <item \"old\"/>/>", schema: TextPageSchema } } as const;
   let serverMap = hsonLiveMap.fromLibraries(definitions);
   const locus = hsonLocus.create(authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }));
-  serverMap = locus.map;
+  serverMap = locus_map_internal(locus);
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
   const clientMap = client_projection_map({
@@ -420,7 +431,7 @@ await check("projected fallback restores the observed authority document in plac
   await snapshotClient.session.create();
   assert.equal((await snapshotClient.completeRecovery()).strategy, "reconcile");
   assert.equal(snapshotClient.map, staleMap);
-  assert.equal(snapshotClient.sync.debug().lastAppliedRev, 2);
+  assert.equal(snapshotClient.sync.appliedRev, 2);
   assert.equal(stateHandle.snap(), "dark");
   assert.equal(page_item(staleMap)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 1);
@@ -444,7 +455,7 @@ await check("projected fallback restores the observed authority document in plac
   replayClient.connect();
   await replayClient.session.create();
   assert.equal((await replayClient.completeRecovery()).strategy, "replay");
-  assert.equal(replayClient.sync.debug().lastAppliedRev, 3);
+  assert.equal(replayClient.sync.appliedRev, 3);
   assert.deepEqual([staleMap.rev, stateHandle.snap(), reflection.sourceRevision], [2, "dark", 2]);
   assert.equal(page_item(staleMap)?.$_tag, "item");
   assert.equal((await replayClient.completeRecovery()).strategy, "current");
@@ -527,7 +538,7 @@ draft.lib("page").graph(insert_item()); })();
         await (() => { const draft = context.stage; draft.lib("page").graph(remove_item()); })();
       },
     } });
-  serverMap = host.map;
+  serverMap = locus_map_internal(host);
   const first = socket_pair();
   bind_locus_websocket(host, first.server);
   const clientMap = make_client_map(serverMap);
@@ -574,10 +585,10 @@ draft.lib("page").graph(insert_item()); })();
 draft.lib("page").graph(insert_item()); })();
       },
     } });
-  restoredMap = restored.map;
+  restoredMap = locus_map_internal(restored);
   const restartLoadMs = performance.now() - restartStarted;
   assert.ok(restored);
-  assert.equal(restored.map, restoredMap);
+  assert.equal(locus_map_internal(restored), restoredMap);
   assert.equal(restoredMap.rev, 2);
   const locusB = internal_livemap_aggregate_authority(restoredMap);
   const locusPageB = locusB.libraries()[2];

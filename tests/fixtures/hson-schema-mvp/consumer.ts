@@ -48,6 +48,9 @@ const hostedLibraries = hsonLocus.create({
   ],
   actions: {
     async rename(context) {
+      const currentName: string = context.lib("user").at(["name"]).snap();
+      const noRawMap: "map" extends keyof typeof context ? true : false = false;
+      void [currentName, noRawMap];
       {
         const draft = context.stage;
         draft.lib("user").at(["name"]).set("Lin");
@@ -57,7 +60,7 @@ const hostedLibraries = hsonLocus.create({
     },
   },
 });
-const hostedLibraryName: string = hostedLibraries.map.lib("user").at(["name"]).snap();
+const hostedLibraryName: string = hostedLibraries.lib("user").at(["name"]).snap();
 const owned = hsonLocus.create({ shared: [{ name: "user", definition: definitions.user }],
   private: [{ name: "tree", definition: definitions.tree }], actions: {
   rename(context) {
@@ -66,13 +69,10 @@ const owned = hsonLocus.create({ shared: [{ name: "user", definition: definition
     context.stage.lib("user").at(["name"]).set(37);
   },
 } });
-const ownedMap: typeof libraries = owned.map;
-owned.map.lib("user").at(["name"]).set("Mira");
-owned.stage.lib("user").at(["name"]).set("Mira");
+owned.lib("user").at(["name"]).set("Mira");
 owned.stage((loc) => { loc.lib("user").at(["name"]).set("Mira"); });
 // @ts-expect-error Owned construction preserves generated Schema write types.
-owned.stage.lib("user").at(["name"]).set(37);
-void ownedMap;
+owned.lib("user").at(["name"]).set(37);
 
 void authored;
 void certified;

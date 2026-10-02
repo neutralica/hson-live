@@ -1,3 +1,4 @@
+import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -63,13 +64,13 @@ assert.ok(sessionId);
 echo.disconnect();
 detach();
 
-await locus.stage.addLibraries({ shared: [{ name: "newState", definition: { data: { value: 1 } } }] });
+await locus.addLibraries({ shared: [{ name: "newState", definition: { data: { value: 1 } } }] });
 await locus.stage((draft) => {
   const state = draft.lib("newState");
   if (state.mode === "document") throw new Error("Expected data Library.");
   state.at(["value"]).set(2);
 });
-await locus.stage.addLibraries({ private: [{ name: "privateState", definition: { data: { secret: "PRIVATE_REPLAY_ROOT_SENTINEL",
+await locus.addLibraries({ private: [{ name: "privateState", definition: { data: { secret: "PRIVATE_REPLAY_ROOT_SENTINEL",
     PRIVATE_REPLAY_SCHEMA_SENTINEL: "private" },
     schema: Hson.schema`<type "data" content <secret "string" PRIVATE_REPLAY_SCHEMA_SENTINEL "string">>` } }], shared: [{ name: "nextState", definition: { data: { value: 3 } } }, { name: "ungrantedState", definition: { data: { secret: "UNGRANTED_REPLAY_ROOT_SENTINEL",
     UNGRANTED_REPLAY_SCHEMA_SENTINEL: "ungranted" },
@@ -85,7 +86,7 @@ await assert.rejects(locus.session.get(sessionId)!.update({ libraries: ["page", 
 const projection = await locus.session.get(sessionId)!.update({ libraries: ["page", "newState", "nextState"] }, { principalId: "alice" });
 assert.equal(projection.changed, true);
 assert.equal(projection.authorityRev, authorityRevBeforeProjection);
-assert.equal(locus.map.rev, authorityRevBeforeProjection);
+assert.equal(locus.rev, authorityRevBeforeProjection);
 const beforeReplay = wire.serverSent.length;
 detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 const recovery = await echo.connect();
@@ -106,7 +107,7 @@ assert.equal(next.snap(["value"]), 4);
 assert.throws(() => clientMap.lib("privateState"), /Unknown/);
 assert.throws(() => clientMap.lib("ungrantedState"), /Unknown/);
 const replayWire = wire.serverSent.slice(beforeReplay);
-const privateRegistryDigest = internal_livemap_aggregate_authority(locus.map).captureHosted().registry.digest;
+const privateRegistryDigest = internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted().registry.digest;
 for (const encoded of replayWire) {
   assert.equal(encoded.includes(privateRegistryDigest), false);
   for (const hidden of ["privateState", "ungrantedState", "PRIVATE_REPLAY_ROOT_SENTINEL",
@@ -135,7 +136,7 @@ await currentEcho.connect();
 const currentMap = require_map(currentEcho);
 const currentSession = currentEcho.session.sessionId;
 assert.ok(currentSession);
-await currentServer.stage.addLibraries({ shared: [{ name: "later", definition: { data: { value: 9 } } }] });
+await currentServer.addLibraries({ shared: [{ name: "later", definition: { data: { value: 9 } } }] });
 assert.equal(currentEcho.lastAppliedRev, currentServer.rev);
 assert.throws(() => currentMap.lib("later"), /Unknown/);
 currentEcho.disconnect();
@@ -280,7 +281,7 @@ const emptySession = emptyEcho.session.sessionId;
 assert.ok(emptySession);
 emptyEcho.disconnect();
 detachEmpty();
-await emptyServer.stage.addLibraries({ shared: [{ name: "first", definition: { data: { value: 7 } } }] });
+await emptyServer.addLibraries({ shared: [{ name: "first", definition: { data: { value: 7 } } }] });
 await emptyServer.session.get(emptySession)!.update({ libraries: ["first"] }, { principalId: "alice" });
 detachEmpty = bind_locus_websocket(emptyServer, emptyWire.server, { principalId: "alice" });
 assert.equal((await emptyEcho.connect()).outcome, "replay");
@@ -313,7 +314,7 @@ const interactionSession = interactionEcho.session.sessionId;
 assert.ok(interactionSession);
 interactionEcho.disconnect();
 detachInteraction();
-await interactionServer.stage.addLibraries({ shared: [{ name: "nextPage", definition: { document: Hson.document`<main <button "Next"/>/>` } }] });
+await interactionServer.addLibraries({ shared: [{ name: "nextPage", definition: { document: Hson.document`<main <button "Next"/>/>` } }] });
 await interactionServer.stage((draft) => add_interaction(draft, {
   id: "recovered-button", subject: { library: "nextPage", path: [99] },
   listener: { event: "click", target: "element", capture: false, once: false, passive: false,

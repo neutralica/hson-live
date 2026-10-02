@@ -329,18 +329,18 @@ try {
     interactions: { local: { clicker: () => { interactionCalls += 1; } } },
   });
   const librariesEcho = librariesContinuation.echo;
-  const librariesMap = librariesEcho.map;
+  const librariesMap = librariesEcho;
   check("aggregate install restores included Libraries", librariesMap.lib("admin").mode === "document" && librariesMap.lib("state").mode !== "document");
   let hiddenUnavailable = false;
   try { librariesMap.lib("@hson/canonical-interactions"); } catch { hiddenUnavailable = true; }
   check("hidden interaction Library remains unavailable", hiddenUnavailable);
   check("aggregate sync catches projected N up to N+1", librariesEcho.sync.status === "caught_up"
-    && librariesEcho.sync.debug().lastAppliedRev === state.libraries.libs.revision + 1 && librariesMap.rev === 1);
+    && librariesEcho.sync.appliedRev === state.libraries.libs.revision + 1 && librariesMap.rev === 1);
   check("unverified stale current state reconciles through the adopted Mirror", librariesEcho.sync.strategy === "reconcile"
     && librariesRoot.firstElementChild === librariesButton);
   check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
-  check("other public document converges", librariesEcho.map.lib("admin").at([]).attrs.get("data-recovered") === "admin");
-  check("data Library converges", librariesEcho.map.lib("state").snap(["count"]) === 1);
+  check("other public document converges", librariesEcho.lib("admin").at([0]).attrs.get("data-recovered") === "admin");
+  check("data Library converges", librariesEcho.lib("state").snap(["count"]) === 1);
   const beforeReconnectEpoch = librariesEcho.session.epoch;
   await fetch("/__close-libraries-socket");
   for (let attempt = 0; attempt < 100 && !(librariesEcho.session.epoch > beforeReconnectEpoch
@@ -350,18 +350,18 @@ try {
   check("same Echo and transport reattach after physical WebSocket replacement",
     librariesEcho.session.epoch > beforeReconnectEpoch && librariesEcho.sync.status === "caught_up");
   librariesButton.click();
-  for (let attempt = 0; attempt < 50 && librariesEcho.map.lib("state").snap(["count"]) !== 5; attempt += 1) {
+  for (let attempt = 0; attempt < 50 && librariesEcho.lib("state").snap(["count"]) !== 5; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   check("canonical hidden interactions activate after aggregate continuation", interactionCalls === 1);
-  check("canonical authoritative interaction dispatches through Echo", librariesEcho.map.lib("state").snap(["count"]) === 5 && librariesMap.rev === 2);
+  check("canonical authoritative interaction dispatches through Echo", librariesEcho.lib("state").snap(["count"]) === 5 && librariesMap.rev === 2);
   const librariesButtonTree = librariesContinuation.tree.find.must.byTag("button");
   const librariesLocalQuid = librariesButtonTree.quid;
   check("aggregate browser identity is acquired locally", typeof librariesLocalQuid === "string" && librariesButton.getAttribute("hson:quid") === librariesLocalQuid);
   await librariesButtonTree.async.attrs.set("data-async", "accepted");
   check("aggregate AsyncLiveTree uses local map revision", librariesButton.getAttribute("data-async") === "accepted" && librariesMap.rev === 3);
   const action = await librariesEcho.action("state.increment");
-  check("configured aggregate action remains operational", action.type === "ack" && librariesEcho.map.lib("state").snap(["count"]) === 2 && librariesMap.rev === 4);
+  check("configured aggregate action remains operational", action.type === "ack" && librariesEcho.lib("state").snap(["count"]) === 2 && librariesMap.rev === 4);
   const hostedGlobalCss = librariesContinuation.tree.css.global;
   const hostedCssRev = librariesMap.rev;
   let hostedCssWriteFailed = false;
@@ -386,7 +386,7 @@ try {
   const cssContinued = await continue_hosted_document({ now: { ...state.cssCut, ...cssBootstrap.bootstrap },
     credential: state.cssCredential, transport: cssTransport, document: "page", root: hostedCssRoot });
   const cssEcho = cssContinued.echo;
-  const cssClientMap = cssEcho.map;
+  const cssClientMap = cssEcho;
   check("hosted CSS replay updates adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(4, 5, 6)");
   const authoredCssRev = cssClientMap.rev;
@@ -406,28 +406,28 @@ try {
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(7, 8, 9)");
   await cssContinued.tree.async.css.global.clearAll();
   check("hosted CSS clear removes the managed realization", hostedCssRoot.querySelector('style[data-hson-managed-document-css]') === null
-    && cssEcho.map.lib("page").css.snapshot() === "");
+    && cssEcho.lib("page").css.snapshot() === "");
   await cssContinued.tree.async.css.global.stylesheet("/* RAW_SOURCE_SENTINEL */ #hosted-css-target { color: rgb(13, 14, 15) !important; }");
   const recreatedStyle = hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]');
   check("hosted stylesheet ingress realizes one parsed semantic style", recreatedStyle !== null
     && hostedCssRoot.querySelectorAll('style[data-hson-managed-document-css]').length === 1
-    && !cssEcho.map.lib("page").css.snapshot().includes("RAW_SOURCE_SENTINEL")
+    && !cssEcho.lib("page").css.snapshot().includes("RAW_SOURCE_SENTINEL")
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(13, 14, 15)");
   await fetch("/__css-revoke");
   for (let attempt = 0; attempt < 50 && recreatedStyle.isConnected; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   let revokedCssHandleFailed = false;
-  try { cssEcho.map.lib("page"); } catch { revokedCssHandleFailed = true; }
+  try { cssEcho.lib("page"); } catch { revokedCssHandleFailed = true; }
   check("projection contraction retires the managed style and document", !recreatedStyle.isConnected
     && hostedCssRoot.querySelector('style[data-hson-managed-document-css]') === null
     && revokedCssHandleFailed);
   await fetch("/__css-regrant");
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    try { if (cssEcho.map.lib("page").mode === "document") break; } catch { /* Wait for Echo projection update. */ }
+    try { if (cssEcho.lib("page").mode === "document") break; } catch { /* Wait for Echo projection update. */ }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  check("regrant installs current CSS without reviving stale realization", cssEcho.map.lib("page").css.snapshot().includes("rgb(13,14,15)")
+  check("regrant installs current CSS without reviving stale realization", cssEcho.lib("page").css.snapshot().includes("rgb(13,14,15)")
     && hostedCssRoot.querySelector('style[data-hson-managed-document-css]') === null
     && !recreatedStyle.isConnected);
   cssContinued.dispose();
