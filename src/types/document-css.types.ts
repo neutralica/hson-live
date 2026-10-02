@@ -69,7 +69,7 @@ export type DocumentCssRuleFacade = Readonly<{
 
 /** Root-only, document-wide portable stylesheet capability. */
 export type DocumentCssHandle = DocumentCssRuleFacade & Readonly<{
-  /** Parse and append complete authored CSS source as one semantic transition. */
+  /** Parse and replace the complete managed stylesheet as one semantic transition. */
   stylesheet: (cssText: string) => void;
   drop: (ruleKey: string) => void;
   clearAll: () => void;

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { hsonLiveMap } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { DocumentStylesheetError } from "../src/internal/css/parse-document-stylesheet.ts";
+import { parse_document_stylesheet } from "../src/internal/css/parse-document-stylesheet.ts";
 
 const document = "<html <head/> <body <main id=home-screen/>/>/>";
 const create = () => hsonLiveMap.fromLibraries({ page: { document } });
@@ -19,27 +20,89 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
   assert.equal((map.lib("page").render().match(/data-hson-managed-document-css/g) ?? []).length, 1);
   assert.match(map.lib("page").render(), /#home-screen\{display:grid;\}/);
   assert.doesNotMatch(css.snapshot(), /opening/);
+  css.stylesheet("");
+  assert.equal(css.snapshot(), "");
+  assert.equal(map.rev, start + 2);
+  assert.equal(commits.length, 2);
   for (const empty of ["", " \n ", "/* only a comment */"]) {
     css.stylesheet(empty);
-    assert.equal(map.rev, start + 1);
-    assert.equal(commits.length, 1);
+    assert.equal(map.rev, start + 2);
+    assert.equal(commits.length, 2);
   }
 }
 
 {
   const map = create();
   const css = map.lib("page").css;
-  css.rule("before", ".before").set.color("red");
+  const first = `
+    main { color: red; }
+    :root { --tone: red; }
+    @property --tone { syntax: "<color>"; inherits: false; initial-value: red; }
+    @keyframes pulse { from { opacity: 0; } to { opacity: 1; } }
+  `;
+  const second = `
+    @keyframes pulse { from { opacity: .2; } to { opacity: .8; } }
+    main { color: green; }
+    @property --tone { syntax: "<color>"; inherits: false; initial-value: blue; }
+    :root { --tone: blue; }
+    main { color: blue; }
+  `;
+  const commits: Parameters<typeof map.replay>[0][] = [];
+  map.commits.observe((commit) => commits.push(commit));
+  css.stylesheet(first);
+  const before = map.rev;
+  css.stylesheet(second);
+  const state = map.capture().libraries[0]?.css;
+  assert.deepEqual(state, parse_document_stylesheet(second, []));
+  assert.deepEqual(state?.order.map((entry) => entry.kind), ["keyframes", "rule", "property", "rule", "rule"]);
+  assert.deepEqual(state?.rules.map((rule) => rule.selector), ["main", ":root", "main"]);
+  assert.deepEqual(state?.rules.map((rule) => rule.ruleKey), ["stylesheet:1", "stylesheet:2", "stylesheet:3"]);
+  assert.equal(state?.properties[0]?.init, "blue");
+  assert.equal(state?.keyframes[0]?.steps[0]?.declarations[0]?.[1], ".2");
+  assert.doesNotMatch(css.snapshot(), /color:red|--tone:red|initial-value:red|opacity: 0/);
+  assert.equal(map.rev, before + 1);
+  const replacement = commits.at(-1)?.operations[0]?.operation;
+  assert.ok(replacement && "domain" in replacement && replacement.domain === "css");
+  assert.equal(replacement.kind, "replace");
+  const replayed = create();
+  for (const commit of commits) replayed.replay(commit);
+  assert.deepEqual(replayed.capture().libraries[0]?.css, state);
+  css.stylesheet(second);
+  assert.equal(map.rev, before + 1);
+  assert.equal(commits.length, 2);
+}
+
+{
+  const map = create();
+  const commits: Parameters<typeof map.replay>[0][] = [];
+  map.commits.observe((commit) => commits.push(commit));
+  map.lib("page").css.stylesheet("main { color: red; }");
+  map.batch((draft) => { draft.lib("page").css({
+    domain: "css", kind: "append", stylesheet: parse_document_stylesheet("main { color: blue; }", ["stylesheet:1"]),
+  }); });
+  const state = map.capture().libraries[0]?.css;
+  assert.deepEqual(state?.rules.map((rule) => rule.ruleKey), ["stylesheet:1", "stylesheet:2"]);
+  const appended = commits.at(-1)?.operations[0]?.operation;
+  assert.ok(appended && "domain" in appended && appended.domain === "css");
+  assert.equal(appended.kind, "append");
+  const replayed = create();
+  for (const commit of commits) replayed.replay(commit);
+  assert.deepEqual(replayed.capture().libraries[0]?.css, state);
+}
+
+{
+  const map = create();
+  const css = map.lib("page").css;
   css.stylesheet(".foo { color: red; } .foo { color: blue; }");
-  css.rule("after", ".after").set.color("green");
-  css.stylesheet(".last { color: black; }");
-  const snapshot = css.snapshot();
-  const marks = [".before{", ".foo{color:red;}", ".foo{color:blue;}", ".after{", ".last{"].map((part) => snapshot.indexOf(part));
-  assert.ok(marks.every((mark) => mark >= 0));
-  assert.deepEqual(marks, [...marks].sort((a, b) => a - b));
-  assert.deepEqual(css.list(), ["after", "before", "stylesheet:1", "stylesheet:2", "stylesheet:3"]);
+  assert.deepEqual(css.list(), ["stylesheet:1", "stylesheet:2"]);
   assert.match(css.get("stylesheet:2") ?? "", /color:blue/);
   assert.throws(() => css.rule("stylesheet:2", ".collision"), /reserved/);
+  css.rule("structured", ".structured").set.color("green");
+  css.stylesheet(".last { color: black; }");
+  const snapshot = css.snapshot();
+  assert.match(snapshot, /\.last\{color:black;\}/);
+  assert.doesNotMatch(snapshot, /\.foo|\.structured/);
+  assert.deepEqual(css.list(), ["stylesheet:1"]);
   const captured = map.capture();
   const restored = install_libraries_snapshot(captured);
   const restoredPage = restored.map.lib("page");
@@ -50,15 +113,17 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
   const replayCommits: Parameters<typeof fresh.replay>[0][] = [];
   const producer = create();
   producer.commits.observe((commit) => replayCommits.push(commit));
-  producer.lib("page").css.rule("before", ".before").set.color("red");
   producer.lib("page").css.stylesheet(".foo { color: red; } .foo { color: blue; }");
-  producer.lib("page").css.rule("after", ".after").set.color("green");
+  producer.lib("page").css.rule("structured", ".structured").set.color("green");
   producer.lib("page").css.stylesheet(".last { color: black; }");
+  const replacement = replayCommits.at(-1)?.operations[0]?.operation;
+  assert.ok(replacement && "domain" in replacement && replacement.domain === "css");
+  assert.equal(replacement.kind, "replace");
   for (const commit of replayCommits) fresh.replay(commit);
   assert.equal(fresh.lib("page").css.snapshot(), snapshot);
-  assert.match(fresh.lib("page").render(), /\.foo\{color:red;\}[\s\S]*\.foo\{color:blue;\}/);
-  css.drop("stylesheet:2");
-  assert.doesNotMatch(css.snapshot(), /\.foo\{color:blue;\}/);
+  assert.doesNotMatch(fresh.lib("page").render(), /\.foo|\.structured/);
+  css.drop("stylesheet:1");
+  assert.equal(css.snapshot(), "");
   css.clearAll();
   assert.equal(css.snapshot(), "");
   assert.deepEqual(css.list(), []);
@@ -69,6 +134,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
   const css = map.lib("page").css;
   const commits: unknown[] = [];
   map.commits.observe((commit) => commits.push(commit));
+  css.stylesheet("main { color: blue; }");
   const before = css.snapshot();
   const rev = map.rev;
   for (const source of [
@@ -82,7 +148,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
       error instanceof DocumentStylesheetError && typeof error.code === "string" && error.offset >= 0 && !!error.construct);
     assert.equal(map.rev, rev);
     assert.equal(css.snapshot(), before);
-    assert.equal(commits.length, 0);
+    assert.equal(commits.length, 1);
   }
 }
 

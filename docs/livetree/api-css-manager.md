@@ -388,13 +388,15 @@ Rules render with deterministic property ordering. Empty rules are dropped.
 The same key may identify rules in distinct at-rule scopes; `css.drop(key)`
 removes that key across all scopes, and `css.list()` reports it once.
 Global and QUID rules preserve first-write cascade order; updates keep their place.
-`stylesheet(cssText): void` parses and appends a complete stylesheet using the
-same grammar as document-library `page.css.stylesheet(cssText)`. It admits
-selector rules, supported scopes, document-global `@property`, and keyframes
-into this runtime's existing global CSS state. Duplicate selectors remain
-separate, addressable rules with stable `stylesheet:1`, `stylesheet:2`, and later
-keys. Unsupported constructs such as `@import` fail before runtime mutation;
-empty and comment-only text is a no-op. `tree.css` itself has no `stylesheet()`.
+`stylesheet(cssText): void` uses the same parser grammar as document-library
+`page.css.stylesheet(cssText)`. On a continued LiveMap document, the bound
+facade delegates to `page.css` and replaces the complete managed document
+stylesheet; empty or comment-only text clears it. A standalone LiveTree runtime
+still appends parsed selector rules, supported scopes, `@property`, and
+keyframes to its runtime-global CSS state. Duplicate selectors remain separate,
+addressable rules with stable `stylesheet:1`, `stylesheet:2`, and later keys
+there. Unsupported constructs such as `@import` fail before runtime mutation.
+`tree.css` itself has no `stylesheet()`.
 The existing LiveTree `clearAll()` clears global selector rules; use
 `atProperty.unregister()` and `keyframes.delete()` for those registries.
 

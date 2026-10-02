@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, hsonLocus, type InteractionDescriptor } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonLocus, type InteractionDescriptor } from "../src/index.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { node_to_json_value } from "../src/api/livemap/livemap.editor.ts";
 import { decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
@@ -78,6 +78,25 @@ assert.match(restored.map.lib("page").css.snapshot(), /color:red/);
 restored.dispose();
 
 const sheet: string = "main { display: block; } @keyframes pulse { from { opacity: 0; } to { opacity: 1; } }";
+{
+  const first = `main { color: red; --tone: red; }
+    @property --tone { syntax: "<color>"; inherits: false; initial-value: red; }
+    @keyframes pulse { from { opacity: 0; } to { opacity: 1; } }`;
+  const second = `@keyframes pulse { from { opacity: .2; } to { opacity: .8; } }
+    @property --tone { syntax: "<color>"; inherits: false; initial-value: blue; }
+    main { color: blue; --tone: blue; }
+    main { display: grid; }`;
+  const bare = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+  const governed = hsonLocus.create({ shared: [{ name: "page", definition: { document: "<main/>" }, css: first }] });
+  bare.lib("page").css.stylesheet(first);
+  assert.deepEqual(bare.capture().libraries[0]?.css, governed.map.capture().libraries[0]?.css);
+  bare.lib("page").css.stylesheet(second);
+  await governed.stage.lib("page").css.stylesheet(second);
+  assert.deepEqual(bare.capture().libraries[0]?.css, governed.map.capture().libraries[0]?.css);
+  assert.deepEqual(bare.capture().libraries[0]?.css?.order.map((entry) => entry.kind),
+    ["keyframes", "property", "rule", "rule"]);
+  governed.dispose();
+}
 const authored = hsonLocus.create({ shared: [
   { name: "home", definition: { document: '<html <head/> <body <main "Home"/>/>/>', schema: Hson.schema`<type "document">` }, css: sheet },
   { name: "slide01", definition: { document: '<html <head/> <body <main "Slide"/>/>/>', schema: Hson.schema`<type "document">` }, css: sheet },

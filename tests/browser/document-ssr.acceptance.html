@@ -148,7 +148,8 @@ try {
     && cssContinuation.tree.css.global.list().includes("stylesheet:1"));
   const ingressRev = cssMap.rev;
   cssContinuation.tree.css.global.stylesheet("body { background: yellow; }");
-  check("bound stylesheet ingress updates document semantic state", cssMap.lib("page").css.list().includes("stylesheet:2")
+  check("bound stylesheet ingress replaces document semantic state", cssMap.lib("page").css.list().includes("stylesheet:1")
+    && !cssMap.lib("page").css.snapshot().includes("color:blue")
     && cssStyle.textContent === cssMap.lib("page").css.snapshot() && cssMap.rev === ingressRev + 1);
   const cssCapture = cssMap.capture();
   cssMap.lib("page").css.atProperty.register(["--phase", "<number>", "0"]);

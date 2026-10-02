@@ -10,9 +10,8 @@ import { mediaToAtRule, convertSupportsToAt as convertSupportsToAtRule } from ".
 import { canonical_property_registration } from "../../internal/css/property-registration.js";
 import { canonical_keyframes_definition } from "../../internal/css/keyframes-definition.js";
 import { render_scoped_global_css_rule } from "../../internal/css/global-css-text.js";
-import { DocumentStylesheetError, parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import {
-  decode_portable_document_stylesheet,
   encode_portable_document_stylesheet,
   render_portable_document_stylesheet,
   set_portable_document_declaration,
@@ -164,21 +163,7 @@ export function make_livemap_document_css(
   };
   return Object.freeze({ ...root, var: vars, atProperty, keyframes,
     stylesheet: (cssText: string): void => {
-      const existing = read();
-      const parsed = parse_document_stylesheet(cssText, existing.rules.map((item) => item.ruleKey));
-      if (parsed.order.length === 0) return;
-      const before = encode_portable_document_stylesheet(existing);
-      try {
-        decode_portable_document_stylesheet({
-          rules: [...before.rules, ...parsed.rules],
-          properties: [...before.properties, ...parsed.properties],
-          keyframes: [...before.keyframes, ...parsed.keyframes],
-          order: [...before.order, ...parsed.order],
-        });
-      } catch (error) {
-        throw new DocumentStylesheetError("CSS_ADMISSION", error instanceof Error ? error.message : String(error), 1, 1, cssText, "stylesheet");
-      }
-      commit({ domain: "css", kind: "append", stylesheet: parsed });
+      commit({ domain: "css", kind: "replace", stylesheet: parse_document_stylesheet(cssText, []) });
     },
     drop: (ruleKey: string) => {
       const units = read().rules.filter((item) => item.ruleKey === ruleKey.trim()).map((item): LiveMapCssUnitOp =>
