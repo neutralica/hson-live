@@ -119,7 +119,12 @@ export type GovernorReadLibrarySelector<TMap extends LiveMap> = {
       ? Readonly<Pick<GovernorDataLibrary<TValue, TSchema>, "mode" | "rev" | "root" | "snap" | "schema"> & {
           at: <const TPath extends LivePath>(path: TPath) => Readonly<Pick<GovernorDataPath<LiveMapPathValue<TValue, TPath>>, "rev" | "path" | "snap" | "data" | "watch" | "kind">>;
         }>
-      : GovernorReadLibrary;
+      : DefinitionLibrary<LiveMapKnownDefinitions<TMap extends LiveMap<infer TDefinitions> ? TDefinitions : never>[TName]> extends GovernorDocumentLibrary<infer TEvidence, infer TSchema>
+        ? Readonly<Pick<GovernorDocumentLibrary<TEvidence, TSchema>, "mode" | "rev" | "root" | "render" | "commits" | "schema"> & {
+            at: (path: readonly number[]) => Readonly<Pick<GovernorDocumentLocation, "rev" | "path" | "snap" | "watch" | "kind">>;
+            css: Readonly<Pick<GovernorDocumentLibrary<TEvidence, TSchema>["css"], "snapshot" | "has" | "list" | "get">>;
+          }>
+        : GovernorReadLibrary;
   (name: string): GovernorReadLibrary;
 };
 

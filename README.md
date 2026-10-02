@@ -6,7 +6,7 @@
 
 ## H.S.O.N. - Hypertext Structured Object Notation
 
-`Hson` is a "glue format": a notation capable of modelling both JSON and HTML fluently by modeling the tree graph structure shared by both.
+`Hson` is a "glue format": a notation capable of expressing both JSON and HTML fluently by modeling the tree graph structure shared by both.
 
 By parsing to `Hson` as an intermediary step, JSON can be rendered as HTML and vice-versa. This suggests new ways of building the web, and is the core insight that powers hson-live.
 

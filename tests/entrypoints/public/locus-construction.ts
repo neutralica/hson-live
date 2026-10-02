@@ -1,6 +1,7 @@
 import { Hson, hsonLocus } from "hson-live";
 import { hsonLiveMap } from "hson-live/livemap";
-import type { LocusPersistenceAdapter } from "hson-live/locus";
+import type { LocusActionContext, LocusPersistenceAdapter } from "hson-live/locus";
+import type { HsonSchema } from "hson-live";
 
 const Count = Hson.schema`<type "data" content <value "number">>`;
 const Page = Hson.schema`<type "document" tag "main" content "empty">`;
@@ -21,6 +22,33 @@ const noPublicMap: "map" extends keyof typeof locus ? true : false = false;
 const page = locus.lib("page");
 if (page.mode !== "document") throw new Error("Library family inference failed.");
 void [knownName, documentName, page, noPublicMap];
+declare const ctx: LocusActionContext<typeof direct>;
+const actionPage = ctx.lib("page");
+const actionPageMode: "document" = actionPage.mode;
+const actionPageSchema: typeof Page = actionPage.schema.get();
+void [actionPageMode, actionPageSchema, actionPage.render(), actionPage.css.snapshot()];
+// @ts-expect-error Action-context document reads cannot mutate CSS.
+actionPage.css.stylesheet(sheet);
+// @ts-expect-error Action-context document reads cannot attach a Schema.
+actionPage.schema.use(Page);
+const actionCount = ctx.lib("count");
+const actionCountSchema: typeof Count = actionCount.schema.get();
+void [actionCountSchema, actionCount.snap(["value"])];
+// @ts-expect-error Known data reads have no document render capability.
+actionCount.render();
+// @ts-expect-error Action-context data reads cannot mutate data.
+actionCount.at(["value"]).set(2);
+declare const dynamicName: string;
+const dynamicRead = ctx.lib(dynamicName);
+// @ts-expect-error Dynamic names require mode narrowing for document reads.
+dynamicRead.render();
+if (dynamicRead.mode === "document") void dynamicRead.render();
+declare const RefinedPage: HsonSchema<{ readonly title: string }, "document">;
+const refinedMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: RefinedPage } });
+declare const refinedCtx: LocusActionContext<typeof refinedMap>;
+const refinedRead = refinedCtx.lib("page");
+const refinedSchema: HsonSchema<{ readonly title: string }, "document"> = refinedRead.schema.get();
+void refinedSchema;
 void locus.lib("count").at(["value"]).set(2);
 void locus.lib("page").css.stylesheet(sheet);
 void locus.lib("page").css({ domain: "css", kind: "clear-all" });
