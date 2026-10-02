@@ -1434,11 +1434,13 @@ function make_livemap_registry_engine(
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>;
 
-  function prepare_add_libraries(definitions: readonly LibraryAddition[]): Readonly<{
+  function prepare_add_libraries(definitions: readonly LibraryAddition[], clientLocal = false): Readonly<{
     transition: import("./livemap.authority.js").PreparedLiveMapAuthorityTransition;
     identities: readonly LiveMapLibraryIdentity[];
   }> {
-    if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
+    if (clientLocal) {
+      if (clientComposition === undefined) throw new Error("Client-local topology admission requires a composed LiveMap.");
+    } else transitionController.assertPublicMutationAllowed();
     const prevRev = mapRevision;
     if (definitions.length === 0) throw new Error("LiveMap topology batch is empty.");
     const hosted = require_hosted_state();
@@ -1521,11 +1523,17 @@ function make_livemap_registry_engine(
   }
 
   function add_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void): LiveMapAggregateCommit {
-    if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
+    transitionController.assertPublicMutationAllowed();
     if (definitions.length === 0) return Object.freeze({
       kind: "aggregate", changed: false, prevRev: mapRevision, rev: mapRevision, operations: Object.freeze([]),
     });
     const prepared = prepare_add_libraries(definitions);
+    return transitionController.acceptAuthority(prepared.transition, "isolate", () =>
+      afterInstall?.(prepared.identities)).commit;
+  }
+
+  function add_client_local_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void): LiveMapAggregateCommit {
+    const prepared = prepare_add_libraries(definitions, true);
     return transitionController.acceptAuthority(prepared.transition, "isolate", () =>
       afterInstall?.(prepared.identities)).commit;
   }
@@ -2563,6 +2571,8 @@ function make_livemap_registry_engine(
     systemTarget: aggregate_system_target,
     configureHostedRegistry: configure_hosted_registry,
     addLibraries: add_libraries,
+    addClientLocalLibraries: add_client_local_libraries,
+    assertPublicMutationAllowed: transitionController.assertPublicMutationAllowed,
     prepareAddLibrariesManaged: (owner, definitions) => transitionController.runManaged(
       owner,
       () => prepare_add_libraries(definitions),

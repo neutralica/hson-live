@@ -131,7 +131,9 @@ later writes; reconcile synchronizes the current authorized shared authority
 projection in place. Authorized local initializers are installed only when the
 named local instance is absent; later local state is client-owned and survives
 shared synchronization. `hsonEcho.create(...)` has no receiving-runtime local
-library input.
+library input. Public `echo.map.addLibraries(...)` and topology-addition replay
+are unavailable on the composed replica map; additional client-local libraries
+must come from authorized local initializers in the session composition.
 
 Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics for a one-library registry Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.
 

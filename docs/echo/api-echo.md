@@ -128,8 +128,10 @@ seen by authorization and execution. Hson Schema action validators evaluate the
 underlying exact data carrier directly.
 
 Echo exposes its actual Schema-bound `LiveMap`, not a duplicate read-only map
-hierarchy. Direct public mutation rejects with the managed-mutation authority
-error; only accepted canonical replay mutates an Echo-governed map.
+hierarchy. Public `echo.map.addLibraries(...)` and replay of `library-add`
+commits reject on a client-composed map. Shared-library mutation requires Locus
+authority. Authorized local initializers enter through session composition;
+their ordinary data, document, CSS, and Schema mutations remain client-owned.
 
 Replica graph changes are observed through LiveMap commit/sub/feed/watch
 facilities. Progress-only authority advancement emits no application commit or

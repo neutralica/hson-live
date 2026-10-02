@@ -15,7 +15,7 @@ Local captures may contain zero application libraries, including a completely em
 
 `restore` applies a complete local snapshot only when its library topology matches the map's current topology. It rejects incompatible topology before mutation. `install_libraries_snapshot` creates a separate local map and a fresh runtime identity domain. Portable data never claims process-local QUID continuity. Document identity capture and its local provenance remain internal. Public document inspection uses `root()`.
 
-`map.addLibraries(...)` produces a portable local `library-add` commit. `map.replay(commit)` can apply that topology commit to another local map at the recorded preceding revision. The operation carries names, modes, Schemas, and initial roots without generated QUIDs. Hosted Locus/Echo topology delivery uses the same registry model through its managed authority path.
+On an unmanaged local map, `map.addLibraries(...)` produces a portable `library-add` commit, and `map.replay(commit)` can apply it to another local map at the recorded preceding revision. The operation carries names, modes, Schemas, and initial roots without generated QUIDs. Public topology addition and topology replay reject on an Echo client-composed map. Hosted Locus/Echo topology delivery uses the same registry model through its managed authority path.
 
 Changed local mutations produce map-wide commits with named library operations and a single revision transition. Hosted replay and durable recovery operate through internal authority facilities and exact registry or projected cuts; application code does not replay a solo-map capture. Locus persists semantic, QUID-free state and reconstructs a fresh generated identity epoch after process restart.
 

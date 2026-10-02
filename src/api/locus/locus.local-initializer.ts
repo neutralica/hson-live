@@ -9,6 +9,7 @@ import {
   document_css_state_internal,
   reconstructed_data_internal,
   commit_document_css_internal,
+  add_client_local_libraries_internal,
 } from "../livemap/livemap.libraries.js";
 import { hsonLiveMap } from "../livemap/livemap.facade.js";
 import {
@@ -246,7 +247,7 @@ export function install_client_local_initializers_internal(
       ? { document: root, schema }
       : { data: reconstructed_data_internal(root), schema };
   }
-  map.addLibraries(Object.freeze(definitions));
+  add_client_local_libraries_internal(map, Object.freeze(definitions));
   apply_client_local_initializer_css_internal(map, missing);
   retain_client_local_seed_contracts_internal(map, missing);
 }

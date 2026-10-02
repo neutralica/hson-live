@@ -125,6 +125,7 @@ export function commit_document_css_internal(document: LiveMapDocumentLibrary, o
 }
 const CLIENT_LIBRARY_RETIREMENT = new WeakMap<object, Set<() => void>>();
 const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot) => void>();
+const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (inputs: LiveMapDefinitions) => LiveMapCommit>();
 const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, inputs: LiveMapDefinitions,
   css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Readonly<{
   transition: PreparedLiveMapAuthorityTransition;
@@ -245,6 +246,13 @@ export function prepare_hosted_livemap_library_add_internal(
 /** Internal ownership evidence for write-propagating link admission. */
 export function client_library_source_internal(value: object): "authority-projected" | "client-local" | undefined {
   return CLIENT_LIBRARY_SOURCES.get(value);
+}
+
+/** Admit authorized local initializers without exposing topology mutation on the public map. @internal */
+export function add_client_local_libraries_internal(map: LiveMap, inputs: LiveMapDefinitions): LiveMapCommit {
+  const admit = CLIENT_LOCAL_LIBRARY_ADMISSION.get(map);
+  if (admit === undefined) throw new Error("Client-local topology admission requires a composed LiveMap.");
+  return admit(inputs);
 }
 
 /** Observe terminal retirement of one projected document binding. @internal */
@@ -426,20 +434,24 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
   };
 
   const addLibrariesInternal = (inputs: LiveMapDefinitions,
-    css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {}): LiveMapCommit => {
+    css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
+    clientLocal = false): LiveMapCommit => {
+    if (!clientLocal) aggregate.assertPublicMutationAllowed();
     const additions = Object.entries(inputs).map(([name, value]) => Object.freeze({
       name, input: must_library_input(name, value),
     }));
     for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
     }
-    const commit = aggregate.addLibraries(additions.map(({ name, input }) => Object.freeze({
+    const definitions = additions.map(({ name, input }) => Object.freeze({
       name,
       root: library_root(input),
       hsonSchema: input.schema,
       family: "data" in input ? "data" as const : "document" as const,
       ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
-    })), (identities) => {
+    }));
+    const admit = clientLocal ? aggregate.addClientLocalLibraries : aggregate.addLibraries;
+    const commit = admit(definitions, (identities) => {
       for (let index = 0; index < additions.length; index += 1) {
         const definition = additions[index];
         const identity = identities[index];
@@ -511,6 +523,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       if (operation === undefined || !is_library_add_operation(operation) || operation.operation.libraries.length === 0) {
         throw new Error("LiveMap replay requires a supported topology operation.");
       }
+      aggregate.assertPublicMutationAllowed();
       return addLibrariesInternal(topology_definitions(operation), topology_css(operation));
     },
     capture: () => aggregate.captureLibraries(),
@@ -527,6 +540,8 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     }),
   });
   register_internal_livemap_aggregate_owner(libraries, aggregate);
+  if (clientSnapshot !== undefined) CLIENT_LOCAL_LIBRARY_ADMISSION.set(libraries,
+    (inputs) => addLibrariesInternal(inputs, {}, true));
   register_echo_map_capability_internal(libraries, Object.freeze({
     revision: () => aggregate.inspect().revision,
     documentMaps: () => Object.freeze([...named.values()]

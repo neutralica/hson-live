@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror, type LocusWebSocketLike } from "../src/index.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { client_library_source_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -19,8 +20,9 @@ function sockets() {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const received: string[] = [];
+  const sent: string[] = [];
   const client: LocusWebSocketLike = {
-    send(raw) { for (const listener of toServer) listener(raw); }, close() {},
+    send(raw) { sent.push(raw); for (const listener of toServer) listener(raw); }, close() {},
     onMessage(listener) { toClient.add(listener); return () => { toClient.delete(listener); }; },
     onClose() { return () => {}; },
   };
@@ -29,7 +31,7 @@ function sockets() {
     onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; },
   };
-  return { client, server, received };
+  return { client, server, received, sent };
 }
 
 const authority = hsonLiveMap.fromLibraries({ base: { data: { count: 1 } } });
@@ -45,17 +47,30 @@ assert.ok(clientMap);
 const base = clientMap.lib("base");
 const beforeClientRev = clientMap.rev;
 const beforeAuthorityRev = locus.rev;
-clientMap.addLibraries({ preferences: { data: { theme: "dark" } } });
-assert.throws(() => clientMap.addLibraries({ base: { data: { count: 9 } } }), /duplicat/i);
-const preferences = clientMap.lib("preferences");
-assert.equal(client_library_source_internal(preferences), "client-local");
-assert.equal(clientMap.rev, beforeClientRev + 1);
+const beforeRegistry = clientMap.capture().registryDigest;
+const beforeIssued = livemap_identity_epoch_accounting(base).issued;
+const beforeSent = wire.sent.length;
+const observedCommits: unknown[] = [];
+const stopCommits = clientMap.commits.observe((commit) => observedCommits.push(commit));
+assert.throws(() => clientMap.addLibraries({ preferences: { data: { theme: "dark" } } }), /managed|authority|controlled/i);
+assert.throws(() => clientMap.addLibraries({ localPage: { document: Hson.document`<main/>` } }), /managed|authority|controlled/i);
+const replaySource = hsonLiveMap.create();
+const topologyCommit = replaySource.addLibraries({ replayed: { data: { value: 1 } } });
+assert.throws(() => clientMap.replay(topologyCommit), /managed|authority|controlled/i);
+stopCommits();
+assert.equal(clientMap.rev, beforeClientRev);
 assert.equal(locus.rev, beforeAuthorityRev);
+assert.equal(echo.lastAppliedRev, beforeAuthorityRev);
+assert.equal(clientMap.capture().registryDigest, beforeRegistry);
+assert.equal(livemap_identity_epoch_accounting(base).issued, beforeIssued);
+assert.deepEqual(observedCommits, []);
+assert.equal(wire.sent.length, beforeSent);
+for (const name of ["preferences", "localPage", "replayed"]) assert.throws(() => clientMap.lib(name), /unknown/i);
 const beforeAdmissionWire = wire.received.length;
 await locus.stage.addLibraries({ private: [{ name: "privateState", definition: { data: { secret: "PRIVATE_ROOT_SENTINEL" } } }], shared: [{ name: "newPublic", definition: { data: { count: 2 } } }, { name: "page", definition: { document: Hson.document`<html <head/> <body <main <p "RUNTIME_PAGE_SENTINEL"/>/>/>/>` }, css: "main { display: block; }" }] });
 assert.equal(locus.rev, beforeAuthorityRev + 1);
 assert.equal(echo.lastAppliedRev, locus.rev);
-assert.equal(clientMap.rev, beforeClientRev + 1);
+assert.equal(clientMap.rev, beforeClientRev);
 for (const encoded of wire.received.slice(beforeAdmissionWire)) {
   assert.equal(encoded.includes("newPublic"), false);
   assert.equal(encoded.includes("privateState"), false);
@@ -65,7 +80,7 @@ const sessionId = echo.session.sessionId;
 assert.ok(sessionId);
 const rejected = await locus.session.get(sessionId)!.update({ libraries: ["base", "newPublic"] });
 assert.equal(rejected.changed, false);
-assert.equal(clientMap.rev, beforeClientRev + 1);
+assert.equal(clientMap.rev, beforeClientRev);
 allowNew = true;
 const authorityMapRevBeforeProjection = locus.map.rev;
 const result = await locus.session.get(sessionId)!.update({ libraries: ["base", "newPublic", "page"] });
@@ -74,9 +89,8 @@ assert.equal(result.authorityRev, locus.rev);
 assert.equal(result.sequence, 1);
 assert.equal(locus.map.rev, authorityMapRevBeforeProjection);
 assert.equal(echo.map, clientMap);
-assert.equal(clientMap.rev, beforeClientRev + 2);
+assert.equal(clientMap.rev, beforeClientRev + 1);
 assert.equal(clientMap.lib("base"), base);
-assert.equal(clientMap.lib("preferences"), preferences);
 assert.equal(clientMap.lib("newPublic").mode, "data-object");
 assert.equal(client_library_source_internal(clientMap.lib("newPublic")), "authority-projected");
 assert.equal(clientMap.lib("page").mode, "document");
@@ -188,20 +202,22 @@ await collisionEcho.connect();
 const collisionClientMap = collisionEcho.map;
 assert.ok(collisionClientMap);
 await collisionLocus.stage.addLibraries({ shared: [{ name: "shared", definition: { data: { owner: "authority" } } }] });
-collisionClientMap.addLibraries({ shared: { data: { owner: "local" } } });
-const localShared = collisionClientMap.lib("shared");
 const localRev = collisionClientMap.rev;
+assert.throws(() => collisionClientMap.addLibraries({ shared: { data: { owner: "local" } } }), /managed|authority|controlled/i);
+assert.equal(collisionClientMap.rev, localRev);
 const collisionSessionId = collisionEcho.session.sessionId;
 assert.ok(collisionSessionId);
 await collisionLocus.session.get(collisionSessionId)!.update({ libraries: ["base", "shared"] });
-assert.equal(collisionEcho.diagnostics().status, "failed");
-assert.equal(collisionClientMap.rev, localRev);
-assert.equal(collisionClientMap.lib("shared"), localShared);
-if (!("snap" in localShared)) throw new Error("Expected local data Library.");
-assert.equal(localShared.snap(["owner"]), "local");
+assert.equal(collisionEcho.diagnostics().status, "live");
+assert.equal(collisionClientMap.rev, localRev + 1);
+const projectedShared = collisionClientMap.lib("shared");
+assert.equal(client_library_source_internal(projectedShared), "authority-projected");
+if (!("snap" in projectedShared)) throw new Error("Expected projected data Library.");
+assert.equal(projectedShared.snap(["owner"]), "authority");
+assert.equal((await collisionEcho.recover()).outcome, "current");
 collisionEcho.dispose();
 collisionLocus.dispose();
-process.stdout.write("ok - client-local and projected authority collision is fenced\n");
+process.stdout.write("ok - public client topology is fenced before future authority projection\n");
 
 const revokeMap = hsonLiveMap.fromLibraries({ base: { data: { value: 1 } } });
 let releaseAuthorization = (): void => {};

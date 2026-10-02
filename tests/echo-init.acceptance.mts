@@ -493,6 +493,23 @@ for (const stage of ["message", "close"] as const) {
   let detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.throws(() => echo.map.lib("ui"), /unknown/i);
+  const beforeTopologyRev = echo.map.rev;
+  const beforeTopologyRegistry = echo.map.capture().registryDigest;
+  const beforeAuthorityCursor = echo.sync.debug().lastAppliedRev;
+  let topologyCommits = 0;
+  const stopTopologyCommits = echo.map.commits.observe(() => { topologyCommits += 1; });
+  assert.throws(() => echo.map.addLibraries({ ui: { data: { value: 99 } } }), /managed|authority|controlled/i);
+  assert.throws(() => echo.map.addLibraries({ extraPage: { document: "<main/>" } }), /managed|authority|controlled/i);
+  const replaySource = hsonLiveMap.create();
+  const topologyCommit = replaySource.addLibraries({ replayedLocal: { data: { value: 99 } } });
+  assert.throws(() => echo.map.replay(topologyCommit), /managed|authority|controlled/i);
+  stopTopologyCommits();
+  assert.equal(echo.map.rev, beforeTopologyRev);
+  assert.equal(echo.map.capture().registryDigest, beforeTopologyRegistry);
+  assert.equal(echo.sync.debug().lastAppliedRev, beforeAuthorityCursor);
+  assert.equal(topologyCommits, 0);
+  assert.throws(() => echo.map.lib("extraPage"), /unknown/i);
+  assert.throws(() => echo.map.lib("replayedLocal"), /unknown/i);
 
   await session.update({ libraries: ["state", "ui", "panel"] });
   await until(() => {
@@ -501,6 +518,7 @@ for (const stage of ["message", "close"] as const) {
   });
   const ui = echo.map.lib("ui");
   const panel = echo.map.lib("panel");
+  assert.equal(echo.sync.status, "caught_up", "a later authorized initializer grant remains healthy");
   if (ui.mode === "document" || panel.mode !== "document") throw new Error("Local initializer mode mismatch.");
   assert.equal(ui.snap(["value"]), 0);
   assert.match(JSON.stringify(panel.css.snapshot()), /red/);
@@ -532,6 +550,11 @@ for (const stage of ["message", "close"] as const) {
   assert.equal(echo.sync.strategy, "reconcile");
   assert.equal(ui.snap(["value"]), 12);
   assert.match(JSON.stringify(panel.css.snapshot()), /blue/);
+  const cssReplayRev = echo.map.rev;
+  const cssReplay = echo.map.replay({ kind: "map", changed: true, prevRev: cssReplayRev, rev: cssReplayRev + 1,
+    operations: [{ library: "panel", operation: { domain: "css", kind: "replace", stylesheet: validCss } }] });
+  assert.equal(cssReplay.changed, true, "public replay of local CSS remains available");
+  assert.match(JSON.stringify(panel.css.snapshot()), /red/);
 
   const changedSeed = make_locus_application_catalog(hsonLiveMap.create(), [
     { name: "ui", ownership: "local", initializer: { data: { value: 5 } } },
