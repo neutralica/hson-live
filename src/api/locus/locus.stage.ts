@@ -7,6 +7,7 @@ import type {
 import type { LocusRuntimeLibraryAdditions, LocusStage } from "../../types/locus.core.types.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
+import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 
 type Writer = LiveMapStagedWriter<LiveMap, void>;
 type Selected = ReturnType<Writer["lib"]>;
@@ -28,7 +29,8 @@ type RuntimeDocumentLocation = Readonly<{
 export function make_locus_stage<TMap extends LiveMap>(
   map: TMap,
   submit: (callback: (writer: Writer) => void) => Promise<void>,
-  addLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>) => Promise<void>,
+  addLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>,
+    css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>,
   assertSubmissionAllowed: () => void,
 ): LocusStage<TMap> {
   const selected_document = (writer: Writer, name: string): Document => {
@@ -79,22 +81,28 @@ export function make_locus_stage<TMap extends LiveMap>(
         }
         const definitions: Record<string, LiveMapDefinitions[string]> = Object.create(null);
         const ownership: Record<string, "private" | "shared"> = Object.create(null);
+        const css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord> = Object.create(null);
         for (const group of ["private", "shared"] as const) {
           const entries = additions[group];
           if (entries === undefined) continue;
           if (!Array.isArray(entries)) return Promise.reject(new TypeError("Locus runtime library group must be an array."));
           for (const entry of entries) {
             if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !entry.name
-              || Object.hasOwn(definitions, entry.name) || entry.definition === undefined || entry.css !== undefined
-              || Reflect.ownKeys(entry).some((key) => key !== "name" && key !== "definition")) {
+              || Object.hasOwn(definitions, entry.name) || entry.definition === undefined
+              || Reflect.ownKeys(entry).some((key) => key !== "name" && key !== "definition" && key !== "css")) {
               return Promise.reject(new TypeError("Locus runtime Library addition is invalid or duplicated."));
+            }
+            if (entry.css !== undefined) {
+              if (!("document" in entry.definition)) return Promise.reject(new TypeError("Initial CSS requires a document definition."));
+              try { css[entry.name] = parse_document_stylesheet(entry.css, []); }
+              catch (cause) { return Promise.reject(cause); }
             }
             definitions[entry.name] = entry.definition;
             ownership[entry.name] = group;
           }
         }
         if (Object.keys(definitions).length === 0) return Promise.reject(new TypeError("Locus runtime addition requires a Library."));
-        return addLibraries(definitions, ownership);
+        return addLibraries(definitions, ownership, css);
       },
       lib(name: string) {
         const selected = map.lib(name);
@@ -105,7 +113,10 @@ export function make_locus_stage<TMap extends LiveMap>(
           mode: "document" as const,
           at: (path: readonly number[]) => document_location(name, path),
           graph: (operation: LiveMapGraphOp) => submit(writer => { selected_document(writer, name).graph(operation as Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>); }),
-          css: (operation: LiveMapCssOp) => submit(writer => { selected_document(writer, name).css(operation); }),
+          css: Object.assign(
+            (operation: LiveMapCssOp) => submit(writer => { selected_document(writer, name).css(operation); }),
+            { stylesheet: (text: string) => submit(writer => { selected_document(writer, name).css.stylesheet(text); }) },
+          ),
           attrs: Object.freeze({
             set: (target: LiveMapDocumentCommitTarget, attribute: string, value: LiveMapDocumentAttributeValue) =>
               submit(writer => { selected_document(writer, name).attrs.set(target, attribute, value); }),

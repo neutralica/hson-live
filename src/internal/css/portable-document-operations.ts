@@ -79,12 +79,12 @@ function canonical_unit(input: unknown): LiveMapCssUnitOp {
 export function canonical_portable_document_css_op(input: unknown): LiveMapCssOp {
   const header = fields(input, ["domain", "kind"], ["operations", "ruleKey", "scopes", "rule", "name", "definition", "stylesheet"]);
   let result: LiveMapCssOp;
-  if (header.kind === "append") {
+  if (header.kind === "append" || header.kind === "replace") {
     const value = fields(input, ["domain", "kind", "stylesheet"]);
     if (value.domain !== "css") throw new TypeError("Invalid document CSS operation domain.");
     const stylesheet = encode_portable_document_stylesheet(decode_portable_document_stylesheet(value.stylesheet));
-    if (stylesheet.order.length === 0) throw new TypeError("Empty CSS append operation.");
-    result = { domain: "css", kind: "append", stylesheet };
+    if (header.kind === "append" && stylesheet.order.length === 0) throw new TypeError("Empty CSS append operation.");
+    result = { domain: "css", kind: header.kind, stylesheet };
   } else if (header.kind === "batch") {
     const value = fields(input, ["domain", "kind", "operations"]);
     if (value.domain !== "css" || !Array.isArray(value.operations) || value.operations.length === 0) {
@@ -101,6 +101,7 @@ export function apply_portable_document_css_op(
   current: PortableDocumentStylesheet,
   operation: LiveMapCssOp,
 ): PortableDocumentStylesheet {
+  if (operation.kind === "replace") return decode_portable_document_stylesheet(operation.stylesheet);
   if (operation.kind === "append") {
     const incoming = decode_portable_document_stylesheet(operation.stylesheet);
     const encoded = encode_portable_document_stylesheet(current);

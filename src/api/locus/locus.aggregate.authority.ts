@@ -279,7 +279,8 @@ export type LocusHostedAggregateSocketServer<
     onClose?: LocusDisposer,
   ) => LocusHostedAggregateSemanticAttachment<TActions>;
   stage: LocusHostedAggregate["stage"];
-  add_libraries: (definitions: LiveMapDefinitions, ownership?: Readonly<Record<string, Exclude<LocusLibraryOwnership, "local">>>) => Promise<void>;
+  add_libraries: (definitions: LiveMapDefinitions, ownership?: Readonly<Record<string, Exclude<LocusLibraryOwnership, "local">>>,
+    css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>;
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
   create_session: (request: LocusRequestedProjection, options?: import("../../types/locus.types.js").LocusSessionCreateOptions) => Promise<LocusSessionId>;
@@ -462,6 +463,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   async function add_libraries(
     definitions: LiveMapDefinitions,
     ownership?: Readonly<Record<string, "private" | "shared">>,
+    css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
   ): Promise<void> {
     if (disposed) throw new Error("Hosted Locus authority is disposed.");
     if (typeof definitions !== "object" || definitions === null || Array.isArray(definitions)) {
@@ -486,7 +488,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         const identity = bindings[index];
         if (identity !== undefined) identitiesByName.set(entry.name, identity);
       }
-    }, entries);
+    }, entries, css);
   }
 
   // Server-created sessions have an attachment fence, but require no transport.

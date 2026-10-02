@@ -5,11 +5,11 @@ import type {
 } from "../../types/locus.core.types.js";
 import type { LocusActionPayloads } from "../../types/locus.protocol.types.js";
 import type { LocusLibraryCatalogEntry } from "../../types/locus.projection.types.js";
-import { hsonLiveMap } from "../livemap/livemap.facade.js";
+import { make_livemap_libraries } from "../livemap/livemap.libraries.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { commit_document_css_internal } from "../livemap/livemap.libraries.js";
 import { enable_interactions, add_interaction } from "../interactions/interactions.js";
-import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { create_registry_locus } from "./locus.registry.js";
 import { resume_registry_locus, checkpoint_registry_locus } from "./locus.registry.persistence.js";
 
@@ -30,7 +30,7 @@ export function construct_locus_definition<
   }
   const definitions: Record<string, LiveMapDefinitions[string]> = Object.create(null);
   const catalog: LocusLibraryCatalogEntry[] = [];
-  const css: { name: string; stylesheet: import("../../types/document-css.types.js").DocumentCssRecord }[] = [];
+  const css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord> = Object.create(null);
   const names = new Set<string>();
   const group = (entries: readonly (LocusAuthorityLibraryDefinition | LocusLocalLibraryDefinition)[] | undefined,
     ownership: "private" | "shared" | "local") => {
@@ -49,25 +49,31 @@ export function construct_locus_definition<
         if (!("initializer" in entry) || entry.initializer === undefined || "definition" in entry) {
           throw new TypeError("Local Library requires an initializer.");
         }
-        catalog.push({ name: entry.name, ownership, initializer: entry.initializer, ...(entry.css === undefined ? {} : { css: entry.css }) });
+        catalog.push({ name: entry.name, ownership, initializer: entry.initializer,
+          ...(entry.css === undefined ? {} : { css: parse_document_stylesheet(entry.css, []) }) });
       } else {
         if (!("definition" in entry) || entry.definition === undefined || "initializer" in entry) {
           throw new TypeError("Authority Library requires a definition.");
         }
         definitions[entry.name] = entry.definition;
-        catalog.push({ name: entry.name, ownership, definition: entry.definition, ...(entry.css === undefined ? {} : { css: entry.css }) });
         if (entry.css !== undefined) {
           if (!("document" in entry.definition)) throw new TypeError("Initial CSS requires a document definition.");
-          css.push({ name: entry.name, stylesheet: encode_portable_document_stylesheet(
-            decode_portable_document_stylesheet(entry.css)) });
+          css[entry.name] = parse_document_stylesheet(entry.css, []);
         }
+        catalog.push({ name: entry.name, ownership, definition: entry.definition,
+          ...(entry.css === undefined ? {} : { css: css[entry.name] }) });
       }
     }
   };
   group(options.private, "private");
   group(options.shared, "shared");
   group(options.local, "local");
-  const map = hsonLiveMap.fromLibraries(definitions);
+  for (const [name, input] of Object.entries(definitions)) {
+    if ("document" in input && input.document !== undefined && typeof input.document !== "string") {
+      admit_portable_hson_node(input.document, `Locus Library ${name}`);
+    }
+  }
+  const map = make_livemap_libraries(definitions, [], undefined, css);
   if (options.logicalMapId !== undefined || options.incarnationId !== undefined) {
     const aggregate = internal_livemap_aggregate_authority(map);
     const original = aggregate.hostedPosition().authority;
@@ -77,13 +83,6 @@ export function construct_locus_definition<
     }));
   }
   if (options.interactions !== undefined) enable_interactions(map);
-  for (const entry of css) {
-    const library = map.lib(entry.name);
-    if (library.mode !== "document") throw new TypeError("Initial CSS requires a document library.");
-    if (entry.stylesheet.order.length > 0) commit_document_css_internal(library, {
-      domain: "css", kind: "append", stylesheet: entry.stylesheet,
-    });
-  }
   for (const descriptor of options.interactions ?? []) add_interaction(map, descriptor);
   const { private: _private, shared: _shared, local: _local, interactions: _interactions, ...rest } = options;
   const typedMap = map as unknown as LiveMap<LocusMapDefinitions<TPrivate, TShared>>;

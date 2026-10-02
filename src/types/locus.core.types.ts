@@ -105,21 +105,19 @@ export type LocusRegistryOptions<
   libraries: readonly LocusLibraryCatalogEntry[];
 }>;
 
-export type LocusAuthorityLibraryDefinition = Readonly<{
-  name: string;
-  definition: LiveMapLibraryDefinition;
-  css?: import("./document-css.types.js").DocumentCssRecord;
-}>;
+export type LocusAuthorityLibraryDefinition = Readonly<{ name: string } & (
+  | { definition: LiveMapLibraryDefinition; css?: never }
+  | { definition: Extract<LiveMapLibraryDefinition, { document: unknown }>; css: string }
+)>;
 
-export type LocusLocalLibraryDefinition = Readonly<{
-  name: string;
-  initializer: LiveMapLibraryDefinition;
-  css?: import("./document-css.types.js").DocumentCssRecord;
-}>;
+export type LocusLocalLibraryDefinition = Readonly<{ name: string } & (
+  | { initializer: LiveMapLibraryDefinition; css?: never }
+  | { initializer: Extract<LiveMapLibraryDefinition, { document: unknown }>; css: string }
+)>;
 
 export type LocusRuntimeLibraryAdditions = Readonly<{
-  private?: readonly Readonly<Omit<LocusAuthorityLibraryDefinition, "css"> & { css?: never }>[];
-  shared?: readonly Readonly<Omit<LocusAuthorityLibraryDefinition, "css"> & { css?: never }>[];
+  private?: readonly LocusAuthorityLibraryDefinition[];
+  shared?: readonly LocusAuthorityLibraryDefinition[];
 }>;
 
 export type LocusMapDefinitions<

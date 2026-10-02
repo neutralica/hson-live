@@ -599,11 +599,11 @@ function persistent_view(
     get registryDigest() { return locus.registryDigest; },
     get rev() { return locus.rev; },
     stage: locus.stage,
-    add_libraries_internal(definitions, afterInstall, ownership) {
+    add_libraries_internal(definitions, afterInstall, ownership, css) {
       return locus.add_libraries_internal(definitions, () => {
         afterInstall?.();
         for (const entry of ownership ?? []) ownershipByName.set(entry.name, entry.ownership);
-      }, ownership);
+      }, ownership, css);
     },
     dispatch_action: locus.dispatch_action,
     on_commit: locus.on_commit,

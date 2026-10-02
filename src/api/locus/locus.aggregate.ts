@@ -84,7 +84,8 @@ export type LocusHostedAggregate = Readonly<{
   stage: LiveMapSynchronousAuthoring<LocusHostedAggregateStageWriter, Promise<HostedAggregateCommit | undefined>>;
   /** @internal Stage one ordinary LiveMap library-add batch through this authority's gate. */
   add_libraries_internal: (definitions: LiveMapDefinitions, afterInstall?: () => void,
-    ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[]) => Promise<HostedAggregateCommit>;
+    ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[],
+    css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<HostedAggregateCommit>;
   dispatch_action: (name: string, payload?: ExactDataCarrier | JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
@@ -222,10 +223,10 @@ export function create_locus_hosted_aggregate_internal(
     async stage(callback) {
       return (await enqueue(callback, true)).commit;
     },
-    add_libraries_internal(definitions, afterInstall, ownership) {
+    add_libraries_internal(definitions, afterInstall, ownership, css) {
       const run = async (): Promise<HostedAggregateCommit> => {
         if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
-        const prepared = prepare_hosted_livemap_library_add_internal(options.map, owner, definitions);
+        const prepared = prepare_hosted_livemap_library_add_internal(options.map, owner, definitions, css);
         return accept_prepared(prepared.transition, () => {
           prepared.afterInstall();
           afterInstall?.();

@@ -4,6 +4,7 @@ import { projected_value_from_hson_node } from "../../core/projected-value-graph
 import { clone_node } from "../../core/clone-node.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
+import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY, register_interaction_draft_internal } from "../../internal/interaction-storage.js";
 import { admit_public_document_graph_operation } from "./livemap.document.mutation.js";
 import { validate_document_path } from "./livemap.document.path.js";
@@ -46,7 +47,7 @@ type StagedDocumentLibrary = Readonly<{
     remove: (target: LiveMapDocumentCommitTarget, index: number) => void;
     move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => void;
   }>;
-  css: (operation: LiveMapCssOp) => void;
+  css: ((operation: LiveMapCssOp) => void) & Readonly<{ stylesheet: (text: string) => void }>;
 }>;
 
 type StagedDataLibrary = Readonly<{
@@ -138,6 +139,13 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
         attrs,
       });
     };
+    const css = Object.assign((operation: LiveMapCssOp) => {
+      assert_open();
+      writes.push(Object.freeze({ target: aggregate.target(identity, []), kind: "css",
+        operation: canonical_portable_document_css_op(operation) }));
+    }, { stylesheet: (text: string) => {
+      css({ domain: "css", kind: "replace", stylesheet: parse_document_stylesheet(text, []) });
+    } });
     const staged: StagedDocumentLibrary = Object.freeze({
       mode: "document",
       at: location,
@@ -153,11 +161,7 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
         remove: (target: LiveMapDocumentCommitTarget, index: number) => graph(Object.freeze({ domain: "graph", op: "remove-content", target, index })),
         move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => graph(Object.freeze({ domain: "graph", op: "move-content", target, from, to })),
       }),
-      css: (operation: LiveMapCssOp) => {
-        assert_open();
-        writes.push(Object.freeze({ target: aggregate.target(identity, []), kind: "css",
-          operation: canonical_portable_document_css_op(operation) }));
-      },
+      css,
     });
     return staged;
   };

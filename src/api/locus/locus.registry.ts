@@ -194,7 +194,7 @@ export function create_registry_locus_internal<
     }
   };
   const stage = make_locus_stage(options.map, submitStage,
-    (definitions, ownership) => authority.add_libraries(definitions, ownership), assertStageSubmissionAllowed);
+    (definitions, ownership, css) => authority.add_libraries(definitions, ownership, css), assertStageSubmissionAllowed);
 
   const dispatchAction: Locus<TMap, TActions>["dispatchAction"] = async (message) => {
     const release = activity.acquire("action");

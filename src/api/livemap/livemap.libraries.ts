@@ -1,5 +1,5 @@
 import { project_interaction_state_internal } from "../interactions/interactions.projection.js";
-import { render_portable_document_stylesheet, decode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { render_portable_document_stylesheet, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { LiveMapCutOptions, LiveMapCut, LiveMapHtmlCut } from "../../types/livemap.types.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import { clone_node } from "../../core/clone-node.js";
@@ -125,7 +125,8 @@ export function commit_document_css_internal(document: LiveMapDocumentLibrary, o
 }
 const CLIENT_LIBRARY_RETIREMENT = new WeakMap<object, Set<() => void>>();
 const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot) => void>();
-const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, inputs: LiveMapDefinitions) => Readonly<{
+const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, inputs: LiveMapDefinitions,
+  css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Readonly<{
   transition: PreparedLiveMapAuthorityTransition;
   afterInstall: () => void;
 }>>();
@@ -151,6 +152,17 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): LiveMapDef
       : { data: reconstructed_data_internal(root), schema };
   }
   return definitions;
+}
+
+function topology_css(operation: LiveMapLibraryAddOperation): Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> {
+  const css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord> = Object.create(null);
+  for (const entry of operation.operation.libraries) {
+    if (entry.css !== undefined) {
+      if (entry.mode !== "document") throw new TypeError("Initial CSS requires a document Library.");
+      css[entry.name] = encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css));
+    }
+  }
+  return css;
 }
 
 function is_library_add_operation(operation: LiveMapCommit["operations"][number]): operation is LiveMapLibraryAddOperation {
@@ -198,7 +210,7 @@ export function install_client_projected_topology_internal(
     .sort((a, b) => a.name.localeCompare(b.name));
   const predicted = make_hosted_registry([...application, ...existing.filter((entry) => entry.scope === "hson-internal")]);
   if (predicted.digest !== expectedDigest) throw new Error("Projected topology registry digest is incompatible.");
-  const prepared = prepare_hosted_livemap_library_add_internal(map, owner, definitions);
+  const prepared = prepare_hosted_livemap_library_add_internal(map, owner, definitions, topology_css(operation));
   let installSystem: (() => void) | undefined;
   try {
     installSystem = system === undefined ? undefined
@@ -223,10 +235,11 @@ export function prepare_hosted_livemap_library_add_internal(
   map: LiveMap,
   owner: object,
   inputs: LiveMapDefinitions,
+  css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
 ): Readonly<{ transition: PreparedLiveMapAuthorityTransition; afterInstall: () => void }> {
   const prepare = HOSTED_LIBRARY_ADMISSION.get(map);
   if (prepare === undefined) throw new Error("Hosted Library admission requires a multi-library LiveMap.");
-  return prepare(owner, inputs);
+  return prepare(owner, inputs, css);
 }
 
 /** Internal ownership evidence for write-propagating link admission. */
@@ -264,6 +277,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
   inputs: TLibraries,
   systems: readonly InitialSystemState[] = [],
   clientSnapshot?: PortableAggregateSnapshot,
+  initialCss: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
 ): LiveMap<LiveMapKnownDefinitions<TLibraries>> {
   const entries = Object.entries(inputs);
 
@@ -271,10 +285,11 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     name,
     input: must_library_input(name, value),
   }));
-  const built = make_livemap_registry_authority(definitions.map(({ input }) => ({
+  const built = make_livemap_registry_authority(definitions.map(({ name, input }) => ({
     root: library_root(input),
     hsonSchema: input.schema,
     family: "data" in input ? "data" as const : "document" as const,
+    ...(Object.hasOwn(initialCss, name) ? { css: decode_portable_document_stylesheet(initialCss[name]) } : {}),
   })), systems);
   const aggregate = built.aggregate;
   const namesByIdentity = new Map<LiveMapLibraryIdentity, string>();
@@ -410,7 +425,8 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     return facade;
   };
 
-  const addLibraries = (inputs: LiveMapDefinitions): LiveMapCommit => {
+  const addLibrariesInternal = (inputs: LiveMapDefinitions,
+    css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {}): LiveMapCommit => {
     const additions = Object.entries(inputs).map(([name, value]) => Object.freeze({
       name, input: must_library_input(name, value),
     }));
@@ -422,6 +438,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       root: library_root(input),
       hsonSchema: input.schema,
       family: "data" in input ? "data" as const : "document" as const,
+      ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
     })), (identities) => {
       for (let index = 0; index < additions.length; index += 1) {
         const definition = additions[index];
@@ -432,6 +449,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     });
     return public_commit(commit);
   };
+  const addLibraries = (inputs: LiveMapDefinitions): LiveMapCommit => addLibrariesInternal(inputs);
 
   const lib = Object.freeze((name: string) => selected(name));
 
@@ -493,7 +511,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       if (operation === undefined || !is_library_add_operation(operation) || operation.operation.libraries.length === 0) {
         throw new Error("LiveMap replay requires a supported topology operation.");
       }
-      return addLibraries(topology_definitions(operation));
+      return addLibrariesInternal(topology_definitions(operation), topology_css(operation));
     },
     capture: () => aggregate.captureLibraries(),
     restore: (snapshot: LiveMapSnapshot) => {
@@ -535,7 +553,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     },
   }));
   PUBLIC_MULTI_LIBRARY_MAPS.add(libraries);
-  HOSTED_LIBRARY_ADMISSION.set(libraries, (owner, inputs) => {
+  HOSTED_LIBRARY_ADMISSION.set(libraries, (owner, inputs, css) => {
     const additions = Object.entries(inputs).map(([name, value]) => Object.freeze({
       name, input: must_library_input(name, value),
     }));
@@ -548,6 +566,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       root: library_root(input),
       hsonSchema: input.schema,
       family: "data" in input ? "data" as const : "document" as const,
+      ...(css !== undefined && Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
     })));
     return Object.freeze({
       transition: prepared.transition,

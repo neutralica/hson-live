@@ -4,6 +4,7 @@ import type { LocusPersistenceAdapter } from "hson-live/locus";
 
 const Count = Hson.schema`<type "data" content <value "number">>`;
 const Page = Hson.schema`<type "document" tag "main" content "empty">`;
+const sheet: string = "main { display: block; }";
 const definitions = {
   count: { data: { value: 1 }, schema: Count },
   page: { document: "<main/>", schema: Page },
@@ -11,7 +12,7 @@ const definitions = {
 const direct = hsonLiveMap.fromLibraries(definitions);
 const locus = hsonLocus.create({
   shared: [{ name: "count", definition: definitions.count }],
-  private: [{ name: "page", definition: definitions.page }],
+  private: [{ name: "page", definition: definitions.page, css: sheet }],
   local: [{ name: "ui", initializer: { data: { selected: false } } }],
 });
 const sameMapType: typeof direct = locus.map;
@@ -23,6 +24,15 @@ const page = locus.map.lib("page");
 if (page.mode !== "document") throw new Error("Library family inference failed.");
 void [sameMapType, knownName, documentName, localName, page];
 void locus.stage.lib("count").at(["value"]).set(2);
+void locus.stage.lib("page").css.stylesheet(sheet);
+void locus.stage.lib("page").css({ domain: "css", kind: "clear-all" });
+void locus.stage.addLibraries({ shared: [{ name: "laterPage", definition: definitions.page, css: sheet }] });
+// @ts-expect-error Data Libraries have no CSS handle.
+void locus.stage.lib("count").css;
+// @ts-expect-error Data Library construction cannot carry CSS.
+void hsonLocus.create({ shared: [{ name: "bad", definition: definitions.count, css: sheet }] });
+// @ts-expect-error Data Library stage admission cannot carry CSS.
+void locus.stage.addLibraries({ shared: [{ name: "bad", definition: definitions.count, css: sheet }] });
 void locus.stage((loc) => { loc.lib("count").at(["value"]).set(3); });
 // @ts-expect-error Locus no longer has a separate library admission namespace.
 void locus.lib;
@@ -43,7 +53,7 @@ declare const provider: LocusPersistenceAdapter;
 void hsonLocus.resume({ shared: [{ name: "count", definition: definitions.count }], persistence: provider });
 const resumed = await hsonLocus.resume({
   shared: [{ name: "count", definition: definitions.count }],
-  private: [{ name: "page", definition: definitions.page }],
+  private: [{ name: "page", definition: definitions.page, css: sheet }],
   logicalMapId: "locus-construction-entrypoint",
   persistence: provider,
 });

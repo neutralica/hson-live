@@ -1167,7 +1167,8 @@ export type LiveMapCssUnitOp = Readonly<
 >;
 export type LiveMapCssOp = LiveMapCssUnitOp
   | Readonly<{ domain: "css"; kind: "batch"; operations: readonly LiveMapCssUnitOp[] }>
-  | Readonly<{ domain: "css"; kind: "append"; stylesheet: import("./document-css.types.js").DocumentCssRecord }>;
+  | Readonly<{ domain: "css"; kind: "append"; stylesheet: import("./document-css.types.js").DocumentCssRecord }>
+  | Readonly<{ domain: "css"; kind: "replace"; stylesheet: import("./document-css.types.js").DocumentCssRecord }>;
 
 /** Portable, ordered topology admission in the map's semantic stream. */
 export type LiveMapLibraryAddOperation = Readonly<{
@@ -1180,6 +1181,7 @@ export type LiveMapLibraryAddOperation = Readonly<{
       mode: LiveMapRootMode;
       schema: import("../api/transform/transform.types.js").HsonSchemaData;
       root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+      css?: import("./document-css.types.js").DocumentCssRecord;
     }>[];
   }>;
 }>;
@@ -1681,8 +1683,8 @@ type LiveMapStagedDocumentLibrary<TEvidence, TResult> = Readonly<{
     remove: (target: LiveMapDocumentCommitTarget, index: number) => TResult;
     move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => TResult;
   }>;
-  /** Portable stylesheet operation; full staged CSS reads are not exposed. */
-  css: (operation: LiveMapCssOp) => TResult;
+  /** Portable CSS operations and complete authored stylesheet replacement. */
+  css: ((operation: LiveMapCssOp) => TResult) & Readonly<{ stylesheet: (text: string) => TResult }>;
 }>;
 
 type LiveMapStagedLibraryForInput<TInput, TResult> =

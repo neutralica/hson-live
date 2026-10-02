@@ -5,6 +5,10 @@ import type { InteractionDescriptor } from "../../src/types/interaction.types.ts
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
 import { node_to_json_value } from "../../src/api/livemap/livemap.editor.ts";
 import { HsonSchema } from "../../src/api/schema/hson-schema.ts";
+import { decode_portable_document_stylesheet, render_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
+
+const css_text = (input: import("../../src/types/document-css.types.ts").DocumentCssRecord): string =>
+  render_portable_document_stylesheet(decode_portable_document_stylesheet(input));
 
 type DefinitionsOf<TMap> = TMap extends LiveMap<infer TDefinitions> ? TDefinitions : LiveMapDefinitions;
 type AuthorityEntries<TDefinitions extends LiveMapDefinitions, TName extends string> =
@@ -39,7 +43,7 @@ export function authority_groups_from_map_fixture<
   for (const entry of catalog) {
     if (entry.ownership === "local") {
       localEntries.push({ name: entry.name, initializer: entry.initializer,
-        ...(entry.css === undefined ? {} : { css: entry.css }) });
+        ...(entry.css === undefined ? {} : { css: css_text(entry.css) }) } as LocusLocalLibraryDefinition);
       continue;
     }
     const index = checkpoint.registry.libraries.findIndex((candidate) => candidate.name === entry.name);
@@ -51,7 +55,7 @@ export function authority_groups_from_map_fixture<
       ? { document: state.root, schema }
       : (() => { const value = node_to_json_value(state.root); return { data: typeof value === "string" ? JSON.stringify(value) : value, schema }; })();
     const output = { name: entry.name, definition,
-      ...(state.css === undefined ? {} : { css: state.css }) };
+      ...(state.css === undefined ? {} : { css: css_text(state.css) }) } as LocusAuthorityLibraryDefinition;
     if (entry.ownership === "private") privateEntries.push(output);
     else sharedEntries.push(output);
   }
@@ -88,10 +92,10 @@ export function authority_groups_from_catalog_fixture<const TCatalog extends rea
   const localEntries: LocusLocalLibraryDefinition[] = [];
   for (const entry of catalog) {
     if (entry.ownership === "local") localEntries.push({ name: entry.name, initializer: entry.initializer,
-      ...(entry.css === undefined ? {} : { css: entry.css }) });
+      ...(entry.css === undefined ? {} : { css: css_text(entry.css) }) } as LocusLocalLibraryDefinition);
     else if (entry.definition !== undefined) (entry.ownership === "private" ? privateEntries : sharedEntries).push({
-      name: entry.name, definition: entry.definition, ...(entry.css === undefined ? {} : { css: entry.css }),
-    });
+      name: entry.name, definition: entry.definition, ...(entry.css === undefined ? {} : { css: css_text(entry.css) }),
+    } as LocusAuthorityLibraryDefinition);
     else throw new Error(`Test catalog ${entry.name} needs a definition.`);
   }
   return { private: privateEntries, shared: sharedEntries, local: localEntries } as unknown as Readonly<{

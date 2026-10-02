@@ -65,7 +65,8 @@ type KeysWithStringValues<T> = {
   [K in StringKeys<T>]: T[K] extends string ? K : never
 }[StringKeys<T>];
 
-export type AllowedStyleKey = Exclude<KeysWithStringValues<CSSStyleDeclaration>, "cssText">;
+type AmbientStyleDeclaration = typeof globalThis extends { CSSStyleDeclaration: { prototype: infer T } } ? T : {};
+export type AllowedStyleKey = Exclude<KeysWithStringValues<AmbientStyleDeclaration>, "cssText">;
 export type CssKey = string;
 export type CssVarName = `--${string}`;
 

@@ -81,6 +81,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => LiveMapAggregateCommit;
   /** Stage one topology batch under Locus management without installing it. @internal */
   prepareAddLibrariesManaged: (owner: object, definitions: readonly Readonly<{
@@ -88,6 +89,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[]) => Readonly<{
     transition: PreparedLiveMapAuthorityTransition;
     identities: readonly LiveMapLibraryIdentity[];

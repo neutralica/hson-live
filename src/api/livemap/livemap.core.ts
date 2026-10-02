@@ -179,6 +179,7 @@ export type RegistryRoot = Readonly<{
   root: HsonNode;
   hsonSchema?: HsonSchema;
   family: "data" | "document";
+  css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
 }>;
 
 export type InitialSystemState = Readonly<{
@@ -196,13 +197,14 @@ export function make_livemap_registry_authority(
   aggregate: InternalLiveMapAggregateAuthority;
   identities: readonly LiveMapLibraryIdentity[];
 }> {
-  const prepared = roots.map(({ root, hsonSchema, family }) => {
+  const prepared = roots.map(({ root, hsonSchema, family, css }) => {
     const graph = prepare_livemap_root(root, family);
     if (hsonSchema !== undefined) {
       must_hson_schema_family(hsonSchema, family);
       must_hson_schema_root(hsonSchema, graph.root);
     }
-    return { graph, hsonSchema };
+    if (css !== undefined && family !== "document") throw new TypeError("Initial CSS requires a document Library.");
+    return { graph, hsonSchema, css };
   });
   const aggregate = make_livemap_registry_engine(prepared, systems);
   return Object.freeze({ aggregate, identities: aggregate.libraries() });
@@ -215,10 +217,15 @@ function make_livemap_registry_engine(
   registry: readonly Readonly<{
     graph: ReturnType<typeof prepare_livemap_root>;
     hsonSchema?: HsonSchema;
+    css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[],
   systems: readonly InitialSystemState[] = [],
 ): InternalLiveMapAggregateAuthority {
-  const states = registry.map(({ graph, hsonSchema }) => make_livemap_library(graph, hsonSchema));
+  const states = registry.map(({ graph, hsonSchema, css }) => {
+    const state = make_livemap_library(graph, hsonSchema);
+    if (css !== undefined) state.stylesheet = css;
+    return state;
+  });
   const libraryRegistry = make_livemap_library_registry(states);
   for (const library of states) {
     if (library.mode !== "document") library.projectedValue = must_projected_root_value(library.root);
@@ -1112,7 +1119,7 @@ function make_livemap_registry_engine(
       }
     }
     const resetsIdentityEpoch = operations.some((entry) => entry.target.domain === "application"
-      && "kind" in entry.operation && entry.operation.kind === "replace" && entry.operation.path.length === 0)
+      && "kind" in entry.operation && entry.operation.kind === "replace" && "path" in entry.operation && entry.operation.path.length === 0)
       || [...candidates.values()].some((candidate) => is_aggregate_document_candidate(candidate)
         && candidate.operations.some((operation) => operation.op === "replace-root")
         && candidate.continuity !== "same-epoch");
@@ -1424,6 +1431,7 @@ function make_livemap_registry_engine(
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>;
 
   function prepare_add_libraries(definitions: readonly LibraryAddition[]): Readonly<{
@@ -1434,14 +1442,18 @@ function make_livemap_registry_engine(
     const prevRev = mapRevision;
     if (definitions.length === 0) throw new Error("LiveMap topology batch is empty.");
     const hosted = require_hosted_state();
-    const prepared = definitions.map(({ name, root, hsonSchema, family }) => {
+    const prepared = definitions.map(({ name, root, hsonSchema, family, css }) => {
       admit_portable_hson_node(root, `LiveMap Library ${JSON.stringify(name)}`);
       const graph = prepare_livemap_root(root, family);
       must_hson_schema_family(hsonSchema, family);
       must_hson_schema_root(hsonSchema, graph.root);
       const state = make_livemap_library(graph, hsonSchema);
+      if (css !== undefined) {
+        if (family !== "document") throw new TypeError("Initial CSS requires a document Library.");
+        state.stylesheet = css;
+      }
       if (state.mode !== "document") state.projectedValue = must_projected_root_value(state.root);
-      return Object.freeze({ name, state, hsonSchema });
+      return Object.freeze({ name, state, hsonSchema, css });
     });
     const existingBindings = libraryRegistry.all().map((state) => {
       const binding = hosted.byIdentity.get(state.identity);
@@ -1472,11 +1484,12 @@ function make_livemap_registry_engine(
     const topology = Object.freeze({
       library: first.name,
       operation: Object.freeze({ kind: "library-add" as const,
-        libraries: Object.freeze(prepared.map(({ name, state, hsonSchema }) => Object.freeze({
+        libraries: Object.freeze(prepared.map(({ name, state, hsonSchema, css }) => Object.freeze({
           name,
           mode: state.mode,
           schema: hsonSchema.toHson(),
           root: encode_hosted_root(clone_hson_graph_without_quids(state.root)),
+          ...(css === undefined ? {} : { css: encode_portable_document_stylesheet(css) }),
         }))),
       }),
     });
