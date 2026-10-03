@@ -1488,7 +1488,7 @@ export type LiveMapDocumentLibrary<
       InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
     >;
   }>;
-  render: () => import("../api/ssr/ssr.types.js").BrowserRealizationHtml;
+  render: import("../internal/browser-html-producer.js").BrowserHtmlProducer;
   document: Readonly<{
     root: () => HsonNode;
     content: (() => readonly NodeContent[number][]) & Readonly<{

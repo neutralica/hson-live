@@ -204,6 +204,8 @@ export type {
 } from "./types/locus.types.js";
 
 export { create_livehost_locus_registry } from "./api/livehost/services/livehost.authority-registry.js";
+export { liveHost } from "./api/livehost/livehost.facade.js";
+export type { LiveHostAuthoredApplication, LiveHostCreateInput, LiveHostHttpMethod } from "./api/livehost/livehost.facade.js";
 export type {
   LiveHost,
   LiveHostApplication,

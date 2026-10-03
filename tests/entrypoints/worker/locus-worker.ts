@@ -3,12 +3,20 @@ import { bind_locus_http, bind_locus_websocket, hsonLocus,
 import { hsonLiveMap } from "hson-live/livemap";
 import { hsonEcho, type EchoReplicaTransport } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
+import { liveHost, type LiveHostApplication } from "hson-live/livehost";
 
 declare const socket: LocusWebSocketLike;
 declare const transport: EchoReplicaTransport;
 const pageDefinition = { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` };
 const map = hsonLiveMap.fromLibraries({ page: pageDefinition });
 const locus: Locus<typeof map> = hsonLocus.create({ shared: [{ name: "page", definition: pageDefinition }] });
+const page = locus.lib("page");
+if (page.mode === "document") {
+  const authored = liveHost.create({ name: "worker-deck" });
+  authored.GET("/", page.render);
+  const application: LiveHostApplication = authored;
+  void application;
+}
 void [locus, hsonLocus];
 void bind_locus_websocket(locus, socket);
 const http = bind_locus_http(locus, { endpoint: "/_hson" });

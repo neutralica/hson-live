@@ -9,6 +9,7 @@ import type { GovernorLibrarySelector } from "../../types/governor.types.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import { register_governed_document, governed_document_element_target, governed_document_slot,
   governed_document_remove_slot, governed_document_insert_slot, governed_document_move_target } from "../../internal/governed-document.js";
 
@@ -161,7 +162,7 @@ export function make_locus_stage<TMap extends LiveMap>(
           mode: "document" as const,
           get rev() { return document.rev; },
           root: () => document.root(),
-          render: () => document.render(),
+          render: mark_browser_html_producer(() => document.render()),
           commits: document.commits,
           schema: Object.freeze({ get: () => document.schema.get() }),
           at: (path: readonly number[]) => document_location(name, path),

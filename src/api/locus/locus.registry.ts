@@ -33,6 +33,7 @@ import { register_locus_semantic_attachment_internal } from "./locus.transport.i
 import { make_locus_stage } from "./locus.stage.js";
 import type { GovernorReadLibrarySelector } from "../../types/governor.types.js";
 import { register_locus_map_internal } from "../../internal/governor-maps.js";
+import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 
 function establish_authority_identity(
   map: LiveMap,
@@ -118,7 +119,7 @@ export function create_registry_locus_internal<
     });
     return Object.freeze({
       mode: "document" as const, get rev() { return selected.rev; }, root: () => selected.root(),
-      render: () => selected.render(), commits: selected.commits,
+      render: mark_browser_html_producer(() => selected.render()), commits: selected.commits,
       schema: Object.freeze({ get: () => selected.schema.get() }),
       css: Object.freeze({ snapshot: () => selected.css.snapshot(), has: (key: string) => selected.css.has(key),
         list: () => selected.css.list(), get: (key: string) => selected.css.get(key) }),

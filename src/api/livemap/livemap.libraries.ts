@@ -6,6 +6,7 @@ import { clone_node } from "../../core/clone-node.js";
 import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
 import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
+import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
@@ -1188,7 +1189,7 @@ function make_document_library(
     root: () => clone_node(root()),
     at: (path) => wrap_location(raw_at(path)),
     proxy: (path: readonly number[] = []) => Object.freeze({ $_: wrap_location(raw_at(path)) }),
-    render: () => {
+    render: mark_browser_html_producer(() => {
       // No application callbacks or aggregate inspection occur within this read.
       const position = aggregate.hostedPosition();
       const documentRoot = clone_hson_graph_without_quids(root());
@@ -1198,7 +1199,7 @@ function make_document_library(
         throw new Error("Document state changed during rendering read.");
       }
       return realize_document(documentRoot, css);
-    },
+    }),
     document: documentApi,
     commits: document_commits,
     schema: Object.freeze({

@@ -24,7 +24,7 @@ EchoActionStatusResult EchoAttachmentEvent EchoEndpointTransport EchoReplicaTran
 EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation LocusLocalInitializer LocusSessionApi LocusSession LocusSessionCreateOptions LocusSessionNow LocusSessionHtmlNow Hson HsonCanonical
 HsonData HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData HsonSchemaMutationCandidate InteractionActionDispatcher
 InteractionActivationOptions InteractionDescriptor InteractionFailure InteractionListener InteractionLocalBehavior InteractionLocalBehaviors LiveHost
-LiveHostApplication LiveHostApplicationContext LiveHostConnection LiveHostConnectionRoute LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
+LiveHostApplication LiveHostApplicationContext LiveHostAuthoredApplication LiveHostConnection LiveHostConnectionRoute LiveHostCreateInput LiveHostHttpMethod LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
 LiveHostLocusRegistryResult LiveHostPrincipal LiveHostRequestRoute LiveMap LiveMapDataLibrary LiveMapDataLibraryInput LiveMapDocumentAttributeNotFoundError LiveMapDocumentIdentityProvenanceError
 LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocumentLibrary LiveMapDocumentLibraryInput LiveMapDocumentLocation LiveMapDocumentMode LiveMapDocumentMutationError LiveMapDocumentStagingError LiveMapInput
 LiveMapLibraryAddOperation LiveMapLibraryDefinition LiveMapDefinitions LiveMapDynamicLibrary LiveMapKnownNames LiveMapLibraryInput LiveMapLibrarySchemaUseOperation LiveMapStagedWriter LiveMapWithLibrarySchema LiveTree LiveTreeAlreadyAttachedError LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult LiveTreeLinkedIdentityRequiredError
@@ -33,7 +33,7 @@ LocusActions LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivity
 LocusDuplicateActionIdError LocusAuthorityLibraryDefinition LocusLocalLibraryDefinition LocusRuntimeLibraryAdditions LocusDefinitionOptions LocusResumeOptions LocusResult LocusStage LocusWebSocketLike Mirror SchemaType SsrBootstrapCodecError SsrBootstrapCodecOptions
 SsrBootstrapKind TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource TreeSelector activate_interactions
 add_interaction bind_locus_http bind_locus_websocket continue_document continue_hosted_document create_echo create_livehost_locus_registry decode_ssr_bootstrap enable_interactions
-encode_ssr_bootstrap hson hsonCalc hsonEcho hsonLiveMap hsonLiveTree hsonLocus hsonMirror
+encode_ssr_bootstrap hson hsonCalc hsonEcho hsonLiveMap hsonLiveTree hsonLocus hsonMirror liveHost
 hsonTransform is_transform_error read_transform_error_details reflect_document remove_interaction replace_interaction
 `.trim().split(/\s+/).sort();
 
@@ -182,7 +182,7 @@ const ownerProofs = Object.freeze({
   "dist/api/locus/index.d.ts": ["LocusDefinitionOptions", "LocusResumeOptions", "LocusPersistenceAdapter"],
   "dist/api/locus/node/index.d.ts": ["bind_node_locus_websocket", "NodeLocusWebSocketOptions"],
   "dist/api/ssr/index.d.ts": ["BrowserRealizationHtml", "DocumentSsrError"],
-  "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost"],
+  "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost", "LiveHostAuthoredApplication", "liveHost"],
   "dist/api/livehost/node/index.d.ts": ["start_node_application_host", "NodeApplicationHostOptions"],
   "dist/diagnostics/index.d.ts": ["hsonInspect", "create_live_inspector", "LiveInspector", "create_live_trace_collector"],
 });
@@ -193,7 +193,7 @@ await check("specialist contracts remain available from owning entrypoints", () 
     const actual = new Set(declaration_exports(file));
     for (const name of expected) {
       assert.equal(actual.has(name), true, `${name} must remain exported by ${file}`);
-      if (!["HsonDocument", "BrowserRealizationHtml", "DocumentSsrError", "create_livehost_locus_registry", "LiveHost", "LocusDefinitionOptions", "LocusResumeOptions"].includes(name)) {
+      if (!["HsonDocument", "BrowserRealizationHtml", "DocumentSsrError", "create_livehost_locus_registry", "LiveHost", "LiveHostAuthoredApplication", "liveHost", "LocusDefinitionOptions", "LocusResumeOptions"].includes(name)) {
         assert.equal(root.has(name), false, `${name} must not leak back into the root`);
       }
     }
@@ -286,7 +286,7 @@ await check("all retained overlapping runtime values preserve strict identity", 
     echo: ["hsonEcho", "create_echo", "EchoSyncError", "EchoSessionError"],
     locus: ["hsonLocus", "LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusAuthorityError"],
     ssr: ["decode_ssr_bootstrap", "DocumentSsrError", "encode_ssr_bootstrap", "SsrBootstrapCodecError"],
-    livehost: ["create_livehost_locus_registry"],
+    livehost: ["create_livehost_locus_registry", "liveHost"],
   } as const;
   for (const [owner, names] of Object.entries(overlap)) {
     for (const name of names) {

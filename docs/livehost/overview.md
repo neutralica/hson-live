@@ -57,20 +57,87 @@ document, report, tenant, or other domain selector.
 ```ts
 import { hsonLocus } from "hson-live/locus";
 import { bind_node_locus_websocket } from "hson-live/locus/node";
-import { create_livehost_locus_registry } from "hson-live/livehost";
+import { liveHost, create_livehost_locus_registry } from "hson-live/livehost";
 import { start_node_application_host } from "hson-live/livehost/node";
 ```
 
 - `hson-live/locus` is the platform-neutral registry authority API.
 - `hson-live/locus/node` contains the concrete Node WebSocket binder for session-projected Locus.
-- `hson-live/livehost` contains platform-neutral application/runtime contracts
-  and the bounded registry service.
+- `hson-live/livehost` contains platform-neutral application contracts,
+  pre-bind authoring helpers, and the bounded registry service.
 - `hson-live/livehost/node` is the concrete Node application-host runtime and
   security boundary.
 
-The generic LiveHost package has no concrete `create_livehost()` factory. Node
-is currently the concrete runtime implementation. The four package surfaces do
-not provide historical one-map LiveHost aliases.
+`liveHost.create()` authors an application; it does not bind a network runtime.
+Node is currently the concrete runtime implementation. The four package
+surfaces do not provide historical one-map LiveHost aliases.
+
+## Application authoring
+
+The raw application and request descriptor remain first-class:
+
+```ts
+import { liveHost, type LiveHostApplication } from "hson-live/livehost";
+
+const application: LiveHostApplication = {
+  name: "deck",
+  requests: [
+    { method: "POST", path: "/save", handle: async (request) =>
+      new Response(await request.text(), { status: 201 }) },
+  ],
+  dispose() {},
+};
+```
+
+The inert HTTP helpers construct those same descriptors. A single path and
+handler returns one descriptor; grouped tuples return an ordered plain array:
+
+```ts
+const page = liveHost.GET("/", home.render);
+const pages = liveHost.GET(
+  ["/", home.render],
+  ["/slides/1", slide01.render],
+);
+
+const declarative: LiveHostApplication = {
+  name: "deck",
+  requests: pages,
+  dispose() {},
+};
+```
+
+`POST`, `PUT`, and `DELETE` have the same forms. Calling a namespace helper
+does not register a route. A marked document `render` callable is invoked for
+each request and delivered as a `Response` with
+`Content-Type: text/html; charset=utf-8`. Later document and stylesheet edits
+appear in later responses. Pass `render` directly: a new wrapper function does
+not carry its hidden producer marker. Ordinary raw handlers still return a `Response` or
+`Promise<Response>`; arbitrary strings are not interpreted as HTML.
+
+For progressive authoring, `create` makes a new application with an empty
+request array and a no-op disposer when omitted:
+
+```ts
+const host = liveHost.create({ name: "deck" });
+host.GET("/", home.render);
+host.POST("/save", async (request) =>
+  new Response(await request.text(), { status: 201 }));
+host.GET(["/slides/1", slide01.render], ["/slides/2", slide02.render]);
+host.add({ method: "OPTIONS", path: "/custom", handle: () => new Response() });
+
+const authoredApplication: LiveHostApplication = host;
+```
+
+`host.add` accepts one or several ordinary raw request descriptors, including
+custom methods. `create(rawApplication)` copies the input request array while
+retaining its descriptor objects, then appends later routes in call order. It
+preserves supplied connection, readiness, and disposal behavior. All forms
+compose into the same raw LiveHost application model.
+
+Complete progressive construction before passing the application to a runtime.
+The current Node host scans its routes once at startup; later additions to the
+authoring array do not update live dispatch. Existing startup registration
+remains responsible for names, paths, and duplicate-route validation.
 
 ## Requests and responses
 
