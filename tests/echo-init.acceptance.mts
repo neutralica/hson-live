@@ -4,8 +4,7 @@ import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixtur
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
-import { Hson, add_interaction, decode_ssr_bootstrap, enable_interactions, encode_ssr_bootstrap, hsonEcho, hsonLiveMap, hsonLocus,
-  type InteractionDescriptor, type Locus, type LocusWebSocketLike } from "../src/index.ts";
+import { Hson, add_interaction, decode_ssr_bootstrap, enable_interactions, encode_ssr_bootstrap, hsonLiveMap, type InteractionDescriptor, type Locus, type LocusWebSocketLike } from "../src/index.ts";
 import type { LocusRegistryOptions } from "../src/types/locus.core.types.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
 import { encode_hosted_root, hosted_sha256 } from "../src/api/livemap/livemap.hosted.ts";
@@ -71,7 +70,7 @@ for (const [expected, advance, truncateHistory] of [
   };
   const locus: Locus<typeof map> = truncateHistory
     ? create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus
-    : hsonLocus.create(authority_definition_from_fixture_options(options));
+    : hsonLiveMap.locus.create(authority_definition_from_fixture_options(options));
   const session = await locus.session.create({ libraries: ["state"] });
   const cut = session.now();
   if (advance) await locus.stage((draft) => {
@@ -82,12 +81,12 @@ for (const [expected, advance, truncateHistory] of [
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
   if (expected === "current") {
-    await assert.rejects(hsonEcho.create({ now: { ...cut, libs: { ...cut.libs, projectionDigest: "0".repeat(64) } },
+    await assert.rejects(hsonLiveMap.echo.create({ now: { ...cut, libs: { ...cut.libs, projectionDigest: "0".repeat(64) } },
       credential: session.credential!, transport: test_echo_transport(pair.client) }), /digest|projection/i);
     assert.equal(pair.clientListenerCount(), 0, "invalid cut does not install transport listeners");
     const ahead = socket_pair();
     const detachAhead = bind_locus_websocket(locus, ahead.server);
-    await assert.rejects(hsonEcho.create({ now: { ...cut, libs: { ...cut.libs, revision: cut.libs.revision + 1 } },
+    await assert.rejects(hsonLiveMap.echo.create({ now: { ...cut, libs: { ...cut.libs, revision: cut.libs.revision + 1 } },
       credential: session.credential!, transport: test_echo_transport(ahead.client) }), /ahead|synchronization/i);
     assert.equal(ahead.clientListenerCount(), 0, "failed synchronization releases transport listeners");
     detachAhead(); // The deterministic fixture has no physical close notification.
@@ -97,7 +96,7 @@ for (const [expected, advance, truncateHistory] of [
     assert.equal(retained.resumable, true);
     assert.ok(retained.expiresAt);
   }
-  const echo = await hsonEcho.create({ now: cut, credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonLiveMap.echo.create({ now: cut, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.session.status, "attached");
   assert.equal(echo.sync.status, "caught_up");
   assert.equal(echo.sync.strategy, expected);
@@ -117,12 +116,12 @@ for (const [expected, advance, truncateHistory] of [
 
 {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
   const session = await locus.session.create({ libraries: ["state"] });
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);
   const transport = test_echo_transport(pair.client);
-  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport });
+  const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport });
   assert.equal(echo.sync.status, "caught_up");
   transport.dispose();
   assert.notEqual(echo.sync.status, "caught_up", "terminal transport disposal invalidates replica readiness");
@@ -133,7 +132,7 @@ for (const [expected, advance, truncateHistory] of [
 
 {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
   const session = await locus.session.create({ libraries: ["state"] });
   let opening = false;
   let openingAborted = false;
@@ -180,19 +179,19 @@ for (const [expected, advance, truncateHistory] of [
   assert.notEqual(a.now().sessionBinding, a.credential);
   const bindingA = a.now().sessionBinding;
   const mixedPair = socket_pair(); const detachMixed = bind_locus_websocket(locus, mixedPair.server);
-  await assert.rejects(hsonEcho.create({ now: a.now(), credential: b.credential!, transport: test_echo_transport(mixedPair.client) }),
+  await assert.rejects(hsonLiveMap.echo.create({ now: a.now(), credential: b.credential!, transport: test_echo_transport(mixedPair.client) }),
     /binding|session/i);
   detachMixed();
   const c = await locus.session.create({ libraries: ["state"] });
   const differentPair = socket_pair(); const detachDifferent = bind_locus_websocket(locus, differentPair.server);
-  await assert.rejects(hsonEcho.create({ now: a.now(), credential: c.credential!, transport: test_echo_transport(differentPair.client) }),
+  await assert.rejects(hsonLiveMap.echo.create({ now: a.now(), credential: c.credential!, transport: test_echo_transport(differentPair.client) }),
     /binding|session|initializer|projection/i);
   detachDifferent();
   const validPair = socket_pair(); let detachValid = bind_locus_websocket(locus, validPair.server);
-  const valid = await hsonEcho.create({ now: a.now(), credential: a.credential!, transport: test_echo_transport(validPair.client) });
+  const valid = await hsonLiveMap.echo.create({ now: a.now(), credential: a.credential!, transport: test_echo_transport(validPair.client) });
   assert.equal(valid.sync.status, "caught_up");
   const secondPair = socket_pair(); let detachSecond = bind_locus_websocket(locus, secondPair.server);
-  const second = await hsonEcho.create({ now: b.now(), credential: b.credential!, transport: test_echo_transport(secondPair.client) });
+  const second = await hsonLiveMap.echo.create({ now: b.now(), credential: b.credential!, transport: test_echo_transport(secondPair.client) });
   const localA = valid.lib("ui"); const localB = second.lib("ui");
   if (localA.mode === "document" || localB.mode === "document"
     || localA.source !== "client-local" || localB.source !== "client-local") throw new Error("Expected local data Libraries.");
@@ -226,7 +225,7 @@ for (const [expected, advance, truncateHistory] of [
 // cannot establish that its contents were the authority's contents.
 {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
   const session = await locus.session.create({ libraries: ["state"] });
   const cut = session.now();
   const forged = { ...cut, libs: { ...cut.libs, libraries: cut.libs.libraries.map((entry) => ({
@@ -234,7 +233,7 @@ for (const [expected, advance, truncateHistory] of [
   })) } };
   assert.notEqual(forged.libs.libraries[0]!.root.payload, cut.libs.libraries[0]!.root.payload);
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonLiveMap.echo.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
   const state = echo.lib("state");
   if (state.mode === "document") throw new Error("Expected data.");
@@ -246,7 +245,7 @@ for (const [expected, advance, truncateHistory] of [
 {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
   map.lib("page").css.stylesheet("main { color: red; }");
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]),
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]),
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
   const session = await locus.session.create({ libraries: ["page"] });
   const cut = session.now();
@@ -256,7 +255,7 @@ for (const [expected, advance, truncateHistory] of [
         [name, value === "red" ? "blue" : value]),
     })) } }) } };
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonLiveMap.echo.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
   const projectedPage = echo.lib("page");
   if (projectedPage.mode !== "document" || projectedPage.source !== "authority-projected")
@@ -284,7 +283,7 @@ for (const [expected, advance, truncateHistory] of [
   enable_interactions(map);
   const emptyMap = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>" } });
   enable_interactions(emptyMap);
-  const emptyLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(emptyMap, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
+  const emptyLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(emptyMap, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
   const emptySession = await emptyLocus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
   const emptySystem = emptySession.now().libs.system;
   const descriptor: InteractionDescriptor = Object.freeze({
@@ -298,13 +297,13 @@ for (const [expected, advance, truncateHistory] of [
       stopImmediatePropagation: false }),
   });
   add_interaction(map, descriptor);
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
   const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
   const current = session.now();
   assert.notDeepEqual(current.libs.system, emptySystem);
   const mixed = { ...current, libs: { ...current.libs, system: emptySystem } };
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.create({ now: mixed, credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonLiveMap.echo.create({ now: mixed, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
   assert.equal(echo.sync.status, "caught_up");
   echo.dispose(); detach(); locus.dispose(); emptyLocus.dispose();
@@ -317,10 +316,10 @@ for (const [mutate, truncateHistory] of [[false, false], [true, false], [true, t
   const options: LocusRegistryOptions<typeof map> = { map, libraries: [{ name: "state", ownership: "shared" }],
     authorizeProjection: () => ({ libraries: ["state"] }) };
   const locus = truncateHistory ? create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus
-    : hsonLocus.create(authority_definition_from_fixture_options(options));
+    : hsonLiveMap.locus.create(authority_definition_from_fixture_options(options));
   const session = await locus.session.create({ libraries: ["state"] });
   const pair = socket_pair(); let detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   echo.disconnect();
   detach();
   assert.equal(locus.session.debug().sessions[0]!.state, "disconnected");
@@ -346,10 +345,10 @@ for (const [mutate, truncateHistory] of [[false, false], [true, false], [true, t
 
 for (const outcome of ["disposed", "rejected"] as const) {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
   const session = await locus.session.create({ libraries: ["state"] });
   const pair = socket_pair(); let detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   echo.disconnect();
   detach();
   if (outcome === "rejected") {
@@ -376,7 +375,7 @@ for (const outcome of ["disposed", "rejected"] as const) {
 // Both transport listener installations roll back atomically.
 for (const stage of ["message", "close"] as const) {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
   const session = await locus.session.create({ libraries: ["state"] });
   const beforeAttachment = locus.session.debug().sessions[0]!;
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
@@ -392,50 +391,50 @@ for (const stage of ["message", "close"] as const) {
       return pair.client.onClose(listener);
     },
   };
-  await assert.rejects(hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(socket) }), /not submitted/);
+  await assert.rejects(hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(socket) }), /not submitted/);
   assert.equal(pair.clientListenerCount(), 0);
   assert.equal(locus.session.debug().sessions[0]!.activeConnectionEpoch, beforeAttachment.activeConnectionEpoch);
   fail = false;
-  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(socket) });
+  const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(socket) });
   assert.equal(echo.sync.status, "caught_up");
   echo.dispose(); detach(); locus.dispose();
 }
 
 {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
   const session = await locus.session.create({ libraries: ["state"] });
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);
-  await assert.rejects(hsonEcho.create({ now: session.now(), credential: "invalid-credential", transport: test_echo_transport(pair.client) }));
+  await assert.rejects(hsonLiveMap.echo.create({ now: session.now(), credential: "invalid-credential", transport: test_echo_transport(pair.client) }));
   assert.equal(pair.clientListenerCount(), 0, "failed attachment releases transport listeners");
   const empty = await locus.session.create({ libraries: [] });
   assert.deepEqual(empty.now().libs.libraries, []);
-  await assert.rejects(hsonEcho.create({ now: empty.now(), credential: empty.credential!, transport: test_echo_transport(pair.client) }), /no LiveMap|application libraries/i);
+  await assert.rejects(hsonLiveMap.echo.create({ now: empty.now(), credential: empty.credential!, transport: test_echo_transport(pair.client) }), /no LiveMap|application libraries/i);
   assert.equal(pair.clientListenerCount(), 0, "action-only cut does not create a replica endpoint");
   detach(); locus.dispose();
 }
 
 {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
   const session = await locus.session.create({ libraries: ["state"] }, { connection: { principalId: "alice" } });
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server, { principalId: "mallory" });
-  await assert.rejects(hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) }));
+  await assert.rejects(hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) }));
   assert.equal(pair.clientListenerCount(), 0, "principal rejection releases transport listeners");
   detach(); locus.dispose();
 }
 
 {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"] }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"] }) });
   const session = await locus.session.create({ libraries: ["page"] });
   const cut = session.now();
   const quidRoot = encode_hosted_root(parse_hson_exact_runtime("<main @000000001/>", { allowTopLevelDocumentText: true }));
   const forged = { ...cut, libs: { ...cut.libs, libraries: cut.libs.libraries.map((entry) => ({ ...entry, root: quidRoot })) } };
   const pair = socket_pair();
-  await assert.rejects(hsonEcho.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) }), /malformed/i);
+  await assert.rejects(hsonLiveMap.echo.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) }), /malformed/i);
   assert.equal(pair.clientListenerCount(), 0);
   locus.dispose();
 }
@@ -496,11 +495,11 @@ for (const stage of ["message", "close"] as const) {
   assert.throws(() => { (cssRule.declarations[0] as unknown as string[])[1] = "green"; }, TypeError);
   assert.match(JSON.stringify(immutableB.now().local), /red/);
   assert.throws(() => locus.lib("ui"), /unknown/i, "local definitions never enter locus_map_internal(locus)");
-  assert.throws(() => hsonLocus.create({
+  assert.throws(() => hsonLiveMap.locus.create({
     shared: [{ name: "state", definition: { data: { value: 0 }, schema: StateSchema } }],
     local: [{ name: "state", initializer: { data: { value: 9 }, schema: StateSchema } }],
   } as never), /duplicate/i, "authority and local names cannot collide");
-  assert.throws(() => hsonLocus.create({
+  assert.throws(() => hsonLiveMap.locus.create({
     shared: [{ name: "state", definition: { data: { value: 0 }, schema: StateSchema } }],
     local: [{ name: "tainted", initializer: {
       document: parse_hson_exact_runtime("<aside @000000321/>", { allowTopLevelDocumentText: true }), schema: PanelSchema,
@@ -511,7 +510,7 @@ for (const stage of ["message", "close"] as const) {
   assert.deepEqual(session.now().local, []);
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.throws(() => echo.lib("ui"), /unknown/i);
   const beforeTopologyRev = echo.rev;
   const beforeTopologyRegistry = echo_map_internal(echo).capture().registryDigest;
@@ -600,7 +599,7 @@ for (const stage of ["message", "close"] as const) {
   assert.deepEqual(carried.bootstrap.local.map(({ name }) => name), ["panel", "ui"]);
   const freshPair = socket_pair();
   const detachFresh = bind_locus_websocket(locus, freshPair.server);
-  const fresh = await hsonEcho.create({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
+  const fresh = await hsonLiveMap.echo.create({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
   const freshUi = fresh.lib("ui");
   if (freshUi.mode === "document" || freshUi.source !== "client-local") throw new Error("Expected fresh local data Library.");
   assert.equal(freshUi.snap(["value"]), 0);
@@ -622,7 +621,7 @@ for (const stage of ["message", "close"] as const) {
       initializers: [{ name: altered.name, fingerprint: altered.fingerprint }] })) });
   const tamperPair = socket_pair();
   const detachTamper = bind_locus_websocket(locus, tamperPair.server);
-  await assert.rejects(hsonEcho.create({ now: tampered as typeof authentic,
+  await assert.rejects(hsonLiveMap.echo.create({ now: tampered as typeof authentic,
     credential: authorized.credential!, transport: test_echo_transport(tamperPair.client) }), /initializer|integrity|sync/i);
 
   echo.dispose(); detachTamper(); detach(); locus.dispose();
@@ -645,7 +644,7 @@ for (const stage of ["message", "close"] as const) {
   const session = await locus.session.create({ libraries: ["visible"] });
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal("map" in echo, false);
   assert.equal(echo.sync.appliedRev, locus.rev);
   assert.deepEqual(echo.cut().libs.libraries.map((entry) => entry.name), ["visible"]);

@@ -1,6 +1,6 @@
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
-import { Hson, hsonEcho, hsonLiveMap, hsonLocus, bind_locus_http, bind_locus_websocket } from "../src/index.ts";
+import { Hson, hsonLiveMap, bind_locus_http, bind_locus_websocket } from "../src/index.ts";
 import WebSocket from "ws";
 import { start_node_application_host } from "../src/api/livehost/node/livehost.node-application-host.ts";
 import type { LiveHostApplication } from "../src/types/livehost.types.ts";
@@ -14,7 +14,7 @@ const events = create_test_event_emitter("echo.http");
 events.case_begin("http1", "HTTP/1 finite operations and continuing synchronization");
 
 const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" },
+const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" },
   { name: "ui", ownership: "local", initializer: { data: { value: 0 } } }]), defaultProjection: { libraries: ["state", "ui"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }), actions: { echo: (_context, payload) => payload } });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
 const application: LiveHostApplication = {
@@ -35,9 +35,9 @@ const application: LiveHostApplication = {
 };
 const host = await start_node_application_host({ port: 0, applications: [application] });
 const endpoint = `${host.httpUrl}/_hson`;
-const transport = hsonEcho.transport.http({ endpoint });
+const transport = hsonLiveMap.echo.transport.http({ endpoint });
 try {
-  const echo = hsonEcho.create({ transport });
+  const echo = hsonLiveMap.echo.create({ transport });
   echo.connect();
   const created = await echo.session.create();
   assert.equal(created.epoch, 1);
@@ -109,10 +109,10 @@ try {
     };
     return new Response(stream, { status: response.status, headers: response.headers });
   };
-  const replicaTransport = hsonEcho.transport.http({ endpoint, fetch: interruptedFetch });
+  const replicaTransport = hsonLiveMap.echo.transport.http({ endpoint, fetch: interruptedFetch });
   let closeReplica = () => {};
   try {
-    const replica = await hsonEcho.create({ now: retained.now(), credential: retained.credential!, transport: replicaTransport });
+    const replica = await hsonLiveMap.echo.create({ now: retained.now(), credential: retained.credential!, transport: replicaTransport });
     closeReplica = () => replica.dispose();
     assert.equal(replica.session.status, "attached");
     assert.equal(replica.sync.status, "caught_up");
@@ -175,9 +175,9 @@ try {
     ? { ...library, root: { ...library.root, payload: library.root.payload.replace("value 2>", "value 99>") } }
     : library) } };
   assert.notEqual(forgedCut.libs.libraries[0]?.root.payload, cut.libs.libraries[0]?.root.payload);
-  const reconcileTransport = hsonEcho.transport.http({ endpoint });
+  const reconcileTransport = hsonLiveMap.echo.transport.http({ endpoint });
   try {
-    const reconciled = await hsonEcho.create({ now: forgedCut, credential: reconcileSession.credential!,
+    const reconciled = await hsonLiveMap.echo.create({ now: forgedCut, credential: reconcileSession.credential!,
       transport: reconcileTransport });
     assert.equal(reconciled.sync.strategy, "reconcile");
     assert.equal(reconciled.sync.status, "caught_up");
@@ -240,16 +240,16 @@ try {
   const cutRaw = await raw({ type: "session-create", id: "cut-session" });
   const cutCapability = cutRaw.headers.get("x-hson-attachment")!;
   const cutSession = await cutRaw.json() as { sessionId: string };
-  const mixedTransport = hsonEcho.transport.http({ endpoint });
+  const mixedTransport = hsonLiveMap.echo.transport.http({ endpoint });
   try {
-    await assert.rejects(hsonEcho.create({ now: locus.session.get(cutSession.sessionId)!.now(),
+    await assert.rejects(hsonLiveMap.echo.create({ now: locus.session.get(cutSession.sessionId)!.now(),
       credential: credentialSession.credential, transport: mixedTransport }));
   } finally { mixedTransport.dispose(); }
   assert.equal((await raw({ type: "session-goodbye", id: "cut-goodbye" }, cutCapability)).status, 200);
   assert.equal(locus.session.get(credentialSession.sessionId)?.revoke(), true);
 
   const otherMap = hsonLiveMap.fromLibraries({ other: { data: 0 } });
-  const otherLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(otherMap, [{ name: "other", ownership: "shared" }]) });
+  const otherLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(otherMap, [{ name: "other", ownership: "shared" }]) });
   const otherBinding = bind_locus_http(otherLocus, { endpoint: "/_hson" });
   try {
     const wrongAuthority = await otherBinding.handle(new Request(endpoint, { method: "POST",
@@ -266,17 +266,17 @@ try {
     { principalId: "development-anonymous" })).status, 403);
   } finally { otherBinding.dispose(); otherLocus.dispose(); }
 
-  const websocketTransport = hsonEcho.transport.websocket({ url: `${host.url}/ws`, WebSocketConstructor: WebSocket });
-  const websocketEcho = hsonEcho.create({ transport: websocketTransport });
+  const websocketTransport = hsonLiveMap.echo.transport.websocket({ url: `${host.url}/ws`, WebSocketConstructor: WebSocket });
+  const websocketEcho = hsonLiveMap.echo.create({ transport: websocketTransport });
   websocketEcho.connect();
   const websocketSession = await websocketEcho.session.create();
   const websocketCredential = websocketEcho.session.credential!;
   const websocketCut = locus.session.get(websocketSession.sessionId)!.now();
   websocketTransport.dispose();
   websocketEcho.dispose();
-  const switchedTransport = hsonEcho.transport.http({ endpoint });
+  const switchedTransport = hsonLiveMap.echo.transport.http({ endpoint });
   try {
-    const switched = await hsonEcho.create({ now: websocketCut, credential: websocketCredential,
+    const switched = await hsonLiveMap.echo.create({ now: websocketCut, credential: websocketCredential,
       transport: switchedTransport });
     assert.equal(switched.session.sessionId, websocketSession.sessionId);
     assert.equal(switched.session.epoch, websocketSession.epoch + 1);
@@ -284,8 +284,8 @@ try {
     switched.dispose();
   } finally { switchedTransport.dispose(); }
 
-  const fenceTransport = hsonEcho.transport.http({ endpoint });
-  const fenceEcho = hsonEcho.create({ transport: fenceTransport });
+  const fenceTransport = hsonLiveMap.echo.transport.http({ endpoint });
+  const fenceEcho = hsonLiveMap.echo.create({ transport: fenceTransport });
   const notices: string[] = [];
   const stopNotice = fenceTransport.attachment.observe((event) => notices.push(event.kind));
   try {

@@ -2,8 +2,8 @@
 
 Echo consumes one semantic transport object. An endpoint needs finite operations
 and attachment observation. A replica also needs one ordered synchronization
-feed. `hsonEcho.transport.websocket({ url, WebSocketConstructor? })` and
-`hsonEcho.transport.http({ endpoint, fetch?, credentials? })` are peer concrete
+feed. `hsonLiveMap.echo.transport.websocket({ url, WebSocketConstructor? })` and
+`hsonLiveMap.echo.transport.http({ endpoint, fetch?, credentials? })` are peer concrete
 adapters for that boundary. One transport instance belongs to one Echo for its
 lifetime. The caller disposes the transport after disposing Echo.
 

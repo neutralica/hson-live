@@ -2,7 +2,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { Hson, hsonLocus, bind_locus_http } from "../dist/index.js";
+import { Hson, bind_locus_http } from "../dist/index.js";
+import { hsonLiveMap } from "hson-live/livemap";
 import { start_node_application_host } from "../dist/api/livehost/node/index.js";
 
 const root = resolve(import.meta.dirname, "..");
@@ -40,7 +41,7 @@ try {
       missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
   };
   let handled = false;
-  locus = hsonLocus.create({
+  locus = hsonLiveMap.locus.create({
     shared: [{ name: "page", definition: { document: "<main <button/>/>", schema } }],
     interactions: [interaction],
     defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },

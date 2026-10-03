@@ -7,9 +7,11 @@ import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson } from "../src/hson-authoring.ts";
 import { hsonLiveMap, type LiveMap } from "../src/api/livemap/index.ts";
-import { hsonLocus, type Locus, type LocusWebSocketLike } from "../src/api/locus/index.ts";
+import { type Locus, type LocusWebSocketLike } from "../src/api/locus/index.ts";
+
 import type { LocusRegistryOptions } from "../src/types/locus.core.types.ts";
-import { hsonEcho } from "../src/api/echo/index.ts";
+
+
 // Only the fallback authority uses the existing history-budget test hook.
 // Session creation, capture, composition, and Echo consumers use public APIs.
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
@@ -73,7 +75,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     // A grant makes an eligible library available; it does not select it.
     authorizeProjection: () => ({ libraries: ["visible", "UNSELECTED_NAME"] }),
   };
-  const locus = strategy === "replay" ? hsonLocus.create(authority_definition_from_fixture_options(options))
+  const locus = strategy === "replay" ? hsonLiveMap.locus.create(authority_definition_from_fixture_options(options))
     : create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus;
   await locus.stage((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_ADVANCED"));
   const initial = await session(locus);
@@ -143,7 +145,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 // Expiration is driven by the existing public session scheduler, with no wall-clock race.
 {
   const expirations = new Set<() => void>();
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: { value: "value" } } }), [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }), sessions: { schedule: (_delay, callback) => { expirations.add(callback); return () => { expirations.delete(callback); }; } } });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: { value: "value" } } }), [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }), sessions: { schedule: (_delay, callback) => { expirations.add(callback); return () => { expirations.delete(callback); }; } } });
   for (const id of ["", "unknown"]) assert.equal(locus.session.get(id), undefined);
   const initial = await session(locus);
   initial.detach();
@@ -157,7 +159,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 for (const libraries of [["page"], ["page", "state"]]) {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body <main/>/>/>" }, state: { data: { value: 1 } } });
   map.lib("page").css.stylesheet("main { color: blue; }");
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }, { name: "state", ownership: "shared" }]), defaultProjection: { libraries }, authorizeProjection: () => ({ libraries }) });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }, { name: "state", ownership: "shared" }]), defaultProjection: { libraries }, authorizeProjection: () => ({ libraries }) });
   const initial = await session(locus);
   const snapshot = initial.capability.now().libs;
   assert.deepEqual(snapshot, initial.capability.now({ html: "page" }).libs);

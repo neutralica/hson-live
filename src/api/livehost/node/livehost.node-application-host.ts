@@ -4,7 +4,7 @@ import type { AddressInfo, Socket } from "node:net";
 import { Duplex, Readable } from "node:stream";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type {
-  LiveHost,
+  LiveHostRuntime,
   LiveHostApplication,
   LiveHostApplicationContext,
   LiveHostConnection,
@@ -90,7 +90,7 @@ export type NodeApplicationHostOptions = Readonly<{
   log?: (event: NodeHostOperationalEvent) => void;
 }>;
 
-export type NodeApplicationHost = LiveHost & Readonly<{
+export type NodeApplicationHost = LiveHostRuntime & Readonly<{
   host: string;
   port: number;
   url: string;

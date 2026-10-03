@@ -30,8 +30,11 @@ specialist capability from its owning public subpath.
 - **HsonDocument** is a canonical primitive string in document context. It can be converted to a detached graph and round-trips zero, one, or many top-level items;
   it carries no LiveMap authority or browser realization behavior.
 - **Hson Schema** validates canonical authored data/graphs. Generated Schema evidence supplies `SchemaType<typeof Schema>` and Schema-specific Hson string proofs.
-- **LiveMap and Libraries** own local canonical state. A Libraries map is one
-  named aggregate authority, not one authority per library.
+- **LiveMap and Libraries** own local canonical state. `hsonLiveMap.create` and
+  `fromLibraries` construct bare state. `hsonLiveMap.locus` constructs an
+  authoritative governor; `hsonLiveMap.echo` constructs a replica governor or
+  an endpoint-only participant. A Libraries map is one named aggregate
+  authority, not one authority per library.
 - **LiveTree** owns a live browser projection and can be used by itself.
   Styling is `tree.style`, `tree.css`, and `tree.css.global`; synchronization
   is automatic—there is no public `syncNow`. `tree.content` is a returned
@@ -42,7 +45,8 @@ specialist capability from its owning public subpath.
   Locus orders and authorizes authority work; Echo carries a replica through
   session and synchronization. Transport closure, semantic session termination, and
   terminal disposal are distinct application lifecycle decisions.
-- **LiveHost** is optional server application/authority hosting infrastructure.
+- **LiveHost** is the runtime-neutral application component created by
+  `hsonLiveHost.create`; `LiveHostRuntime` is a bound runtime lifecycle handle.
 - **Canonical interactions** persist portable event intent; they are not a
   replacement for ordinary imperative listeners.
 - **SSR composition and continuation** render one captured cut, encode it for
@@ -127,29 +131,27 @@ not the same promise as Echo revision convergence.
 ### 5. Hosted library-registry authority and replica
 
 ```ts
-import { hsonLocus } from "hson-live/locus";
-import { hsonEcho } from "hson-live/echo";
 import { hsonLiveMap } from "hson-live/livemap";
 import { Hson } from "hson-live";
 
 const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
-const authority = hsonLocus.create({
+const authority = hsonLiveMap.locus.create({
   shared: [{ name: "page", definition: { document: "<main/>", schema: PageSchema } }],
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
 const session = await authority.session.create({ libraries: ["page"] });
-const transport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" });
-const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport });
+const transport = hsonLiveMap.echo.transport.websocket({ url: "wss://example.test/echo" });
+const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport });
 ```
 
-The same Echo creation surface accepts `hsonEcho.transport.http({ endpoint:
+The same Echo creation surface accepts `hsonLiveMap.echo.transport.http({ endpoint:
 "/_hson" })`. An application can host it with `bind_locus_http` from
 `hson-live/locus`, passing authenticated request context for each finite
 operation and continuing synchronization request. WebSocket and HTTP share
 the semantic Locus authority; HTTP/1 and HTTP/2 use one HTTP adapter. HTTP/3
 is an architectural fit for ordered response streams, not a tested runtime.
 
-LiveMap owns bare and local state. Locus owns authoritative state, and Echo owns composed replica/client state. A hosted application supplies grouped `private`, `shared`, and `local` definitions. Private/shared definitions establish Locus authority; local initializers remain outside authority state. Document entries accept initial `css: string`. `locus.addLibraries({ private, shared })` admits runtime authority batches with optional document CSS text. `locus.lib("page").css.stylesheet(cssText)` replaces a complete governed document stylesheet; `.css(operation)` applies a granular canonical CSS mutation. `locus.cut(...)` captures full authority state; `session.now(...)` captures only an authorized client scope. `hsonLocus.resume({ ...definition, persistence, logicalMapId })` restores or establishes durable authority, and `hsonLocus.checkpoint(locus)` compacts its durable history when needed. `session.update(request, context?)` expands or contracts a retained grant through the ordinary authorizer. Echo reconciles shared state while preserving client-owned local roots, Schemas, CSS, handles, and Mirror continuity. `echo.rev` tracks composed client state; `echo.sync.appliedRev` tracks processed authority revisions.
+LiveMap owns bare and local state. Locus owns authoritative state, and Echo owns composed replica/client state. A hosted application supplies grouped `private`, `shared`, and `local` definitions. Private/shared definitions establish Locus authority; local initializers remain outside authority state. Document entries accept initial `css: string`. `locus.addLibraries({ private, shared })` admits runtime authority batches with optional document CSS text. `locus.lib("page").css.stylesheet(cssText)` replaces a complete governed document stylesheet; `.css(operation)` applies a granular canonical CSS mutation. `locus.cut(...)` captures full authority state; `session.now(...)` captures only an authorized client scope. `hsonLiveMap.locus.resume({ ...definition, persistence, logicalMapId })` restores or establishes durable authority, and `hsonLiveMap.locus.checkpoint(locus)` compacts its durable history when needed. `session.update(request, context?)` expands or contracts a retained grant through the ordinary authorizer. Echo reconciles shared state while preserving client-owned local roots, Schemas, CSS, handles, and Mirror continuity. `echo.rev` tracks composed client state; `echo.sync.appliedRev` tracks processed authority revisions.
 
 ### 7. Local rendering, selective transfer, and continuation
 
@@ -249,7 +251,7 @@ and document continuation.
   specialist subpaths; keep normal composition imports at the package root.
 - Treat action payload/result values as `HsonData`: check presence, use
   `Hson.data.entries(value)` for exact semantics or `Hson.data.materialize(value)` for a detached JS view.
-- Construct hosted Locus from grouped private/shared/local definitions; a one-library application uses the same path. Runtime authority admissions use `locus.addLibraries({ private, shared })`. Use `hsonLocus.resume` for durable authority and keep the adapter server-side.
+- Construct hosted Locus from grouped private/shared/local definitions; a one-library application uses the same path. Runtime authority admissions use `locus.addLibraries({ private, shared })`. Use `hsonLiveMap.locus.resume` for durable authority and keep the adapter server-side.
 - Admit documents through `hsonLiveMap.fromLibraries({ page: { document, schema } })`;
   use `map.lib("page").render()` for local HTML and path document requests for mutation.
 - Use `TransformOutput`, `SsrBootstrapCodecError`, `tree.style`/`tree.css` or

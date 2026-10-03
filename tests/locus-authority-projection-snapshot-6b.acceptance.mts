@@ -1,7 +1,7 @@
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
-import { Hson, add_interaction, enable_interactions, hsonEcho, hsonLiveMap, type HsonSchema } from "../src/index.ts";
+import { Hson, add_interaction, enable_interactions, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { admit_authority_projection_snapshot, capture_locus_session_authority_projection_snapshot, decode_authority_projection_snapshot, encode_authority_projection_snapshot, project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";

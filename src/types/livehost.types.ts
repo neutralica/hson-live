@@ -1,4 +1,14 @@
 import type { Locus, LocusActivity, LocusActivityKind } from "./locus.types.js";
+import type { BrowserHtmlProducer } from "../internal/browser-html-producer.js";
+
+type RequestHandler = LiveHostRequestRoute["handle"] | BrowserHtmlProducer;
+type RequestTuple = readonly [path: string, handle: RequestHandler];
+
+export type LiveHostHttpMethod = {
+  (path: string, handle: LiveHostRequestRoute["handle"]): LiveHostRequestRoute;
+  (path: string, render: BrowserHtmlProducer): LiveHostRequestRoute;
+  (route: RequestTuple, ...routes: readonly RequestTuple[]): readonly LiveHostRequestRoute[];
+};
 
 type ManagedLocus = Readonly<{
   activity: LocusActivity;
@@ -51,7 +61,16 @@ export type LiveHostApplication = Readonly<{
   dispose(): void | Promise<void>;
 }>;
 
-export type LiveHost = Readonly<{
+export type LiveHost = LiveHostApplication & Readonly<{
+  requests: readonly LiveHostRequestRoute[];
+  add(...routes: readonly LiveHostRequestRoute[]): void;
+  GET: LiveHostHttpMethod;
+  POST: LiveHostHttpMethod;
+  PUT: LiveHostHttpMethod;
+  DELETE: LiveHostHttpMethod;
+}>;
+
+export type LiveHostRuntime = Readonly<{
   applicationNames: readonly string[];
   ready(): boolean;
   dispose(): Promise<void>;

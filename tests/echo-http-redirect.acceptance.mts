@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { hsonEcho } from "../src/index.ts";
+import { hsonLiveMap } from "../src/index.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -62,7 +62,7 @@ try {
   for (const status of [307, 308]) for (const across of [false, true]) {
     redirectStatus = status;
     crossOrigin = across;
-    const transport = hsonEcho.transport.http({ endpoint });
+    const transport = hsonLiveMap.echo.transport.http({ endpoint });
     try {
       assert.equal((await transport.operations.submit({ type: "session-create", id: "bootstrap" })).kind, "response");
       assert.equal((await transport.operations.submit({ type: "session-create", id: "redirect-create" })).kind, "uncertain");

@@ -404,14 +404,8 @@ import type { LocusClientSubscribeMessage } from "hson-live/locus";
 import type { LocusClientUnsubscribeMessage } from "hson-live/locus";
 // @ts-expect-error DocumentBindingSource is intentionally not a public export.
 import type { DocumentBindingSource } from "hson-live/livetree";
-import {
-  LocusAuthorityError,
-  hsonLocus as hostSubpath,
-  type LocusClientId,
-  type LocusAuthorityErrorCode,
-  type Locus,
-  type LocusActionContext,
-} from "hson-live/locus";
+import { LocusAuthorityError, type LocusClientId, type LocusAuthorityErrorCode, type Locus, type LocusActionContext } from "hson-live/locus";
+
 void (0 as unknown as LocusClientId);
 declare const multiLocus: Locus;
 declare const multiActionContext: LocusActionContext;
@@ -429,7 +423,7 @@ void soloLocus.dispatch_action;
 void multiLocus.dispatch_action;
 // @ts-expect-error Removed snake_case multi-library context method has no alias.
 void multiActionContext.emit_event;
-// @ts-expect-error Echo construction belongs to hson-live/echo.
+// @ts-expect-error Echo construction is owned by hsonLiveMap.echo.
 import { create_echo as leakedCreateEcho } from "hson-live/locus";
 // @ts-expect-error Architectural endpoint types do not leak through Locus.
 import type { Echo as LeakedEcho } from "hson-live/locus";
@@ -440,8 +434,18 @@ void (0 as unknown as LeakedEcho);
 void (0 as unknown as LeakedEchoActionPromise);
 // @ts-expect-error The historical one-map constructor is removed from the root.
 import { create_livehost } from "hson-live";
-// @ts-expect-error The historical one-map facade is removed from the root.
-import { hsonLiveHost } from "hson-live";
+// @ts-expect-error The old host facade spelling is removed from the root.
+import { liveHost } from "hson-live";
+// @ts-expect-error Locus has no root constructor facade.
+import { hsonLocus as removedRootLocus } from "hson-live";
+// @ts-expect-error Echo has no root constructor facade.
+import { hsonEcho as removedRootEcho } from "hson-live";
+// @ts-expect-error Echo construction has no standalone root function.
+import { create_echo as removedRootCreateEcho } from "hson-live";
+// @ts-expect-error Locus construction no longer has a standalone subpath facade.
+import { hsonLocus } from "hson-live/locus";
+// @ts-expect-error Echo construction no longer has a standalone subpath facade.
+import { hsonEcho } from "hson-live/echo";
 // @ts-expect-error The Locus surface exposes no historical LiveHost type aliases.
 import type { LiveHost as RemovedLocusLiveHost } from "hson-live/locus";
 import type {
@@ -496,7 +500,6 @@ void hson;
 void transformSubpath;
 void mapSubpath;
 void treeSubpath;
-void hostSubpath;
 void mirrorSubpath;
 void DocumentMirrorError;
 void LiveTree;
@@ -519,7 +522,10 @@ void LiveMapReplayInputError;
 void LiveMapRevError;
 void LocusAuthorityError;
 void create_livehost;
-void hsonLiveHost;
+void liveHost;
+void removedRootLocus;
+void removedRootEcho;
+void removedRootCreateEcho;
 void (0 as unknown as RemovedLocusLiveHost);
 void (0 as unknown as LiveHost);
 void (0 as unknown as LiveHostApplication);

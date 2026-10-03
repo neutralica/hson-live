@@ -31,8 +31,8 @@ try {
     [livetree, ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeDisposedError"]],
     [livemap, ["hsonLiveMap", "LiveMapDocumentInstallError"]],
     [reflect, ["hsonMirror", "reflect_document", "DocumentMirrorError"]],
-    [echo, ["hsonEcho", "create_echo", "EchoSessionError"]],
-    [locus, ["hsonLocus", "LocusAuthorityError"]],
+    [echo, ["EchoSessionError"]],
+    [locus, ["LocusAuthorityError"]],
     [ssr, ["encode_ssr_bootstrap", "DocumentSsrError"]],
     [livehost, ["create_livehost_locus_registry"]],
   ] as const;
@@ -55,6 +55,9 @@ try {
 
   assert.equal(root.hson.liveMap, root.hsonLiveMap);
   assert.equal(root.hson.liveTree, root.hsonLiveTree);
+  assert.equal(root.hson.liveHost, root.hsonLiveHost);
+  assert.equal(root.hsonLiveMap.locus, livemap.hsonLiveMap.locus);
+  assert.equal(root.hsonLiveMap.echo, livemap.hsonLiveMap.echo);
   assert.equal(root.hson.transform, root.hsonTransform);
   assert.equal("inspect" in root.hson, false);
   assert.equal(typeof diagnostics.hsonInspect.create, "function");

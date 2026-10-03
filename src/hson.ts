@@ -4,10 +4,9 @@ import {
 } from "./api/transform/transform.browser.js";
 import { hsonTransform } from "./api/transform/transform.facade.js";
 import { hsonCalc } from "./api/transform/hson-calc.js";
-import { hsonLiveMap } from "./api/livemap/livemap.facade.js";
+import { hsonLiveMap } from "./api/livemap/livemap.public.js";
 import { hsonLiveTree } from "./api/livetree/livetree.facade.js";
-import { hsonLocus } from "./api/locus/locus.facade.js";
-import { hsonEcho } from "./api/echo/echo.facade.js";
+import { hsonLiveHost } from "./api/livehost/livehost.facade.js";
 import { hsonMirror } from "./api/mirror/mirror.facade.js";
 import type {
   HsonTransformSource,
@@ -17,10 +16,9 @@ import type {
 import type { HsonNode, JsonValue } from "./core/types.js";
 
 export {
-  hsonLocus,
-  hsonEcho,
   hsonLiveMap,
   hsonLiveTree,
+  hsonLiveHost,
   hsonMirror,
   hsonTransform,
   hsonCalc,
@@ -57,8 +55,7 @@ export interface HsonFacade {
   readonly fromUntrustedHtml: (input: string | Element) => TransformOutput;
   readonly liveMap: typeof hsonLiveMap;
   readonly liveTree: typeof hsonLiveTree;
-  readonly locus: typeof hsonLocus;
-  readonly echo: typeof hsonEcho;
+  readonly liveHost: typeof hsonLiveHost;
   readonly mirror: typeof hsonMirror;
 }
 
@@ -73,8 +70,7 @@ export const hson: HsonFacade = Object.freeze({
 
   liveMap: hsonLiveMap,
   liveTree: hsonLiveTree,
-  locus: hsonLocus,
-  echo: hsonEcho,
+  liveHost: hsonLiveHost,
 
   mirror: hsonMirror,
 });

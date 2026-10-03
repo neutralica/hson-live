@@ -265,8 +265,9 @@ const directHsonDataSources = new Map<string, string>([
     if (Hson.data.fromHson(value) !== value) throw new Error("Transform round trip failed");
   `],
   ["livemap", `
-    import { Hson } from "hson-live/hson";
     import { hsonLiveMap } from "hson-live/livemap";
+    import { Hson } from "hson-live/hson";
+
     const schema = Hson.schema\`<type "data" content <value "number">>\`;
     const map = hsonLiveMap.fromLibraries({ state: { data: { value: -0 }, schema } });
     const value = Hson.data.from(map.lib("state").snap());
@@ -274,10 +275,10 @@ const directHsonDataSources = new Map<string, string>([
     if (!Object.is(roundTrip.lib("state").snap(["value"]), -0)) throw new Error("LiveMap round trip failed");
   `],
   ["echo", `
-    import { create_echo } from "hson-live/echo";
+    import { hsonLiveMap } from "hson-live/livemap";
     const transport = { operations: { submit: async () => ({ kind: "not-submitted" }) },
       attachment: { observe(listener) { listener({ kind: "available" }); return () => {}; } } };
-    const echo = create_echo({ transport });
+    const echo = hsonLiveMap.echo.create({ transport });
     echo.connect();
     const call = echo.action("probe", { value: -0, nested: { constructor: true } });
     void call.catch(() => {});

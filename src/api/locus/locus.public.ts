@@ -97,7 +97,7 @@ export function create<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: LocusDefinitionOptions<TPrivate, TShared, TLocal, TActions> & LocusDefinitionNameCheck<TPrivate, TShared, TLocal>):
   Locus<LiveMap<LocusMapDefinitions<TPrivate, TShared>>, TActions> {
-  if ("persistence" in options) throw new TypeError("Use hsonLocus.resume for durable authority.");
+  if ("persistence" in options) throw new TypeError("Use hsonLiveMap.locus.resume for durable authority.");
   return create_registry_locus(construct_locus_definition(options)) as Locus<LiveMap<LocusMapDefinitions<TPrivate, TShared>>, TActions>;
 }
 

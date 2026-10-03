@@ -2,8 +2,7 @@ import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fi
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
-import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror,
-  type LocusWebSocketLike } from "../src/index.ts";
+import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type LocusWebSocketLike } from "../src/index.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
@@ -135,7 +134,7 @@ server.dispose();
 
 const adapter = new MemoryCheckpointAdapter();
 const persistentAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
-const persistent = await hsonLocus.resume({ ...authority_groups_from_map_fixture(persistentAuthority, [{ name: "anchor", ownership: "shared" }]), persistence: adapter, logicalMapId: "runtime-fallback-restart", defaultProjection: { libraries: ["anchor"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const persistent = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(persistentAuthority, [{ name: "anchor", ownership: "shared" }]), persistence: adapter, logicalMapId: "runtime-fallback-restart", defaultProjection: { libraries: ["anchor"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const restartWire = pair();
 const detachBeforeRestart = bind_locus_websocket(persistent, restartWire.server, { principalId: "alice" });
 const beforeRestartEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client),
@@ -156,10 +155,10 @@ await persistent.stage((draft) => {
   if (publicLibrary.mode === "document") throw new Error("Expected durable public data Library.");
   publicLibrary.at(["value"]).set(5);
 });
-await hsonLocus.checkpoint(persistent);
+await hsonLiveMap.locus.checkpoint(persistent);
 beforeRestartEcho.dispose();
 persistent.dispose();
-const resumed = await hsonLocus.resume({
+const resumed = await hsonLiveMap.locus.resume({
   shared: [{ name: "anchor", definition: { data: { value: 1 } } }],
   persistence: adapter, logicalMapId: "runtime-fallback-restart",
   defaultProjection: { libraries: ["anchor", "durablePublic"] },
@@ -189,7 +188,7 @@ process.stdout.write("ok - durable restart fallback preserves the composed clien
 
 const detachedAuthority = hsonLiveMap.fromLibraries({ alpha: { data: { value: 1 } },
   beta: { data: { value: 2 } } });
-const detachedServer = hsonLocus.create({ ...authority_groups_from_map_fixture(detachedAuthority, [{ name: "alpha", ownership: "shared" }, { name: "beta", ownership: "shared" }]), defaultProjection: { libraries: ["alpha", "beta"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const detachedServer = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(detachedAuthority, [{ name: "alpha", ownership: "shared" }, { name: "beta", ownership: "shared" }]), defaultProjection: { libraries: ["alpha", "beta"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const detachedWire = pair();
 let detachDetached = bind_locus_websocket(detachedServer, detachedWire.server, { principalId: "alice" });
 const detachedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(detachedWire.client),
@@ -223,7 +222,7 @@ process.stdout.write("ok - disconnected contraction falls back to an empty proje
 
 const cutAuthority = hsonLiveMap.fromLibraries({ firstPage: { document: Hson.document`<main <p "First"/>/>` },
   secondPage: { document: Hson.document`<main <p "Second"/>/>` } });
-const cutServer = hsonLocus.create({ ...authority_groups_from_map_fixture(cutAuthority, [{ name: "firstPage", ownership: "shared" },
+const cutServer = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(cutAuthority, [{ name: "firstPage", ownership: "shared" },
     { name: "secondPage", ownership: "shared" }]), defaultProjection: { libraries: ["firstPage", "secondPage"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const cutWire = pair();
 const detachCut = bind_locus_websocket(cutServer, cutWire.server);
@@ -347,7 +346,7 @@ process.stdout.write("ok - queued writes follow fallback topology and hidden tai
 const interactionAuthority = hsonLiveMap.fromLibraries({ keep: { document: Hson.document`<main/>` },
   revoke: { document: Hson.document`<main <button "Revoke"/>/>` } });
 enable_interactions(interactionAuthority);
-const interactionServer = hsonLocus.create({ ...authority_groups_from_map_fixture(interactionAuthority, [{ name: "keep", ownership: "shared" },
+const interactionServer = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(interactionAuthority, [{ name: "keep", ownership: "shared" },
     { name: "revoke", ownership: "shared" }]), defaultProjection: { libraries: ["keep", "revoke"], systemFeatures: ["interactions"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
     systemFeatures: requested.systemFeatures }) });
 const interactionWire = pair();

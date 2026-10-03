@@ -5,7 +5,8 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { Hson, encode_ssr_bootstrap, hson, hsonLocus } from "../dist/index.js";
+import { Hson, encode_ssr_bootstrap, hson } from "../dist/index.js";
+import { hsonLiveMap } from "hson-live/livemap";
 import { bind_node_locus_websocket } from "../dist/api/locus/node/index.js";
 import { parse_hson_exact_runtime } from "../dist/internal/exact-runtime-hson-codec.js";
 import { admit_exact_runtime_livemap_libraries } from "../dist/internal/exact-runtime-node-admission.js";
@@ -93,7 +94,7 @@ try {
     key: "state.interaction",
     payload: Hson.data.from(null),
   });
-  librariesLocus = hsonLocus.create({
+  librariesLocus = hsonLiveMap.locus.create({
     sessions: {},
     shared: [
       { name: "state", definition: { data: { count: 0 }, schema: StateSchema } },
@@ -132,7 +133,7 @@ try {
   if (librariesSocketAddress === null || typeof librariesSocketAddress === "string") throw new Error("Libraries browser socket server has no TCP address.");
   const librariesSocketUrl = `ws://127.0.0.1:${librariesSocketAddress.port}`;
 
-  cssLocus = hsonLocus.create({
+  cssLocus = hsonLiveMap.locus.create({
     shared: [{ name: "page", definition: { document: '<html <head/> <body <p id="hosted-css-target" "hosted"/>/>/>' } }],
     defaultProjection: { libraries: ["page"] },
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),

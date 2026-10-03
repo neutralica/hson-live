@@ -3,8 +3,7 @@ import { authority_groups_from_map_fixture, authority_definition_from_fixture_op
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
-import { Hson, activate_interactions, add_interaction, enable_interactions, hsonEcho, hsonLiveMap, hsonLocus, hsonMirror, replace_interaction,
-  type HsonSchema, type InteractionDescriptor, type InteractionListener, type LiveMap } from "../src/index.ts";
+import { Hson, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, replace_interaction, type HsonSchema, type InteractionDescriptor, type InteractionListener, type LiveMap } from "../src/index.ts";
 import { compose_client_portable_aggregate_internal } from "../src/api/echo/echo.projection.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -399,7 +398,7 @@ for (const sharedFeature of [true, false]) {
   replica.dispose();
   let executed = 0;
   const authorityIdentity = internal_livemap_aggregate_authority(authority).hostedPosition().authority;
-  const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ map: authority, ...test_public_projection(authority) }),
+  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ map: authority, ...test_public_projection(authority) }),
     ...authorityIdentity, authorizeAction: () => false, actions: { save: () => { executed += 1; } } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
@@ -416,14 +415,14 @@ for (const sharedFeature of [true, false]) {
 
 {
   const authority = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(authority, [
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(authority, [
       { name: "page", ownership: "shared" },
       { name: "panel", ownership: "local", initializer: { document: "<aside <button/>/>", schema: PanelSchema } },
     ]), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: [] }) });
   const session = await locus.session.create({ libraries: ["page", "panel"] });
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
-  const echo = await hsonEcho.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
+  const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   const beforeCursor = echo.sync.appliedRev;
   const beforeLocusRev = locus.rev;
   const beforeDigest = internal_livemap_aggregate_authority(echo_map_internal(echo)).clientProjection()?.registry.digest;

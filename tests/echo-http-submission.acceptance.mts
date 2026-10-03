@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { hsonEcho } from "../src/index.ts";
+import { hsonLiveMap } from "../src/index.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import type { EchoAttachmentEvent, EchoFiniteOperationRequest } from "../src/types/echo.transport.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -34,7 +34,7 @@ const fetcher: typeof fetch = async (input, init) => {
   if (mode === "wrong-mime") return new Response(JSON.stringify(status), { headers: { "content-type": "text/html" } });
   return new Response(JSON.stringify(status), { headers: { "content-type": "application/json" } });
 };
-const transport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: fetcher });
+const transport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: fetcher });
 try {
   const aborted = new AbortController(); aborted.abort();
   assert.equal((await transport.operations.submit({ type: "session-create", id: "create" },
@@ -66,7 +66,7 @@ try {
 } finally { transport.dispose(); }
 
 let createAttempts = 0;
-const lostCreate = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async () => {
+const lostCreate = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: async () => {
   createAttempts += 1;
   throw new TypeError("connection reset after send");
 } });
@@ -75,7 +75,7 @@ try {
   assert.equal(createAttempts, 1, "uncertain create is not repeated");
 } finally { lostCreate.dispose(); }
 let invalidEndpointFetches = 0;
-const invalidEndpoint = hsonEcho.transport.http({ endpoint: "://invalid", fetch: async () => {
+const invalidEndpoint = hsonLiveMap.echo.transport.http({ endpoint: "://invalid", fetch: async () => {
   invalidEndpointFetches += 1;
   throw new Error("Fetch must not run when Request construction fails.");
 } });
@@ -86,7 +86,7 @@ try {
 
 for (const httpStatus of [400, 401, 403, 404, 405, 409, 503]) {
   let established = false;
-  const statusTransport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
+  const statusTransport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
     if (String(input).endsWith("/sync")) return new Response(null, { status: 503 });
     const message = JSON.parse(String(init?.body)) as { type: string; id: string };
     if (message.type === "session-create" && !established) {
@@ -105,7 +105,7 @@ for (const httpStatus of [400, 401, 403, 404, 405, 409, 503]) {
   } finally { statusTransport.dispose(); }
 }
 
-const streamMime = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
+const streamMime = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
   if (String(input).endsWith("/sync")) return new Response('{"type":"ready"}\n',
     { headers: { "content-type": "text/html" } });
   const message = JSON.parse(String(init?.body)) as { id: string };

@@ -3,7 +3,7 @@ import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fi
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
-import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror, type LocusWebSocketLike } from "../src/index.ts";
+import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type LocusWebSocketLike } from "../src/index.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { client_library_source_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
@@ -37,7 +37,7 @@ function sockets() {
 
 const authority = hsonLiveMap.fromLibraries({ base: { data: { count: 1 } } });
 let allowNew = false;
-const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(authority, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries.filter((name) =>
+const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(authority, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries.filter((name) =>
     allowNew || (name !== "newPublic" && name !== "page")) }) });
 const wire = sockets();
 bind_locus_websocket(locus, wire.server);
@@ -151,7 +151,7 @@ process.stdout.write("ok - public runtime admission and explicit live projection
 
 const interactionMap = hsonLiveMap.fromLibraries({ basePage: { document: Hson.document`<main/>` } });
 enable_interactions(interactionMap);
-const interactionLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(interactionMap, [{ name: "basePage", ownership: "shared" }]), defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }) });
+const interactionLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(interactionMap, [{ name: "basePage", ownership: "shared" }]), defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }) });
 const interactionWire = sockets();
 bind_locus_websocket(interactionLocus, interactionWire.server);
 const interactionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(interactionWire.client),
@@ -194,7 +194,7 @@ interactionLocus.dispose();
 process.stdout.write("ok - projected runtime document interaction\n");
 
 const collisionMap = hsonLiveMap.fromLibraries({ base: { data: { value: 1 } } });
-const collisionLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(collisionMap, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const collisionLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(collisionMap, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const collisionWire = sockets();
 bind_locus_websocket(collisionLocus, collisionWire.server);
 const collisionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(collisionWire.client),
@@ -226,7 +226,7 @@ let authorizationEntered = (): void => {};
 const entered = new Promise<void>((resolve) => { authorizationEntered = resolve; });
 const authorization = new Promise<void>((resolve) => { releaseAuthorization = resolve; });
 let sawCurrentContext = false;
-const revokeLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(revokeMap, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: async ({ requested, connection }) => {
+const revokeLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(revokeMap, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: async ({ requested, connection }) => {
     if (!requested.libraries.includes("later")) return { libraries: requested.libraries };
     sawCurrentContext = connection?.principalId === "alice" && connection.attachment !== undefined;
     authorizationEntered();
@@ -256,7 +256,7 @@ const durableMap = hsonLiveMap.create();
 
 const reservedAdapter = new MemoryCheckpointAdapter();
 const reservedMap = hsonLiveMap.create();
-const reserved = await hsonLocus.resume({ ...authority_groups_from_map_fixture(reservedMap, [
+const reserved = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(reservedMap, [
     { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
   ]), persistence: reservedAdapter, logicalMapId: "local-name-reservation", authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const reservedSession = await reserved.session.create({ libraries: ["ui"] });
@@ -277,7 +277,7 @@ for (const ownership of ["private", "shared"] as const) {
 reserved.dispose();
 
 const adapter = new MemoryCheckpointAdapter();
-const durable = await hsonLocus.resume({ ...authority_groups_from_map_fixture(durableMap, []), persistence: adapter, logicalMapId: "public-hosted-admission" });
+const durable = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(durableMap, []), persistence: adapter, logicalMapId: "public-hosted-admission" });
 await durable.addLibraries({ private: [{ name: "second", definition: { data: { value: 2 } } }], shared: [{ name: "first", definition: { data: { value: 1 } } }] });
 assert.equal(durable.rev, 1);
 assert.equal(adapter.state(durable.logicalMapId)?.commits.length, 1);
@@ -287,7 +287,7 @@ assert.equal(durable.rev, 1);
 assert.throws(() => durable.lib("refused"), /Unknown/);
 durable.dispose();
 const resumedMap = hsonLiveMap.create();
-const resumed = await hsonLocus.resume({ ...authority_groups_from_map_fixture(resumedMap, []),
+const resumed = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(resumedMap, []),
   persistence: adapter, logicalMapId: "public-hosted-admission" });
 assert.equal(resumed.rev, 1);
 const resumedFirst = resumed.lib("first");
@@ -296,11 +296,11 @@ assert.equal(resumedFirst.snap(["value"]), 1);
 resumed.dispose();
 const sortedAdapter = new MemoryCheckpointAdapter();
 const sortedInitial = hsonLiveMap.fromLibraries({ middle: { data: { value: 1 } } });
-const sortedLocus = await hsonLocus.resume({ ...authority_groups_from_map_fixture(sortedInitial, [{ name: "middle", ownership: "shared" }]), persistence: sortedAdapter, logicalMapId: "sorted-hosted-admission" });
+const sortedLocus = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(sortedInitial, [{ name: "middle", ownership: "shared" }]), persistence: sortedAdapter, logicalMapId: "sorted-hosted-admission" });
 await sortedLocus.addLibraries({ shared: [{ name: "aardvark", definition: { data: { value: 2 } } }] });
 sortedLocus.dispose();
 const sortedRestartMap = hsonLiveMap.fromLibraries({ middle: { data: { value: 0 } } });
-const sortedRestart = await hsonLocus.resume({ ...authority_groups_from_map_fixture(sortedRestartMap, [
+const sortedRestart = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(sortedRestartMap, [
     { name: "middle", ownership: "shared" },
   ]), persistence: sortedAdapter, logicalMapId: "sorted-hosted-admission" });
 assert.equal(sortedRestart.lib("aardvark").mode, "data-object");
@@ -308,7 +308,7 @@ sortedRestart.dispose();
 process.stdout.write("ok - public admission uses the durable authority gate atomically\n");
 
 const capturedMap = hsonLiveMap.create();
-const capturedLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(capturedMap, []), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const capturedLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(capturedMap, []), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const mutableBatch = { one: { data: { value: 1 } } };
 const pendingBatch = capturedLocus.addLibraries({ shared: [{ name: "one", definition: mutableBatch.one }] });
 Object.assign(mutableBatch, { unclassified: { data: { secret: "LATE_LIBRARY_SENTINEL" } } });

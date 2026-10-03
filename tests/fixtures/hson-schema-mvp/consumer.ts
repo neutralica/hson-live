@@ -1,5 +1,5 @@
 import { AnyDataSchema, InteractionFieldsSchema, RelationalUniqueSchema, TreeSchema, UserSchema } from "./producer.js";
-import { type SchemaType, HsonData, Hson, hsonCalc, hsonLiveMap, hsonLocus, hsonTransform, type HsonNumber } from "hson-live";
+import { type SchemaType, HsonData, Hson, hsonCalc, hsonLiveMap, hsonTransform, type HsonNumber } from "hson-live";
 import type { HsonCanonical } from "hson-live/hson";
 
 const anyDataValue: SchemaType<typeof AnyDataSchema> = { nested: ["text", 3, true, null] };
@@ -41,7 +41,7 @@ libraries.lib("user").at(["name"]).set(37);
 // Dynamic names are type-safe unions and checked against the live registry at runtime.
 const dynamicLibraryName: string = "users";
 void dynamicLibraryName;
-const hostedLibraries = hsonLocus.create({
+const hostedLibraries = hsonLiveMap.locus.create({
   shared: [
     { name: "user", definition: definitions.user },
     { name: "tree", definition: definitions.tree },
@@ -61,7 +61,7 @@ const hostedLibraries = hsonLocus.create({
   },
 });
 const hostedLibraryName: string = hostedLibraries.lib("user").at(["name"]).snap();
-const owned = hsonLocus.create({ shared: [{ name: "user", definition: definitions.user }],
+const owned = hsonLiveMap.locus.create({ shared: [{ name: "user", definition: definitions.user }],
   private: [{ name: "tree", definition: definitions.tree }], actions: {
   rename(context) {
     context.stage.lib("user").at(["name"]).set("Mira");

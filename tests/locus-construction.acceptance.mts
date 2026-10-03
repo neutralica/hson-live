@@ -1,6 +1,6 @@
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, hsonLocus, type InteractionDescriptor } from "../src/index.ts";
+import { Hson, hsonLiveMap, type InteractionDescriptor } from "../src/index.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { node_to_json_value } from "../src/api/livemap/livemap.editor.ts";
 import { decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
@@ -22,7 +22,7 @@ const definition = {
   defaultProjection: { libraries: ["count", "page", "ui"] },
   authorizeProjection: () => ({ libraries: ["count", "page", "ui"] }),
 } as const;
-const locus = hsonLocus.create({ ...definition, interactions: [descriptor] });
+const locus = hsonLiveMap.locus.create({ ...definition, interactions: [descriptor] });
 assert.deepEqual(locus_map_internal(locus).capture().registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name),
   ["secret", "count", "page"]);
 assert.throws(() => locus.lib("ui"), /Unknown LiveMap Library/);
@@ -45,21 +45,21 @@ assert.equal(Hson.data.materialize(locus.lib("count").at(["value"]).data()!), 3)
 const session = await locus.session.create({ libraries: ["count", "page", "secret", "ui"] });
 assert.deepEqual(session.now().libs.libraries.map((entry) => entry.name), ["count", "page"]);
 assert.deepEqual(session.now().local.map((entry) => entry.name), ["ui"]);
-await assert.rejects(hsonLocus.checkpoint(locus), /no durable backing/i);
+await assert.rejects(hsonLiveMap.locus.checkpoint(locus), /no durable backing/i);
 locus.dispose();
 
-const pathAuthority = hsonLocus.create({ shared: [{ name: "page", definition: { document: "<main <p/>/>" } }] });
+const pathAuthority = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main <p/>/>" } }] });
 await pathAuthority.lib("page").at([0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
 assert.equal(pathAuthority.lib("page").at([0]).attrs.get("title"), "replaced");
 pathAuthority.dispose();
 
-const styled = hsonLocus.create({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
+const styled = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
   logicalMapId: "styled-authority" });
 assert.match(styled.lib("page").css.snapshot(), /color:red/);
 styled.dispose();
 const combinedDefinition = { shared: [{ name: "page", definition: { document: "<main <button/>/>" }, css }],
   interactions: [descriptor], logicalMapId: "combined-interactions-css" } as const;
-const combined = hsonLocus.create(combinedDefinition);
+const combined = hsonLiveMap.locus.create(combinedDefinition);
 assert.equal(combined.rev, 1); // Initial CSS is admitted at revision zero; the descriptor creates one transition.
 assert.match(combined.lib("page").css.snapshot(), /color:red/);
 const combinedSystem = locus_map_internal(combined).capture().libraries.find((entry) => entry.name === "@hson/canonical-interactions");
@@ -71,10 +71,10 @@ assert.equal(combinedValue.descriptors.length, 1);
   assert.equal("clearAll" in combined.lib("page").css, false);
 combined.dispose();
 const combinedStorage = new MemoryCheckpointAdapter();
-const combinedDurable = await hsonLocus.resume({ ...combinedDefinition, persistence: combinedStorage });
+const combinedDurable = await hsonLiveMap.locus.resume({ ...combinedDefinition, persistence: combinedStorage });
 assert.equal(combinedDurable.rev, 1);
 combinedDurable.dispose();
-const combinedRestored = await hsonLocus.resume({ ...combinedDefinition, persistence: combinedStorage });
+const combinedRestored = await hsonLiveMap.locus.resume({ ...combinedDefinition, persistence: combinedStorage });
 assert.equal(combinedRestored.rev, 1);
 assert.match(combinedRestored.lib("page").css.snapshot(), /color:red/);
 const restoredSystem = locus_map_internal(combinedRestored).capture().libraries.find((entry) => entry.name === "@hson/canonical-interactions");
@@ -85,11 +85,11 @@ if (typeof restoredValue !== "object" || restoredValue === null || Array.isArray
 assert.equal(restoredValue.descriptors.length, 1);
 combinedRestored.dispose();
 const storage = new MemoryCheckpointAdapter();
-const durable = await hsonLocus.resume({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
+const durable = await hsonLiveMap.locus.resume({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
   logicalMapId: "styled-durable", persistence: storage });
 const revision = durable.rev;
 durable.dispose();
-const restored = await hsonLocus.resume({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
+const restored = await hsonLiveMap.locus.resume({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
   logicalMapId: "styled-durable", persistence: storage });
 assert.equal(restored.rev, revision);
 assert.match(restored.lib("page").css.snapshot(), /color:red/);
@@ -105,7 +105,7 @@ const sheet: string = "main { display: block; } @keyframes pulse { from { opacit
     main { color: blue; --tone: blue; }
     main { display: grid; }`;
   const bare = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
-  const governed = hsonLocus.create({ shared: [{ name: "page", definition: { document: "<main/>" }, css: first }] });
+  const governed = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" }, css: first }] });
   bare.lib("page").css.stylesheet(first);
   assert.deepEqual(bare.capture().libraries[0]?.css, locus_map_internal(governed).capture().libraries[0]?.css);
   bare.lib("page").css.stylesheet(second);
@@ -115,7 +115,7 @@ const sheet: string = "main { display: block; } @keyframes pulse { from { opacit
     ["keyframes", "property", "rule", "rule"]);
   governed.dispose();
 }
-const authored = hsonLocus.create({ shared: [
+const authored = hsonLiveMap.locus.create({ shared: [
   { name: "home", definition: { document: '<html <head/> <body <main "Home"/>/>/>', schema: Hson.schema`<type "document">` }, css: sheet },
   { name: "slide01", definition: { document: '<html <head/> <body <main "Slide"/>/>/>', schema: Hson.schema`<type "document">` }, css: sheet },
 ] });
@@ -141,24 +141,24 @@ assert.equal(authored.rev, 4);
 assert.deepEqual(locus_map_internal(authored).capture().libraries.find((entry) => entry.name === "staged")?.css, initialSheet);
 await assert.rejects(authored.addLibraries({ shared: [{ name: "bad", definition: { document: "<main/>" }, css: "main { color: ; }" }] }), /CSS|declaration|syntax/i);
 assert.equal(authored.rev, 4);
-assert.throws(() => hsonLocus.create({ shared: [{ name: "bad", definition: { document: "<main/>" }, css: "main { color: ; }" }] }), /CSS|declaration|syntax/i);
-assert.throws(() => hsonLocus.create({ shared: [{ name: "data", definition: { data: 1 }, css: sheet }] } as never), /document/i);
+assert.throws(() => hsonLiveMap.locus.create({ shared: [{ name: "bad", definition: { document: "<main/>" }, css: "main { color: ; }" }] }), /CSS|declaration|syntax/i);
+assert.throws(() => hsonLiveMap.locus.create({ shared: [{ name: "data", definition: { data: 1 }, css: sheet }] } as never), /document/i);
 authored.dispose();
 const cssDurableStore = new MemoryCheckpointAdapter();
 const cssDurableDefinition = { shared: [{ name: "page", definition: { document: "<main/>" }, css: sheet }],
   logicalMapId: "css-text-durable", persistence: cssDurableStore } as const;
-const cssDurable = await hsonLocus.resume(cssDurableDefinition);
+const cssDurable = await hsonLiveMap.locus.resume(cssDurableDefinition);
 assert.equal(cssDurable.rev, 0);
 await cssDurable.addLibraries({ shared: [{ name: "later", definition: { document: "<main/>" }, css: sheet }] });
 await cssDurable.lib("page").css.stylesheet("main { color: blue; }");
 assert.equal(cssDurable.rev, 2);
 cssDurable.dispose();
-const cssResumed = await hsonLocus.resume(cssDurableDefinition);
+const cssResumed = await hsonLiveMap.locus.resume(cssDurableDefinition);
 assert.equal(cssResumed.rev, 2);
 assert.match(cssResumed.lib("page").css.snapshot(), /color:blue/);
 assert.deepEqual(locus_map_internal(cssResumed).capture().libraries.find((entry) => entry.name === "later")?.css, initialSheet);
 cssResumed.dispose();
-const localStyled = hsonLocus.create({
+const localStyled = hsonLiveMap.locus.create({
   local: [{ name: "localPage", initializer: { document: "<html <head/> <body/>/>" }, css: sheet }],
   defaultProjection: { libraries: ["localPage"] },
   authorizeProjection: () => ({ libraries: ["localPage"] }),
@@ -167,6 +167,6 @@ const localSession = await localStyled.session.create({ libraries: ["localPage"]
 assert.ok(localSession.now().local.some((entry) => entry.name === "localPage" && entry.css?.rules.length === 1));
 localStyled.dispose();
 
-assert.throws(() => hsonLocus.create({ shared: [{ name: "count", definition: { data: { value: "wrong" }, schema: Count } }] }),
+assert.throws(() => hsonLiveMap.locus.create({ shared: [{ name: "count", definition: { data: { value: "wrong" }, schema: Count } }] }),
   /Schema|invalid|mismatch/i);
 console.log("ok - Locus grouped construction, local initializers, CSS, and interactions");

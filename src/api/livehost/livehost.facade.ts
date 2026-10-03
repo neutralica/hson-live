@@ -1,5 +1,5 @@
 import { is_browser_html_producer, type BrowserHtmlProducer } from "../../internal/browser-html-producer.js";
-import type { LiveHostApplication, LiveHostRequestRoute } from "../../types/livehost.types.js";
+import type { LiveHost, LiveHostApplication, LiveHostHttpMethod, LiveHostRequestRoute } from "../../types/livehost.types.js";
 
 type ResponseHandler = LiveHostRequestRoute["handle"];
 type HtmlProducer = BrowserHtmlProducer;
@@ -14,26 +14,10 @@ function is_request_tuple(value: unknown): value is RequestTuple {
   return Array.isArray(value) && typeof value[0] === "string" && is_request_handler(value[1]);
 }
 
-/** Inert construction of one route or an ordered group of routes. */
-export type LiveHostHttpMethod = {
-  (path: string, handle: ResponseHandler): LiveHostRequestRoute;
-  (path: string, render: HtmlProducer): LiveHostRequestRoute;
-  (route: RequestTuple, ...routes: readonly RequestTuple[]): readonly LiveHostRequestRoute[];
-};
-
 export type LiveHostCreateInput = Omit<LiveHostApplication, "dispose"> &
   Partial<Pick<LiveHostApplication, "dispose">>;
 
 /** An ordinary application with pre-bind authoring operations. */
-export type LiveHostAuthoredApplication = LiveHostApplication & Readonly<{
-  requests: readonly LiveHostRequestRoute[];
-  add(...routes: readonly LiveHostRequestRoute[]): void;
-  GET: LiveHostHttpMethod;
-  POST: LiveHostHttpMethod;
-  PUT: LiveHostHttpMethod;
-  DELETE: LiveHostHttpMethod;
-}>;
-
 function request_route(method: string, path: string, handler: RequestHandler): LiveHostRequestRoute {
   if (is_browser_html_producer(handler)) {
     return {
@@ -67,7 +51,7 @@ function http_method(method: string, destination?: LiveHostRequestRoute[]): Live
   return construct;
 }
 
-function create(input: LiveHostCreateInput): LiveHostAuthoredApplication {
+function create(input: LiveHostCreateInput): LiveHost {
   const requests = [...(input.requests ?? [])];
   const ready = input.ready?.bind(input);
   const dispose = input.dispose?.bind(input) ?? (() => undefined);
@@ -85,10 +69,6 @@ function create(input: LiveHostCreateInput): LiveHostAuthoredApplication {
   };
 }
 
-export const liveHost = Object.freeze({
+export const hsonLiveHost = Object.freeze({
   create,
-  GET: http_method("GET"),
-  POST: http_method("POST"),
-  PUT: http_method("PUT"),
-  DELETE: http_method("DELETE"),
 });

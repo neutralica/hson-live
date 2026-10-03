@@ -1,5 +1,3 @@
-export { create_echo } from "./echo.js";
-export { hsonEcho } from "./echo.facade.js";
 export type { EchoWebSocketLike, EchoWebSocketConstructor, EchoWebSocketTransport, EchoWebSocketTransportOptions } from "./echo.websocket.js";
 export type { EchoHttpTransport, EchoHttpTransportOptions } from "./echo.http.js";
 export type {

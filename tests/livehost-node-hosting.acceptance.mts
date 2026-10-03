@@ -4,7 +4,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { request as node_request } from "node:http";
-import { bind_locus_websocket, hsonLocus, type LocusWebSocketLike } from "hson-live/locus";
+import { bind_locus_websocket, type LocusWebSocketLike } from "hson-live/locus";
 import { hsonLiveMap } from "hson-live/livemap";
 import { Hson } from "hson-live/hson";
 import type {
@@ -590,7 +590,7 @@ check("optional connection capability carries text and binary data", async () =>
 check("connection paths select applications without interpreting Locus topology", async () => {
   const selections: string[] = [];
   const Room = Hson.schema`<type "data" content <room "string">>`;
-  const oneLibrary = (room: string, logicalMapId: string) => hsonLocus.create({
+  const oneLibrary = (room: string, logicalMapId: string) => hsonLiveMap.locus.create({
     shared: [{ name: "room", definition: { data: { room }, schema: Room } }],
     logicalMapId, defaultProjection: { libraries: ["room"] }, authorizeProjection: () => ({ libraries: ["room"] }),
   });

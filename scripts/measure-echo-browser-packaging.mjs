@@ -91,15 +91,15 @@ async function measure(name, source) {
 }
 
 const endpoint = await measure("endpoint-only-public", `
-  import { create_echo } from "hson-live/echo";
+  import { hsonLiveMap } from "hson-live/livemap";
   ${transportSource}
-  globalThis.__echo_measure__ = create_echo({ transport });
+  globalThis.__echo_measure__ = hsonLiveMap.echo.create({ transport });
 `);
 const replica = await measure("replica-bearing-public", `
-  import { hsonEcho } from "hson-live/echo";
+  import { hsonLiveMap } from "hson-live/livemap";
   ${transportSource}
   const now = globalThis.__supplied_session_now__;
-  globalThis.__echo_measure__ = hsonEcho.init({ transport, now, credential: "measure-credential" });
+  globalThis.__echo_measure__ = hsonLiveMap.echo.create({ transport, now, credential: "measure-credential" });
 `);
 
 console.log(JSON.stringify({

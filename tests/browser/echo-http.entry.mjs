@@ -1,1 +1,1 @@
-export { continue_hosted_document, hsonEcho } from "../../dist/index.js";
+export { continue_hosted_document, hsonLiveMap } from "../../dist/index.js";

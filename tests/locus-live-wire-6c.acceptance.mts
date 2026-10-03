@@ -2,7 +2,7 @@ import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fi
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
-import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
+import { Hson, add_interaction, enable_interactions, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { encode_locus_client_message } from "../src/api/locus/locus.protocol.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
@@ -242,7 +242,7 @@ const interactionMap = hsonLiveMap.fromLibraries({
   hiddenDoc: { document: "<main/>", schema: PageSchema },
 });
 enable_interactions(interactionMap);
-const interactionServer = hsonLocus.create({ ...authority_groups_from_map_fixture(interactionMap, [
+const interactionServer = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(interactionMap, [
   { name: "page", ownership: "shared" }, { name: "hiddenDoc", ownership: "private" },
 ]), defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
 const interactionConnection = pair();

@@ -14,7 +14,7 @@ const map = hsonLiveMap.fromLibraries({
 });
 ```
 
-`data` accepts a JSON value or JSON source string. `document` accepts Hson source text or a canonical Hson node. Each library has a governing Hson Schema in the matching family. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT`; admission validates the initial state. Retained-session client replicas are established through `hsonEcho.create(...)`.
+`data` accepts a JSON value or JSON source string. `document` accepts Hson source text or a canonical Hson node. Each library has a governing Hson Schema in the matching family. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT`; admission validates the initial state. Retained-session client replicas are established through `hsonLiveMap.echo.create(...)`.
 
 `hsonLiveMap.create()` creates a fully initialized map with no application libraries at revision 0. `hsonLiveMap.fromLibraries({})` has the same empty-registry semantics. An empty map can be captured, cut, and restored; `lib(name)` reports an unknown library until admission.
 

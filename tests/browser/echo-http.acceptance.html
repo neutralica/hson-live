@@ -4,7 +4,7 @@
   <main><button></button></main>
   <output id="result">running</output>
   <script type="module">
-    import { continue_hosted_document, hsonEcho } from "./.echo-http.bundle.js";
+    import { continue_hosted_document, hsonLiveMap } from "./.echo-http.bundle.js";
     const result = document.querySelector("#result");
     let continuation;
     let transport;
@@ -12,7 +12,7 @@
       const setup = await (await fetch("/setup", { cache: "no-store" })).json();
       const root = document.querySelector("main");
       const button = root.querySelector("button");
-      transport = hsonEcho.transport.http({ endpoint: "/_hson" });
+      transport = hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
       continuation = await continue_hosted_document({ now: setup.now, credential: setup.credential,
         transport, root, interactions: { local: {} } });
       if (continuation.echo.sync.status !== "caught_up" || continuation.mirror.status !== "active") {

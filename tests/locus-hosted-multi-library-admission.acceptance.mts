@@ -1,7 +1,7 @@
 import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import type { LocusClientActionMessage } from "../src/types/locus.types.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { admit_locus_remote_action_internal } from "../src/api/locus/locus.remote-action.internal.ts";
@@ -84,7 +84,7 @@ await check("aggregate authorization rejection retains no lineage or ephemeral s
 
 await check("the internal admission capability remains bound after the normal aggregate Locus facade is created", async () => {
   let locus!: import("../src/types/locus.types.ts").Locus<ReturnType<typeof make_map>, TestActions>;
-  locus = hsonLocus.create({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), authorizeAction: () => { assert.equal(locus.activity.snapshot().retainedSessionCount, 1); return true; }, actions: { held: (_context, payload) => payload } });
+  locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), authorizeAction: () => { assert.equal(locus.activity.snapshot().retainedSessionCount, 1); return true; }, actions: { held: (_context, payload) => payload } });
   const result = await admit_locus_remote_action_internal<TestActions>(locus, { message: message("facade", "held", 4) });
   assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result === undefined ? undefined : Hson.data.materialize(result.result), 4);
   assert.equal(locus.session.debug().sessions.length, 0); assert.equal(locus.activity.snapshot().retainedSessionCount, 0); locus.dispose();

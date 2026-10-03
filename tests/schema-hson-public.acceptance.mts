@@ -5,7 +5,8 @@ import * as narrow from "hson-live/hson";
 import * as map from "hson-live/livemap";
 import * as transform from "hson-live/transform";
 import { hsonLiveTree } from "hson-live/livetree";
-import { hsonLocus } from "hson-live/locus";
+
+import { hsonLiveMap } from "hson-live/livemap";
 import { hsonMirror } from "hson-live/mirror";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -111,8 +112,8 @@ check("root facade exports preserve subsystem identities", () => {
   assert.equal(root.hsonLiveMap, map.hsonLiveMap);
   assert.equal(root.hsonLiveTree, root.hson.liveTree);
   assert.equal(root.hsonLiveTree, hsonLiveTree);
-  assert.equal(root.hsonLocus, root.hson.locus);
-  assert.equal(root.hsonLocus, hsonLocus);
+  assert.equal(root.hsonLiveMap.locus, root.hson.liveMap.locus);
+  assert.equal(root.hsonLiveMap.locus, hsonLiveMap.locus);
   assert.equal(root.hsonMirror, root.hson.mirror);
   assert.equal(root.hsonMirror, hsonMirror);
 });

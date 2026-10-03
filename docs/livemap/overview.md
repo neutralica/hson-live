@@ -2,6 +2,11 @@
 
 LiveMap owns one revisioned registry of named canonical Hson libraries. The registry is the state machine, whether it contains one library or many. Each library is either data or document state and has a governing Hson Schema.
 
+The public `hsonLiveMap` facade constructs bare local state with `create` or
+`fromLibraries`. Its `locus` member constructs an authoritative governor, and
+its `echo` member constructs a replica governor or an endpoint-only participant.
+Those constructors return `LiveMap`, `Locus`, and `Echo` values respectively.
+
 The registry may contain zero libraries. `hsonLiveMap.create()` and `hsonLiveMap.fromLibraries({})` create a complete empty runtime at revision 0. It supports capture, restore, and observers. Rendering requires a document library. `map.addLibraries(...)` admits local libraries later as one revisioned batch.
 
 ```ts

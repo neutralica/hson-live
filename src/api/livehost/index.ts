@@ -1,8 +1,9 @@
 export { create_livehost_locus_registry } from "./services/livehost.authority-registry.js";
-export { liveHost } from "./livehost.facade.js";
-export type { LiveHostAuthoredApplication, LiveHostCreateInput, LiveHostHttpMethod } from "./livehost.facade.js";
+export { hsonLiveHost } from "./livehost.facade.js";
+export type { LiveHostCreateInput } from "./livehost.facade.js";
 export type {
   LiveHost,
+  LiveHostRuntime,
   LiveHostApplication,
   LiveHostApplicationContext,
   LiveHostConnection,

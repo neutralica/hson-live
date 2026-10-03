@@ -4,8 +4,7 @@ import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
-import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, hsonMirror,
-  type LocusWebSocketLike } from "../src/index.ts";
+import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type LocusWebSocketLike } from "../src/index.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { local_initializers } from "./helpers/client-projection.mts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
@@ -45,7 +44,7 @@ function require_map(client: Readonly<{ map: LiveMap | undefined }>): LiveMap {
 }
 
 const authority = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <p "Existing"/>/>` } });
-const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(authority, [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(authority, [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const wire = pair();
 let detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(wire.client), logicalMapId: locus.logicalMapId,
@@ -127,7 +126,7 @@ locus.dispose();
 process.stdout.write("ok - retained reconnect installs current grant after hidden history without rebuilding the client\n");
 
 const currentAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
-const currentServer = hsonLocus.create({ ...authority_groups_from_map_fixture(currentAuthority, [{ name: "anchor", ownership: "shared" }]), defaultProjection: { libraries: ["anchor"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const currentServer = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(currentAuthority, [{ name: "anchor", ownership: "shared" }]), defaultProjection: { libraries: ["anchor"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const currentWire = pair();
 let detachCurrent = bind_locus_websocket(currentServer, currentWire.server, { principalId: "alice" });
 const currentEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(currentWire.client),
@@ -270,7 +269,7 @@ tailServer.dispose();
 process.stdout.write("ok - queued live writes and hidden topology follow retained recovery in order\n");
 
 const emptyAuthority = hsonLiveMap.create();
-const emptyServer = hsonLocus.create({ ...authority_groups_from_map_fixture(emptyAuthority, []), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const emptyServer = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(emptyAuthority, []), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const emptyWire = pair();
 let detachEmpty = bind_locus_websocket(emptyServer, emptyWire.server, { principalId: "alice" });
 const emptyEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(emptyWire.client),
@@ -297,7 +296,7 @@ process.stdout.write("ok - an empty projected client gains its first Library thr
 
 const interactionAuthority = hsonLiveMap.fromLibraries({ basePage: { document: Hson.document`<main/>` } });
 enable_interactions(interactionAuthority);
-const interactionServer = hsonLocus.create({ ...authority_groups_from_map_fixture(interactionAuthority, [{ name: "basePage", ownership: "shared" }]), defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
+const interactionServer = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(interactionAuthority, [{ name: "basePage", ownership: "shared" }]), defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries,
     systemFeatures: requested.systemFeatures }) });
 const interactionWire = pair();
 let detachInteraction = bind_locus_websocket(interactionServer, interactionWire.server, { principalId: "alice" });

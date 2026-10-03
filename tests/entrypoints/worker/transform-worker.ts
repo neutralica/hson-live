@@ -5,10 +5,11 @@ import {
   type UniversalCircuitVerificationResult,
 } from "hson-live/diagnostics/universal-circuit";
 import { hsonCalc, type HsonNumber } from "hson-live/number";
-import { hsonLocus } from "hson-live/locus";
+
+import { hsonLiveMap } from "hson-live/livemap";
 import { assertCanonicalClosure } from "hson-live/diagnostics/transform-test-oracle";
 
-void hsonLocus;
+void hsonLiveMap.locus;
 void assertCanonicalClosure;
 void hsonTransform.fromHson(`<worker <ready true>>`).toNode();
 void hsonTransform.fromJson({ ready: true }).toHson().serialize();

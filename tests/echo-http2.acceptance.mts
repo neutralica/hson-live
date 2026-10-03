@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { connect, constants, type ClientHttp2Session } from "node:http2";
 import { once } from "node:events";
-import { bind_locus_http, hsonEcho, hsonLiveMap, hsonLocus } from "../src/index.ts";
+import { bind_locus_http, hsonLiveMap } from "../src/index.ts";
 import { start_node_application_host } from "../src/api/livehost/node/livehost.node-application-host.ts";
 import type { LiveHostApplication } from "../src/types/livehost.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -18,7 +18,7 @@ events.case_begin("multiplex", "HTTP/2 stream and independent finite request");
 const cert = await readFile(new URL("./fixtures/livehost-tls/cert.pem", import.meta.url));
 const key = await readFile(new URL("./fixtures/livehost-tls/key.pem", import.meta.url));
 const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
 let releaseFinite: (() => void) | undefined;
 let finiteEntered: (() => void) | undefined;
@@ -94,11 +94,11 @@ const fetchH2: typeof fetch = async (input, init) => {
   });
 };
 
-const transport = hsonEcho.transport.http({ endpoint: `${host.httpUrl}/_hson`, fetch: fetchH2 });
+const transport = hsonLiveMap.echo.transport.http({ endpoint: `${host.httpUrl}/_hson`, fetch: fetchH2 });
 try {
   const retained = await locus.session.create({ libraries: ["state"] },
     { connection: { principalId: "development-anonymous" } });
-  const replica = await hsonEcho.create({ now: retained.now(), credential: retained.credential!, transport });
+  const replica = await hsonLiveMap.echo.create({ now: retained.now(), credential: retained.credential!, transport });
   assert.equal(replica.sync.status, "caught_up");
   const status = await transport.operations.submit({ type: "action-status", id: "h2-status", clientId: "client", requestId: "unknown" });
   assert.equal(status.kind, "response", "finite request completes beside continuing sync stream");

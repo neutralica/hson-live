@@ -6,7 +6,7 @@ import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_public_projection } from "./helpers/hosted-catalog.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Hson, hsonEcho, hsonLiveMap, hsonLocus, hsonMirror, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
@@ -483,7 +483,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     const options = { ...test_public_projection(authority), map: authority };
     const locus = strategy === "reconcile"
       ? create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus
-      : hsonLocus.create(authority_definition_from_fixture_options(options));
+      : hsonLiveMap.locus.create(authority_definition_from_fixture_options(options));
     const session = await locus.session.create({ libraries: ["state", "page"] });
     const notices = new Set<(event: EchoAttachmentEvent) => void>();
     const attachment = attach_locus_semantic_transport_internal(locus, {
@@ -538,7 +538,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
         return Object.freeze({ cancel() { if (ended) return; ended = true; stop(); observer.onEnd({ kind: "cancelled" }); } });
       } }),
     });
-    const echo = await bounded(hsonEcho.create({ now: session.now(), credential: session.credential!, transport }), 1_000,
+    const echo = await bounded(hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport }), 1_000,
       () => `Replica establishment stalled: ${JSON.stringify({ plans, binding: attachment.binding.attached })}`);
     const documentAuthority = echo_document_authority_for(echo_map_internal(echo).lib("page"));
     assert.ok(documentAuthority);

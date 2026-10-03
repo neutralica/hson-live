@@ -12,12 +12,14 @@ LiveHost, and the LiveHost Node runtime.
 | Echo | Semantic hosted client endpoint and request/session lifecycle, optionally managing one composed projected LiveMap | Endpoint-only or one authority-projected registry replica |
 | Mirror | LiveTree ↔ LiveMap bridge; delegates supported hosted authoring through Echo without owning transport policy | One binding |
 | Application | Domain meaning, custom actions and side effects, authorization policy, event semantics, topology, acquisition-key meaning, retention policy, and cross-Locus workflows | Zero or more Loci |
-| LiveHost | Application registration and dispatch, generic application context, principal evidence, readiness/disposal, runtime adaptation boundaries, and the optional bounded Locus registry | Zero or more applications |
-| LiveHost Node | HTTP and WebSocket ingress, Web Request/Response adaptation, origin and proxy policy, limits, heartbeat/backpressure, `/healthz`, and network/process shutdown | One concrete runtime implementation |
+| LiveHost | Runtime-neutral application identity, request and connection routes, readiness/disposal, and progressive authoring | One application component |
+| LiveHostRuntime | Bound application registration, dispatch, and lifecycle | Zero or more applications |
+| LiveHost Node | HTTP and WebSocket ingress, Web Request/Response adaptation, origin and proxy policy, limits, heartbeat/backpressure, `/healthz`, and network/process shutdown | One concrete runtime implementation of `LiveHostRuntime` |
 
-LiveMap is state. Locus is authority over one state domain. An application owns
-meaning and topology. LiveHost hosts applications. LiveHost Node is the current
-concrete Node runtime for LiveHost.
+LiveMap is state, with Locus and Echo as its authoritative and replica governors.
+LiveTree realizes state in a browser, and Mirror connects LiveMap to LiveTree.
+An application owns meaning and topology. `LiveHost` describes one runtime-neutral
+application component; LiveHost Node binds components into a `LiveHostRuntime`.
 
 For hosted documents, the client path is
 `LiveTree → Mirror → Echo → Locus → authoritative library registry`, followed by
@@ -55,9 +57,9 @@ document, report, tenant, or other domain selector.
 ## Public packages
 
 ```ts
-import { hsonLocus } from "hson-live/locus";
+import { hsonLiveMap } from "hson-live/livemap";
 import { bind_node_locus_websocket } from "hson-live/locus/node";
-import { liveHost, create_livehost_locus_registry } from "hson-live/livehost";
+import { hsonLiveHost, create_livehost_locus_registry } from "hson-live/livehost";
 import { start_node_application_host } from "hson-live/livehost/node";
 ```
 
@@ -68,7 +70,7 @@ import { start_node_application_host } from "hson-live/livehost/node";
 - `hson-live/livehost/node` is the concrete Node application-host runtime and
   security boundary.
 
-`liveHost.create()` authors an application; it does not bind a network runtime.
+`hsonLiveHost.create()` authors a `LiveHost` component; it does not bind a network runtime.
 Node is currently the concrete runtime implementation. The four package
 surfaces do not provide historical one-map LiveHost aliases.
 
@@ -77,7 +79,7 @@ surfaces do not provide historical one-map LiveHost aliases.
 The raw application and request descriptor remain first-class:
 
 ```ts
-import { liveHost, type LiveHostApplication } from "hson-live/livehost";
+import { hsonLiveHost, type LiveHostApplication } from "hson-live/livehost";
 
 const application: LiveHostApplication = {
   name: "deck",
@@ -89,12 +91,13 @@ const application: LiveHostApplication = {
 };
 ```
 
-The inert HTTP helpers construct those same descriptors. A single path and
-handler returns one descriptor; grouped tuples return an ordered plain array:
+Created hosts also construct request descriptors. A single path and handler
+returns one descriptor; grouped tuples return an ordered plain array:
 
 ```ts
-const page = liveHost.GET("/", home.render);
-const pages = liveHost.GET(
+const host = hsonLiveHost.create({ name: "deck" });
+const page = host.GET("/", home.render);
+const pages = host.GET(
   ["/", home.render],
   ["/slides/1", slide01.render],
 );
@@ -106,8 +109,8 @@ const declarative: LiveHostApplication = {
 };
 ```
 
-`POST`, `PUT`, and `DELETE` have the same forms. Calling a namespace helper
-does not register a route. A marked document `render` callable is invoked for
+`POST`, `PUT`, and `DELETE` have the same forms. A method call adds its route
+to that host. A marked document `render` callable is invoked for
 each request and delivered as a `Response` with
 `Content-Type: text/html; charset=utf-8`. Later document and stylesheet edits
 appear in later responses. Pass `render` directly: a new wrapper function does
@@ -118,7 +121,7 @@ For progressive authoring, `create` makes a new application with an empty
 request array and a no-op disposer when omitted:
 
 ```ts
-const host = liveHost.create({ name: "deck" });
+const host = hsonLiveHost.create({ name: "deck" });
 host.GET("/", home.render);
 host.POST("/save", async (request) =>
   new Response(await request.text(), { status: 201 }));

@@ -2,7 +2,7 @@ import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fi
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
 import { make_locus_session_manager } from "../src/api/locus/locus.session.ts";
-import { hsonLiveMap, hsonLocus } from "../src/index.ts";
+import { hsonLiveMap } from "../src/index.ts";
 import { normalize_locus_effective_projection, make_locus_hosted_projection_policy } from "../src/api/locus/locus.projection.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 
@@ -47,7 +47,7 @@ for (const terminal of ["revoke", "dispose", "goodbye", "expire"] as const) {
 // Public capture and HTML cut are unavailable even inside the first fence
 // callback, before the revoked lifecycle notification is delivered.
 for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const) {
-  const host = hsonLocus.create({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }), [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }) });
+  const host = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }), [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }) });
   let receive: ((raw: string) => void) | undefined;
   let id: string | undefined;
   let credential: string | undefined;
@@ -98,7 +98,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
 // Transport listener cleanup is externally callable before manager disposal.
 // Locus disposal must already fence every capability operation at that point.
 {
-  const host = hsonLocus.create({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: {} } }), [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
+  const host = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: {} } }), [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
   const retained = await host.session.create({ libraries: ["state"] });
   let revoked: boolean | undefined;
   bind_locus_websocket(host, { send() {}, close() {},
@@ -112,7 +112,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
 // cannot become the manager's new live attachment.
 for (const closeAt of ["fence-send", "fenced-listener", "attached-listener"] as const) {
   const scheduled: (() => void)[] = [];
-  const host = hsonLocus.create({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }), [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }), sessions: { schedule: (_delay, callback) => { scheduled.push(callback); return () => {}; } } });
+  const host = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }), [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }), sessions: { schedule: (_delay, callback) => { scheduled.push(callback); return () => {}; } } });
   let firstReceive: ((raw: string) => void) | undefined;
   let destinationReceive: ((raw: string) => void) | undefined;
   let sessionId: string | undefined;

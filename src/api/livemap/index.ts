@@ -1,4 +1,4 @@
-export { hsonLiveMap } from "./livemap.facade.js";
+export { hsonLiveMap } from "./livemap.public.js";
 export { install_libraries_snapshot } from "./livemap.libraries.js";
 export {
   LiveMapDocumentAttributeNotFoundError,

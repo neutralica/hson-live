@@ -10,10 +10,12 @@ import {
   HsonData,
   HsonDocument,
 } from "hson-live";
-import { hsonEcho, type Echo } from "hson-live/echo";
+import { type Echo } from "hson-live/echo";
+
 import { Hson } from "hson-live/hson";
 import { hsonLiveMap, type LiveMap, type LiveMapDocumentLibrary } from "hson-live/livemap";
-import { hsonLocus } from "hson-live/locus";
+
+
 import { reflect_document } from "hson-live/mirror";
 import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "hson-live/ssr";
 import { hsonTransform, type TransformOutput } from "hson-live/transform";
@@ -53,7 +55,7 @@ binding.dispose();
 const hostedPageDefinition = { document: "<main/>",
   schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` };
 const hostedMap = hsonLiveMap.fromLibraries({ page: hostedPageDefinition });
-const hosted = hsonLocus.create({ shared: [{ name: "page", definition: hostedPageDefinition }] });
+const hosted = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: hostedPageDefinition }] });
 void hosted;
 
 const localSsr = libraries.cut({ html: "page" });
@@ -62,7 +64,7 @@ void decoded;
 void continue_document({ map: hostedMap, document: hostedMap.lib("page"), root });
 
 const retained = await hosted.session.create({ libraries: ["state", "page"] });
-const replica = await hsonEcho.create({ now: retained.now(), credential: retained.credential!, transport });
+const replica = await hsonLiveMap.echo.create({ now: retained.now(), credential: retained.credential!, transport });
 void replica;
 void retained.now({ html: "page" });
 // @ts-expect-error One-map hosted continuation is no longer a public client-egress path.

@@ -8,18 +8,18 @@ Echo is semantic hosted-client participation in one Locus authority domain.
 There is one public `Echo` type family with two compositions:
 
 ```ts
-import { create_echo, hsonEcho } from "hson-live/echo";
+import { hsonLiveMap } from "hson-live/livemap";
 
-const endpointTransport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" });
-const endpoint = create_echo({ transport: endpointTransport });
-const replicaTransport = hsonEcho.transport.websocket({ url: "wss://example.test/echo" });
-const replica = await hsonEcho.create({ now: sessionNow, credential, transport: replicaTransport });
+const endpointTransport = hsonLiveMap.echo.transport.websocket({ url: "wss://example.test/echo" });
+const endpoint = hsonLiveMap.echo.create({ transport: endpointTransport });
+const replicaTransport = hsonLiveMap.echo.transport.websocket({ url: "wss://example.test/echo" });
+const replica = await hsonLiveMap.echo.create({ now: sessionNow, credential, transport: replicaTransport });
 
-const httpTransport = hsonEcho.transport.http({ endpoint: "/_hson" });
-const httpEndpoint = hsonEcho.create({ transport: httpTransport });
+const httpTransport = hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
+const httpEndpoint = hsonLiveMap.echo.create({ transport: httpTransport });
 ```
 
-`hsonEcho.create`, `hson.echo.create`, and `create_echo` construct an endpoint-only Echo when given endpoint options. It exposes `clientId`, `session`,
+`hsonLiveMap.echo.create` and `hson.liveMap.echo.create` construct an endpoint-only Echo when given endpoint options. It exposes `clientId`, `session`,
 `connect`, `disconnect`, `dispose`, `action`, `retryAction`, and `actionStatus`.
 It does not construct or expose a LiveMap and has no synchronization state.
 

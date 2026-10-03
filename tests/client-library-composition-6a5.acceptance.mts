@@ -6,7 +6,7 @@ import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { capture_internal_document } from "./helpers/document-capture.mts";
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, hsonMirror, hsonEcho, hsonLocus, hsonTransform, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonMirror, hsonTransform, type HsonSchema } from "../src/index.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -109,7 +109,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   const server = authority();
   const initialState = server.lib("state");
   initialState.at(["value"]).set(1);
-  const locus = hsonLocus.create(authority_definition_from_fixture_options({ map: server, ...test_public_projection(server) }));
+  const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options({ map: server, ...test_public_projection(server) }));
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
   const cut = internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted();

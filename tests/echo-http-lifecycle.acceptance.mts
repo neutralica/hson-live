@@ -1,6 +1,6 @@
 import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
-import { bind_locus_http, hsonEcho, hsonLiveMap, hsonLocus } from "../src/index.ts";
+import { bind_locus_http, hsonLiveMap } from "../src/index.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT as format } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -33,7 +33,7 @@ for (const kind of ["finite", "sync", "heartbeat"] as const) {
   let oldStarted: (() => void) | undefined;
   const started = new Promise<void>((resolve) => { oldStarted = resolve; });
   const seen: string[] = [];
-  const transport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
+  const transport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
     const message = JSON.parse(String(init?.body)) as { type: string; id?: string };
     const token = new Headers(init?.headers).get("x-hson-attachment");
     if (token !== null) seen.push(token);
@@ -77,7 +77,7 @@ events.case_begin("dispose", "terminal transport disposal and Echo owner release
 let fetches = 0;
 let pendingAbort = false;
 let holdFinite = false;
-const transport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
+const transport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
   fetches += 1;
   const message = JSON.parse(String(init?.body)) as { type: string; id?: string };
   if (message.type === "session-create") return new Response(created(message.id!),
@@ -88,7 +88,7 @@ const transport = hsonEcho.transport.http({ endpoint: "https://example.test/_hso
   if (String(input).endsWith("/sync")) return new Response(null, { status: 503 });
   return new Response(status(message.id!), { headers: json });
 } });
-const echo = hsonEcho.create({ transport });
+const echo = hsonLiveMap.echo.create({ transport });
 try {
   echo.connect();
   await echo.session.create();
@@ -114,14 +114,14 @@ globalThis.setInterval = ((callback: (...args: unknown[]) => void, delay?: numbe
   timer.unref?.();
   return timer;
 }) as typeof globalThis.setInterval;
-const ownerTransport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
+const ownerTransport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
   fetches += 1;
   const message = JSON.parse(String(init?.body)) as { type: string; id?: string };
   if (message.type === "session-create") return new Response(created(message.id!),
     { headers: { ...json, "x-hson-attachment": "a".repeat(64) } });
   return new Response(null, { status: 503 });
 } });
-const ownerEcho = hsonEcho.create({ transport: ownerTransport });
+const ownerEcho = hsonLiveMap.echo.create({ transport: ownerTransport });
 try {
   ownerEcho.connect();
   await ownerEcho.session.create();
@@ -132,18 +132,18 @@ try {
   assert.equal((await ownerTransport.operations.submit({ type: "action-status", id: "orphan",
     clientId: "client", requestId: "request" })).kind, "not-submitted");
   assert.equal(fetches, afterDispose);
-  assert.throws(() => hsonEcho.create({ transport: ownerTransport }), /one Echo for its lifetime/i);
+  assert.throws(() => hsonLiveMap.echo.create({ transport: ownerTransport }), /one Echo for its lifetime/i);
 } finally { ownerEcho.dispose(); ownerTransport.dispose(); globalThis.setInterval = previousSetInterval; }
 events.case_end("dispose", "pass");
 
 events.case_begin("pending-sync-dispose", "transport disposal interrupts a pending stream open");
 const pendingMap = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const pendingLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(pendingMap, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+const pendingLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(pendingMap, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const pendingBinder = bind_locus_http(pendingLocus, { endpoint: "/_hson" });
 let streamStarted: (() => void) | undefined;
 const streamOpening = new Promise<void>((resolve) => { streamStarted = resolve; });
 let streamAborted = false;
-const pendingTransport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
+const pendingTransport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
   if (String(input).endsWith("/sync")) {
     streamStarted?.();
     return new Promise<Response>((_resolve, reject) => {
@@ -152,7 +152,7 @@ const pendingTransport = hsonEcho.transport.http({ endpoint: "https://example.te
   }
   return pendingBinder.handle(new Request(String(input), init), {});
 } });
-const pendingEcho = hsonEcho.create({ transport: pendingTransport });
+const pendingEcho = hsonLiveMap.echo.create({ transport: pendingTransport });
 try {
   pendingEcho.connect();
   await pendingEcho.session.create();
@@ -168,13 +168,13 @@ events.case_end("pending-sync-dispose", "pass");
 
 events.case_begin("replica-dispose", "live replica loses readiness on transport disposal");
 const replicaMap = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const replicaLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(replicaMap, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+const replicaLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(replicaMap, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const retained = await replicaLocus.session.create({ libraries: ["state"] });
 const replicaBinder = bind_locus_http(replicaLocus, { endpoint: "/_hson" });
-const replicaTransport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: (input, init) =>
+const replicaTransport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: (input, init) =>
   replicaBinder.handle(new Request(String(input), init), {}) });
 try {
-  const replicaEcho = await hsonEcho.create({ now: retained.now(), credential: retained.credential!, transport: replicaTransport });
+  const replicaEcho = await hsonLiveMap.echo.create({ now: retained.now(), credential: retained.credential!, transport: replicaTransport });
   try {
     assert.equal(replicaEcho.sync.status, "caught_up");
     replicaTransport.dispose();

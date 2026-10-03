@@ -2,9 +2,9 @@ import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixtur
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, create_echo } from "../src/index.ts";
-import { hsonEcho } from "../src/api/echo/index.ts";
-import { hsonLocus } from "../src/api/locus/index.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
+
+
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { create_echo_endpoint_internal } from "../src/api/echo/echo.endpoint.ts";
 import type { EchoAttachmentEvent } from "../src/types/echo.transport.types.ts";
@@ -103,10 +103,10 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
     state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` },
   });
   let actions = 0;
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, actions: { probe() { actions += 1; } } });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, actions: { probe() { actions += 1; } } });
   const pair = socket_pair(true);
   const detach = bind_locus_websocket(locus, pair.server);
-  const echo = hsonEcho.create({ transport: test_echo_transport(pair.client) });
+  const echo = hsonLiveMap.echo.create({ transport: test_echo_transport(pair.client) });
   try {
     assert.equal(echo.session.status, "idle");
     echo.connect();
@@ -147,11 +147,11 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
 
 await check("endpoint-only Echo reattaches after attachment observation is interrupted", async () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] } });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] } });
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
   const transport = test_echo_transport(pair.client);
-  const echo = hsonEcho.create({ transport });
+  const echo = hsonLiveMap.echo.create({ transport });
   echo.connect();
   const initial = await echo.session.create();
   assert.equal(initial.epoch, 1);
@@ -166,11 +166,11 @@ await check("endpoint-only Echo reattaches after attachment observation is inter
 
 await check("terminal WebSocket transport disposal invalidates an attached endpoint Echo", async () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-  const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] } });
+  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] } });
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);
   const transport = test_echo_transport(pair.client);
-  const echo = hsonEcho.create({ transport });
+  const echo = hsonLiveMap.echo.create({ transport });
   echo.connect();
   await echo.session.create();
   assert.equal(echo.session.status, "attached");
@@ -182,7 +182,7 @@ await check("terminal WebSocket transport disposal invalidates an attached endpo
 
 await check("untyped endpoint Echo construction rejects replica arguments", () => {
   const pair = socket_pair();
-  const createUntyped = (options: unknown): unknown => Reflect.apply(create_echo, undefined, [options]);
+  const createUntyped = (options: unknown): unknown => Reflect.apply(hsonLiveMap.echo.create, undefined, [options]);
   assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), map: Object.freeze({}) }), /endpoint creation/i);
   assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), now: Object.freeze({}) }), /requires now and credential/i);
   assert.throws(() => createUntyped({ transport: test_echo_transport(pair.client), recovery: {} }), /endpoint creation/i);
@@ -267,7 +267,7 @@ await check("uncertain session creation never triggers an automatic second creat
       observe = listener; listener({ kind: "available" }); return () => { observe = undefined; };
     } }),
   });
-  const echo = hsonEcho.create({ transport });
+  const echo = hsonLiveMap.echo.create({ transport });
   echo.connect();
   await assert.rejects(echo.session.create(), (error: unknown) => {
     assert.equal((error as { delivery?: string }).delivery, "uncertain");
@@ -288,17 +288,17 @@ await check("one semantic transport has one Echo owner and replica capability is
     operations: Object.freeze({ async submit() { return { kind: "not-submitted" as const }; } }),
     attachment: Object.freeze({ observe() { observed += 1; return () => {}; } }),
   });
-  const first = hsonEcho.create({ transport });
-  assert.throws(() => hsonEcho.create({ transport }), /one Echo/i);
+  const first = hsonLiveMap.echo.create({ transport });
+  assert.throws(() => hsonLiveMap.echo.create({ transport }), /one Echo/i);
   assert.equal(observed, 0);
   first.connect();
   assert.equal(observed, 1);
-  const createUntyped = (options: unknown): unknown => Reflect.apply(create_echo, undefined, [options]);
+  const createUntyped = (options: unknown): unknown => Reflect.apply(hsonLiveMap.echo.create, undefined, [options]);
   assert.throws(() => createUntyped({ transport: Object.freeze({ ...transport }), now: {}, credential: "credential" }),
     /synchronization capability/i);
   assert.equal(observed, 1);
   first.dispose();
-  assert.throws(() => hsonEcho.create({ transport }), /one Echo/i);
+  assert.throws(() => hsonLiveMap.echo.create({ transport }), /one Echo/i);
 });
 
 await check("the endpoint core operates without a map, registry, or synchronization capability", async () => {

@@ -77,7 +77,7 @@ generated identity and does not inherit source QUID claims or issued history.
 Locus constructs its managed authoritative map from private and shared definitions. Local initializers remain outside that map.
 
 ```ts
-const locus = hsonLocus.create({
+const locus = hsonLiveMap.locus.create({
   shared: [
     { name: "state", definition: { data: { count: 0 }, schema: StateSchema } },
     { name: "colors", definition: { data: { primary: "blue" }, schema: ColorsSchema } },
@@ -109,7 +109,7 @@ A direct terminal setter returns `Promise<void>` for one authority transition. T
 
 Staged scopes are write-oriented. They offer selected `set`, `replace`, and `delete`, bounded document location/content/attribute operations, portable document graph operations, stylesheet operations, and canonical interaction helpers. They do not expose candidate-backed reads, `update`, or read-dependent shape helpers. Reads through `locus.lib(name)` during authoring see committed state, not earlier staged writes. Stage handles expire when the callback exits.
 
-For a client, `await hsonEcho.create({ now, credential, transport })` admits the
+For a client, `await hsonLiveMap.echo.create({ now, credential, transport })` admits the
 authorized current session composition and returns an attached, caught-up
 replica. `now.libs` contains the visible shared authority registry and its
 contracts; `now.local` contains authorized local initializers. Excluded
@@ -129,13 +129,13 @@ libraries in that same map. Retained replay installs missed topology before
 later writes; reconcile synchronizes the current authorized shared authority
 projection in place. Authorized local initializers are installed only when the
 named local instance is absent; later local state is client-owned and survives
-shared synchronization. `hsonEcho.create(...)` has no receiving-runtime local
+shared synchronization. `hsonLiveMap.echo.create(...)` has no receiving-runtime local
 library input. Echo has no public dynamic local-topology admission API in this
 pass. Authorized local initializers can arrive in later session grants and
 install into an already-running Echo.
 
 Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics for a one-library registry Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.
 
-`await hsonLocus.resume({ private, shared, local, logicalMapId, persistence })` restores an existing durable authority or establishes the declared initial authority durably. Source definitions govern original libraries and local initializers. Durable Locus state supplies ownership for libraries added at runtime, so the deployment does not redeclare them. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch. `hsonLocus.checkpoint(locus)` compacts durable state when needed; accepted commits restore without a manual checkpoint.
+`await hsonLiveMap.locus.resume({ private, shared, local, logicalMapId, persistence })` restores an existing durable authority or establishes the declared initial authority durably. Source definitions govern original libraries and local initializers. Durable Locus state supplies ownership for libraries added at runtime, so the deployment does not redeclare them. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch. `hsonLiveMap.locus.checkpoint(locus)` compacts durable state when needed; accepted commits restore without a manual checkpoint.
 
 Hosted authority topology grows through explicit `locus.addLibraries({ private, shared })` admissions; authorized projection changes update client-visible topology. The current local initializer catalog comes from Locus construction and may be granted later. Public Library removal, replacement, and rename remain unsupported, as do a default Library and cross-Library QUID transfer. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. A projected named document Library may be bound through Mirror; supported hosted LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay.

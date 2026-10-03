@@ -13,7 +13,8 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 import { capture_selected_authority_projection_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
-import { hsonLocus } from "../src/api/locus/index.ts";
+
+
 
 const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const Page: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
@@ -147,11 +148,11 @@ const persistentMap = hsonLiveMap.fromLibraries({
   page: { document: '<main <p "PERSISTENT_PUBLIC"/>/>', schema: Page },
   privateSignal: { data: { value: "small" }, schema: Data },
 });
-const persistent = await hsonLocus.resume({ ...authority_groups_from_map_fixture(persistentMap, [{ name: "page", ownership: "shared" }, { name: "privateSignal", ownership: "private" }]),
+const persistent = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(persistentMap, [{ name: "page", ownership: "shared" }, { name: "privateSignal", ownership: "private" }]),
   logicalMapId: "selected-capture-z3a", persistence, defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }) });
 await persistent.stage((draft) => { const privateLib = draft.lib("privateSignal");
   privateLib.at(["value"]).set("p".repeat(5 * 1024 * 1024)); });
 assert.equal(persistence.appendCalls.length, 1);
-await hsonLocus.checkpoint(persistent);
+await hsonLiveMap.locus.checkpoint(persistent);
 persistent.dispose();
 process.stdout.write("Z3A selected capture acceptance passed.\n");

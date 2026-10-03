@@ -1,6 +1,6 @@
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
-import { bind_locus_http, hsonLiveMap, hsonLocus } from "../src/index.ts";
+import { bind_locus_http, hsonLiveMap } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -29,7 +29,7 @@ let authorizerEntered: (() => void) | undefined;
 const entered = new Promise<void>((resolve) => { authorizerEntered = resolve; });
 const gate = new Promise<void>((resolve) => { releaseAuthorizer = resolve; });
 const map = hsonLiveMap.fromLibraries({ state: { data: 0 } });
-const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: async ({ requested }) => {
+const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: async ({ requested }) => {
     authorizerEntered?.();
     await gate;
     return { libraries: requested.libraries };
@@ -50,7 +50,7 @@ events.case_end("pending-create", "pass");
 
 events.case_begin("pending-attach", "dispose before an attach body arrives cannot advance its session");
 const attachMap = hsonLiveMap.fromLibraries({ state: { data: 0 } });
-const attachLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(attachMap, [{ name: "state", ownership: "shared" }]) });
+const attachLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(attachMap, [{ name: "state", ownership: "shared" }]) });
 const retained = await attachLocus.session.create({ libraries: ["state"] }, { connection: context });
 const attachBinder = bind_locus_http(attachLocus, { endpoint: "/_hson" });
 let bodyController: ReadableStreamDefaultController<Uint8Array> | undefined;
@@ -71,7 +71,7 @@ events.case_end("pending-attach", "pass");
 
 events.case_begin("current-stream", "observe and recover each displace the old HTTP response");
 const streamMap = hsonLiveMap.fromLibraries({ state: { data: 0 } });
-const streamLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(streamMap, [{ name: "state", ownership: "shared" }]) });
+const streamLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(streamMap, [{ name: "state", ownership: "shared" }]) });
 const streamBinder = bind_locus_http(streamLocus, { endpoint: "/_hson" });
 try {
   const created = await streamBinder.handle(request({ type: "session-create", id: "create" }), context);
@@ -112,7 +112,7 @@ globalThis.setTimeout = ((callback: (...args: unknown[]) => void, delay?: number
   return originalSetTimeout(callback, delay, ...args);
 }) as typeof globalThis.setTimeout;
 const leaseMap = hsonLiveMap.fromLibraries({ state: { data: 0 } });
-const leaseLocus = hsonLocus.create({ ...authority_groups_from_map_fixture(leaseMap, [{ name: "state", ownership: "shared" }]) });
+const leaseLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(leaseMap, [{ name: "state", ownership: "shared" }]) });
 const leaseBinder = bind_locus_http(leaseLocus, { endpoint: "/_hson" });
 try {
   const first = await leaseBinder.handle(request({ type: "session-create", id: "create" }), context);

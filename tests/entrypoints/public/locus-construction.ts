@@ -1,5 +1,5 @@
-import { Hson, hsonLocus } from "hson-live";
-import { hsonLiveMap } from "hson-live/livemap";
+import { hsonLiveMap, Hson } from "hson-live";
+
 import type { LocusActionContext, LocusPersistenceAdapter } from "hson-live/locus";
 import type { HsonSchema } from "hson-live";
 
@@ -11,7 +11,7 @@ const definitions = {
   page: { document: "<main/>", schema: Page },
 } as const;
 const direct = hsonLiveMap.fromLibraries(definitions);
-const locus = hsonLocus.create({
+const locus = hsonLiveMap.locus.create({
   shared: [{ name: "count", definition: definitions.count }],
   private: [{ name: "page", definition: definitions.page, css: sheet }],
   local: [{ name: "ui", initializer: { data: { selected: false } } }],
@@ -56,7 +56,7 @@ void locus.addLibraries({ shared: [{ name: "laterPage", definition: definitions.
 // @ts-expect-error Data Libraries have no CSS handle.
 void locus.lib("count").css;
 // @ts-expect-error Data Library construction cannot carry CSS.
-void hsonLocus.create({ shared: [{ name: "bad", definition: definitions.count, css: sheet }] });
+void hsonLiveMap.locus.create({ shared: [{ name: "bad", definition: definitions.count, css: sheet }] });
 // @ts-expect-error Data Library stage admission cannot carry CSS.
 void locus.addLibraries({ shared: [{ name: "bad", definition: definitions.count, css: sheet }] });
 void locus.stage((loc) => { loc.lib("count").at(["value"]).set(3); });
@@ -70,21 +70,21 @@ direct.batch((map) => { map.addLibraries({ added: { data: 1 } }); });
 // @ts-expect-error Runtime Locus addition excludes local initializers.
 void locus.addLibraries({ local: [{ name: "later", initializer: { data: 1 } }] });
 // @ts-expect-error A fresh Locus cannot accept persistence.
-void hsonLocus.create({ shared: [{ name: "count", definition: definitions.count }], persistence: {} });
+void hsonLiveMap.locus.create({ shared: [{ name: "count", definition: definitions.count }], persistence: {} });
 // @ts-expect-error Literal duplicate names are rejected.
-void hsonLocus.create({ shared: [{ name: "count", definition: definitions.count }],
+void hsonLiveMap.locus.create({ shared: [{ name: "count", definition: definitions.count }],
   local: [{ name: "count", initializer: { data: 1 } }] });
 
 declare const provider: LocusPersistenceAdapter;
 // @ts-expect-error Durable resume requires a stable logicalMapId.
-void hsonLocus.resume({ shared: [{ name: "count", definition: definitions.count }], persistence: provider });
-const resumed = await hsonLocus.resume({
+void hsonLiveMap.locus.resume({ shared: [{ name: "count", definition: definitions.count }], persistence: provider });
+const resumed = await hsonLiveMap.locus.resume({
   shared: [{ name: "count", definition: definitions.count }],
   private: [{ name: "page", definition: definitions.page, css: sheet }],
   logicalMapId: "locus-construction-entrypoint",
   persistence: provider,
 });
 const resumedName = resumed.lib("page");
-void [resumedName, hsonLocus.checkpoint(resumed)];
+void [resumedName, hsonLiveMap.locus.checkpoint(resumed)];
 // @ts-expect-error Checkpointing is a Locus namespace operation.
 void resumed.checkpoint;

@@ -3,15 +3,11 @@ import assert from "node:assert/strict";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import { Hson } from "../src/hson-authoring.ts";
-import {
-  hson,
-  hsonLocus,
-  hsonEcho,
-  hsonLiveMap,
-  hsonMirror,
-  hsonLiveTree,
-  hsonTransform,
-} from "../src/hson.ts";
+import { create as createLocus, resume as resumeLocus, checkpoint as checkpointLocus } from "../src/api/locus/locus.public.ts";
+import { create_echo } from "../src/api/echo/echo.ts";
+import { create_echo_websocket_transport } from "../src/api/echo/echo.websocket.ts";
+import { create_echo_http_transport } from "../src/api/echo/echo.http.ts";
+import { hson, hsonLiveHost, hsonLiveMap, hsonMirror, hsonLiveTree, hsonTransform } from "../src/hson.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -44,9 +40,22 @@ function check(name: string, fn: () => void): void {
 
 check("canonical facade runtime identities remain stable", () => {
   assert.equal(hson.transform, hsonTransform);
-  assert.equal(hson.locus, hsonLocus);
-  assert.equal(hson.echo, hsonEcho);
-  assert.equal("client" in hsonLocus, false);
+  assert.equal(hson.liveMap.locus, hsonLiveMap.locus);
+  assert.equal(hson.liveMap.echo, hsonLiveMap.echo);
+  assert.equal(hsonLiveMap.locus.create, createLocus);
+  assert.equal(hsonLiveMap.locus.resume, resumeLocus);
+  assert.equal(hsonLiveMap.locus.checkpoint, checkpointLocus);
+  assert.equal(hsonLiveMap.echo.create, create_echo);
+  assert.equal(hsonLiveMap.echo.transport.websocket, create_echo_websocket_transport);
+  assert.equal(hsonLiveMap.echo.transport.http, create_echo_http_transport);
+  assert.equal(hson.liveHost, hsonLiveHost);
+  assert.equal("locus" in hson, false);
+  assert.equal("echo" in hson, false);
+  assert.equal("client" in hsonLiveMap.locus, false);
+  assert.equal(Object.isFrozen(hsonLiveMap.locus), true);
+  assert.equal(Object.isFrozen(hsonLiveMap.echo), true);
+  assert.equal(Object.isFrozen(hsonLiveHost), true);
+  assert.deepEqual(Object.keys(hsonLiveHost), ["create"]);
   assert.equal(hson.liveTree, hsonLiveTree);
   assert.equal(Object.isFrozen(hsonLiveTree), true);
   assert.equal(Object.isFrozen(hson.liveTree), true);

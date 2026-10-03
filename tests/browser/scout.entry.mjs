@@ -1,5 +1,6 @@
 import { configure_scout } from "hson-live/scout";
-import { continue_hosted_document, hsonEcho } from "../../dist/index.js";
+import { continue_hosted_document } from "../../dist/index.js";
+import { hsonLiveMap } from "hson-live/livemap";
 import { continuation_root_is_active } from "../../dist/api/continuation/continuation.common.js";
 import { prepare_hosted_document_internal } from "../../dist/api/continuation/continue-hosted-document.js";
 import { get_node_for_el } from "../../dist/api/livetree/utils/node-map-helpers.js";
@@ -47,8 +48,8 @@ async function main() {
     if (scenario === "provider-failure") throw new Error("Expected provider failure");
     const setup = await setupPromise;
     const transport = scenario === "websocket"
-      ? hsonEcho.transport.websocket({ url: setup.websocketUrl })
-      : hsonEcho.transport.http({ endpoint: "/_hson" });
+      ? hsonLiveMap.echo.transport.websocket({ url: setup.websocketUrl })
+      : hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
     const options = { now: setup.now, credential: setup.credential, transport, root: html,
       interactions: { local: {} },
       ...(scenario === "preparation-failure" ? { document: "absent" } : {}) };
@@ -101,7 +102,7 @@ async function main() {
     check((await result).status === "failure", "Preparing collision result did not reject");
     prepared.dispose();
     document.querySelector("hson-scout").remove();
-    const transport = hsonEcho.transport.http({ endpoint: "/_hson" });
+    const transport = hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
     const recovered = await continue_hosted_document({ ...options, transport });
     check(recovered.mirror.status === "active", "Prepared root was not released");
     recovered.dispose(); recovered.echo.dispose(); transport.dispose();
@@ -161,7 +162,7 @@ async function main() {
     check(html === document.documentElement && button === document.querySelector("button"), "Failure changed application DOM");
     if (scenario === "preparation-failure") {
       document.querySelector("hson-scout").remove();
-      const transport = hsonEcho.transport.http({ endpoint: "/_hson" });
+      const transport = hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
       const recovered = await continue_hosted_document({ ...suppliedOptions, document: undefined, transport });
       check(recovered.mirror.status === "active", "Failed preparation retained root ownership");
       recovered.dispose(); recovered.echo.dispose(); transport.dispose();
@@ -175,7 +176,7 @@ async function main() {
     check(mainElement.querySelector("span") !== null, "Mismatch fixture vanished");
     await sleep(100);
     mainElement.querySelector("span").remove();
-    const recoveryTransport = hsonEcho.transport.http({ endpoint: "/_hson" });
+    const recoveryTransport = hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
     const recovered = await continue_hosted_document({ ...suppliedOptions, transport: recoveryTransport });
     check(recovered.mirror.status === "active", "Failed start retained root ownership");
     recovered.dispose(); recovered.echo.dispose(); recoveryTransport.dispose(); suppliedOptions.transport.dispose();

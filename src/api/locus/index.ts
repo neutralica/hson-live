@@ -1,4 +1,3 @@
-export { hsonLocus } from "./locus.facade.js";
 export { bind_locus_websocket } from "./locus.websocket.js";
 export { bind_locus_http } from "./locus.http.js";
 export type { LocusHttpBinding } from "./locus.http.js";

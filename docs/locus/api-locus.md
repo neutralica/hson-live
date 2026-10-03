@@ -3,9 +3,9 @@
 `Locus` governs one application library registry and separate system state. The registry may grow while the authority runs. A hosted client obtains an authorized session projection before receiving framework state.
 
 ```ts
-import { hsonLocus } from "hson-live/locus";
+import { hsonLiveMap } from "hson-live/livemap";
 
-const locus = hsonLocus.create({
+const locus = hsonLiveMap.locus.create({
   shared: [{ name: "page", definition: { document: "<main/>" } }],
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
@@ -51,7 +51,7 @@ The construction definition groups libraries by ownership. Private and shared en
 
 `await locus.addLibraries({ private: [...], shared: [...] })` admits one atomic private/shared authority batch. Document entries may carry initial `css: string` in that same topology transition. At least one library is required, and names must be unique. The current API has no dynamic client-local admission operation. A shared classification makes a name eligible but never changes an existing session grant.
 
-`await locus.lib("page").css.stylesheet(cssText)` parses and replaces the complete document stylesheet in one governed CSS transition; an empty string clears it. `await locus.lib("page").css(operation)` remains available for granular canonical CSS mutations. Both forms use the same document CSS state. `hsonLocus.resume` accepts the same authored CSS declaration for an initial authority; when durable state exists, its persisted canonical stylesheet is restored instead.
+`await locus.lib("page").css.stylesheet(cssText)` parses and replaces the complete document stylesheet in one governed CSS transition; an empty string clears it. `await locus.lib("page").css(operation)` remains available for granular canonical CSS mutations. Both forms use the same document CSS state. `hsonLiveMap.locus.resume` accepts the same authored CSS declaration for an initial authority; when durable state exists, its persisted canonical stylesheet is restored instead.
 
 `locus.lib(name)` provides synchronous authoritative reads, including selected roots, snapshots, paths, Schema and CSS reads, rendering, watches, and document commits. A terminal write returns `Promise<void>` and enters the Locus authority queue. `await locus.stage(writer => { ... })` instead collects several synchronous staged writes into one atomic authority decision; its writer has `writer.lib(name)`. Async stage callbacks are rejected. `locus.commits.observe(...)` observes map commits, while `locus.activity` and session events remain separate event domains.
 
@@ -59,13 +59,13 @@ Initial canonical interactions may be supplied as `interactions: [descriptor, ..
 
 `await session.update({ libraries: ["page", "newPage"] })` reauthorizes a retained scope against current topology with the ordinary `authorizeProjection` callback. A connected session uses its attachment's current trusted context. A server-created session can use its creation context; an ordinary disconnected connection-created session requires current trusted context as the second argument, for example `{ principalId: "alice" }`. Principal continuity is enforced. Requests select libraries and system features; read and write grants come from the authorizer. Successful changes advance the session contract sequence and digest without creating an authority revision. Removed library handles become stale; a later grant produces new handles.
 
-`await hsonLocus.resume({ private, shared, local, persistence, logicalMapId })` restores a durable authority when present, or establishes the declared initial authority durably when absent. `logicalMapId` is required and must remain stable across restarts. It returns an ordinary `Locus` that continues to gate every accepted authority change through durable append. Source definitions govern original libraries and local initializers. Durable Locus records retain the ownership of runtime-added private/shared libraries, so resume does not require source shadow declarations. Application code may read private state through `locus.lib(name)` on the server and remains responsible for arbitrary HTML or `Response` values it writes itself.
+`await hsonLiveMap.locus.resume({ private, shared, local, persistence, logicalMapId })` restores a durable authority when present, or establishes the declared initial authority durably when absent. `logicalMapId` is required and must remain stable across restarts. It returns an ordinary `Locus` that continues to gate every accepted authority change through durable append. Source definitions govern original libraries and local initializers. Durable Locus records retain the ownership of runtime-added private/shared libraries, so resume does not require source shadow declarations. Application code may read private state through `locus.lib(name)` on the server and remains responsible for arbitrary HTML or `Response` values it writes itself.
 
 A resumed durable authority gives reconnecting clients a projected snapshot for cursors at or before its loaded revision. This reestablishes client identity after restart even when durable authority revision and incarnation are unchanged.
 
 ## Persistence
 
-`hsonLocus.checkpoint(locus)` compacts an already durable authority. It captures current LiveMap state and runtime-added ownership at one authority point, writes checkpoint chunks and a manifest, activates the manifest, then prunes covered tail commits. It does not export a transferable state bundle, advance the revision, alter sessions, or need to run after every commit. A fresh Locus has no durable backing to compact.
+`hsonLiveMap.locus.checkpoint(locus)` compacts an already durable authority. It captures current LiveMap state and runtime-added ownership at one authority point, writes checkpoint chunks and a manifest, activates the manifest, then prunes covered tail commits. It does not export a transferable state bundle, advance the revision, alter sessions, or need to run after every commit. A fresh Locus has no durable backing to compact.
 
 The active manifest names ordered, bounded chunks for every application Library root, every complete Schema, and separate system state. The checkpoint metadata carries accumulated runtime-added private/shared ownership; source-defined original ownership remains in the source definition. Chunks contain semantic state with no generated QUID, identity epoch, or issued ledger. Checkpoint chunks are server-side storage records and must not be sent to clients.
 
@@ -91,7 +91,7 @@ const credential = session.credential;
 
 Creation requires no transport. One `libraries` request axis names shared authority libraries and local definitions. Shared inclusion requires read authorization; local inclusion requires authorization to deliver its seed. `writableDocuments` applies only to shared authority documents. Sessions are resumable by default; `{ resumable: false }` creates a session with no reattachment credential. Deliver the credential separately to the client. Neither current state nor HTML carries bearer authority.
 
-`session.now()` captures shared current authority state in `libs` and authorized local definitions in `local`, with a separate `initializerDigest`. Its non-bearer `sessionBinding` identifies the retained session that produced it; Echo verifies that binding against the separately supplied credential. A client establishes one replica with `await hsonEcho.create({ now, credential: session.credential!, transport })`. HTML is optional and must explicitly select an included shared document; local documents are never chosen for hosted SSR. Unknown, private, unselected, local, and data-library HTML selections reject without identifying hidden state.
+`session.now()` captures shared current authority state in `libs` and authorized local definitions in `local`, with a separate `initializerDigest`. Its non-bearer `sessionBinding` identifies the retained session that produced it; Echo verifies that binding against the separately supplied credential. A client establishes one replica with `await hsonLiveMap.echo.create({ now, credential: session.credential!, transport })`. HTML is optional and must explicitly select an included shared document; local documents are never chosen for hosted SSR. Unknown, private, unselected, local, and data-library HTML selections reject without identifying hidden state.
 
 The capability is stable through resumable disconnect, reattachment, and scope updates. Every operation validates with its owning manager. Revocation, expiry, goodbye, ephemeral release, or disposal makes cutting unavailable; a concurrent lifecycle or contract change fences the result. `session.revoke()` withdraws authority. `locus.session.get(id)` obtains the same capability for a connection-created session; IDs remain protocol routing keys. `locus.session.debug()`, `onChange(...)`, and `dispose()` manage aggregate session facilities.
 

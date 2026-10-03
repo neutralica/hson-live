@@ -24,7 +24,7 @@ EchoActionStatusResult EchoAttachmentEvent EchoEndpointTransport EchoReplicaTran
 EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation LocusLocalInitializer LocusSessionApi LocusSession LocusSessionCreateOptions LocusSessionNow LocusSessionHtmlNow Hson HsonCanonical
 HsonData HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData HsonSchemaMutationCandidate InteractionActionDispatcher
 InteractionActivationOptions InteractionDescriptor InteractionFailure InteractionListener InteractionLocalBehavior InteractionLocalBehaviors LiveHost
-LiveHostApplication LiveHostApplicationContext LiveHostAuthoredApplication LiveHostConnection LiveHostConnectionRoute LiveHostCreateInput LiveHostHttpMethod LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
+LiveHostApplication LiveHostApplicationContext LiveHostRuntime LiveHostConnection LiveHostConnectionRoute LiveHostCreateInput LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
 LiveHostLocusRegistryResult LiveHostPrincipal LiveHostRequestRoute LiveMap LiveMapDataLibrary LiveMapDataLibraryInput LiveMapDocumentAttributeNotFoundError LiveMapDocumentIdentityProvenanceError
 LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocumentLibrary LiveMapDocumentLibraryInput LiveMapDocumentLocation LiveMapDocumentMode LiveMapDocumentMutationError LiveMapDocumentStagingError LiveMapInput
 LiveMapLibraryAddOperation LiveMapLibraryDefinition LiveMapDefinitions LiveMapDynamicLibrary LiveMapKnownNames LiveMapLibraryInput LiveMapLibrarySchemaUseOperation LiveMapStagedWriter LiveMapWithLibrarySchema LiveTree LiveTreeAlreadyAttachedError LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult LiveTreeLinkedIdentityRequiredError
@@ -32,8 +32,8 @@ LiveTreeProtectedRootError LiveTreeQuidReuseError BrowserInteractionDescriptor L
 LocusActions LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError LocusDisconnectedError LocusHttpBinding
 LocusDuplicateActionIdError LocusAuthorityLibraryDefinition LocusLocalLibraryDefinition LocusRuntimeLibraryAdditions LocusDefinitionOptions LocusResumeOptions LocusResult LocusStage LocusWebSocketLike Mirror SchemaType SsrBootstrapCodecError SsrBootstrapCodecOptions
 SsrBootstrapKind TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource TreeSelector activate_interactions
-add_interaction bind_locus_http bind_locus_websocket continue_document continue_hosted_document create_echo create_livehost_locus_registry decode_ssr_bootstrap enable_interactions
-encode_ssr_bootstrap hson hsonCalc hsonEcho hsonLiveMap hsonLiveTree hsonLocus hsonMirror liveHost
+add_interaction bind_locus_http bind_locus_websocket continue_document continue_hosted_document create_livehost_locus_registry decode_ssr_bootstrap enable_interactions
+encode_ssr_bootstrap hson hsonCalc hsonLiveMap hsonLiveTree hsonMirror hsonLiveHost
 hsonTransform is_transform_error read_transform_error_details reflect_document remove_interaction replace_interaction
 `.trim().split(/\s+/).sort();
 
@@ -182,7 +182,7 @@ const ownerProofs = Object.freeze({
   "dist/api/locus/index.d.ts": ["LocusDefinitionOptions", "LocusResumeOptions", "LocusPersistenceAdapter"],
   "dist/api/locus/node/index.d.ts": ["bind_node_locus_websocket", "NodeLocusWebSocketOptions"],
   "dist/api/ssr/index.d.ts": ["BrowserRealizationHtml", "DocumentSsrError"],
-  "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost", "LiveHostAuthoredApplication", "liveHost"],
+  "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost", "LiveHostRuntime", "hsonLiveHost"],
   "dist/api/livehost/node/index.d.ts": ["start_node_application_host", "NodeApplicationHostOptions"],
   "dist/diagnostics/index.d.ts": ["hsonInspect", "create_live_inspector", "LiveInspector", "create_live_trace_collector"],
 });
@@ -193,7 +193,7 @@ await check("specialist contracts remain available from owning entrypoints", () 
     const actual = new Set(declaration_exports(file));
     for (const name of expected) {
       assert.equal(actual.has(name), true, `${name} must remain exported by ${file}`);
-      if (!["HsonDocument", "BrowserRealizationHtml", "DocumentSsrError", "create_livehost_locus_registry", "LiveHost", "LiveHostAuthoredApplication", "liveHost", "LocusDefinitionOptions", "LocusResumeOptions"].includes(name)) {
+      if (!["HsonDocument", "BrowserRealizationHtml", "DocumentSsrError", "create_livehost_locus_registry", "LiveHost", "LiveHostRuntime", "hsonLiveHost", "LocusDefinitionOptions", "LocusResumeOptions"].includes(name)) {
         assert.equal(root.has(name), false, `${name} must not leak back into the root`);
       }
     }
@@ -283,15 +283,30 @@ await check("all retained overlapping runtime values preserve strict identity", 
     livetree: ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeAlreadyAttachedError", "LiveTreeAttributeError", "LiveTreeBatchError", "LiveTreeDisposedError", "LiveTreeProtectedRootError", "LiveTreeQuidReuseError", "LiveTreeLinkedIdentityRequiredError"],
     livemap: ["hsonLiveMap", "LiveMapDocumentAttributeNotFoundError", "LiveMapDocumentIdentityProvenanceError", "LiveMapDocumentIdentityRegistrationError", "LiveMapDocumentInstallError", "LiveMapDocumentMutationError", "LiveMapDocumentStagingError"],
     mirror: ["hsonMirror", "reflect_document", "DocumentMirrorError"],
-    echo: ["hsonEcho", "create_echo", "EchoSyncError", "EchoSessionError"],
-    locus: ["hsonLocus", "LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusAuthorityError"],
+    echo: ["EchoSyncError", "EchoSessionError"],
+    locus: ["LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusAuthorityError"],
     ssr: ["decode_ssr_bootstrap", "DocumentSsrError", "encode_ssr_bootstrap", "SsrBootstrapCodecError"],
-    livehost: ["create_livehost_locus_registry", "liveHost"],
+    livehost: ["create_livehost_locus_registry", "hsonLiveHost"],
   } as const;
   for (const [owner, names] of Object.entries(overlap)) {
     for (const name of names) {
       assert.equal(Reflect.get(root, name), Reflect.get(owners[owner as keyof typeof owners], name), `${name} identity diverged`);
     }
+  }
+  assert.equal(root.hson.liveMap, root.hsonLiveMap);
+  assert.equal(root.hson.liveHost, root.hsonLiveHost);
+  assert.equal(root.hsonLiveMap, owners.livemap.hsonLiveMap);
+  assert.equal(root.hsonLiveMap.locus.create, root.hson.liveMap.locus.create);
+  assert.equal(root.hsonLiveMap.echo.create, root.hson.liveMap.echo.create);
+  assert.equal("create_echo" in root, false);
+  assert.equal("create_echo" in owners.echo, false);
+  assert.equal(Object.isFrozen(root.hsonLiveMap.locus), true);
+  assert.equal(Object.isFrozen(root.hsonLiveMap.echo), true);
+  assert.equal(Object.isFrozen(root.hsonLiveHost), true);
+  for (const name of ["hsonLocus", "hsonEcho", "liveHost"]) {
+    assert.equal(name in root, false);
+    assert.equal(name in owners.locus, false);
+    assert.equal(name in owners.echo, false);
   }
   for (const module of [root, owners.hson, owners.transform]) {
     assert.equal(Object.hasOwn(module, "HsonData"), false);

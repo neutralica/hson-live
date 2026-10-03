@@ -2,7 +2,7 @@ import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
-import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
+import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/livemap.libraries.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { HsonSchema as RuntimeHsonSchema } from "../src/api/schema/hson-schema.ts";
@@ -200,7 +200,7 @@ check("Schema attachment preserves retained facades, locations, identity epoch, 
 
 check("Locus-managed authority rejects synchronous attachment", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
-  const locus = hsonLocus.create(authority_definition_from_fixture_options({ map, ...test_public_projection(map) }));
+  const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options({ map, ...test_public_projection(map) }));
   const before = locus_map_internal(locus).capture();
   assert.equal("use" in locus.lib("state").schema, false);
   assert.deepEqual(locus_map_internal(locus).capture(), before);

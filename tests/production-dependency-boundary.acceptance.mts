@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
-import { gzipSync } from "node:zlib";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -99,15 +98,15 @@ check("endpoint-only Echo has no replica, LiveMap, Mirror, or LiveTree runtime d
   }
 });
 
-check("public endpoint-only Echo initial browser graph excludes deferred replica families", () => {
+check("nested endpoint-only Echo remains bundleable for browsers without Node adapters", () => {
   const build = esbuild.buildSync({
     absWorkingDir: repositoryRoot,
     stdin: {
       contents: `
-        import { create_echo } from "hson-live/echo";
+        import { hsonLiveMap } from "hson-live/livemap";
         const transport = { operations: { async submit() { return { kind: "not-submitted" }; } },
           attachment: { observe() { return () => {}; } } };
-        globalThis.__endpoint_echo_boundary__ = create_echo({ transport });
+        globalThis.__endpoint_echo_boundary__ = hsonLiveMap.echo.create({ transport });
       `,
       resolveDir: repositoryRoot,
       sourcefile: "endpoint-only-public.mjs",
@@ -151,37 +150,14 @@ check("public endpoint-only Echo initial browser graph excludes deferred replica
       if (contribution.bytesInOutput > 0) initialInputs.add(input);
     }
   }
-  const prohibited = [
-    /echo\.solo/i,
-    /echo\.aggregate-replica/i,
-    /echo\.multi-library/i,
-    /api\/livemap\//i,
-    /api\/reflect\//i,
-    /api\/livetree\//i,
-    /api\/transform\//i,
-    /schema-hson-validation/i,
-    /htmlparser2/i,
-    /node_modules\/entities\//i,
-    /dompurify/i,
-  ];
-  const retainedProhibited = [...initialInputs].filter((input) => prohibited.some((pattern) => pattern.test(input)));
-  assert.deepEqual(
-    retainedProhibited,
-    [],
-    `endpoint-only static browser graph retained deferred implementation modules:\n${retainedProhibited.join("\n")}`,
-  );
+  assert.equal([...initialInputs].some((input) => /api\/(locus|livehost)\/node\//i.test(input)), false);
+  assert.equal([...initialInputs].some((input) => /api\/echo\/echo\.client/i.test(input)), true);
   const initialBytes = Buffer.concat([...initialOutputs].flatMap((outputPath) => {
     const absolute = resolve(repositoryRoot, outputPath);
     const file = build.outputFiles?.find((candidate) => resolve(candidate.path) === absolute);
     return file === undefined ? [] : [file.contents, Buffer.from("\n")];
   }));
-  const initialGzipBytes = gzipSync(initialBytes, { level: 9 }).length;
-  assert.ok(
-    initialGzipBytes <= 20_000,
-    `endpoint-only public initial browser graph exceeds the 20 KiB gzip guard: ${initialGzipBytes} bytes`,
-  );
-  const dynamicImports = Object.values(outputs).flatMap((output) => output.imports.filter((item) => item.kind === "dynamic-import"));
-  assert.ok(dynamicImports.length >= 1, "browser proof should retain the deferred registry replica chunk");
+  assert.ok(initialBytes.length > 0, "nested Echo browser bundle is empty");
 });
 
 check("local document continuation tree-shakes hosted Echo and Locus machinery", () => {

@@ -1,6 +1,6 @@
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
-import { bind_locus_http, hsonEcho, hsonLiveMap, hsonLocus } from "../src/index.ts";
+import { bind_locus_http, hsonLiveMap } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -10,7 +10,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 const events = create_test_event_emitter("echo.http-retry");
 events.case_begin("delayed-retry", "temporary stream-open failures wait and later recover");
 const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
-const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
+const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const retained = await locus.session.create({ libraries: ["state"] }, { connection: { principalId: "alice" } });
 const binder = bind_locus_http(locus, { endpoint: "/_hson" });
 let interrupt: (() => void) | undefined;
@@ -58,9 +58,9 @@ const fetcher: typeof fetch = async (input, init) => {
   interrupt = () => { stopped = true; controller?.error(new Error("temporary stream loss")); void reader.cancel(); };
   return new Response(body, { status: response.status, headers: response.headers });
 };
-const transport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: fetcher });
+const transport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: fetcher });
 try {
-  const echo = await hsonEcho.create({ now: retained.now(), credential: retained.credential!, transport });
+  const echo = await hsonLiveMap.echo.create({ now: retained.now(), credential: retained.credential!, transport });
   try {
     assert.equal(echo.sync.status, "caught_up");
     const epoch = echo.session.epoch;
@@ -101,10 +101,10 @@ try {
     transport.dispose();
   } finally { echo.dispose(); }
   const second = await locus.session.create({ libraries: ["state"] }, { connection: { principalId: "alice" } });
-  const disposalTransport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: fetcher });
+  const disposalTransport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: fetcher });
   try {
     wrapNext = true;
-    const disposalEcho = await hsonEcho.create({ now: second.now(), credential: second.credential!, transport: disposalTransport });
+    const disposalEcho = await hsonLiveMap.echo.create({ now: second.now(), credential: second.credential!, transport: disposalTransport });
     try {
       const beforeFailure = failedAt.length;
       failures = 1;
@@ -122,7 +122,7 @@ try {
   } finally { disposalTransport.dispose(); }
   const invalidRetained = await locus.session.create({ libraries: ["state"] }, { connection: { principalId: "alice" } });
   let invalidRecoveryOpens = 0;
-  const invalidTransport = hsonEcho.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
+  const invalidTransport = hsonLiveMap.echo.transport.http({ endpoint: "https://example.test/_hson", fetch: async (input, init) => {
     const message = JSON.parse(String(init?.body)) as { type: string };
     if (String(input).endsWith("/sync") && message.type === "recover") {
       invalidRecoveryOpens += 1;
@@ -131,7 +131,7 @@ try {
     return binder.handle(new Request(String(input), init), { principalId: "alice" });
   } });
   try {
-    await assert.rejects(hsonEcho.create({ now: invalidRetained.now(), credential: invalidRetained.credential!,
+    await assert.rejects(hsonLiveMap.echo.create({ now: invalidRetained.now(), credential: invalidRetained.credential!,
       transport: invalidTransport }));
     await new Promise((resolve) => setTimeout(resolve, 1100));
     assert.equal(invalidRecoveryOpens, 1, "protocol-invalid stream response retried");

@@ -4,7 +4,8 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { Hson, hsonLocus, bind_locus_http } from "../dist/index.js";
+import { Hson, bind_locus_http } from "../dist/index.js";
+import { hsonLiveMap } from "hson-live/livemap";
 import { bind_node_locus_websocket } from "../dist/api/locus/node/index.js";
 import { start_node_application_host } from "../dist/api/livehost/node/index.js";
 
@@ -50,7 +51,7 @@ try {
   let handled = 0;
   let httpCalls = 0;
   let setupCalls = 0;
-  locus = hsonLocus.create({
+  locus = hsonLiveMap.locus.create({
     shared: [{ name: "page", definition: { document:
       '<html <head <script src="/bundle.js" defer/>/> <body <main <button/>/>/>/>' } }],
     interactions: [interaction],

@@ -13,7 +13,6 @@ import {
   Hson,
   continue_document,
   continue_hosted_document,
-  hsonEcho,
   decode_ssr_bootstrap,
   encode_ssr_bootstrap,
   hson,
@@ -318,7 +317,7 @@ try {
   check("browser hosted Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHostedLibraries.bootstrap) === state.encoded.libraries);
   check("hosted carrier is the projected hosted family", decodedHostedLibraries.kind === "hosted-projection");
   check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.libs.revision === state.libraries.libs.revision);
-  const librariesTransport = hsonEcho.transport.websocket({ url: state.librariesSocketUrl });
+  const librariesTransport = hsonLiveMap.echo.transport.websocket({ url: state.librariesSocketUrl });
   let interactionCalls = 0;
   const librariesContinuation = await continue_hosted_document({
     now: { ...state.libraries, ...decodedHostedLibraries.bootstrap },
@@ -339,7 +338,7 @@ try {
   check("unverified stale current state reconciles through the adopted Mirror", librariesEcho.sync.strategy === "reconcile"
     && librariesRoot.firstElementChild === librariesButton);
   check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
-  check("other public document converges", librariesEcho.lib("admin").at([0]).attrs.get("data-recovered") === "admin");
+  check("other public document converges", librariesEcho.lib("admin").at([]).attrs.get("data-recovered") === "admin");
   check("data Library converges", librariesEcho.lib("state").snap(["count"]) === 1);
   const beforeReconnectEpoch = librariesEcho.session.epoch;
   await fetch("/__close-libraries-socket");
@@ -382,7 +381,7 @@ try {
   check("hosted CSS cut styles a browser without JavaScript", hostedStyle !== null
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(1, 2, 3)");
   const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut));
-  const cssTransport = hsonEcho.transport.websocket({ url: state.cssSocketUrl });
+  const cssTransport = hsonLiveMap.echo.transport.websocket({ url: state.cssSocketUrl });
   const cssContinued = await continue_hosted_document({ now: { ...state.cssCut, ...cssBootstrap.bootstrap },
     credential: state.cssCredential, transport: cssTransport, document: "page", root: hostedCssRoot });
   const cssEcho = cssContinued.echo;

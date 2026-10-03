@@ -7,20 +7,7 @@ import { create_recovery_test_driver } from "../helpers/replica-driver.mts";
 import { client_projection_map } from "../helpers/client-projection.mts";
 import { parentPort } from "node:worker_threads";
 import { test_public_projection } from "../helpers/hosted-catalog.mts";
-import {
-  Hson,
-  HsonData,
-  activate_interactions,
-  add_interaction,
-  enable_interactions,
-  hsonEcho,
-  hsonLiveMap,
-  hsonLocus,
-  hsonMirror,
-  type HsonSchema,
-  type InteractionDescriptor,
-  type InteractionListener,
-} from "../../src/index.ts";
+import { Hson, HsonData, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type HsonSchema, type InteractionDescriptor, type InteractionListener } from "../../src/index.ts";
 import type { LocusWebSocketLike } from "../../src/types/locus.types.ts";
 import { link_node_to_el } from "../../src/api/livetree/utils/node-map-helpers.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
@@ -76,7 +63,7 @@ const descriptor: InteractionDescriptor = Object.freeze({
 add_interaction(authorityMap, descriptor);
 let handled: HsonData | undefined;
 const configured = test_public_projection(authorityMap);
-const locus = hsonLocus.create({ ...authority_definition_from_fixture_options({ map: authorityMap, ...configured }),
+const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ map: authorityMap, ...configured }),
   interactions: [descriptor],
   actions: { save: (_context: LocusActionContext, payload: HsonData | undefined) => { handled = payload; } } });
 const captured = internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted();

@@ -86,7 +86,7 @@ check("aggregate facade retains subsystem properties without Transform source al
   assert.equal("string" in hson.transform, false);
   assert.equal(typeof hson.liveMap, "object");
   assert.equal(typeof hson.liveTree, "object");
-  assert.equal(typeof hson.locus, "object");
+  assert.equal(typeof hson.liveMap.locus, "object");
 });
 
 check("number interpolation matches number source", () => {

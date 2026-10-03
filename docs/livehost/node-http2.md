@@ -35,7 +35,7 @@ results use `https://` for `httpUrl` and `wss://` for `url`. Insecure results ke
 
 Streaming writes still wait for physical drain before pulling more body data.
 Closing one HTTP/2 response cancels its Web reader and affects only that stream.
-The HTTP Echo binder and `hsonEcho.transport.http` use this same request/response
+The HTTP Echo binder and `hsonLiveMap.echo.transport.http` use this same request/response
 path. The runtime acceptance proof keeps an Echo synchronization response open
 while finite operations run on sibling HTTP/2 streams, then cancels one stream
 without changing the logical attachment epoch. HTTP/2 connection identity does

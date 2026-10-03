@@ -254,9 +254,9 @@ configuration out of the element and canonical document:
 
 ```ts
 import { configure_scout } from "hson-live/scout";
-import { hsonEcho } from "hson-live";
+import { hsonLiveMap } from "hson-live";
 
-const transport = hsonEcho.transport.http({ endpoint: "/_hson" });
+const transport = hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
 const continuationPromise = configure_scout(async () => {
   const { now, credential } = await loadApplicationSession();
   return {

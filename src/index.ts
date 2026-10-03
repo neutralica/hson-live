@@ -15,10 +15,9 @@ export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, SchemaType 
 export {
   hson,
   hsonCalc,
-  hsonEcho,
   hsonLiveMap,
   hsonLiveTree,
-  hsonLocus,
+  hsonLiveHost,
   hsonMirror,
   hsonTransform,
   type HsonFacade,
@@ -145,7 +144,6 @@ export {
 } from "./api/mirror/mirror.document.js";
 export { DocumentMirrorError } from "./api/mirror/mirror.document.error.js";
 
-export { create_echo } from "./api/echo/echo.js";
 export { EchoSyncError, EchoSessionError } from "./api/echo/echo.error.js";
 export type { EchoWebSocketLike, EchoWebSocketConstructor, EchoWebSocketTransport, EchoWebSocketTransportOptions } from "./api/echo/echo.websocket.js";
 export type { EchoHttpTransport, EchoHttpTransportOptions } from "./api/echo/echo.http.js";
@@ -204,10 +202,10 @@ export type {
 } from "./types/locus.types.js";
 
 export { create_livehost_locus_registry } from "./api/livehost/services/livehost.authority-registry.js";
-export { liveHost } from "./api/livehost/livehost.facade.js";
-export type { LiveHostAuthoredApplication, LiveHostCreateInput, LiveHostHttpMethod } from "./api/livehost/livehost.facade.js";
+export type { LiveHostCreateInput } from "./api/livehost/livehost.facade.js";
 export type {
   LiveHost,
+  LiveHostRuntime,
   LiveHostApplication,
   LiveHostApplicationContext,
   LiveHostConnection,

@@ -1,6 +1,6 @@
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import assert from "node:assert/strict";
-import { hsonEcho } from "../src/index.ts";
+import { hsonLiveMap } from "../src/index.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
@@ -84,7 +84,7 @@ for (const epoch of [-1, 1.5, "1", null]) {
 for (const [name, corrupt] of malformedCreated) {
   await check(`public endpoint rejects hosted session-created with ${name}`, async () => {
     const pair = controlled_socket();
-    const echo = hsonEcho.create({ transport: test_echo_transport(pair.socket) });
+    const echo = hsonLiveMap.echo.create({ transport: test_echo_transport(pair.socket) });
     echo.connect();
     const pending = echo.session.create();
     let settled = false;
@@ -116,7 +116,7 @@ for (const [name, corrupt] of malformedCreated) {
 
 await check("solo fencing rejects and clears a pending session waiter while stale completion stays inert", async () => {
   const pair = controlled_socket();
-  const echo = hsonEcho.create({ transport: test_echo_transport(pair.socket), session: {} });
+  const echo = hsonLiveMap.echo.create({ transport: test_echo_transport(pair.socket), session: {} });
   echo.connect();
   const created = echo.session.create();
   const createRequest = await last_sent(pair, "session-create");

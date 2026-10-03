@@ -3,7 +3,7 @@ import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
-import { hsonLiveMap, hsonLocus, type LocusWebSocketLike } from "../src/index.ts";
+import { hsonLiveMap, type LocusWebSocketLike } from "../src/index.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { local_initializers } from "./helpers/client-projection.mts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
@@ -42,7 +42,7 @@ if (page.mode !== "document" || privatePage.mode !== "document" || ungranted.mod
 page.css.stylesheet("p { color: rgb(1, 2, 3) !important; }");
 privatePage.css.stylesheet(`.PRIVATE_CSS_SENTINEL { color: red; --blob: ${"x".repeat(25_000)}; }`);
 ungranted.css.stylesheet(".UNGRANTED_CSS_SENTINEL { color: blue; }");
-const locus = hsonLocus.create({ ...authority_groups_from_map_fixture(map, [
+const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [
     { name: "page", ownership: "shared" },
     { name: "privatePage", ownership: "private" },
     { name: "ungrantedPage", ownership: "shared" },
@@ -224,11 +224,11 @@ const restartOptions = {
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 };
-const firstAuthority = await hsonLocus.resume(authority_definition_from_fixture_options({ map: restartMap, ...restartOptions }));
+const firstAuthority = await hsonLiveMap.locus.resume(authority_definition_from_fixture_options({ map: restartMap, ...restartOptions }));
 const managedRestartPage = firstAuthority.lib("page");
 if (managedRestartPage.mode !== "document") throw new Error("Expected managed restart document.");
 await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { color: maroon; }")); });
-await hsonLocus.checkpoint(firstAuthority);
+await hsonLiveMap.locus.checkpoint(firstAuthority);
 const restartWire = pair();
 let stopRestart = bind_locus_websocket(firstAuthority, restartWire.server);
 const restartEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), logicalMapId: firstAuthority.logicalMapId,
@@ -257,7 +257,7 @@ restartEcho.disconnect(); stopRestart();
 await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { background: silver; }", managedRestartPage.css.list())); });
 restartEcho.dispose();
 firstAuthority.dispose();
-const restarted = await hsonLocus.resume(authority_definition_from_fixture_options({ map: restartInput(), ...restartOptions }));
+const restarted = await hsonLiveMap.locus.resume(authority_definition_from_fixture_options({ map: restartInput(), ...restartOptions }));
 stopRestart = bind_locus_websocket(restarted, restartWire.server);
 const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), map: restartClient,
   logicalMapId: restarted.logicalMapId });
