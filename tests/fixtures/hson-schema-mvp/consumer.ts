@@ -1,4 +1,4 @@
-import { AnyDataSchema, InteractionFieldsSchema, RelationalUniqueSchema, TreeSchema, UserSchema } from "./producer.js";
+import { AnyDataSchema, BlockSchema, InteractionFieldsSchema, RelationalUniqueSchema, TreeSchema, UserSchema } from "./producer.js";
 import { type SchemaType, HsonData, Hson, hsonCalc, hsonLiveMap, hsonTransform, type HsonNumber } from "hson-live";
 import type { HsonCanonical } from "hson-live/hson";
 
@@ -21,6 +21,15 @@ const interactionFields: HsonData<typeof InteractionFieldsSchema> = Hson.data`<a
 const dynamicInteractionFields: HsonCanonical = hsonTransform.fromJson({ args: [], payload: { arbitrary: { nested: [1, false, null] } } }).toHson().serialize();
 const certifiedInteractionFields: HsonData<typeof InteractionFieldsSchema> = InteractionFieldsSchema.certify(dynamicInteractionFields);
 const relationalUnique: HsonData<typeof RelationalUniqueSchema> = Hson.data`<cells [<position "top-right" body "a">, <position "top-left" body "b">]>`;
+const blocks: HsonData<typeof BlockSchema> = Hson.data`<blocks [<kind "paragraph" text "body">, <kind "heading" text "title">, <kind "code" source "const x = 1">, <kind "list" items ["a"]>]>`;
+type Block = SchemaType<typeof BlockSchema>["blocks"][number];
+function block_content(block: Block): string {
+  if (block.kind === "paragraph" || block.kind === "heading") return block.text;
+  if (block.kind === "code") return block.source;
+  return block.items.join(", ");
+}
+// @ts-expect-error A discriminated branch cannot claim another branch's fields.
+const wrongBlock: Block = { kind: "code", text: "body" };
 
 const definitions = {
   user: {
@@ -82,6 +91,9 @@ void recursiveCertified;
 void interactionFields;
 void certifiedInteractionFields;
 void relationalUnique;
+void blocks;
+void block_content;
+void wrongBlock;
 void libraryName;
 void librarySchema;
 void hostedLibraryName;

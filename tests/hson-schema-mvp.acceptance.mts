@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { Hson, hsonTransform, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.ts";
+import { make_hosted_registry } from "../src/api/livemap/livemap.hosted.ts";
+import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import { compile_hson_schema, HSON_SCHEMA_MVP_BOOTSTRAP } from "../src/internal/hson-schema/compiler.ts";
 import { decode_canonical_schema_graph_hson, encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
@@ -84,10 +86,117 @@ check("primitive and discriminated unions lower", () => {
   assert.equal(compile('account <union [<content <kind <exact "user">>>, <content <kind <exact "admin">>>]>').ok, true);
   assert.equal(compile('bad <union ["string", <exact "x">]>').ok, false);
 });
+check("authored unions require at least two branches", () => {
+  for (const source of ['value <union []>', 'value <union ["string"]>']) {
+    const result = compile(source);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.issues[0]?.code, "INVALID_UNION");
+      assert.match(result.issues[0]?.message ?? "", /at least two branches/);
+    }
+  }
+});
+check("n-ary primitive choices preserve order and exact equality", () => {
+  const result = compile('value <union [<exact "ready">, <exact 0>, <exact -0>, <exact true>, "null"]>');
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const union = result.value.graph.nodes.find((node) => node.kind === "projected-union");
+  assert.equal(union?.kind, "projected-union");
+  if (union?.kind !== "projected-union") return;
+  assert.equal(union.choices.length, 5);
+  assert.deepEqual(union.choices.map((ref) => result.value.graph.nodes[ref]?.kind), ["projected-literal", "projected-literal", "projected-literal", "projected-literal", "projected-null"]);
+  const orderedValues = union.choices.map((ref) => {
+    const node = result.value.graph.nodes[ref];
+    return node?.kind === "projected-literal" ? node.values[0] : null;
+  });
+  assert.equal(orderedValues[0], "ready");
+  assert.equal(Object.is(orderedValues[1], 0), true);
+  assert.equal(Object.is(orderedValues[2], -0), true);
+  assert.equal(orderedValues[3], true);
+  assert.equal(orderedValues[4], null);
+  const decoded = decode_canonical_schema_graph_hson(encode_canonical_schema_graph_hson(result.value.graph));
+  assert.equal(decoded.ok, true);
+  if (decoded.ok) assert.deepEqual(decoded.graph, result.value.graph);
+  for (const source of [
+    'value <union [<exact "a">, <exact "b">, <exact "a">]>',
+    'value <union [<exact 0>, <exact -0>, <exact 0>]>',
+  ]) assert.equal(compile(source).ok, false, source);
+});
+check("n-ary inline object discriminators prove every pair", () => {
+  const result = compile('value <union [<content <kind <exact "a">>>, <content <kind <exact "b">>>, <content <kind <exact "c">>>]>');
+  assert.equal(result.ok, true);
+  const duplicate = compile('value <union [<content <kind <exact "a">>>, <content <kind <exact "b">>>, <content <kind <exact "a">>>]>');
+  assert.equal(duplicate.ok, false);
+  if (!duplicate.ok) {
+    assert.equal(duplicate.issues[0]?.code, "INVALID_UNION");
+    assert.match(duplicate.issues[0]?.message ?? "", /branches 1 and 3 cannot be proven distinguishable/);
+    assert.ok(duplicate.issues[0]?.range);
+  }
+});
+const deckSource = `<type "data" defs <
+  Paragraph <content <kind <exact "paragraph"> text "string">>
+  Heading <content <kind <exact "heading"> text "string">>
+  Code <content <kind <exact "code"> language <optional "string"> source "string">>
+  List <content <kind <exact "list"> items <array "string">>>
+  Block <union [<ref "Paragraph">, <ref "Heading">, <ref "Code">, <ref "List">]>
+> content <content <blocks <array <ref "Block">>>>>`;
+check("Deck four-way ref union compiles, certifies, and generates four alternatives", () => {
+  const compiled = compile_hson_schema(deckSource);
+  assert.equal(compiled.ok, true, compiled.ok ? undefined : JSON.stringify(compiled.issues));
+  if (!compiled.ok) return;
+  const block = compiled.value.definitions.find((definition) => definition.name === "Block");
+  assert.equal(block?.schema.kind, "union");
+  const graphUnion = compiled.value.graph.nodes.find((node) => node.kind === "projected-union");
+  assert.equal(graphUnion?.kind === "projected-union" ? graphUnion.choices.length : -1, 4);
+  const schema: HsonSchema = Hson.schema`<type "data" defs <
+    Paragraph <content <kind <exact "paragraph"> text "string">>
+    Heading <content <kind <exact "heading"> text "string">>
+    Code <content <kind <exact "code"> language <optional "string"> source "string">>
+    List <content <kind <exact "list"> items <array "string">>>
+    Block <union [<ref "Paragraph">, <ref "Heading">, <ref "Code">, <ref "List">]>
+  > content <content <blocks <array <ref "Block">>>>>`;
+  const values = Hson.canonical`<blocks [<kind "paragraph" text "body">, <kind "heading" text "title">, <kind "code" language "ts" source "const x = 1">, <kind "list" items ["a", "b"]>]>`;
+  assert.equal(schema.certify(values), values);
+  assert.throws(() => schema.certify(Hson.canonical`<blocks [<kind "unknown" text "body">]>`));
+  assert.throws(() => schema.certify(Hson.canonical`<blocks [<kind "code" source 1>]>`));
+  assert.equal(Hson.schema.fromHson(schema.toHson()).toHson(), schema.toHson());
+  const map = hsonLiveMap.fromLibraries({ blocks: { data: { blocks: [{ kind: "paragraph", text: "body" }] }, schema } });
+  assert.deepEqual(map.lib("blocks").snap(), { blocks: [{ kind: "paragraph", text: "body" }] });
+  const registry = make_hosted_registry([{ name: "blocks", identity: Object.freeze({}), mode: "data-object", schema }]);
+  assert.equal(Hson.schema.fromHson(registry.libraries[0]!.schema).toHson(), schema.toHson());
+  const generated = generate_hson_schema_types("Deck", compiled.value.semantic, compiled.value.definitions).declarations;
+  const blockType = generated.match(/type __DeckDefinition0 = ([^\n]+);/)?.[1];
+  assert.ok(blockType);
+  assert.match(blockType, /__DeckDefinition1\) \| \(__DeckDefinition2\) \| \(__DeckDefinition3\) \| \(__DeckDefinition4/);
+  const evidence = generate_hson_schema_evidence("Deck", deckSource, "deck#Deck");
+  assert.match(evidence.metadata, /semanticGraphDigest/);
+});
+check("pair diagnostics name refs and retain the union source range", () => {
+  const source = `<type "data" defs <First <content <kind <exact "same">>> Second <content <kind <exact "other">>> Third <content <kind <exact "same">>> Block <union [<ref "First">, <ref "Second">, <ref "Third">]>> content <ref "Block">>`;
+  const result = compile_hson_schema(source);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  const problem = result.issues.find((entry) => entry.code === "INVALID_UNION");
+  assert.match(problem?.message ?? "", /branches 1 \("First"\) and 3 \("Third"\) cannot be proven distinguishable/);
+  assert.ok(problem?.range);
+  if (problem?.range) assert.match(source.slice(problem.range.start, problem.range.end), /union/);
+});
+check("n-ary pairwise verification has a shared compiler work bound", () => {
+  const ordinary = Array.from({ length: 64 }, (_, index) => `<exact "branch-${index}">`).join(", ");
+  assert.equal(compile(`value <union [${ordinary}]>`).ok, true);
+  const branches = Array.from({ length: 449 }, (_, index) => `<exact "branch-${index}">`).join(", ");
+  const result = compile(`value <union [${branches}]>`);
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.issues.filter((entry) => entry.code === "INVALID_UNION").length, 1);
+    assert.match(result.issues[0]?.message ?? "", /exceeds 100000 branch comparisons/);
+  }
+});
 check("finite exact primitive domains lower when every branch is canonically disjoint", () => {
   const cases = [
     'value <union [<exact "lobby">, <exact "ready">]>',
     'value <union [<exact "lobby">, <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>]>',
+    'value <union [<exact "lobby">, <union [<exact "ready">, <exact "playing">, <exact "finished">]>]>',
     'value <union [<exact "player1">, <union [<exact "player2">, "null"]>]>',
     'value <union [<exact 1>, <exact 2>]>',
     'value <union [<exact true>, <exact false>]>',

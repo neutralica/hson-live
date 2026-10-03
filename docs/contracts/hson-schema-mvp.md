@@ -31,4 +31,15 @@ const reconstructed = Hson.schema.fromHson(portableDefinition);
 
 `certify` validates the candidate in the Schema's data mode and returns the canonical primitive string. `fromHson` validates the portable Schema definition again; reconstructed object identity need not equal the original. LiveMap admission uses `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` and validates future mutations against that Schema.
 
+An authored `union` takes an ordered array of at least two branches. Every pair must be distinguishable. For closed objects, a shared required member with different direct exact-string values establishes distinction, including when the branches are local refs:
+
+```hson
+<type "data" defs <
+  Paragraph <content <kind <exact "paragraph"> text "string">>
+  Heading <content <kind <exact "heading"> text "string">>
+  Code <content <kind <exact "code"> source "string">>
+  Block <union [<ref "Paragraph">, <ref "Heading">, <ref "Code">]>
+> content <content <block <ref "Block">>>>
+```
+
 Generated value projections are deeply readonly and carry inaccessible proof at refined objects, arrays, tuples, numbers, and strings. Ordinary materialization, object spread, array transforms, and arithmetic do not preserve those proofs. Static authored tags with substitutions do not receive Schema-specific proof.

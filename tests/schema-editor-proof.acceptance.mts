@@ -30,9 +30,9 @@ const documentConsumer = resolve(repositoryRoot, "tests/fixtures/hson-schema-doc
 
 const evidence = new WeakMap<ts.Program, (producer: string, name: string) => string | undefined>();
 const mvp = program_for(mvpConfig, new Map());
-assert.equal(schema_assignment_errors(mvp, mvpConsumer).length, 4);
+assert.equal(schema_assignment_errors(mvp, mvpConsumer).length, 5);
 assert.equal(filtered_schema_assignment_errors(mvp, mvpConsumer).length, 0);
-assert.equal(verified_schema_assignment_ranges(ts, mvp, mvpConsumer).length, 4);
+assert.equal(verified_schema_assignment_ranges(ts, mvp, mvpConsumer).length, 5);
 assert.equal(assignment_ranges(ts, mvp, mvpConsumer).length, 0, "No implicit colocated evidence fallback");
 
 const document = program_for(documentConfig, new Map());
@@ -42,26 +42,26 @@ assert.equal(verified_schema_assignment_ranges(ts, document, documentConsumer).l
 
 const consumerText = readFileSync(mvpConsumer, "utf8");
 const invalid = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('<name "Ada"', "<name 37")]]));
-assert.equal(verified_schema_assignment_ranges(ts, invalid, mvpConsumer).length, 3);
+assert.equal(verified_schema_assignment_ranges(ts, invalid, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(invalid, mvpConsumer).length, 1);
 
 const invalidAlphabet = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('key "abc"', 'key "abd"')]]));
-assert.equal(verified_schema_assignment_ranges(ts, invalidAlphabet, mvpConsumer).length, 3);
+assert.equal(verified_schema_assignment_ranges(ts, invalidAlphabet, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(invalidAlphabet, mvpConsumer).length, 1);
 
 const documentAgainstAny = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace(
   'Hson.data`<args <target "browser" options [null, true, -0, <nested []>]> payload <action "rename" values ["Ada", "Grace"]>>`',
   'Hson.document`<main/>`',
 )]]));
-assert.equal(verified_schema_assignment_ranges(ts, documentAgainstAny, mvpConsumer).length, 3);
+assert.equal(verified_schema_assignment_ranges(ts, documentAgainstAny, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(documentAgainstAny, mvpConsumer).length, 1);
 
 const wrongAssociation = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace("const authored: HsonData<typeof UserSchema>", "const authored: HsonData<typeof TreeSchema>")]]));
-assert.equal(verified_schema_assignment_ranges(ts, wrongAssociation, mvpConsumer).length, 3);
+assert.equal(verified_schema_assignment_ranges(ts, wrongAssociation, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(wrongAssociation, mvpConsumer).length, 1);
 
 const staleGenerated = program_for(mvpConfig, new Map([[mvpGenerated, `${mvp.getSourceFile(mvpGenerated)?.text}\n`]]));
-assert.equal(verified_schema_assignment_ranges(ts, staleGenerated, mvpConsumer).length, 3);
+assert.equal(verified_schema_assignment_ranges(ts, staleGenerated, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(staleGenerated, mvpConsumer).length, 1);
 assert.equal(verified_schema_assignment_ranges(ts, mvp, mvpProofs).length, 0);
 
@@ -69,7 +69,7 @@ const invalidRelationalUnique = program_for(mvpConfig, new Map([[mvpConsumer, co
   '<position "top-left" body "b">',
   '<position "top-half" body "b">',
 )]]));
-assert.equal(verified_schema_assignment_ranges(ts, invalidRelationalUnique, mvpConsumer).length, 3);
+assert.equal(verified_schema_assignment_ranges(ts, invalidRelationalUnique, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(invalidRelationalUnique, mvpConsumer).length, 1);
 
 const failedRange = [{ start: 10, end: 15, failed: true as const }];

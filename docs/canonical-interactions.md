@@ -31,11 +31,11 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
     subject <content <library "string" path <array <number <int true min 0>>>>>
     listener <content <
       event "string"
-      target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]>
+      target <union [<exact "element">, <exact "document">, <exact "window">]>
       capture "boolean"
       once "boolean"
       passive "boolean"
-      missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]>
+      missingTarget <union [<exact "ignore">, <exact "warn">, <exact "throw">]>
       preventDefault "boolean"
       stopPropagation "boolean"
       stopImmediatePropagation "boolean"
@@ -49,11 +49,11 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
     subject <content <library "string" path <array <number <int true min 0>>>>>
     listener <content <
       event "string"
-      target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]>
+      target <union [<exact "element">, <exact "document">, <exact "window">]>
       capture "boolean"
       once "boolean"
       passive "boolean"
-      missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]>
+      missingTarget <union [<exact "ignore">, <exact "warn">, <exact "throw">]>
       preventDefault "boolean"
       stopPropagation "boolean"
       stopImmediatePropagation "boolean"

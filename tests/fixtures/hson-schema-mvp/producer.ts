@@ -14,9 +14,11 @@ export const UserSchema = Hson.schema`
     status <exact "ready">
     phase <union [
       <exact "lobby">,
-      <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>
+      <exact "ready">,
+      <exact "playing">,
+      <exact "finished">
     ]>
-    turn <union [<exact "player1">, <union [<exact "player2">, "null"]>]>
+    turn <union [<exact "player1">, <exact "player2">, "null"]>
     zero <exact 0>
     negativeZero <exact -0>
     signedZeroChoice <union [<exact 0>, <exact -0>]>
@@ -28,6 +30,14 @@ export const UserSchema = Hson.schema`
     ]>
   >>
 `;
+
+export const BlockSchema = Hson.schema`<type "data" defs <
+  Paragraph <content <kind <exact "paragraph"> text "string">>
+  Heading <content <kind <exact "heading"> text "string">>
+  Code <content <kind <exact "code"> language <optional "string"> source "string">>
+  List <content <kind <exact "list"> items <array "string">>>
+  Block <union [<ref "Paragraph">, <ref "Heading">, <ref "Code">, <ref "List">]>
+> content <content <blocks <array <ref "Block">>>>>`;
 
 export const TreeSchema = Hson.schema`
   <

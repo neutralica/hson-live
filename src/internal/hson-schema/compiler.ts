@@ -5,6 +5,7 @@ import { parse_hson_with_provenance } from "../hson-source-provenance/parse-hson
 import type { HsonSourceProvenance, HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
 import {
   CANONICAL_SCHEMA_FORMAT,
+  CANONICAL_SCHEMA_EVALUATOR_LIMITS,
   CANONICAL_SCHEMA_FORMAT_LIMITS,
   type CanonicalSchemaGraph,
   type CanonicalSchemaNode,
@@ -53,7 +54,7 @@ export type HsonSchemaDataSemanticNode =
   | Readonly<{ kind: "object"; members: readonly Readonly<{ name: string; optional: boolean; schema: HsonSchemaDataSemanticNode }>[] }>
   | (Readonly<{ kind: "array"; item: HsonSchemaDataSemanticNode }> & Refined)
   | (Readonly<{ kind: "tuple"; items: readonly HsonSchemaDataSemanticNode[] }> & Refined)
-  | Readonly<{ kind: "union"; choices: readonly [HsonSchemaDataSemanticNode, HsonSchemaDataSemanticNode] }>
+  | Readonly<{ kind: "union"; choices: readonly HsonSchemaDataSemanticNode[] }>
   | Readonly<{ kind: "ref"; name: string }>;
 
 export type HsonSchemaDocumentAttr = Readonly<{
@@ -212,8 +213,10 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   }
   validate_reference_capabilities(semantic, definitions, referenceUses, issues);
   validate_document_attr_capabilities(semantic, definitions, ranges, issues);
-  if (semantic !== undefined) validate_unions(semantic, definitions, issues);
-  for (const definition of definitions) validate_unions(definition.schema, definitions, issues);
+  const definitionSchemas = new Map(definitions.map((definition) => [definition.name, definition.schema]));
+  const unionWork = { comparisons: 0, exhausted: false };
+  if (semantic !== undefined) validate_unions(semantic, definitionSchemas, ranges, unionWork, issues);
+  for (const definition of definitions) validate_unions(definition.schema, definitionSchemas, ranges, unionWork, issues);
   if (semantic === undefined || issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues.map((entry) => with_issue_range(entry, parsed.value, parsed.provenance))), symbols: hson_schema_symbols(definitions, referenceUses) });
   if (!bootstrapResult.ok) {
     const first = bootstrapResult.issues[0];
@@ -334,13 +337,14 @@ function decode_expression(
       break;
     }
     case "union": {
-      if (!Array.isArray(operand) || operand.length !== 2) issue(issues, "INVALID_UNION", path, "`union` requires exactly two branches.");
+      if (!Array.isArray(operand) || operand.length < 2) issue(issues, "INVALID_UNION", path, "`union` requires at least two branches.");
       else {
-        const left = decode_expression(operand[0], [...path, "union", 0], false, issues, ranges, root, provenance, definitionNames, referenceUses);
-        const right = decode_expression(operand[1], [...path, "union", 1], false, issues, ranges, root, provenance, definitionNames, referenceUses);
-        if (left !== undefined && right !== undefined) {
-          schema = Object.freeze({ kind: "union", choices: Object.freeze([left.schema, right.schema]) as readonly [HsonSchemaDataSemanticNode, HsonSchemaDataSemanticNode] });
-        }
+        const choices: HsonSchemaDataSemanticNode[] = [];
+        operand.forEach((branch, index) => {
+          const decoded = decode_expression(branch, [...path, "union", index], false, issues, ranges, root, provenance, definitionNames, referenceUses);
+          if (decoded !== undefined) choices.push(decoded.schema);
+        });
+        if (choices.length === operand.length) schema = Object.freeze({ kind: "union", choices: Object.freeze(choices) });
       }
       break;
     }
@@ -785,12 +789,34 @@ function validate_document_attr_capabilities(root: HsonSchemaSemanticNode | unde
   if (root.kind === "document") visitContent(root.content);
 }
 
-function validate_unions(root: HsonSchemaSemanticNode, definitions: readonly HsonSchemaDefinition[], issues: HsonSchemaIssue[]): void {
+type UnionValidationWork = { comparisons: number; exhausted: boolean };
+
+function validate_unions(root: HsonSchemaSemanticNode, definitions: ReadonlyMap<string, HsonSchemaDefinition["schema"]>, ranges: ReadonlyMap<HsonSchemaRangedNode, HsonSourceRange>, work: UnionValidationWork, issues: HsonSchemaIssue[]): void {
   const seen = new Set<HsonSchemaSemanticNode>();
   const visitData = (schema: HsonSchemaDataSemanticNode): void => {
+    if (work.exhausted) return;
     if (seen.has(schema)) return; seen.add(schema);
     if (schema.kind === "union") {
-      if (!distinguishable(schema.choices[0], schema.choices[1], definitions)) issue(issues, "INVALID_UNION", [], "Union branches are not distinguishable under the MVP rule.");
+      const range = ranges.get(schema);
+      for (let leftIndex = 0; leftIndex < schema.choices.length; leftIndex += 1) {
+        const left = schema.choices[leftIndex];
+        if (left === undefined) continue;
+        for (let rightIndex = leftIndex + 1; rightIndex < schema.choices.length; rightIndex += 1) {
+          const right = schema.choices[rightIndex];
+          if (right === undefined) continue;
+          if (work.comparisons >= CANONICAL_SCHEMA_EVALUATOR_LIMITS.maxUnionWork) {
+            work.exhausted = true;
+            issues.push(Object.freeze({ code: "INVALID_UNION", path: Object.freeze([]), message: `Union distinguishability work exceeds ${CANONICAL_SCHEMA_EVALUATOR_LIMITS.maxUnionWork} branch comparisons.`, ...(range === undefined ? {} : { range }) }));
+            return;
+          }
+          work.comparisons += 1;
+          if (!distinguishable(left, right, definitions)) {
+            const label = (branch: HsonSchemaDataSemanticNode, index: number): string => `${index + 1}${branch.kind === "ref" ? ` (${JSON.stringify(branch.name)})` : ""}`;
+            issues.push(Object.freeze({ code: "INVALID_UNION", path: Object.freeze([]), message: `Union branches ${label(left, leftIndex)} and ${label(right, rightIndex)} cannot be proven distinguishable.`, ...(range === undefined ? {} : { range }) }));
+            return;
+          }
+        }
+      }
       schema.choices.forEach(visitData);
     } else if (schema.kind === "object") schema.members.forEach((member) => visitData(member.schema));
     else if (schema.kind === "array") visitData(schema.item);
@@ -809,8 +835,7 @@ function validate_unions(root: HsonSchemaSemanticNode, definitions: readonly Hso
   else visitData(root);
 }
 
-function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaDataSemanticNode, definitions: readonly HsonSchemaDefinition[] = Object.freeze([])): boolean {
-  const byName = new Map(definitions.map((definition) => [definition.name, definition.schema]));
+function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaDataSemanticNode, byName: ReadonlyMap<string, HsonSchemaDefinition["schema"]>): boolean {
   const dereference = (value: HsonSchemaDataSemanticNode, seen = new Set<string>()): HsonSchemaDataSemanticNode => {
     if (value.kind !== "ref" || seen.has(value.name)) return value;
     seen.add(value.name);
@@ -822,9 +847,13 @@ function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaData
     if (value.kind === "exact") return Object.freeze([value.value]);
     if (value.kind === "null") return Object.freeze([null]);
     if (value.kind === "union") {
-      const leftDomain = finitePrimitiveDomain(value.choices[0], activeRefs);
-      const rightDomain = finitePrimitiveDomain(value.choices[1], activeRefs);
-      return leftDomain === undefined || rightDomain === undefined ? undefined : Object.freeze([...leftDomain, ...rightDomain]);
+      const domain: (string | number | boolean | null)[] = [];
+      for (const choice of value.choices) {
+        const choiceDomain = finitePrimitiveDomain(choice, activeRefs);
+        if (choiceDomain === undefined) return undefined;
+        domain.push(...choiceDomain);
+      }
+      return Object.freeze(domain);
     }
     if (value.kind !== "ref" || activeRefs.has(value.name)) return undefined;
     const target = byName.get(value.name);
@@ -993,8 +1022,10 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   nodes[tuple] = { kind: "projected-object", exact: true, properties: [["tuple", tupleItems]] };
   const union = reserve();
   const unionItems = reserve();
+  const unionArray = reserve();
   const unionItem = refExpression();
-  nodes[unionItems] = { kind: "projected-tuple", items: [unionItem, unionItem] };
+  nodes[unionItems] = { kind: "projected-refinement", base: unionArray, rule: { kind: "collection-length", minimum: 2 } };
+  nodes[unionArray] = { kind: "projected-array", item: unionItem };
   nodes[union] = { kind: "projected-object", exact: true, properties: [["union", unionItems]] };
   const authoredRef = reserve();
   const authoredRefName = add({ kind: "projected-string" });
