@@ -1,3 +1,4 @@
+import { serialize_hson_content_string } from "../../../core/hson-content-string.js";
 import {
   ARR_TAG,
   ELEM_OBJ_ARR,
@@ -173,7 +174,7 @@ function emitLeaf(node: HsonNode, depth: number, ctx: SerializeContext): string 
         "serialize_hson.emitLeaf",
       );
     }
-    return indent(ctx, depth) + JSON.stringify(value);
+    return indent(ctx, depth) + serialize_hson_content_string(value, depth, ctx.options.layout === "compact");
   }
 
   if (!(typeof value === "number" || typeof value === "boolean" || value === null)) {
@@ -455,7 +456,7 @@ function emitStandardNode(
 
   if (children.length === 1 && (children[0].$_tag === STR_TAG || children[0].$_tag === VAL_TAG)) {
     const value = children[0].$_content[0] as Primitive;
-    return `${pad}${header} ${serialize_primitive_hson(value)}${closer}`;
+    return `${pad}${header} ${typeof value === "string" ? serialize_hson_content_string(value, depth, ctx.options.layout === "compact") : serialize_primitive_hson(value)}${closer}`;
   }
 
   const childDepth = ctx.options.layout === "readable" ? depth + 1 : 0;

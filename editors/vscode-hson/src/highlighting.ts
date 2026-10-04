@@ -64,7 +64,7 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
     body += text.slice(offset, source.bodyRange.end);
     offset = source.bodyRange.start;
     let stack = INITIAL;
-    for (const line of body.split("\n")) {
+    for (const { line, width } of physical_lines(body)) {
       const tokens = grammar.tokenizeLine(line, stack);
       for (const token of tokens.tokens) {
         const type = tokenType(token.scopes);
@@ -80,7 +80,7 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
         if (start < end) result.push({ range: { start, end }, type, scopes: token.scopes });
       }
       stack = tokens.ruleStack;
-      offset += line.length + 1;
+      offset += width;
     }
   }
   for (const source of calls.sources) {
@@ -90,7 +90,7 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
     if (source.literalRange.start < source.callRange.start || source.literalRange.end > source.callRange.end) continue;
     let runtimeOffset = 0;
     let stack = INITIAL;
-    for (const line of source.runtimeText.split("\n")) {
+    for (const { line, width } of physical_lines(source.runtimeText)) {
       const tokens = grammar.tokenizeLine(line, stack);
       for (const token of tokens.tokens) {
         const type = tokenType(token.scopes);
@@ -103,7 +103,7 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
         if (range !== undefined && range.start < range.end) result.push({ range, type, scopes: token.scopes });
       }
       stack = tokens.ruleStack;
-      runtimeOffset += line.length + 1;
+      runtimeOffset += width;
     }
   }
   return result.sort((a, b) => a.range.start - b.range.start);
@@ -117,7 +117,7 @@ function selfClosingSlashRanges(
   const ranges: HostSourceRange[] = [];
   let offset = baseOffset;
   let stack = INITIAL;
-  for (const line of text.split("\n")) {
+  for (const { line, width } of physical_lines(text)) {
     const tokens = grammar.tokenizeLine(line, stack);
     for (const token of tokens.tokens) {
       if (!token.scopes.includes(HSON_APPEARANCE.themeDerived.selfClosingSlash)) continue;
@@ -125,7 +125,7 @@ function selfClosingSlashRanges(
       if (token.startIndex < end) ranges.push(Object.freeze({ start: offset + token.startIndex, end: offset + end }));
     }
     stack = tokens.ruleStack;
-    offset += line.length + 1;
+    offset += width;
   }
   return Object.freeze(ranges);
 }
@@ -143,4 +143,15 @@ export function hson_document_self_closing_slash_ranges(
   return Object.freeze(hson_highlights(grammar, fileName, text)
     .filter(token => token.scopes.includes(HSON_APPEARANCE.themeDerived.selfClosingSlash))
     .map(token => token.range));
+}
+
+/** Retain exact host offsets while TextMate receives one physical line at a time. */
+function* physical_lines(text: string): Generator<Readonly<{ line: string; width: number }>> {
+  let start = 0;
+  for (const match of text.matchAll(/\r\n|\r|\n/g)) {
+    const end = match.index;
+    yield { line: text.slice(start, end), width: end - start + match[0].length };
+    start = end + match[0].length;
+  }
+  yield { line: text.slice(start), width: text.length - start };
 }

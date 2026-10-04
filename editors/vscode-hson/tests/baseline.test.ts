@@ -20,6 +20,15 @@ async function run(): Promise<void> {
   const check = (name: string, body: () => void) => { body(); console.log(`ok ${++checks} - ${name}`); };
   const source = (body: string, imported = "Hson", tag = "Hson", pkg = "hson-live/hson") => `import { ${imported} } from "${pkg}";\nconst source = ${tag}.canonical\`${body}\`;`;
   const tokens = (text: string, fileName = "/workspace/baseline.ts") => hson_highlights(grammar, fileName, text);
+
+  for (const eol of ["\n", "\r", "\r\n"]) {
+    const host = source('<p "' + eol + 'inside' + eol + '"/>') + eol + source('<after/>');
+    const highlighted = tokens(host);
+    assert.ok(highlighted.some(token => host.slice(token.range.start, token.range.end) === "inside" && token.type === "hsonString"));
+    assert.ok(highlighted.some(token => host.slice(token.range.start, token.range.end) === "after" && token.type === "hsonType"));
+    const damaged = source('<p "' + eol + 'unterminated') + eol + source('<fresh/>');
+    assert.ok(tokens(damaged).some(token => damaged.slice(token.range.start, token.range.end) === "fresh" && token.type === "hsonType"));
+  }
   const diagnose = (text: string) => produce_document_diagnostics({ fileName: "/workspace/baseline.ts", languageId: "typescript", text });
   const nameToken = (text: string) => tokens(text).some(token => text.slice(token.range.start, token.range.end) === "thing" && token.scopes.includes("entity.name.type.hson"));
   const markers = (text: string) => hson_identity_marker_parts("/workspace/baseline.ts", text);
@@ -369,7 +378,7 @@ async function run(): Promise<void> {
   check("incomplete prefix is not guessed invalid", () => assert.deepEqual(diagnose(source('<thing ${value}>')), []));
   check("raw escape spelling is not cooked into Hson", () => {
     const text = source('<thing "\\n">'); assert.deepEqual(diagnose(text), []);
-    assert.equal(Hson.canonical`<thing "\n">`, '<thing "\\n">');
+    assert.equal(Hson.canonical`<thing "\n">`, '<\n  thing "\n\n\n  "\n>');
   });
   check("undefined cooked segment rejects even in an Hson comment", () => {
     const text = source('// \\unicode\n<thing 1>');

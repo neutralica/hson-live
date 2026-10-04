@@ -318,7 +318,7 @@ Selects Hson output.
 - Every admitted Hson-serializable semantic value is emitted without literal structural VSN names, raw metadata containers, array-index metadata, or generated QUID metadata. Parsing the output reconstructs the application structure and content. Exact runtime graph comparison can still distinguish the source graph's QUID metadata. Object-member metadata is outside this domain and rejects.
 - For QUID-free admitted nodes, direct `serialize_hson(node)` and
   `hson.fromNode(node).toHson().serialize()` use the same canonical serializer.
-  `noBreak` changes layout only.
+  `noBreak` changes presentation only: readable strings containing LF use physical formatted multiline syntax, while compact output uses escaped newlines. Attributes remain escaped on one line. Both outputs preserve exact decoded values.
 - Canonical names use the established preferred bare grammar where possible.   Names requiring quoting use apostrophe delimiters, escape apostrophes as   `\'`, and treat backticks as ordinary data. Canonical Hson never emits a   backtick-delimited name.
 - Direct or fluent Hson serialization of any caller-supplied `_hson_root` rejects before layout options. Parser-owned JSON/HTML roots and the Hson parser root are explicitly detached by their source pipeline first.
 - `fromNode()` treats its input as a detached semantic value. Redundant detached   scalar `_hson_obj`/`_hson_elem` carriers normalize to their scalar before   output, while owned object-member carriers, element text clusters, and arrays   remain intact. Direct serialization rejects a detached carrier that bypassed   admission.

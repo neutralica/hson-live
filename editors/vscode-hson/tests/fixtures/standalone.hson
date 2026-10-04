@@ -15,8 +15,8 @@
   <h1 "Hello"/>
 />
 <_hson_obj 1>
+"bad \q escape"
 "incomplete string
 'incomplete quoted name
 <incomplete [1, 2
-"bad \q escape"
 `legacy backtick name`

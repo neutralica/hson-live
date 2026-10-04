@@ -416,3 +416,22 @@ check("unchanged large-document position queries reuse bounded binding evidence 
   cache.get("file:///large.ts", 2, "/workspace/large.ts", "typescript", edited);
   assert.equal(analyses, 4);
 });
+
+check("multiline literals preserve every interior byte while surrounding structure formats", () => {
+  for (const eol of ["\n", "\r\n"]) {
+    const literal = '"' + eol + '    a' + eol + '  ' + eol + '\t  b // « [ >' + eol + '      "';
+    const text = template('<' + eol + 'value   ' + literal + eol + 'list [1,  2]' + eol + '>');
+    const output = format(text);
+    assert.notEqual(output, text);
+    assert.ok(output.includes(literal));
+    const edits = structural_formatting_edits("/workspace/source.ts", "typescript", text, { insertSpaces: true, tabSize: 2 });
+    const start = text.indexOf(literal), end = start + literal.length;
+    assert.ok(edits.every(edit => edit.end <= start || edit.start >= end));
+    const selected = structural_formatting_edits("/workspace/source.ts", "typescript", text,
+      { insertSpaces: true, tabSize: 2 }, { start, end });
+    assert.ok(applyEdits(text, selected).includes(literal));
+  }
+  assert.equal(arrayPair(template('"\n a | b\n"')), false);
+  assert.equal(arrayPair(template('"\n a |')), false);
+  assert.equal(format(template('<a "\n unterminated >')), template('<a "\n unterminated >'));
+});

@@ -1,3 +1,4 @@
+import { decode_hson_content_string } from "../../../core/hson-content-string.js";
 import { HSON_MAX_NESTING, OBJ_TAG } from "../../../core/constants.js";
 import {
   CREATE_ARR_CLOSE_TOKEN,
@@ -1023,7 +1024,7 @@ class HsonScanner {
     return attr;
   }
 
-  /** Return a complete strict JSON-compatible string literal. */
+  /** Scan ordinary physical multiline content, lowering to JSON-compatible token raw. */
   private scanContentString(): { raw: string; directValue?: string } {
     const start = this.position();
     this.consumeExpected(`"`);
@@ -1042,7 +1043,8 @@ class HsonScanner {
 
       if (ch === `"`) {
         this.consumeExpected(`"`);
-        return { raw: raw + `"` };
+        return { raw: raw.includes("\n") || raw.includes("\t")
+          ? JSON.stringify(decode_hson_content_string(raw.slice(1))) : raw + `"` };
       }
 
       if (ch === "\\") {
@@ -1050,7 +1052,7 @@ class HsonScanner {
         continue;
       }
 
-      if (ch.charCodeAt(0) < 0x20) {
+      if (ch.charCodeAt(0) < 0x20 && ch !== "\n" && ch !== "\r" && ch !== "\t") {
         this.fail(
           `[invalid-json-string] unescaped control character in content string`,
           this.position(),
@@ -1062,11 +1064,10 @@ class HsonScanner {
     }
 
     const final = this.source[this.source.length - 1];
-    this.fail(
-      final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted string`,
-      final === "'" ? this.positionAt(this.source.length - 1) : start,
-      final === "'" ? "HSON_QUOTE_BOUNDARY_MISMATCH" : "HSON_STRING_UNTERMINATED",
-    );
+    const mixed = final === "'" && !raw.includes("\n");
+    this.fail(mixed ? `mixed quote boundary in quoted string` : `unterminated quoted string`,
+      mixed ? this.positionAt(this.source.length - 1) : start,
+      mixed ? "HSON_QUOTE_BOUNDARY_MISMATCH" : "HSON_STRING_UNTERMINATED");
   }
 
   /** Attribute tokens retain their inner source text rather than outer quotes. */
@@ -1281,6 +1282,8 @@ class HsonScanner {
     let cursor = this.index + 1;
     let quoted: `"` | "'" | undefined;
     let quoteStart = -1;
+    let quoteAttribute = false;
+    let quoteMultiline = false;
     let expectAttributeValue = false;
     let unquotedAttributeValue = false;
 
@@ -1302,7 +1305,8 @@ class HsonScanner {
           cursor += 2;
           continue;
         }
-        if (ch.charCodeAt(0) < 0x20) {
+        if (ch === "\n" || ch === "\r") quoteMultiline = true;
+        if (ch.charCodeAt(0) < 0x20 && (quoted !== `"` || quoteAttribute || !["\n", "\r", "\t"].includes(ch))) {
           this.fail(
             quoted === `"`
               ? `unescaped control character in quoted Hson string`
@@ -1337,6 +1341,7 @@ class HsonScanner {
         }
       }
 
+      const startsAttributeQuote = expectAttributeValue;
       if (expectAttributeValue) {
         if (isHsonTrivia(ch)) {
           cursor += 1;
@@ -1368,6 +1373,8 @@ class HsonScanner {
 
       if (ch === `"` || ch === "'") {
         quoted = ch;
+        quoteAttribute = startsAttributeQuote;
+        quoteMultiline = false;
         quoteStart = cursor;
         cursor += 1;
         continue;
@@ -1464,9 +1471,9 @@ class HsonScanner {
     if (quoted === `"`) {
       const final = this.source[this.source.length - 1];
       this.fail(
-        final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted string`,
-        final === "'" ? this.positionAt(this.source.length - 1) : this.positionAt(quoteStart),
-        final === "'" ? "HSON_QUOTE_BOUNDARY_MISMATCH" : "HSON_STRING_UNTERMINATED",
+        final === "'" && !quoteMultiline ? `mixed quote boundary in quoted string` : `unterminated quoted string`,
+        final === "'" && !quoteMultiline ? this.positionAt(this.source.length - 1) : this.positionAt(quoteStart),
+        final === "'" && !quoteMultiline ? "HSON_QUOTE_BOUNDARY_MISMATCH" : "HSON_STRING_UNTERMINATED",
       );
     }
     if (quoted === "'") {

@@ -90,7 +90,23 @@ null
 
 The parser attaches that value directly beneath its internal `_hson_root` as `_hson_str` or `_hson_val`. Public `fromHson().toNode()` detaches exactly that leaf; it does not imply `_hson_elem` or `_hson_obj`. A bare name such as `value` is not a string and remains invalid.
 
-Only double quotes are supported for quoted text. The JSON escapes `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX` are decoded. Unknown, incomplete, malformed, and unterminated escapes reject. Single quotes and backticks are not text delimiters. Every raw unescaped C0 control character (U+0000 through U+001F) rejects at its exact source position, including physical tab, LF, CR, backspace, and form feed. Escaped controls are required, and physical line endings inside quoted strings are never normalized. This rule is identical for primitive strings, object and array string values, element text, and quoted attributes.
+Only double quotes are supported for quoted text. The JSON escapes `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX` are decoded. Unknown, incomplete, malformed, and unterminated escapes reject. Single quotes and backticks are not text delimiters. Ordinary content/data strings accept physical LF, CR and CRLF, decoded as LF, and literal tabs. Other raw C0 controls reject at their source position. Quoted attributes still reject all raw C0 controls, including physical newlines and tabs. Backslash followed by a physical newline is invalid; there is no line continuation.
+
+A string enters formatted multiline mode only when its opening quote is immediately followed by a physical line ending. That first newline is layout. If the closing quote is preceded only by indentation on its source line, that indentation and the immediately preceding formatting newline are layout too. Other physical newlines remain semantic.
+
+```hson
+<message "
+  first line
+    indented second line
+  third line
+">
+```
+
+The decoded value is `first line\n  indented second line\nthird line`. The margin is the longest common literal space/tab prefix of nonblank physical content lines. Spaces and tabs are distinct characters, without visual-column interpretation. Remove that margin from nonblank lines; on whitespace-only lines remove matching prefix characters up to the margin, leaving excess whitespace semantic and making shorter blank lines empty. All-blank content has an empty common margin, so its whitespace survives apart from delimiter framing. Explicit escapes decode after layout removal and remain semantic. Extra physical blank lines or explicit `\n` preserve leading/trailing semantic LF.
+
+An inline opening quote followed later by a newline does not trigger dedent: `"first\n  second"` and a physical newline after `first` decode to the same literal indentation. Formatted strings have ordinary string values, without source-style metadata.
+
+Readable serialization emits physical formatted multiline strings for LF-bearing values. Compact `noBreak` serialization uses escaped `\n`/`\r`; attributes always use escaped single-line values. Semantic leading spaces may be escaped in readable output to keep the layout margin from consuming them. Both outputs reparse to the exact same value, including empty/adjacent text leaves, consecutive LF, boundary LF, CR, controls, quotes and backslashes.
 
 Data/document admission accepts equivalent valid syntax presentations, including readable/compact layouts and accepted array delimiters. It validates family and semantic rules before returning normalized branded output. Ordering, signed zero, missing versus present-empty, duplicate decoded names, reserved names, portable QUID restrictions, metadata, document notation closure and style/script rules remain exact. `HsonCanonical` is a producer-provenance brand for both readable and compact output; `.sha256()` hashes the exact selected representation.
 
@@ -117,7 +133,7 @@ The parser accepts this combined form and multiple inline content nodes, such as
 
 Internally, strings become `_hson_str`; non-string primitives become `_hson_val`. Those leaf VSNs normally melt into literal syntax when Hson is serialized.
 
-Authored quoted strings occupy one physical source line; escapes such as `\n` create newline code units in the value. A whole quoted interpolation such as `<style "${cssText}"/>` inserts one runtime primitive string directly, so multiline CSS does not need multiline Hson literal syntax. HsonDocument admits `<style/>` or exactly one nonempty string leaf, and `<script src="..."/>` with no content. These are document admission rules, not general parser grammar.
+Authored ordinary quoted strings may span physical source lines; escapes such as `\n` also create semantic newline code units. A whole quoted interpolation such as `<style "${cssText}"/>` inserts one runtime primitive string directly, so multiline CSS does not need multiline Hson literal syntax. HsonDocument admits `<style/>` or exactly one nonempty string leaf, and `<script src="..."/>` with no content. These are document admission rules, not general parser grammar.
 
 Interpolation follows Hson grammar context. In `Hson.document` and `Hson.data`, `"${value}"` inserts one Hson string when the interpolation occupies the entire double-quoted string; its runtime value must be a primitive string. Partial quoted interpolation is not supported. Unquoted `${value}` inserts ordered document content or exactly one data value at a legal structural position. An unquoted string candidate is independently admitted as Hson under the receiving tag; plain text must be quoted. Numbers, booleans, and null insert typed primitives only in unquoted data value positions. Dynamic attribute values require quotes, such as `class="${name}"`. Data slots never spread object members or array items. The complete result must pass receiving-tag admission. Public values remain primitive strings, and child Schema proof does not certify the result. `Hson.canonical` retains primitive-only interpolation; `Hson.schema` remains substitution-free.
 

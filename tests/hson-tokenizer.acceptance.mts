@@ -710,8 +710,9 @@ for (const [name, spelling] of [
   });
 }
 
-check("strict quoted strings reject the complete raw C0 range at the offending source position", () => {
+check("ordinary strings reject raw C0 controls except physical line endings and tabs", () => {
   for (let codePoint = 0; codePoint <= 0x1f; codePoint += 1) {
+    if ([9, 10, 13].includes(codePoint)) continue;
     const control = String.fromCharCode(codePoint);
     expect_transform_error(`"${control}"`, "HSON_STRING_CONTROL_UNESCAPED", {
       index: 1,
@@ -723,9 +724,9 @@ check("strict quoted strings reject the complete raw C0 range at the offending s
 
 check("strict quoted control rejection is identical in object array element-content and attribute contexts", () => {
   for (const source of [
-    `<value "a\tb">`,
-    `["a\nb"]`,
-    `<e "a\rb"/>`,
+    `<value "a\fb">`,
+    `["a\bb"]`,
+    `<e "a\u0001b"/>`,
     `<e value="a\fb"/>`,
   ]) {
     expect_transform_error(source, "HSON_STRING_CONTROL_UNESCAPED");

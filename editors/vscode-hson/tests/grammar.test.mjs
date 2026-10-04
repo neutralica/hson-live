@@ -203,3 +203,14 @@ for (const text of ["<", "bareName", "class", "=", "\"", "hero", "true", "-12.5"
 // TS/TSX coverage lives in baseline.test.ts and the real semantic-token journey:
 // a synthetic spelling-only injection test must not stand in for shipped behavior.
 process.stdout.write("ok - standalone and Markdown-fenced Hson grammar scopes passed\n");
+
+const multiline = await tokenize("source.hson", '<p "\n  first\n  // <inside/>\n  last\n"/>\n<after/>');
+assert.ok(multiline.some(token => token.line === 2 && token.scopes.includes("string.quoted.double.hson")));
+assert.ok(!multiline.some(token => token.line === 2 && token.scopes.includes("comment.line.double-slash.hson")));
+assert.ok(has(multiline, "after", "entity.name.type.hson"));
+for (const fence of ["```", "~~~~"]) {
+  const bounded = await tokenize("text.html.markdown", `${fence}hson\n<p "\ninside\n${fence}\noutside prose\n${fence}hson\n<fresh/>\n${fence}`);
+  assert.ok(bounded.some(token => token.line === 2 && token.scopes.includes("string.quoted.double.hson")));
+  assert.ok(!bounded.some(token => token.line === 4 && token.scopes.includes("string.quoted.double.hson")));
+  assert.ok(has(bounded, "fresh", "entity.name.type.hson"));
+}

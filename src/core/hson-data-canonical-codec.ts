@@ -1,3 +1,4 @@
+import { serialize_hson_content_string } from "./hson-content-string.js";
 import { parse_hson } from "../api/transform/parsers/parse-hson.js";
 import { assert_canonical_hson_data_value, projected_value_from_hson_node } from "./projected-value-graph.js";
 import { HSON_META_INDEX, II_TAG } from "./constants.js";
@@ -21,7 +22,7 @@ export function serialize_canonical_hson_data(
 
 function emit_canonical_hson_data(value: OrderedProjectedValue, depth: number, compact: boolean): string {
   if (value === null) return "null";
-  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "string") return serialize_hson_content_string(value, depth, compact);
   if (typeof value === "boolean") return String(value);
   if (typeof value === "number") {
     admit_hson_number(value);

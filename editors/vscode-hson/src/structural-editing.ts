@@ -496,6 +496,8 @@ export function structural_formatting_edits(
         const start = region.bodyRange.start + localStart;
         const end = start + leading.length;
         if (leading !== replacement
+          && !lexical.literals.some(literal => overlaps({ start: localStart, end: contentOffset }, literal)
+            || localStart > literal.start && localStart < literal.end)
           && (requestedRange === undefined || (end >= requestedRange.start && start <= requestedRange.end))) {
           edits.push(Object.freeze({ start, end, text: replacement }));
         }

@@ -459,7 +459,7 @@ check("empty object and array snapshots", () => {
 check("quoted names and escaped string content snapshot", () => {
   const node = parse(`<'this is a tag' title="a\\\"b" disabled "slash\\\\ tab\\t line\\nnext"/>`);
   const expected = `<'this is a tag' title="a\\\"b" disabled "slash\\\\ tab\\t line\\nnext"/>`;
-  assert.equal(readable(node), expected);
+  assert.equal(readable(node), expected.replace("slash", "\n  slash").replace("\\nnext", "\n  next\n"));
   assert.equal(compact(node), expected);
 });
 

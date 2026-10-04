@@ -126,7 +126,7 @@ check("empty string interpolation produces an empty Hson string", () => {
 
 check("string interpolation uses canonical quote, slash, and control escaping", () => {
   const value = 'quote " slash \\ newline\n tab\t';
-  assert.equal(Hson.canonical`${value}`, JSON.stringify(value));
+  assert.equal(hsonTransform.fromHson(Hson.canonical`${value}`).toHson().noBreak().serialize(), JSON.stringify(value));
 });
 
 check("string interpolation preserves Unicode and astral characters", () => {
