@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
 import { SchemaSourceMapping } from "../src/internal/hson-schema/source-mapping.ts";
+import { read_supported_hson_import_symbols } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import { local_hson_schema_diagnostics } from "../editors/vscode-hson/src/hson-schema-local.ts";
 import { Hson } from "../src/hson-authoring.ts";
@@ -38,7 +39,7 @@ function project(name: string, files: Record<string, string>, extraOptions: ts.C
   writeFileSync(join(directory, "package.json"), '{"type":"module"}');
   for (const [file, source] of Object.entries(files)) { mkdirSync(dirname(join(directory, file)), { recursive: true }); writeFileSync(join(directory, file), source); }
   const options: ts.CompilerOptions = { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, noEmit: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: [], baseUrl: directory,
-    paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")] }, ...extraOptions };
+    paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")] }, ...extraOptions };
   const live = new Map<string, string>(); const versions = new Map<string, number>(); let revision = 0;
   const roots = Object.keys(files).filter(file => /\.[cm]?tsx?$/.test(file)).map(file => join(directory, file));
   const host: ts.LanguageServiceHost = {
@@ -225,6 +226,59 @@ check("unsaved direct Schema attachment refines immediately and stale proofs are
   test.edit("index.ts", attached.replace('content "string"', 'content <'));
   assert.ok(test.errors("index.ts").length > 0, "Invalid unsaved Schema text must withdraw attachment evidence.");
   test.service.dispose();
+});
+
+check("canonical LiveMap namespace and aliases establish the same import binding as named imports", () => {
+  for (const [name, imported, recognized] of [
+    ["named-root", 'import { hsonLiveMap as mapApi } from "hson-live";', true],
+    ["named-subpath", 'import { hsonLiveMap as mapApi } from "hson-live/livemap";', true],
+    ["namespace", 'import * as hsonLiveMap from "hson-live/livemap";', true],
+    ["namespace-alias", 'import * as mapApi from "hson-live/livemap";', true],
+    ["root-namespace", 'import * as mapApi from "hson-live";', false],
+    ["unrelated-namespace", 'import * as mapApi from "hson-live/echo";', false],
+  ] as const) {
+    const binding = name === "namespace" ? "hsonLiveMap" : "mapApi";
+    const test = project(`livemap-import-${name}`, { "index.ts": `${imported}\nvoid ${binding}.create();\n` });
+    const program = test.service.getProgram();
+    const source = program?.getSourceFile(test.file("index.ts"));
+    assert.ok(program && source);
+    const declaration = source.statements.find(statement => ts.isImportDeclaration(statement));
+    assert.ok(declaration && ts.isImportDeclaration(declaration));
+    const imports = declaration.importClause?.namedBindings;
+    assert.ok(imports);
+    const local = ts.isNamespaceImport(imports) ? imports.name : imports.elements.find(element => (element.propertyName?.text ?? element.name.text) === "hsonLiveMap")?.name;
+    assert.ok(local);
+    const symbol = program.getTypeChecker().getSymbolAtLocation(local);
+    assert.ok(symbol);
+    assert.equal(read_supported_hson_import_symbols(source, program.getTypeChecker(), [], "hsonLiveMap").has(symbol), recognized, name);
+    if (recognized) assert.equal(test.errors("index.ts").length, 0, `${name}\n${messages(test.errors("index.ts"))}`);
+    test.service.dispose();
+  }
+});
+
+check("LiveMap namespace construction receives named-import candidate diagnostics and attachment proofs", () => {
+  const schema = 'import { Hson } from "hson-live/hson";\nconst Page = Hson.schema`<type "document" tag "main" content "string">`;\n';
+  for (const [name, imported, binding] of [
+    ["named", 'import { hsonLiveMap as mapApi } from "hson-live/livemap";', "mapApi"],
+    ["namespace", 'import * as hsonLiveMap from "hson-live/livemap";', "hsonLiveMap"],
+    ["alias", 'import * as mapApi from "hson-live/livemap";', "mapApi"],
+  ] as const) {
+    const prefix = `${schema}${imported}\n`;
+    const map = `const empty = ${binding}.create();\nvoid empty;\nconst map = ${binding}.fromLibraries({ home: { document: '<main "hello"/>' } });\n`;
+    const exact = 'const exact: typeof Page = map.lib("home").schema.get();\n';
+    const test = project(`livemap-namespace-${name}`, { "index.ts": prefix + map + exact });
+    assert.ok(test.errors("index.ts").some(error => error.code === 2322), name);
+    test.edit("index.ts", prefix + map + 'map.lib("home").schema.use(Page);\n' + exact);
+    assert.equal(test.errors("index.ts").length, 0, `${name}\n${messages(test.errors("index.ts"))}`);
+    assert.match(test.service.getProgram()?.getSourceFile(test.file("index.ts"))?.text ?? "", /__hson_assert_library_schema\(map, "home", Page\)/, name);
+    test.edit("index.ts", prefix + `const bad = Hson.document\`<aside "hello"/>\`;\nconst map = ${binding}.fromLibraries({ home: { document: bad } });\nmap.lib("home").schema.use(Page);\n`);
+    assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 1, `${name}\n${messages(test.errors("index.ts"))}`);
+    test.service.dispose();
+  }
+  const unrelated = project("livemap-namespace-unrelated", { "index.ts": `${schema}import * as mapApi from "hson-live/echo";\nconst bad = Hson.document\`<aside "hello"/>\`;\nconst map = mapApi.fromLibraries({ home: { document: bad } });\nmap.lib("home").schema.use(Page);\n` });
+  assert.equal(unrelated.errors("index.ts").filter(error => error.code === 95002).length, 0);
+  assert.doesNotMatch(unrelated.service.getProgram()?.getSourceFile(unrelated.file("index.ts"))?.text ?? "", /__hson_assert_library_schema\(map, "home", Page\)/);
+  unrelated.service.dispose();
 });
 
 check("unbraced attachment proofs stay in their authored control-flow owner", () => {

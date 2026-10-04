@@ -139,6 +139,27 @@ check("post-hoc attachment proof is compiler-view only", () => {
   rmSync(join(project, "out"), { recursive: true, force: true });
 });
 
+check("canonical LiveMap namespace generates the same compiler attachment proof", () => {
+  const other = prepare("namespace-attachment");
+  const basePath = join(other, "tsconfig.base.json");
+  const base = JSON.parse(readFileSync(basePath, "utf8"));
+  base.compilerOptions.paths["hson-live/livemap"] = [join(root, "dist/api/livemap/index.d.ts")];
+  writeFileSync(basePath, JSON.stringify(base, null, 2));
+  writeFileSync(join(other, "namespace-proof.ts"), `import { Hson } from "hson-live/hson";
+import * as maps from "hson-live/livemap";
+const Page = Hson.schema\`<type "document" tag "main" content "string">\`;
+const empty = maps.create();
+const map = maps.fromLibraries({ home: { document: '<main "hello"/>' } });
+map.lib("home").schema.use(Page);
+const exact: typeof Page = map.lib("home").schema.get();
+void empty; void exact;
+`);
+  succeed(generate(other));
+  const generated = readFileSync(join(other, ".hson/compiler-input/tsconfig.json/sources/namespace-proof.ts"), "utf8");
+  assert.match(generated, /__hson_assert_library_schema\(map, "home", Page\)/);
+  succeed(stock_check(join(other, ".hson/compiler-input/tsconfig.json/tsconfig.json")));
+});
+
 check("flow-refined exported map bindings fail with an intentional tooling diagnostic", () => {
   const other = prepare("unsupported-exported-map");
   writeFileSync(join(other, "flow-map.ts"), `import { Hson, hsonLiveMap } from "hson-live";

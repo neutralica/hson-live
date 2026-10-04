@@ -165,6 +165,12 @@ export function read_supported_hson_import_symbols(
       continue;
     }
     const bindings = statement.importClause.namedBindings;
+    if (facade === "hsonLiveMap" && statement.moduleSpecifier.text === "hson-live/livemap"
+      && bindings !== undefined && ts.isNamespaceImport(bindings)) {
+      const symbol = checker.getSymbolAtLocation(bindings.name);
+      if (symbol !== undefined) symbols.add(symbol);
+      continue;
+    }
     if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
     for (const element of bindings.elements) {
       if (element.isTypeOnly) continue;

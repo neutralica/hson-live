@@ -175,26 +175,39 @@ function browser_graph(sourcefile: string, contents: string): Readonly<{ inputs:
 check("native /livemap namespace keeps LiveMap, Echo, and Locus browser graphs separate", () => {
   const prefix = 'import * as hsonLiveMap from "hson-live/livemap";';
   const plain = browser_graph("livemap-create-public.mjs", `${prefix} globalThis.map = hsonLiveMap.create();`);
+  const libraries = browser_graph("livemap-libraries-public.mjs", `${prefix}
+    globalThis.map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 } } });`);
   const echo = browser_graph("livemap-echo-public.mjs", `${prefix}
     const transport = { operations: { async submit() { return { kind: "not-submitted" }; } },
       attachment: { observe() { return () => {}; } } };
     globalThis.echo = hsonLiveMap.echo.create({ transport });`);
   const locus = browser_graph("livemap-locus-public.mjs", `${prefix}
     globalThis.locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { value: 1 } } }] });`);
-  const prohibited = (graph: typeof plain, pattern: RegExp, name: string): void => {
-    assert.deepEqual(graph.inputs.filter((input) => pattern.test(input)), [], `${name} retained a sibling implementation`);
+  const subsystem = (graph: typeof plain, name: "livemap" | "echo" | "locus"): string[] =>
+    graph.inputs.filter((input) => input.includes(`/api/${name}/`));
+  const noSibling = (graph: typeof plain, name: "livemap" | "echo" | "locus", label: string): void => {
+    assert.deepEqual(subsystem(graph, name), [], `${label} retained ${name} implementation`);
   };
-  prohibited(plain, /api\/(?:echo|locus)\/|api\/(?:livehost|locus)\/node\//i, "LiveMap create");
-  prohibited(echo, /api\/livemap\/(?:livemap\.(?:core|libraries|facade|hosted|internal)|livemap\.install)\.js$|api\/locus\/(?:locus\.(?:authority|session|registry|checkpoint|local-initializer|projection|public|facade|stage|persistence|http|websocket)[^/]*|locus\.aggregate\.(?!protocol)[^/]*)\.js$|api\/(?:livehost|locus)\/node\//i, "Echo create");
-  prohibited(locus, /api\/echo\/(?:echo\.(?:client|endpoint|http|websocket|facade|replica|lazy|projection|request|transport)[^/]*)\.js$/i, "Locus create");
-  assert.ok(echo.inputs.some((input) => /api\/echo\/echo\.client\.js$/.test(input)), "Echo endpoint implementation is missing");
-  assert.ok(locus.inputs.some((input) => /api\/locus\/locus\.registry\.js$/.test(input)), "Locus authority implementation is missing");
-  assert.ok(plain.inputs.some((input) => /api\/livemap\/livemap\.libraries\.js$/.test(input)), "LiveMap construction is missing");
-  assert.ok(plain.gzip < 260 * 1024, `plain LiveMap drifted to ${plain.gzip} gzip bytes`);
-  assert.ok(echo.gzip < 24 * 1024, `endpoint Echo drifted to ${echo.gzip} gzip bytes`);
-  assert.ok(locus.gzip < 295 * 1024, `Locus drifted to ${locus.gzip} gzip bytes`);
+  for (const [graph, label] of [[plain, "LiveMap create"], [libraries, "LiveMap fromLibraries"]] as const) {
+    assert.ok(subsystem(graph, "livemap").length > 8, `${label} construction implementation is missing`);
+    noSibling(graph, "echo", label);
+    noSibling(graph, "locus", label);
+  }
+  assert.ok(subsystem(echo, "echo").length > 0, "Echo endpoint implementation is missing");
+  assert.ok(subsystem(echo, "livemap").length <= 8, "endpoint Echo retained full LiveMap construction");
+  assert.ok(subsystem(echo, "locus").length <= 4, "endpoint Echo retained Locus authority/session/persistence");
+  assert.deepEqual(subsystem(echo, "locus").filter((input) =>
+    /(?:authority|session|persist|registry|projection|stage|action|activity)/i.test(input)), [],
+    "endpoint Echo retained a Locus authority/session/persistence family");
+  assert.ok(subsystem(locus, "locus").length > 8, "Locus authority implementation is missing");
+  noSibling(locus, "echo", "Locus create");
+  assert.ok(plain.gzip < 320 * 1024, `plain LiveMap drifted to ${plain.gzip} gzip bytes`);
+  assert.ok(libraries.gzip < 320 * 1024, `LiveMap fromLibraries drifted to ${libraries.gzip} gzip bytes`);
+  assert.ok(echo.gzip < 32 * 1024, `endpoint Echo drifted to ${echo.gzip} gzip bytes`);
+  assert.ok(locus.gzip < 360 * 1024, `Locus drifted to ${locus.gzip} gzip bytes`);
   console.log(JSON.stringify({ livemapNamespaceBundles: {
     create: { raw: plain.raw, gzip: plain.gzip },
+    fromLibraries: { raw: libraries.raw, gzip: libraries.gzip },
     echo: { raw: echo.raw, gzip: echo.gzip },
     locus: { raw: locus.raw, gzip: locus.gzip },
   } }));

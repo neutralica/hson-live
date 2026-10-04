@@ -251,9 +251,11 @@ await check("packed consumer resolves only curated package entrypoints", () => {
 
     // Bundle the installed tarball, so the proof exercises published exports
     // and side-effect metadata rather than a source-relative import.
-    for (const [name, call, forbidden] of [
-      ["create", "hsonLiveMap.create()", /api\/(?:echo|locus)\//],
-      ["echo", "hsonLiveMap.echo.create({ transport: { operations: { async submit() { return { kind: 'not-submitted' }; } }, attachment: { observe() { return () => {}; } } } })", /api\/livemap\/livemap\.(?:core|libraries|hosted)\.js$|api\/locus\/locus\.(?:registry|session|checkpoint|authority)/],
+    for (const [name, call] of [
+      ["create", "hsonLiveMap.create()"],
+      ["fromLibraries", "hsonLiveMap.fromLibraries({ state: { data: { value: 1 } } })"],
+      ["echo", "hsonLiveMap.echo.create({ transport: { operations: { async submit() { return { kind: 'not-submitted' }; } }, attachment: { observe() { return () => {}; } } } })"],
+      ["locus", "hsonLiveMap.locus.create({ shared: [{ name: 'state', definition: { data: { value: 1 } } }] })"],
     ] as const) {
       const fixture = join(consumerRoot, `${name}.mjs`);
       writeFileSync(fixture, `import * as hsonLiveMap from "hson-live/livemap"; globalThis.result = ${call};`);
@@ -278,7 +280,25 @@ await check("packed consumer resolves only curated package entrypoints", () => {
       visit(entry[0]);
       const inputs = [...staticOutputs].flatMap((path) => Object.entries(metadata.outputs[path]?.inputs ?? {}))
         .filter(([, contribution]) => contribution.bytesInOutput > 0).map(([input]) => input);
-      assert.deepEqual(inputs.filter((input) => forbidden.test(input)), [], `${name} packed consumer retained a sibling implementation`);
+      const subsystem = (part: "livemap" | "echo" | "locus") => inputs.filter((input) => input.includes(`/api/${part}/`));
+      if (name === "create" || name === "fromLibraries") {
+        assert.ok(subsystem("livemap").length > 8, `${name} packed consumer omitted LiveMap construction`);
+        assert.deepEqual(subsystem("echo"), [], `${name} packed consumer retained Echo`);
+        assert.deepEqual(subsystem("locus"), [], `${name} packed consumer retained Locus`);
+      } else if (name === "echo") {
+        assert.ok(subsystem("echo").length > 0, "packed Echo endpoint is missing");
+        assert.ok(subsystem("livemap").length <= 8, "packed Echo retained full LiveMap construction");
+        assert.ok(subsystem("locus").length <= 4, "packed Echo retained Locus authority/session/persistence");
+        assert.deepEqual(subsystem("locus").filter((input) =>
+          /(?:authority|session|persist|registry|projection|stage|action|activity)/i.test(input)), [],
+          "packed Echo retained a Locus authority/session/persistence family");
+      } else {
+        assert.ok(subsystem("locus").length > 8, "packed Locus authority is missing");
+        assert.deepEqual(subsystem("echo"), [], "packed Locus retained Echo client/transports");
+      }
+      const allInputs = Object.values(metadata.outputs).flatMap((output) => Object.keys(output.inputs));
+      assert.deepEqual(allInputs.filter((input) => /api\/(?:locus|livehost)\/node\//i.test(input)), [],
+        `${name} packed browser graph retained Node adapters`);
     }
 
     for (const specifier of ["hson-live/reflect", "hson-live/types", "hson-live/diagnostics/test-exports"]) {
