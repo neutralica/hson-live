@@ -1,6 +1,7 @@
 import {
   ARR_TAG,
   HSON_META_INDEX,
+  HSON_MAX_NESTING,
   II_TAG,
   OBJ_TAG,
   ROOT_TAG,
@@ -170,15 +171,16 @@ export function assert_canonical_hson_data_value(
   value: OrderedProjectedValue,
 ): asserts value is OrderedProjectedValue {
   assert_ordered_projected_value(value);
-  const visit = (candidate: OrderedProjectedValue): void => {
+  const visit = (candidate: OrderedProjectedValue, depth = 0): void => {
+    if (depth >= HSON_MAX_NESTING) throw new TypeError(`Hson nesting depth must be less than ${HSON_MAX_NESTING}`);
     if (Array.isArray(candidate)) {
-      for (const child of candidate) visit(child);
+      for (const child of candidate) visit(child, depth + 1);
       return;
     }
     if (!is_ordered_projected_object(candidate)) return;
     for (const [key, child] of candidate.entries) {
       assert_valid_hson_data_name(key);
-      visit(child);
+      visit(child, depth + 1);
     }
   };
   visit(value);

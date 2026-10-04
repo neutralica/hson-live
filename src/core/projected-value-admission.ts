@@ -1,4 +1,5 @@
 import { admit_hson_number } from "./hson-number.js";
+import { HSON_MAX_NESTING } from "./constants.js";
 import {
   ordered_projected_array,
   ordered_projected_object,
@@ -16,6 +17,7 @@ export type ProjectedValueAdmissionCode =
   | "SPARSE_ARRAY"
   | "EXTRA_ARRAY_PROPERTY"
   | "CYCLE"
+  | "DEPTH_LIMIT"
   | "REFLECTION_FAILED";
 
 export type ProjectedValuePath = readonly (string | number)[];
@@ -58,7 +60,10 @@ export function admit_projected_value(
 ): OrderedProjectedValue {
   const active = new WeakMap<object, ProjectedValuePath>();
 
-  const visit = (value: unknown, path: ProjectedValuePath): OrderedProjectedValue => {
+  const visit = (value: unknown, path: ProjectedValuePath, depth = 0): OrderedProjectedValue => {
+    if (depth >= HSON_MAX_NESTING) {
+      throw new ProjectedValueAdmissionError("DEPTH_LIMIT", path, `Hson nesting depth must be less than ${HSON_MAX_NESTING}`);
+    }
     if (value === null || typeof value === "string" || typeof value === "boolean") return value;
     if (typeof value === "number") {
       try {
@@ -97,9 +102,10 @@ export function admit_projected_value(
     const isArray = reflect_once(path, "classify array", () => Array.isArray(value));
     active.set(value, Object.freeze([...path]));
     try {
+      const child = (value: unknown, path: ProjectedValuePath) => visit(value, path, depth + 1);
       return isArray
-        ? admit_array(value, prototype, path, visit)
-        : admit_object(value, prototype, path, visit);
+        ? admit_array(value, prototype, path, child)
+        : admit_object(value, prototype, path, child);
     } finally {
       active.delete(value);
     }

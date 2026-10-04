@@ -6,6 +6,7 @@ import { validate_hson_schema_graph } from "../../internal/schema-hson-validatio
 import { hson_data_value } from "../data/hson-data.js";
 import { projected_value_to_hson_node } from "../../core/projected-value-graph.js";
 import { hson_document_root } from "../document/hson-document.js";
+import { schema_definition_identity } from "../../internal/hson-schema/definition-identity.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 
 type Compiled = Extract<ReturnType<typeof compile_hson_schema>, { ok: true }>["value"];
@@ -17,7 +18,8 @@ type Certified<TSchema extends HsonSchema> = TSchema extends HsonSchema<unknown,
 type WrongMode<TSchema extends HsonSchema> = [TSchema] extends [HsonSchema<unknown, "data">]
   ? HsonDocument
   : [TSchema] extends [HsonSchema<unknown, "document">] ? HsonData : never;
-const schema_state = new WeakMap<object, Readonly<{ source: HsonSchemaData; compiled: Compiled }>>();
+
+const schema_state = new WeakMap<object, Readonly<{ source: HsonSchemaData; digest: string; compiled: Compiled }>>();
 const authority = Object.freeze({});
 declare const HSON_SCHEMA_EVIDENCE: unique symbol;
 
@@ -31,7 +33,7 @@ export class HsonSchema<
 
   private constructor(source: HsonSchemaData, compiled: Compiled, key: object) {
     if (key !== authority) throw new TypeError("Hson Schema construction requires validated Schema data.");
-    schema_state.set(this, Object.freeze({ source, compiled }));
+    schema_state.set(this, Object.freeze({ source, compiled, digest: schema_definition_identity(compiled).digest }));
     Object.freeze(this);
   }
 
@@ -56,7 +58,6 @@ export class HsonSchema<
     const compiled = schema_state_of(this).compiled;
     if (compiled.semantic.kind === "document" || compiled.semantic.kind === "document-element") {
       const document = ExactDocumentCarrier.fromHson(candidate);
-      if (document.toHson() !== candidate) throw new TypeError("Schema certification requires canonical Hson document text.");
       validate_hson_schema_graph(this, hson_document_root(document));
       return document.toHson() as unknown as Certified<TSchema>;
     }
@@ -72,7 +73,7 @@ export const ANY_DATA: HsonSchema<JsonValue, "data"> = HsonSchema.fromHson('<typ
 /** The ordinary broad Schema for every valid Hson document. */
 export const ANY_DOCUMENT: HsonSchema<HsonNode, "document"> = HsonSchema.fromHson('<type "document">') as HsonSchema<HsonNode, "document">;
 
-function schema_state_of(schema: HsonSchema): Readonly<{ source: HsonSchemaData; compiled: Compiled }> {
+function schema_state_of(schema: HsonSchema): Readonly<{ source: HsonSchemaData; digest: string; compiled: Compiled }> {
   const state = schema_state.get(schema);
   if (state === undefined) throw new TypeError("Expected a genuine HsonSchema object.");
   return state;
@@ -82,3 +83,9 @@ function schema_state_of(schema: HsonSchema): Readonly<{ source: HsonSchemaData;
 export function compiled_hson_schema_of(schema: HsonSchema): CompiledHsonSchema {
   return schema_state_of(schema).compiled;
 }
+
+/** @internal Runtime contract identity; exact source remains separate provenance. */
+export function hson_schema_digest(schema: HsonSchema): string { return schema_state_of(schema).digest; }
+
+/** @internal Parse and fully validate transported source before comparing identity. */
+export function hson_schema_source_digest(source: string): string { return hson_schema_digest(HsonSchema.fromHson(source)); }

@@ -1,3 +1,5 @@
+import { sha256_sync } from "../../core/sha256-sync.js";
+import { hson_schema_source_digest } from "../schema/hson-schema.js";
 import type {
   LocusConnectionContext,
   LocusLibraryCatalogEntry,
@@ -8,8 +10,7 @@ import type {
   LocusRequestedProjection,
 } from "../../types/locus.types.js";
 import type { HostedAuthorityFence, HostedRegistry, HostedRegistryEntry } from "../livemap/livemap.hosted.js";
-import { hosted_sha256 } from "../livemap/livemap.hosted.js";
-import { HsonSchema } from "../schema/hson-schema.js";
+
 import { locus_local_initializer_digest, make_locus_application_catalog, type LocusApplicationCatalog } from "./locus.local-initializer.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 
@@ -196,8 +197,7 @@ function materialize_effective_projection(
       // Reconstruct the included Schema from its own source. No library resolver or
       // excluded registry entry participates in the client contract.
       try {
-        if (hosted_sha256(entry.schema) !== entry.schemaDigest
-          || HsonSchema.fromHson(entry.schema).toHson() !== entry.schema) throw new Error("Schema contract differs.");
+        if (hson_schema_source_digest(entry.schema) !== entry.schemaDigest) throw new Error("Schema contract differs.");
       } catch {
         throw new LocusProjectionUnavailableError();
       }
@@ -218,7 +218,7 @@ function materialize_effective_projection(
   const authority = Object.freeze({ ...policy.authority });
   // The canonical digest input has no root, revision, policy, or excluded registry topology.
   const digest = locus_projection_contract_digest(authority, included, features, writable);
-  const compositionDigest = hosted_sha256(JSON.stringify({ format: "locus-session-composition", digest, initializerDigest }));
+  const compositionDigest = sha256_sync(JSON.stringify({ format: "locus-session-composition", digest, initializerDigest }));
   return Object.freeze({ authority, libraries: Object.freeze(included), local, initializerDigest, compositionDigest,
     systemFeatures: features, writableDocuments: writable, digest,
     includesLibrary: (name: string) => includedNames.has(name),
@@ -235,7 +235,7 @@ export function locus_projection_contract_digest(
   systemFeatures: readonly LocusProjectionSystemFeature[],
   writableDocuments: readonly string[],
 ): string {
-  return hosted_sha256(JSON.stringify({ format: "locus-effective-projection", authority,
+  return sha256_sync(JSON.stringify({ format: "locus-effective-projection", authority,
     libraries: libraries.map((entry) => ({ name: entry.name, mode: entry.mode, schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec })),
     systemFeatures, writableDocuments,
   }));

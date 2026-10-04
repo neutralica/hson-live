@@ -6,7 +6,7 @@ import type { LocusSessionNow } from "../../types/locus.core.types.js";
 import { admit_locus_session_now } from "../locus/locus.local-initializer.js";
 import type { HsonSchemaData } from "../transform/transform.types.js";
 import { is_Node } from "../../core/node-guards.js";
-import { HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
+import { hson_schema_digest, HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
 import { BoundedStringWriter } from "../../core/bounded-string-writer.js";
 import {
   assert_libraries_snapshot_bound,
@@ -190,7 +190,7 @@ function libraries_payload(snapshot: LiveMapSnapshot): LibrariesPayload {
       name: require_string(entry.name),
       scope: entry.scope ?? null,
       mode: require_mode(entry.mode),
-      schema: require_string(entry.schema),
+      schema: normalized_schema(entry.schema, entry.schemaDigest),
       schemaDigest: require_string(entry.schemaDigest),
       rootCodec: require_root_format(entry.rootCodec),
     })),
@@ -199,7 +199,7 @@ function libraries_payload(snapshot: LiveMapSnapshot): LibrariesPayload {
     libraries: snapshot.libraries.map((entry) => ({
       name: require_string(entry.name),
       mode: require_mode(entry.mode),
-      schema: require_string(entry.schema),
+      schema: normalized_schema(entry.schema, entry.schemaDigest),
       schemaDigest: require_string(entry.schemaDigest),
       rootFormat: require_root_format(entry.root.format),
       rootPayload: require_string(entry.root.payload),
@@ -250,8 +250,8 @@ function decode_registry_entry(input: unknown): LiveMapSnapshot["registry"]["lib
     || !is_mode(entry.mode) || typeof entry.schema !== "string" || typeof entry.schemaDigest !== "string"
     || entry.rootCodec !== "hson-exact-value") throw new TypeError("Registry entry is malformed.");
   return Object.freeze(entry.scope === null
-    ? { name: entry.name, mode: entry.mode, schema: decoded_schema(entry.schema), schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec }
-    : { name: entry.name, scope: entry.scope, mode: entry.mode, schema: decoded_schema(entry.schema), schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec });
+    ? { name: entry.name, mode: entry.mode, schema: normalized_schema(entry.schema, entry.schemaDigest), schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec }
+    : { name: entry.name, scope: entry.scope, mode: entry.mode, schema: normalized_schema(entry.schema, entry.schemaDigest), schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec });
 }
 
 function decode_library_entry(input: unknown): LiveMapSnapshot["libraries"][number] {
@@ -260,7 +260,7 @@ function decode_library_entry(input: unknown): LiveMapSnapshot["libraries"][numb
     : ["name", "mode", "schema", "schemaDigest", "rootFormat", "rootPayload"]);
   if (typeof entry.name !== "string" || !is_mode(entry.mode) || typeof entry.schema !== "string"
     || typeof entry.schemaDigest !== "string" || entry.rootFormat !== "hson-exact-value" || typeof entry.rootPayload !== "string") throw new TypeError("Library entry is malformed.");
-  return Object.freeze({ name: entry.name, mode: entry.mode, schema: decoded_schema(entry.schema), schemaDigest: entry.schemaDigest,
+  return Object.freeze({ name: entry.name, mode: entry.mode, schema: normalized_schema(entry.schema, entry.schemaDigest), schemaDigest: entry.schemaDigest,
     root: Object.freeze({ format: entry.rootFormat, payload: entry.rootPayload }),
     ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
 }
@@ -491,7 +491,11 @@ function is_mode(value: unknown): value is LiveMapRootMode { return value === "d
 function require_mode(value: unknown): LiveMapRootMode { if (!is_mode(value)) throw new TypeError("Root mode is malformed."); return value; }
 function require_string(value: unknown): string { if (typeof value !== "string") throw new TypeError("String field is malformed."); return value; }
 function require_root_format(value: unknown): "hson-exact-value" { if (value !== "hson-exact-value") throw new TypeError("Root codec is malformed."); return value; }
-function decoded_schema(value: string): HsonSchemaData { return HsonSchemaHandle.fromHson(value).toHson(); }
+function normalized_schema(value: string, digest: string): HsonSchemaData {
+  const schema = HsonSchemaHandle.fromHson(value);
+  if (hson_schema_digest(schema) !== digest) throw new TypeError("Schema identity disagrees with its definition.");
+  return schema.toHson();
+}
 function is_kind(value: unknown): value is SsrBootstrapKind { return value === "libraries" || value === "hosted-projection"; }
 function error(phase: "encode" | "decode", code: ConstructorParameters<typeof SsrBootstrapCodecError>[1], message: string, cause?: unknown): SsrBootstrapCodecError {
   return new SsrBootstrapCodecError(phase, code, message, cause);

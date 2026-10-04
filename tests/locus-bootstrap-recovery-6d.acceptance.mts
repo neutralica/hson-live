@@ -4,6 +4,7 @@ import { capture_internal_document } from "./helpers/document-capture.mts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type HsonSchema, type LiveMap } from "../src/index.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
+import type { AuthorityProjectionSnapshot } from "../src/types/locus.projection.types.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { local_initializers } from "./helpers/client-projection.mts";
@@ -81,6 +82,48 @@ function data_library(map: LiveMap | undefined, name: string) {
   const library = map?.lib(name);
   if (library === undefined || library.mode === "document") throw new Error("Expected data Library.");
   return library;
+}
+
+{
+  const { server } = fixture(1);
+  const pair = socket_pair();
+  const snapshots: AuthorityProjectionSnapshot[] = [];
+  pair.transformServer(message => {
+    if (message.type !== "recovery-snapshot") return message;
+    const snapshot = message.snapshot as AuthorityProjectionSnapshot;
+    snapshots.push(snapshot);
+    const presented = { ...snapshot, libraries: snapshot.libraries.map(entry => ({ ...entry,
+      schema: `// equivalent contract\n ${entry.schema} ` as typeof entry.schema })) };
+    hidden_absent(JSON.stringify(presented));
+    return { ...message, snapshot: presented };
+  });
+  let detachServer = bind_locus_websocket(server, pair.server);
+  const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId });
+  assert.equal((await client.connect()).outcome, "reconcile");
+  const sameMap = client.map;
+  client.disconnect();
+  detachServer();
+  await server.stage(draft => { const library = draft.lib("visible"); if (library.mode !== "document") library.at(["value"]).set("EQUIVALENT_SOURCE_RECOVERY"); });
+  detachServer = bind_locus_websocket(server, pair.server);
+  assert.equal((await client.connect()).outcome, "reconcile");
+  assert.equal(client.map, sameMap);
+  assert.equal(client.lastAppliedRev, 1);
+  assert.equal(data_library(client.map, "visible").snap(["value"]), "EQUIVALENT_SOURCE_RECOVERY");
+  assert.equal(snapshots.length, 2);
+  assert.deepEqual(snapshots[1]!.authority, snapshots[0]!.authority);
+  assert.equal(snapshots[1]!.projectionDigest, snapshots[0]!.projectionDigest);
+  assert.deepEqual(snapshots[1]!.writableDocuments, snapshots[0]!.writableDocuments);
+  assert.deepEqual(snapshots[1]!.libraries.map(({ root: _root, ...contract }) => contract),
+    snapshots[0]!.libraries.map(({ root: _root, ...contract }) => contract));
+  const created = messages(pair.serverSent).find(message => message.type === "session-created");
+  assert.ok(created);
+  assert.equal(typeof created.sessionId, "string");
+  const resumed = messages(pair.serverSent).find(message => message.type === "session-attached");
+  assert.ok(resumed);
+  assert.equal(resumed.sessionId, created.sessionId);
+  client.dispose();
+  detachServer();
+  server.dispose();
 }
 
 {

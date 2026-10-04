@@ -1,8 +1,9 @@
+import { sha256_sync } from "../../core/sha256-sync.js";
 import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { HsonNode } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
-import { decode_hosted_root, encode_hosted_root, hosted_sha256, make_portable_aggregate_commit, make_hosted_registry, type HostedAggregateCommit, type PortableAggregateCommit, type PortableAggregateOperation, type HostedRegistryBinding } from "../livemap/livemap.hosted.js";
+import { decode_hosted_root, encode_hosted_root, make_portable_aggregate_commit, make_hosted_registry, type HostedAggregateCommit, type PortableAggregateCommit, type PortableAggregateOperation, type HostedRegistryBinding } from "../livemap/livemap.hosted.js";
 import { encode_livemap_replay_transport } from "../livemap/livemap.transport.js";
 import { project_authority_snapshot } from "./locus.authority-projection-snapshot.js";
 import { HsonSchema } from "../schema/hson-schema.js";
@@ -113,7 +114,7 @@ export function projected_registry_digest(effective: LocusEffectiveProjection): 
     name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, scope: "hson-internal", mode: "data-object",
     schema: interaction_schema_internal(), identity: Object.freeze({}),
   }));
-  if (bindings.length === 0) return hosted_sha256(JSON.stringify({ format: "hson-hosted-registry", libraries: [] }));
+  if (bindings.length === 0) return sha256_sync(JSON.stringify({ format: "hson-hosted-registry", libraries: [] }));
   return make_hosted_registry(bindings).digest;
 }
 

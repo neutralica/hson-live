@@ -1,3 +1,4 @@
+import { hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { JsonValue } from "../../core/types.js";
 import type {
   LiveMap,
@@ -534,7 +535,8 @@ function create_registry_echo_semantic_client_internal<
         || snapshot.authority.incarnationId !== incarnationId
         || snapshot.revision !== authorityRev || snapshot.projectionDigest !== nextDigest
         || composition.registryDigest !== message.registryDigest
-        || JSON.stringify(snapshot.libraries.map(({ root: _root, css: _css, ...entry }) => entry)) !== JSON.stringify(message.libraries)
+        || JSON.stringify(snapshot.libraries.map(({ root: _root, css: _css, schema: _schema, ...entry }) => entry))
+          !== JSON.stringify(message.libraries.map(({ schema: _schema, ...entry }) => entry))
         || JSON.stringify(snapshot.systemFeatures) !== JSON.stringify(message.systemFeatures)
         || JSON.stringify(snapshot.writableDocuments) !== JSON.stringify(message.writableDocuments)) {
         throw new Error("Hosted projection reconciliation fence is incompatible.");
@@ -565,7 +567,7 @@ function create_registry_echo_semantic_client_internal<
     const oldEntries = current?.registry.libraries.filter((entry) => entry.scope === undefined) ?? [];
     for (const old of oldEntries) {
       const next = message.libraries.find((entry) => entry.name === old.name);
-      if (next === undefined || next.mode !== old.mode || next.schema !== old.schema
+      if (next === undefined || next.mode !== old.mode || hson_schema_source_digest(next.schema) !== hson_schema_source_digest(old.schema)
         || next.schemaDigest !== old.schemaDigest || next.rootCodec !== old.rootCodec) {
         throw new Error("Hosted projection change cannot replace an existing Library contract.");
       }
@@ -584,7 +586,7 @@ function create_registry_echo_semantic_client_internal<
         || topology.operation.libraries.some((entry, index) => {
           const contract = added[index];
           return contract === undefined || entry.name !== contract.name || entry.mode !== contract.mode
-            || entry.schema !== contract.schema;
+            || hson_schema_source_digest(entry.schema) !== hson_schema_source_digest(contract.schema);
         })) throw new Error("Hosted projection change lacks its exact Library addition.");
       if (added.some((entry) => entry.mode === "document") && projectionFeatures.includes("interactions")
         && message.system === undefined) throw new Error("Hosted projection change lacks projected interactions.");

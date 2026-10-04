@@ -1,3 +1,5 @@
+import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
+import { sha256_sync } from "../../core/sha256-sync.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_Node } from "../../core/node-guards.js";
@@ -193,20 +195,25 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
       ...(scope === undefined ? {} : { scope }),
       mode,
       schema: source,
-      schemaDigest: hosted_sha256(source),
+      schemaDigest: hson_schema_digest(schema),
       rootCodec: HOSTED_ROOT_FORMAT,
     });
   });
   return registry_from_entries(libraries);
 }
 
-/** Build a detached registry from already validated canonical contract entries. @internal */
+/** Build a detached registry from validated semantic contract entries, defensively checking attached source. @internal */
 export function registry_from_entries(entries: readonly HostedRegistryEntry[]): HostedRegistry {
+  for (const entry of entries) {
+    if (hson_schema_source_digest(entry.schema) !== entry.schemaDigest) {
+      throw new HostedAggregateRepresentationError("Hosted registry Schema identity disagrees with its validated definition.");
+    }
+  }
   const libraries = Object.freeze([...entries]);
   return Object.freeze({
     format: HOSTED_REGISTRY_FORMAT,
     libraries,
-    digest: hosted_sha256(registry_canonical_text(libraries)),
+    digest: sha256_sync(registry_canonical_text(libraries)),
   });
 }
 
@@ -599,7 +606,8 @@ export function assert_libraries_snapshot_shape(snapshot: LiveMapSnapshot): void
 function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>): void {
   const registry = exact_record(record.registry, "Hosted snapshot registry");
   exact_keys(registry, ["format", "libraries", "digest"], "Hosted snapshot registry");
-  if (!Array.isArray(registry.libraries) || !Array.isArray(record.libraries)) {
+  if (registry.format !== HOSTED_REGISTRY_FORMAT
+    || !Array.isArray(registry.libraries) || !Array.isArray(record.libraries)) {
     throw new HostedAggregateRepresentationError("Hosted snapshot Library sequences are malformed.");
   }
   for (const entry of registry.libraries) {
@@ -607,7 +615,8 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
     exact_keys(item, entry.scope === undefined
       ? ["name", "mode", "schema", "schemaDigest", "rootCodec"]
       : ["name", "scope", "mode", "schema", "schemaDigest", "rootCodec"], "Hosted registry entry");
-    if (entry.scope !== undefined && entry.scope !== "hson-internal") {
+    if (entry.rootCodec !== HOSTED_ROOT_FORMAT
+      || (entry.scope !== undefined && entry.scope !== "hson-internal")) {
       throw new HostedAggregateRepresentationError("Hosted registry Library scope is malformed.");
     }
   }
@@ -859,7 +868,6 @@ function registry_canonical_text(entries: readonly HostedRegistryEntry[]): strin
       name: entry.name,
       ...(entry.scope === undefined ? {} : { scope: entry.scope }),
       mode: entry.mode,
-      schema: entry.schema,
       schemaDigest: entry.schemaDigest,
       rootCodec: entry.rootCodec,
     })),
@@ -935,59 +943,3 @@ function hosted_identity(label: string): string {
   const random = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   return `${label}-${Date.now().toString(36)}-${random}`;
 }
-
-/** Small universal synchronous SHA-256 used only for deterministic internal registry fingerprints. */
-export function hosted_sha256(text: string): string {
-  const bytes = encoder.encode(text);
-  const length = bytes.length;
-  const paddedLength = (((length + 9 + 63) >> 6) << 6);
-  const data = new Uint8Array(paddedLength);
-  data.set(bytes);
-  data[length] = 0x80;
-  const bits = length * 8;
-  const view = new DataView(data.buffer);
-  view.setUint32(paddedLength - 8, Math.floor(bits / 0x1_0000_0000), false);
-  view.setUint32(paddedLength - 4, bits >>> 0, false);
-  const h = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
-  const k = SHA256_K;
-  const w = new Uint32Array(64);
-  for (let offset = 0; offset < paddedLength; offset += 64) {
-    for (let index = 0; index < 16; index += 1) w[index] = view.getUint32(offset + index * 4, false);
-    for (let index = 16; index < 64; index += 1) {
-      const x = w[index - 15]!, y = w[index - 2]!;
-      const s0 = (right(x, 7) ^ right(x, 18) ^ (x >>> 3)) >>> 0;
-      const s1 = (right(y, 17) ^ right(y, 19) ^ (y >>> 10)) >>> 0;
-      w[index] = (w[index - 16]! + s0 + w[index - 7]! + s1) >>> 0;
-    }
-    let [a, b, c, d, e, f, g, hh] = h;
-    for (let index = 0; index < 64; index += 1) {
-      const s1 = (right(e!, 6) ^ right(e!, 11) ^ right(e!, 25)) >>> 0;
-      const ch = ((e! & f!) ^ (~e! & g!)) >>> 0;
-      const t1 = (hh! + s1 + ch + k[index]! + w[index]!) >>> 0;
-      const s0 = (right(a!, 2) ^ right(a!, 13) ^ right(a!, 22)) >>> 0;
-      const maj = ((a! & b!) ^ (a! & c!) ^ (b! & c!)) >>> 0;
-      const t2 = (s0 + maj) >>> 0;
-      hh = g; g = f; f = e; e = (d! + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
-    }
-    h[0] = (h[0]! + a!) >>> 0; h[1] = (h[1]! + b!) >>> 0;
-    h[2] = (h[2]! + c!) >>> 0; h[3] = (h[3]! + d!) >>> 0;
-    h[4] = (h[4]! + e!) >>> 0; h[5] = (h[5]! + f!) >>> 0;
-    h[6] = (h[6]! + g!) >>> 0; h[7] = (h[7]! + hh!) >>> 0;
-  }
-  return [...h].map((word) => word.toString(16).padStart(8, "0")).join("");
-}
-
-function right(value: number, bits: number): number {
-  return (value >>> bits) | (value << (32 - bits));
-}
-
-const SHA256_K = new Uint32Array([
-  0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
-  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
-  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
-  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
-  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
-  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
-  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
-  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
-]);

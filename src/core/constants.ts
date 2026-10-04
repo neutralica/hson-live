@@ -60,3 +60,6 @@ export const HSON_META_QUID = "quid" as const;
 export const HSON_META_TRANSIT_PREFIX = "_hson_meta_attr_" as const;
 
 export const _TRANSIT_PREFIX = "_hson_attr_transit_";
+
+/** Shared source/data recursion bound. Root values have depth zero. */
+export const HSON_MAX_NESTING = 256;

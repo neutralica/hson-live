@@ -3,7 +3,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "../src/api/ssr/index.ts";
 import { Hson, hsonTransform, type HsonSchema } from "../src/index.ts";
-import { encode_hosted_root, hosted_sha256 } from "../src/api/livemap/livemap.hosted.ts";
+import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
+import { hson_schema_digest } from "../src/api/schema/hson-schema.ts";
 import { locus_projection_contract_digest } from "../src/api/locus/locus.projection.ts";
 import { locus_local_initializer_digest } from "../src/api/locus/locus.local-initializer.ts";
 
@@ -28,7 +29,7 @@ if (mode === "--child") {
     const size = Math.min(remaining, 2 * MIB);
     remaining -= size;
     const contract = { name: `large${String(index).padStart(3, "0")}`, mode: "data-object" as const,
-      schema: schemaText, schemaDigest: hosted_sha256(schemaText), rootCodec: "hson-exact-value" as const };
+      schema: schemaText, schemaDigest: hson_schema_digest(schema), rootCodec: "hson-exact-value" as const };
     contracts.push(contract);
     libraries.push({ ...contract, root: { format: "hson-exact-value" as const,
       payload: rootTemplate.replace('"xxx"', `"${"x".repeat(size)}"`) } });

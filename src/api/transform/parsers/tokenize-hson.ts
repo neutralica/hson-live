@@ -1,4 +1,4 @@
-import { OBJ_TAG } from "../../../core/constants.js";
+import { HSON_MAX_NESTING, OBJ_TAG } from "../../../core/constants.js";
 import {
   CREATE_ARR_CLOSE_TOKEN,
   CREATE_ARR_OPEN_TOKEN,
@@ -22,7 +22,6 @@ import type {
   HsonTokenSourceEvidence,
 } from "../../../internal/hson-source-provenance/hson-source-provenance.js";
 
-const MAX_NESTING = 75;
 const NUMBER_LITERAL = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 const HSON_TRIVIA = new Set([" ", "\t", "\n", "\r"]);
 
@@ -118,9 +117,9 @@ export function tokenize_hson(
   interpolationMode?: "document" | "data",
   substitutions: readonly unknown[] = [],
 ): Tokens[] {
-  if (depth < 0 || depth >= MAX_NESTING) {
+  if (depth < 0 || depth >= HSON_MAX_NESTING) {
     _throw_transform_err(
-      `stopping potentially infinite loop (depth must be between 0 and ${MAX_NESTING - 1})`,
+      `Hson nesting depth must be between 0 and ${HSON_MAX_NESTING - 1}`,
       "tokenize_hson",
     );
   }
@@ -1528,8 +1527,8 @@ class HsonScanner {
   }
 
   private assertNesting(depth: number): void {
-    if (depth >= MAX_NESTING) {
-      this.fail(`stopping potentially infinite loop (depth >= ${MAX_NESTING})`);
+    if (depth >= HSON_MAX_NESTING) {
+      this.fail(`Hson nesting depth must be less than ${HSON_MAX_NESTING}`, undefined, "HSON_NESTING_LIMIT");
     }
   }
 

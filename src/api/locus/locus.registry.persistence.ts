@@ -8,7 +8,7 @@ import type {
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { node_to_json_value } from "../livemap/livemap.editor.js";
 import { HsonSchema } from "../schema/hson-schema.js";
-import type { HostedAggregateCommit } from "../livemap/livemap.hosted.js";
+import { registry_from_entries, type HostedAggregateCommit } from "../livemap/livemap.hosted.js";
 import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 import {
   durable_aggregate_commit,
@@ -184,9 +184,9 @@ export async function resume_registry_locus<
   const initialSystem = initialRegistry.libraries.filter((entry) => entry.scope === "hson-internal");
   const restoredSystem = restoredCheckpoint.registry.libraries.filter((entry) => entry.scope === "hson-internal");
   if (originalNames.length !== restoredOriginals.length
-    || originalNames.some((entry) => runtimeOwnership.has(entry.name) || JSON.stringify(entry)
-      !== JSON.stringify(restoredOriginals.find((candidate) => candidate.name === entry.name)))
-    || JSON.stringify(initialSystem) !== JSON.stringify(restoredSystem)) {
+    || originalNames.some(entry => runtimeOwnership.has(entry.name))
+    || registry_from_entries(originalNames).digest !== registry_from_entries(restoredOriginals).digest
+    || registry_from_entries(initialSystem).digest !== registry_from_entries(restoredSystem).digest) {
     restored.dispose();
     throw new LocusPersistenceError(
       "LOCUS_PERSISTED_STATE_INVALID",

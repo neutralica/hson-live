@@ -55,6 +55,10 @@ assert.deepEqual(projected, project_authority_snapshot(complete, effective));
 const encoded = encode_authority_projection_snapshot(projected);
 const decoded = decode_authority_projection_snapshot(encoded);
 assert.deepEqual(decoded, projected);
+const equivalentSource = { ...decoded, libraries: decoded.libraries.map(entry => ({ ...entry, schema: ` ${entry.schema} ` })) };
+assert.deepEqual(admit_authority_projection_snapshot(equivalentSource), decoded);
+assert.throws(() => admit_authority_projection_snapshot({ ...equivalentSource,
+  libraries: equivalentSource.libraries.map(entry => ({ ...entry, schema: '<type "data">' })) }), /malformed/i);
 assert.equal(decoded.revision, map.rev);
 assert.equal(decoded.projectionDigest, effective.digest);
 assert.deepEqual(decoded.writableDocuments, ["allowedPage"]);

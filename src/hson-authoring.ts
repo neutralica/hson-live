@@ -131,8 +131,7 @@ export const Hson = Object.freeze({
   document: Object.freeze(Object.assign(document_tag, {
     fromHson(source: HsonCanonical): HsonDocument {
       const document = ExactDocumentCarrier.fromHson(source);
-      if (document.toHson() !== source) throw new TypeError("Expected canonical Hson document text.");
-      return source as HsonDocument;
+      return document.toHson() as HsonDocument;
     },
     fromNode(node: import("./core/types.js").HsonNode): HsonDocument {
       admit_portable_hson_node(node, "Hson.document.fromNode");
@@ -140,7 +139,6 @@ export const Hson = Object.freeze({
     },
     toNode(value: HsonDocument): import("./core/types.js").HsonNode {
       const document = ExactDocumentCarrier.fromHson(value);
-      if (document.toHson() !== value) throw new TypeError("Expected canonical Hson document text.");
       return document.toNode();
     },
   })),

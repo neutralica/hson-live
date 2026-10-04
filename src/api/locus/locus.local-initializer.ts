@@ -1,3 +1,5 @@
+import { sha256_sync } from "../../core/sha256-sync.js";
+import { hson_schema_digest } from "../schema/hson-schema.js";
 import type {
   LocusLibraryCatalogEntry,
   LocusLocalInitializer,
@@ -15,7 +17,6 @@ import { hsonLiveMap } from "../livemap/livemap.facade.js";
 import {
   decode_hosted_root,
   encode_hosted_root,
-  hosted_sha256,
   HOSTED_MAX_SNAPSHOT_BYTES,
 } from "../livemap/livemap.hosted.js";
 import { classify_live_root_mode } from "../livemap/livemap.document.js";
@@ -54,11 +55,12 @@ function canonical_local_css(input: unknown): import("../../types/document-css.t
 }
 
 function initializer_fingerprint(input: Omit<LocusLocalInitializer, "fingerprint">): string {
-  return hosted_sha256(JSON.stringify({ format: "hson-local-initializer", ...input }));
+  const { schema: _source, ...contract } = input;
+  return sha256_sync(JSON.stringify({ format: "hson-local-initializer", ...contract }));
 }
 
 export function locus_local_initializer_digest(initializers: readonly LocusLocalInitializer[]): string {
-  return hosted_sha256(JSON.stringify({
+  return sha256_sync(JSON.stringify({
     format: "hson-local-initializer-set",
     initializers: initializers.map(({ name, fingerprint }) => ({ name, fingerprint })),
   }));
@@ -174,8 +176,8 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
     names.add(value.name);
     const schema = HsonSchema.fromHson(value.schema);
     const schemaSource = schema.toHson();
-    if (schemaSource !== value.schema || hosted_sha256(schemaSource) !== value.schemaDigest) {
-      throw new Error("Local initializer Schema is noncanonical.");
+    if (hson_schema_digest(schema) !== value.schemaDigest) {
+      throw new Error("Local initializer Schema identity is inconsistent.");
     }
     const root = decode_hosted_root(value.root as { format: "hson-exact-value"; payload: string }, HOSTED_MAX_SNAPSHOT_BYTES);
     admit_portable_hson_node(root, `Locus local initializer (${value.name})`);

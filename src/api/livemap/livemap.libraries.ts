@@ -44,7 +44,7 @@ import type {
   LivePath,
 } from "../../types/livemap.types.js";
 import { hson_data_text_from_value } from "../data/hson-data.js";
-import { ANY_DATA, ANY_DOCUMENT, HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
+import { ANY_DATA, ANY_DOCUMENT, hson_schema_source_digest, HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
@@ -142,7 +142,6 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): LiveMapDef
   for (const entry of operation.operation.libraries) {
     if (Object.hasOwn(definitions, entry.name)) throw new Error("LiveMap topology replay contains a duplicate Library.");
     const schema = HsonSchemaHandle.fromHson(entry.schema);
-    if (schema.toHson() !== entry.schema) throw new Error("LiveMap topology replay Schema is not canonical.");
     const root = decode_hosted_root(entry.root);
     admit_portable_hson_node(root, "LiveMap topology replay");
     if (classify_live_root_mode(root, entry.mode === "document" ? "document" : "data") !== entry.mode
@@ -510,9 +509,6 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
         const binding = named.get(operation.library);
         if (binding === undefined) throw new Error("LiveMap Schema replay requires an existing Library.");
         const schema = HsonSchemaHandle.fromHson(operation.operation.schema);
-        if (schema.toHson() !== operation.operation.schema) {
-          throw new Error("LiveMap Schema replay requires canonical Schema text.");
-        }
         const replayed = public_commit(aggregate.useLibrarySchema(
           binding.identity,
           schema,
@@ -679,7 +675,9 @@ export function portable_aggregate_inputs_internal(
     const entry = snapshot.registry.libraries[index];
     const encoded = snapshot.libraries[index];
     if (entry === undefined || encoded === undefined || entry.name !== encoded.name
-      || entry.mode !== encoded.mode || entry.schema !== encoded.schema) {
+      || entry.mode !== encoded.mode || entry.schemaDigest !== encoded.schemaDigest
+      || hson_schema_source_digest(entry.schema) !== entry.schemaDigest
+      || hson_schema_source_digest(encoded.schema) !== entry.schemaDigest) {
       throw new Error("Client projection Library metadata is malformed.");
     }
     const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
@@ -746,7 +744,8 @@ export function make_livemap_mirror_from_snapshot_internal(
     if (registry === undefined || library === undefined
       || registry.name !== library.name
       || registry.mode !== library.mode
-      || registry.schema !== library.schema
+      || hson_schema_source_digest(registry.schema) !== registry.schemaDigest
+      || hson_schema_source_digest(library.schema) !== registry.schemaDigest
       || registry.schemaDigest !== library.schemaDigest) {
       throw new Error("LiveMap Libraries snapshot Library metadata is malformed.");
     }

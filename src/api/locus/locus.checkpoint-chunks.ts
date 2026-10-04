@@ -1,5 +1,6 @@
+import { sha256_sync } from "../../core/sha256-sync.js";
 /** Internal bounded, semantic JSON token stream for durable checkpoint roots and Schemas. */
-import { hosted_sha256 } from "../livemap/livemap.hosted.js";
+
 
 export const CHECKPOINT_CHUNK_MAX_BYTES = 1_024 * 1_024;
 export const CHECKPOINT_MAX_CHUNKS = 65_536;
@@ -91,7 +92,7 @@ export function* encode_checkpoint_chunks(
     const id = `${checkpointId}:${owner}:${part}:${index}`;
     const result = Object.freeze({
       chunk: Object.freeze({ id, payload }),
-      descriptor: Object.freeze({ id, owner, part, rev, index, bytes, sha256: hosted_sha256(payload) }),
+      descriptor: Object.freeze({ id, owner, part, rev, index, bytes, sha256: sha256_sync(payload) }),
     });
     payload = "";
     bytes = 0;
@@ -187,7 +188,7 @@ export function validate_checkpoint_chunk(chunk: unknown, descriptor: Checkpoint
   if (Object.keys(value).length !== 2 || value.id !== descriptor.id || typeof value.payload !== "string") throw new Error("Checkpoint chunk identity is invalid.");
   if (value.payload.length > CHECKPOINT_CHUNK_MAX_BYTES) throw new Error("Checkpoint chunk exceeds its bound.");
   const bytes = encoder.encode(value.payload).byteLength;
-  if (bytes !== descriptor.bytes || bytes > CHECKPOINT_CHUNK_MAX_BYTES || hosted_sha256(value.payload) !== descriptor.sha256) {
+  if (bytes !== descriptor.bytes || bytes > CHECKPOINT_CHUNK_MAX_BYTES || sha256_sync(value.payload) !== descriptor.sha256) {
     throw new Error("Checkpoint chunk integrity is invalid.");
   }
   return value.payload;

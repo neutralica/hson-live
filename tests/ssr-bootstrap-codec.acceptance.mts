@@ -51,6 +51,18 @@ assert.equal(decoded.kind, "libraries");
 if (decoded.kind !== "libraries") throw new Error("Expected Libraries bootstrap.");
 assert.deepEqual(decoded.bootstrap, bootstrap);
 assert.deepEqual(install_libraries_snapshot(decoded.bootstrap).map.capture(), bootstrap);
+const equivalentSource = { ...bootstrap,
+  registry: { ...bootstrap.registry, libraries: bootstrap.registry.libraries.map(entry => ({ ...entry,
+    schema: `// presentation\n ${entry.schema} ` as typeof entry.schema })) },
+  libraries: bootstrap.libraries.map(entry => ({ ...entry,
+    schema: ` ${entry.schema} // presentation` as typeof entry.schema })),
+};
+assert.deepEqual(install_libraries_snapshot(equivalentSource).map.capture(), bootstrap);
+assert.equal(encode_ssr_bootstrap(equivalentSource), encoded);
+assert.deepEqual(decode_ssr_bootstrap(encode_ssr_bootstrap(equivalentSource)), decoded);
+assert.throws(() => encode_ssr_bootstrap({ ...equivalentSource,
+  libraries: equivalentSource.libraries.map(entry => ({ ...entry, schemaDigest: "0".repeat(64) })) }),
+  (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
 assert.equal(decoded.bootstrap.revision, 0);
 assert.equal(decoded.bootstrap.libraries.length, 2);
 const installedState = install_libraries_snapshot(decoded.bootstrap).map.lib("state");

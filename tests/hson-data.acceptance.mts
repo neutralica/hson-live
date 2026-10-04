@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import * as publicApi from "../src/index.ts";
 import { Hson, hson, type HsonData } from "../src/index.ts";
+import { HSON_MAX_NESTING } from "../src/core/constants.ts";
 import { serialize_hson_owned_document_content } from "../src/api/transform/serializers/serialize-hson.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 
@@ -99,9 +100,31 @@ check("every representative admitted value closes through canonical Hson", () =>
   for (const value of representatives) assert.equal(Hson.data.fromHson(value), value);
 });
 
-check("forged noncanonical data brands reject at dynamic boundaries", () => {
+check("equivalent data presentation normalizes at dynamic boundaries", () => {
   const forged = "<a  1>" as HsonData;
-  assert.throws(() => Hson.data.fromHson(forged), /canonical/);
+  assert.equal(Hson.data.fromHson(forged), Hson.data`<a 1>`);
+});
+
+check("data producers and shared parsing close at the same nesting boundary", () => {
+  const nested = (depth: number, kind: "object" | "array" | "mixed"): unknown => {
+    let value: unknown = -0;
+    for (let index = 0; index < depth; index++) {
+      value = kind === "array" || kind === "mixed" && index % 2 === 0 ? [value] : { level: value };
+    }
+    return value;
+  };
+  for (const kind of ["object", "array", "mixed"] as const) {
+    for (const depth of [74, 75, 76, HSON_MAX_NESTING - 2, HSON_MAX_NESTING - 1]) {
+      const value = nested(depth, kind);
+      const source = Hson.data.from(value);
+      assert.equal(Hson.data.fromHson(source), source);
+      assert.deepEqual(Hson.data.materialize(source), value);
+    }
+    assert.throws(() => Hson.data.from(nested(HSON_MAX_NESTING, kind)), /nesting depth/);
+  }
+  const tooDeep = "<level ".repeat(HSON_MAX_NESTING) + "-0" + ">".repeat(HSON_MAX_NESTING);
+  assert.throws(() => Hson.data.fromHson(tooDeep as HsonData), (error) =>
+    error instanceof TypeError && error.cause instanceof Error && /nesting depth/.test(error.cause.message));
 });
 
 check("document Hson rejects the data-only boundary", () => {

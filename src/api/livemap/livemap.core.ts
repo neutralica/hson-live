@@ -1,3 +1,5 @@
+import { registry_from_entries } from "./livemap.hosted.js";
+import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 // Registry LiveMap transition and aggregate authority.
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 
@@ -74,7 +76,6 @@ import {
   encode_hosted_root,
   HOSTED_MAX_ISSUED_QUIDS,
   HOSTED_MAX_SNAPSHOT_BYTES,
-  hosted_sha256,
   LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
   make_hosted_authority_fence,
   make_hosted_commit,
@@ -1339,7 +1340,7 @@ function make_livemap_registry_engine(
     const bindings = bindingsInput.map((raw, index): HostedRegistryBinding => {
       const state = states[index];
       if (state === undefined || raw.identity !== state.identity || raw.mode !== state.mode
-        || raw.schema.toHson() !== state.hsonSchema?.toHson()) {
+        || (state.hsonSchema === undefined || hson_schema_digest(raw.schema) !== hson_schema_digest(state.hsonSchema))) {
         throw new Error("LiveMap hosted registry order, mode, or Schema disagrees with aggregate authority.");
       }
       return Object.freeze({ ...raw });
@@ -1377,7 +1378,7 @@ function make_livemap_registry_engine(
       const binding = hosted.byName.get(entry.name);
       const fullEntry = hosted.registry.libraries.find((candidate) => candidate.name === entry.name);
       if (binding === undefined || binding.mode !== entry.mode
-        || binding.scope !== entry.scope || binding.schema.toHson() !== entry.schema
+        || binding.scope !== entry.scope || hson_schema_digest(binding.schema) !== hson_schema_source_digest(entry.schema)
         || fullEntry?.schemaDigest !== entry.schemaDigest || fullEntry.rootCodec !== entry.rootCodec) {
         throw new Error("Client projection contract disagrees with the composed registry.");
       }
@@ -1567,15 +1568,15 @@ function make_livemap_registry_engine(
     if (expectedPreviousSchemaDigest !== undefined && expectedPreviousSchemaDigest !== currentEntry.schemaDigest) {
       throw new Error("LiveMap Library Schema replay prior-contract digest is incompatible.");
     }
-    const currentSource = current.toHson();
+    const currentDigest = hson_schema_digest(current);
     const requestedSource = schema.toHson();
     const prevRev = mapRevision;
-    if (currentSource === requestedSource) {
+    if (currentDigest === hson_schema_digest(schema)) {
       return Object.freeze({ kind: "aggregate", changed: false, prevRev, rev: prevRev,
         operations: Object.freeze([]) });
     }
-    const familyTop = family === "document" ? ANY_DOCUMENT.toHson() : ANY_DATA.toHson();
-    if (currentSource !== familyTop) {
+    const familyTop = hson_schema_digest(family === "document" ? ANY_DOCUMENT : ANY_DATA);
+    if (currentDigest !== familyTop) {
       throw new Error("LiveMap Library governing Schema is already fixed to a different specific contract.");
     }
     must_hson_schema_root(schema, state.root);
@@ -1788,8 +1789,9 @@ function make_livemap_registry_engine(
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
     if (!Number.isSafeInteger(checkpoint.revision) || checkpoint.revision < 0
+      || checkpoint.registry.format !== hosted.registry.format
       || checkpoint.registry.digest !== hosted.registry.digest
-      || JSON.stringify(checkpoint.registry) !== JSON.stringify(hosted.registry)
+      || registry_from_entries(checkpoint.registry.libraries).digest !== hosted.registry.digest
       || checkpoint.libraries.length !== hosted.registry.libraries.length
       || typeof checkpoint.authority.logicalMapId !== "string" || !checkpoint.authority.logicalMapId
       || typeof checkpoint.authority.incarnationId !== "string" || !checkpoint.authority.incarnationId) {
@@ -1885,7 +1887,7 @@ function make_livemap_registry_engine(
       const entry = snapshot.registry.libraries[index];
       const encoded = snapshot.libraries[index];
       if (entry === undefined || encoded === undefined || entry.name !== encoded.name
-        || entry.mode !== encoded.mode || entry.schema !== encoded.schema
+        || entry.mode !== encoded.mode || hson_schema_source_digest(entry.schema) !== hson_schema_source_digest(encoded.schema)
         || entry.schemaDigest !== encoded.schemaDigest) {
         throw new Error("LiveMap topology snapshot Library metadata is malformed.");
       }
@@ -1898,7 +1900,7 @@ function make_livemap_registry_engine(
       must_hson_schema_root(schema, prepared.root);
       if (entry.scope === "hson-internal") {
         if (systemState === undefined || systemState.transportName !== entry.name
-          || systemState.hsonSchema.toHson() !== entry.schema || entry.mode !== "data-object") {
+          || hson_schema_digest(systemState.hsonSchema) !== hson_schema_source_digest(entry.schema) || entry.mode !== "data-object") {
           throw new Error("LiveMap topology snapshot system state is incompatible.");
         }
         systemRoot = prepared.root;
@@ -1906,7 +1908,7 @@ function make_livemap_registry_engine(
       } else {
         const old = hosted.byName.get(entry.name);
         const compatible = old !== undefined && old.scope === undefined
-          && old.mode === entry.mode && old.schema.toHson() === entry.schema;
+          && old.mode === entry.mode && hson_schema_digest(old.schema) === hson_schema_source_digest(entry.schema);
         const state = compatible
           ? require_library(old.identity as LiveMapLibraryIdentity)
           : make_livemap_library(prepared, schema);
@@ -1935,7 +1937,7 @@ function make_livemap_registry_engine(
     }));
     const registry = make_hosted_registry(bindings);
     if (registry.digest !== snapshot.registry.digest
-      || JSON.stringify(registry) !== JSON.stringify(snapshot.registry)) {
+      || registry.digest !== registry_from_entries(snapshot.registry.libraries).digest) {
       throw new Error("LiveMap topology snapshot registry is inconsistent.");
     }
     const previousRevision = mapRevision;
@@ -1999,7 +2001,7 @@ function make_livemap_registry_engine(
     if (snapshot.format !== LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT
       || snapshot.registryDigest !== hosted.registry.digest
       || snapshot.registry.digest !== hosted.registry.digest
-      || JSON.stringify(snapshot.registry) !== JSON.stringify(hosted.registry)) {
+      || registry_from_entries(snapshot.registry.libraries).digest !== hosted.registry.digest) {
       throw new Error("Hosted aggregate snapshot registry is incompatible with this LiveMap.");
     }
     if (!Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0
@@ -2034,8 +2036,8 @@ function make_livemap_registry_engine(
       const entry = hosted.registry.libraries[index];
       if (encoded === undefined || entry === undefined
         || encoded.name !== entry.name || encoded.mode !== entry.mode
-        || encoded.schema !== entry.schema || encoded.schemaDigest !== entry.schemaDigest
-        || hosted_sha256(encoded.schema) !== encoded.schemaDigest) {
+        || hson_schema_source_digest(encoded.schema) !== hson_schema_source_digest(entry.schema) || encoded.schemaDigest !== entry.schemaDigest
+        || hson_schema_source_digest(encoded.schema) !== encoded.schemaDigest) {
         throw new Error("Hosted aggregate snapshot Library metadata disagrees with its registry.");
       }
       const binding = hosted.byName.get(entry.name);
@@ -2216,7 +2218,7 @@ function make_livemap_registry_engine(
       const entry = snapshot.registry.libraries[index];
       const encoded = snapshot.libraries[index];
       if (entry === undefined || encoded === undefined || entry.name !== encoded.name
-        || entry.mode !== encoded.mode || entry.schema !== encoded.schema
+        || entry.mode !== encoded.mode || hson_schema_source_digest(entry.schema) !== hson_schema_source_digest(encoded.schema)
         || entry.schemaDigest !== encoded.schemaDigest) {
         throw new Error("Client projection snapshot Library metadata is incompatible.");
       }
@@ -2240,7 +2242,7 @@ function make_livemap_registry_engine(
           mode: entry.mode, schema });
       } else {
         const retained = oldBinding !== undefined && oldBinding.scope === undefined
-          && oldBinding.mode === entry.mode && oldBinding.schema.toHson() === entry.schema;
+          && oldBinding.mode === entry.mode && hson_schema_digest(oldBinding.schema) === hson_schema_source_digest(entry.schema);
         const previous = retained ? require_library(oldBinding.identity as LiveMapLibraryIdentity) : undefined;
         const css = entry.mode === "document" ? decode_portable_document_stylesheet(encoded.css)
           : undefined;
@@ -2295,7 +2297,7 @@ function make_livemap_registry_engine(
     const nextProjectedRegistry = make_hosted_registry([...projectedBindings,
       ...(systemBinding === undefined ? [] : [systemBinding])]);
     if (nextProjectedRegistry.digest !== snapshot.registryDigest
-      || JSON.stringify(nextProjectedRegistry) !== JSON.stringify(snapshot.registry)) {
+      || nextProjectedRegistry.digest !== registry_from_entries(snapshot.registry.libraries).digest) {
       throw new Error("Client projection snapshot registry is inconsistent.");
     }
     const projected = new Set(candidates.map((candidate) => candidate.state.identity));

@@ -1,3 +1,4 @@
+import { encode_checkpoint_chunks } from "../src/api/locus/locus.checkpoint-chunks.ts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
@@ -14,6 +15,7 @@ import type { HsonNode } from "../src/core/types.ts";
 import { capture_selected_authority_projection_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import {
+  write_semantic_checkpoint,
   create_persistent_locus_hosted_aggregate_internal,
   load_persistent_locus_hosted_aggregate_internal,
   type LocusHostedAggregatePersistedManifest,
@@ -61,6 +63,17 @@ async function case_(name: string, run: () => Promise<void>) {
   await run();
   process.stdout.write(`ok - ${name}\n`);
 }
+
+await case_("checkpoint prefix compares semantic Schema identity and retains registry format", async () => {
+  const adapter = new MemoryCheckpointAdapter();
+  const checkpoint = internal_livemap_aggregate_authority(make_map()).captureSemanticCheckpoint();
+  await write_semantic_checkpoint(checkpoint, adapter);
+  const presented = { ...checkpoint, registry: { ...checkpoint.registry,
+    libraries: checkpoint.registry.libraries.map(entry => ({ ...entry, schema: ` \n${entry.schema}` as typeof entry.schema })) } };
+  await assert.doesNotReject(() => write_semantic_checkpoint(presented, adapter));
+  await assert.rejects(() => write_semantic_checkpoint({ ...presented,
+    registry: { ...presented.registry, format: "wrong" } } as never, adapter), /invalid/i);
+});
 
 await case_("empty authority checkpoint restores without a placeholder library", async () => {
   const adapter = new MemoryCheckpointAdapter();
@@ -124,6 +137,29 @@ await case_("restart reapplies deployment local definitions without persisting c
   await assert.rejects(hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), [
       { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
     ]), persistence: conflictAdapter, logicalMapId: conflictId }), /collid|catalog|authority|topology/i);
+});
+
+await case_("presentation-equivalent checkpoint Schema restores with exact chunk checksums", async () => {
+  const adapter = new MemoryCheckpointAdapter();
+  const id = "z3b-schema-presentation";
+  const locus = await host(adapter, id);
+  await hsonLiveMap.locus.checkpoint(locus);
+  locus.dispose();
+  const state = adapter.state(id)!;
+  const manifest = active(adapter, id);
+  const chunks = manifest.chunks.map(descriptor => {
+    if (descriptor.part !== "schema") return descriptor;
+    assert.equal(descriptor.index, 0);
+    const replacement = [...encode_checkpoint_chunks(manifest.checkpointId, manifest.rev,
+      descriptor.owner, "schema", ` ${Data.toHson()} `)];
+    assert.equal(replacement.length, 1);
+    adapter.chunks.set(descriptor.id, replacement[0]!.chunk);
+    return replacement[0]!.descriptor;
+  });
+  adapter.seed(id, { ...state, checkpoint: { ...manifest, chunks } });
+  const restored = await host(adapter, id);
+  assert.equal(locus_map_internal(restored).lib("public").snap(["value"]), "public");
+  restored.dispose();
 });
 
 await case_("checkpoint chunks exclude runtime QUID identity and restore fresh identity", async () => {

@@ -46,6 +46,11 @@ The same numeric operation is exported as `hsonCalc`. Runtime authored-Hson text
 
 Every constructor method parses and normalizes input to Hson's canonical node graph.
 
+Hson source parsing and data admission share a nesting bound of 256: the root
+value has depth zero, and every object member or array item adds one. Values at
+depth 256 reject before publication; admitted data closes through serialization,
+`fromHson`, and materialization within the same bound.
+
 ## Hson authoring and semantic strings
 
 `Hson` is a frozen namespace with four member tags. Each tag admits the complete source in its semantic context and returns a primitive string, except Schema authoring, which returns an immutable Schema object.
@@ -79,7 +84,7 @@ const readBack = Hson.data.fromHson(authored);
 
 ### Document
 
-`HsonDocument` is a canonical primitive string for an exact notation-closed document. It supports empty, text-only, single-root, and multi-root documents. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing. Document admission also requires `<style/>` or one nonempty style string leaf, and permits `<script>` only with `src` and no content. LiveMap document imports and mutations enforce the same rules.
+`HsonDocument` is a normalized primitive string for an exact notation-closed document. Data/document `fromHson` admission accepts presentation-equivalent valid Hson and returns normalized output without a source-byte equality gate. It supports empty, text-only, single-root, and multi-root documents. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing. Document admission also requires `<style/>` or one nonempty style string leaf, and permits `<script>` only with `src` and no content. LiveMap document imports and mutations enforce the same rules.
 
 ```ts
 const document = Hson.document`<main/><aside/>`;
@@ -92,7 +97,7 @@ console.log(roundTrip === document); // true
 
 ### Schema definitions
 
-`Hson.schema` returns a frozen nominal object that compiles a valid Schema. `schema.toHson()` returns `HsonSchemaData`, a primitive `HsonData` known to define a valid Schema. `Hson.schema.fromHson(schema.toHson())` validates and reconstructs an operational Schema object. Dynamic certification belongs to `schema.certify(candidate)`; it returns a data or document string with Schema-specific proof. Hosted transport compares canonical Schema definitions, not object identity.
+`Hson.schema` returns a frozen nominal object that compiles a valid Schema. `schema.toHson()` returns `HsonSchemaData`, a primitive `HsonData` known to define a valid Schema. `Hson.schema.fromHson(schema.toHson())` validates and reconstructs an operational Schema object. Dynamic certification belongs to `schema.certify(candidate)`; it returns a data or document string with Schema-specific proof. Hosted transport compares deterministic identities of fully validated ordered Schema definitions. Exact source bytes remain provenance, while whitespace, quoting, escaping, and accepted syntax presentation do not change the runtime contract.
 
 Runtime text containing arbitrary authored Hson is a separate operation:
 

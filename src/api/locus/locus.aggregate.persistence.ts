@@ -1,3 +1,5 @@
+import { registry_from_entries } from "../livemap/livemap.hosted.js";
+import { hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { HsonNode } from "../../core/types.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import type {
@@ -11,7 +13,6 @@ import {
 import { make_livemap_mirror_from_semantic_checkpoint_internal } from "../livemap/livemap.libraries.js";
 import type { LiveMapSemanticCheckpoint } from "../livemap/livemap.internal.js";
 import type { HostedRegistry, HostedRegistryEntry } from "../livemap/livemap.hosted.js";
-import { hosted_sha256 } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import {
@@ -186,8 +187,9 @@ export async function write_semantic_checkpoint(
     const expected = validated.prefix;
     if (expected === undefined || expected.map.revision !== checkpoint.revision
       || JSON.stringify(expected.map.authority) !== JSON.stringify(checkpoint.authority)
+      || expected.map.registry.format !== checkpoint.registry.format
       || expected.map.registry.digest !== checkpoint.registry.digest
-      || JSON.stringify(expected.map.registry) !== JSON.stringify(checkpoint.registry)
+      || expected.map.registry.digest !== registry_from_entries(checkpoint.registry.libraries).digest
       || JSON.stringify(expected.map.libraries) !== JSON.stringify(checkpoint.libraries)
       || JSON.stringify(expected.runtimeOwnership) !== JSON.stringify(ownership)) throw invalid_state();
   }
@@ -332,7 +334,7 @@ async function restore_manifest(
       values.push(decoder.finish());
     }
     const [schema, root, css] = values;
-    if (typeof schema !== "string" || hosted_sha256(schema) !== fixed.schemaDigest
+    if (typeof schema !== "string" || hson_schema_source_digest(schema) !== fixed.schemaDigest
       || typeof root !== "object" || root === null || Array.isArray(root)) throw invalid_state();
     registryEntries.push(Object.freeze({
       name: fixed.name,

@@ -1,6 +1,7 @@
 import type { HsonNode } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
-import { materialize_projected_value } from "../../core/projected-value-materialization.js";
+import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+
 import { parse_hson_with_provenance } from "../hson-source-provenance/parse-hson-with-provenance.js";
 import type { HsonSourceProvenance, HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
 import {
@@ -20,6 +21,15 @@ import { is_valid_hson_data_name } from "../../core/hson-name.js";
 import type { HsonSemanticPrimitive } from "../../core/types.js";
 import { resolve_projected_hson_location } from "../../api/livemap/livemap.editor.js";
 import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
+
+/** Lookup-only decoder view. ownKeys retains authored integer-like member order. */
+function ordered_definition_view(value: OrderedProjectedValue): unknown {
+  if (Array.isArray(value)) return value.map(ordered_definition_view);
+  if (!is_ordered_projected_object(value)) return value;
+  const target: Record<string, unknown> = Object.create(null);
+  for (const [name, child] of value.entries) target[name] = ordered_definition_view(child);
+  return new Proxy(target, { ownKeys: () => value.entries.map(([name]) => name) });
+}
 
 /** Data-root order is shared by validation and editor introspection. */
 export const HSON_SCHEMA_DATA_ROOT_ORDER = ["type", "defs", "content"] as const;
@@ -130,6 +140,7 @@ export type HsonSchemaSymbolTable = Readonly<{
 }>;
 
 export type CompiledHsonSchema = Readonly<{
+  orderedDefinition: OrderedProjectedValue;
   semantic: HsonSchemaSemanticNode;
   definitions: readonly HsonSchemaDefinition[];
   referenceUses: readonly HsonSchemaReferenceUse[];
@@ -164,8 +175,10 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   }
 
   let materialized: unknown;
+  let orderedDefinition: OrderedProjectedValue;
   try {
-    materialized = materialize_projected_value(projected_value_from_hson_node(parsed.value));
+    orderedDefinition = projected_value_from_hson_node(parsed.value);
+    materialized = ordered_definition_view(orderedDefinition);
   } catch (error) {
     return failure("INVALID_ROOT", [], error instanceof Error ? error.message : "Schema must be ordinary data Hson.");
   }
@@ -234,10 +247,24 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
     const label = source?.kind === "ref" || source?.kind === "document-ref" ? ` Reference ${JSON.stringify(source.name)} is involved.` : "";
     return Object.freeze({ ok: false, issues: Object.freeze([Object.freeze({ code: "INVALID_SCHEMA_GRAPH", path: Object.freeze([]), message: `${verified.issues.map((entry) => entry.message).join(" ")}${label}`, ...(range === undefined ? {} : { range }) })]), symbols: hson_schema_symbols(definitions, referenceUses) });
   }
+  // Unused definitions are authored contracts too. Decode checks alone cannot
+  // detect non-consuming reference cycles or verifier-level refinement defects.
+  const validatedSources = new Set(lowered.sources);
+  for (const definition of definitions) {
+    if (validatedSources.has(definition.schema)) continue;
+    const detached = lower_hson_schema_semantic_with_sources(definition.schema, definitions);
+    const validated = verify_canonical_schema_graph(detached.graph);
+    if (!validated.ok) return Object.freeze({ ok: false, issues: Object.freeze([Object.freeze({
+      code: "INVALID_SCHEMA_GRAPH", path: Object.freeze(["defs", definition.name]), range: definition.range,
+      message: validated.issues.map(entry => entry.message).join(" "),
+    })]), symbols: hson_schema_symbols(definitions, referenceUses) });
+    for (const source of detached.sources) validatedSources.add(source);
+  }
   const recursiveSccCount = count_recursive_sccs(verified.graph);
   return Object.freeze({
     ok: true,
       value: Object.freeze({
+        orderedDefinition,
         semantic,
         definitions: Object.freeze(definitions),
         referenceUses: Object.freeze(referenceUses),

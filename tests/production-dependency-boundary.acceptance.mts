@@ -203,7 +203,8 @@ check("native /livemap namespace keeps LiveMap, Echo, and Locus browser graphs s
   noSibling(locus, "echo", "Locus create");
   assert.ok(plain.gzip < 320 * 1024, `plain LiveMap drifted to ${plain.gzip} gzip bytes`);
   assert.ok(libraries.gzip < 320 * 1024, `LiveMap fromLibraries drifted to ${libraries.gzip} gzip bytes`);
-  assert.ok(echo.gzip < 32 * 1024, `endpoint Echo drifted to ${echo.gzip} gzip bytes`);
+  // Endpoint data admission now retains the shared Hson parser rather than a second codec.
+  assert.ok(echo.gzip < 40 * 1024, `endpoint Echo drifted to ${echo.gzip} gzip bytes`);
   assert.ok(locus.gzip < 360 * 1024, `Locus drifted to ${locus.gzip} gzip bytes`);
   console.log(JSON.stringify({ livemapNamespaceBundles: {
     create: { raw: plain.raw, gzip: plain.gzip },

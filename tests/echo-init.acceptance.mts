@@ -1,3 +1,4 @@
+import { sha256_sync } from "../src/core/sha256-sync.ts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
@@ -7,7 +8,7 @@ import assert from "node:assert/strict";
 import { Hson, add_interaction, decode_ssr_bootstrap, enable_interactions, encode_ssr_bootstrap, hsonLiveMap, type InteractionDescriptor, type Locus, type LocusWebSocketLike } from "../src/index.ts";
 import type { LocusRegistryOptions } from "../src/types/locus.core.types.ts";
 import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
-import { encode_hosted_root, hosted_sha256 } from "../src/api/livemap/livemap.hosted.ts";
+import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_locus_session_now, install_client_local_initializers_internal, make_locus_application_catalog } from "../src/api/locus/locus.local-initializer.ts";
 import { prepare_echo_replica_internal } from "../src/api/echo/echo.replica-preparation.ts";
@@ -615,9 +616,9 @@ for (const stage of ["message", "close"] as const) {
   const { fingerprint: _originalFingerprint, ...definition } = original;
   const withoutFingerprint = Object.freeze({ ...definition, root });
   const altered: typeof original = Object.freeze({ ...withoutFingerprint,
-    fingerprint: hosted_sha256(JSON.stringify({ format: "hson-local-initializer", ...withoutFingerprint })) });
+    fingerprint: sha256_sync(JSON.stringify({ format: "hson-local-initializer", ...withoutFingerprint })) });
   const tampered = Object.freeze({ ...authentic, local: Object.freeze([altered]),
-    initializerDigest: hosted_sha256(JSON.stringify({ format: "hson-local-initializer-set",
+    initializerDigest: sha256_sync(JSON.stringify({ format: "hson-local-initializer-set",
       initializers: [{ name: altered.name, fingerprint: altered.fingerprint }] })) });
   const tamperPair = socket_pair();
   const detachTamper = bind_locus_websocket(locus, tamperPair.server);

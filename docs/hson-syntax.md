@@ -92,6 +92,8 @@ The parser attaches that value directly beneath its internal `_hson_root` as `_h
 
 Only double quotes are supported for quoted text. The JSON escapes `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX` are decoded. Unknown, incomplete, malformed, and unterminated escapes reject. Single quotes and backticks are not text delimiters. Every raw unescaped C0 control character (U+0000 through U+001F) rejects at its exact source position, including physical tab, LF, CR, backspace, and form feed. Escaped controls are required, and physical line endings inside quoted strings are never normalized. This rule is identical for primitive strings, object and array string values, element text, and quoted attributes.
 
+Data/document admission accepts equivalent valid syntax presentations, including readable/compact layouts and accepted array delimiters. It validates family and semantic rules before returning normalized branded output. Ordering, signed zero, missing versus present-empty, duplicate decoded names, reserved names, portable QUID restrictions, metadata, document notation closure and style/script rules remain exact. `HsonCanonical` is a producer-provenance brand for both readable and compact output; `.sha256()` hashes the exact selected representation.
+
 JavaScript template literals can contain ordinary Hson quoted-name delimiters directly:
 
 ```ts

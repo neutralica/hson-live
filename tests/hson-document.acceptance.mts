@@ -253,8 +253,8 @@ check("public document values are primitive strings with validated helper bounda
   assert.equal(Object.hasOwn(publicApi, "HsonDocument"), false);
   assert.throws(() => Hson.document.toNode({ value: genuine } as unknown as HsonDocument));
   const forged = "<main  />" as HsonDocument;
-  assert.throws(() => Hson.document.fromHson(forged), /canonical/);
-  assert.throws(() => Hson.document.toNode(forged), /canonical/);
+  assert.equal(Hson.document.fromHson(forged), genuine);
+  assert.deepEqual(Hson.document.toNode(forged), Hson.document.toNode(genuine));
 });
 
 check("equality uses exact canonical graph distinctions", () => {

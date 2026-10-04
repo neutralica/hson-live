@@ -164,7 +164,9 @@ check("portable Schema-use replay rejects tampering and revision mismatch atomic
   const operation = commit.operations[0];
   assert.ok(operation && "kind" in operation.operation && operation.operation.kind === "library-schema-use");
   reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, previousSchemaDigest: "0".repeat(64) } }] });
-  reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: `${SlideSchema.toHson()} ` } }] });
+  const equivalentTarget = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+  equivalentTarget.replay({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: `${SlideSchema.toHson()} ` } }] } as never);
+  assert.equal(equivalentTarget.lib("page").schema.use(SlideSchema).changed, false);
   reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: StateSchema.toHson() } }] });
   reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: OtherSlideSchema.toHson() } }] });
   reject({ ...commit, prevRev: 1, rev: 2 });

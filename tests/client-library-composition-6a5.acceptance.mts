@@ -1,3 +1,4 @@
+import { sha256_sync } from "../src/core/sha256-sync.ts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
@@ -12,7 +13,7 @@ import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { compose_client_portable_aggregate_internal } from "../src/api/echo/echo.projection.ts";
 import { local_initializers } from "./helpers/client-projection.mts";
-import { encode_hosted_root, hosted_sha256, make_portable_aggregate_commit, make_portable_aggregate_snapshot } from "../src/api/livemap/livemap.hosted.ts";
+import { encode_hosted_root, make_portable_aggregate_commit, make_portable_aggregate_snapshot } from "../src/api/livemap/livemap.hosted.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { acquire_livemap_document_identity } from "../src/api/livemap/livemap.document.identity-handle.ts";
 import { validate_livemap_document_admission } from "../src/api/livemap/livemap.document.capture.ts";
@@ -292,7 +293,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   const server = authority();
   const base = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
   const registry = Object.freeze({ ...base.registry, libraries: Object.freeze([]),
-    digest: hosted_sha256(JSON.stringify({ format: base.registry.format, libraries: [] })) });
+    digest: sha256_sync(JSON.stringify({ format: base.registry.format, libraries: [] })) });
   const snapshot = Object.freeze({ ...base, registry, registryDigest: registry.digest,
     libraries: Object.freeze([]) });
   const local = compose_client_portable_aggregate_internal(snapshot, local_initializers({

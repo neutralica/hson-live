@@ -1,3 +1,5 @@
+import { sha256_sync } from "../../core/sha256-sync.js";
+import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.internal.types.js";
 import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { HsonSchemaData } from "../transform/transform.types.js";
@@ -5,7 +7,7 @@ import type { AuthorityProjectionSnapshot, LocusProjectionSystemFeature } from "
 import type { HostedRegistryEntry } from "../livemap/livemap.hosted.js";
 import type { LocusEffectiveProjection } from "./locus.projection.js";
 import { locus_projection_contract_digest } from "./locus.projection.js";
-import { assert_hosted_libraries_snapshot_shape, decode_hosted_root, encode_hosted_root, hosted_sha256, registry_from_entries, HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
+import { assert_hosted_libraries_snapshot_shape, decode_hosted_root, encode_hosted_root, registry_from_entries, HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import { classify_live_root_mode } from "../livemap/livemap.document.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
@@ -142,8 +144,8 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       const suppliedSchema = string(entry.schema);
       const schema = HsonSchema.fromHson(suppliedSchema);
       const schemaSource: HsonSchemaData = schema.toHson();
-      if (schemaSource !== suppliedSchema || entry.schemaDigest !== hosted_sha256(schemaSource) || entry.rootCodec !== "hson-exact-value") return fail();
-      return Object.freeze({ name, mode, schema: schemaSource, schemaDigest: hosted_sha256(schemaSource), rootCodec: "hson-exact-value",
+      if (entry.schemaDigest !== hson_schema_digest(schema) || entry.rootCodec !== "hson-exact-value") return fail();
+      return Object.freeze({ name, mode, schema: schemaSource, schemaDigest: hson_schema_digest(schema), rootCodec: "hson-exact-value",
         root: root(entry.root, schema, mode),
         ...(mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
     });
@@ -183,7 +185,7 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
 /** @internal Fingerprint mutable projected contents separately from the scope contract. */
 export function authority_projection_state_fingerprint_internal(input: AuthorityProjectionSnapshot): string {
   const snapshot = admit_authority_projection_snapshot(input);
-  return hosted_sha256(JSON.stringify({
+  return sha256_sync(JSON.stringify({
     libraries: snapshot.libraries.map((entry) => ({
       name: entry.name,
       root: entry.root.payload,
@@ -221,7 +223,7 @@ export function project_authority_snapshot(
       const captured = byName.get(contract.name);
       const current = byContract.get(contract.name);
       if (captured === undefined || current === undefined || current.scope !== undefined
-        || current.mode !== contract.mode || current.schema !== contract.schema || current.schemaDigest !== contract.schemaDigest
+        || current.mode !== contract.mode || hson_schema_source_digest(current.schema) !== hson_schema_source_digest(contract.schema) || current.schemaDigest !== contract.schemaDigest
         || current.rootCodec !== contract.rootCodec) return fail();
       return Object.freeze({ ...contract, root: captured.root,
         ...(contract.mode === "document" ? { css: captured.css } : {}) });
@@ -291,7 +293,7 @@ export function authority_projection_as_client_composition_internal(input: Autho
   const systemSchema = interaction_schema_internal();
   if (snapshot.system !== null) entries.push(Object.freeze({
     name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, scope: "hson-internal", mode: "data-object", schema: systemSchema.toHson(),
-    schemaDigest: hosted_sha256(systemSchema.toHson()), rootCodec: "hson-exact-value",
+    schemaDigest: hson_schema_digest(systemSchema), rootCodec: "hson-exact-value",
   }));
   const registry = registry_from_entries(entries);
   const libraries = snapshot.libraries.map((entry) => Object.freeze({
@@ -300,7 +302,7 @@ export function authority_projection_as_client_composition_internal(input: Autho
   }));
   if (snapshot.system !== null) libraries.push(Object.freeze({
     name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, mode: "data-object", schema: systemSchema.toHson(),
-    schemaDigest: hosted_sha256(systemSchema.toHson()), root: snapshot.system.interactions,
+    schemaDigest: hson_schema_digest(systemSchema), root: snapshot.system.interactions,
   }));
   return Object.freeze({ format: "hson-portable-aggregate-snapshot", authority: snapshot.authority,
     revision: snapshot.revision, registry, registryDigest: registry.digest, libraries: Object.freeze(libraries) });

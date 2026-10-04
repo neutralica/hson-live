@@ -1,3 +1,4 @@
+import { sha256_sync } from "../src/core/sha256-sync.ts";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import {
@@ -10,7 +11,6 @@ import { validate_document_path, type HostedLiveMapSnapshot } from "../src/api/l
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import {
   encode_hosted_root,
-  hosted_sha256,
   make_hosted_commit,
   make_hosted_registry,
   type HostedAggregateCommit,
@@ -99,7 +99,7 @@ check("registry order and digest are deterministic and cover name, mode, and exa
   assert.notEqual(left.digest, make_hosted_registry([{ ...base[0]!, mode: "data-array" }, base[1]!]).digest);
   assert.notEqual(left.digest, make_hosted_registry([{ ...base[0]!, schema: FlagSchema }, base[1]!]).digest);
   assert.throws(() => make_hosted_registry([base[0]!, { ...base[1]!, name: "a" }]), /duplicated/i);
-  assert.equal(hosted_sha256("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  assert.equal(sha256_sync("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 });
 
 check("one hosted commit carries ordered qualified semantics plus one exact witness per operation", () => {

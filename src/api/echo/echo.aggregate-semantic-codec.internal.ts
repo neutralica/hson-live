@@ -1,3 +1,4 @@
+import { hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { LocusActionPayloads, LocusClientMessage } from "../../types/locus.types.js";
 import { encode_locus_client_message } from "../locus/locus.protocol.js";
 import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES } from "../locus/locus.aggregate.protocol.js";
@@ -12,7 +13,7 @@ import type {
 } from "../locus/locus.aggregate.transport.internal.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { admit_authority_projection_snapshot, authority_projection_as_client_composition_internal } from "../locus/locus.authority-projection-snapshot.js";
-import { HOSTED_MAX_SNAPSHOT_BYTES, hosted_sha256 } from "../livemap/livemap.hosted.js";
+import { HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import type { LiveMapLibraryAddOperation, LiveMapRootMode } from "../../types/livemap.types.js";
 import type { LocusProjectedLibraryContract } from "../locus/locus.projection.js";
@@ -188,11 +189,10 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
     const schema = required_string(entry.schema);
     const schemaDigest = required_digest(entry.schemaDigest);
     if (name === undefined || !is_root_mode(entry.mode) || schema === undefined || schemaDigest === undefined
-      || entry.rootCodec !== "hson-exact-value" || hosted_sha256(schema) !== schemaDigest) {
+      || entry.rootCodec !== "hson-exact-value" || hson_schema_source_digest(schema) !== schemaDigest) {
       throw new Error("Hosted projection Library contract is malformed.");
     }
     const canonicalSchema = HsonSchema.fromHson(schema).toHson();
-    if (canonicalSchema !== schema) throw new Error("Hosted projection Schema is noncanonical.");
     return Object.freeze({ name, mode: entry.mode, schema: canonicalSchema, schemaDigest, rootCodec: "hson-exact-value" });
   });
   if (libraries.some((entry, index) => index > 0 && libraries[index - 1]!.name.localeCompare(entry.name) >= 0)) {
@@ -233,7 +233,6 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
         throw new Error("Hosted projection topology Library is malformed.");
       }
       const schema = HsonSchema.fromHson(entry.schema).toHson();
-      if (schema !== entry.schema) throw new Error("Hosted projection topology Schema is noncanonical.");
       const format: "hson-exact-value" = "hson-exact-value";
       return Object.freeze({ name: entry.name, mode: entry.mode, schema,
         root: Object.freeze({ format, payload: root.payload }) });
@@ -260,7 +259,8 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
       || reconciliation.authority.incarnationId !== incarnationId
       || reconciliation.revision !== authorityRev || reconciliation.projectionDigest !== projectionDigest
       || composition.registryDigest !== registryDigest
-      || JSON.stringify(reconciliation.libraries.map(({ root: _root, css: _css, ...entry }) => entry)) !== JSON.stringify(libraries)
+      || JSON.stringify(reconciliation.libraries.map(({ root: _root, css: _css, schema: _schema, ...entry }) => entry))
+        !== JSON.stringify(libraries.map(({ schema: _schema, ...entry }) => entry))
       || JSON.stringify(reconciliation.systemFeatures) !== JSON.stringify(systemFeatures)
       || JSON.stringify(reconciliation.writableDocuments) !== JSON.stringify(writableDocuments)) {
       throw new Error("Hosted projection reconciliation contract is incompatible.");

@@ -72,8 +72,8 @@ check("Schema object owns certification and portable Schema data", () => {
   assert.notEqual(restored, schema);
   assert.equal(restored.toHson(), schema.toHson());
   assert.equal(restored.certify(canonical), canonical);
-  assert.throws(() => root.Hson.schema.fromHson(` ${schema.toHson()}` as root.HsonSchemaData), /canonical/);
-  assert.throws(() => schema.certify(` <age 37>` as root.HsonCanonical), /canonical/);
+  assert.equal(root.Hson.schema.fromHson(` ${schema.toHson()}` as root.HsonSchemaData).toHson(), schema.toHson());
+  assert.equal(schema.certify(` <age 37>` as root.HsonCanonical), canonical);
   for (const module of [root, narrow, map, transform]) assert.equal(Object.hasOwn(module, "validate"), false);
 });
 
