@@ -214,7 +214,7 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   validate_reference_capabilities(semantic, definitions, referenceUses, issues);
   validate_document_attr_capabilities(semantic, definitions, ranges, issues);
   const definitionSchemas = new Map(definitions.map((definition) => [definition.name, definition.schema]));
-  const unionWork = { comparisons: 0, exhausted: false };
+  const unionWork = { used: 0, comparisons: 0, exhausted: false };
   if (semantic !== undefined) validate_unions(semantic, definitionSchemas, ranges, unionWork, issues);
   for (const definition of definitions) validate_unions(definition.schema, definitionSchemas, ranges, unionWork, issues);
   if (semantic === undefined || issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues.map((entry) => with_issue_range(entry, parsed.value, parsed.provenance))), symbols: hson_schema_symbols(definitions, referenceUses) });
@@ -789,7 +789,16 @@ function validate_document_attr_capabilities(root: HsonSchemaSemanticNode | unde
   if (root.kind === "document") visitContent(root.content);
 }
 
-type UnionValidationWork = { comparisons: number; exhausted: boolean };
+type UnionValidationWork = { used: number; comparisons: number; exhausted: boolean };
+
+function charge_union_work(work: UnionValidationWork): boolean {
+  if (work.used >= CANONICAL_SCHEMA_EVALUATOR_LIMITS.maxUnionWork) {
+    work.exhausted = true;
+    return false;
+  }
+  work.used += 1;
+  return true;
+}
 
 function validate_unions(root: HsonSchemaSemanticNode, definitions: ReadonlyMap<string, HsonSchemaDefinition["schema"]>, ranges: ReadonlyMap<HsonSchemaRangedNode, HsonSourceRange>, work: UnionValidationWork, issues: HsonSchemaIssue[]): void {
   const seen = new Set<HsonSchemaSemanticNode>();
@@ -798,19 +807,25 @@ function validate_unions(root: HsonSchemaSemanticNode, definitions: ReadonlyMap<
     if (seen.has(schema)) return; seen.add(schema);
     if (schema.kind === "union") {
       const range = ranges.get(schema);
+      const workLimit = (directPairsOnly: boolean): void => {
+        work.exhausted = true;
+        issues.push(Object.freeze({ code: "INVALID_UNION", path: Object.freeze([]),
+          message: directPairsOnly
+            ? `Union distinguishability work exceeds ${CANONICAL_SCHEMA_EVALUATOR_LIMITS.maxUnionWork} branch comparisons.`
+            : `Union distinguishability analysis exceeds the Schema compilation work limit of ${CANONICAL_SCHEMA_EVALUATOR_LIMITS.maxUnionWork}.`,
+          ...(range === undefined ? {} : { range }) }));
+      };
       for (let leftIndex = 0; leftIndex < schema.choices.length; leftIndex += 1) {
         const left = schema.choices[leftIndex];
         if (left === undefined) continue;
         for (let rightIndex = leftIndex + 1; rightIndex < schema.choices.length; rightIndex += 1) {
           const right = schema.choices[rightIndex];
           if (right === undefined) continue;
-          if (work.comparisons >= CANONICAL_SCHEMA_EVALUATOR_LIMITS.maxUnionWork) {
-            work.exhausted = true;
-            issues.push(Object.freeze({ code: "INVALID_UNION", path: Object.freeze([]), message: `Union distinguishability work exceeds ${CANONICAL_SCHEMA_EVALUATOR_LIMITS.maxUnionWork} branch comparisons.`, ...(range === undefined ? {} : { range }) }));
-            return;
-          }
+          if (!charge_union_work(work)) { workLimit(work.comparisons === work.used); return; }
           work.comparisons += 1;
-          if (!distinguishable(left, right, definitions)) {
+          const result = distinguishable(left, right, definitions, work);
+          if (result === "work-limit") { workLimit(false); return; }
+          if (!result) {
             const label = (branch: HsonSchemaDataSemanticNode, index: number): string => `${index + 1}${branch.kind === "ref" ? ` (${JSON.stringify(branch.name)})` : ""}`;
             issues.push(Object.freeze({ code: "INVALID_UNION", path: Object.freeze([]), message: `Union branches ${label(left, leftIndex)} and ${label(right, rightIndex)} cannot be proven distinguishable.`, ...(range === undefined ? {} : { range }) }));
             return;
@@ -835,36 +850,85 @@ function validate_unions(root: HsonSchemaSemanticNode, definitions: ReadonlyMap<
   else visitData(root);
 }
 
-function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaDataSemanticNode, byName: ReadonlyMap<string, HsonSchemaDefinition["schema"]>): boolean {
-  const dereference = (value: HsonSchemaDataSemanticNode, seen = new Set<string>()): HsonSchemaDataSemanticNode => {
-    if (value.kind !== "ref" || seen.has(value.name)) return value;
-    seen.add(value.name);
-    const target = byName.get(value.name);
-    return target === undefined || target.kind === "document-element" ? value : dereference(target, seen);
-  };
-  left = dereference(left); right = dereference(right);
-  const finitePrimitiveDomain = (value: HsonSchemaDataSemanticNode, activeRefs = new Set<string>()): readonly (string | number | boolean | null)[] | undefined => {
-    if (value.kind === "exact") return Object.freeze([value.value]);
-    if (value.kind === "null") return Object.freeze([null]);
+type FinitePrimitive = string | number | boolean | null;
+type FiniteDomainFrame =
+  | Readonly<{ kind: "value"; schema: HsonSchemaDataSemanticNode }>
+  | Readonly<{ kind: "choices"; choices: readonly HsonSchemaDataSemanticNode[]; index: number }>
+  | Readonly<{ kind: "leave-ref"; name: string }>;
+
+function finite_primitive_domain(root: HsonSchemaDataSemanticNode, byName: ReadonlyMap<string, HsonSchemaDefinition["schema"]>, work: UnionValidationWork): readonly FinitePrimitive[] | undefined | "work-limit" {
+  const domain: FinitePrimitive[] = [];
+  const activeRefs = new Set<string>();
+  const frames: FiniteDomainFrame[] = [{ kind: "value", schema: root }];
+  while (frames.length > 0) {
+    if (!charge_union_work(work)) return "work-limit";
+    const frame = frames.pop();
+    if (frame === undefined) return undefined;
+    if (frame.kind === "leave-ref") { activeRefs.delete(frame.name); continue; }
+    if (frame.kind === "choices") {
+      const choice = frame.choices[frame.index];
+      if (choice === undefined) return undefined;
+      if (frame.index + 1 < frame.choices.length) frames.push({ kind: "choices", choices: frame.choices, index: frame.index + 1 });
+      frames.push({ kind: "value", schema: choice });
+      continue;
+    }
+    const value = frame.schema;
+    if (value.kind === "exact") { domain.push(value.value); continue; }
+    if (value.kind === "null") { domain.push(null); continue; }
     if (value.kind === "union") {
-      const domain: (string | number | boolean | null)[] = [];
-      for (const choice of value.choices) {
-        const choiceDomain = finitePrimitiveDomain(choice, activeRefs);
-        if (choiceDomain === undefined) return undefined;
-        domain.push(...choiceDomain);
-      }
-      return Object.freeze(domain);
+      frames.push({ kind: "choices", choices: value.choices, index: 0 });
+      continue;
     }
     if (value.kind !== "ref" || activeRefs.has(value.name)) return undefined;
     const target = byName.get(value.name);
     if (target === undefined || target.kind === "document-element") return undefined;
-    const nextRefs = new Set(activeRefs);
-    nextRefs.add(value.name);
-    return finitePrimitiveDomain(target, nextRefs);
+    activeRefs.add(value.name);
+    frames.push({ kind: "leave-ref", name: value.name }, { kind: "value", schema: target });
+  }
+  return domain;
+}
+
+function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaDataSemanticNode, byName: ReadonlyMap<string, HsonSchemaDefinition["schema"]>, work: UnionValidationWork): boolean | "work-limit" {
+  const dereference = (value: HsonSchemaDataSemanticNode): HsonSchemaDataSemanticNode | "work-limit" => {
+    const seen = new Set<string>();
+    while (value.kind === "ref" && !seen.has(value.name)) {
+      if (!charge_union_work(work)) return "work-limit";
+      seen.add(value.name);
+      const target = byName.get(value.name);
+      if (target === undefined || target.kind === "document-element") break;
+      value = target;
+    }
+    return value;
   };
-  const leftDomain = finitePrimitiveDomain(left), rightDomain = finitePrimitiveDomain(right);
-  if (leftDomain !== undefined && rightDomain !== undefined) {
-    return leftDomain.every((leftValue) => rightDomain.every((rightValue) => !ordered_projected_value_equal(leftValue, rightValue)));
+  const dereferencedLeft = dereference(left), dereferencedRight = dereference(right);
+  if (dereferencedLeft === "work-limit" || dereferencedRight === "work-limit") return "work-limit";
+  left = dereferencedLeft; right = dereferencedRight;
+  const finite = (value: HsonSchemaDataSemanticNode): boolean => value.kind === "exact" || value.kind === "null" || value.kind === "union";
+  if (finite(left) && finite(right)) {
+    if (left.kind !== "union" && right.kind !== "union") {
+      const leftValue = left.kind === "exact" ? left.value : null;
+      const rightValue = right.kind === "exact" ? right.value : null;
+      return !ordered_projected_value_equal(leftValue, rightValue);
+    }
+    const leftDomain = finite_primitive_domain(left, byName, work);
+    if (leftDomain === "work-limit") return "work-limit";
+    const rightDomain = finite_primitive_domain(right, byName, work);
+    if (rightDomain === "work-limit") return "work-limit";
+    if (leftDomain !== undefined && rightDomain !== undefined) {
+      // Set uses SameValueZero, so keep -0 distinct from +0 as the canonical equality rule does.
+      const negativeZero = Symbol("negative zero");
+      const key = (value: FinitePrimitive): FinitePrimitive | typeof negativeZero => typeof value === "number" && Object.is(value, -0) ? negativeZero : value;
+      const leftValues = new Set<FinitePrimitive | typeof negativeZero>();
+      for (const value of leftDomain) {
+        if (!charge_union_work(work)) return "work-limit";
+        leftValues.add(key(value));
+      }
+      for (const value of rightDomain) {
+        if (!charge_union_work(work)) return "work-limit";
+        if (leftValues.has(key(value))) return false;
+      }
+      return true;
+    }
   }
   const primitive = (value: HsonSchemaDataSemanticNode): string | undefined => value.kind === "exact"
     ? value.value === null ? "null" : typeof value.value

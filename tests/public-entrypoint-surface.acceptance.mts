@@ -249,6 +249,38 @@ await check("packed consumer resolves only curated package entrypoints", () => {
     `], { cwd: consumerRoot, encoding: "utf8" });
     assert.equal(accepted.status, 0, accepted.stderr);
 
+    // Bundle the installed tarball, so the proof exercises published exports
+    // and side-effect metadata rather than a source-relative import.
+    for (const [name, call, forbidden] of [
+      ["create", "hsonLiveMap.create()", /api\/(?:echo|locus)\//],
+      ["echo", "hsonLiveMap.echo.create({ transport: { operations: { async submit() { return { kind: 'not-submitted' }; } }, attachment: { observe() { return () => {}; } } } })", /api\/livemap\/livemap\.(?:core|libraries|hosted)\.js$|api\/locus\/locus\.(?:registry|session|checkpoint|authority)/],
+    ] as const) {
+      const fixture = join(consumerRoot, `${name}.mjs`);
+      writeFileSync(fixture, `import * as hsonLiveMap from "hson-live/livemap"; globalThis.result = ${call};`);
+      const bundle = spawnSync(resolve(repositoryRoot, "node_modules/.bin/esbuild"), [
+        fixture, "--bundle", "--splitting", "--format=esm", "--platform=browser", "--minify",
+        `--outdir=${join(consumerRoot, `${name}-out`)}`, `--metafile=${join(consumerRoot, `${name}-meta.json`)}`,
+      ], { cwd: consumerRoot, encoding: "utf8" });
+      assert.equal(bundle.status, 0, bundle.stderr);
+      const metadata = JSON.parse(readFileSync(join(consumerRoot, `${name}-meta.json`), "utf8")) as {
+        outputs: Record<string, { entryPoint?: string; imports: { path: string; kind: string }[]; inputs: Record<string, { bytesInOutput: number }> }>;
+      };
+      const entry = Object.entries(metadata.outputs).find(([, output]) => output.entryPoint?.endsWith(`${name}.mjs`));
+      assert.ok(entry !== undefined, `${name} packed consumer entry output is missing`);
+      const staticOutputs = new Set<string>();
+      const visit = (path: string): void => {
+        if (staticOutputs.has(path)) return;
+        staticOutputs.add(path);
+        for (const imported of metadata.outputs[path]?.imports ?? []) {
+          if (imported.kind !== "dynamic-import" && metadata.outputs[imported.path] !== undefined) visit(imported.path);
+        }
+      };
+      visit(entry[0]);
+      const inputs = [...staticOutputs].flatMap((path) => Object.entries(metadata.outputs[path]?.inputs ?? {}))
+        .filter(([, contribution]) => contribution.bytesInOutput > 0).map(([input]) => input);
+      assert.deepEqual(inputs.filter((input) => forbidden.test(input)), [], `${name} packed consumer retained a sibling implementation`);
+    }
+
     for (const specifier of ["hson-live/reflect", "hson-live/types", "hson-live/diagnostics/test-exports"]) {
       const rejected = spawnSync(process.execPath, ["--input-type=module", "--eval", `await import(${JSON.stringify(specifier)})`], {
         cwd: consumerRoot,

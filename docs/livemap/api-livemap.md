@@ -1,9 +1,10 @@
 # LiveMap API reference
 
-LiveMap is one registry with one global revision and named data and document libraries. A registry with one library uses the same API as a registry with many. `hsonLiveMap` and `hson.liveMap` are the same DOM-free construction facade.
+LiveMap is one registry with one global revision and named data and document libraries. A registry with one library uses the same API as a registry with many. Import the `/livemap` ESM namespace for a lean browser bundle:
 
 ```ts
-import { Hson, hsonLiveMap } from "hson-live";
+import { Hson } from "hson-live/hson";
+import * as hsonLiveMap from "hson-live/livemap";
 
 const StateSchema = Hson.schema`<type "data" content <count "number">>`;
 const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
@@ -113,4 +114,4 @@ Mirror binds a selected document library: `hsonMirror(map.lib("page"))`. Echo an
 
 ## Public boundaries
 
-The `hson-live/livemap` subpath exports the registry construction facade, current LiveMap and library types, snapshot installation, and structured errors. No solo data or document constructor, solo bootstrap, or standalone document map type is available. Transform owns format parsing and HTML ingress; LiveTree owns browser tree operations; Locus owns hosted authority.
+The `hson-live/livemap` subpath exports independent ESM bindings for `create`, `fromLibraries`, `echo`, and `locus`, along with current LiveMap and library types, snapshot installation, and structured errors. `hsonLiveMap.echo.create(...)` establishes an endpoint or retained-session replica; `hsonLiveMap.locus.create(...)`, `.resume(...)`, and `.checkpoint(...)` govern authority. The root `hsonLiveMap` and `hson.liveMap` convenience values remain broader imports. No solo data or document constructor, solo bootstrap, or standalone document map type is available. Transform owns format parsing and HTML ingress; LiveTree owns browser tree operations; Locus owns hosted authority.

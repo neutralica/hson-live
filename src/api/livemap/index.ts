@@ -1,5 +1,10 @@
 export { hsonLiveMap } from "./livemap.public.js";
-export { install_libraries_snapshot } from "./livemap.libraries.js";
+// Native ESM bindings let a namespace import select one subsystem without
+// retaining its siblings' implementations.
+export { create, fromLibraries } from "./livemap.facade.js";
+export { echo } from "../echo/echo.facade.js";
+export { locus } from "../locus/locus.facade.js";
+export { install_libraries_snapshot } from "./livemap.install.js";
 export {
   LiveMapDocumentAttributeNotFoundError,
   LiveMapDocumentInstallError,

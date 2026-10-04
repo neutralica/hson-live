@@ -192,6 +192,75 @@ check("n-ary pairwise verification has a shared compiler work bound", () => {
     assert.match(result.issues[0]?.message ?? "", /exceeds 100000 branch comparisons/);
   }
 });
+check("direct branch-pair work is shared across unions near the compiler limit", () => {
+  const source = (count: number): string => {
+    const branches = (prefix: string): string => Array.from({ length: count }, (_, index) => `<exact "${prefix}-${index}">`).join(", ");
+    return `left <union [${branches("left")}]> right <union [${branches("right")}]>`;
+  };
+  // Two 316-way unions require 99,540 direct comparisons; 317-way unions require 100,172.
+  assert.equal(compile(source(316)).ok, true);
+  const exhausted = compile(source(317));
+  assert.equal(exhausted.ok, false);
+  if (!exhausted.ok) {
+    assert.equal(exhausted.issues.filter((entry) => entry.code === "INVALID_UNION").length, 1);
+    assert.match(exhausted.issues[0]?.message ?? "", /exceeds 100000 branch comparisons/);
+  }
+});
+check("finite-domain analysis work is shared across two unions", () => {
+  const defs = ['D0 <union [<exact "v0">, <exact "v1">]>'];
+  for (let index = 1; index <= 9; index += 1) {
+    defs.push(`D${index} <union [<ref "D${index - 1}">, <ref "D${index - 1}">]>`);
+  }
+  const outer = (prefix: string): string => `<union [<ref "D9">, ${Array.from({ length: 7 }, (_, index) => `<exact "${prefix}${index}">`).join(", ")}]>`;
+  const left = outer("left");
+  const right = outer("right");
+  const source = (content: string): string => `<type "data" defs <${defs.join(" ")}> content <${content}>>`;
+  // Each outer union has only 28 direct pairs; repeated finite-domain expansion consumes the budget.
+  for (const content of [`left ${left}`, `right ${right}`]) {
+    const result = compile_hson_schema(source(content));
+    assert.equal(result.ok, false); // Repeated refs in the definitions are independently indistinguishable.
+    if (!result.ok) assert.equal(result.issues.some((entry) => entry.message.includes("Schema compilation work limit")), false);
+  }
+  const authored = source(`left ${left} right ${right}`);
+  const exhausted = compile_hson_schema(authored);
+  assert.equal(exhausted.ok, false);
+  if (!exhausted.ok) {
+    const issue = exhausted.issues.find((entry) => entry.message.includes("Schema compilation work limit"));
+    assert.equal(issue?.code, "INVALID_UNION");
+    assert.ok(issue?.range);
+    if (issue?.range) assert.equal(authored.slice(issue.range.start, issue.range.end), right);
+  }
+});
+check("nested finite primitive unions through refs retain ordinary behavior", () => {
+  const defs = ['D0 <union [<exact "a">, <exact "b">]>'];
+  for (let index = 1; index <= 6; index += 1) {
+    defs.push(`D${index} <union [<ref "D${index - 1}">, <exact "${String.fromCharCode(98 + index)}">]>`);
+  }
+  const result = compile_hson_schema(`<type "data" defs <${defs.join(" ")}> content <value <union [<ref "D6">, <exact "z">]>>>`);
+  assert.equal(result.ok, true, result.ok ? undefined : JSON.stringify(result.issues));
+});
+check("compact repeated-ref finite domains fail through the Schema work guard", () => {
+  const defs = ['D0 <union [<exact "a">, <exact "b">]>'];
+  for (let index = 1; index <= 19; index += 1) {
+    defs.push(`D${index} <union [<ref "D${index - 1}">, <ref "D${index - 1}">]>`);
+  }
+  const outerUnion = '<union [<ref "D19">, <exact "z">]>';
+  const source = `<type "data" defs <${defs.join(" ")}> content <value ${outerUnion}>>`;
+  const result = compile_hson_schema(source);
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    const problem = result.issues.find((entry) => entry.code === "INVALID_UNION");
+    assert.match(problem?.message ?? "", /distinguishability analysis exceeds the Schema compilation work limit/);
+    assert.ok(problem?.range);
+    if (problem?.range) assert.equal(source.slice(problem.range.start, problem.range.end), outerUnion);
+  }
+});
+check("finite-domain comparison avoids a quadratic cross-product", () => {
+  const branches = (prefix: string): string => Array.from({ length: 280 }, (_, index) => `<exact "${prefix}-${index}">`).join(", ");
+  const source = `<type "data" defs <Left <union [${branches("left")}]> Right <union [${branches("right")}]>> content <value <union [<ref "Left">, <ref "Right">]>>>`;
+  const result = compile_hson_schema(source);
+  assert.equal(result.ok, true, result.ok ? undefined : JSON.stringify(result.issues));
+});
 check("finite exact primitive domains lower when every branch is canonically disjoint", () => {
   const cases = [
     'value <union [<exact "lobby">, <exact "ready">]>',
@@ -209,6 +278,21 @@ check("finite exact primitive domains lower when every branch is canonically dis
     assert.equal(literals.length, 2);
     assert.equal(literals[0]?.kind === "projected-literal" && Object.is(literals[0].values[0], 0), true);
     assert.equal(literals[1]?.kind === "projected-literal" && Object.is(literals[1].values[0], -0), true);
+  }
+});
+check("nested finite-domain lookup preserves signed zero", () => {
+  for (const [nestedZero, otherZero, distinguishable] of [
+    ["0", "-0", true],
+    ["-0", "0", true],
+    ["0", "0", false],
+    ["-0", "-0", false],
+  ] as const) {
+    const source = `value <union [<union [<exact ${nestedZero}>, <exact 1>]>, <exact ${otherZero}>]>`;
+    const result = compile(source);
+    assert.equal(result.ok, distinguishable, source);
+    if (!distinguishable && !result.ok) {
+      assert.match(result.issues[0]?.message ?? "", /Union branches 1 and 2 cannot be proven distinguishable/);
+    }
   }
 });
 check("finite exact primitive domains reject every unproved or overlapping combination", () => {

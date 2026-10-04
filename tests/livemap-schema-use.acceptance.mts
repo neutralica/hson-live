@@ -3,7 +3,7 @@ import { authority_definition_from_fixture_options } from "./helpers/locus-defin
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
-import { install_libraries_snapshot } from "../src/api/livemap/livemap.libraries.ts";
+import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { HsonSchema as RuntimeHsonSchema } from "../src/api/schema/hson-schema.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";

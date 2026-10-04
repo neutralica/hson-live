@@ -21,7 +21,7 @@ hsonLiveHost.PUT;
 // @ts-expect-error Route methods belong to a created host.
 hsonLiveHost.DELETE;
 
-import { hsonLiveMap } from "hson-live/livemap";
+import * as hsonLiveMap from "hson-live/livemap";
 
 declare const locus: ReturnType<typeof hsonLiveMap.locus.create>;
 const home = locus.lib("home");

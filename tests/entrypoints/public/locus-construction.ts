@@ -1,4 +1,5 @@
-import { hsonLiveMap, Hson } from "hson-live";
+import { Hson } from "hson-live/hson";
+import * as hsonLiveMap from "hson-live/livemap";
 
 import type { LocusActionContext, LocusPersistenceAdapter } from "hson-live/locus";
 import type { HsonSchema } from "hson-live";

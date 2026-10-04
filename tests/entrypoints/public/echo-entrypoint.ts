@@ -1,5 +1,5 @@
-import { EchoSyncError, EchoSessionError, type Echo, type EchoOptions, type EchoReplicaOptions, type EchoSession, type EchoActionRequest, type EchoEndpointTransport, type EchoReplicaTransport, type EchoHttpTransportOptions } from "hson-live/echo";
-import { hsonLiveMap } from "hson-live/livemap";
+import { EchoSyncError, EchoSessionError, type Echo, type EchoOptions, type EchoReplicaOptions, type EchoSession, type EchoActionRequest, type EchoEndpointTransport, type EchoReplicaTransport, type EchoHttpTransportOptions, type EchoWebSocketTransportOptions } from "hson-live/echo";
+import * as hsonLiveMap from "hson-live/livemap";
 import type { LiveMap } from "hson-live/livemap";
 import type { LocusSessionNow, LocusSessionCredential } from "hson-live/locus";
 
@@ -34,6 +34,9 @@ if (selected.source === "client-local" && selected.mode !== "document") {
 const httpOptions: EchoHttpTransportOptions = { endpoint: "/_hson" };
 const http = hsonLiveMap.echo.transport.http(httpOptions);
 void [http.operations, http.synchronization, http.dispose];
+const websocketOptions: EchoWebSocketTransportOptions = { url: "wss://example.test/_hson" };
+const websocket = hsonLiveMap.echo.transport.websocket(websocketOptions);
+void [websocket.operations, websocket.synchronization, websocket.dispose];
 type HasInit = "init" extends keyof typeof hsonLiveMap.echo ? true : false;
 const noInit: HasInit = false;
 void noInit;

@@ -58,6 +58,10 @@ try {
   assert.equal(root.hson.liveHost, root.hsonLiveHost);
   assert.equal(root.hsonLiveMap.locus, livemap.hsonLiveMap.locus);
   assert.equal(root.hsonLiveMap.echo, livemap.hsonLiveMap.echo);
+  assert.equal(root.hsonLiveMap.create, livemap.create);
+  assert.equal(root.hsonLiveMap.fromLibraries, livemap.fromLibraries);
+  assert.equal(root.hsonLiveMap.echo.create, livemap.echo.create);
+  assert.equal(root.hsonLiveMap.locus.create, livemap.locus.create);
   assert.equal(root.hson.transform, root.hsonTransform);
   assert.equal("inspect" in root.hson, false);
   assert.equal(typeof diagnostics.hsonInspect.create, "function");

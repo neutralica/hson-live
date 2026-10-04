@@ -13,7 +13,8 @@ import {
 import { type Echo } from "hson-live/echo";
 
 import { Hson } from "hson-live/hson";
-import { hsonLiveMap, type LiveMap, type LiveMapDocumentLibrary } from "hson-live/livemap";
+import * as hsonLiveMap from "hson-live/livemap";
+import type { LiveMap, LiveMapDocumentLibrary } from "hson-live/livemap";
 
 
 import { reflect_document } from "hson-live/mirror";

@@ -19,6 +19,11 @@
     "glue format"
   ],
   "type": "module",
+  "sideEffects": [
+    "./dist/api/scout/index.js",
+    "./dist/internal/hson-schema/compiler-project-watch.js",
+    "./dist/hson-schema.mjs"
+  ],
   "bin": {
     "hson-schema": "./dist/hson-schema.mjs"
   },

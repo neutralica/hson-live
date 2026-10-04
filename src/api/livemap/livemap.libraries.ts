@@ -696,13 +696,6 @@ export function portable_aggregate_inputs_internal(
   return Object.freeze({ inputs: Object.freeze(inputs), systems: Object.freeze(systems) });
 }
 
-/** Install one detached complete aggregate snapshot into a fresh runtime domain. */
-export function install_libraries_snapshot(
-  snapshot: LiveMapSnapshot,
-): Readonly<{ map: LiveMap }> {
-  return Object.freeze({ map: make_livemap_mirror_from_snapshot_internal(snapshot) });
-}
-
 /** Install complete semantic state without passing through a snapshot artifact. @internal */
 export function make_livemap_mirror_from_semantic_checkpoint_internal(
   checkpoint: LiveMapSemanticCheckpoint,

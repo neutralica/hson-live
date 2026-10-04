@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -82,6 +83,20 @@ check("production runtime modules do not import test-only modules", () => {
   );
 });
 
+check("side-effect metadata retains Scout registration and Schema tooling startup", () => {
+  const manifest = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8")) as { sideEffects?: unknown };
+  assert.deepEqual(manifest.sideEffects, [
+    "./dist/api/scout/index.js",
+    "./dist/internal/hson-schema/compiler-project-watch.js",
+    "./dist/hson-schema.mjs",
+  ]);
+  for (const path of manifest.sideEffects as string[]) {
+    assert.ok(existsSync(resolve(repositoryRoot, path)), `${path} is not an emitted package path`);
+  }
+  const scout = browser_graph("scout-import-for-effect.mjs", 'import "hson-live/scout";');
+  assert.ok(scout.inputs.some((input) => /api\/scout\/index\.js$/.test(input)), "Scout registration was discarded");
+});
+
 check("endpoint-only Echo has no replica, LiveMap, Mirror, or LiveTree runtime dependency", () => {
   const endpointClient = readFileSync(resolve(sourceRoot, "api", "echo", "echo.client.ts"), "utf8");
   const specifiers = [...endpointClient.matchAll(importSpecifierPattern)]
@@ -98,18 +113,13 @@ check("endpoint-only Echo has no replica, LiveMap, Mirror, or LiveTree runtime d
   }
 });
 
-check("nested endpoint-only Echo remains bundleable for browsers without Node adapters", () => {
+function browser_graph(sourcefile: string, contents: string): Readonly<{ inputs: readonly string[]; raw: number; gzip: number }> {
   const build = esbuild.buildSync({
     absWorkingDir: repositoryRoot,
     stdin: {
-      contents: `
-        import { hsonLiveMap } from "hson-live/livemap";
-        const transport = { operations: { async submit() { return { kind: "not-submitted" }; } },
-          attachment: { observe() { return () => {}; } } };
-        globalThis.__endpoint_echo_boundary__ = hsonLiveMap.echo.create({ transport });
-      `,
+      contents,
       resolveDir: repositoryRoot,
-      sourcefile: "endpoint-only-public.mjs",
+      sourcefile,
     },
     bundle: true,
     splitting: true,
@@ -124,9 +134,9 @@ check("nested endpoint-only Echo remains bundleable for browsers without Node ad
     metafile: true,
   });
   const outputs = build.metafile?.outputs;
-  assert.ok(outputs !== undefined, "endpoint-only browser proof requires an esbuild metafile");
-  const entry = Object.entries(outputs).find(([, output]) => output.entryPoint?.endsWith("endpoint-only-public.mjs"));
-  assert.ok(entry !== undefined, "endpoint-only browser proof could not locate its entry output");
+  assert.ok(outputs !== undefined, `${sourcefile} requires an esbuild metafile`);
+  const entry = Object.entries(outputs).find(([, output]) => output.entryPoint?.endsWith(sourcefile));
+  assert.ok(entry !== undefined, `${sourcefile} could not locate its entry output`);
   const byAbsolutePath = new Map(Object.keys(outputs).map((path) => [resolve(repositoryRoot, path), path]));
   const initialOutputs = new Set<string>();
   const visit = (path: string): void => {
@@ -150,14 +160,50 @@ check("nested endpoint-only Echo remains bundleable for browsers without Node ad
       if (contribution.bytesInOutput > 0) initialInputs.add(input);
     }
   }
-  assert.equal([...initialInputs].some((input) => /api\/(locus|livehost)\/node\//i.test(input)), false);
-  assert.equal([...initialInputs].some((input) => /api\/echo\/echo\.client/i.test(input)), true);
+  const allInputs = Object.values(outputs).flatMap((output) => Object.keys(output.inputs));
+  assert.deepEqual(allInputs.filter((input) => /api\/(?:locus|livehost)\/node\//i.test(input)), [],
+    `${sourcefile} retained Node adapters in an initial or lazy chunk`);
   const initialBytes = Buffer.concat([...initialOutputs].flatMap((outputPath) => {
     const absolute = resolve(repositoryRoot, outputPath);
     const file = build.outputFiles?.find((candidate) => resolve(candidate.path) === absolute);
     return file === undefined ? [] : [file.contents, Buffer.from("\n")];
   }));
-  assert.ok(initialBytes.length > 0, "nested Echo browser bundle is empty");
+  assert.ok(initialBytes.length > 0, `${sourcefile} browser bundle is empty`);
+  return { inputs: [...initialInputs], raw: initialBytes.length, gzip: gzipSync(initialBytes).length };
+}
+
+check("native /livemap namespace keeps LiveMap, Echo, and Locus browser graphs separate", () => {
+  const prefix = 'import * as hsonLiveMap from "hson-live/livemap";';
+  const plain = browser_graph("livemap-create-public.mjs", `${prefix} globalThis.map = hsonLiveMap.create();`);
+  const echo = browser_graph("livemap-echo-public.mjs", `${prefix}
+    const transport = { operations: { async submit() { return { kind: "not-submitted" }; } },
+      attachment: { observe() { return () => {}; } } };
+    globalThis.echo = hsonLiveMap.echo.create({ transport });`);
+  const locus = browser_graph("livemap-locus-public.mjs", `${prefix}
+    globalThis.locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { value: 1 } } }] });`);
+  const prohibited = (graph: typeof plain, pattern: RegExp, name: string): void => {
+    assert.deepEqual(graph.inputs.filter((input) => pattern.test(input)), [], `${name} retained a sibling implementation`);
+  };
+  prohibited(plain, /api\/(?:echo|locus)\/|api\/(?:livehost|locus)\/node\//i, "LiveMap create");
+  prohibited(echo, /api\/livemap\/(?:livemap\.(?:core|libraries|facade|hosted|internal)|livemap\.install)\.js$|api\/locus\/(?:locus\.(?:authority|session|registry|checkpoint|local-initializer|projection|public|facade|stage|persistence|http|websocket)[^/]*|locus\.aggregate\.(?!protocol)[^/]*)\.js$|api\/(?:livehost|locus)\/node\//i, "Echo create");
+  prohibited(locus, /api\/echo\/(?:echo\.(?:client|endpoint|http|websocket|facade|replica|lazy|projection|request|transport)[^/]*)\.js$/i, "Locus create");
+  assert.ok(echo.inputs.some((input) => /api\/echo\/echo\.client\.js$/.test(input)), "Echo endpoint implementation is missing");
+  assert.ok(locus.inputs.some((input) => /api\/locus\/locus\.registry\.js$/.test(input)), "Locus authority implementation is missing");
+  assert.ok(plain.inputs.some((input) => /api\/livemap\/livemap\.libraries\.js$/.test(input)), "LiveMap construction is missing");
+  assert.ok(plain.gzip < 260 * 1024, `plain LiveMap drifted to ${plain.gzip} gzip bytes`);
+  assert.ok(echo.gzip < 24 * 1024, `endpoint Echo drifted to ${echo.gzip} gzip bytes`);
+  assert.ok(locus.gzip < 295 * 1024, `Locus drifted to ${locus.gzip} gzip bytes`);
+  console.log(JSON.stringify({ livemapNamespaceBundles: {
+    create: { raw: plain.raw, gzip: plain.gzip },
+    echo: { raw: echo.raw, gzip: echo.gzip },
+    locus: { raw: locus.raw, gzip: locus.gzip },
+  } }));
+});
+
+check("specialist /echo and /locus resolve in browser bundles without Node adapters", () => {
+  browser_graph("echo-contract-public.mjs", 'import { EchoSessionError } from "hson-live/echo"; globalThis.error = EchoSessionError;');
+  browser_graph("locus-contract-public.mjs", 'import { LocusAuthorityError } from "hson-live/locus"; globalThis.error = LocusAuthorityError;');
+  browser_graph("root-livemap-public.mjs", 'import { hsonLiveMap } from "hson-live"; globalThis.map = hsonLiveMap.create();');
 });
 
 check("local document continuation tree-shakes hosted Echo and Locus machinery", () => {
