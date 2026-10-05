@@ -1117,3 +1117,16 @@ void [hsonInspect.create, create_live_inspector, LiveInspectorError,
 hson.liveMap.fromTrustedHtml("<main></main>");
 // @ts-expect-error Sanitized HTML parsing is owned by Transform, not LiveMap.
 hson.liveMap.fromUntrustedHtml("<main></main>");
+
+import type { HsonFromSchema, JsonFromSchema } from "hson-live";
+import type { HsonFromSchema as HsonEntryProof, JsonFromSchema as HsonEntryJson } from "hson-live/hson";
+// @ts-expect-error Removed public projection name.
+import type { SchemaType } from "hson-live";
+// @ts-expect-error Removed specialist-entrypoint projection name.
+import type { SchemaType as RemovedHsonProjection } from "hson-live/hson";
+// @ts-expect-error Document graph evidence is internal.
+import type { DocumentSchemaGraph } from "hson-live";
+type RootDataProof = HsonFromSchema<typeof import("hson-live").ANY_DATA>;
+type RootJson = JsonFromSchema<typeof import("hson-live").ANY_DATA>;
+type HsonDataProof = HsonEntryProof<typeof import("hson-live").ANY_DATA>;
+type HsonJson = HsonEntryJson<typeof import("hson-live").ANY_DATA>;

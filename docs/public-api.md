@@ -29,7 +29,7 @@ specialist capability from its owning public subpath.
   only when a detached ordinary JavaScript view is wanted.
 - **HsonDocument** is a canonical primitive string in document context. It can be converted to a detached graph and round-trips zero, one, or many top-level items;
   it carries no LiveMap authority or browser realization behavior.
-- **Hson Schema** validates canonical authored data/graphs. Generated Schema evidence supplies `SchemaType<typeof Schema>` and Schema-specific Hson string proofs.
+- **Hson Schema** validates canonical authored data/graphs. Generated Schema evidence supplies `HsonFromSchema<typeof Schema>` for either Hson family and data-only `JsonFromSchema<typeof DataSchema>` for JS/JSON-shaped values. `HsonData<S>` and `HsonDocument<S>` remain the precise lower-level string proof types.
 - **LiveMap and Libraries** own local canonical state. `hsonLiveMap.create` and
   `fromLibraries` construct bare state. `hsonLiveMap.locus` constructs an
   authoritative governor; `hsonLiveMap.echo` constructs a replica governor or

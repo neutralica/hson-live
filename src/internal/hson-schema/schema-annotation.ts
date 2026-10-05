@@ -2,7 +2,7 @@ import type ts from "typescript";
 import { is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
 
 export type HsonSchemaAnnotation = Readonly<{
-  kind: "data" | "document" | "projected";
+  kind: "data" | "document" | "hson" | "projected";
   schema: ts.Identifier | undefined;
 }>;
 type Argument = Readonly<{ node: ts.TypeNode; parameters: ReadonlyMap<ts.Symbol, Argument> }>;
@@ -32,7 +32,7 @@ export function resolve_hson_schema_annotation(
     if (current === undefined || !typescript.isTypeReferenceNode(current.node)) return undefined;
     const { node, parameters } = current;
     if (typescript.isIdentifier(node.typeName)) {
-      for (const [name, kind] of [["HsonData", "data"], ["HsonDocument", "document"], ["SchemaType", "projected"]] as const) {
+      for (const [name, kind] of [["HsonData", "data"], ["HsonDocument", "document"], ["HsonFromSchema", "hson"], ["JsonFromSchema", "projected"]] as const) {
         if (!is_official_hson_package_binding(node.typeName, name, checker, true)) continue;
         // Bare HsonData/HsonDocument intentionally request no Schema proof.
         if (node.typeArguments?.length !== 1) return undefined;

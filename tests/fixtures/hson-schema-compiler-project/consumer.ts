@@ -1,5 +1,5 @@
 /// <reference path="./support/ambient.d.ts" />
-import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonData, type HsonDocument, type HsonSchema, type HsonSchemaMutationCandidate, type SchemaType } from "hson-live";
+import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonData, type HsonDocument, type HsonSchema, type HsonSchemaMutationCandidate, type JsonFromSchema } from "hson-live";
 import type { JsonValue } from "hson-live/hson";
 import { slideSchema, twinSchema, RecordSchema, TreeSchema, PageSchema, PlainA, PlainB, annotatedSchema } from "./schema.js";
 import { slideSchema as sameSlide } from "./schema.js";
@@ -15,14 +15,14 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B 
 type Identity<S> = S extends HsonSchema<unknown, "data" | "document", infer I> ? I : never;
 type Candidate<T> = T extends HsonSchemaMutationCandidate<infer C> ? C : never;
 type NotAny<T> = 0 extends (1 & T) ? false : true;
-type ValueIsPrecise = Assert<NotAny<SchemaType<typeof RecordSchema>>>;
-type PlainValue = Assert<Equal<SchemaType<typeof PlainA>, JsonValue>>;
+type ValueIsPrecise = Assert<NotAny<JsonFromSchema<typeof RecordSchema>>>;
+type PlainValue = Assert<Equal<JsonFromSchema<typeof PlainA>, JsonValue>>;
 type Mode = Assert<typeof slideSchema extends HsonSchema<unknown, "document"> ? true : false>;
 type CrossModuleIdentity = Assert<Equal<Identity<typeof slideSchema>, Identity<typeof sameSlide>>>;
 type DistinctDocumentIdentity = Assert<Equal<Identity<typeof slideSchema>, Identity<typeof twinSchema>> extends false ? true : false>;
 type DistinctPlainIdentity = Assert<Equal<Identity<typeof PlainA>, Identity<typeof PlainB>> extends false ? true : false>;
-type CandidateAge = Assert<Equal<Candidate<SchemaType<typeof RecordSchema>["age"]>, number>>;
-type CandidateFlags = Assert<Equal<Candidate<SchemaType<typeof RecordSchema>["flags"]>, boolean[]>>;
+type CandidateAge = Assert<Equal<Candidate<JsonFromSchema<typeof RecordSchema>["age"]>, number>>;
+type CandidateFlags = Assert<Equal<Candidate<JsonFromSchema<typeof RecordSchema>["flags"]>, boolean[]>>;
 
 declare const document: HsonDocument<typeof slideSchema>;
 const sameDocument: HsonDocument<typeof sameSlide> = document;
@@ -34,7 +34,7 @@ declare const plain: HsonData<typeof PlainA>;
 // @ts-expect-error Value types are both JsonValue; their Schema identities still differ.
 const otherPlain: HsonData<typeof PlainB> = plain;
 
-declare const value: SchemaType<typeof RecordSchema>;
+declare const value: JsonFromSchema<typeof RecordSchema>;
 const status: "ready" = value.status;
 const choice: "left" | "right" = value.choice;
 const nickname: string | undefined = value.nickname;
@@ -51,9 +51,9 @@ const unprovedAge: typeof value.age = value.age + 1;
 const unprovedFlags: typeof value.flags = [...value.flags];
 // @ts-expect-error Object reconstruction loses its private proof.
 const unprovedObject: typeof value = { ...value };
-declare const tree: SchemaType<typeof TreeSchema>;
-const child: SchemaType<typeof TreeSchema> | undefined = tree.children[0];
-declare const page: SchemaType<typeof PageSchema>;
+declare const tree: JsonFromSchema<typeof TreeSchema>;
+const child: JsonFromSchema<typeof TreeSchema> | undefined = tree.children[0];
+declare const page: DocumentSchemaGraph<typeof PageSchema>;
 const mainTag: "main" = page.$_content[0].$_tag;
 const sectionTag: "section" = page.$_content[0].$_content[0].$_content[0].$_tag;
 const hidden: "hidden" | undefined = page.$_content[0].$_attrs.hidden;
@@ -191,3 +191,5 @@ void broadDocumentGetter; void exactDocumentGetter; void attachedText; void expl
 void exactDataGetter; void explicitDataGetter; void sequentialDocument; void sequentialData;
 void afterConditional; void afterBothBranches; void beforeReassignment; void afterReassignment;
 void afterCatch; void afterDynamic; void afterBroad;
+
+type DocumentSchemaGraph<S extends import("hson-live").HsonSchema<unknown, "document">> = S extends import("hson-live").HsonSchema<infer TGraph, "document"> ? TGraph : never;

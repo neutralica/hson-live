@@ -20,8 +20,8 @@ const directory = mkdtempSync(join(root, "tmp/schema-editor-tsserver-"));
 const extension = join(root, "editors/vscode-hson");
 const manifest = JSON.parse(readFileSync(join(extension, "package.json"), "utf8"));
 const plugin = manifest.contributes.typescriptServerPlugins[0].name;
-const schema = 'import { Hson, type SchemaType } from "hson-live";\nconst before: number = "before";\nexport const Thing = Hson.schema`<type "data" content <name "string">>`;\nconst between: number = "between";\nexport const Slide = Hson.schema`<type "document">`;\nexport const Twin = Hson.schema`<type "document">`;\nexport const Page = Hson.schema`<type "document" tag "main" content "string">`;\nconst after: number = "after";\ndeclare const local: SchemaType<typeof Thing>;\nlocal.na';
-const consumer = 'import { hsonLiveMap, type SchemaType, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin, Page } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: SchemaType<typeof Thing>;\nconst wrong: number = value.name;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\ntype WrongMode = HsonData<typeof Slide>;\nconst map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\nmap.lib("home").schema.use(Page);\nconst exactPage: typeof Page = map.lib("home").schema.get();\nconst pageText: string = map.lib("home").at([0]).snap();\n';
+const schema = 'import { Hson, type JsonFromSchema } from "hson-live";\nconst before: number = "before";\nexport const Thing = Hson.schema`<type "data" content <name "string">>`;\nconst between: number = "between";\nexport const Slide = Hson.schema`<type "document">`;\nexport const Twin = Hson.schema`<type "document">`;\nexport const Page = Hson.schema`<type "document" tag "main" content "string">`;\nconst after: number = "after";\ndeclare const local: JsonFromSchema<typeof Thing>;\nlocal.na';
+const consumer = 'import { hsonLiveMap, type JsonFromSchema, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin, Page } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: JsonFromSchema<typeof Thing>;\nconst wrong: number = value.name;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\ntype WrongMode = HsonData<typeof Slide>;\nconst map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\nmap.lib("home").schema.use(Page);\nconst exactPage: typeof Page = map.lib("home").schema.get();\nconst pageText: string = map.lib("home").at([0]).snap();\n';
 const file = name => join(directory, name);
 writeFileSync(file("package.json"), '{"type":"module"}');
 writeFileSync(file("schema.ts"), schema);
@@ -99,9 +99,9 @@ try {
     const valid = await diagnostics("consumer.ts"); assert.equal(valid.length, 2, JSON.stringify(valid));
     assert.equal((await diagnostics("second.ts")).length, 0);
     await edit(schema.replace('name "string"', 'name "broken"'));
-    const invalid = await diagnostics("consumer.ts"); assert.ok(invalid.some(error => error.code === 18046), JSON.stringify(invalid));
+    const invalid = await diagnostics("consumer.ts"); assert.ok(invalid.some(error => error.code === 2344 && error.text.includes("HsonSchemaMode")), JSON.stringify(invalid));
     await edit(schema.slice(0, schema.indexOf('content <name')) + 'content <');
-    assert.ok((await diagnostics("consumer.ts")).some(error => error.code === 18046));
+    assert.ok((await diagnostics("consumer.ts")).some(error => error.code === 2344 && error.text.includes("HsonSchemaMode")));
     await edit(schema); assert.equal((await diagnostics("consumer.ts")).length, 3);
     const shifted = schema.replace("const before", "// inserted before\nconst before").replace("const between", "// inserted between\nconst between");
     await edit(shifted);
@@ -112,7 +112,7 @@ try {
     const duplicate = `${schema}\nexport const Thing = Hson.schema\`<type "data" content <other "number">>\`;\n`;
     await edit(duplicate);
     assert.ok((await diagnostics("schema.ts")).some(error => error.code === 2451));
-    assert.ok((await diagnostics("consumer.ts")).some(error => error.code === 18046));
+    assert.ok((await diagnostics("consumer.ts")).some(error => error.code === 2344 && error.text.includes("HsonSchemaMode")));
     await edit(schema);
     assert.equal((await diagnostics("consumer.ts")).length, 3);
   });
@@ -125,7 +125,7 @@ try {
     assert.equal((await diagnostics("consumer.ts")).length, 3);
   });
   await check("bundled diagnostics underline authored static candidates and clear on unsaved repair", async () => {
-    const text = 'import { Hson, hsonLiveMap, type HsonDocument } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;\nconst bad: HsonDocument<typeof S> = Hson.document`<html <body/>/>`;\nS.certify(bad); S.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<html <body/> <head/>/>`, schema: S } });\n';
+    const text = 'import { Hson, hsonLiveMap, type HsonFromSchema } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;\ntype PageHson = HsonFromSchema<typeof S>; const bad: PageHson = Hson.document`<html <body/>/>`;\nS.certify(bad); S.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<html <body/> <head/>/>`, schema: S } });\n';
     await editConsumer(text);
     const all = await diagnostics("consumer.ts");
     assert.ok(!all.some(error => error.code === 2322), JSON.stringify(all));

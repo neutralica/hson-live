@@ -78,16 +78,16 @@ check("a separate stock compiler consumes package declarations with one origin a
   writeFileSync(join(consumer, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, noEmit: true, types: [], target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")] } }, files: ["consumer.ts"] }));
   writeFileSync(join(consumer, "consumer.ts"), `import { S, Twin, Alias, getSchema, imported, arrow, holder, contract } from "schema-package";
 import { S as Direct } from "schema-package/schema";
-import type { HsonData, SchemaType } from "hson-live";
+import type { HsonData, JsonFromSchema } from "hson-live";
 const label: string = contract.label;
 const a: typeof S = getSchema(); const b: typeof S = imported(); const c: typeof S = arrow();
 const d: typeof S = holder.schema; const e: typeof S = holder.method(); const alias: typeof S = Alias;
 declare const data: HsonData<typeof S>; const same: HsonData<typeof Direct> = data;
 // @ts-expect-error identical schemas from separate declarations have distinct identities
 const other: HsonData<typeof Twin> = data;
-declare const value: SchemaType<typeof S>; const exact: "ready" = value.phase;
+declare const value: JsonFromSchema<typeof S>; const exact: "ready" = value.phase;
 // @ts-expect-error refinement proof cannot be fabricated
-const age: SchemaType<typeof S>["age"] = 3;
+const age: JsonFromSchema<typeof S>["age"] = 3;
 void [a,b,c,d,e,alias,same,other,exact,age];`);
   pass(spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "-p", join(consumer, "tsconfig.json")], { encoding: "utf8", timeout: 120_000 }));
 });

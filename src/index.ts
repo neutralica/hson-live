@@ -11,7 +11,7 @@ export type {
   AuthorityProjectionSnapshot,
   LocusLocalInitializer,
 } from "./types/locus.projection.types.js";
-export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, SchemaType } from "./api/transform/transform.types.js";
+export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonFromSchema, JsonFromSchema } from "./api/transform/transform.types.js";
 export {
   hson,
   hsonCalc,

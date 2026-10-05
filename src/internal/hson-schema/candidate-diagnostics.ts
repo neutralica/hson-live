@@ -162,12 +162,12 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       };
       if (annotation.kind === "projected") {
         if (contract !== undefined && annotation.schema !== undefined && initializer.tag.name.text === "data") annotationDiagnostic("HSON_PROJECTED_VALUE_ANNOTATION",
-          `Hson.data produces Hson data, but this annotation describes the Schema's projected JavaScript value. For Hson source, use HsonData<typeof ${annotation.schema.text}>.`);
+          `This Hson.data template produces the Hson representation governed by ${contract.name}, but the annotation describes its JSON/JS value representation. For Hson source, use HsonFromSchema<typeof ${annotation.schema.text}>.`);
         continue;
       }
-      if (initializer.tag.name.text !== annotation.kind) continue;
+      if (annotation.kind !== "hson" && initializer.tag.name.text !== annotation.kind) continue;
       if (contract === undefined) {
-        annotationDiagnostic("HSON_SCHEMA_PROOF_UNRESOLVED", `Unable to resolve the Schema proof for this ${annotation.kind === "data" ? "HsonData" : "HsonDocument"} annotation; use typeof a statically known Hson.schema binding.`);
+        annotationDiagnostic("HSON_SCHEMA_PROOF_UNRESOLVED", `Unable to resolve the Schema proof for this ${annotation.kind === "hson" ? "HsonFromSchema" : annotation.kind === "data" ? "HsonData" : "HsonDocument"} annotation; use typeof a statically known Hson.schema binding.`);
         continue;
       }
       report(contract, initializer, "certify");

@@ -1,5 +1,6 @@
+import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
 import type { JsonValue, HsonNode } from "../core/types.js";
-import type { HsonSchema, SchemaType } from "../api/transform/transform.types.js";
+import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
   LiveMap, LiveMapKnownDefinitions, LiveMapKnownNames, LiveMapPathValue, LiveMapSetValue,
   LiveMapWriteValue, LivePath, LiveMapRootMode, LiveMapCssOp,
@@ -100,9 +101,9 @@ export type GovernorReadLibrary =
 
 type DefinitionLibrary<TDefinition> =
   TDefinition extends { data: unknown; schema: infer TSchema extends HsonSchema }
-    ? GovernorDataLibrary<SchemaType<TSchema>, TSchema>
+    ? GovernorDataLibrary<DataSchemaValue<TSchema>, TSchema>
     : TDefinition extends { document: unknown; schema: infer TSchema extends HsonSchema }
-      ? GovernorDocumentLibrary<SchemaType<TSchema>, TSchema>
+      ? GovernorDocumentLibrary<DocumentSchemaGraph<TSchema>, TSchema>
       : TDefinition extends { data: unknown } ? GovernorDataLibrary<JsonValue>
         : TDefinition extends { document: unknown } ? GovernorDocumentLibrary : GovernorLibrary;
 

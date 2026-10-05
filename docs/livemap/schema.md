@@ -1,11 +1,13 @@
 # Standalone canonical Hson validation
 
 ```ts
-import { Hson, type HsonData, type SchemaType } from "hson-live/hson";
+import { Hson, type HsonFromSchema, type JsonFromSchema } from "hson-live/hson";
 import { hsonLiveMap } from "hson-live/livemap";
 
 const UserSchema = Hson.schema`<type "data" content <user <content <age "number">>>>`;
-const user = Hson.data`<user <age 37>>`;
+type UserHson = HsonFromSchema<typeof UserSchema>;
+type UserJson = JsonFromSchema<typeof UserSchema>;
+const user: UserHson = Hson.data`<user <age 37>>`;
 const same = UserSchema.certify(user);
 // same === user; return type is HsonData<typeof UserSchema>.
 ```
@@ -198,8 +200,8 @@ without adding `schema.validate`. This requires enabled trusted diagnostics and
 source-bound D1 lifecycle evidence from the configured diagnostic provider.
 Static source shape alone is insufficient. Two maps can independently govern one template.
 
-Static authored source uses `HsonData<typeof Schema>` or
-`HsonDocument<typeof Schema>` annotations and the headless Schema analyzer;
+Static authored source uses `HsonFromSchema<typeof Schema>` annotations
+(or the lower-level `HsonData<S>` / `HsonDocument<S>`) and the headless Schema analyzer;
 it does not call `schema.certify`. Dynamic ingress uses
 `schema.certify`. Map-owned state is validated during library admission, before
 post-hoc attachment, and before mutation commits.

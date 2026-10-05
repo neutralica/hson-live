@@ -1,61 +1,61 @@
 import { InteractionFieldsSchema, ReuseSchema, TreeSchema, UserSchema } from "./producer.js";
-import { type SchemaType, HsonData, Hson, type HsonNumber } from "hson-live";
+import { type JsonFromSchema, HsonData, Hson, type HsonNumber } from "hson-live";
 import type { JsonValue } from "hson-live/hson";
 import type { HsonCanonical } from "hson-live/hson";
 
-declare const certified: SchemaType<typeof UserSchema>;
+declare const certified: JsonFromSchema<typeof UserSchema>;
 declare const canonical: HsonCanonical;
 
 const optionalRead: string | undefined = certified.nickname;
 const indexedRead: boolean | undefined = certified.flags[0];
 const tupleRead: HsonNumber = certified.pair[1];
-const refinedInteger: SchemaType<typeof UserSchema>["age"] = certified.age;
-const refinedBound: SchemaType<typeof UserSchema>["percent"] = certified.percent;
-const refinedString: SchemaType<typeof UserSchema>["code"] = certified.code;
-const refinedAlphabet: SchemaType<typeof UserSchema>["key"] = certified.key;
-const refinedUnique: SchemaType<typeof UserSchema>["flags"] = certified.flags;
+const refinedInteger: JsonFromSchema<typeof UserSchema>["age"] = certified.age;
+const refinedBound: JsonFromSchema<typeof UserSchema>["percent"] = certified.percent;
+const refinedString: JsonFromSchema<typeof UserSchema>["code"] = certified.code;
+const refinedAlphabet: JsonFromSchema<typeof UserSchema>["key"] = certified.key;
+const refinedUnique: JsonFromSchema<typeof UserSchema>["flags"] = certified.flags;
 const finitePhase: "lobby" | "ready" | "playing" | "finished" = certified.phase;
 const finiteTurn: "player1" | "player2" | null = certified.turn;
-const signedZeroChoice: SchemaType<typeof UserSchema>["signedZeroChoice"] = certified.signedZeroChoice;
-declare const recursive: SchemaType<typeof TreeSchema>;
-declare const reuse: SchemaType<typeof ReuseSchema>;
-const recursiveChild: SchemaType<typeof TreeSchema> | undefined = recursive.children[0];
-const recursiveAge: SchemaType<typeof TreeSchema>["age"] = recursive.age;
+const signedZeroChoice: JsonFromSchema<typeof UserSchema>["signedZeroChoice"] = certified.signedZeroChoice;
+declare const recursive: JsonFromSchema<typeof TreeSchema>;
+declare const reuse: JsonFromSchema<typeof ReuseSchema>;
+const recursiveChild: JsonFromSchema<typeof TreeSchema> | undefined = recursive.children[0];
+const recursiveAge: JsonFromSchema<typeof TreeSchema>["age"] = recursive.age;
 const sharedDefinitionCompatibility: typeof reuse.again = reuse.left;
-declare const interactionFields: SchemaType<typeof InteractionFieldsSchema>;
+declare const interactionFields: JsonFromSchema<typeof InteractionFieldsSchema>;
 const localArgs: JsonValue = interactionFields.args;
 const authoritativePayload: JsonValue = interactionFields.payload;
 
 // @ts-expect-error ordinary structural objects have no composite proof
-const fabricated: SchemaType<typeof UserSchema> = { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", flags: [true], pair: ["x", 2], account: { kind: "user", handle: "ada" } };
+const fabricated: JsonFromSchema<typeof UserSchema> = { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", flags: [true], pair: ["x", 2], account: { kind: "user", handle: "ada" } };
 // @ts-expect-error object spread erases the root proof
-const spreadObject: SchemaType<typeof UserSchema> = { ...certified };
+const spreadObject: JsonFromSchema<typeof UserSchema> = { ...certified };
 // @ts-expect-error reconstruction erases the root proof
-const reconstructed: SchemaType<typeof UserSchema> = { name: certified.name, score: certified.score, age: certified.age, percent: certified.percent, code: certified.code, flags: certified.flags, pair: certified.pair, account: certified.account };
+const reconstructed: JsonFromSchema<typeof UserSchema> = { name: certified.name, score: certified.score, age: certified.age, percent: certified.percent, code: certified.code, flags: certified.flags, pair: certified.pair, account: certified.account };
 // @ts-expect-error array spread erases collection proof
-const spreadArray: SchemaType<typeof UserSchema>["flags"] = [...certified.flags];
+const spreadArray: JsonFromSchema<typeof UserSchema>["flags"] = [...certified.flags];
 // @ts-expect-error array transforms erase collection proof
-const mappedArray: SchemaType<typeof UserSchema>["flags"] = certified.flags.map(Boolean);
+const mappedArray: JsonFromSchema<typeof UserSchema>["flags"] = certified.flags.map(Boolean);
 // @ts-expect-error concat erases exact collection-node evidence
-const concatenatedArray: SchemaType<typeof UserSchema>["flags"] = certified.flags.concat([]);
+const concatenatedArray: JsonFromSchema<typeof UserSchema>["flags"] = certified.flags.concat([]);
 // @ts-expect-error a finite Hson number does not carry integer refinement evidence
-const plainInteger: SchemaType<typeof UserSchema>["age"] = certified.score;
+const plainInteger: JsonFromSchema<typeof UserSchema>["age"] = certified.score;
 // @ts-expect-error distinct numeric refinement nodes are nominally distinct
-const wrongNumericProof: SchemaType<typeof UserSchema>["percent"] = certified.age;
+const wrongNumericProof: JsonFromSchema<typeof UserSchema>["percent"] = certified.age;
 // @ts-expect-error arithmetic erases integer evidence
-const arithmeticInteger: SchemaType<typeof UserSchema>["age"] = certified.age + 1;
+const arithmeticInteger: JsonFromSchema<typeof UserSchema>["age"] = certified.age + 1;
 // @ts-expect-error division erases integer evidence
-const dividedInteger: SchemaType<typeof UserSchema>["age"] = certified.age / 1;
+const dividedInteger: JsonFromSchema<typeof UserSchema>["age"] = certified.age / 1;
 // @ts-expect-error Math operations erase integer evidence
-const mathInteger: SchemaType<typeof UserSchema>["age"] = Math.abs(certified.age);
+const mathInteger: JsonFromSchema<typeof UserSchema>["age"] = Math.abs(certified.age);
 // @ts-expect-error concatenation erases constrained string evidence
-const concatenatedString: SchemaType<typeof UserSchema>["code"] = certified.code + "";
+const concatenatedString: JsonFromSchema<typeof UserSchema>["code"] = certified.code + "";
 // @ts-expect-error slice erases constrained string evidence
-const slicedString: SchemaType<typeof UserSchema>["code"] = certified.code.slice(0);
+const slicedString: JsonFromSchema<typeof UserSchema>["code"] = certified.code.slice(0);
 // @ts-expect-error case conversion erases constrained string evidence
-const casedString: SchemaType<typeof UserSchema>["code"] = certified.code.toUpperCase();
+const casedString: JsonFromSchema<typeof UserSchema>["code"] = certified.code.toUpperCase();
 // @ts-expect-error a plain string has no alphabet refinement evidence
-const plainAlphabet: SchemaType<typeof UserSchema>["key"] = "abc";
+const plainAlphabet: JsonFromSchema<typeof UserSchema>["key"] = "abc";
 // @ts-expect-error a plain number has no Hson number evidence
 const ordinaryNumber: HsonNumber = 37;
 // @ts-expect-error broad canonical Hson has no exact Schema proof
@@ -66,11 +66,11 @@ consumeCertified(Hson.data`<name "Ada">`);
 // Runtime certification grants this Schema's proof after validation.
 consumeCertified(UserSchema.certify(canonical));
 // @ts-expect-error optional means absence, not explicit undefined
-const explicitUndefined: SchemaType<typeof UserSchema> = { ...certified, nickname: undefined };
+const explicitUndefined: JsonFromSchema<typeof UserSchema> = { ...certified, nickname: undefined };
 // @ts-expect-error recursive generated evidence cannot be supplied structurally or through a caller generic
-const fabricatedRecursive: SchemaType<typeof TreeSchema> = { value: "root", age: hsonCalc(1), children: [] };
+const fabricatedRecursive: JsonFromSchema<typeof TreeSchema> = { value: "root", age: hsonCalc(1), children: [] };
 // @ts-expect-error the referenced Age refinement is not obscured by ref
-const plainReferencedAge: SchemaType<typeof TreeSchema>["age"] = hsonCalc(1);
+const plainReferencedAge: JsonFromSchema<typeof TreeSchema>["age"] = hsonCalc(1);
 // @ts-expect-error structurally equal but declaration-distinct definitions retain separate proof identity
 const unrelatedDefinitionProof: typeof reuse.right = reuse.left;
 // @ts-expect-error broad canonical Hson cannot impersonate recursive Schema evidence

@@ -209,8 +209,8 @@ write("tsconfig.json", JSON.stringify({ extends: "./base.json", include: ["./*.t
 write("package.json", '{"type":"module"}\n');
 write("schema.ts", imports + 'export const S = Hson.schema`<props <');
 write("consumer.ts", `import { S, Twin } from './schema.js';
-import type { SchemaType, HsonData } from 'hson-live';
-declare const value: SchemaType<typeof S>;
+import type { JsonFromSchema, HsonData } from 'hson-live';
+declare const value: JsonFromSchema<typeof S>;
 const exact: 'a' = value.value;
 // @ts-expect-error exact Schema value
 const wrong: 'b' = value.value;
@@ -327,16 +327,16 @@ try {
     write("base.json", JSON.stringify({ ...base, include: ["./*.ts"] })); current = await next(); passes(); preserve();
   });
   await check("static proof overlays, document mode and refinement evidence share the existing compiler", async () => {
-    write("precision.ts", `import { Hson, type HsonData, type HsonDocument, type SchemaType } from "hson-live";
+    write("precision.ts", `import { Hson, type HsonData, type HsonDocument, type JsonFromSchema } from "hson-live";
 export const Refined = Hson.schema\`<type "data" content <age <number <int true min 0>>>>\`;
 export const Document = Hson.schema\`<type "document">\`;
 export const Text = Hson.schema\`<type "document" content "string">\`;
 const text: HsonDocument<typeof Text> = Hson.document\`"hello"\`;
 Text.certify(text);
 const data: HsonData<typeof Refined> = Hson.data\`<age 4>\`;
-declare const value: SchemaType<typeof Refined>;
+declare const value: JsonFromSchema<typeof Refined>;
 // @ts-expect-error arithmetic erases the private refinement proof
-const changed: SchemaType<typeof Refined>["age"] = value.age + 1;
+const changed: JsonFromSchema<typeof Refined>["age"] = value.age + 1;
 // @ts-expect-error wrong Schema mode
 const wrong: HsonData<typeof Document> = data;
 void changed; void wrong;

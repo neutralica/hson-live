@@ -1,8 +1,8 @@
 import { AnyDataSchema, BlockSchema, InteractionFieldsSchema, RelationalUniqueSchema, TreeSchema, UserSchema } from "./producer.js";
-import { type SchemaType, HsonData, Hson, hsonCalc, hsonLiveMap, hsonTransform, type HsonNumber } from "hson-live";
+import { type JsonFromSchema, HsonData, Hson, hsonCalc, hsonLiveMap, hsonTransform, type HsonNumber } from "hson-live";
 import type { HsonCanonical } from "hson-live/hson";
 
-const anyDataValue: SchemaType<typeof AnyDataSchema> = { nested: ["text", 3, true, null] };
+const anyDataValue: JsonFromSchema<typeof AnyDataSchema> = { nested: ["text", 3, true, null] };
 const anyDataCertified: HsonData<typeof AnyDataSchema> = AnyDataSchema.certify(Hson.data`["text", 3, true, null]`);
 void anyDataValue;
 void anyDataCertified;
@@ -22,7 +22,7 @@ const dynamicInteractionFields: HsonCanonical = hsonTransform.fromJson({ args: [
 const certifiedInteractionFields: HsonData<typeof InteractionFieldsSchema> = InteractionFieldsSchema.certify(dynamicInteractionFields);
 const relationalUnique: HsonData<typeof RelationalUniqueSchema> = Hson.data`<cells [<position "top-right" body "a">, <position "top-left" body "b">]>`;
 const blocks: HsonData<typeof BlockSchema> = Hson.data`<blocks [<kind "paragraph" text "body">, <kind "heading" text "title">, <kind "code" source "const x = 1">, <kind "list" items ["a"]>]>`;
-type Block = SchemaType<typeof BlockSchema>["blocks"][number];
+type Block = JsonFromSchema<typeof BlockSchema>["blocks"][number];
 function block_content(block: Block): string {
   if (block.kind === "paragraph" || block.kind === "heading") return block.text;
   if (block.kind === "code") return block.source;

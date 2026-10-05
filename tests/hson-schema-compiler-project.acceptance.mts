@@ -135,7 +135,33 @@ check("post-hoc attachment proof is compiler-view only", () => {
   assert.match(declaration, /refinedSecond: import\("hson-live"\)\.LiveMapDocumentLibrary/);
   assert.match(declaration, /refinedTitle: import\("hson-live"\)\.LiveMapDocumentLocation/);
   assert.match(declaration, /getRefinedTitle\(\): import\("hson-live"\)\.LiveMapDocumentLocation/);
-  assert.doesNotMatch(declaration, /dist\/types|liveMapLibrarySchemaRefinementsType|__hson/);
+  assert.doesNotMatch(declaration, /dist\/types|liveMapLibrarySchemaRefinementsType|__hson|SchemaType|DocumentSchemaGraph|DataSchemaValue/);
+  assert.match(declaration, /HsonSchema<infer TGraph, "document">/);
+  const downstream = join(temporary, "published-document-consumer");
+  mkdirSync(downstream);
+  writeFileSync(join(downstream, "package.json"), '{"type":"module"}');
+  writeFileSync(join(downstream, "tsconfig.json"), JSON.stringify({ compilerOptions: {
+    strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, noEmit: true,
+    target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [],
+    paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")] },
+  }, files: ["consumer.ts"] }));
+  writeFileSync(join(downstream, "consumer.ts"), `
+import { refinedHomeLibrary, refinedTitle, getRefinedTitle } from "../application/out/consumer.js";
+import { PageSchema } from "../application/out/schema.js";
+const home = refinedHomeLibrary();
+const schema: typeof PageSchema = home.schema.get();
+const text: string = refinedTitle.snap();
+const returnedText: string = getRefinedTitle().snap();
+home.at([0, 0]).replace("new body");
+// @ts-expect-error Published document paths retain their bounds.
+home.at([1]);
+// @ts-expect-error Published text locations do not acquire element capabilities.
+refinedTitle.attrs;
+// @ts-expect-error Published text replacement remains text-only.
+refinedTitle.replace(home.root());
+void schema; void text; void returnedText;
+`);
+  succeed(stock_check(join(downstream, "tsconfig.json")));
   rmSync(join(project, "out"), { recursive: true, force: true });
 });
 

@@ -53,8 +53,15 @@ export type HsonSchemaData = HsonData & {
 export type { HsonSchema } from "../schema/hson-schema.js";
 import type { HsonSchema } from "../schema/hson-schema.js";
 
-/** Materialized value projection carried by one generated Schema handle. */
-export type SchemaType<TSchema extends HsonSchema> = TSchema extends HsonSchema<infer TValue, HsonSchemaMode> ? TValue : never;
+/** Canonical Hson proof representation selected by the Schema family. */
+export type HsonFromSchema<TSchema extends HsonSchema> =
+  TSchema extends HsonSchema<unknown, "data"> ? HsonData<TSchema>
+    : TSchema extends HsonSchema<unknown, "document"> ? HsonDocument<TSchema>
+      : HsonData | HsonDocument;
+
+/** Ordinary JS/JSON-shaped value projection of a data Schema. */
+export type JsonFromSchema<TSchema extends HsonSchema<unknown, "data">> =
+  TSchema extends HsonSchema<infer TValue, "data"> ? TValue : never;
 
 /**
  * Declaration-only candidate association emitted beside generated Schema proof

@@ -1,7 +1,9 @@
 // livemap.types.ts
 
+import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
+
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
-import type { HsonSchema, HsonSchemaMode, HsonSchemaMutationCandidate, SchemaType } from "../api/transform/transform.types.js";
+import type { HsonSchema, HsonSchemaMode, HsonSchemaMutationCandidate } from "../api/transform/transform.types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
 import type {
   DocumentAttrsEvidence,
@@ -1296,9 +1298,9 @@ export type LiveMapDataLibrary<
 }>;
 
 type LiveMapCurrentDataSchema<TSchema extends HsonSchema> =
-  JsonValue extends SchemaType<TSchema> ? HsonSchema<unknown, "data"> : TSchema;
+  JsonValue extends DataSchemaValue<TSchema> ? HsonSchema<unknown, "data"> : TSchema;
 type LiveMapDataSchemaUse<TSchema extends HsonSchema> =
-  JsonValue extends SchemaType<TSchema> ? HsonSchema<unknown, "data"> : TSchema;
+  JsonValue extends DataSchemaValue<TSchema> ? HsonSchema<unknown, "data"> : TSchema;
 type LiveMapSchemaUse<TSchema extends HsonSchema, TLibrary extends string> = {
   bivarianceHack(schema: TSchema): LiveMapCommit<TLibrary>;
 }["bivarianceHack"];
@@ -1514,15 +1516,15 @@ export type LiveMapDocumentLibrary<
 }>;
 
 type LiveMapCurrentDocumentSchema<TSchema extends HsonSchema> =
-  HsonNode extends SchemaType<TSchema> ? HsonSchema<unknown, "document"> : TSchema;
+  HsonNode extends DocumentSchemaGraph<TSchema> ? HsonSchema<unknown, "document"> : TSchema;
 type LiveMapDocumentSchemaUse<TSchema extends HsonSchema> =
-  HsonNode extends SchemaType<TSchema> ? HsonSchema<unknown, "document"> : TSchema;
+  HsonNode extends DocumentSchemaGraph<TSchema> ? HsonSchema<unknown, "document"> : TSchema;
 
 type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
   TInput extends LiveMapDataLibraryInput<infer TSchema>
-    ? LiveMapDataLibrary<SchemaType<TSchema>, TLibrary, TSchema>
+    ? LiveMapDataLibrary<DataSchemaValue<TSchema>, TLibrary, TSchema>
     : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
-      ? LiveMapDocumentLibrary<SchemaType<TSchema>, TLibrary, TSchema>
+      ? LiveMapDocumentLibrary<DocumentSchemaGraph<TSchema>, TLibrary, TSchema>
       : TInput extends { data: unknown }
         ? "schema" extends keyof TInput
           ? LiveMapDataLibrary<unknown, TLibrary, HsonSchema>
@@ -1689,9 +1691,9 @@ type LiveMapStagedDocumentLibrary<TEvidence, TResult> = Readonly<{
 
 type LiveMapStagedLibraryForInput<TInput, TResult> =
   TInput extends LiveMapDataLibraryInput<infer TSchema>
-    ? LiveMapStagedDataLibrary<SchemaType<TSchema>, TResult>
+    ? LiveMapStagedDataLibrary<DataSchemaValue<TSchema>, TResult>
     : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
-      ? LiveMapStagedDocumentLibrary<SchemaType<TSchema>, TResult>
+      ? LiveMapStagedDocumentLibrary<DocumentSchemaGraph<TSchema>, TResult>
       : TInput extends Readonly<{ data: unknown }>
         ? LiveMapStagedDataLibrary<JsonValue, TResult>
         : TInput extends Readonly<{ document: unknown }>

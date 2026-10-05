@@ -27,9 +27,8 @@ export function verified_schema_assignment_ranges(
     if (declaration === undefined || declaration.type === undefined || declaration.initializer === undefined) continue;
     const annotation = resolve_hson_schema_annotation(typescript, checker, declaration.type);
     if (annotation === undefined || annotation.kind === "projected" || annotation.schema === undefined) continue;
-    const mode = annotation.kind;
     const association = resolve_schema_association(typescript, program, checker, annotation.schema, evidenceFile);
-    if (association === undefined || association.mode !== mode) continue;
+    if (association === undefined || annotation.kind !== "hson" && association.mode !== annotation.kind) continue;
     const evaluated = evaluated_initializer(typescript, checker, sourceFile, declaration.initializer, association);
     if (evaluated === undefined || evaluated.kind === "unknown" || evaluated.kind === "invalid" && !includeFailures) continue;
     output.push(Object.freeze({ start: declaration.name.getStart(sourceFile), end: declaration.name.getEnd(), ...(evaluated.kind === "invalid" ? { failed: true as const } : {}) }));

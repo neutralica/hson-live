@@ -58,29 +58,37 @@ function project(name: string, files: Record<string, string>, extraOptions: ts.C
     errors(name: string) { return service.getSemanticDiagnostics(file(name)); },
   };
 }
-const producer = '\uFEFFimport { Hson, type SchemaType } from "hson-live";\r\n// before\r\nconst before: number = "wrong-before";\r\nexport const Thing = Hson.schema`<type "data" content <name "string" status <exact "ready">>>`;\r\n// between\r\nconst between: number = "wrong-between";\r\nexport const Slide = Hson.schema`<type "document">`;\r\nexport const Twin = Hson.schema`<type "document">`;\r\nconst after: number = "wrong-after";\r\ndeclare const local: SchemaType<typeof Thing>;\r\nconst localName: string = local.name;\r\nlocal.na';
-const consumer = 'import { type SchemaType, type HsonSchema, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: SchemaType<typeof Thing>;\nconst name: string = value.name;\nconst status: "ready" = value.status;\nconst wrong: number = value.name;\ntype WrongMode = HsonData<typeof Slide>;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\n';
+const producer = '\uFEFFimport { Hson, type JsonFromSchema } from "hson-live";\r\n// before\r\nconst before: number = "wrong-before";\r\nexport const Thing = Hson.schema`<type "data" content <name "string" status <exact "ready">>>`;\r\n// between\r\nconst between: number = "wrong-between";\r\nexport const Slide = Hson.schema`<type "document">`;\r\nexport const Twin = Hson.schema`<type "document">`;\r\nconst after: number = "wrong-after";\r\ndeclare const local: JsonFromSchema<typeof Thing>;\r\nconst localName: string = local.name;\r\nlocal.na';
+const consumer = 'import { type JsonFromSchema, type HsonSchema, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: JsonFromSchema<typeof Thing>;\nconst name: string = value.name;\nconst status: "ready" = value.status;\nconst wrong: number = value.name;\ntype WrongMode = HsonData<typeof Slide>;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\n';
 const app = project("live", { "schema.ts": producer, "consumer.ts": consumer, "second.ts": 'import { type HsonDocument } from "hson-live"; import { Slide } from "./schema.js"; export declare const imported: HsonDocument<typeof Slide>;\n' });
 const originalBytes = bytes(app.directory);
 const messages = (values: readonly ts.Diagnostic[]) => values.map(value => `${value.code}@${value.start}: ${ts.flattenDiagnosticMessageText(value.messageText, "\n")}`).join("\n");
 
 check("alias assignments and targeted Hson problems use the live editor view", () => {
   const aliases = project("annotation-aliases", {
-    "schema.ts": `import { Hson, type HsonData, type HsonDocument } from "hson-live";
+    "schema.ts": `import { Hson, type HsonFromSchema, type HsonData, type HsonDocument } from "hson-live";
 export const DataSchema = Hson.schema\`<type "data" content <name "string">>\`;
 export const DocSchema = Hson.schema\`<type "document" tag "main" content "empty">\`;
 export type Imported = HsonData<typeof DataSchema>;
 export type ImportedDoc = HsonDocument<typeof DocSchema>;
+export type ImportedHsonDoc = HsonFromSchema<typeof DocSchema>;
 `,
-    "consumer.ts": `import { Hson, type HsonData, type SchemaType } from "hson-live";
-import { DataSchema, type Imported, type ImportedDoc } from "./schema.js";
+    "consumer.ts": `import { Hson, type HsonFromSchema, type HsonData, type JsonFromSchema } from "hson-live";
+import { DataSchema, DocSchema, type Imported, type ImportedDoc, type ImportedHsonDoc } from "./schema.js";
 type Local = HsonData<typeof DataSchema>; export type Chain = Local;
 const direct: HsonData<typeof DataSchema> = Hson.data\`<name "Ada">\`;
 const local: Chain = Hson.data\`<name "Ada">\`;
 const imported: Imported = Hson.data\`<name "Ada">\`;
 const document: ImportedDoc = Hson.document\`<main/>\`;
+type HsonLocal = HsonFromSchema<typeof DataSchema>; type HsonChain = HsonLocal;
+const hsonDirect: HsonFromSchema<typeof DataSchema> = Hson.data\`<name "Ada">\`;
+const hsonAlias: HsonChain = Hson.data\`<name "Ada">\`;
+const hsonDocument: HsonFromSchema<typeof DocSchema> = Hson.document\`<main/>\`;
+const hsonDocumentAlias: ImportedHsonDoc = Hson.document\`<main/>\`;
+const hsonInvalid: HsonChain = Hson.data\`<name 37>\`;
+const hsonDocumentInvalid: ImportedHsonDoc = Hson.document\`<aside/>\`;
 const invalid: Chain = Hson.data\`<name 37>\`;
-type Value = SchemaType<typeof DataSchema>;
+type Value = JsonFromSchema<typeof DataSchema>;
 const projected: Value = Hson.data\`<name "Ada">\`;
 type Missing = HsonData<typeof MissingSchema>;
 const unresolved: Missing = Hson.data\`<name "Ada">\`;
@@ -99,12 +107,12 @@ const incorrect: Imported = Hson.data\`<name 37>\`;
   });
   const errors = aliases.errors("consumer.ts");
   const problems = errors.filter(error => error.source === "hson-schema");
-  assert.equal(problems.length, 3, messages(errors));
+  assert.equal(problems.length, 5, messages(errors));
   assert.match(messages(problems), /Static Hson does not satisfy DataSchema/);
-  assert.match(messages(problems), /projected JavaScript value.*HsonData<typeof DataSchema>/);
+  assert.match(messages(problems), /JSON\/JS value representation.*HsonFromSchema<typeof DataSchema>/);
   assert.match(messages(problems), /Unable to resolve the Schema proof/);
   const source = aliases.text("consumer.ts");
-  for (const name of ["direct", "local", "imported", "document"]) {
+  for (const name of ["direct", "local", "imported", "document", "hsonDirect", "hsonAlias", "hsonDocument", "hsonDocumentAlias"]) {
     const start = source.indexOf(`const ${name}:`) + 6;
     assert.ok(!errors.some(error => error.start === start), `${name}: ${messages(errors)}`);
   }
@@ -193,13 +201,13 @@ check("duplicate unsaved Schema names withdraw all ambiguous evidence and recove
   const duplicate = `${single}export const S = Hson.schema\`<type "data" content <b "number">\`;\n`;
   const test = project("duplicate-live", {
     "schema.ts": single,
-    "consumer.ts": 'import { type SchemaType } from "hson-live"; import { S } from "./schema.js"; declare const value: SchemaType<typeof S>; const a: string = value.a;\n',
+    "consumer.ts": 'import { type JsonFromSchema } from "hson-live"; import { S } from "./schema.js"; declare const value: JsonFromSchema<typeof S>; const a: string = value.a;\n',
   });
   assert.equal(test.errors("consumer.ts").length, 0, messages(test.errors("consumer.ts")));
   assert.ok(test.service.getProgram()?.getSourceFiles().some(file => file.fileName.endsWith("S.hson-schema.generated.ts")));
   test.edit("schema.ts", duplicate);
   assert.ok(test.errors("schema.ts").some(error => error.code === 2451), messages(test.errors("schema.ts")));
-  assert.ok(test.errors("consumer.ts").some(error => error.code === 18046), messages(test.errors("consumer.ts")));
+  assert.ok(test.errors("consumer.ts").some(error => error.code === 2344), messages(test.errors("consumer.ts")));
   assert.ok(!test.service.getProgram()?.getSourceFiles().some(file => file.fileName.endsWith("S.hson-schema.generated.ts")));
   test.edit("schema.ts", single);
   assert.equal(test.errors("consumer.ts").length, 0, messages(test.errors("consumer.ts")));

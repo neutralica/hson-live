@@ -3,7 +3,7 @@
 A Schema is authored as Hson data and compiled into a frozen, nominal runtime object:
 
 ```ts
-import { Hson, type HsonData, type SchemaType } from "hson-live";
+import { Hson, type HsonFromSchema, type JsonFromSchema } from "hson-live";
 
 export const UserSchema = Hson.schema`
   <type "data" content <
@@ -13,18 +13,30 @@ export const UserSchema = Hson.schema`
   >>
 `;
 
-export type User = SchemaType<typeof UserSchema>;
-const authored: HsonData<typeof UserSchema> = Hson.data`<name "Ada" score 37>`;
+export type UserHson = HsonFromSchema<typeof UserSchema>;
+export type UserJson = JsonFromSchema<typeof UserSchema>;
+const authored: UserHson = Hson.data`<name "Ada" score 37>`;
 ```
 
-The packaged `hson-schema` tool discovers direct, substitution-free official `Hson.schema` declarations, checks Schema semantics, and generates private evidence in current tool-owned `.hson/` compiler projects for value, mode, and Schema identity. The application imports the Schema symbol and uses `SchemaType<typeof UserSchema>` and `HsonData<typeof UserSchema>`; it does not import generated suffix names.
+The packaged `hson-schema` tool discovers direct, substitution-free official `Hson.schema` declarations, checks Schema semantics, and generates private evidence in current tool-owned `.hson/` compiler projects for value, mode, and Schema identity. The application imports the Schema symbol and uses `HsonFromSchema<typeof UserSchema>` and `JsonFromSchema<typeof UserSchema>`; it does not import generated suffix names.
+
+`HsonFromSchema<S>` chooses `HsonData<S>` or `HsonDocument<S>` from the Schema family. `JsonFromSchema<S>` projects a data Schema to its ordinary JS/JSON-shaped TypeScript value, including readonly structure and generated refinement evidence; document Schemas are rejected. The lower-level `HsonData<S>` and `HsonDocument<S>` remain precise canonical string carrier/proof types.
+
+For example, a data Schema can use this representation pair:
+
+```ts
+const DeckSchema = Hson.schema`<type "data" content <title "string">>`;
+type DeckHson = HsonFromSchema<typeof DeckSchema>;
+type DeckJson = JsonFromSchema<typeof DeckSchema>;
+const deck: DeckHson = Hson.data`<title "Introduction">`;
+```
 
 Run `hson-schema generate --project tsconfig.json` after authoring or changing Schemas, and `hson-schema check --project tsconfig.json` in the authoritative build. `verify` checks artifact freshness without repairing it. Static authored assignments are proven only when the analyzer validates the direct `Hson.data` source against current generated evidence. Plain TypeScript sees the tag's unproved `HsonData` return and cannot grant proof on its own. The TypeScript editor plugin uses current in-memory compiler views, including unsaved source. See the [compiler workflow and publishing contract](./hson-schema-compiler-project-phase-4.md).
 
 Dynamic values are certified through the Schema object:
 
 ```ts
-const certified: HsonData<typeof UserSchema> = UserSchema.certify(dynamicCanonicalHson);
+const certified: UserHson = UserSchema.certify(dynamicCanonicalHson);
 const portableDefinition = UserSchema.toHson(); // HsonSchemaData primitive string
 const reconstructed = Hson.schema.fromHson(portableDefinition);
 ```

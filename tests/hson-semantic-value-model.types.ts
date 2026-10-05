@@ -1,9 +1,9 @@
 import { Hson, hsonLiveMap } from "hson-live";
-// @ts-expect-error SchemaType is the sole public Schema value projection.
+// @ts-expect-error JsonFromSchema is the sole public Schema value projection.
 import type { HsonSchemaValue } from "hson-live";
 import type {
-  HsonCanonical, HsonData, HsonDocument, HsonSchemaData, SchemaType,
-  LiveMapDocumentLibrary, LiveMapDataLibrary,
+  HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonFromSchema, JsonFromSchema,
+  LiveMapDocumentLibrary, LiveMapDataLibrary, LiveMapStagedWriter, Locus,
   HsonSchema,
 } from "hson-live";
 import { SameShapeOneSchema, SameShapeTwoSchema, UserSchema } from "./fixtures/hson-schema-mvp/out/producer.js";
@@ -17,7 +17,7 @@ declare const schemaData: HsonSchemaData;
 declare const firstProof: HsonData<typeof SameShapeOneSchema>;
 const documentSchemaMode: HsonSchema<unknown, "document"> = PageSchema;
 void documentSchemaMode;
-declare const documentValueProjection: SchemaType<typeof PageSchema>;
+declare const documentValueProjection: DocumentSchemaGraph<typeof PageSchema>;
 void documentValueProjection;
 
 const dataCanonical: HsonCanonical = unproved;
@@ -26,10 +26,10 @@ const proofBase: HsonData = proved;
 const schemaBase: HsonData = schemaData;
 const schemaCanonical: HsonCanonical = schemaData;
 const portable: HsonSchemaData = UserSchema.toHson();
-declare const projected: SchemaType<typeof SameShapeOneSchema>;
+declare const projected: JsonFromSchema<typeof SameShapeOneSchema>;
 const sameShapedName: string = projected.name;
 // @ts-expect-error Equal field shapes do not erase generated value proof identity.
-const crossProjected: SchemaType<typeof SameShapeTwoSchema> = projected;
+const crossProjected: JsonFromSchema<typeof SameShapeTwoSchema> = projected;
 void dataCanonical; void documentCanonical; void proofBase; void schemaBase;
 void schemaCanonical; void portable; void projected; void sameShapedName; void crossProjected;
 
@@ -66,13 +66,46 @@ void neutralAsData; void dataAsDocument; void documentAsData; void unprovedAsPro
 void crossIdentity; void dataAsSchema; void sliced; void appended;
 
 const dataMap = hsonLiveMap.fromLibraries({ state: { data: Hson.data`<name "Ada">`, schema: SameShapeOneSchema } });
-const governedData: LiveMapDataLibrary<SchemaType<typeof SameShapeOneSchema>> = dataMap.lib("state");
+const governedData: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeOneSchema>> = dataMap.lib("state");
 const documentMap = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main id=hero <header/> <section "body"/>/>`, schema: PageSchema } });
-const governedDocument: LiveMapDocumentLibrary<SchemaType<typeof PageSchema>> = documentMap.lib("page");
+const governedDocument: LiveMapDocumentLibrary<DocumentSchemaGraph<typeof PageSchema>> = documentMap.lib("page");
 // @ts-expect-error A document Schema cannot govern a data map.
 dataMap.lib("state").schema.use(PageSchema);
 // @ts-expect-error A data Schema cannot govern a document map.
 documentMap.lib("page").schema.use(SameShapeOneSchema);
 // @ts-expect-error Same-shaped Schemas do not share governed value proof.
-const wrongDataEvidence: LiveMapDataLibrary<SchemaType<typeof SameShapeTwoSchema>> = governedData;
+const wrongDataEvidence: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeTwoSchema>> = governedData;
 void governedDocument; void wrongDataEvidence;
+
+type DocumentSchemaGraph<S extends import("hson-live").HsonSchema<unknown, "document">> = S extends import("hson-live").HsonSchema<infer TGraph, "document"> ? TGraph : never;
+
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type Assert<T extends true> = T;
+type DeckHson = HsonFromSchema<typeof UserSchema>;
+type DeckJson = JsonFromSchema<typeof UserSchema>;
+type DataRepresentation = Assert<Equal<DeckHson, HsonData<typeof UserSchema>>>;
+type DocumentRepresentation = Assert<Equal<HsonFromSchema<typeof PageSchema>, HsonDocument<typeof PageSchema>>>;
+declare const deckJson: DeckJson;
+const deckHson: DeckHson = proved;
+// @ts-expect-error A document Schema is not a JSON value Schema.
+type PageJson = JsonFromSchema<typeof PageSchema>;
+// @ts-expect-error Hson proof text is not a JSON value.
+const jsonFromHson: DeckJson = deckHson;
+// @ts-expect-error JSON values are not Hson proof text.
+const hsonFromJson: DeckHson = deckJson;
+// @ts-expect-error Document graph evidence is not Hson source.
+const graphFromHson: DocumentSchemaGraph<typeof PageSchema> = Hson.document`<main/>`;
+void jsonFromHson; void hsonFromJson; void graphFromHson;
+
+// Document evidence also remains available through staged and Governor inference.
+declare const documentWriter: LiveMapStagedWriter<typeof documentMap, void>;
+documentWriter.lib("page").at([0, 0]).replace("new body");
+// @ts-expect-error The document's main element has only one section child.
+documentWriter.lib("page").at([1]);
+// @ts-expect-error A text location does not expose element attributes.
+documentWriter.lib("page").at([0, 0]).attrs;
+// @ts-expect-error A text location accepts text, not a graph node.
+documentWriter.lib("page").at([0, 0]).replace(documentMap.lib("page").root());
+declare const documentLocus: Locus<typeof documentMap>;
+const governorSchema: typeof PageSchema = documentLocus.lib("page").schema.get();
+void governorSchema;

@@ -46,15 +46,17 @@ assert.equal(verified_schema_assignment_ranges(ts, document, documentConsumer).l
 const consumerText = readFileSync(mvpConsumer, "utf8");
 const mvpProducer = resolve(repositoryRoot, "tests/fixtures/hson-schema-mvp/producer.ts");
 const aliases = `
-import type { HsonSchema, HsonData as Data } from "hson-live";
+import type { HsonSchema, HsonFromSchema, HsonData as Data } from "hson-live";
 import type { ImportedDeck } from "./producer.js";
+type HsonDeck = HsonFromSchema<typeof UserSchema>; type HsonChain = HsonDeck;
+type HsonWrapped<S extends HsonSchema> = HsonFromSchema<S>;
 type Deck = HsonData<typeof UserSchema>;
 export type ExportedDeck = Deck;
 type Chain = ExportedDeck;
 type Wrapped<S extends HsonSchema<unknown, "data">> = Data<S>;
 type WrappedAgain<S extends HsonSchema<unknown, "data">> = Wrapped<S>;
 `;
-for (const annotation of ["Deck", "ExportedDeck", "Chain", "WrappedAgain<typeof UserSchema>", "ImportedDeck"]) {
+for (const annotation of ["Deck", "ExportedDeck", "Chain", "WrappedAgain<typeof UserSchema>", "ImportedDeck", "HsonFromSchema<typeof UserSchema>", "HsonDeck", "HsonChain", "HsonWrapped<typeof UserSchema>"]) {
   const text = consumerText.replace("const authored: HsonData<typeof UserSchema>", `const authored: ${annotation}`) + aliases;
   const aliasProgram = program_for(mvpConfig, new Map([[mvpConsumer, text], [mvpProducer,
     readFileSync(mvpProducer, "utf8") + '\nimport type { HsonData } from "hson-live"; export type ImportedDeck = HsonData<typeof UserSchema>;\n']]));
@@ -62,6 +64,14 @@ for (const annotation of ["Deck", "ExportedDeck", "Chain", "WrappedAgain<typeof 
   assert.equal(filtered_schema_assignment_errors(aliasProgram, mvpConsumer).length, 0, annotation);
 }
 const documentText = readFileSync(documentConsumer, "utf8");
+for (const annotation of ["HsonFromSchema<typeof $1>", "HsonDocAlias<typeof $1>"]) {
+  const unifiedDocument = program_for(documentConfig, new Map([[documentConsumer,
+    documentText.replace(/HsonDocument<typeof (\w+)>/g, annotation)
+    + '\nimport type { HsonFromSchema, HsonSchema } from "hson-live"; type HsonDocBase<S extends HsonSchema> = HsonFromSchema<S>; type HsonDocAlias<S extends HsonSchema> = HsonDocBase<S>;\n']]));
+  assert.equal(verified_schema_assignment_ranges(ts, unifiedDocument, documentConsumer).length, 3, annotation);
+  assert.equal(filtered_schema_assignment_errors(unifiedDocument, documentConsumer).length, 0, annotation);
+}
+
 const documentAliases = program_for(documentConfig, new Map([[documentConsumer,
   documentText.replace(/HsonDocument<typeof (\w+)>/g, "DocumentAlias<typeof $1>")
   + '\nimport type { HsonSchema } from "hson-live"; type DocumentBase<S extends HsonSchema<unknown, "document">> = HsonDocument<S>; export type DocumentAlias<S extends HsonSchema<unknown, "document">> = DocumentBase<S>;\n']]));
@@ -77,6 +87,25 @@ const failures = (program: ts.Program) => static_schema_candidate_diagnostics(ts
 assert.deepEqual(failures(aliasInvalid), failures(directInvalid));
 assert.equal(failures(aliasInvalid).length, 1);
 assert.equal(verified_schema_assignment_ranges(ts, aliasInvalid, mvpConsumer).length, 4);
+for (const annotation of ["HsonFromSchema<typeof UserSchema>", "HsonChain"]) {
+  const unifiedInvalid = program_for(mvpConfig, new Map([[mvpConsumer,
+    consumerText.replace('<name "Ada"', "<name 37").replace("const authored: HsonData<typeof UserSchema>", `const authored: ${annotation}`) + aliases]]));
+  assert.deepEqual(failures(unifiedInvalid), failures(directInvalid), annotation);
+  assert.equal(verified_schema_assignment_ranges(ts, unifiedInvalid, mvpConsumer).length, 4, annotation);
+}
+const invalidDocumentText = documentText.replace('<section "body"/>', '<aside "body"/>');
+const directDocumentInvalid = program_for(documentConfig, new Map([[documentConsumer, invalidDocumentText]]));
+const documentFailures = (program: ts.Program) => static_schema_candidate_diagnostics(ts, authoredPrograms.get(program)!)
+  .filter(entry => entry.file === documentConsumer).map(({ code, message }) => ({ code, message }));
+assert.equal(documentFailures(directDocumentInvalid).length, 1);
+for (const annotation of ["HsonFromSchema<typeof $1>", "InvalidDocumentAlias<typeof $1>"]) {
+  const unifiedInvalid = program_for(documentConfig, new Map([[documentConsumer,
+    invalidDocumentText.replace(/HsonDocument<typeof (\w+)>/g, annotation)
+    + '\nimport type { HsonFromSchema, HsonSchema } from "hson-live"; type InvalidDocumentAlias<S extends HsonSchema> = HsonFromSchema<S>;\n']]));
+  assert.deepEqual(documentFailures(unifiedInvalid), documentFailures(directDocumentInvalid), annotation);
+  assert.equal(verified_schema_assignment_ranges(ts, unifiedInvalid, documentConsumer).length, 2, annotation);
+}
+
 
 const safetyText = consumerText.replace("const authored: HsonData<typeof UserSchema>", "const authored: Unresolved") + `
 type Unresolved = HsonData<typeof MissingSchema>;
@@ -84,7 +113,7 @@ type Unrelated = string;
 type CycleA = CycleB; type CycleB = CycleA;
 type Shadow = Fake.HsonData<typeof UserSchema>;
 declare namespace Fake { type HsonData<S> = string; }
-type Value = SchemaType<typeof UserSchema>;
+type Value = JsonFromSchema<typeof UserSchema>;
 const projected: Value = Hson.data\`<name "Ada">\`;
 const unrelated: Unrelated = Hson.data\`<name "Ada">\`;
 const cyclic: CycleA = Hson.data\`<name "Ada">\`;
@@ -97,7 +126,7 @@ const safety = program_for(mvpConfig, new Map([[mvpConsumer, safetyText]]));
 assert.equal(verified_schema_assignment_ranges(ts, safety, mvpConsumer).length, 4);
 const targeted = static_schema_candidate_diagnostics(ts, authoredPrograms.get(safety)!).filter(entry => entry.file === mvpConsumer);
 assert.deepEqual(targeted.map(entry => entry.code), ["HSON_SCHEMA_PROOF_UNRESOLVED", "HSON_PROJECTED_VALUE_ANNOTATION"]);
-assert.match(targeted[1]!.message, /projected JavaScript value.*HsonData<typeof UserSchema>/);
+assert.match(targeted[1]!.message, /JSON\/JS value representation.*HsonFromSchema<typeof UserSchema>/);
 const safetySource = safety.getSourceFile(mvpConsumer)!;
 for (const statement of safetySource.statements) if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
   if (ts.isIdentifier(declaration.name) && ["unrelated", "cyclic", "shadowed", "bounded"].includes(declaration.name.text)) {
@@ -141,7 +170,7 @@ const assignment = (messageText: string | ts.DiagnosticMessageChain): ts.Diagnos
 assert.equal(filter_verified_schema_assignment_diagnostics([assignment(schemaProof)], failedRange).length, 0);
 assert.equal(filter_verified_schema_assignment_diagnostics([assignment("Unrelated assignment failure")], failedRange).length, 1);
 assert.equal(filter_verified_schema_assignment_diagnostics([assignment({ messageText: "Assignment failure", category: ts.DiagnosticCategory.Error, code: 2322, next: [schemaProof, { messageText: "Property other is incompatible", category: ts.DiagnosticCategory.Error, code: 2326 }] })], failedRange).length, 1);
-console.log(JSON.stringify({ schemaEditorProofAcceptance: "ok", aliasForms: 5, targetedDiagnosticKinds: 2 }));
+console.log(JSON.stringify({ schemaEditorProofAcceptance: "ok", aliasForms: 9, targetedDiagnosticKinds: 2 }));
 
 function program_for(configPath: string, replacements: ReadonlyMap<string, string>): ts.Program {
   const read = ts.readConfigFile(configPath, ts.sys.readFile);

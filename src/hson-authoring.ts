@@ -149,7 +149,7 @@ export const Hson = Object.freeze({
   })),
 });
 
-export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchema, SchemaType } from "./api/transform/transform.types.js";
+export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchema, HsonFromSchema, JsonFromSchema } from "./api/transform/transform.types.js";
 export type {
   BasicValue, HsonAttrs, HsonMeta, HsonNode, HsonSemanticPrimitive, JsonValue, NodeContent, Primitive,
 } from "./core/types.js";

@@ -18,7 +18,7 @@ Each entry has exactly one ingress field:
 - `data` accepts a JSON value or JSON source text.
 - `document` accepts Hson source text or a canonical Hson node.
 
-`schema` may be omitted. A data library then uses `ANY_DATA`; a document library uses `ANY_DOCUMENT`. Initial material is validated during construction or runtime admission. An explicit Schema retains its generated type evidence, so `SchemaType<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
+`schema` may be omitted. A data library then uses `ANY_DATA`; a document library uses `ANY_DOCUMENT`. Initial material is validated during construction or runtime admission. An explicit Schema retains its generated type evidence, so `JsonFromSchema<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
 
 An unmanaged local family-top library may be tightened later with
 `map.lib("name").schema.use(Schema)`. The complete existing root is validated
