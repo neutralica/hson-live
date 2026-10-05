@@ -16,6 +16,7 @@ const { discover_hson_schema_declarations } = await import(`${runtimeBase}/inter
 const { static_schema_candidate_diagnostics } = await import(`${runtimeBase}/internal/hson-schema/candidate-diagnostics.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/candidate-diagnostics.ts");
 const { evaluate_static_schema_candidate } = await import(`${runtimeBase}/internal/hson-schema/candidate-evaluation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/candidate-evaluation.ts");
 const { resolve_immutable_schema } = await import(`${runtimeBase}/internal/hson-schema/schema-identity.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-identity.ts");
+const { resolve_hson_schema_annotation } = await import(`${runtimeBase}/internal/hson-schema/schema-annotation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-annotation.ts");
 
 type Mode = "generate" | "verify" | "check" | "build" | "watch";
 type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.VariableStatement; declaration: ts.VariableDeclaration; tagged: ts.TaggedTemplateExpression; name: string; source: string; compiled: CompiledHsonSchema }>;
@@ -163,12 +164,11 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
     for (const statement of sourceFile.statements) {
       if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
       const declaration = statement.declarationList.declarations[0];
-      if (declaration === undefined || declaration.type === undefined || !ts.isTypeReferenceNode(declaration.type) || !ts.isIdentifier(declaration.type.typeName)) continue;
-      const typeName = declaration.type.typeName.text;
-      if ((typeName !== "HsonData" && typeName !== "HsonDocument") || !official_binding(declaration.type.typeName, typeName, checker) || declaration.type.typeArguments?.length !== 1 || declaration.initializer === undefined) continue;
-      const schemaReference = declaration.type.typeArguments[0];
-      if (schemaReference === undefined || !ts.isTypeQueryNode(schemaReference) || !ts.isIdentifier(schemaReference.exprName)) continue;
-      const schema = resolve_immutable_schema(ts, checker, schemaReference.exprName, item => byDeclaration.get(item));
+      if (declaration === undefined || declaration.type === undefined || declaration.initializer === undefined) continue;
+      const annotation = resolve_hson_schema_annotation(ts, checker, declaration.type);
+      if (annotation === undefined || annotation.kind === "projected" || annotation.schema === undefined) continue;
+      const typeName = annotation.kind === "data" ? "HsonData" : "HsonDocument";
+      const schema = resolve_immutable_schema(ts, checker, annotation.schema, item => byDeclaration.get(item));
       if (schema === undefined) continue;
       if (schema_mode(schema) !== (typeName === "HsonData" ? "data" : "document")) {
         diagnostics.push({ file: sourceFile.fileName, start: declaration.type.getStart(), message: `Schema mode does not match ${typeName}.` });

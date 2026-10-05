@@ -5,6 +5,8 @@ import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { filter_verified_schema_assignment_diagnostics, verified_schema_assignment_ranges as assignment_ranges } from "../editors/vscode-hson/src/schema-editor-proof.ts";
 import { install_live_schema_view } from "../editors/vscode-hson/src/schema-editor-view.ts";
+import { static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
+import { resolve_hson_schema_annotation } from "../src/internal/hson-schema/schema-annotation.ts";
 
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -29,6 +31,7 @@ const documentConfig = resolve(repositoryRoot, "tests/fixtures/hson-schema-docum
 const documentConsumer = resolve(repositoryRoot, "tests/fixtures/hson-schema-document/consumer.ts");
 
 const evidence = new WeakMap<ts.Program, (producer: string, name: string) => string | undefined>();
+const authoredPrograms = new WeakMap<ts.Program, ts.Program>();
 const mvp = program_for(mvpConfig, new Map());
 assert.equal(schema_assignment_errors(mvp, mvpConsumer).length, 5);
 assert.equal(filtered_schema_assignment_errors(mvp, mvpConsumer).length, 0);
@@ -41,6 +44,66 @@ assert.equal(filtered_schema_assignment_errors(document, documentConsumer).lengt
 assert.equal(verified_schema_assignment_ranges(ts, document, documentConsumer).length, 3);
 
 const consumerText = readFileSync(mvpConsumer, "utf8");
+const mvpProducer = resolve(repositoryRoot, "tests/fixtures/hson-schema-mvp/producer.ts");
+const aliases = `
+import type { HsonSchema, HsonData as Data } from "hson-live";
+import type { ImportedDeck } from "./producer.js";
+type Deck = HsonData<typeof UserSchema>;
+export type ExportedDeck = Deck;
+type Chain = ExportedDeck;
+type Wrapped<S extends HsonSchema<unknown, "data">> = Data<S>;
+type WrappedAgain<S extends HsonSchema<unknown, "data">> = Wrapped<S>;
+`;
+for (const annotation of ["Deck", "ExportedDeck", "Chain", "WrappedAgain<typeof UserSchema>", "ImportedDeck"]) {
+  const text = consumerText.replace("const authored: HsonData<typeof UserSchema>", `const authored: ${annotation}`) + aliases;
+  const aliasProgram = program_for(mvpConfig, new Map([[mvpConsumer, text], [mvpProducer,
+    readFileSync(mvpProducer, "utf8") + '\nimport type { HsonData } from "hson-live"; export type ImportedDeck = HsonData<typeof UserSchema>;\n']]));
+  assert.equal(verified_schema_assignment_ranges(ts, aliasProgram, mvpConsumer).length, 5, annotation);
+  assert.equal(filtered_schema_assignment_errors(aliasProgram, mvpConsumer).length, 0, annotation);
+}
+const documentText = readFileSync(documentConsumer, "utf8");
+const documentAliases = program_for(documentConfig, new Map([[documentConsumer,
+  documentText.replace(/HsonDocument<typeof (\w+)>/g, "DocumentAlias<typeof $1>")
+  + '\nimport type { HsonSchema } from "hson-live"; type DocumentBase<S extends HsonSchema<unknown, "document">> = HsonDocument<S>; export type DocumentAlias<S extends HsonSchema<unknown, "document">> = DocumentBase<S>;\n']]));
+assert.equal(verified_schema_assignment_ranges(ts, documentAliases, documentConsumer).length, 3);
+assert.equal(filtered_schema_assignment_errors(documentAliases, documentConsumer).length, 0);
+
+// Identical candidate failures and proof withdrawal through a transparent alias.
+const directInvalid = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('<name "Ada"', "<name 37")]]));
+const aliasInvalid = program_for(mvpConfig, new Map([[mvpConsumer,
+  consumerText.replace('<name "Ada"', "<name 37").replace("const authored: HsonData<typeof UserSchema>", "const authored: Chain") + aliases]]));
+const failures = (program: ts.Program) => static_schema_candidate_diagnostics(ts, authoredPrograms.get(program)!)
+  .filter(entry => entry.file === mvpConsumer).map(({ code, message }) => ({ code, message }));
+assert.deepEqual(failures(aliasInvalid), failures(directInvalid));
+assert.equal(failures(aliasInvalid).length, 1);
+assert.equal(verified_schema_assignment_ranges(ts, aliasInvalid, mvpConsumer).length, 4);
+
+const safetyText = consumerText.replace("const authored: HsonData<typeof UserSchema>", "const authored: Unresolved") + `
+type Unresolved = HsonData<typeof MissingSchema>;
+type Unrelated = string;
+type CycleA = CycleB; type CycleB = CycleA;
+type Shadow = Fake.HsonData<typeof UserSchema>;
+declare namespace Fake { type HsonData<S> = string; }
+type Value = SchemaType<typeof UserSchema>;
+const projected: Value = Hson.data\`<name "Ada">\`;
+const unrelated: Unrelated = Hson.data\`<name "Ada">\`;
+const cyclic: CycleA = Hson.data\`<name "Ada">\`;
+const shadowed: Shadow = Hson.data\`<name "Ada">\`;
+${aliases}
+${Array.from({ length: 18 }, (_, index) => `type Deep${index} = ${index === 17 ? "Deck" : `Deep${index + 1}`};`).join("\n")}
+const bounded: Deep0 = Hson.data\`<name "Ada">\`;
+`;
+const safety = program_for(mvpConfig, new Map([[mvpConsumer, safetyText]]));
+assert.equal(verified_schema_assignment_ranges(ts, safety, mvpConsumer).length, 4);
+const targeted = static_schema_candidate_diagnostics(ts, authoredPrograms.get(safety)!).filter(entry => entry.file === mvpConsumer);
+assert.deepEqual(targeted.map(entry => entry.code), ["HSON_SCHEMA_PROOF_UNRESOLVED", "HSON_PROJECTED_VALUE_ANNOTATION"]);
+assert.match(targeted[1]!.message, /projected JavaScript value.*HsonData<typeof UserSchema>/);
+const safetySource = safety.getSourceFile(mvpConsumer)!;
+for (const statement of safetySource.statements) if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
+  if (ts.isIdentifier(declaration.name) && ["unrelated", "cyclic", "shadowed", "bounded"].includes(declaration.name.text)) {
+    assert.equal(resolve_hson_schema_annotation(ts, safety.getTypeChecker(), declaration.type!), undefined, declaration.name.text);
+  }
+}
 const invalid = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('<name "Ada"', "<name 37")]]));
 assert.equal(verified_schema_assignment_ranges(ts, invalid, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(invalid, mvpConsumer).length, 1);
@@ -78,7 +141,7 @@ const assignment = (messageText: string | ts.DiagnosticMessageChain): ts.Diagnos
 assert.equal(filter_verified_schema_assignment_diagnostics([assignment(schemaProof)], failedRange).length, 0);
 assert.equal(filter_verified_schema_assignment_diagnostics([assignment("Unrelated assignment failure")], failedRange).length, 1);
 assert.equal(filter_verified_schema_assignment_diagnostics([assignment({ messageText: "Assignment failure", category: ts.DiagnosticCategory.Error, code: 2322, next: [schemaProof, { messageText: "Property other is incompatible", category: ts.DiagnosticCategory.Error, code: 2326 }] })], failedRange).length, 1);
-console.log(JSON.stringify({ schemaEditorProofAcceptance: "ok", checks: 22 }));
+console.log(JSON.stringify({ schemaEditorProofAcceptance: "ok", aliasForms: 5, targetedDiagnosticKinds: 2 }));
 
 function program_for(configPath: string, replacements: ReadonlyMap<string, string>): ts.Program {
   const read = ts.readConfigFile(configPath, ts.sys.readFile);
@@ -99,12 +162,14 @@ function program_for(configPath: string, replacements: ReadonlyMap<string, strin
   view.refresh();
   const original = host.getScriptSnapshot;
   host.getScriptSnapshot = file => {
-    const text = replacements.get(resolve(file));
+    // Authored replacements feed the view; only evidence tampering bypasses it.
+    const text = file.includes("/.hson/") ? replacements.get(resolve(file)) : undefined;
     return text === undefined ? original(file) : ts.ScriptSnapshot.fromString(text);
   };
   const service = ts.createLanguageService(host);
   const program = service.getProgram()!;
   evidence.set(program, view.evidence_file);
+  authoredPrograms.set(program, view.authoredService.getProgram()!);
   return program;
 }
 

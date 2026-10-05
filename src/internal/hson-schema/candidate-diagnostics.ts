@@ -6,6 +6,7 @@ import { evaluate_static_schema_candidate, type StaticSchemaCandidate } from "./
 import { resolve_immutable_schema } from "./schema-identity.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
 import { library_schema_attachment_plan, type PreciseSchemaFact } from "./source-transformation.js";
+import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 
 export type StaticSchemaDiagnostic = Readonly<{ file: string; start: number; end: number; code: string; message: string }>;
 type Schema = Readonly<{ declaration: ts.VariableDeclaration; name: string; compiled: CompiledHsonSchema }>;
@@ -146,19 +147,30 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       if (!typescript.isVariableStatement(statement) || (statement.declarationList.flags & typescript.NodeFlags.Const) === 0
         || statement.declarationList.declarations.length !== 1) continue;
       const found = statement.declarationList.declarations[0];
-      if (found?.type === undefined || found.initializer === undefined || !typescript.isTypeReferenceNode(found.type)
-        || !typescript.isIdentifier(found.type.typeName) || found.type.typeArguments?.length !== 1) continue;
-      const name = found.type.typeName.text;
-      const family = name === "HsonData" ? "data" : name === "HsonDocument" ? "document" : undefined;
-      const query = found.type.typeArguments[0];
-      if (family === undefined || !is_official_hson_package_binding(found.type.typeName, family === "data" ? "HsonData" : "HsonDocument", checker, true)
-        || query === undefined || !typescript.isTypeQueryNode(query) || !typescript.isIdentifier(query.exprName)) continue;
+      if (found?.type === undefined || found.initializer === undefined) continue;
+      const annotationNode = found.type;
+      const annotation = resolve_hson_schema_annotation(typescript, checker, annotationNode);
+      if (annotation === undefined) continue;
       const initializer = found.initializer;
       if (!typescript.isTaggedTemplateExpression(initializer) || !typescript.isPropertyAccessExpression(initializer.tag)
-        || initializer.tag.name.text !== family || !typescript.isIdentifier(initializer.tag.expression)
+        || !["data", "document"].includes(initializer.tag.name.text) || !typescript.isIdentifier(initializer.tag.expression)
         || !is_official_hson_package_binding(initializer.tag.expression, "Hson", checker, true)
         || !typescript.isNoSubstitutionTemplateLiteral(initializer.template) || initializer.template.isUnterminated) continue;
-      report(schema(query.exprName), initializer, "certify");
+      const contract = annotation.schema === undefined ? undefined : schema(annotation.schema);
+      const annotationDiagnostic = (code: string, message: string): void => {
+        output.push({ file: source.fileName, start: annotationNode.getStart(), end: annotationNode.getEnd(), code, message });
+      };
+      if (annotation.kind === "projected") {
+        if (contract !== undefined && annotation.schema !== undefined && initializer.tag.name.text === "data") annotationDiagnostic("HSON_PROJECTED_VALUE_ANNOTATION",
+          `Hson.data produces Hson data, but this annotation describes the Schema's projected JavaScript value. For Hson source, use HsonData<typeof ${annotation.schema.text}>.`);
+        continue;
+      }
+      if (initializer.tag.name.text !== annotation.kind) continue;
+      if (contract === undefined) {
+        annotationDiagnostic("HSON_SCHEMA_PROOF_UNRESOLVED", `Unable to resolve the Schema proof for this ${annotation.kind === "data" ? "HsonData" : "HsonDocument"} annotation; use typeof a statically known Hson.schema binding.`);
+        continue;
+      }
+      report(contract, initializer, "certify");
     }
     const visit = (node: ts.Node): void => {
       if (typescript.isCallExpression(node) && typescript.isPropertyAccessExpression(node.expression)) {

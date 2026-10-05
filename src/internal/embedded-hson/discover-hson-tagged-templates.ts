@@ -16,7 +16,7 @@ const supportedPackageSpecifiers: ReadonlySet<string> = new Set([
 /** Require the lexical import binding, rather than a matching symbol name or filename. */
 export function is_official_hson_package_binding(
   identifier: ts.Identifier,
-  expected: "Hson" | "HsonData" | "HsonDocument",
+  expected: "Hson" | "HsonData" | "HsonDocument" | "SchemaType",
   checker: ts.TypeChecker,
   requireResolvedOrigin = false,
 ): boolean {
@@ -36,7 +36,7 @@ export function is_official_hson_package_binding(
   return target.declarations?.some(item => official_declaration_origin(item.getSourceFile().fileName, expected)) === true;
 }
 
-function official_declaration_origin(fileName: string, expected: "Hson" | "HsonData" | "HsonDocument"): boolean {
+function official_declaration_origin(fileName: string, expected: "Hson" | "HsonData" | "HsonDocument" | "SchemaType"): boolean {
   let directory = dirname(resolve(fileName));
   while (true) {
     const manifestPath = resolve(directory, "package.json");

@@ -46,6 +46,32 @@ writeFileSync(aliasSchema, `import { Hson as Author } from "hson-live";\nexport 
 writeFileSync(documentSchema, `import { Hson } from "hson-live";\nexport const PageSchema = Hson.schema\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> closed true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\nexport const RepeatSchema = Hson.schema\`<type "document" defs <Code <string <prefix "ok-">> Item <tag "item" attrs <props <code <ref "Code">>> content "empty">> tag "list" content <repeat <ref "Item"> count 2>>\`;\nexport const DocumentSequenceSchema = Hson.schema\`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>\`;\n`);
 writeFileSync(documentConsumer, `import { Hson, type HsonDocument, type SchemaType } from "hson-live"; import { DocumentSequenceSchema, PageSchema, RepeatSchema } from "./document-schema.js";\nconst page: HsonDocument<typeof PageSchema> = Hson.document\`<main id=hero <header/> <section "body"/>/>\`; void page;\nconst repeated: HsonDocument<typeof RepeatSchema> = Hson.document\`<list <item code=ok-one/> <item code=ok-two/>/>\`; void repeated;\nconst documentSequence: HsonDocument<typeof DocumentSequenceSchema> = Hson.document\`<item/><item/>\`; void documentSequence;\ndeclare const value: SchemaType<typeof PageSchema>; const rootTag: "_hson_root" = value.$_tag; const main = value.$_content[0]; const mainTag: "main" = main.$_tag; const child = main.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void mainTag; void childTag;\ndeclare const repeatValue: SchemaType<typeof RepeatSchema>; const list = repeatValue.$_content[0]; const repeatedChild = list.$_content[0].$_content[0]; const repeatedTag: "item" = repeatedChild.$_tag; void repeatedTag;\n// @ts-expect-error a plain array cannot impersonate certified repeated content\nconst plainRepeated: SchemaType<typeof RepeatSchema>["$_content"][0]["$_content"][0]["$_content"] = [repeatedChild, repeatedChild]; void plainRepeated;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: SchemaType<typeof PageSchema> = { $_tag: "_hson_root", $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: SchemaType<typeof PageSchema> = { ...value }; void rebuilt;\n`);
 writeFileSync(localStatic, `import { Hson, type HsonData, type SchemaType } from "hson-live";\nconst SchemaTest = Hson.schema\`<type "data" content <name "string" score "number">>\`;\nconst testData: HsonData<typeof SchemaTest> = Hson.data\`<name "Ada" score 37>\`;\ndeclare const typed: SchemaType<typeof SchemaTest>; const score: number = typed.score; void SchemaTest; void testData; void score;\n`);
+const aliasTypes = join(project, "alias-types.ts");
+writeFileSync(aliasTypes, `import type { HsonData, HsonDocument, HsonSchema } from "hson-live";
+import { UserSchema } from "./producer.js";
+import { PageSchema } from "./document-schema.js";
+export type ImportedData = HsonData<typeof UserSchema>;
+export type ImportedDocument = HsonDocument<typeof PageSchema>;
+export type Wrapper<S extends HsonSchema<unknown, "data">> = HsonData<S>;
+export type Identity<T> = T;
+`);
+const aliasConsumer = join(project, "alias-consumer.ts");
+writeFileSync(aliasConsumer, `import { Hson, type HsonData as Data, type HsonDocument, type HsonSchema } from "hson-live";
+import { UserSchema } from "./producer.js";
+import { PageSchema } from "./document-schema.js";
+import type { ImportedData, ImportedDocument, Wrapper, Identity } from "./alias-types.js";
+type Local = Data<typeof UserSchema>;
+export type Exported = Local;
+type Chain = Exported;
+type DocumentLocal = HsonDocument<typeof PageSchema>;
+export type DocumentExported = DocumentLocal;
+type DocumentChain = DocumentExported;
+type DocumentWrapper<S extends HsonSchema<unknown, "document">> = HsonDocument<S>;
+${["Data<typeof UserSchema>", "Local", "Exported", "Chain", "ImportedData", "Wrapper<typeof UserSchema>", "Identity<ImportedData>"].map((type, index) =>
+  `export const data${index}: ${type} = Hson.data\`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>\`;`).join("\n")}
+${["HsonDocument<typeof PageSchema>", "DocumentLocal", "DocumentExported", "DocumentChain", "ImportedDocument", "DocumentWrapper<typeof PageSchema>"].map((type, index) =>
+  `export const doc${index}: ${type} = Hson.document\`<main id=hero <header/> <section "body"/>/>\`;`).join("\n")}
+`);
 // Resolve the package's actual declarations while keeping the fixture under repo-local tmp.
 writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", declaration: true, outDir: "./out", baseUrl: ".", paths: { "hson-live": [resolve(root, "dist/index.d.ts")], "hson-live/hson": [resolve(root, "dist/hson-authoring.d.ts")] } }, include: ["./*.ts"] }, null, 2));
 
@@ -57,6 +83,43 @@ function published(name: string): string { const match = /^(.*)\.([^.]+)\.hson-s
 function generated_source(path: string): string { return readFileSync(join(selected(), "sources", path.slice(project.length + 1)), "utf8"); }
 
 check("generation and extension-independent authoritative check pass", () => { assert.equal(run("generate").status, 0); const result = run("check"); assert.equal(result.status, 0, result.stdout + result.stderr); });
+check("direct, local, exported, chained, imported and generic aliases gain the same validated proof", () => {
+  const source = generated_source(aliasConsumer);
+  assert.equal((source.match(/as unknown as /g) ?? []).length, 13);
+  assert.match(source, /as unknown as ImportedData/);
+  assert.match(source, /as unknown as ImportedDocument/);
+  assert.match(source, /as unknown as Wrapper<typeof UserSchema>/);
+  assert.equal(run("check").status, 0);
+});
+check("invalid aliases and assignment intent diagnostics never grant proof", () => {
+  const original = readFileSync(aliasConsumer, "utf8");
+  writeFileSync(aliasConsumer, original.replaceAll('name "Ada"', "name 37").replaceAll('<section "body"/>', '<aside "body"/>') + `
+import type { SchemaType } from "hson-live";
+type Value = SchemaType<typeof UserSchema>;
+const projected: Value = Hson.data\`<name "Ada">\`;
+type Missing = Data<typeof MissingSchema>;
+const missing: Missing = Hson.data\`<name "Ada">\`;
+type Unrelated = string;
+const unrelated: Unrelated = Hson.data\`<name "Ada">\`;
+type CycleA = CycleB; type CycleB = CycleA;
+const cyclic: CycleA = Hson.data\`<name "Ada">\`;
+declare namespace Fake { type HsonData<S> = string; }
+type Lookalike = Fake.HsonData<typeof UserSchema>;
+const shadowed: Lookalike = Hson.data\`<name "Ada">\`;
+`);
+  const result = run("generate");
+  assert.notEqual(result.status, 0);
+  const messages = result.stdout + result.stderr;
+  assert.match(messages, /Static Hson does not satisfy UserSchema/);
+  assert.match(messages, /Static Hson does not satisfy PageSchema/);
+  assert.match(messages, /projected JavaScript value.*HsonData<typeof UserSchema>/);
+  assert.match(messages, /Unable to resolve the Schema proof for this HsonData annotation/);
+  const source = generated_source(aliasConsumer);
+  assert.equal((source.match(/as unknown as /g) ?? []).length, 0);
+  for (const type of ["Value", "Missing", "Unrelated", "CycleA", "Lookalike"]) assert.ok(!source.includes(`as unknown as ${type}`));
+  writeFileSync(aliasConsumer, original);
+  assert.equal(run("generate").status, 0);
+});
 check("plain local static form gains real Type and Hson symbols without certification", () => {
   const source = generated_source(localStatic);
   assert.match(source, /import type \{ Evidence as __SchemaTestEvidence \} from/);

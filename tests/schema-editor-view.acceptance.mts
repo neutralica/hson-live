@@ -64,6 +64,58 @@ const app = project("live", { "schema.ts": producer, "consumer.ts": consumer, "s
 const originalBytes = bytes(app.directory);
 const messages = (values: readonly ts.Diagnostic[]) => values.map(value => `${value.code}@${value.start}: ${ts.flattenDiagnosticMessageText(value.messageText, "\n")}`).join("\n");
 
+check("alias assignments and targeted Hson problems use the live editor view", () => {
+  const aliases = project("annotation-aliases", {
+    "schema.ts": `import { Hson, type HsonData, type HsonDocument } from "hson-live";
+export const DataSchema = Hson.schema\`<type "data" content <name "string">>\`;
+export const DocSchema = Hson.schema\`<type "document" tag "main" content "empty">\`;
+export type Imported = HsonData<typeof DataSchema>;
+export type ImportedDoc = HsonDocument<typeof DocSchema>;
+`,
+    "consumer.ts": `import { Hson, type HsonData, type SchemaType } from "hson-live";
+import { DataSchema, type Imported, type ImportedDoc } from "./schema.js";
+type Local = HsonData<typeof DataSchema>; export type Chain = Local;
+const direct: HsonData<typeof DataSchema> = Hson.data\`<name "Ada">\`;
+const local: Chain = Hson.data\`<name "Ada">\`;
+const imported: Imported = Hson.data\`<name "Ada">\`;
+const document: ImportedDoc = Hson.document\`<main/>\`;
+const invalid: Chain = Hson.data\`<name 37>\`;
+type Value = SchemaType<typeof DataSchema>;
+const projected: Value = Hson.data\`<name "Ada">\`;
+type Missing = HsonData<typeof MissingSchema>;
+const unresolved: Missing = Hson.data\`<name "Ada">\`;
+`,
+    "lookalike.ts": `import { Hson } from "hson-live";
+import { DataSchema } from "./schema.js";
+type HsonData<S> = string; type Alias = HsonData<typeof DataSchema>;
+const fake: Alias = Hson.data\`<name 37>\`;
+`,
+    "binding.ts": `import { Hson } from "hson-live";
+import type { Imported } from "./schema.js";
+const DataSchema = Hson.schema\`<type "data" content <name "number">>\`;
+const correct: Imported = Hson.data\`<name "Ada">\`;
+const incorrect: Imported = Hson.data\`<name 37>\`;
+`,
+  });
+  const errors = aliases.errors("consumer.ts");
+  const problems = errors.filter(error => error.source === "hson-schema");
+  assert.equal(problems.length, 3, messages(errors));
+  assert.match(messages(problems), /Static Hson does not satisfy DataSchema/);
+  assert.match(messages(problems), /projected JavaScript value.*HsonData<typeof DataSchema>/);
+  assert.match(messages(problems), /Unable to resolve the Schema proof/);
+  const source = aliases.text("consumer.ts");
+  for (const name of ["direct", "local", "imported", "document"]) {
+    const start = source.indexOf(`const ${name}:`) + 6;
+    assert.ok(!errors.some(error => error.start === start), `${name}: ${messages(errors)}`);
+  }
+  assert.equal(aliases.errors("lookalike.ts").length, 0, "Shadowed local spelling establishes no Schema relationship");
+  const bindingErrors = aliases.errors("binding.ts");
+  assert.equal(bindingErrors.length, 1, messages(bindingErrors));
+  assert.match(messages(bindingErrors), /Static Hson does not satisfy DataSchema.*expected string/);
+  assert.ok(bindingErrors[0]!.start! > aliases.text("binding.ts").indexOf("const incorrect:"), "Imported aliases retain their defining Schema binding despite a same-name consumer binding");
+  aliases.service.dispose();
+});
+
 check("producer and cross-module consumers have precise value, mode and declaration identity", () => {
   assert.deepEqual(local_hson_schema_diagnostics(app.file("schema.ts"), app.text("schema.ts")), []);
   const errors = app.errors("consumer.ts");

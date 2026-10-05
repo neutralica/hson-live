@@ -4,6 +4,7 @@ import { evaluate_static_schema_candidate } from "../../../src/internal/hson-sch
 import { resolve_immutable_schema } from "../../../src/internal/hson-schema/schema-identity.js";
 import { is_official_hson_package_binding } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { generate_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
+import { resolve_hson_schema_annotation } from "../../../src/internal/hson-schema/schema-annotation.js";
 
 export type VerifiedSchemaAssignmentRange = Readonly<{ start: number; end: number; failed?: true }>;
 type SchemaAssociation = Readonly<{ declaration: ts.VariableDeclaration; compiled: CompiledHsonSchema; mode: "data" | "document" }>;
@@ -23,12 +24,11 @@ export function verified_schema_assignment_ranges(
   for (const statement of sourceFile.statements) {
     if (!typescript.isVariableStatement(statement) || (statement.declarationList.flags & typescript.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
     const declaration = statement.declarationList.declarations[0];
-    if (declaration === undefined || declaration.type === undefined || declaration.initializer === undefined || !typescript.isTypeReferenceNode(declaration.type) || !typescript.isIdentifier(declaration.type.typeName)) continue;
-    const mode = declaration.type.typeName.text === "HsonData" ? "data" : declaration.type.typeName.text === "HsonDocument" ? "document" : undefined;
-    if (mode === undefined || !official_binding(typescript, checker, declaration.type.typeName, mode === "data" ? "HsonData" : "HsonDocument") || declaration.type.typeArguments?.length !== 1) continue;
-    const schemaQuery = declaration.type.typeArguments[0];
-    if (schemaQuery === undefined || !typescript.isTypeQueryNode(schemaQuery) || !typescript.isIdentifier(schemaQuery.exprName)) continue;
-    const association = resolve_schema_association(typescript, program, checker, schemaQuery.exprName, evidenceFile);
+    if (declaration === undefined || declaration.type === undefined || declaration.initializer === undefined) continue;
+    const annotation = resolve_hson_schema_annotation(typescript, checker, declaration.type);
+    if (annotation === undefined || annotation.kind === "projected" || annotation.schema === undefined) continue;
+    const mode = annotation.kind;
+    const association = resolve_schema_association(typescript, program, checker, annotation.schema, evidenceFile);
     if (association === undefined || association.mode !== mode) continue;
     const evaluated = evaluated_initializer(typescript, checker, sourceFile, declaration.initializer, association);
     if (evaluated === undefined || evaluated.kind === "unknown" || evaluated.kind === "invalid" && !includeFailures) continue;
