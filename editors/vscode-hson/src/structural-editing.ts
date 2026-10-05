@@ -439,14 +439,29 @@ export function structural_formatting_edits(
     const { pairs, tokens } = structure;
     const lexical = lexicalRanges(body);
     const comments = lexical.comments;
-    for (const token of tokens) {
+    for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex++) {
+      const token = tokens[tokenIndex];
+      const previous = tokens[tokenIndex - 1];
+      const offset = token.pos?.index;
+      // Only a tokenizer-owned bare member immediately followed by its value
+      // opener. Element names, quoted names and lexical interiors do not match.
+      const missingMemberSpace = offset !== undefined && previous?.kind === "OPEN"
+        && previous.pos !== undefined && previous.tag !== undefined
+        && body.slice(previous.pos.index, offset) === previous.tag
+        && (body[offset] === "<" || body[offset] === "«" || body[offset] === "[");
+      const insertion = offset === undefined ? undefined : region.bodyRange.start + offset;
+      if (missingMemberSpace && insertion !== undefined && offset !== undefined
+        && (requestedRange === undefined || insertion >= requestedRange.start && insertion < requestedRange.end)
+        && body[offset] !== "[") {
+        edits.push(Object.freeze({ start: insertion, end: insertion, text: " " }));
+      }
       if (token.kind !== "ARR_OPEN" && token.kind !== "ARR_CLOSE") continue;
-      const offset = token.pos.index;
+      const arrayOffset = token.pos.index;
       const replacement = token.kind === "ARR_OPEN" ? "«" : "»";
-      if (body[offset] !== (token.kind === "ARR_OPEN" ? "[" : "]")) continue;
-      const start = region.bodyRange.start + offset;
+      if (body[arrayOffset] !== (token.kind === "ARR_OPEN" ? "[" : "]")) continue;
+      const start = region.bodyRange.start + arrayOffset;
       if (requestedRange !== undefined && (start < requestedRange.start || start >= requestedRange.end)) continue;
-      edits.push(Object.freeze({ start, end: start + 1, text: replacement }));
+      edits.push(Object.freeze({ start, end: start + 1, text: (missingMemberSpace ? " " : "") + replacement }));
     }
     for (const pair of pairs) {
       if (pair.kind !== "object" || pair.openLine === pair.closeLine) continue;

@@ -500,3 +500,28 @@ check("standalone literal bytes, comments, selection boundaries, and invalid inp
     assert.deepEqual(structural_formatting_edits('/workspace/source.hson', 'hson', invalid, options), []);
   }
 });
+
+check("bare member/value opener adjacency normalizes to one space through all formatting regions", () => {
+  for (const [body, expected] of [
+    ['<content<id "intro"> blocks«1, 2»>', '<content <id "intro"> blocks «1,2»>'],
+    ['<content<> blocks[1, 2]>', '<content <> blocks «1,2»>'],
+    ['<type "data" content<array<ref "Item">>>', '<type "data" content <array <ref "Item">>>'],
+  ]) {
+    assert.equal(format(template(body)), template(expected));
+    const standalone = applyEdits(body, structural_formatting_edits('/workspace/a.hson', 'hson', body, { tabSize: 8, insertSpaces: false }));
+    assert.equal(standalone, expected);
+    assert.deepEqual(parse_hson(body), parse_hson(standalone));
+    assert.deepEqual(structural_formatting_edits('/workspace/a.hson', 'hson', standalone, { tabSize: 4, insertSpaces: true }), []);
+    const markdown = '```hson\n' + body + '\n```';
+    assert.equal(applyEdits(markdown, structural_formatting_edits('/workspace/a.md', 'markdown', markdown, { tabSize: 8, insertSpaces: false })),
+      '```hson\n' + expected + '\n```');
+  }
+  const literal = '"\ncontent<\n  blocks«\n    "';
+  const body = '<text ' + literal + ' content<id 1>>';
+  assert.ok(format(template(body)).includes(literal));
+  const comments = '<content<> // content< blocks«\nnext 1>';
+  assert.ok(format(template(comments)).includes('// content< blocks«'));
+  const input = '<first<> second«1»>';
+  const edits = structural_formatting_edits('/workspace/a.hson', 'hson', input, { tabSize: 2, insertSpaces: true }, { start: 6, end: 8 });
+  assert.equal(applyEdits(input, edits), '<first <> second«1»>');
+});

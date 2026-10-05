@@ -66,5 +66,16 @@ check("array scalar child shares authored coverage", () => assert.deepEqual(rang
 check("array scalar payload owns value spelling", () => assert.deepEqual(range(`[1]`, [0, 0, 0], "value"), { start: 1, end: 2 }));
 check("nested arrays receive physical content paths", () => assert.deepEqual(range(`[[true]]`, [0, 0], "coverage"), { start: 1, end: 7 }));
 
+check("adjacent member openers retain exact authored name, coverage and value delimiter ranges", () => {
+  for (const value of ['<id 1>', '«1»', '[1]']) {
+    const source = '<content' + value + '>';
+    assert.deepEqual(range(source, [0], 'name'), { start: 1, end: 8 });
+    assert.deepEqual(range(source, [0], 'coverage'), { start: 1, end: source.length - 1 });
+    assert.equal(range(source, [0], 'open'), undefined);
+    assert.deepEqual(range(source, [0, 0], 'open'), { start: 8, end: 9 });
+    assert.deepEqual(range(source, [0, 0], 'close'), { start: source.length - 2, end: source.length - 1 });
+  }
+});
+
 process.stdout.write(`# ${checks} Hson provenance-parser checks passed\n`);
 testEvents.terminal("pass");

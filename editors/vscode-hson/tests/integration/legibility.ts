@@ -145,6 +145,19 @@ export async function run(): Promise<void> {
   saveSubscription.dispose();
   console.log('ok - standalone Hson: providers, commands, manual Save/Save All, passive auto-save, settings, literal safety, and invalid input');
 
+  const adjacent = '<content<id "intro"> blocks[1,2]>';
+  const spaced = '<content <id "intro"> blocks «1,2»>';
+  await replace(standalone, adjacent);
+  await standalone.save();
+  assert.equal(standalone.getText(), spaced, 'standalone save inserts preferred member spacing and canonicalizes legacy arrays');
+  for (const language of ['ts', 'tsx']) {
+    const text = prefix + 'const value=Hson.data`' + adjacent + '`;';
+    const { document } = await open('adjacency.' + language, text);
+    await document.save();
+    assert.equal(document.getText(), prefix + 'const value=Hson.data`' + spaced + '`;', 'embedded save uses the same relaxed grammar and spacing');
+  }
+  console.log('ok - structural opener adjacency normalizes on standalone and TS/TSX manual save');
+
   // Exercise real adapter events in an isolated profile. The focused unit tests
   // inspect the exact theme IDs and cleared/rebuilt decoration buckets.
   const { document: colored } = await open('colored.ts', input);

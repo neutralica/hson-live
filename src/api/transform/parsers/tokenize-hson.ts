@@ -420,7 +420,8 @@ class HsonScanner {
         this.fail(`unexpected object closer; expected an object member name`, namePos);
       }
 
-      const name = this.peek() === "'"
+      const quotedName = this.peek() === "'";
+      const name = quotedName
         ? this.scanQuotedName()
         : this.scanBareName("object member name");
       const nameEnd = this.index;
@@ -444,7 +445,9 @@ class HsonScanner {
       if (this.slotHere() === undefined && (this.atEnd() || this.peek() === ">")) {
         this.fail(`object member "${name}" is missing its value`, namePos, "missing-object-member-value");
       }
-      if (!separatedFromValue) {
+      const adjacentStructuralValue = !quotedName
+        && (this.peek() === "<" || this.peek() === "«" || this.peek() === "[");
+      if (!separatedFromValue && !adjacentStructuralValue) {
         this.fail(
           `required trivia is missing between object member name and value`,
           this.position(),

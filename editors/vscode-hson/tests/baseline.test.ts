@@ -5,6 +5,7 @@ import { hson_document_self_closing_slash_ranges, hson_highlights, load_hson_gra
 import { produce_document_diagnostics } from "../src/document-diagnostics.js";
 import { start_diagnostics, type DiagnosticDocument, type DiagnosticHost } from "../src/diagnostics.js";
 import { Hson } from "../../../src/hson-authoring.js";
+import { local_hson_schema_diagnostics } from "../src/hson-schema-local.js";
 import {
   HSON_LIBRARY_SEPARATOR_COLOR_ID,
   hson_identity_marker_parts,
@@ -30,6 +31,24 @@ async function run(): Promise<void> {
     assert.ok(tokens(damaged).some(token => damaged.slice(token.range.start, token.range.end) === "fresh" && token.type === "hsonType"));
   }
   const diagnose = (text: string) => produce_document_diagnostics({ fileName: "/workspace/baseline.ts", languageId: "typescript", text });
+  check("standalone and embedded diagnostics agree on bare member/structural opener adjacency", () => {
+    const schema = '<type "data" defs<Age<number<int true min 0>> User<content<age<ref "Age">>>> content<ref "User">>';
+    assert.deepEqual(local_hson_schema_diagnostics('/workspace/schema.ts', source(schema).replace('Hson.canonical', 'Hson.schema')), []);
+    assert.doesNotThrow(() => Hson.schema`<type "data" defs<Age<number<int true min 0>> User<content<age<ref "Age">>>> content<ref "User">>`);
+    for (const body of ['<content<id "intro"> blocks«1, 2»>', '<blocks[1, 2]>',
+      '<type "data" content<id "string">>']) {
+      assert.deepEqual(produce_document_diagnostics({ fileName: '/workspace/a.hson', languageId: 'hson', text: body }), []);
+      assert.deepEqual(diagnose(source(body)), []);
+      assert.deepEqual(produce_document_diagnostics({ fileName: '/workspace/a.tsx', languageId: 'typescriptreact', text: source(body) }), []);
+    }
+    for (const body of ['<content<id 1>next 2>', '<name"value">', "<'name'<>>"]) {
+      const standalone = produce_document_diagnostics({ fileName: '/workspace/a.hson', languageId: 'hson', text: body });
+      const embedded = diagnose(source(body));
+      assert.equal(standalone.length, 1);
+      assert.equal(embedded.length, 1);
+      assert.equal(standalone[0].code, embedded[0].code);
+    }
+  });
   const nameToken = (text: string) => tokens(text).some(token => text.slice(token.range.start, token.range.end) === "thing" && token.scopes.includes("entity.name.type.hson"));
   const markers = (text: string) => hson_identity_marker_parts("/workspace/baseline.ts", text);
   const separators = (text: string) => hson_library_separator_parts("/workspace/baseline.ts", text);

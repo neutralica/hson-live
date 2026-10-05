@@ -1095,5 +1095,29 @@ check("adjacent authored element text items remain distinct and ordered", () => 
   assert.deepEqual(values(`<div """"""/>`), ["", "", ""]);
 });
 
+check("bare object members may touch only structural value openers", () => {
+  for (const [compact, readable] of [
+    ['<content<id "intro">>', '<content <id "intro">>'],
+    ['<content<>>', '<content <>>'],
+    ['<blocks«<id "intro">, 2»>', '<blocks «<id "intro">, 2»>'],
+    ['<blocks[<id "intro">, 2]>', '<blocks [<id "intro">, 2]>'],
+    ['<type "data" defs<Item<content<id "string">>> content<array<ref "Item">>>',
+     '<type "data" defs <Item <content <id "string">>> content <array <ref "Item">>>'],
+  ]) {
+    assert.deepEqual(parse_hson(compact), parse_hson(readable));
+    assert.deepEqual(parse_tokens(tokenize_hson(compact)), parse_hson(readable));
+    const wire = serialize_hson(detach_hson_root_value(parse_hson(compact)));
+    assert.ok(!/content<|blocks[«\[]|array<|defs<|Item</.test(wire));
+    assert.deepEqual(parse_hson(wire), parse_hson(readable));
+  }
+});
+check("structural adjacency does not relax quoted names, scalars, attributes or sibling boundaries", () => {
+  for (const source of ['<name"value">', "<'name'<>>", "<'name'«1»>", '<name=1>', '<name+1>',
+    '<content<id 1>next 2>', '<blocks«1 2»>', '<content<id 1/> >', '<p title<id 1>/>']) {
+    assert.throws(() => tokenize_hson(source), source);
+    assert.throws(() => parse_hson(source), source);
+  }
+});
+
 process.stdout.write(`# ${checks} Hson tokenizer checks passed\n`);
 testEvents.terminal("pass");
