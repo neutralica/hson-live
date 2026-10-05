@@ -30,6 +30,9 @@ assert.deepEqual(manifest.activationEvents, [
   "onLanguage:markdown",
 ]);
 assert.deepEqual(manifest.contributes.languages[0].extensions, [".hson"]);
+assert.deepEqual(manifest.contributes.configurationDefaults, {
+  "[hson]": { "editor.tabSize": 2, "editor.insertSpaces": true },
+});
 assert.equal(coreGrammar.scopeName, "source.hson");
 assert.deepEqual(manifest.contributes.grammars, [
   {
@@ -85,6 +88,9 @@ assert.deepEqual(manifest.contributes.commands.map(command => command.command), 
 ]);
 assert.equal(manifest.contributes.commands.find(({ command }) => command === "hson.runAndOpenLocalApp")?.title, "Run & Open Local App");
 assert.equal(manifest.contributes.commands.find(({ command }) => command === "hson.copyLocalAppUrl")?.title, "Copy Local App URL");
+for (const command of ["hson.formatDocument", "hson.formatSelection"]) {
+  assert.match(manifest.contributes.commands.find(entry => entry.command === command).enablement, /editorLangId == hson/);
+}
 assert.match(readme, /development infrastructure, not an authentication boundary/);
 assert.match(readme, /responsible for its own authentication, authorization, and security policy/);
 assert.match(readme, /additional processes created by application code remain application-owned and are not generically supervised/);

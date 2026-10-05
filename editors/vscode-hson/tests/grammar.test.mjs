@@ -214,3 +214,37 @@ for (const fence of ["```", "~~~~"]) {
   assert.ok(!bounded.some(token => token.line === 4 && token.scopes.includes("string.quoted.double.hson")));
   assert.ok(has(bounded, "fresh", "entity.name.type.hson"));
 }
+
+// Native bracket scanning consumes binary language/token metadata, not semantic
+// scopes. Check both actual Hson contexts with VS Code's balanced-token defaults.
+for (const scopeName of ["source.hson", "text.html.markdown"]) {
+  const nativeRegistry = new Registry({
+    onigLib: Promise.resolve({ createOnigScanner: patterns => new OnigScanner(patterns), createOnigString: value => new OnigString(value) }),
+    loadGrammar: async scope => scope === "text.html.markdown"
+      ? parseRawGrammar(JSON.stringify(markdownHostGrammar), "markdown-host.json")
+      : grammarPaths.has(scope) ? parseRawGrammar(await readFile(grammarPaths.get(scope), "utf8"), "grammar.json") : null,
+    getInjections: scope => scope === "text.html.markdown" ? ["markdown.hson.codeblock"] : [],
+  });
+  const grammar = await nativeRegistry.loadGrammarWithConfiguration(scopeName, scopeName === "source.hson" ? 1 : 2, {
+    embeddedLanguages: { "meta.embedded.block.hson": 1 },
+    balancedBracketSelectors: ["*"],
+  });
+  assert.ok(grammar);
+  const body = "<\n 'literal < « [ > » ] name' 1\n value \"\n <not structure> «text»\n \"\n // < « [ > » ]\n real «<x 1>»\n>";
+  const source = scopeName === "source.hson" ? body : "```hson\n" + body + "\n```";
+  let state = INITIAL;
+  const brackets = [];
+  for (const line of source.split("\n")) {
+    const result = grammar.tokenizeLine2(line, state);
+    state = result.ruleStack;
+    for (let index = 0; index < result.tokens.length; index += 2) {
+      const metadata = result.tokens[index + 1];
+      const language = metadata & 255, type = (metadata >> 8) & 3;
+      if (language !== 1 || type !== 0 || !(metadata & 1024)) continue;
+      const text = line.slice(result.tokens[index], result.tokens[index + 2] ?? line.length);
+      brackets.push(...text.match(/[<>«»\[\]]/g) ?? []);
+    }
+  }
+  assert.deepEqual(brackets, ["<", "«", "<", ">", "»", ">"], scopeName);
+}
+process.stdout.write("ok - native standalone and Markdown bracket metadata excludes quoted names and multiline strings\n");

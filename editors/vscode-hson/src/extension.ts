@@ -34,6 +34,7 @@ import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
 import { HSON_APPEARANCE, HSON_DOCUMENT_SELF_CLOSING_SLASH } from "./appearance.js";
 import { formatting_target_is_current } from "./formatting-target.js";
+import { HsonDelimiterDepthCache, HsonDepthDecorationSet } from "./delimiter-depth.js";
 import { LocalHostExtensionManager } from "./local-host-extension.js";
 import { ManualSaveTracker } from "./manual-save.js";
 import type { LocalHostState } from "./local-host-controller.js";
@@ -110,6 +111,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const structuralLanguage = (document: vscode.TextDocument): StructuralHostLanguage | undefined =>
     document.languageId === "typescript" || document.languageId === "typescriptreact" || document.languageId === "markdown"
       ? document.languageId : undefined;
+  const formattingLanguage = (document: vscode.TextDocument) =>
+    document.languageId === "hson" ? "hson" : structuralLanguage(document);
   const documentIndentation = (document: vscode.TextDocument) => {
     const visibleEditor = vscode.window.visibleTextEditors.find(editor => editor.document === document);
     if (visibleEditor !== undefined) return Object.freeze({
@@ -280,7 +283,7 @@ export function activate(context: vscode.ExtensionContext): void {
     options: vscode.FormattingOptions,
     range?: vscode.Range,
   ): vscode.TextEdit[] => {
-    const language = structuralLanguage(document);
+    const language = formattingLanguage(document);
     if (language === undefined) return [];
     return structural_formatting_edits(
       document.fileName,
@@ -292,12 +295,13 @@ export function activate(context: vscode.ExtensionContext): void {
       new vscode.Range(document.positionAt(edit.start), document.positionAt(edit.end)), edit.text,
     ));
   };
-  const markdownSelector: vscode.DocumentSelector = [{ language: "markdown", scheme: "file" }, { language: "markdown", scheme: "untitled" }];
+  const formattingSelector: vscode.DocumentSelector = ["markdown", "hson"].flatMap(language =>
+    [{ language, scheme: "file" }, { language, scheme: "untitled" }]);
   context.subscriptions.push(
-    vscode.languages.registerDocumentFormattingEditProvider(markdownSelector, {
+    vscode.languages.registerDocumentFormattingEditProvider(formattingSelector, {
       provideDocumentFormattingEdits: (document, options) => formattingSaves.formattingAllowed(document.uri.toString()) ? structuralFormattingEdits(document, options) : [],
     }),
-    vscode.languages.registerDocumentRangeFormattingEditProvider(markdownSelector, {
+    vscode.languages.registerDocumentRangeFormattingEditProvider(formattingSelector, {
       provideDocumentRangeFormattingEdits: (document, range, options) => formattingSaves.formattingAllowed(document.uri.toString()) ? structuralFormattingEdits(document, options, range) : [],
     }),
   );
@@ -309,7 +313,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const editor = vscode.window.activeTextEditor;
     if (editor === undefined) return;
     if (!formatting_target_is_current(initiatingEditor, initiatingDocument, editor)) return;
-    const language = structuralLanguage(initiatingDocument);
+    const language = formattingLanguage(initiatingDocument);
     if (language === undefined) return;
     const document = initiatingDocument;
     const requestedRange = scope === "selection" && !editor.selection.isEmpty
@@ -330,7 +334,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("hson.formatSelection", () => formatStructuralRegions("selection")),
     vscode.workspace.onWillSaveTextDocument(event => {
       formattingSaves.willSave(event.document.uri.toString(), event.reason === vscode.TextDocumentSaveReason.Manual);
-      if (event.reason !== vscode.TextDocumentSaveReason.Manual || structuralLanguage(event.document) === undefined
+      if (event.reason !== vscode.TextDocumentSaveReason.Manual || formattingLanguage(event.document) === undefined
         || !vscode.workspace.getConfiguration("hson.formatting", event.document).get<boolean>("formatOnSave", true)) return;
       let edits: readonly vscode.TextEdit[] = [];
       try { edits = structuralFormattingEdits(event.document, documentIndentation(event.document)); }
@@ -550,6 +554,49 @@ export function activate(context: vscode.ExtensionContext): void {
         return builder.build();
       },
     }, legend));
+  // TS/TSX islands retain host string metadata, so native bracket colors cannot
+  // see them. Standalone Hson and Markdown continue using native colorization.
+  const depthCache = new HsonDelimiterDepthCache();
+  const depthDecorations = new HsonDepthDecorationSet(colorId =>
+    vscode.window.createTextEditorDecorationType({ color: new vscode.ThemeColor(colorId) }));
+  const presentDepth = async (editor: vscode.TextEditor): Promise<void> => {
+    const document = editor.document;
+    const language = document.languageId;
+    const set = (decoration: vscode.TextEditorDecorationType, ranges: readonly { start: number; end: number }[]) =>
+      editor.setDecorations(decoration, ranges.map(range => new vscode.Range(document.positionAt(range.start), document.positionAt(range.end))));
+    const enabled = vscode.workspace.getConfiguration("editor", document).get<boolean>("bracketPairColorization.enabled", true);
+    if (!enabled || language !== "typescript" && language !== "typescriptreact") {
+      depthDecorations.apply(set, [], false);
+      return;
+    }
+    const version = document.version;
+    const loaded = await grammar;
+    if (document.isClosed || document.version !== version || editor.document !== document) return;
+    // Recheck enablement after the asynchronous grammar load.
+    if (!vscode.workspace.getConfiguration("editor", document).get<boolean>("bracketPairColorization.enabled", true)) {
+      depthDecorations.apply(set, [], false);
+      return;
+    }
+    depthDecorations.apply(set, depthCache.get(loaded, evidenceFor(document, language)), true);
+  };
+  const presentVisibleDepth = (): void => {
+    for (const editor of vscode.window.visibleTextEditors) void presentDepth(editor);
+  };
+  presentVisibleDepth();
+  context.subscriptions.push(depthDecorations,
+    vscode.window.onDidChangeVisibleTextEditors(presentVisibleDepth),
+    vscode.workspace.onDidChangeTextDocument(event => {
+      for (const editor of vscode.window.visibleTextEditors) {
+        if (editor.document === event.document) void presentDepth(editor);
+      }
+    }),
+    vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration("editor.bracketPairColorization")) presentVisibleDepth();
+    }),
+    vscode.window.onDidChangeActiveColorTheme(() => {
+      depthDecorations.refresh();
+      presentVisibleDepth();
+    }));
   // Exact h/s/o/n and H/S/O/N identity colors are presentation-only. Binding
   // discovery and canonical Markdown fence structure are the authorities;
   // decoration never participates in admission.
@@ -821,7 +868,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("hson.showSchemaOutput", () => schemaToolOutput.show(true)),
     vscode.commands.registerCommand("hson.actions", async () => {
       const editor = vscode.window.activeTextEditor;
-      const canFormatDocument = editor !== undefined && structuralLanguage(editor.document) !== undefined;
+      const canFormatDocument = editor !== undefined && formattingLanguage(editor.document) !== undefined;
       const actions = hson_quick_pick_actions(
         { document: canFormatDocument, selection: canFormatDocument && !editor.selection.isEmpty },
         localHostManager?.quickPickActions() ?? [],

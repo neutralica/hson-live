@@ -54,6 +54,20 @@ check("document self-closing slash reuses the owned violet at soft strength", ()
 check("native bracket-pair declarations mirror the appearance authority", () => {
   assert.deepEqual(languageConfiguration.colorizedBracketPairs, HSON_APPEARANCE.native.colorizedBracketPairs);
 });
+check("standalone Hson contributes ordinary overridable two-space editor defaults", () => {
+  assert.deepEqual(manifest.contributes.configurationDefaults, {
+    '[hson]': { 'editor.tabSize': 2, 'editor.insertSpaces': true },
+  });
+  assert.equal(properties['hson.indentWidth'], undefined);
+});
+check("standalone Hson enables the existing document and selection commands", () => {
+  for (const command of ['hson.formatDocument', 'hson.formatSelection']) {
+    assert.match(manifest.contributes.commands.find((entry: { command: string }) => entry.command === command).enablement, /editorLangId == hson/);
+    for (const menu of ['commandPalette', 'editor/context']) {
+      assert.match(manifest.contributes.menus[menu].find((entry: { command: string }) => entry.command === command).when, /editorLangId == hson/);
+    }
+  }
+});
 check("appearance surface contains only the finalized eight controls", () => assert.deepEqual(
   Object.keys(appearanceGroup.properties),
   [

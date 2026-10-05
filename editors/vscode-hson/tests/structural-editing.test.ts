@@ -255,10 +255,28 @@ check("layout preserves the authored line-ending convention", () => {
   const input = template("\r\n<data 1\r\ndata2 2\r\n>\r\n");
   assert.equal(format(input), template("\r\n<\r\n  data 1\r\n  data2 2\r\n>\r\n"));
 });
-check("tabs and tab size are honored", () => {
+check("host widths and tab policy do not change Hson's two-space structural levels", () => {
   const input = template('\n<main\n<section\n<p/>\n/>\n/>\n');
-  assert.ok(format(input, false, 8).includes("\n\t<section\n\t\t<p/>"));
-  assert.ok(format(input, true, 4).includes("\n    <section\n        <p/>"));
+  for (const insertSpaces of [true, false]) for (const tabSize of [2, 4, 8]) {
+    const output = format(input, insertSpaces, tabSize);
+    assert.ok(output.includes("\n  <section\n    <p/>"));
+    assert.equal(format(output, insertSpaces, tabSize), output);
+    const close = input.indexOf('<p') + 2;
+    assert.deepEqual(structural_newline_plan('/workspace/source.ts', 'typescript', input, close,
+      { insertSpaces, tabSize }, '\n'), { beforeCursor: '\n      ', afterCursor: '\n    ' });
+  }
+});
+check("host base tabs are preserved while selections and Markdown levels use spaces", () => {
+  const input = 'import { Hson } from "hson-live/hson";\nfunction f() {\n\tconst value=Hson.data`\n<\na <\nb 1\n>\n>\n\t`;\n}';
+  const start = input.indexOf('\n<') + 1, end = input.lastIndexOf('`');
+  const options = { insertSpaces: false, tabSize: 8 };
+  const edits = structural_formatting_edits('/workspace/source.ts', 'typescript', input, options, { start, end });
+  const output = applyEdits(input, edits);
+  assert.ok(output.includes('\n\t<\n\t  a <\n\t    b 1\n\t  >\n\t>'));
+  assert.ok(output.includes('\n\tconst value='));
+  const markdown = '   ```hson\n<\na <\nb 1\n>\n>\n   ```';
+  const formatted = applyEdits(markdown, structural_formatting_edits('/workspace/source.md', 'markdown', markdown, options));
+  assert.equal(formatted, '   ```hson\n   <\n     a <\n       b 1\n     >\n   >\n   ```');
 });
 check("comments, strings, escapes, and member order remain byte-stable", () => {
   const input = template('\n<\nsecond "a\\n\\\"b"\n// retained exactly\nfirst true\n>\n');
@@ -418,20 +436,67 @@ check("unchanged large-document position queries reuse bounded binding evidence 
 });
 
 check("multiline literals preserve every interior byte while surrounding structure formats", () => {
-  for (const eol of ["\n", "\r\n"]) {
+  for (const eol of ["\n", "\r\n"]) for (const insertSpaces of [true, false]) for (const tabSize of [2, 4, 8]) {
     const literal = '"' + eol + '    a' + eol + '  ' + eol + '\t  b // « [ >' + eol + '      "';
     const text = template('<' + eol + 'value   ' + literal + eol + 'list [1,  2]' + eol + '>');
-    const output = format(text);
+    const output = format(text, insertSpaces, tabSize);
     assert.notEqual(output, text);
     assert.ok(output.includes(literal));
-    const edits = structural_formatting_edits("/workspace/source.ts", "typescript", text, { insertSpaces: true, tabSize: 2 });
+    const edits = structural_formatting_edits("/workspace/source.ts", "typescript", text, { insertSpaces, tabSize });
     const start = text.indexOf(literal), end = start + literal.length;
     assert.ok(edits.every(edit => edit.end <= start || edit.start >= end));
     const selected = structural_formatting_edits("/workspace/source.ts", "typescript", text,
-      { insertSpaces: true, tabSize: 2 }, { start, end });
+      { insertSpaces, tabSize }, { start, end });
     assert.ok(applyEdits(text, selected).includes(literal));
+    assert.deepEqual(parse_hson(output.slice(prefix.length, -2)), parse_hson(text.slice(prefix.length, -2)));
+    assert.equal(format(output, insertSpaces, tabSize), output);
   }
+  const zeroWidth = template('<text "\nfirst\n\n" other 1>');
+  assert.ok(format(zeroWidth, false, 8).includes('"\nfirst\n\n"'));
   assert.equal(arrayPair(template('"\n a | b\n"')), false);
   assert.equal(arrayPair(template('"\n a |')), false);
   assert.equal(format(template('<a "\n unterminated >')), template('<a "\n unterminated >'));
+});
+
+check("standalone Hson is one empty-base region using the existing two-space formatter", () => {
+  const input = '<\nslides «\n<\nid "intro"\n>\n»\n>';
+  const expected = '<\n  slides «\n    <\n      id "intro"\n    >\n  »\n>';
+  assert.deepEqual(structural_regions('/workspace/slides.hson', 'hson', input), [{
+    kind: 'standalone', bodyRange: { start: 0, end: input.length },
+    protectedRanges: [], baseIndentation: '', bodyStartsAtLineStart: true,
+  }]);
+  for (const tabSize of [2, 4, 8]) for (const insertSpaces of [true, false]) {
+    const options = { tabSize, insertSpaces };
+    const output = applyEdits(input, structural_formatting_edits('/workspace/slides.hson', 'hson', input, options));
+    assert.equal(output, expected);
+    assert.deepEqual(structural_formatting_edits('/workspace/slides.hson', 'hson', output, options), []);
+    assert.equal(template(output), format(template(input), insertSpaces, tabSize));
+    assert.deepEqual(parse_hson(output), parse_hson(input));
+  }
+});
+check("standalone literal bytes, comments, selection boundaries, and invalid input retain shared protections", () => {
+  const options = { tabSize: 8, insertSpaces: false };
+  for (const eol of ['\n', '\r\n']) {
+    const literal = '"' + eol + '        first' + eol + '            nested' + eol + '  ' + eol + '        third' + eol + '    "';
+    const input = ['<', '// keep this comment', 'text ' + literal, 'child <', 'id 1', '>', '>'].join(eol);
+    const output = applyEdits(input, structural_formatting_edits('/workspace/source.hson', 'hson', input, options));
+    assert.ok(output.includes(literal));
+    assert.ok(output.includes('// keep this comment'));
+    assert.deepEqual(parse_hson(output), parse_hson(input));
+    const start = input.indexOf('child <'), end = input.lastIndexOf('>');
+    const edits = structural_formatting_edits('/workspace/source.hson', 'hson', input, options, { start, end });
+    assert.ok(edits.length > 0);
+    assert.ok(edits.every(edit => edit.start >= start && edit.end <= end));
+    const selected = applyEdits(input, edits);
+    assert.equal(selected.slice(0, start), input.slice(0, start));
+    assert.ok(selected.includes(literal));
+    assert.deepEqual(parse_hson(selected), parse_hson(input));
+    const literalStart = input.indexOf(literal);
+    const literalEdits = structural_formatting_edits('/workspace/source.hson', 'hson', input, options,
+      { start: literalStart, end: literalStart + literal.length });
+    assert.ok(applyEdits(input, literalEdits).includes(literal));
+  }
+  for (const invalid of ['<a 1', '<a "\n unclosed', '<a «1>', '<a 1> garbage']) {
+    assert.deepEqual(structural_formatting_edits('/workspace/source.hson', 'hson', invalid, options), []);
+  }
 });

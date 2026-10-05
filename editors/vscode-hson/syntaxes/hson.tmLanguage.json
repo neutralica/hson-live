@@ -56,7 +56,7 @@
     "quoted-names": {
       "patterns": [
         {
-          "name": "entity.name.type.quoted.hson",
+          "name": "string.quoted.single.hson entity.name.type.quoted.hson",
           "begin": "'",
           "beginCaptures": {
             "0": { "name": "punctuation.definition.string.begin.hson" }

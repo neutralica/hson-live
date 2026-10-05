@@ -8,9 +8,10 @@ import { discover_hson_tagged_templates } from "../../../src/internal/embedded-h
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
 
 export type StructuralHostLanguage = "typescript" | "typescriptreact" | "markdown";
+export type StructuralLanguage = StructuralHostLanguage | "hson";
 export type StructuralRange = Readonly<{ start: number; end: number }>;
 export type StructuralRegion = Readonly<{
-  kind: "template" | "markdown-fence";
+  kind: "template" | "markdown-fence" | "standalone";
   bodyRange: StructuralRange;
   protectedRanges: readonly StructuralRange[];
   baseIndentation: string;
@@ -18,7 +19,7 @@ export type StructuralRegion = Readonly<{
 }>;
 export type StructuralDocumentEvidence = Readonly<{
   fileName: string;
-  languageId: StructuralHostLanguage;
+  languageId: StructuralLanguage;
   text: string;
   regions: readonly StructuralRegion[];
 }>;
@@ -53,9 +54,16 @@ function leadingWhitespaceAt(text: string, offset: number): string {
 
 function discoverStructuralRegions(
   fileName: string,
-  languageId: StructuralHostLanguage,
+  languageId: StructuralLanguage,
   text: string,
 ): readonly StructuralRegion[] {
+  if (languageId === "hson") return Object.freeze([Object.freeze({
+    kind: "standalone",
+    bodyRange: Object.freeze({ start: 0, end: text.length }),
+    protectedRanges: Object.freeze([]),
+    baseIndentation: "",
+    bodyStartsAtLineStart: true,
+  })]);
   if (languageId === "markdown") return markdown_hson_fence_regions(text).map(region => Object.freeze({
     kind: "markdown-fence" as const,
     bodyRange: region.bodyRange,
@@ -85,7 +93,7 @@ function discoverStructuralRegions(
 
 export function structural_document_evidence(
   fileName: string,
-  languageId: StructuralHostLanguage,
+  languageId: StructuralLanguage,
   text: string,
 ): StructuralDocumentEvidence {
   return Object.freeze({
@@ -98,7 +106,7 @@ export function structural_document_evidence(
 
 type StructuralEvidenceAnalyzer = (
   fileName: string,
-  languageId: StructuralHostLanguage,
+  languageId: StructuralLanguage,
   text: string,
 ) => StructuralDocumentEvidence;
 
@@ -115,7 +123,7 @@ export class StructuralDocumentEvidenceCache {
     key: string,
     version: number,
     fileName: string,
-    languageId: StructuralHostLanguage,
+    languageId: StructuralLanguage,
     text: string,
   ): StructuralDocumentEvidence {
     const cached = this.entries.get(key);
@@ -141,7 +149,7 @@ export class StructuralDocumentEvidenceCache {
 
 export function structural_regions(
   fileName: string,
-  languageId: StructuralHostLanguage,
+  languageId: StructuralLanguage,
   text: string,
 ): readonly StructuralRegion[] {
   return structural_document_evidence(fileName, languageId, text).regions;
@@ -168,7 +176,7 @@ export function structural_region_at_evidence(
 
 export function structural_region_at(
   fileName: string,
-  languageId: StructuralHostLanguage,
+  languageId: StructuralLanguage,
   text: string,
   offset: number,
 ): StructuralRegion | undefined {
@@ -364,10 +372,8 @@ function insideNonStructuralSyntax(source: string, offset: number): boolean {
   return [...ranges.literals, ...ranges.comments].some(range => offset > range.start && offset < range.end);
 }
 
-function indentationUnit(options: StructuralIndentation): string {
-  const width = Number.isInteger(options.tabSize) && options.tabSize > 0 ? options.tabSize : 2;
-  return options.insertSpaces ? " ".repeat(width) : "\t";
-}
+// The host owns the region base; Hson owns two literal spaces per level.
+const STRUCTURAL_INDENTATION = "  ";
 
 function overlaps(left: StructuralRange, right: StructuralRange): boolean {
   return left.start < right.end && right.start < left.end;
@@ -416,13 +422,13 @@ function horizontalTriviaEdits(
 
 export function structural_formatting_edits(
   fileName: string,
-  languageId: StructuralHostLanguage,
+  languageId: StructuralLanguage,
   text: string,
   options: StructuralIndentation,
   requestedRange?: StructuralRange,
 ): readonly StructuralEdit[] {
   const edits: StructuralEdit[] = [];
-  const unit = indentationUnit(options);
+  const unit = STRUCTURAL_INDENTATION;
   for (const region of structural_regions(fileName, languageId, text)) {
     if (requestedRange !== undefined && (region.bodyRange.end <= requestedRange.start || region.bodyRange.start >= requestedRange.end)) continue;
     const body = maskProtectedSource(text, region);
@@ -570,7 +576,7 @@ export function structural_newline_plan_from_evidence(
   const local = offset - region.bodyRange.start;
   if (insideNonStructuralSyntax(body, local)) return undefined;
   const currentLine = lineOf(body, local);
-  const unit = indentationUnit(options);
+  const unit = STRUCTURAL_INDENTATION;
   const depth = pairs.filter(pair => pair.open < local && pair.close >= local).length;
   const inner = region.baseIndentation + unit.repeat(depth);
   const paired = pairs.find(pair => pair.close === local && pair.openLine === currentLine);

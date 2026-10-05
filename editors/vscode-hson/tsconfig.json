@@ -16,6 +16,7 @@
     "tests/settings.test.ts",
     "tests/status-ui.test.ts",
     "tests/structural-editing.test.ts",
+    "tests/delimiter-depth.test.ts",
     "tests/local-host.test.ts",
     "tests/local-host-process.test.ts",
     "tests/local-host-extension.test.ts",
@@ -23,6 +24,7 @@
     "tests/benchmark.ts",
     "tests/integration/suite.ts",
     "tests/integration/baseline.ts",
+    "tests/integration/legibility.ts",
     "tests/baseline.test.ts"
   ],
   "exclude": ["src/tsserver-plugin/**/*"]

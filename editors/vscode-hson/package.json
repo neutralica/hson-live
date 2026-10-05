@@ -40,6 +40,8 @@
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
     "test:integration:consumer": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run-consumer.mjs",
     "test:baseline": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/baseline.cjs",
+    "test:depth": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/depth.cjs",
+    "test:legibility:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run-legibility.mjs",
     "test:baseline:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run-baseline.mjs",
     "test:baseline:installed": "npm run package:vsix && node ./scripts/build-tests.mjs && HSON_BASELINE_VSIX=hson-language.vsix node ./tests/integration/run-baseline.mjs",
     "benchmark": "node ./scripts/build-tests.mjs && node ./.test-dist/benchmark.cjs",
@@ -50,6 +52,12 @@
     "test:vscode-local": "node ./tests/vscode-local.test.mjs"
   },
   "contributes": {
+    "configurationDefaults": {
+      "[hson]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+      }
+    },
     "typescriptServerPlugins": [
       {
         "name": "hson-schema-typescript-plugin",
@@ -214,8 +222,8 @@
     ],
     "commands": [
       { "command": "hson.openSettings", "title": "Open Settings", "category": "Hson" },
-      { "command": "hson.formatDocument", "title": "Format Document", "category": "Hson", "enablement": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown" },
-      { "command": "hson.formatSelection", "title": "Format Selection", "category": "Hson", "enablement": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown)" },
+      { "command": "hson.formatDocument", "title": "Format Document", "category": "Hson", "enablement": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson" },
+      { "command": "hson.formatSelection", "title": "Format Selection", "category": "Hson", "enablement": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)" },
       { "command": "hson.generateSchemaTypes", "title": "Generate Schema Types", "category": "Hson" },
       { "command": "hson.startSchemaWatch", "title": "Start Schema Watch", "category": "Hson" },
       { "command": "hson.stopSchemaWatch", "title": "Stop Schema Watch", "category": "Hson" },
@@ -233,12 +241,12 @@
     ],
     "menus": {
       "commandPalette": [
-        { "command": "hson.formatDocument", "when": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown" },
-        { "command": "hson.formatSelection", "when": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown)" }
+        { "command": "hson.formatDocument", "when": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson" },
+        { "command": "hson.formatSelection", "when": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)" }
       ],
       "editor/context": [
-        { "command": "hson.formatDocument", "when": "editorTextFocus && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown)", "group": "1_modification@10" },
-        { "command": "hson.formatSelection", "when": "editorTextFocus && editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown)", "group": "1_modification@11" }
+        { "command": "hson.formatDocument", "when": "editorTextFocus && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)", "group": "1_modification@10" },
+        { "command": "hson.formatSelection", "when": "editorTextFocus && editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)", "group": "1_modification@11" }
       ]
     },
     "keybindings": [

@@ -315,7 +315,7 @@ export async function run(): Promise<void> {
     const inlineClose = structural.getText().indexOf("/>", structural.getText().indexOf("<solo"));
     structuralEditor.selection = new vscode.Selection(structural.positionAt(inlineClose), structural.positionAt(inlineClose));
     await vscode.commands.executeCommand("hson.insertLineBreak");
-    assert.ok(structural.getText().includes("\n    \n/>"), `real Enter honored the editor indentation and dedented the closer: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("\n  \n/>"), `real Enter used two-space Hson indentation and dedented the closer: ${JSON.stringify(structural.getText())}`);
     await vscode.commands.executeCommand("undo");
 
     const hostPrefix = 'import { Hson } from "hson-live/hson";\n';
@@ -354,11 +354,11 @@ export async function run(): Promise<void> {
 
     await replaceMarked(hostPrefix + 'const x=Hson.canonical`<main|/>`;');
     await vscode.commands.executeCommand("hson.insertLineBreak");
-    assert.ok(structural.getText().includes("<main\n    \n/>"), "valid Hson receives smart Enter");
+    assert.ok(structural.getText().includes("<main\n  \n/>"), "valid Hson receives smart Enter");
     await ordinaryEnter("invalid phase of valid-invalid-valid recovery", hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
     await replaceMarked(hostPrefix + 'const x=Hson.canonical`<main|/>`;');
     await vscode.commands.executeCommand("hson.insertLineBreak");
-    assert.ok(structural.getText().includes("<main\n    \n/>"), "smart Enter resumes after Hson repair");
+    assert.ok(structural.getText().includes("<main\n  \n/>"), "smart Enter resumes after Hson repair");
 
     await replaceMarked('const ordinary = 12|;');
     await vscode.commands.executeCommand("hson.deleteLeft");
@@ -376,20 +376,20 @@ export async function run(): Promise<void> {
     await vscode.commands.executeCommand("type", { text: "data5 5" });
     const authoredLines = structural.getText().split("\n");
     const authoredDump = JSON.stringify(structural.getText());
-    assert.match(authoredLines.find(line => line.includes("data2")) ?? "", /^ {4}data2 2/, authoredDump);
-    assert.match(authoredLines.find(line => line.includes("data3")) ?? "", /^ {4}data3 </, authoredDump);
-    assert.match(authoredLines.find(line => line.includes("data4")) ?? "", /^ {8}data4 4/, authoredDump);
-    assert.match(authoredLines.find(line => line.includes("data5")) ?? "", /^ {8}data5 5/, authoredDump);
+    assert.match(authoredLines.find(line => line.includes("data2")) ?? "", /^ {2}data2 2/, authoredDump);
+    assert.match(authoredLines.find(line => line.includes("data3")) ?? "", /^ {2}data3 </, authoredDump);
+    assert.match(authoredLines.find(line => line.includes("data4")) ?? "", /^ {4}data4 4/, authoredDump);
+    assert.match(authoredLines.find(line => line.includes("data5")) ?? "", /^ {4}data5 5/, authoredDump);
 
     await replaceMarked('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson.canonical`<solo      />`;\nconst page=Hson.canonical`\n <main\n<section\n/>\n />\n`;\nconst data=Hson.canonical`\n <data      1\ndata2 2\n>\n`;\nconst balanced=Hson.canonical`\n <\na <\nb      <c   1>>\nd 2\n>\n`;\nconst trailing=Hson.canonical`\n<\na <\nb <\nc <\nvalue 1>>>\nd 2\n>\n`;\n|');
     await vscode.commands.executeCommand("hson.deleteLeft");
     await vscode.commands.executeCommand("hson.formatDocument");
     assert.ok(structural.getText().includes("const host = 1;"), "Hson Format Document retained normal TypeScript formatting");
     assert.ok(structural.getText().includes("Hson.canonical`<solo/>`"), "Hson Format Document normalized same-line Hson trivia");
-    assert.ok(structural.getText().includes("\n<main\n    <section\n    />\n/>"), `Hson Format Document composed Hson indentation edits: ${JSON.stringify(structural.getText())}`);
-    assert.ok(structural.getText().includes("\n<\n    data 1\n    data2 2\n>"), `Hson Format Document applied multiline object layout: ${JSON.stringify(structural.getText())}`);
-    assert.ok(structural.getText().includes("balanced = Hson.canonical`\n<\n    a <\n        b <c 1>\n    >\n    d 2\n>"), `Hson Format Document detached the multiline owner's closer while preserving its inline child: ${JSON.stringify(structural.getText())}`);
-    assert.ok(structural.getText().includes("trailing = Hson.canonical`\n<\n    a <\n        b <\n            c <\n                value 1\n            >\n        >\n    >\n    d 2\n>"), `Hson Format Document separated parser-owned trailing closers: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("\n<main\n  <section\n  />\n/>"), `Hson Format Document composed Hson indentation edits: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("\n<\n  data 1\n  data2 2\n>"), `Hson Format Document applied multiline object layout: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("balanced = Hson.canonical`\n<\n  a <\n    b <c 1>\n  >\n  d 2\n>"), `Hson Format Document detached the multiline owner's closer while preserving its inline child: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("trailing = Hson.canonical`\n<\n  a <\n    b <\n      c <\n        value 1\n      >\n    >\n  >\n  d 2\n>"), `Hson Format Document separated parser-owned trailing closers: ${JSON.stringify(structural.getText())}`);
     await replaceDocument(structural, 'import { Hson } from "hson-live/hson";\nconst ordinary = [1, 2];\nconst arrays = Hson.canonical`[[1,2],"[literal]"]`;\n');
     await vscode.commands.executeCommand("hson.formatDocument");
     assert.ok(structural.getText().includes('Hson.canonical`««1,2»,"[literal]"»`'), "Hson Format Document canonicalizes only Hson array delimiters");
@@ -409,7 +409,7 @@ export async function run(): Promise<void> {
     const selectedEnd = selectionInput.indexOf("`;", selectedStart);
     structuralEditor.selection = new vscode.Selection(structural.positionAt(selectedStart), structural.positionAt(selectedEnd));
     await vscode.commands.executeCommand("hson.formatSelection");
-    assert.ok(structural.getText().includes("first=Hson.canonical`\n<\n    a <\n        b <c 1>\n    >\n    d 2\n>"), `Hson Format Selection detached the selected multiline object's closer: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("first=Hson.canonical`\n<\n  a <\n    b <c 1>\n  >\n  d 2\n>"), `Hson Format Selection detached the selected multiline object's closer: ${JSON.stringify(structural.getText())}`);
     assert.ok(structural.getText().includes("second=Hson.canonical`\n <c 3\nd 4\n>"), "Hson Format Selection left the unselected object unchanged");
 
     await vscode.workspace.fs.writeFile(markdownStructuralUri, Buffer.from("Before\n```hson\n <data 1\ndata2 2\n>\n```\nAfter\n"));
