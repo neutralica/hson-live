@@ -12,7 +12,6 @@ export type {
   BinaryDecodeOptions,
   HsonCanonical,
   HsonSchema,
-  HsonSchemaMutationCandidate,
   HsonTransformSource,
   TransformFrameOptions,
   TransformBinarySerialize,

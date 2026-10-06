@@ -161,6 +161,12 @@ type LiveMapConstructiveSetWriteOp = Readonly<{
 }>;
 
 type LiveMapProjectedSetWriteOp = LiveMapProjectedSetWrite;
+/** Exact root assignment that retains the living map's identity epoch. */
+type LiveMapRootAssignmentWriteOp = Readonly<{
+  kind: "root-assignment";
+  path: readonly [];
+  value: OrderedProjectedValue;
+}>;
 type LiveMapProjectedReplaceWriteOp = LiveMapProjectedReplaceWrite;
 type LiveMapProjectedDeleteWriteOp = LiveMapProjectedDeleteWrite;
 type LiveMapProjectedSpliceWriteOp = LiveMapProjectedSpliceWrite;
@@ -169,6 +175,7 @@ type LiveMapProjectedMoveWriteOp = LiveMapProjectedMoveWrite;
 
 type LiveMapCoreWriteOp =
   | LiveMapProjectedSetWriteOp
+  | LiveMapRootAssignmentWriteOp
   | LiveMapProjectedReplaceWriteOp
   | LiveMapProjectedDeleteWriteOp
   | LiveMapProjectedSpliceWriteOp
@@ -2932,7 +2939,8 @@ function projected_candidate_graph(
   writeOps: readonly LiveMapCoreWriteOp[],
 ): HsonNode {
   const root = projected_value_to_hson_root(value);
-  const replacesRoot = writeOps.some((op) => op.kind === "replace" && op.path.length === 0);
+  const replacesRoot = writeOps.some((op) => op.kind === "root-assignment"
+    || (op.kind === "replace" && op.path.length === 0));
   if (currentRoot.$_tag === ROOT_TAG || replacesRoot) return root;
   const candidate = root.$_content[0];
   if (is_Node(candidate)) return candidate;
@@ -2943,24 +2951,19 @@ function projected_candidate_graph(
  * Normalize public `set` into internal write intents.
  *
  * Plain object values at an existing object endpoint become constructive child
- * writes. Other JSON values, arrays, null, root values, and non-object current
- * endpoints stay as direct endpoint `set` writes.
+ * writes, including at the root. Other values stay as direct endpoint writes:
+ * root assignments use a same-epoch intent, while child assignments use `set`.
  */
 function write_ops_from_set(path: LivePath, value: unknown, currentValue: OrderedProjectedValue | undefined): readonly LiveMapCoreWriteOp[] {
   const projectedValue = must_ordered_projected_value(value, path);
 
   must_resolved_path("set", path, currentValue);
 
-  if (path.length === 0 || !is_ordered_projected_object(projectedValue)) {
-    return [
-      { kind: "set", path, value: projectedValue },
-    ];
-  }
-
-  if (currentValue !== undefined && !is_ordered_projected_object(currentValue)) {
-    return [
-      { kind: "set", path, value: projectedValue },
-    ];
+  if (!is_ordered_projected_object(projectedValue) || !is_ordered_projected_object(currentValue)) {
+    // Equal assignments preserve identity; explicit replacement can retire it.
+    if (optional_ordered_projected_value_equal(currentValue, projectedValue)) return [];
+    if (path.length === 0) return [{ kind: "root-assignment", path: [], value: projectedValue }];
+    return [{ kind: "set", path, value: projectedValue }];
   }
 
   return [
@@ -3049,6 +3052,19 @@ function plan_write_ops(
         to: op.to,
         prev,
         next,
+      }));
+      continue;
+    }
+
+    if (op.kind === "root-assignment") {
+      const prev = must_resolved_projected_value("set", op.path, ordered_projected_value_at(candidate, op.path));
+      candidate = ordered_projected_value_replace(candidate, op.path, op.value);
+      if (ordered_projected_value_equal(prev, op.value)) continue;
+      transportOps.push(Object.freeze({
+        kind: "set",
+        path: clone_live_path(op.path),
+        prev,
+        next: op.value,
       }));
       continue;
     }
@@ -3193,6 +3209,12 @@ function must_plan_projected_delete(root: OrderedProjectedValue, path: LivePath)
 
 /** Compile one already-admitted replay operation into carrier-native planning. */
 function projected_write_op_from_transport(op: LiveMapProjectedDataOp): Exclude<LiveMapCoreWriteOp, LiveMapConstructiveSetWriteOp> {
+  if (op.kind === "set" && op.path.length === 0) {
+    const assignment: LiveMapRootAssignmentWriteOp = {
+      kind: "root-assignment", path: [], value: op.next,
+    };
+    return Object.freeze(assignment);
+  }
   if (op.kind === "delete") {
     return Object.freeze({ kind: "delete", path: clone_live_path(op.path) });
   }

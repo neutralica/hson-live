@@ -160,7 +160,8 @@ check("canonical verifier and round-trip close the rule", () => {
   assert.equal(decoded.ok, true);
   if (decoded.ok) assert.deepEqual(decoded.graph, compiled.value.graph);
   const generated = generate_hson_schema_types("Relational", compiled.value.semantic, compiled.value.definitions).declarations;
-  assert.match(generated, /UniqueR0Proof/);
+  assert.doesNotMatch(generated, /UniqueR0Proof|MutationCandidate/);
+  assert.match(generated, /readonly cells: ReadonlyArray/);
   assert.doesNotMatch(generated, /top-left|top-right|TL|TR/);
   const verifiesRule = (rule: unknown) => verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, capabilities: { projectedRoot: 0 }, nodes: [{ kind: "projected-refinement", base: 1, rule }, { kind: "projected-array" }] }).ok;
   for (const rule of [

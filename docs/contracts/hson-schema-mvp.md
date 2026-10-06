@@ -20,7 +20,7 @@ const authored: UserHson = Hson.data`<name "Ada" score 37>`;
 
 The packaged `hson-schema` tool discovers direct, substitution-free official `Hson.schema` declarations, checks Schema semantics, and generates private evidence in current tool-owned `.hson/` compiler projects for value, mode, and Schema identity. The application imports the Schema symbol and uses `HsonFromSchema<typeof UserSchema>` and `JsonFromSchema<typeof UserSchema>`; it does not import generated suffix names.
 
-`HsonFromSchema<S>` chooses `HsonData<S>` or `HsonDocument<S>` from the Schema family. `JsonFromSchema<S>` projects a data Schema to its ordinary JS/JSON-shaped TypeScript value, including readonly structure and generated refinement evidence; document Schemas are rejected. The lower-level `HsonData<S>` and `HsonDocument<S>` remain precise canonical string carrier/proof types.
+`HsonFromSchema<S>` chooses `HsonData<S>` or `HsonDocument<S>` from the Schema family. `JsonFromSchema<S>` projects a data Schema to its ordinary JS/JSON-shaped TypeScript value, including readonly structure, exact literals, unions and recursive refs, without nominal refinement or ref proof. Numeric/string refinements and relational uniqueness remain runtime constraints. Every governed JSON read uses this structural projection. Mutation proposals are derived separately and accept structurally valid readonly snapshots; document Schemas are rejected. The lower-level `HsonData<S>` and `HsonDocument<S>` remain precise canonical string carrier/proof types.
 
 For example, a data Schema can use this representation pair:
 
@@ -54,7 +54,7 @@ An authored `union` takes an ordered array of at least two branches. Every pair 
 > content <content <block <ref "Block">>>>
 ```
 
-Generated value projections are deeply readonly and carry inaccessible proof at refined objects, arrays, tuples, numbers, and strings. Ordinary materialization, object spread, array transforms, and arithmetic do not preserve those proofs. Static authored tags with substitutions do not receive Schema-specific proof.
+Generated data projections are structural and readonly as API discipline, without runtime freezing or certification. Ordinary objects, reconstruction, collection transforms, and arithmetic may inhabit those projections when structurally valid. Schema handles and Schema-bound Hson retain certification identity; runtime admission validates refinements and whole-value invariants before publishing state. Static authored Hson tags with substitutions do not receive Schema-specific certification.
 
 ## Runtime Schema identity
 

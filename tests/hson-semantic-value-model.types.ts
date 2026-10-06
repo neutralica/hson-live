@@ -28,7 +28,6 @@ const schemaCanonical: HsonCanonical = schemaData;
 const portable: HsonSchemaData = UserSchema.toHson();
 declare const projected: JsonFromSchema<typeof SameShapeOneSchema>;
 const sameShapedName: string = projected.name;
-// @ts-expect-error Equal field shapes do not erase generated value proof identity.
 const crossProjected: JsonFromSchema<typeof SameShapeTwoSchema> = projected;
 void dataCanonical; void documentCanonical; void proofBase; void schemaBase;
 void schemaCanonical; void portable; void projected; void sameShapedName; void crossProjected;
@@ -66,15 +65,15 @@ void neutralAsData; void dataAsDocument; void documentAsData; void unprovedAsPro
 void crossIdentity; void dataAsSchema; void sliced; void appended;
 
 const dataMap = hsonLiveMap.fromLibraries({ state: { data: Hson.data`<name "Ada">`, schema: SameShapeOneSchema } });
-const governedData: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeOneSchema>> = dataMap.lib("state");
+const governedData: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeOneSchema>, "state", typeof SameShapeOneSchema> = dataMap.lib("state");
 const documentMap = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main id=hero <header/> <section "body"/>/>`, schema: PageSchema } });
 const governedDocument: LiveMapDocumentLibrary<DocumentSchemaGraph<typeof PageSchema>> = documentMap.lib("page");
 // @ts-expect-error A document Schema cannot govern a data map.
 dataMap.lib("state").schema.use(PageSchema);
 // @ts-expect-error A data Schema cannot govern a document map.
 documentMap.lib("page").schema.use(SameShapeOneSchema);
-// @ts-expect-error Same-shaped Schemas do not share governed value proof.
-const wrongDataEvidence: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeTwoSchema>> = governedData;
+// @ts-expect-error Governing Schema handles retain declaration identity.
+const wrongDataEvidence: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeTwoSchema>, "state", typeof SameShapeTwoSchema> = governedData;
 void governedDocument; void wrongDataEvidence;
 
 type DocumentSchemaGraph<S extends import("hson-live").HsonSchema<unknown, "document">> = S extends import("hson-live").HsonSchema<infer TGraph, "document"> ? TGraph : never;

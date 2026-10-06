@@ -3,7 +3,7 @@
 import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
 
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
-import type { HsonSchema, HsonSchemaMode, HsonSchemaMutationCandidate } from "../api/transform/transform.types.js";
+import type { HsonSchema, HsonSchemaMode } from "../api/transform/transform.types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
 import type {
   DocumentAttrsEvidence,
@@ -236,14 +236,12 @@ export type LiveMapPathValue<TValue, TPath extends LivePath> = PublicLiveMapPath
   ResolveLiveMapPathValue<TValue, TPath>
 >;
 
-/**
- * The ordinary candidate accepted at a LiveMap write boundary. Generated Schema
- * proof carriers associate their structurally truthful unproved counterpart;
- * this association is declaration-only and never widens governed reads.
+/** Structural proposals are derived independently of Schema certification.
+ * Readonly inputs are accepted because admission reads/copies them, never mutates them.
  */
 type LiveMapMutationCandidateValue<TValue> =
-  TValue extends HsonSchemaMutationCandidate<infer TCandidate>
-    ? TCandidate
+  TValue extends readonly []
+    ? []
     : TValue extends readonly [infer THead, ...infer TTail]
       ? [LiveMapMutationCandidateValue<THead>, ...LiveMapMutationCandidateTuple<TTail>]
       : TValue extends readonly (infer TItem)[]
@@ -257,9 +255,9 @@ type LiveMapMutationCandidateTuple<TValue extends readonly unknown[]> =
     ? [LiveMapMutationCandidateValue<THead>, ...LiveMapMutationCandidateTuple<TTail>]
     : [];
 
-/** Remove `undefined` from write positions while preserving JSON value shape. */
+/** Remove `undefined` from write positions, accepting detached reads as proposals. */
 export type LiveMapWriteValue<TValue> = [Exclude<LiveMapMutationCandidateValue<TValue>, undefined>] extends [JsonValue]
-  ? Exclude<LiveMapMutationCandidateValue<TValue>, undefined>
+  ? Exclude<LiveMapMutationCandidateValue<TValue> | TValue, undefined>
   : JsonValue;
 
 export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWriteValue<LiveMapPathValue<TValue, TPath>>;
@@ -311,7 +309,7 @@ export type LiveMapCore<
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
   ) => LiveMapCoreCommit<LiveMapDataOp>;
   splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapCoreCommit<LiveMapDataOp>;
-  /** Exact root replacement, or exact endpoint replacement at a data path; `set([])` remains invalid. */
+  /** Exact root or endpoint replacement; object `set` instead preserves unspecified siblings. */
   replace: LiveMapReplaceFn<TValue>;
   delete: (path: LivePath) => LiveMapCoreCommit<LiveMapDataOp>;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
@@ -1796,7 +1794,8 @@ export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
  * Ops are intentionally data-shaped and replayable. Primitive/array/null
  * `set(...)`, shallow child writes from object-valued `set(...)` and
  * `setMany(...)`, array helper rewrites, and `update(fn)` commits report `set`
- * ops at the data paths they changed.
+ * ops at the data paths they changed. Whole-root assignments report `set` at
+ * the empty path and retain the map's identity epoch.
  */
 export type LiveMapSetOp = Readonly<{
   kind: "set";
@@ -1821,10 +1820,10 @@ export type LiveMapDeleteOp = Readonly<{
 /**
  * Normalized endpoint replacement operation emitted by a LiveMap mutation.
  *
- * Root replacement is intentionally distinct from `set([])`: projected child
- * path writes still reject empty paths, while `replace(...)` makes exact
- * root/endpoint overwrite explicit. The runtime overwrites the existing root
- * node in place for root replacement so existing handles stay attached.
+ * Object `set` preserves unspecified siblings; `replace(...)` makes exact
+ * root/endpoint overwrite explicit. Explicit root replacement resets the map's
+ * identity epoch and requires a single application Library. The runtime
+ * overwrites the existing root node in place so existing handles stay attached.
  */
 export type LiveMapReplaceOp = Readonly<{
   kind: "replace";

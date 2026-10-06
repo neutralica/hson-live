@@ -335,7 +335,6 @@ const text: HsonDocument<typeof Text> = Hson.document\`"hello"\`;
 Text.certify(text);
 const data: HsonData<typeof Refined> = Hson.data\`<age 4>\`;
 declare const value: JsonFromSchema<typeof Refined>;
-// @ts-expect-error arithmetic erases the private refinement proof
 const changed: JsonFromSchema<typeof Refined>["age"] = value.age + 1;
 // @ts-expect-error wrong Schema mode
 const wrong: HsonData<typeof Document> = data;

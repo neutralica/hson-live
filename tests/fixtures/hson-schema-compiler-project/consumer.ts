@@ -1,5 +1,5 @@
 /// <reference path="./support/ambient.d.ts" />
-import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonData, type HsonDocument, type HsonSchema, type HsonSchemaMutationCandidate, type JsonFromSchema } from "hson-live";
+import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonData, type HsonDocument, type HsonSchema, type JsonFromSchema } from "hson-live";
 import type { JsonValue } from "hson-live/hson";
 import { slideSchema, twinSchema, RecordSchema, TreeSchema, PageSchema, PlainA, PlainB, annotatedSchema } from "./schema.js";
 import { slideSchema as sameSlide } from "./schema.js";
@@ -13,7 +13,6 @@ import type { CompilerOptions } from "typescript";
 type Assert<T extends true> = T;
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Identity<S> = S extends HsonSchema<unknown, "data" | "document", infer I> ? I : never;
-type Candidate<T> = T extends HsonSchemaMutationCandidate<infer C> ? C : never;
 type NotAny<T> = 0 extends (1 & T) ? false : true;
 type ValueIsPrecise = Assert<NotAny<JsonFromSchema<typeof RecordSchema>>>;
 type PlainValue = Assert<Equal<JsonFromSchema<typeof PlainA>, JsonValue>>;
@@ -21,8 +20,8 @@ type Mode = Assert<typeof slideSchema extends HsonSchema<unknown, "document"> ? 
 type CrossModuleIdentity = Assert<Equal<Identity<typeof slideSchema>, Identity<typeof sameSlide>>>;
 type DistinctDocumentIdentity = Assert<Equal<Identity<typeof slideSchema>, Identity<typeof twinSchema>> extends false ? true : false>;
 type DistinctPlainIdentity = Assert<Equal<Identity<typeof PlainA>, Identity<typeof PlainB>> extends false ? true : false>;
-type CandidateAge = Assert<Equal<Candidate<JsonFromSchema<typeof RecordSchema>["age"]>, number>>;
-type CandidateFlags = Assert<Equal<Candidate<JsonFromSchema<typeof RecordSchema>["flags"]>, boolean[]>>;
+type StructuralAge = Assert<Equal<JsonFromSchema<typeof RecordSchema>["age"], number>>;
+type StructuralFlags = Assert<Equal<JsonFromSchema<typeof RecordSchema>["flags"], readonly boolean[]>>;
 
 declare const document: HsonDocument<typeof slideSchema>;
 const sameDocument: HsonDocument<typeof sameSlide> = document;
@@ -45,11 +44,8 @@ const requiredNickname: string = value.nickname;
 const wrongStatus: "waiting" = value.status;
 // @ts-expect-error Readonly evidence is retained.
 value.name = "changed";
-// @ts-expect-error Arithmetic loses nominal refinement proof.
 const unprovedAge: typeof value.age = value.age + 1;
-// @ts-expect-error Array reconstruction loses the uniqueness/collection proof.
 const unprovedFlags: typeof value.flags = [...value.flags];
-// @ts-expect-error Object reconstruction loses its private proof.
 const unprovedObject: typeof value = { ...value };
 declare const tree: JsonFromSchema<typeof TreeSchema>;
 const child: JsonFromSchema<typeof TreeSchema> | undefined = tree.children[0];

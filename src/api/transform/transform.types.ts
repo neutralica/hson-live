@@ -26,8 +26,6 @@ export type HsonCanonical = string & {
   readonly [HSON_CANONICAL_BRAND]: true;
 };
 
-declare const HSON_SCHEMA_MUTATION_CANDIDATE: unique symbol;
-
 /** Static root domain established by the generated Hson Schema analyzer. */
 export type HsonSchemaMode = "data" | "document";
 
@@ -59,20 +57,9 @@ export type HsonFromSchema<TSchema extends HsonSchema> =
     : TSchema extends HsonSchema<unknown, "document"> ? HsonDocument<TSchema>
       : HsonData | HsonDocument;
 
-/** Ordinary JS/JSON-shaped value projection of a data Schema. */
+/** Readonly structural JS/JSON projection; Schema refinements remain runtime constraints. */
 export type JsonFromSchema<TSchema extends HsonSchema<unknown, "data">> =
   TSchema extends HsonSchema<infer TValue, "data"> ? TValue : never;
-
-/**
- * Declaration-only candidate association emitted beside generated Schema proof
- * carriers. It is consumed by LiveMap write signatures; callers neither create
- * nor observe it at runtime.
- *
- * This supports generated Hson Schema declarations only.
- */
-export type HsonSchemaMutationCandidate<TValue> = Readonly<{
-  readonly [HSON_SCHEMA_MUTATION_CANDIDATE]: TValue;
-}>;
 
 export type TransformRenderFormat = (typeof $RENDER)[keyof typeof $RENDER];
 export type TransformOutputRenderFormat =

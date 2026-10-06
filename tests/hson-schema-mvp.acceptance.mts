@@ -165,9 +165,9 @@ check("Deck four-way ref union compiles, certifies, and generates four alternati
   const registry = make_hosted_registry([{ name: "blocks", identity: Object.freeze({}), mode: "data-object", schema }]);
   assert.equal(Hson.schema.fromHson(registry.libraries[0]!.schema).toHson(), schema.toHson());
   const generated = generate_hson_schema_types("Deck", compiled.value.semantic, compiled.value.definitions).declarations;
-  const blockType = generated.match(/type __DeckDefinition0 = ([^\n]+);/)?.[1];
+  const blockType = generated.match(/type Block = ([^\n]+);/)?.[1];
   assert.ok(blockType);
-  assert.match(blockType, /__DeckDefinition1\) \| \(__DeckDefinition2\) \| \(__DeckDefinition3\) \| \(__DeckDefinition4/);
+  assert.match(blockType, /Paragraph\) \| \(Heading\) \| \(Code\) \| \(List/);
   const evidence = generate_hson_schema_evidence("Deck", deckSource, "deck#Deck");
   assert.match(evidence.metadata, /semanticGraphDigest/);
 });

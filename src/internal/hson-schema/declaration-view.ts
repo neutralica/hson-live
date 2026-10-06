@@ -32,7 +32,10 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       }
       names.set(checker.getTypeAtLocation(declaration), { evidence: origin.evidence });
       const value = declaration.type.typeArguments?.[0], identity = declaration.type.typeArguments?.[2];
-      if (value !== undefined) {
+      const resolvedMode = mode === undefined ? undefined : checker.getTypeFromTypeNode(mode);
+      // JSON roots can be named structurally. Only document graph evidence needs
+      // an origin-based value name; Schema handles still retain their identity.
+      if (value !== undefined && !(resolvedMode?.isStringLiteral() && resolvedMode.value === "data")) {
         const type = checker.getTypeFromTypeNode(value);
         if (type.flags & ts.TypeFlags.Object) names.set(type, { evidence: origin.evidence, field: "value" });
       }

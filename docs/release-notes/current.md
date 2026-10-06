@@ -41,3 +41,18 @@
 - Added hosted no-op coverage across attached, retained, empty-projection and non-resumable projection cases, including equal replacement, absent-attribute drop, private-library changes, subsequent real mutations, replay, reconcile and action completion semantics.
 - Expanded the effective external integration coverage substantially through the LiveDemo migration, which exercised current public named-library, Schema, Locus, Echo, projection, synchronization, Node and Worker paths and resulted in the library fixes above rather than application-level compatibility workarounds.
 - Retained authorized sessions now use `locus.session.create/get/debug/onChange/dispose` and capability `now/update/revoke`. `now()` carries shared authority state and authorized local initializers, optionally with explicitly selected shared HTML. Credentials remain separate; session HTML defaults and the hosted rendering wrapper have been removed.
+- Established distinct Mirror, Echo, and Locus roles for hosted live applications, including pessimistic authoritative authoring and revision-based completion.
+- Consolidated Locus lifecycle and authority APIs around creation, durable resume, persistence, and explicit client-public/server-private library admission.
+- Simplified LiveMap and Locus write surfaces with path-owned mutation, atomic batching, and staged authoritative writes.
+- Added object-owned SSR cut/render primitives and strengthened non-destructive LiveTree DOM graft/continuation workflows.
+- Added Scout, a declarative browser ignition mechanism supporting progressive enhancement from inert server-rendered HTML.
+- Added Schema configured relational uniqueness for finite projected-key constraints.
+- Expanded Schema unions to n-ary ordered unions with bounded distinguishability analysis.
+- Reworked Schema admission to tolerate presentation differences while preserving semantic validity.
+- Replaced source-byte Schema identity with deterministic ordered-definition Schema identity.
+- Added full physical multiline Hson string support with normalized framing, dedent semantics, and readable/no-break serialization.
+- Extended static Hson proof analysis through TypeScript aliases, imports, chains, and transparent generic wrappers.
+- Introduced HsonFromSchema<S> and data-only JsonFromSchema<S>, retiring the ambiguous public SchemaType<S> model while retaining document graph evidence internally.
+- Repaired ESM subsystem boundaries and tree-shaking, allowing lean LiveMap/Echo imports without dragging unrelated authority/compiler/runtime code into client bundles.
+- Expanded VS Code Hson tooling with structural indentation, embedded delimiter-depth highlighting, and standalone .hson formatting support.
+- Advanced Deck as an integration application, exercising governed data, Schema-derived types, live authority, SSR/continuation, and Hson-native rendering patterns.

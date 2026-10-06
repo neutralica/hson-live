@@ -53,7 +53,7 @@ function user(age = 37) {
   };
 }
 
-check("schema association supplies certified reads and ordinary typed mutation candidates", () => {
+check("structural reads supply precise independent mutation proposals", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: user(), schema: UserSchema } });
   const state = map.lib("state");
   const age = state.at(["age"]);
@@ -104,9 +104,7 @@ check("schema association supplies certified reads and ordinary typed mutation c
     age.set("38");
     // @ts-expect-error Named Library handles retain the same candidate domain.
     libraryAge.set("38");
-    // @ts-expect-error A plain candidate cannot impersonate the certified integer read.
     const fabricatedAge: JsonFromSchema<typeof UserSchema>["age"] = 38;
-    // @ts-expect-error One Schema's numeric proof is not another Schema's proof.
     const crossSchemaProof: JsonFromSchema<typeof TreeSchema>["age"] = age.snap();
     // @ts-expect-error Exact literals remain statically precise in candidates.
     state.at(["status"]).set("other");
@@ -158,6 +156,35 @@ check("refinement and composite failures reject before revision or publication",
   state.at(["account"]).replace({ kind: "admin", level: 4 });
   assert.equal(map.rev, before + 4);
   assert.equal(state.at(["age"]).snap(), 38);
+});
+
+check("detached structural snapshots forward as proposals and invalid updates stay atomic", () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: user(), schema: UserSchema } });
+  const state = map.lib("state");
+  const publications: unknown[] = [];
+  map.commits.observe(event => publications.push(event));
+  const snapshot = state.snap();
+  assert.equal(Object.isFrozen(snapshot), false);
+  assert.equal(Object.isFrozen(snapshot.flags), false);
+  state.at([]).replace(snapshot);
+  state.at(["account"]).update(current => current);
+  state.at(["flags"]).update(current => current);
+  state.at(["pair"]).replace(snapshot.pair);
+  assert.equal(map.rev, 0);
+  assert.equal(publications.length, 0);
+
+  // Readonly is static discipline, not an immutable JS certificate.
+  const detached: { code: string } = snapshot;
+  detached.code = "bad";
+  assert.equal(state.snap().code, "ID-7");
+  assert.throws(() => state.at([]).replace(snapshot));
+  assert.throws(() => state.at(["age"]).update(() => -1));
+  assert.equal(map.rev, 0);
+  assert.equal(publications.length, 0);
+  state.at(["age"]).update(current => current + 1);
+  assert.equal(state.snap().age, 38);
+  assert.equal(map.rev, 1);
+  assert.equal(publications.length, 1);
 });
 
 check("nested recursive handles preserve governed reads while accepting ordinary candidates", () => {

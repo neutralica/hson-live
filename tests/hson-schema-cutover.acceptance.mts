@@ -70,7 +70,7 @@ check("separate runtime matches stock authored emit; declarations and maps conta
   assert.ok(map.mappings.length > 0);
   assert.match(readFileSync(join(project, "dist/schema.d.ts"), "utf8"), /getSchema\(\).*HsonSchema/s);
 });
-check("a separate stock compiler consumes package declarations with one origin and private proofs", () => {
+check("a separate stock compiler consumes structural JSON and Schema-bound Hson certificates", () => {
   const consumer = join(project, "consumer-project"), pkg = join(consumer, "node_modules/schema-package"); mkdirSync(pkg, { recursive: true });
   cpSync(join(project, "dist"), join(pkg, "dist"), { recursive: true });
   writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "schema-package", type: "module", exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" }, "./schema": { types: "./dist/schema.d.ts", import: "./dist/schema.js" } } }));
@@ -86,7 +86,10 @@ declare const data: HsonData<typeof S>; const same: HsonData<typeof Direct> = da
 // @ts-expect-error identical schemas from separate declarations have distinct identities
 const other: HsonData<typeof Twin> = data;
 declare const value: JsonFromSchema<typeof S>; const exact: "ready" = value.phase;
-// @ts-expect-error refinement proof cannot be fabricated
+// JSON exposes the structural primitive; Schema refinements remain runtime constraints.
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type Assert<T extends true> = T;
+type StructuralAge = Assert<Equal<JsonFromSchema<typeof S>["age"], number>>;
 const age: JsonFromSchema<typeof S>["age"] = 3;
 void [a,b,c,d,e,alias,same,other,exact,age];`);
   pass(spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "-p", join(consumer, "tsconfig.json")], { encoding: "utf8", timeout: 120_000 }));

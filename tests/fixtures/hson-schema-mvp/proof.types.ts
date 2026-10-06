@@ -3,20 +3,20 @@ import { type JsonFromSchema, HsonData, Hson, type HsonNumber } from "hson-live"
 import type { JsonValue } from "hson-live/hson";
 import type { HsonCanonical } from "hson-live/hson";
 
-declare const certified: JsonFromSchema<typeof UserSchema>;
+declare const projected: JsonFromSchema<typeof UserSchema>;
 declare const canonical: HsonCanonical;
 
-const optionalRead: string | undefined = certified.nickname;
-const indexedRead: boolean | undefined = certified.flags[0];
-const tupleRead: HsonNumber = certified.pair[1];
-const refinedInteger: JsonFromSchema<typeof UserSchema>["age"] = certified.age;
-const refinedBound: JsonFromSchema<typeof UserSchema>["percent"] = certified.percent;
-const refinedString: JsonFromSchema<typeof UserSchema>["code"] = certified.code;
-const refinedAlphabet: JsonFromSchema<typeof UserSchema>["key"] = certified.key;
-const refinedUnique: JsonFromSchema<typeof UserSchema>["flags"] = certified.flags;
-const finitePhase: "lobby" | "ready" | "playing" | "finished" = certified.phase;
-const finiteTurn: "player1" | "player2" | null = certified.turn;
-const signedZeroChoice: JsonFromSchema<typeof UserSchema>["signedZeroChoice"] = certified.signedZeroChoice;
+const optionalRead: string | undefined = projected.nickname;
+const indexedRead: boolean | undefined = projected.flags[0];
+const tupleRead: number = projected.pair[1];
+const refinedInteger: JsonFromSchema<typeof UserSchema>["age"] = projected.age;
+const refinedBound: JsonFromSchema<typeof UserSchema>["percent"] = projected.percent;
+const refinedString: JsonFromSchema<typeof UserSchema>["code"] = projected.code;
+const refinedAlphabet: JsonFromSchema<typeof UserSchema>["key"] = projected.key;
+const refinedUnique: JsonFromSchema<typeof UserSchema>["flags"] = projected.flags;
+const finitePhase: "lobby" | "ready" | "playing" | "finished" = projected.phase;
+const finiteTurn: "player1" | "player2" | null = projected.turn;
+const signedZeroChoice: JsonFromSchema<typeof UserSchema>["signedZeroChoice"] = projected.signedZeroChoice;
 declare const recursive: JsonFromSchema<typeof TreeSchema>;
 declare const reuse: JsonFromSchema<typeof ReuseSchema>;
 const recursiveChild: JsonFromSchema<typeof TreeSchema> | undefined = recursive.children[0];
@@ -26,35 +26,20 @@ declare const interactionFields: JsonFromSchema<typeof InteractionFieldsSchema>;
 const localArgs: JsonValue = interactionFields.args;
 const authoritativePayload: JsonValue = interactionFields.payload;
 
-// @ts-expect-error ordinary structural objects have no composite proof
-const fabricated: JsonFromSchema<typeof UserSchema> = { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", flags: [true], pair: ["x", 2], account: { kind: "user", handle: "ada" } };
-// @ts-expect-error object spread erases the root proof
-const spreadObject: JsonFromSchema<typeof UserSchema> = { ...certified };
-// @ts-expect-error reconstruction erases the root proof
-const reconstructed: JsonFromSchema<typeof UserSchema> = { name: certified.name, score: certified.score, age: certified.age, percent: certified.percent, code: certified.code, flags: certified.flags, pair: certified.pair, account: certified.account };
-// @ts-expect-error array spread erases collection proof
-const spreadArray: JsonFromSchema<typeof UserSchema>["flags"] = [...certified.flags];
-// @ts-expect-error array transforms erase collection proof
-const mappedArray: JsonFromSchema<typeof UserSchema>["flags"] = certified.flags.map(Boolean);
-// @ts-expect-error concat erases exact collection-node evidence
-const concatenatedArray: JsonFromSchema<typeof UserSchema>["flags"] = certified.flags.concat([]);
-// @ts-expect-error a finite Hson number does not carry integer refinement evidence
-const plainInteger: JsonFromSchema<typeof UserSchema>["age"] = certified.score;
-// @ts-expect-error distinct numeric refinement nodes are nominally distinct
-const wrongNumericProof: JsonFromSchema<typeof UserSchema>["percent"] = certified.age;
-// @ts-expect-error arithmetic erases integer evidence
-const arithmeticInteger: JsonFromSchema<typeof UserSchema>["age"] = certified.age + 1;
-// @ts-expect-error division erases integer evidence
-const dividedInteger: JsonFromSchema<typeof UserSchema>["age"] = certified.age / 1;
-// @ts-expect-error Math operations erase integer evidence
-const mathInteger: JsonFromSchema<typeof UserSchema>["age"] = Math.abs(certified.age);
-// @ts-expect-error concatenation erases constrained string evidence
-const concatenatedString: JsonFromSchema<typeof UserSchema>["code"] = certified.code + "";
-// @ts-expect-error slice erases constrained string evidence
-const slicedString: JsonFromSchema<typeof UserSchema>["code"] = certified.code.slice(0);
-// @ts-expect-error case conversion erases constrained string evidence
-const casedString: JsonFromSchema<typeof UserSchema>["code"] = certified.code.toUpperCase();
-// @ts-expect-error a plain string has no alphabet refinement evidence
+const fabricated: JsonFromSchema<typeof UserSchema> = { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", key: "abc", status: "ready", phase: "lobby", turn: "player1", zero: 0, negativeZero: -0, signedZeroChoice: 0, flags: [true], pair: ["x", 2], account: { kind: "user", handle: "ada" } };
+const spreadObject: JsonFromSchema<typeof UserSchema> = { ...projected };
+const reconstructed: JsonFromSchema<typeof UserSchema> = { ...projected, name: projected.name, score: projected.score, age: projected.age, percent: projected.percent, code: projected.code, flags: projected.flags, pair: projected.pair, account: projected.account };
+const spreadArray: JsonFromSchema<typeof UserSchema>["flags"] = [...projected.flags];
+const mappedArray: JsonFromSchema<typeof UserSchema>["flags"] = projected.flags.map(Boolean);
+const concatenatedArray: JsonFromSchema<typeof UserSchema>["flags"] = projected.flags.concat([]);
+const plainInteger: JsonFromSchema<typeof UserSchema>["age"] = projected.score;
+const crossRefinementShape: JsonFromSchema<typeof UserSchema>["percent"] = projected.age;
+const arithmeticInteger: JsonFromSchema<typeof UserSchema>["age"] = projected.age + 1;
+const dividedInteger: JsonFromSchema<typeof UserSchema>["age"] = projected.age / 1;
+const mathInteger: JsonFromSchema<typeof UserSchema>["age"] = Math.abs(projected.age);
+const concatenatedString: JsonFromSchema<typeof UserSchema>["code"] = projected.code + "";
+const slicedString: JsonFromSchema<typeof UserSchema>["code"] = projected.code.slice(0);
+const casedString: JsonFromSchema<typeof UserSchema>["code"] = projected.code.toUpperCase();
 const plainAlphabet: JsonFromSchema<typeof UserSchema>["key"] = "abc";
 // @ts-expect-error a plain number has no Hson number evidence
 const ordinaryNumber: HsonNumber = 37;
@@ -66,13 +51,10 @@ consumeCertified(Hson.data`<name "Ada">`);
 // Runtime certification grants this Schema's proof after validation.
 consumeCertified(UserSchema.certify(canonical));
 // @ts-expect-error optional means absence, not explicit undefined
-const explicitUndefined: JsonFromSchema<typeof UserSchema> = { ...certified, nickname: undefined };
-// @ts-expect-error recursive generated evidence cannot be supplied structurally or through a caller generic
-const fabricatedRecursive: JsonFromSchema<typeof TreeSchema> = { value: "root", age: hsonCalc(1), children: [] };
-// @ts-expect-error the referenced Age refinement is not obscured by ref
-const plainReferencedAge: JsonFromSchema<typeof TreeSchema>["age"] = hsonCalc(1);
-// @ts-expect-error structurally equal but declaration-distinct definitions retain separate proof identity
-const unrelatedDefinitionProof: typeof reuse.right = reuse.left;
+const explicitUndefined: JsonFromSchema<typeof UserSchema> = { ...projected, nickname: undefined };
+const fabricatedRecursive: JsonFromSchema<typeof TreeSchema> = { value: "root", age: 1, children: [] };
+const plainReferencedAge: JsonFromSchema<typeof TreeSchema>["age"] = 1;
+const unrelatedDefinitionShape: typeof reuse.right = reuse.left;
 // @ts-expect-error broad canonical Hson cannot impersonate recursive Schema evidence
 const broadRecursiveHson: HsonData<typeof TreeSchema> = canonical;
 
@@ -94,7 +76,7 @@ void spreadArray;
 void mappedArray;
 void concatenatedArray;
 void plainInteger;
-void wrongNumericProof;
+void crossRefinementShape;
 void arithmeticInteger;
 void dividedInteger;
 void mathInteger;
@@ -112,6 +94,6 @@ void localArgs;
 void authoritativePayload;
 void fabricatedRecursive;
 void plainReferencedAge;
-void unrelatedDefinitionProof;
+void unrelatedDefinitionShape;
 void broadRecursiveHson;
 void TreeSchema;

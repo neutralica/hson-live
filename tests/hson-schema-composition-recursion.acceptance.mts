@@ -130,8 +130,8 @@ check("productive mutual recursion lowers and emits finite mutually recursive al
   if (!result.ok) return;
   assert.equal(result.value.recursiveSccCount, 1);
   const generated = generate_hson_schema_types("MutualSchema", result.value.semantic, result.value.definitions);
-  assert.match(generated.declarations, /type __MutualSchemaDefinition0/);
-  assert.match(generated.declarations, /type __MutualSchemaDefinition1/);
+  assert.match(generated.declarations, /type A/);
+  assert.match(generated.declarations, /type B/);
   assert.ok(generated.declarations.length < 10_000);
 });
 

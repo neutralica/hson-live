@@ -80,9 +80,10 @@ the same source-association edit model. Only the destination differs.
 Authored files are never written, formatted, normalized, or temporarily rewritten.
 The generated representation contains annotations, assertions, and type-only
 imports linking the runtime `Hson.schema` expression to the existing
-`Evidence["value"]`, `Evidence["mode"]`, and `Evidence["identity"]`. Private
-refinement proofs and mutation-candidate associations are unchanged. Generated
-local aliases avoid collisions with identifiers in the authored module.
+`Evidence["value"]`, `Evidence["mode"]`, and `Evidence["identity"]`. Data evidence
+carries a readonly structural projection; certification identity remains separate,
+and write signatures derive their proposal shapes independently.
+Generated local aliases avoid collisions with identifiers in the authored module.
 
 Non-Schema project inputs are mirrored too. The generated configuration extends
 the original configuration to preserve checking options, rebases local `baseUrl`,

@@ -1,3 +1,5 @@
+import ts from "typescript";
+
 import type { HsonSchemaDataSemanticNode, HsonSchemaDefinition, HsonSchemaDocumentContent, HsonSchemaDocumentElement, HsonSchemaDocumentItem, HsonSchemaSemanticNode } from "./compiler.js";
 
 export type GeneratedHsonSchemaTypes = Readonly<{
@@ -31,7 +33,9 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     if (aliases.has(definitionName)) return;
     const definition = definitionsByName.get(definitionName);
     if (definition === undefined) throw new Error(`Missing generated Schema definition ${JSON.stringify(definitionName)}.`);
-    aliases.set(definitionName, `__${name}Definition${aliases.size}`);
+    aliases.set(definitionName, root.kind === "document" || root.kind === "document-element"
+      ? `__${name}Definition${aliases.size}`
+      : structural_definition_name(definitionName, aliases.size));
     reachableDefinitions.push(definition);
     if (definition.schema.kind === "document-element") visitDocument(definition.schema); else visitData(definition.schema);
   };
@@ -50,13 +54,9 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     proofDeclarations.push(`abstract class ${className} { declare private readonly __hsonSchemaProof${proofIndex}: void; }`);
     return className;
   };
-  const mutationCandidate = (proofName: string, candidate: string): string => (
-    `${proof(proofName)} & HsonSchemaMutationCandidate<${candidate}>`
-  );
-  const candidateAliases = new Map<string, string>(
-    [...aliases.entries()].map(([definitionName, alias]) => [definitionName, `${alias}MutationCandidate`]),
-  );
-  const emitDataCandidate = (schema: HsonSchemaDataSemanticNode): string => {
+  // Data reads express structure only. Constraints beyond TypeScript's shape
+  // model are checked at admission, while Schema identity lives in Evidence.
+  const emitData = (schema: HsonSchemaDataSemanticNode): string => {
     switch (schema.kind) {
       case "string": return "string";
       case "number": return "number";
@@ -69,45 +69,12 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
         return Object.is(schema.value, -0) ? "0" : String(schema.value);
       }
       case "object": {
-        const fields = schema.members.map((member) => `${property_name(member.name)}${member.optional ? "?" : ""}: ${emitDataCandidate(member.schema)};`).join(" ");
+        const fields = schema.members.map((member) => `readonly ${property_name(member.name)}${member.optional ? "?" : ""}: ${emitData(member.schema)};`).join(" ");
         return `{ ${fields} }`;
       }
-      case "array": return `Array<${emitDataCandidate(schema.item)}>`;
-      case "tuple": return `[${schema.items.map(emitDataCandidate).join(", ")}]`;
-      case "union": return schema.choices.map((choice) => `(${emitDataCandidate(choice)})`).join(" | ");
-      case "ref": {
-        const alias = candidateAliases.get(schema.name);
-        if (alias === undefined) throw new Error(`Unreachable generated Schema ref ${JSON.stringify(schema.name)}.`);
-        return alias;
-      }
-    }
-  };
-  const refined = (base: string, schema: Extract<HsonSchemaDataSemanticNode, { refinements: readonly unknown[] }>, path: string): string => schema.refinements.reduce(
-    (type, refinement, index) => `${type} & ${mutationCandidate(`${path}${refinement.member[0]?.toUpperCase() ?? "R"}${refinement.member.slice(1)}R${index}`, emitDataCandidate(schema))}`,
-    base,
-  );
-  const emitData = (schema: HsonSchemaDataSemanticNode, path: string): string => {
-    switch (schema.kind) {
-      case "string": return refined("string", schema, path);
-      case "number": return refined("HsonNumber & HsonSchemaMutationCandidate<number>", schema, path);
-      case "boolean": return "boolean";
-      case "null": return "null";
-      case "any": return "JsonValue";
-      case "exact": {
-        if (schema.value === null) return "null";
-        if (typeof schema.value === "string" || typeof schema.value === "boolean") return JSON.stringify(schema.value);
-        const spelling = Object.is(schema.value, -0) ? "0" : String(schema.value);
-        const candidate = emitDataCandidate(schema);
-        const zeroProof = schema.value === 0 ? ` & ${mutationCandidate(`${path}Zero`, candidate)}` : "";
-        return `${spelling} & HsonNumber & HsonSchemaMutationCandidate<${candidate}>${zeroProof}`;
-      }
-      case "object": {
-        const fields = schema.members.map((member, index) => `readonly ${property_name(member.name)}${member.optional ? "?" : ""}: ${emitData(member.schema, `${path}M${index}`)};`).join(" ");
-        return `Readonly<{ ${fields} }> & ${mutationCandidate(`${path}Object`, emitDataCandidate(schema))}`;
-      }
-      case "array": return refined(`ReadonlyArray<${emitData(schema.item, `${path}Item`)}> & ${mutationCandidate(`${path}Array`, emitDataCandidate(schema))}`, schema, path);
-      case "tuple": return refined(`readonly [${schema.items.map((item, index) => emitData(item, `${path}T${index}`)).join(", ")}] & ${mutationCandidate(`${path}Tuple`, emitDataCandidate(schema))}`, schema, path);
-      case "union": return schema.choices.map((choice, index) => `(${emitData(choice, `${path}U${index}`)})`).join(" | ");
+      case "array": return `ReadonlyArray<${emitData(schema.item)}>`;
+      case "tuple": return `readonly [${schema.items.map(emitData).join(", ")}]`;
+      case "union": return schema.choices.map((choice) => `(${emitData(choice)})`).join(" | ");
       case "ref": {
         const alias = aliases.get(schema.name);
         if (alias === undefined) throw new Error(`Unreachable generated Schema ref ${JSON.stringify(schema.name)}.`);
@@ -172,31 +139,23 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     return `readonly [${items.join(", ")}]`;
   };
 
-  const definitionCandidateDeclarations = reachableDefinitions.flatMap((definition) => {
-    if (definition.schema.kind === "document-element") return [];
-    const alias = candidateAliases.get(definition.name);
-    if (alias === undefined) throw new Error(`Missing generated candidate alias for ${JSON.stringify(definition.name)}.`);
-    return [`type ${alias} = ${emitDataCandidate(definition.schema)};`];
-  });
+  // Recursive application declarations must be able to name authored ref targets.
   const definitionDeclarations = reachableDefinitions.map((definition, index) => {
     const alias = aliases.get(definition.name);
     if (alias === undefined) throw new Error(`Missing generated alias for ${JSON.stringify(definition.name)}.`);
-    const body = definition.schema.kind === "document-element" ? emitDocumentElement(definition.schema, `D${index}`) : emitData(definition.schema, `D${index}`);
-    if (definition.schema.kind === "document-element") {
-      return `type ${alias} = (${body}) & ${proof(`D${index}Definition`)};`;
-    }
-    const candidate = candidateAliases.get(definition.name);
-    if (candidate === undefined) throw new Error(`Missing generated candidate alias for ${JSON.stringify(definition.name)}.`);
-    return `type ${alias} = (${body}) & ${mutationCandidate(`D${index}Definition`, candidate)};`;
+    const body = definition.schema.kind === "document-element" ? emitDocumentElement(definition.schema, `D${index}`) : emitData(definition.schema);
+    return definition.schema.kind === "document-element"
+      ? `type ${alias} = (${body}) & ${proof(`D${index}Definition`)};`
+      : `export type ${alias} = ${body};`;
   });
   const type = root.kind === "document"
     ? `Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: ${emitDocumentRootContent(root.content, "RootContent")}; }> & ${proof("RootDocument")}`
     : root.kind === "document-element"
       ? `Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: readonly [${emitDocumentElement(root, "RootItem")}]; }> & ${proof("RootDocument")}`
-    : emitData(root, "Root");
+    : emitData(root);
   return Object.freeze({
     proofNodeCount,
-    declarations: `${proofDeclarations.join("\n")}\n${definitionCandidateDeclarations.join("\n")}${definitionCandidateDeclarations.length === 0 ? "" : "\n"}${definitionDeclarations.join("\n")}${definitionDeclarations.length === 0 ? "" : "\n"}type __Value = ${type};\ndeclare const __Identity: unique symbol;\nexport type Evidence = Readonly<{ value: __Value; mode: ${JSON.stringify(root.kind === "document" || root.kind === "document-element" ? "document" : "data")}; identity: typeof __Identity }>;`,
+    declarations: `${proofDeclarations.join("\n")}${proofDeclarations.length === 0 ? "" : "\n"}${definitionDeclarations.join("\n")}${definitionDeclarations.length === 0 ? "" : "\n"}declare const __Identity: unique symbol;\nexport type Evidence = Readonly<{ value: ${type}; mode: ${JSON.stringify(root.kind === "document" || root.kind === "document-element" ? "document" : "data")}; identity: typeof __Identity }>;`,
   });
 }
 
@@ -205,4 +164,15 @@ const EXACT_DOCUMENT_REPEAT_TUPLE_LIMIT = 32;
 
 function property_name(name: string): string {
   return /^[$A-Z_a-z][$\w]*$/.test(name) ? name : JSON.stringify(name);
+}
+
+/** Keep authored ref names where valid, avoiding built-ins used by the emitter. */
+function structural_definition_name(name: string, index: number): string {
+  const reserved = new Set(["Evidence", "JsonValue", "HsonNode", "ReadonlyArray", "Readonly", "Array", "Record", "__Identity",
+    "undefined", "eval", "arguments"]);
+  // Keywords and contextual keywords must not be emitted as type-alias names
+  // or refs. Let TypeScript classify them rather than maintaining a keyword list.
+  return /^[$A-Z_a-z][$\w]*$/.test(name) && !reserved.has(name) && !name.startsWith("$SchemaRef")
+    && ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, name).scan() === ts.SyntaxKind.Identifier
+    ? name : `$SchemaRef${index}`;
 }

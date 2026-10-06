@@ -1,8 +1,9 @@
-import type { HsonSchema, HsonSchemaMode } from "../../api/transform/transform.types.js";
+import type { HsonSchema, HsonSchemaMode, JsonFromSchema } from "../../api/transform/transform.types.js";
 
-/** Internal data-library evidence; library admission establishes the family. */
+/** Structural data-library reads; admission separately establishes Schema identity. */
 export type DataSchemaValue<TSchema extends HsonSchema> =
-  TSchema extends HsonSchema<infer TValue, HsonSchemaMode> ? TValue : never;
+  TSchema extends HsonSchema<unknown, "data"> ? JsonFromSchema<TSchema>
+    : TSchema extends HsonSchema<infer TValue, HsonSchemaMode> ? TValue : never;
 
 /** Internal document graph evidence, never an application value projection API. */
 export type DocumentSchemaGraph<TSchema extends HsonSchema> =
