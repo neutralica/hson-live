@@ -528,11 +528,10 @@ export function parse_tokens(
             });
         }
 
-        // A complete bare primitive is one semantic value. Primitive leaves
-        // cannot participate in top-level document structure.
+        // A typed primitive must be the sole semantic value. String leaves
+        // may participate in ordered element/content-mode root structure.
         const containsValueLeaf = kids.some((child) => child.$_tag === VAL_TAG);
-        const containsStringLeaf = kids.some((child) => child.$_tag === STR_TAG);
-        if (containsValueLeaf || (containsStringLeaf && !options.allowTopLevelDocumentText)) {
+        if (containsValueLeaf) {
             const second = topPositions[1] ?? topPositions[0];
             const hasStructural = kids.some((child) => child.$_tag !== VAL_TAG && child.$_tag !== STR_TAG);
             _throw_transform_err(

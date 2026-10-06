@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 
 import * as publicApi from "../src/index.ts";
-import { Hson, hsonLiveMap, hsonLiveTree, hsonTransform, type HsonDocument } from "../src/index.ts";
+import { ANY_DOCUMENT, Hson, hsonLiveMap, hsonLiveTree, hsonTransform, type HsonDocument } from "../src/index.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { serialize_hson_owned_document_content } from "../src/api/transform/serializers/serialize-hson.ts";
 import type { HsonCanonical } from "../src/api/transform/transform.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -286,6 +288,53 @@ check("every accepted fixture has total exact readable serialization closure", (
   }
   assert.equal(fixtures[2], "<main/>\n<aside/>");
   assert.doesNotMatch(fixtures[2] ?? "", /_hson_root/);
+});
+
+check("every nonempty document root shape closes through generic Hson and exact document qualification", () => {
+  const fixtures: readonly HsonDocument[] = [
+    Hson.document`"a"`,
+    Hson.document`"a" "b"`,
+    Hson.document`""`,
+    Hson.document`"" ""`,
+    Hson.document`<p/>`,
+    Hson.document`<p/><q/>`,
+    Hson.document`"a"<p/>`,
+    Hson.document`<p/>"a"`,
+    Hson.document`"a"<p/>"b"`,
+    Hson.document`"a" "" "b"`,
+    Hson.document`<p "a" "" "b"/>`,
+  ];
+  for (const document of fixtures) {
+    const owned = Hson.document.toNode(document);
+    const generic = hsonTransform.fromHson(document).toNode();
+    assert.equal(canonical_hson_graph_equal(Hson.document.toNode(Hson.document.fromNode(generic)), owned), true);
+    for (const noBreak of [false, true]) {
+      const source = serialize_hson_owned_document_content(owned, { noBreak });
+      const semantic = hsonTransform.fromHson(source).toNode();
+      const qualified = Hson.document.toNode(Hson.document.fromNode(semantic));
+      assert.equal(canonical_hson_graph_equal(qualified, owned), true, source);
+      assert.equal(canonical_hson_graph_equal(Hson.document.toNode(ANY_DOCUMENT.certify(source)), owned), true);
+    }
+  }
+});
+
+check("generic mixed and text roots retain LiveMap logical document positions", () => {
+  for (const document of [Hson.document`"a"<p/>"b"`, Hson.document`"a" "" "b"`]) {
+    const semantic = hsonTransform.fromHson(document).toNode();
+    const qualified = Hson.document.fromNode(semantic);
+    const page = hsonLiveMap.fromLibraries({ page: { document: qualified, schema: ANY_DOCUMENT } }).lib("page");
+    assert.equal(page.at([]).asRoot()?.kind(), "root");
+    assert.equal(page.at([0]).snap(), "a");
+    assert.equal(page.at([0]).asText()?.kind(), "text");
+    assert.equal(page.at([2]).snap(), "b");
+    if (document.includes("<p/>")) {
+      assert.deepEqual(page.at([1]).snap(), node("p"));
+      assert.equal(page.at([1]).asElement()?.kind(), "element");
+    } else {
+      assert.equal(page.at([1]).snap(), "");
+      assert.equal(page.at([1]).asText()?.kind(), "text");
+    }
+  }
 });
 
 check("the core value has no DOM dependency or browser-realization surface", () => {

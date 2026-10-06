@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { hson } from "../src/hson.ts";
+import { Hson } from "../src/hson-authoring.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { construct_source_1 } from "../src/api/transform/constructors/construct-source-1.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
@@ -10,7 +11,7 @@ import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/de
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { TransformError } from "../src/core/errors.ts";
 import { is_Node } from "../src/core/node-guards.ts";
-import type { HsonNode, Primitive } from "../src/core/types.ts";
+import type { HsonNode, JsonValue, Primitive } from "../src/core/types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -274,6 +275,90 @@ check("multiple tagged element-side inputs retain one _hson_elem content carrier
   const value = publicNode(`<a/><b/>`);
   assert.equal(value.$_tag, "_hson_elem");
   assert.deepEqual(value.$_content.map((child) => (child as HsonNode).$_tag), ["a", "b"]);
+});
+
+check("nonempty canonical content roots close exactly in readable and compact layouts", () => {
+  const str = (value: string) => node("_hson_str", [value]);
+  const elem = (...items: HsonNode[]) => node("_hson_elem", items);
+  const fixtures: readonly (readonly [string, HsonNode])[] = [
+    [`"a"`, str("a")],
+    [`""`, str("")],
+    [`<p/>`, elem(node("p"))],
+    [`<p/><q/>`, elem(node("p"), node("q"))],
+    [`"a" "b"`, elem(str("a"), str("b"))],
+    [`"a" "" "b"`, elem(str("a"), str(""), str("b"))],
+    [`"" ""`, elem(str(""), str(""))],
+    [`"a"<p/>`, elem(str("a"), node("p"))],
+    [`<p/>"a"`, elem(node("p"), str("a"))],
+    [`"a"<p/>"b"`, elem(str("a"), node("p"), str("b"))],
+  ];
+  for (const [source, expected] of fixtures) {
+    assert.deepEqual(publicNode(source), expected, source);
+    assert.deepEqual(hsonTransform.fromHson(source).toNode(), expected, source);
+    assert.deepEqual(detach_hson_root_value(parse_hson(source)), expected, source);
+    for (const noBreak of [false, true]) {
+      const serialized = serialize_hson(expected, { noBreak });
+      assert.doesNotMatch(serialized, /_hson_root/);
+      assert.equal(canonical_hson_graph_equal(publicNode(serialized), expected), true, serialized);
+    }
+  }
+  assert.deepEqual(publicNode(Hson.canonical`"a" "b"`), elem(str("a"), str("b")));
+  assert.deepEqual(publicNode(Hson.canonical`"a"<p/>"b"`), elem(str("a"), node("p"), str("b")));
+});
+
+check("root text segmentation and empty leaves remain semantic distinctions", () => {
+  const split = publicNode(`"a" "b"`);
+  const combined = publicNode(`"ab"`);
+  const emptyPair = publicNode(`"" ""`);
+  const emptySingle = publicNode(`""`);
+  assert.equal(canonical_hson_graph_equal(split, combined), false);
+  assert.equal(canonical_hson_graph_equal(emptyPair, emptySingle), false);
+  assert.deepEqual(publicNode(`"a" "" "b"`).$_content, [
+    node("_hson_str", ["a"]), node("_hson_str", [""]), node("_hson_str", ["b"]),
+  ]);
+});
+
+check("legal JSON ELEM scaffolds close through Hson and retain their exact Binary graphs", () => {
+  const str = (value: string) => node("_hson_str", [value]);
+  const elem = (...items: HsonNode[]) => node("_hson_elem", items);
+  const fixtures: readonly (readonly [JsonValue, HsonNode, HsonNode])[] = [
+    [{ _hson_elem: ["a"] }, elem(str("a")), str("a")],
+    [{ _hson_elem: ["a", "b"] }, elem(str("a"), str("b")), elem(str("a"), str("b"))],
+    [{ _hson_elem: ["a", "", "b"] }, elem(str("a"), str(""), str("b")), elem(str("a"), str(""), str("b"))],
+    [{ _hson_elem: ["a", { p: "" }, "b"] }, elem(str("a"), node("p"), str("b")), elem(str("a"), node("p"), str("b"))],
+    [{ _hson_elem: [{ p: "" }, { p: "" }] }, elem(node("p"), node("p")), elem(node("p"), node("p"))],
+  ];
+  for (const [json, carrier, completeValue] of fixtures) {
+    const admitted = hsonTransform.fromJson(json);
+    assert.deepEqual(admitted.toNode(), root(carrier));
+    const binary = admitted.toBinary().serialize();
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(binary).toNode(), carrier), true);
+    assert.deepEqual(hsonTransform.fromJson(admitted.toJson().serialize()).toNode(), root(carrier));
+    for (const noBreak of [false, true]) {
+      const text = noBreak ? admitted.toHson().noBreak().serialize() : admitted.toHson().serialize();
+      assert.equal(canonical_hson_graph_equal(publicNode(text), completeValue), true, text);
+    }
+  }
+});
+
+check("root content expansion preserves typed-value and data-mode exclusions", () => {
+  const fixtures: readonly (readonly [string, string])[] = [
+    [`1 2`, "HSON_ROOT_MULTIPLE_VALUES"],
+    [`"a" 1`, "HSON_ROOT_MULTIPLE_VALUES"],
+    [`1<p/>`, "HSON_ROOT_MIXED_MODES"],
+    [`<p/>1`, "HSON_ROOT_MIXED_MODES"],
+    [`<x 1><y 2>`, "HSON_LEGACY_ADJACENT_OBJECT"],
+    [`«1» "a"`, "HSON_ROOT_MIXED_MODES"],
+    [`"a" «1»`, "HSON_ROOT_MIXED_MODES"],
+    [`<x 1><p/>`, "HSON_ROOT_MIXED_MODES"],
+    [`<p 1/>`, "HSON_ELEMENT_TYPED_CONTENT_FORBIDDEN"],
+    [`<_hson_elem "a"/>`, "authored-reserved-name"],
+    [`<_hson_root <p/>/>`, "authored-reserved-name"],
+  ];
+  for (const [source, code] of fixtures) expectTransformError(source, code);
+  assert.throws(() => serialize_hson(node("_hson_elem", [node("_hson_val", [1])])));
+  assert.throws(() => Hson.data.fromHson(Hson.canonical`"a" "b"`));
+  assert.throws(() => Hson.data.fromHson(Hson.canonical`"a"<p/>`));
 });
 
 check("single tagged object-side input detaches only _hson_root", () => {
@@ -548,8 +633,10 @@ check("canonical equality remains root-sensitive", () => {
   assert.equal(canonical_hson_graph_equal(root(semantic), semantic), false);
 });
 
-check("top-level primitive sequences and arbitrary bare names remain invalid", () => {
-  assert.throws(() => publicNode(`"x" <a/>`), /top-level primitive must be the sole/);
+check("root string and element content closes while arbitrary bare names remain invalid", () => {
+  assert.deepEqual(publicNode(`"x" <a/>`), node("_hson_elem", [
+    node("_hson_str", ["x"]), node("a"),
+  ]));
   assert.throws(() => publicNode(`value`), /unexpected bare token/);
 });
 

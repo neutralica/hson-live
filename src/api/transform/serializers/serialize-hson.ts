@@ -37,7 +37,6 @@ export type HsonSerializeInputOptions = Readonly<{
 type HsonSerializeOptions = Readonly<{
   layout: HsonLayout;
   exactRuntimeIdentity: boolean;
-  ownedDocumentText: boolean;
 }>;
 
 type SerializeContext = Readonly<{
@@ -370,16 +369,11 @@ function emitElementCluster(
       "serialize_hson.emitElement",
     );
   }
-  if (
-    !(ctx.options.ownedDocumentText && isRootSemanticValue)
-    && node.$_content.length === 1
-    && is_Node(node.$_content[0])
-    && (node.$_content[0].$_tag === STR_TAG || node.$_content[0].$_tag === VAL_TAG)
-  ) {
-    _throw_transform_err(
-      "serialize-hson: detached scalar _hson_elem carrier is not a canonical semantic element value",
-      "serialize_hson.emitElementCluster",
-    );
+  const only = node.$_content.length === 1 ? node.$_content[0] : undefined;
+  if (isRootSemanticValue && is_Node(only) && only.$_tag === STR_TAG) {
+    // At a complete Hson value boundary, ELEM[STR] aliases the universal
+    // string value. Nested element-content relationships remain intact.
+    return emitNode(only, depth, undefined, ctx);
   }
   return node.$_content.map((child) => {
     if (!is_Node(child)) {
@@ -560,7 +554,6 @@ function serialize_hson_with_ownership(
     options: {
       layout: inputOptions.noBreak ? "compact" : "readable",
       exactRuntimeIdentity,
-      ownedDocumentText,
     },
     guard: cycleGuard(),
   };

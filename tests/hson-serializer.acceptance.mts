@@ -1712,7 +1712,7 @@ check("detached object scalar carriers normalize to strings and typed values", (
   }
 });
 
-check("detached element string carriers normalize to exact text leaves", () => {
+check("complete singleton element string carriers serialize as scalar text without changing their graph", () => {
   for (const text of ["text", ""]) {
     const leaf: HsonNode = { $_tag: "_hson_str", $_content: [text] };
     const carrier: HsonNode = { $_tag: "_hson_elem", $_content: [leaf] };
@@ -1720,7 +1720,20 @@ check("detached element string carriers normalize to exact text leaves", () => {
     assert.deepEqual(hsonTransform.fromNode(carrier).toNode(), leaf);
     assert.deepEqual(hson.fromNode(carrier).toNode(), leaf);
     assert.deepEqual(carrier, before);
-    assert.throws(() => serialize_hson(carrier), /detached scalar _hson_elem carrier/);
+    for (const noBreak of [false, true]) {
+      const wire = serialize_hson(carrier, { noBreak });
+      assert.equal(wire, JSON.stringify(text));
+      assert.equal(canonical_hson_graph_equal(parse_serialized_value(wire), leaf), true);
+      assert.equal(canonical_hson_graph_equal(carrier, leaf), false);
+    }
+    assert.deepEqual(carrier, before);
+    const nested: HsonNode = { $_tag: "p", $_content: [carrier] };
+    const complete: HsonNode = { $_tag: "_hson_elem", $_content: [nested] };
+    for (const noBreak of [false, true]) {
+      const wire = serialize_hson(complete, { noBreak });
+      assert.equal(canonical_hson_graph_equal(parse_serialized_value(wire), complete), true);
+      assert.deepEqual(nested.$_content, [carrier]);
+    }
   }
 });
 

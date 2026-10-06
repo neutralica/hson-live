@@ -11,6 +11,8 @@ import {
   type CircuitTransformBoundary,
 } from "../src/diagnostics/circuit-engine.ts";
 import type { HsonNode } from "../src/core/types.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { universalCircuitBoundary } from "./circuit-test-helpers.mts";
 
 const LAUNCHER = "diagnostics.circuit-semantic-engine";
@@ -94,6 +96,64 @@ check("one conversion leg owns serialization, parse, and strict evidence", () =>
   assert.ok(result.leg.serializedOutput);
   assert.deepEqual(result.operations, { parses: 1, serializations: 1, strictComparisons: 1, laps: 0, directions: 0 });
 });
+
+check("singleton JSON text carriers normalize only at the complete circuit boundary", () => {
+  for (const text of ["a", ""]) {
+    const source = JSON.stringify({ _hson_elem: [text] });
+    const raw = hsonTransform.fromJson(source).toNode();
+    const normalized = universalCircuitBoundary.parse("json", source);
+    assert.equal(normalized.$_tag, "_hson_str");
+    assert.deepEqual(normalized.$_content, [text]);
+    assert.equal(canonical_hson_graph_equal(raw, normalized), false);
+    const prepared = prepare_explicit_entry(universalCircuitBoundary, "json", source, { now: () => 0 });
+    assert.ok(prepared.prepared);
+    const leg = run_conversion_leg(
+      universalCircuitBoundary,
+      { format: "json", text: source, node: prepared.prepared.node },
+      "hson",
+      { direction: "cw", lap: 0, leg: 0 },
+      { now: () => 0 },
+    );
+    assert.equal(leg.leg.comparison?.equal, true);
+    const nested = JSON.stringify({ _hson_elem: [{ p: { _hson_elem: [text] } }] });
+    const nestedRoot = hsonTransform.fromJson(nested).toNode();
+    assert.equal(canonical_hson_graph_equal(
+      universalCircuitBoundary.parse("json", nested),
+      detach_hson_root_value(nestedRoot),
+    ), true);
+    assert.equal(universalCircuitBoundary.parse("json", '{"_hson_elem":["a","b"]}').$_tag, "_hson_elem");
+  }
+});
+
+const singletonBoundaryMismatches: readonly (readonly [string, string, string])[] = [
+  ["JSON circuit boundary distinguishes concatenated scalar from two text leaves", '"ab"', '{"_hson_elem":["a","b"]}'],
+  ["JSON circuit boundary distinguishes empty scalar from two empty text leaves", '""', '{"_hson_elem":["",""]}'],
+  ["JSON circuit boundary preserves different singleton text payloads", '{"_hson_elem":["a"]}', '{"_hson_elem":["b"]}'],
+  ["JSON circuit boundary preserves mixed-content ordering", '{"_hson_elem":["a",{"p":""}]}', '{"_hson_elem":[{"p":""},"a"]}'],
+];
+
+for (const [name, source, mismatchedSource] of singletonBoundaryMismatches) {
+  check(name, () => {
+    const prepared = prepare_explicit_entry(universalCircuitBoundary, "json", source, { now: () => 0 });
+    assert.ok(prepared.prepared);
+    // Inject a mismatched wire value while retaining the real JSON parse boundary.
+    const boundary: CircuitTransformBoundary = Object.freeze({
+      ...universalCircuitBoundary,
+      serialize: () => mismatchedSource,
+    });
+    const result = run_conversion_leg(
+      boundary,
+      { format: "json", text: source, node: prepared.prepared.node },
+      "json",
+      { direction: "cw", lap: 0, leg: 0 },
+      { now: () => 0 },
+    );
+    assert.equal(result.leg.serializedOutput, mismatchedSource);
+    assert.equal(result.leg.comparison?.equal, false);
+    assert.equal(result.leg.failure?.stage, "compare");
+    assert.deepEqual(result.operations, { parses: 1, serializations: 1, strictComparisons: 1, laps: 0, directions: 0 });
+  });
+}
 
 check("one direction and one lap executes four source-sensitive legs", () => {
   const result = run_directional_lap(universalCircuitBoundary, prepared_json(), "cw", { now: () => 0 });
@@ -262,6 +322,6 @@ check("strict closure distinguishes element, object, and multi-node document gra
   assert.equal(strict_leg(element, documentSequence).leg.comparison?.equal, false);
 });
 
-assert.equal(checks, 25);
+assert.equal(checks, 30);
 process.stdout.write(`# ${checks} circuit semantic engine checks passed\n`);
 testEvents.terminal("pass");
