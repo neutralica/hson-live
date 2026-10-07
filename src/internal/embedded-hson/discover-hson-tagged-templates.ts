@@ -80,7 +80,11 @@ export type HsonTaggedTemplateDiscoveryResult = Readonly<{
   interpolated: readonly InterpolatedEmbeddedHsonTemplate[];
 }>;
 
-export function create_hson_source_program(fileName: string, hostText: string): ts.Program {
+export function create_hson_source_program(
+  fileName: string,
+  hostText: string,
+  typeOptions: Pick<ts.CompilerOptions, "strictNullChecks" | "noImplicitAny"> = {},
+): ts.Program {
   const options: ts.CompilerOptions = {
     jsx: ts.JsxEmit.Preserve,
     module: ts.ModuleKind.ESNext,
@@ -88,6 +92,7 @@ export function create_hson_source_program(fileName: string, hostText: string): 
     noResolve: true,
     skipLibCheck: true,
     target: ts.ScriptTarget.ESNext,
+    ...typeOptions,
   };
   const compilerHost: ts.CompilerHost = {
     fileExists(candidate): boolean {

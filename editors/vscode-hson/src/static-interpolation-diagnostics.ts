@@ -10,7 +10,9 @@ import { diagnose_hson_prefix } from "./tag-admission.js";
 export function static_interpolation_diagnostics(fileName: string, text: string): readonly DocumentDiagnosticSpec[] {
   const discovery = discover_hson_tagged_templates(fileName, text);
   if (discovery.interpolated.length === 0) return [];
-  const program = create_hson_source_program(fileName, text);
+  // Preserve nullable union constituents and checker inference for reassigned
+  // bindings without loading libraries or resolving project imports.
+  const program = create_hson_source_program(fileName, text, { strictNullChecks: true, noImplicitAny: true });
   const file = program.getSourceFile(fileName);
   if (file === undefined) return [];
   const checker = program.getTypeChecker();
@@ -23,10 +25,8 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
   const diagnostics: DocumentDiagnosticSpec[] = [];
   for (const template of discovery.interpolated) {
     if (template.authoringKind === "schema") continue;
-    // A rejected position has no admissible candidate type. In particular,
-    // adjacent quoted holes must retain the existing partial-slot diagnosis.
-    if (diagnose_hson_prefix(template).some(diagnostic => diagnostic.code === "HSON_QUOTED_INTERPOLATION_PARTIAL"
-      || diagnostic.code === "HSON_INTERPOLATION_POSITION_INVALID")) continue;
+    const invalidPositions = diagnose_hson_prefix(template).filter(diagnostic => diagnostic.code === "HSON_QUOTED_INTERPOLATION_PARTIAL"
+      || diagnostic.code === "HSON_INTERPOLATION_POSITION_INVALID");
     const site = interpolation_site(template, fileName);
     let source = "";
     const slots: { offset: number; substitution: number }[] = [];
@@ -38,6 +38,10 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
     roles.forEach((role, index) => {
       const range = template.expressionRanges[index];
       if (range === undefined) return;
+      // Suppress only the rejected position; earlier proven roles remain useful.
+      const substitution = template.substitutionRanges[index];
+      if (substitution !== undefined && invalidPositions.some(diagnostic =>
+        diagnostic.range.start < substitution.end && diagnostic.range.end > substitution.start)) return;
       const expression = expressions.get(range.start);
       if (expression === undefined) return;
       const mismatch = interpolation_semantic_mismatch(role, expression_family(expression, checker, new Set()), template.authoringKind);
@@ -50,13 +54,19 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
 
 function type_family(node: ts.TypeNode, checker: ts.TypeChecker, seen = new Set<ts.Symbol>()): StaticInterpolationFamily {
   if (ts.isParenthesizedTypeNode(node)) return type_family(node.type, checker, seen);
+  if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+    if (is_official_hson_package_binding(node.typeName, "HsonData", checker)) return "data";
+    if (is_official_hson_package_binding(node.typeName, "HsonDocument", checker)) return "document";
+  }
+  const resolved = resolved_type_family(checker.getTypeFromTypeNode(node));
+  if (resolved !== "unknown") return resolved;
+  // Syntax supplements unavailable checker evidence, including official brands;
+  // it must not replace an already-resolved generic, callable, or object type.
   if (ts.isUnionTypeNode(node)) {
     const families = node.types.map(type => type_family(type, checker, new Set(seen)));
     return families.every(family => family === families[0]) ? families[0] ?? "unknown" : "unknown";
   }
   if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
-    if (is_official_hson_package_binding(node.typeName, "HsonData", checker)) return "data";
-    if (is_official_hson_package_binding(node.typeName, "HsonDocument", checker)) return "document";
     const symbol = checker.getSymbolAtLocation(node.typeName);
     const alias = symbol?.declarations?.find(ts.isTypeAliasDeclaration);
     if (symbol !== undefined && alias !== undefined) {
@@ -64,10 +74,7 @@ function type_family(node: ts.TypeNode, checker: ts.TypeChecker, seen = new Set<
       seen.add(symbol);
       return type_family(alias.type, checker, seen);
     }
-    const type = checker.getTypeFromTypeNode(node);
-    const primitive = unsupported_primitive_family(type);
-    if (primitive !== undefined) return primitive;
-    return type.flags & ts.TypeFlags.Object ? "object" : "unknown";
+    return "unknown";
   }
   switch (node.kind) {
     case ts.SyntaxKind.StringKeyword: return "string";
@@ -83,15 +90,25 @@ function type_family(node: ts.TypeNode, checker: ts.TypeChecker, seen = new Set<
     if (node.literal.kind === ts.SyntaxKind.TrueKeyword || node.literal.kind === ts.SyntaxKind.FalseKeyword) return "boolean";
     if (node.literal.kind === ts.SyntaxKind.NullKeyword) return "null";
   }
-  return unsupported_primitive_family(checker.getTypeFromTypeNode(node)) ?? "unknown";
+  return "unknown";
 }
 
-/** Only unequivocal primitive type flags; unions remain indeterminate. */
-function unsupported_primitive_family(type: ts.Type): StaticInterpolationFamily | undefined {
+/** Mixed families and unavailable constituents cannot establish incompatibility. */
+function resolved_type_family(type: ts.Type): StaticInterpolationFamily {
+  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) return "unknown";
+  if (type.isUnion()) {
+    const families = type.types.map(resolved_type_family);
+    return families.every(family => family === families[0]) ? families[0] ?? "unknown" : "unknown";
+  }
   if (type.flags & ts.TypeFlags.Undefined) return "undefined";
   if (type.flags & ts.TypeFlags.BigIntLike) return "bigint";
   if (type.flags & ts.TypeFlags.ESSymbolLike) return "symbol";
-  return undefined;
+  if (type.flags & ts.TypeFlags.NumberLike) return "number";
+  if (type.flags & ts.TypeFlags.BooleanLike) return "boolean";
+  if (type.flags & ts.TypeFlags.Null) return "null";
+  if (type.flags & ts.TypeFlags.StringLike) return "string";
+  if (type.flags & ts.TypeFlags.Object) return "object";
+  return "unknown";
 }
 
 function expression_family(node: ts.Expression, checker: ts.TypeChecker, seen: Set<ts.Symbol>): StaticInterpolationFamily {
@@ -116,17 +133,13 @@ function expression_family(node: ts.Expression, checker: ts.TypeChecker, seen: S
     const declaration = symbol.declarations?.find(item => ts.isVariableDeclaration(item) || ts.isParameter(item));
     if (declaration !== undefined && (ts.isVariableDeclaration(declaration) || ts.isParameter(declaration))) {
       if (declaration.type !== undefined) return type_family(declaration.type, checker);
-      if (ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined) return expression_family(declaration.initializer, checker, seen);
+      const resolved = resolved_type_family(checker.getTypeAtLocation(node));
+      if (resolved !== "unknown") return resolved;
+      if (ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined
+        && ts.isVariableDeclarationList(declaration.parent) && declaration.parent.flags & ts.NodeFlags.Const) {
+        return expression_family(declaration.initializer, checker, seen);
+      }
     }
   }
-  const type = checker.getTypeAtLocation(node);
-  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) return "unknown";
-  const primitive = unsupported_primitive_family(type);
-  if (primitive !== undefined) return primitive;
-  if (type.flags & ts.TypeFlags.NumberLike) return "number";
-  if (type.flags & ts.TypeFlags.BooleanLike) return "boolean";
-  if (type.flags & ts.TypeFlags.Null) return "null";
-  if (type.flags & ts.TypeFlags.StringLike) return "string";
-  if (type.flags & ts.TypeFlags.Object) return "object";
-  return "unknown";
+  return resolved_type_family(checker.getTypeAtLocation(node));
 }

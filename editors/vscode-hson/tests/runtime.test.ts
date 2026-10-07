@@ -754,6 +754,155 @@ check("mixed candidate unions and unavailable type evidence remain conservative"
   assert.deepEqual(codes('const s = Symbol(); Hson.canonical`${s}`;'), []);
 });
 
+check("mutable bindings use current checker evidence while immutable primitive aliases remain provable", () => {
+  const prefix = 'import { Hson } from "hson-live"; ';
+  const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/mutable-candidates.ts").map(diagnostic => diagnostic.code);
+  for (const binding of ["let", "var"]) {
+    const reassigned = binding + ' x = undefined; x = "37"; ';
+    assert.deepEqual(codes(reassigned + 'Hson.canonical`${x}`;'), []);
+    assert.deepEqual(codes(reassigned + 'const y = x; Hson.canonical`${y}`;'), []);
+    assert.deepEqual(codes(reassigned + 'Hson.document`"${x}"`;'), []);
+  }
+  assert.deepEqual(codes('const x = undefined; Hson.canonical`${x}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+  for (const declaration of ["const x = undefined;", "const x = 1n;", "declare const x: symbol;"]) {
+    assert.deepEqual(codes(declaration + 'const y = x; const z = y; Hson.canonical`${z}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+  }
+});
+
+check("resolved callable and generic aliases retain their concrete candidate families", () => {
+  const prefix = 'import { Hson } from "hson-live"; type Id<T> = T; ';
+  const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/resolved-aliases.ts").map(diagnostic => diagnostic.code);
+  const invalidDeclarations = [
+    "type F = () => void; declare const candidate: F;",
+    "type F = new () => object; declare const candidate: F;",
+    "type F = true extends true ? {} : string; declare const candidate: F;",
+    "declare const candidate: Id<bigint>;",
+    "declare const candidate: Id<symbol>;",
+  ];
+  for (const declaration of invalidDeclarations) {
+    for (const tag of ["canonical", "data", "document"]) {
+      const code = tag === "canonical" ? "HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"
+        : tag === "data" ? "HSON_INTERPOLATION_DATA_STATIC_TYPE" : "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE";
+      assert.deepEqual(codes(declaration + 'Hson.' + tag + '`${candidate}`;'), [code]);
+      assert.deepEqual(codes(declaration + 'Hson.' + tag + '`"${candidate}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
+    }
+  }
+  const undefinedAlias = "declare const candidate: Id<undefined>; ";
+  assert.deepEqual(codes(undefinedAlias + 'Hson.canonical`${candidate}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+  assert.deepEqual(codes(undefinedAlias + 'Hson.data`${candidate}`;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
+  assert.deepEqual(codes(undefinedAlias + 'Hson.document`<main ${candidate}/>`;'), []);
+  assert.deepEqual(codes(undefinedAlias + 'Hson.document`${candidate}`;'), []);
+  assert.deepEqual(codes(undefinedAlias + 'Hson.document`"${candidate}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
+  for (const type of ["any", "unknown", "never", "string"]) {
+    assert.deepEqual(codes('declare const candidate: Id<' + type + '>; Hson.canonical`${candidate}`;'), []);
+  }
+});
+
+check("same-family semantic return unions classify while mixed nullable evidence remains conservative", () => {
+  const prefix = 'import { Hson } from "hson-live"; declare const uniqueSymbol: unique symbol; ';
+  const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/semantic-unions.ts").map(diagnostic => diagnostic.code);
+  for (const type of ["1n | 2n", "symbol | typeof uniqueSymbol"]) {
+    const declaration = 'declare function candidate(): ' + type + '; ';
+    assert.deepEqual(codes(declaration + 'Hson.canonical`${candidate()}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+    assert.deepEqual(codes(declaration + 'Hson.document`"${candidate()}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
+  }
+  for (const type of ["string | bigint", "string | undefined", "bigint | symbol", "bigint | undefined", "any", "unknown", "never"]) {
+    const declaration = 'declare function candidate(): ' + type + '; ';
+    for (const tag of ["canonical", "data", "document"]) {
+      assert.deepEqual(codes(declaration + 'Hson.' + tag + '`${candidate()}`;'), []);
+      assert.deepEqual(codes(declaration + 'Hson.' + tag + '`"${candidate()}"`;'), []);
+    }
+  }
+  // Generic instantiation must preserve absence even through another alias.
+  const nullable = 'type Optional<T> = T | undefined; type B = Optional<bigint>; declare const candidate: B; ';
+  assert.deepEqual(codes(nullable + 'Hson.canonical`${candidate}`;'), []);
+  assert.deepEqual(codes(nullable + 'Hson.document`"${candidate}"`;'), []);
+});
+
+check("positional failures suppress only their own candidate diagnostics", () => {
+  const prefix = 'import { Hson } from "hson-live"; declare const s: string; ';
+  const diagnostics = (body: string) => diagnose(prefix + body, "typescript", "/workspace/independent-slots.ts");
+  const canonical = diagnostics('Hson.canonical`${{}} "prefix${s}"`;');
+  assert.deepEqual(canonical.map(diagnostic => diagnostic.code), ["HSON_QUOTED_INTERPOLATION_PARTIAL", "HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+  const document = diagnostics('Hson.document`<main ${1n} "prefix${s}"/>`;');
+  assert.deepEqual(document.map(diagnostic => diagnostic.code), ["HSON_QUOTED_INTERPOLATION_PARTIAL", "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(diagnostics('Hson.document`<main ${1n}/><other attr=${s}/>`;').map(diagnostic => diagnostic.code),
+    ["HSON_INTERPOLATION_POSITION_INVALID", "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  for (const tag of ["canonical", "data", "document"]) {
+    assert.deepEqual(diagnostics('Hson.' + tag + '`"${1n}${undefined}"`;').map(diagnostic => diagnostic.code), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
+  }
+});
+
+check("role recovery diagnoses independent later slots at their exact host ranges", () => {
+  const prefix = 'import { Hson } from "hson-live"; declare const s: string; declare const t: string; declare const valid: string; ';
+  const partial = "HSON_QUOTED_INTERPOLATION_PARTIAL";
+  const candidate = "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE";
+  const cases: readonly { body: string; expected: readonly [string, string][] }[] = [
+    { body: 'Hson.document`<main "prefix${s}" ${1n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
+    { body: 'Hson.document`<main ${1n} "prefix${s}"/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
+    { body: 'Hson.document`<main ${1n} "prefix${s}" ${2n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"], [candidate, "2n"]] },
+    { body: 'Hson.document`<main "prefix${s}" "other${t}" ${1n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
+    { body: 'Hson.document`<main ${valid} "prefix${s}" "${valid}" ${valid} ${1n} "other${t}" ${valid}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
+    { body: 'Hson.document`<main "${s}suffix" ${1n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
+    { body: 'Hson.document`<main "${1n}${undefined}" ${2n}/>`;', expected: [[partial, "${1n}"], [candidate, "2n"]] },
+    { body: 'Hson.document`<main title="prefix${s}" ${1n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
+    { body: 'Hson.document`<main attr=${s}/><other ${1n}/>`;', expected: [["HSON_INTERPOLATION_POSITION_INVALID", "${s}"], [candidate, "1n"]] },
+  ];
+  for (const { body, expected } of cases) {
+    const text = prefix + body;
+    const diagnostics = diagnose(text, "typescript", "/workspace/recovered-slots.ts");
+    assert.deepEqual(diagnostics.map(diagnostic => ({ code: diagnostic.code, range: diagnostic.range, precision: diagnostic.precision })),
+      expected.map(([code, expression]) => {
+        const start = text.indexOf(expression);
+        assert.notEqual(start, -1);
+        return { code, range: { start, end: start + expression.length }, precision: "exact" };
+      }), body);
+  }
+});
+
+check("role recovery leaves malformed public authoring templates rejected", () => {
+  const value = "text";
+  const partial = (error: unknown) => error instanceof TransformError && error.code === "HSON_QUOTED_INTERPOLATION_PARTIAL";
+  assert.throws(() => Hson.document`<main "prefix${value}" ${value}/>`, partial);
+  assert.throws(() => Hson.document`<main ${value} "prefix${value}"/>`, partial);
+  assert.throws(() => Hson.document`<main ${value} "prefix${value}" ${value}/>`, partial);
+  assert.throws(() => Hson.document`<main "prefix${value}" "other${value}" ${value}/>`, partial);
+  assert.throws(() => Hson.document`<main title="prefix${value}" ${value}/>`, partial);
+  assert.throws(() => Hson.document`<main attr=${value}/><other ${value}/>`,
+    (error: unknown) => error instanceof TransformError && error.code === "HSON_INTERPOLATION_POSITION_INVALID");
+});
+
+check("role discovery respects original structural evidence and retains only observed candidates", () => {
+  const prefix = 'import { Hson } from "hson-live"; declare const s: string; ';
+  const text = prefix + 'Hson.document`<main "prefix${s}" <x ${37}> ${2n}/>`;';
+  const diagnostics = diagnose(text, "typescript", "/workspace/original-structure.ts");
+  const start = text.indexOf("${s}");
+  assert.deepEqual(diagnostics.map(diagnostic => ({ code: diagnostic.code, range: diagnostic.range, precision: diagnostic.precision })),
+    [{ code: "HSON_QUOTED_INTERPOLATION_PARTIAL", range: { start, end: start + 4 }, precision: "exact" }]);
+
+  const observed = prefix + 'Hson.document`<main ${1n} "${s}" <x ${37}> ${2n}/>`;';
+  const retained = diagnose(observed, "typescript", "/workspace/partial-evidence.ts");
+  assert.deepEqual(retained.map(diagnostic => diagnostic.code), ["HSON_STRUCTURAL_MODE_CROSSING", "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(retained.filter(diagnostic => diagnostic.code === "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE").map(diagnostic => diagnostic.range),
+    [{ start: observed.indexOf("1n"), end: observed.indexOf("1n") + 2 }]);
+
+  const value = "37";
+  assert.throws(() => Hson.document`<main "prefix${value}" <x ${value}> ${value}/>`,
+    (error: unknown) => error instanceof TransformError && error.code === "HSON_QUOTED_INTERPOLATION_PARTIAL");
+});
+
+check("coincident partial slots stay unknown despite later malformed source and high slot counts", () => {
+  const prefix = 'import { Hson } from "hson-live"; declare const s: string; ';
+  for (const count of [3, 257]) {
+    const body = '<main "prefix${s}" ' + '${s} '.repeat(count - 3) + '"${1n}${undefined}" "unfinished/>';
+    assert.deepEqual(diagnose(prefix + 'Hson.document`' + body + '`;', "typescript", "/workspace/coincident-slots.ts"), []);
+  }
+  const resumed = prefix + 'Hson.document`<main "prefix${s}" ' + '${s} '.repeat(255) + '${1n}/>`;';
+  const diagnostics = diagnose(resumed, "typescript", "/workspace/high-slot-count.ts");
+  assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), ["HSON_QUOTED_INTERPOLATION_PARTIAL", "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(diagnostics[1]?.range, { start: resumed.indexOf("1n"), end: resumed.indexOf("1n") + 2 });
+});
+
 check("inferred Hson brands leave serialized candidate qualification to runtime", () => {
   const prefix = 'import { Hson } from "hson-live"; ';
   const familyCodes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/inferred.ts")

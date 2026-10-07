@@ -49,7 +49,8 @@ export class HsonEditorCompletionCache {
       const segment = segments[literalIndex];
       const local = interpolation.literals[literalIndex]?.boundaries.indexOf(offset) ?? -1;
       if (segment === undefined || local < 0) return [];
-      source = built; cursor = segment.start + local; slots = mutableSlots.filter(slot => slot.substitution < literalIndex);
+      // Role observation needs every boundary; the checkpoint filters at its cursor.
+      source = built; cursor = segment.start + local; slots = mutableSlots;
       map = range => {
         const owner = segments.find(segment => range.start >= segment.start && range.end <= segment.end);
         if (owner === undefined || owner.index !== literalIndex) return undefined;
