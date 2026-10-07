@@ -17,7 +17,6 @@ import { EVERY_VSN, VSN_TAGS } from "../src/core/constants.ts";
 import {
   serialize_hson,
   serialize_hson_owned_document_content,
-  serialize_hson_owned_document_content_exact_runtime,
 } from "../src/api/transform/serializers/serialize-hson.ts";
 import { serialize_html } from "../src/api/transform/serializers/serialize-html.ts";
 import { serialize_json } from "../src/api/transform/serializers/serialize-json.ts";
@@ -1835,10 +1834,8 @@ check("owned scalar relationship, element text, and document-content carriers re
 check("owned empty document has no Hson text serialization", () => {
   const ownedEmptyRoot: HsonNode = { $_tag: "_hson_root", $_content: [] };
   for (const noBreak of [false, true]) {
-    for (const serialize of [serialize_hson_owned_document_content, serialize_hson_owned_document_content_exact_runtime]) {
-      assert.throws(() => serialize(ownedEmptyRoot, { noBreak }),
-        (cause) => cause instanceof TransformError && cause.code === "HSON_DOCUMENT_EMPTY");
-    }
+    assert.throws(() => serialize_hson_owned_document_content(ownedEmptyRoot, { noBreak }),
+      (cause) => cause instanceof TransformError && cause.code === "HSON_DOCUMENT_EMPTY");
   }
   assert.throws(() => serialize_hson(ownedEmptyRoot), /internal attachment carrier/);
 });

@@ -444,11 +444,12 @@ check("LiveTree fromHson is also an official authored-source boundary", () => {
   assert.ok(diagnostic); assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "+");
 });
 
-check("retired aggregate LiveMap is ignored while Transform validates top-level text", () => {
+check("retired aggregate LiveMap is ignored while Transform admits mixed document content", () => {
   const map = `${staticImports}\nhson.liveMap.fromHson('\"before\" <em/>');`;
   const transform = `${staticImports}\nhson.fromHson('\"before\" <em/>').toNode();`;
   assert.deepEqual(diagnose(map, "typescript", "/workspace/map.ts"), []);
-  assert.equal(diagnose(transform, "typescript", "/workspace/transform.ts").length, 1);
+  assert.deepEqual(diagnose(transform, "typescript", "/workspace/transform.ts"), []);
+  assert.doesNotThrow(() => hson.fromHson('"before" <em/>').toNode());
 });
 
 check("JavaScript escape diagnostics map to the complete authored escape", () => {

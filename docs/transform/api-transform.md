@@ -383,7 +383,7 @@ Ordinary Hson attributes have string-valued wire semantics in either layout. The
 
 Generated `$_meta.quid` is runtime-local identity. Ordinary Hson, JSON, Transform HTML, and Binary Hson serialization omit it. Ordinary parsing rejects `@quid`, structural JSON `$_meta.quid`, HTML `hson:quid`, and binary QUID metadata with `PORTABLE_RUNTIME_QUID_FORBIDDEN`. The receiving runtime creates identity under its normal local rules; portable round trips preserve application structure and content rather than exact QUID equality. Other metadata, including array ordering, retains its established behavior.
 
-Same-runtime capture keeps exact graph identity through an internal capability. Hosted recovery temporarily uses a separate internal exact-runtime Hson codec. Browser-facing SSR HTML and local continuation state omit server-generated QUIDs; the browser establishes its own runtime identity after structural adoption.
+Same-runtime capture keeps exact graph identity through an internal capability. Hosted recovery carries document state through structural graph codecs. Browser-facing SSR HTML and local continuation state omit server-generated QUIDs; the browser establishes its own runtime identity after structural adoption.
 
 Options compose and are idempotent:
 

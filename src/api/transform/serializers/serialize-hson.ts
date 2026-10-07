@@ -613,26 +613,3 @@ export function serialize_hson_exact_runtime(
 ): string {
   return serialize_hson_with_ownership(root, inputOptions, false, true);
 }
-
-/** @internal Temporary exact-runtime document codec for hosted recovery. */
-export function serialize_hson_owned_document_content_exact_runtime(
-  root: HsonNode,
-  inputOptions: HsonSerializeInputOptions = {},
-): string {
-  if (root.$_tag === ROOT_TAG) {
-    assert_invariants(root, "serialize_hson_owned_document_content_exact_runtime");
-    if (root.$_content.length === 0) {
-      _throw_transform_err("Hson document serialization requires at least one content item",
-        "serialize_hson_owned_document_content_exact_runtime", undefined, undefined,
-        { code: "HSON_DOCUMENT_EMPTY", stage: "serialization-admission", path: "$" });
-    }
-    const separator = inputOptions.noBreak ? " " : "\n";
-    return root.$_content.map((item) => {
-      if (!is_Node(item)) {
-        _throw_transform_err("document root content must be canonical Hson nodes", "serialize_hson_owned_document_content_exact_runtime");
-      }
-      return serialize_hson_with_ownership(item, inputOptions, true, true);
-    }).join(separator);
-  }
-  return serialize_hson_with_ownership(root, inputOptions, true, true);
-}
