@@ -17,6 +17,7 @@ import { EVERY_VSN, VSN_TAGS } from "../src/core/constants.ts";
 import {
   serialize_hson,
   serialize_hson_owned_document_content,
+  serialize_hson_owned_document_content_exact_runtime,
 } from "../src/api/transform/serializers/serialize-hson.ts";
 import { serialize_html } from "../src/api/transform/serializers/serialize-html.ts";
 import { serialize_json } from "../src/api/transform/serializers/serialize-json.ts";
@@ -1831,15 +1832,14 @@ check("owned scalar relationship, element text, and document-content carriers re
   assert.equal(canonical_hson_graph_equal(rebuilt, ownedDocumentContent), true);
 });
 
-check("owned empty document serializes and reparses with exact canonical equality", () => {
+check("owned empty document has no Hson text serialization", () => {
   const ownedEmptyRoot: HsonNode = { $_tag: "_hson_root", $_content: [] };
-  const readableWire = serialize_hson_owned_document_content(ownedEmptyRoot);
-  const compactWire = serialize_hson_owned_document_content(ownedEmptyRoot, { noBreak: true });
-  assert.equal(readableWire, "");
-  assert.equal(compactWire, "");
-  const reparsed = parse_hson(readableWire, { allowTopLevelDocumentText: true });
-  assert.equal(canonical_hson_graph_equal(reparsed, ownedEmptyRoot), true);
-  assert.throws(() => parse_hson(readableWire), /has no semantic value/);
+  for (const noBreak of [false, true]) {
+    for (const serialize of [serialize_hson_owned_document_content, serialize_hson_owned_document_content_exact_runtime]) {
+      assert.throws(() => serialize(ownedEmptyRoot, { noBreak }),
+        (cause) => cause instanceof TransformError && cause.code === "HSON_DOCUMENT_EMPTY");
+    }
+  }
   assert.throws(() => serialize_hson(ownedEmptyRoot), /internal attachment carrier/);
 });
 

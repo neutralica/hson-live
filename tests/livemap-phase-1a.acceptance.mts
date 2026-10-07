@@ -49,9 +49,10 @@ check("document top accepts broad content while explicit empty and tag narrow", 
   const broad = Hson.schema`<type "document">`;
   const tagged = Hson.schema`<type "document" tag "main">`;
   const empty = Hson.schema`<type "document" tag "main" content "empty">`;
-  for (const candidate of [Hson.document``, Hson.document`"text"`, Hson.document`<main/>`, Hson.document`<main "text"/>`, Hson.document`<main <p "text"/>/>`, Hson.document`<article/>`, Hson.document`<a/><b/>`]) {
+  for (const candidate of [Hson.document`"text"`, Hson.document`<main/>`, Hson.document`<main "text"/>`, Hson.document`<main <p "text"/>/>`, Hson.document`<article/>`, Hson.document`<a/><b/>`]) {
     assert.equal(broad.certify(candidate), candidate);
   }
+  assert.throws(() => broad.certify("" as never));
   const taggedCandidate = Hson.document`<main <p "text"/>/>`;
   assert.equal(tagged.certify(taggedCandidate), taggedCandidate);
   assert.throws(() => tagged.certify(Hson.document`<article/>`));

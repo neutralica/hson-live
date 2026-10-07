@@ -8,7 +8,7 @@ import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { evaluate_canonical_document_schema } from "../src/internal/canonical-schema/evaluate.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
-import { serialize_hson_owned_document_content } from "../src/api/transform/serializers/serialize-hson.ts";
+import { validate_hson_schema_graph } from "../src/internal/schema-hson-validation/validate-canonical-hson.ts";
 import { TransformError } from "../src/core/errors.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -207,21 +207,21 @@ check("runtime multiNodeDocument certification preserves the identical canonical
   assert.throws(() => multiNodeDocumentSchema.certify(Hson.canonical`<item/>`));
 });
 
-check("runtime certification selects document context before empty-source detachment", () => {
-  const emptyCanonical = serialize_hson_owned_document_content({
-    $_tag: "_hson_root",
-    $_content: [],
-  });
+check("empty document Schema governs runtime graphs without certifying empty text", () => {
+  const root = { $_tag: "_hson_root", $_content: [] };
+  const emptySequence: HsonSchema = Hson.schema`<type "document" content <sequence []>>`;
   const emptyPermitting: HsonSchema = Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`;
   const nonemptyRequiring: HsonSchema = Hson.schema`<type "document" content <repeat <tag "item" content "empty"> count 1>>`;
+  for (const schema of [emptySequence, emptyPermitting]) {
+    assert.doesNotThrow(() => validate_hson_schema_graph(schema, root));
+    assert.throws(() => schema.certify("" as never), /has no semantic value/);
+  }
+  assert.throws(() => validate_hson_schema_graph(nonemptyRequiring, root));
+  assert.throws(() => nonemptyRequiring.certify("" as never), /has no semantic value/);
+  assert.equal(emptyPermitting.certify(Hson.document`<item/>`), Hson.document`<item/>`);
   const dataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
-  assert.equal(emptyCanonical, "");
-  assert.equal(emptyPermitting.certify(emptyCanonical), emptyCanonical);
-  assert.throws(() => nonemptyRequiring.certify(emptyCanonical));
-  assert.throws(
-    () => dataSchema.certify(emptyCanonical),
-    (cause) => cause instanceof TypeError && /HsonData\.fromHson.*data-mode Hson/.test(cause.message),
-  );
+  assert.throws(() => dataSchema.certify("" as never),
+    (cause) => cause instanceof TypeError && /HsonData\.fromHson.*data-mode Hson/.test(cause.message));
 });
 
 check("public and worker entrypoint Schema fixtures compile and admit their documents", () => {

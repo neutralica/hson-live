@@ -18,6 +18,7 @@ import type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData } from "./ap
 import type { Tokens } from "./api/transform/token.types.js";
 
 type Substitution = string | number | boolean | null;
+type DocumentSubstitution = Substitution | undefined;
 
 function interpolation_position(source: string, offset: number) {
   const prefix = source.slice(0, offset);
@@ -28,13 +29,17 @@ function interpolation_position(source: string, offset: number) {
 function interpolation_values(
   source: string,
   tokens: readonly Tokens[],
-  substitutions: readonly Substitution[],
+  substitutions: readonly DocumentSubstitution[],
   mode: "document" | "data",
 ) {
   const values: Array<readonly import("./core/types.js").HsonNode[]> = [];
   for (const token of tokens) {
     if (token.kind !== "INTERPOLATION_SLOT") continue;
     const candidate = substitutions[token.slot];
+    if (mode === "document" && candidate === undefined) {
+      values[token.slot] = [];
+      continue;
+    }
     if (typeof candidate !== "string" && mode === "data"
       && (candidate === null || typeof candidate === "number" || typeof candidate === "boolean")) {
       values[token.slot] = [make_leaf(typeof candidate === "number" ? admit_hson_number(candidate) : candidate)];
@@ -43,7 +48,7 @@ function interpolation_values(
     if (typeof candidate !== "string") {
       _throw_transform_err(
         mode === "document"
-          ? "unquoted document interpolation requires HsonDocument source; wrap it in Hson quotes to insert text"
+          ? "unquoted document interpolation requires HsonDocument source or undefined; wrap strings in Hson quotes to insert text"
           : "unquoted data interpolation requires HsonData source or a primitive number, boolean, or null",
         `Hson.${mode}`, undefined, undefined,
         { code: "HSON_INTERPOLATION_CANDIDATE_TYPE_INVALID", stage: "template-admission",
@@ -92,7 +97,7 @@ function data_tag(strings: TemplateStringsArray, ...substitutions: readonly Subs
   }
 }
 
-function document_tag(strings: TemplateStringsArray, ...substitutions: readonly Substitution[]): HsonDocument {
+function document_tag(strings: TemplateStringsArray, ...substitutions: readonly DocumentSubstitution[]): HsonDocument {
   const template = reconstruct_hson_interpolated_template(strings, substitutions);
   if (template.slots.length === 0) return ExactDocumentCarrier.fromHson(template.source as HsonCanonical).toHson() as HsonDocument;
   const tokens = tokenize_hson(template.source, 0, undefined, template.slots, "document", substitutions);

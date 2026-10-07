@@ -85,6 +85,21 @@ check("document restore installs a coherent later state", () => {
   assert.equal(target.rev, 2);
   assert.equal(target.lib("page").document.byQuid("000000003"), undefined);
 });
+check("capture and restore preserve an empty graph owner and later first insertion", () => {
+  const schema = Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`;
+  const empty = { $_tag: "_hson_root", $_content: [] };
+  const source = hsonLiveMap.fromLibraries({ page: { document: empty, schema } });
+  const target = hsonLiveMap.fromLibraries({ page: { document: "<item/>", schema } });
+  target.restore(source.capture());
+  assert.deepEqual(target.lib("page").root(), empty);
+  assert.deepEqual(target.capture(), source.capture());
+  assert.equal(target.lib("page").at([0]).snap(), undefined);
+  source.lib("page").at([]).asRoot()!.insert(0, { $_tag: "item", $_content: [] });
+  target.restore(source.capture());
+  assert.deepEqual(target.capture(), source.capture());
+  assert.equal((target.lib("page").root().$_content[0] as { $_tag: string }).$_tag, "item");
+});
+
 check("replace attrs planning detaches caller input without changing state", () => {
   const map = exact('<main id="before" @00000001f/>');
   const attrs = { id: "after", style: { color: "red" } };

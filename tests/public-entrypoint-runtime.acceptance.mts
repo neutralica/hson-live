@@ -131,9 +131,15 @@ check("HsonDocument is a primitive semantic string across root and Hson entrypoi
     import { Hson as RootHson } from "hson-live";
     import { Hson as NarrowHson } from "hson-live/hson";
     if (RootHson !== NarrowHson) throw new Error("Hson identity diverged");
-    const empty = NarrowHson.document.fromHson("");
-    const quotedEmpty = NarrowHson.document.fromHson('\"\"');
-    if (typeof empty !== "string" || empty === quotedEmpty || empty !== "") throw new Error("empty document semantics diverged");
+    let emptyRejected = false;
+    try { NarrowHson.document.fromHson(""); } catch { emptyRejected = true; }
+    if (!emptyRejected) throw new Error("empty document source admitted");
+    const quotedEmpty = NarrowHson.document.fromHson(String.fromCharCode(34, 34));
+    if (typeof quotedEmpty !== "string" || NarrowHson.document.toNode(quotedEmpty).$_content.length !== 1) throw new Error("empty text semantics diverged");
+    if (NarrowHson.document\`<main \${undefined}/>\` !== NarrowHson.document\`<main/>\`) throw new Error("document absence diverged");
+    let wholeRejected = false;
+    try { NarrowHson.document\`\${undefined}\`; } catch { wholeRejected = true; }
+    if (!wholeRejected) throw new Error("whole document absence admitted");
     const value = NarrowHson.document.fromHson('<main id="root"/>');
     if (RootHson.document.fromHson(value) !== value) throw new Error("document round trip failed");
   `;

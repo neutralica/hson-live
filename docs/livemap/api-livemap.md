@@ -21,6 +21,19 @@ const map = hsonLiveMap.fromLibraries({
 
 `ANY_DATA` and `ANY_DOCUMENT` are ordinary Hson Schemas for the full data and document families. They are exported from `hson-live` and `hson-live/hson`. The equivalent authored forms are `<type "data">` and `<type "document">`.
 
+An empty document Library uses the existing graph-native initializer:
+
+```ts
+const map = hsonLiveMap.fromLibraries({
+  page: {
+    document: { $_tag: "_hson_root", $_content: [] },
+    schema: Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`,
+  },
+});
+```
+
+The root stays addressable, item `[0]` is absent, and insertion can add the first item when its Schema permits it. Capture, restore, and replay carry this state structurally. `document: ""` rejects as invalid authored source. Empty runtime roots cannot produce a public `HsonDocument` or `HsonCanonical` string; selected empty-page rendering also rejects. An empty-capable document Schema governs runtime graph state independently of textual certification.
+
 ## Local runtime admission
 
 ```ts

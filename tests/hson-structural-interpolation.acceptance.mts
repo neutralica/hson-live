@@ -30,11 +30,12 @@ function error(run: () => unknown, code: string): TransformError {
 check("document inserts one, many, and zero content items", () => {
   const one = Hson.document`<main/>`;
   const many = Hson.document`<main/><footer/>`;
-  const empty = Hson.document``;
+  const empty = undefined;
   assert.equal(Hson.document`<body ${one}/>`, Hson.document`<body <main/>/>`);
   assert.equal(Hson.document`<body ${many}/>`, Hson.document`<body <main/><footer/>/>`);
   assert.equal(Hson.document`<body ${empty}/>`, Hson.document`<body/>`);
-  assert.equal(Hson.document`${empty}`, empty);
+  error(() => Hson.document`${empty}`, "HSON_DOCUMENT_EMPTY");
+  error(() => Hson.document`${empty}${empty}`, "HSON_DOCUMENT_EMPTY");
   assert.equal(Hson.document`${many}`, many);
   assert.equal(Hson.document`${empty}<main/>`, one);
   assert.equal(Hson.document`<header/>${many}<aside/>`, Hson.document`<header/><main/><footer/><aside/>`);
@@ -51,6 +52,25 @@ check("unquoted document insertion and quoted string content differ", () => {
   assert.doesNotMatch(JSON.stringify(textRoot), /"\$_tag":"script"/);
   assert.equal(Hson.document`<body ${hostile}/>`, Hson.document`<body <script src="/evil.js"/>/>`);
   error(() => Hson.document`<body ${"hello"}/>`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
+});
+
+check("document absence is zero nodes while quoted empty text is one STR", () => {
+  const absent: import("../src/hson-authoring.ts").HsonDocument | undefined = undefined;
+  assert.deepEqual(Hson.document.toNode(Hson.document`<main ${absent}/>`), Hson.document.toNode(Hson.document`<main/>`));
+  assert.equal(Hson.document`<main <p "before"/> ${undefined} <p "after"/>/>`,
+    Hson.document`<main <p "before"/> <p "after"/>/>`);
+  error(() => Hson.document`<main ${""}/>`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
+  error(() => Hson.document`${""}`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
+  error(() => Hson.document`${""}${""}`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
+  assert.deepEqual(Hson.document.toNode(Hson.document`<main "${""}"/>`),
+    Hson.document.toNode(Hson.document`<main ""/>`));
+  error(() => Hson.document`<main "${undefined}"/>`, "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
+  for (const run of [
+    () => (Hson.data as any)`${undefined}`,
+    () => (Hson.data as any)`«${undefined}»`,
+    () => (Hson.data as any)`<value ${undefined}>`,
+  ]) error(run, "HSON_INTERPOLATION_CANDIDATE_TYPE_INVALID");
+  error(() => (Hson.canonical as any)`${undefined}`, "HSON_TEMPLATE_SUBSTITUTION_TYPE_REQUIRED");
 });
 
 check("data slots preserve one value in each legal position", () => {
@@ -92,7 +112,7 @@ check("unquoted data primitives and candidate modes are checked independently", 
 });
 
 check("whole quoted slots are string-only; partial strings reject", () => {
-  for (const value of [123, true, null, {}, new String("x")]) {
+  for (const value of [undefined, 123, true, null, {}, new String("x")]) {
     error(() => (Hson.document as any)`<p "${value}"/>`, "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
   }
   const value = "x";
@@ -149,7 +169,7 @@ check("whole-document admission catches special-tag violations", () => {
   error(() => Hson.document`<script src="/app.js" ${inlineScript}/>`, "HSON_INTERPOLATION_COMPOSED_INVALID");
   const child = Hson.document`<b/>`;
   error(() => Hson.document`<style ${child}/>`, "HSON_INTERPOLATION_COMPOSED_INVALID");
-  assert.equal(Hson.document`<style ${Hson.document``} "body{margin:0}"/>`, Hson.document`<style "body{margin:0}"/>`);
+  assert.equal(Hson.document`<style ${undefined} "body{margin:0}"/>`, Hson.document`<style "body{margin:0}"/>`);
 });
 
 check("style and script quoted slots use normal document admission", () => {

@@ -300,6 +300,14 @@ check("interpolated templates are discovered without speculative diagnostics", (
   assert.deepEqual(diagnostics, []);
 });
 
+check("document source diagnostics reject empty and trivia but retain empty text", () => {
+  for (const source of ["", " ", "\t", "\n", "\r\n", "// comment", " // comment\n "]) {
+    const text = officialImport + "\nconst value = Hson.document`" + source + "`;";
+    assert.deepEqual(diagnose(text, "typescript", "/workspace/empty.ts").map(d => d.code), ["HSON_SOURCE_EMPTY"]);
+  }
+  assert.deepEqual(diagnose(officialImport + '\nconst value = Hson.document`""`;', "typescript", "/workspace/empty.ts"), []);
+});
+
 check("grammar-context interpolation diagnoses illegal positions and partial strings", () => {
   const invalid = `${officialImport}\nconst x = Hson.document\`<\${value}/><p \"hello \${value}\"/>\`;`;
   const document = diagnose(invalid, "typescript", "/workspace/page.ts")[0];
@@ -315,7 +323,7 @@ check("complete official member tags agree with runtime contextual admission", (
     ["data", "<foo 1>", true], ["data", "[1, 2, 3]", true], ["data", '"hello"', true],
     ["data", "42", true], ["data", "true", true], ["data", "null", true],
     ["data", "<foo/>", false], ["data", '<main <p "x"/>/>', false], ["data", "", false],
-    ["document", "", true], ["document", '"hello"', true], ["document", "<foo/>", true],
+    ["document", "", false], ["document", '"hello"', true], ["document", "<foo/>", true],
     ["document", '<main <p "x"/>/>', true], ["document", "<foo 1>", false],
     ["document", "<foo 1 bar 2>", false],
   ] as const;
@@ -656,6 +664,7 @@ check("static interpolation diagnostics report only proven family mismatches", (
   assert.deepEqual(mismatch?.range, { start: mismatchSource.lastIndexOf("${data}") + 2, end: mismatchSource.lastIndexOf("${data}") + 6 });
   assert.deepEqual(codes('Hson.data`<value ${document}>`;'), ["HSON_INTERPOLATION_DOCUMENT_IN_DATA"]);
   assert.deepEqual(codes('Hson.document`<main ${document}/>`;'), []);
+  assert.deepEqual(codes('Hson.document`<main ${undefined}/>`;'), []);
   assert.deepEqual(codes('Hson.data`<value ${data}>`;'), []);
   assert.deepEqual(codes('Hson.document`<main ${plain}/>`;'), []);
   assert.deepEqual(codes('Hson.document`<main ${canonical}/>`;'), []);

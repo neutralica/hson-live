@@ -66,9 +66,8 @@ function every_object_is_frozen(value: unknown, seen = new WeakSet<object>()): b
   });
 }
 
-check("document Hson constructs empty, one, many, text, quoted-empty, and mixed documents", () => {
+check("document Hson constructs one, many, text, quoted-empty, and mixed documents", () => {
   const fixtures = [
-    canonical(""),
     Hson.canonical`<main/>`,
     Hson.canonical`<main/><aside/>`,
     Hson.canonical`"ordinary text"`,
@@ -76,14 +75,26 @@ check("document Hson constructs empty, one, many, text, quoted-empty, and mixed 
     Hson.document`"before"<main/>"after"`,
   ];
   const documents = fixtures.map((source) => Hson.document.fromHson(source));
-  assert.deepEqual(documents.map((document) => Hson.document.toNode(document).$_content.length), [0, 1, 2, 1, 1, 3]);
-  assert.equal(documents[0], "");
-  assert.equal(documents[4], `""`);
-  assert.notEqual(documents[0], documents[4]);
+  assert.deepEqual(documents.map((document) => Hson.document.toNode(document).$_content.length), [1, 2, 1, 1, 3]);
+  assert.equal(documents[3], `""`);
   for (const document of documents) {
     assert.equal(Hson.document.toNode(document).$_tag, "_hson_root");
     assert.equal(Hson.document.fromHson(document), document);
   }
+});
+
+check("all tokenless authored document sources reject consistently", () => {
+  for (const source of ["", " ", "\t", "\n", "\r\n", "// comment", "// comment\n", " \t// comment\r\n // another\n"]) {
+    const strings = Object.freeze(Object.assign([source], { raw: Object.freeze([source]) }));
+    assert.throws(() => Hson.document(strings), /has no semantic value/, JSON.stringify(source));
+    assert.throws(() => Hson.document.fromHson(canonical(source)), /has no semantic value/, JSON.stringify(source));
+    assert.throws(() => Hson.canonical(strings), /has no semantic value/);
+    assert.throws(() => Hson.data(strings));
+    assert.throws(() => hsonTransform.fromHson(source).toNode(), /has no semantic value/);
+  }
+  assert.throws(() => Hson.document``);
+  assert.throws(() => Hson.document.toNode("" as HsonDocument), /has no semantic value/);
+  assert.equal(Hson.document.toNode(Hson.document`""`).$_content.length, 1);
 });
 
 check("attrs and structured style retain portable document closure", () => {
@@ -264,7 +275,8 @@ check("equality uses exact canonical graph distinctions", () => {
   assert.equal(exact, Hson.document.fromHson(exact));
   assert.notEqual(exact, Hson.document`<b/><a id="x"/>`);
   assert.notEqual(exact, Hson.document`<a id="y"/><b/>`);
-  assert.notEqual(Hson.document.fromHson(canonical("")), Hson.document`""`);
+  assert.throws(() => Hson.document.fromHson(canonical("")));
+  assert.throws(() => Hson.document.fromNode(root()), /at least one content item/);
   assert.notEqual(Hson.document.fromNode(root(str("a"), str("b"))), Hson.document.fromNode(root(str("ab"))));
   assert.notEqual(Hson.document`<box/>`, Hson.document`<box ""/>`);
   assert.throws(() => Hson.document`<main @000000001/>`, /runtime QUID metadata is invalid/);
@@ -272,7 +284,6 @@ check("equality uses exact canonical graph distinctions", () => {
 
 check("every accepted fixture has total exact readable serialization closure", () => {
   const fixtures = [
-    Hson.document.fromHson(canonical("")),
     Hson.document.fromHson(Hson.canonical`<main/>`),
     Hson.document.fromHson(Hson.canonical`<main/><aside/>`),
     Hson.document.fromHson(Hson.canonical`"text"`),
@@ -286,8 +297,8 @@ check("every accepted fixture has total exact readable serialization closure", (
     assert.equal(typeof source, "string");
     assert.equal(Hson.document.fromHson(source), document);
   }
-  assert.equal(fixtures[2], "<main/>\n<aside/>");
-  assert.doesNotMatch(fixtures[2] ?? "", /_hson_root/);
+  assert.equal(fixtures[1], "<main/>\n<aside/>");
+  assert.doesNotMatch(fixtures[1] ?? "", /_hson_root/);
 });
 
 check("every nonempty document root shape closes through generic Hson and exact document qualification", () => {

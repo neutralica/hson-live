@@ -16,7 +16,7 @@ import { assign_ingested_hson_node_quid } from "../utils/hson-utils/quid-ingress
 import type { HsonSourceProvenanceBuilder } from "../../../internal/hson-source-provenance/hson-source-provenance.js";
 
 export type ParseTokensOptions = Readonly<{
-    /** Internal document admission for top-level text and exact zero-length source. */
+    /** Internal document admission for top-level text and structural slots. */
     allowTopLevelDocumentText?: boolean;
     /** Private already-admitted tagged-template slot content. */
     interpolation?: Readonly<{ mode: "document" | "data"; values: readonly (readonly HsonNode[])[] }>;
@@ -74,9 +74,10 @@ export const make_leaf = (v: HsonSemanticPrimitive): HsonNode =>
  *   - A single standard element is wrapped in `_hson_elem` according to its
  *     recorded close kind.
  *   - A sole primitive leaf is attached directly beneath `_hson_root`.
- *   - No tokens remain an internal fallback state; `parse_hson` handles exact
- *     zero-length document source before tokenization and rejects all other
+ *   - No tokens remain an internal fallback state; `parse_hson` rejects all
  *     tokenless source before that fallback can become a source result.
+ *     Resolved document slots may produce an internal empty root, which public
+ *     serializable document qualification rejects.
  *   - Multiple top-level elements form ordered document content. Multiple top-level
  *     object values reject because one object angle pair owns the full member
  *     collection; mixed structural modes also reject.

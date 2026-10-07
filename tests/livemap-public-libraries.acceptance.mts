@@ -277,12 +277,23 @@ check("one named library seeds the ordinary registry authority", () => {
   }
 });
 
-check("document Libraries admit exact zero-length document source", () => {
+check("document Libraries admit empty graph owners and reject empty source", () => {
   const map = hsonLiveMap.fromLibraries({
-    empty: { document: "", schema: EmptyDocumentSchema },
+    empty: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocumentSchema },
   });
+  assert.throws(() => hsonLiveMap.fromLibraries({ empty: { document: "", schema: EmptyDocumentSchema } }), /has no semantic value/);
   assert.equal(map.lib("empty").mode, "document");
   assert.deepEqual(map.lib("empty").root(), { $_tag: "_hson_root", $_content: [] });
+  const received = install_libraries_snapshot(map.capture()).map;
+  assert.deepEqual(received.lib("empty").root(), map.lib("empty").root());
+  assert.deepEqual(received.capture(), map.capture());
+  const cutReceived = install_libraries_snapshot(map.cut().libs).map;
+  assert.deepEqual(cutReceived.lib("empty").root(), map.lib("empty").root());
+  const source = hsonLiveMap.create();
+  const commit = source.addLibraries({ empty: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocumentSchema } });
+  const replica = hsonLiveMap.create();
+  replica.replay(commit);
+  assert.deepEqual(replica.lib("empty").root(), map.lib("empty").root());
 });
 
 check("named document Library mutations retain their selected authority and global commit envelope", () => {

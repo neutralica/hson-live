@@ -108,3 +108,14 @@ documentWriter.lib("page").at([0, 0]).replace(documentMap.lib("page").root());
 declare const documentLocus: Locus<typeof documentMap>;
 const governorSchema: typeof PageSchema = documentLocus.lib("page").schema.get();
 void governorSchema;
+
+// Undefined is an input only for document structural slots; outputs remain total.
+declare const optionalDocument: HsonDocument | undefined;
+const omittedDocument: HsonDocument = Hson.document`<main ${optionalDocument}/>`;
+const omittedCanonical: HsonCanonical = omittedDocument;
+type DocumentTagOutput = Assert<Equal<ReturnType<typeof Hson.document>, HsonDocument>>;
+// @ts-expect-error Data omission is not defined.
+Hson.data`<value ${undefined}>`;
+// @ts-expect-error Generic canonical substitution still excludes undefined.
+Hson.canonical`${undefined}`;
+void omittedCanonical;

@@ -5,7 +5,7 @@ import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "../../src/api/ssr/in
 
 const map = hsonLiveMap.fromLibraries({ page: { document: `<main <p "worker"/>/>`, schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>` } });
 const result = map.cut({ html: "page" });
-const emptyMap = hsonLiveMap.fromLibraries({ page: { document: "", schema: Hson.schema`<type "document" content <sequence []>>` } });
+const emptyMap = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: Hson.schema`<type "document" content <sequence []>>` } });
 let emptySsrRejected = false;
 try {
   emptyMap.cut({ html: "page" });

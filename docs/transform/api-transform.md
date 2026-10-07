@@ -64,9 +64,9 @@ const document: HsonDocument = Hson.document`<main/><aside/>`;
 const schema = Hson.schema`<type "data" content <count "number">>`;
 ```
 
-`Hson.canonical` leaves data/document classification open. `Hson.data` parses in data context; `Hson.document` parses in document context, including the zero-item document (`""`). The same canonical bytes can have different semantics in those contexts. All three values are primitive strings; ordinary string operations return plain `string` and lose their brands. Bare `Hson\`...\`` is not supported.
+`Hson.canonical` leaves data/document classification open. `Hson.data` parses in data context; `Hson.document` parses nonempty source in document context and returns at least one content item. The same canonical bytes can have different semantics in those contexts. All three values are primitive strings; ordinary string operations return plain `string` and lose their brands. Bare `Hson\`...\`` is not supported.
 
-Primitive `string`, finite `number`, `boolean`, and `null` substitutions are encoded before full-source admission. A substituted string becomes Hson string data and cannot inject delimiters. Schema tags require substitution-free source so generated proof can be checked statically.
+For `Hson.canonical`, primitive `string`, finite `number`, `boolean`, and `null` substitutions are encoded before full-source admission. A substituted string becomes Hson string data and cannot inject delimiters. Schema tags require substitution-free source so generated proof can be checked statically.
 
 ### Data
 
@@ -84,7 +84,7 @@ const readBack = Hson.data.fromHson(authored);
 
 ### Document
 
-`HsonDocument` is a normalized primitive string for an exact notation-closed document. Data/document `fromHson` admission accepts presentation-equivalent valid Hson and returns normalized output without a source-byte equality gate. It supports empty, text-only, single-root, and multi-root documents. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing. Document admission also requires `<style/>` or one nonempty style string leaf, and permits `<script>` only with `src` and no content. LiveMap document imports and mutations enforce the same rules.
+`HsonDocument` is a normalized primitive string for an exact notation-closed document. Data/document `fromHson` admission accepts presentation-equivalent valid Hson and returns normalized output without a source-byte equality gate. It supports text-only, single-root, and multi-root documents, each containing at least one item. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing. Document admission also requires `<style/>` or one nonempty style string leaf, and permits `<script>` only with `src` and no content. LiveMap document imports and mutations enforce these special-element rules while retaining empty runtime owners.
 
 ```ts
 const document = Hson.document`<main/><aside/>`;
@@ -93,7 +93,7 @@ const roundTrip = Hson.document.fromHson(document);
 console.log(roundTrip === document); // true
 ```
 
-`toNode` returns a detached mutable graph. The empty document (`""`) differs from one empty top-level text item (`'""'`). Canonical bytes give exact equality within the document mode. A document Schema can certify a value separately from document admission.
+`toNode` returns a detached mutable graph. Empty source rejects; the source `'""'` admits one actual empty top-level STR text item. Internal runtime document owners may still contain zero items, but cannot be converted to public Hson text. Canonical bytes give exact equality within the document mode. A document Schema can certify a nonempty value separately from document admission. Schema graph validation may accept an internal `ROOT[]`; textual certification of `""` rejects because it cannot return a public document value.
 
 ### Schema definitions
 
@@ -115,6 +115,8 @@ Use `.toNode()` when validation is needed without serialized output. `fromHson`
 truthfully owns runtime source admission. ``Hson.canonical`${source}``` encodes it
 as Hson string data; unquoted interpolation in `Hson.document` or `Hson.data`
 instead admits the source under that receiving mode.
+
+Only unquoted document structural slots admit `undefined`, which contributes zero nodes directly. The completed document still requires at least one item: `<main ${undefined}/>` succeeds, while `${undefined}` alone throws. An unquoted `""` candidate rejects as empty source; quoted `"${""}"` inserts one empty STR. Quoted `undefined` rejects, and data/canonical interpolation does not gain omission semantics.
 
 Hson string values use double quotes. Single quotes delimit authored Hson names;
 they are not an alternate string-value spelling. JavaScript double quotes,
@@ -353,7 +355,7 @@ It is assignable to `string`, but an arbitrary `string` is not assignable to `Hs
 
 Transport and persistence boundaries such as HTTP, WebSocket, JSON, storage, environment variables, process boundaries, and third-party APIs typed as plain strings normally erase the brand. Receivers accept transported Hson text as an ordinary `string` and parse it normally. Parsing arbitrary text produces canonical `HsonNode` graph state after success; it does not brand the input text.
 
-Readable and compact (`noBreak`) Hson serialization return `HsonCanonical`. The type does not imply preservation of source spelling, whitespace, quoting, comments, formatting, generated identity, or JavaScript object identity for shared references. Direct/general serialization still rejects every empty or populated `_hson_root`. The existing owned-document serializer is a separate internal boundary: it melts the root and produces the exact zero-length `HsonCanonical` for an empty document, which only document-aware parsing admits again.
+Readable and compact (`noBreak`) Hson serialization return `HsonCanonical`. The type does not imply preservation of source spelling, whitespace, quoting, comments, formatting, generated identity, or JavaScript object identity for shared references. Direct/general serialization still rejects every empty or populated `_hson_root`. The owned-document serializer is a separate internal boundary: it melts a nonempty root into ordered document content and rejects a zero-item root. Runtime empty owners remain valid for graph operations and structural capture/restore; they have no public Hson text representation.
 
 ## Hson Serialization Options
 

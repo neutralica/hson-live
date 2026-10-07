@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import * as publicApi from "../src/index.ts";
 import { Hson, hson, type HsonData } from "../src/index.ts";
 import { HSON_MAX_NESTING } from "../src/core/constants.ts";
-import { serialize_hson_owned_document_content } from "../src/api/transform/serializers/serialize-hson.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 
 let checks = 0;
@@ -128,8 +127,8 @@ check("data producers and shared parsing close at the same nesting boundary", ()
 });
 
 check("document Hson rejects the data-only boundary", () => {
-  const emptyDocumentHson = serialize_hson_owned_document_content({ $_tag: "_hson_root", $_content: [] });
-  assert.throws(() => Hson.data.fromHson(emptyDocumentHson), /data-mode Hson/);
+  const emptySource = "" as Parameters<typeof Hson.data.fromHson>[0];
+  assert.throws(() => Hson.data.fromHson(emptySource), /data-mode Hson/);
   assert.throws(() => Hson.data.fromHson(Hson.canonical`<main "text"/>`), /data-mode Hson/);
   assert.throws(() => Hson.data.fromHson("<@not-data a 1>" as Parameters<typeof Hson.data.fromHson>[0]), /data-mode Hson/);
   assert.throws(() => Hson.data.fromHson("<a 1b 2>" as Parameters<typeof Hson.data.fromHson>[0]), /data-mode Hson/);

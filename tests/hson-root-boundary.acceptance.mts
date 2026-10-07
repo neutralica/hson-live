@@ -112,10 +112,10 @@ check("bare empty string attaches as one _hson_str semantic value", () => {
   assertBare(`""`, "_hson_str", "", `""`);
 });
 
-check("exact zero-length source is an empty root only in document context", () => {
-  assert.deepEqual(
-    parse_hson("", { allowTopLevelDocumentText: true }),
-    { $_tag: "_hson_root", $_content: [] },
+check("exact zero-length source rejects in every parser context", () => {
+  assert.throws(
+    () => parse_hson("", { allowTopLevelDocumentText: true }),
+    (cause) => cause instanceof TransformError && cause.code === "HSON_SOURCE_EMPTY",
   );
   assert.throws(
     () => parse_hson(""),
@@ -145,11 +145,11 @@ check("document parsing preserves one, many, text, and quoted-empty item shaping
   assert.equal(is_Node(textLeaf) && textLeaf.$_content[0], "text");
   assert.equal(is_Node(quotedEmptyLeaf) && quotedEmptyLeaf.$_tag, "_hson_str");
   assert.equal(is_Node(quotedEmptyLeaf) && quotedEmptyLeaf.$_content[0], "");
-  assert.notDeepEqual(quotedEmpty, parse_hson("", { allowTopLevelDocumentText: true }));
+  assert.notDeepEqual(quotedEmpty, { $_tag: "_hson_root", $_content: [] });
 });
 
 check("document context does not admit whitespace or comment-only source", () => {
-  for (const source of [" ", "\t", "\n", "\r", " \t\r\n ", "// comment", " \t// comment\r\n "]) {
+  for (const source of ["", " ", "\t", "\n", "\r", "\r\n", " \t\r\n ", "// comment", " \t// comment\r\n "]) {
     assert.throws(
       () => parse_hson(source, { allowTopLevelDocumentText: true }),
       (cause) => cause instanceof TransformError

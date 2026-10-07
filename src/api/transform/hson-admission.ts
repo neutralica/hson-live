@@ -81,7 +81,7 @@ export function reconstruct_hson_template_source(
 /** Private source and slot admission for the two semantic member tags. */
 export function reconstruct_hson_interpolated_template(
   strings: TemplateStringsArray,
-  substitutions: readonly HsonTemplatePrimitive[],
+  substitutions: readonly (HsonTemplatePrimitive | undefined)[],
 ): Readonly<{ source: string; slots: readonly HsonTemplateSlot[] }> {
   if (!isTemplateStringsArray(strings) || strings.raw.length !== substitutions.length + 1) {
     _throw_transform_err("invalid Hson tagged template", "Hson", undefined, undefined,

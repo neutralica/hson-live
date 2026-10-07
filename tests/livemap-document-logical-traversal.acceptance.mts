@@ -55,7 +55,7 @@ check("multi-node document root is an ordered content container", () => {
 });
 
 check("empty document root stays addressable", () => {
-  const page = hsonLiveMap.fromLibraries({ page: { document: '', schema: Multi } }).lib("page");
+  const page = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: Multi } }).lib("page");
   assert.equal(page.at([]).asRoot()?.kind(), "root");
   assert.equal(page.at([0]).snap(), undefined);
 });
@@ -102,7 +102,7 @@ check("invalid insertion index leaves an empty element unchanged", () => {
 });
 
 check("first empty-document insertion lowers through root content", () => {
-  const map = hsonLiveMap.fromLibraries({ page: { document: '', schema: Multi } });
+  const map = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: Multi } });
   map.lib("page").at([]).asRoot()!.insert(0, projected_element('<item/>'));
   assert.match(map.lib("page").render(), /<item/);
 });

@@ -16,8 +16,8 @@ declare const HSON_SCHEMA_PROOF: unique symbol;
 /**
  * A JavaScript string whose contents are valid canonical serialized Hson.
  * It may represent a detached primitive, object, element, or array value, or
- * ordered document content. The exact zero-length string is canonical for a
- * zero-item document when produced or admitted by a document-aware boundary.
+ * nonempty ordered document content. Empty source is not canonical Hson;
+ * an explicitly quoted empty string is a real string value.
  *
  * This TypeScript-only brand has no runtime marker and is not a trust or
  * security guarantee.
@@ -36,6 +36,7 @@ export type HsonData<
   readonly [HSON_SCHEMA_PROOF]: TSchema;
 };
 
+/** Serialized document content with at least one item; runtime ROOT[] is graph-only. */
 export type HsonDocument<
   TSchema extends HsonSchema<unknown, "document"> = HsonSchema<unknown, "document">,
 > = HsonCanonical & {

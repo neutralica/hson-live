@@ -120,16 +120,30 @@ check("one-library registries classify data and document roots", () => {
   const object = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberData } });
   const array = hsonLiveMap.fromLibraries({ state: { data: [1, 2], schema: NumberArray } });
   const document = hsonLiveMap.fromLibraries({ page: { document: '<main "text"/>', schema: MainText } });
-  const empty = hsonLiveMap.fromLibraries({ page: { document: "", schema: EmptyDocument } });
+  const empty = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } });
   assert.deepEqual([object.lib("state").mode, array.lib("state").mode, document.lib("page").mode, empty.lib("page").mode], ["data-object", "data-array", "document", "document"]);
   assert.deepEqual(empty.lib("page").root(), { $_tag: "_hson_root", $_content: [] });
 });
 
 check("empty document and quoted empty text remain distinct", () => {
-  const empty = hsonLiveMap.fromLibraries({ page: { document: "", schema: EmptyDocument } }).lib("page");
+  const empty = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } }).lib("page");
   const quoted = hsonLiveMap.fromLibraries({ page: { document: '""', schema: TextDocument } }).lib("page");
   assert.equal(quoted.root().$_content.length, 1);
   assert.notDeepEqual(quoted.root(), empty.root());
+});
+
+check("empty runtime document reads stay graph-native and source admission rejects", () => {
+  for (const source of ["", " ", "\t", "\n", "\r\n", "// comment", " \t// comment\n"]) {
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source, schema: EmptyDocument } }), /has no semantic value/);
+  }
+  const map = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } });
+  const page = map.lib("page");
+  assert.ok(page.at([]).asRoot());
+  assert.equal(page.at([0]).snap(), undefined);
+  assert.deepEqual(page.document.content(), []);
+  assert.throws(() => Hson.document.fromNode(page.root()), /at least one content item/);
+  assert.throws(() => hsonTransform.fromNode(page.root()).toHson().serialize(), /internal attachment carrier/);
+  assert.throws(() => page.render());
 });
 
 check("malformed canonical roots and generated QUID claims reject at admission", () => {

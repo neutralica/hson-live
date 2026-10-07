@@ -192,6 +192,10 @@ export function qualify_hson_document_source(source: string): HsonNode {
 function qualify_exact_document_root(root: HsonNode): void {
   scan_ingested_hson_node_quids(root, "ExactDocumentCarrier");
   if (root.$_tag !== ROOT_TAG) return fail_admission("$", "private document graph must use _hson_root");
+  if (root.$_content.length === 0) {
+    _throw_transform_err("public HsonDocument requires at least one content item", "ExactDocumentCarrier",
+      undefined, undefined, { code: "HSON_DOCUMENT_EMPTY", stage: "canonical-document-admission", path: "$" });
+  }
   for (let index = 0; index < root.$_content.length; index += 1) {
     const item = root.$_content[index];
     if (!is_Node(item) || (item.$_tag !== STR_TAG && item.$_tag.startsWith(HSON_SYS_PREFIX))) {
@@ -255,7 +259,7 @@ function is_hson_document(value: unknown): value is ExactDocumentCarrier {
 /**
  * One immutable exact canonical Hson value in document context.
  *
- * Zero, one, and many top-level items are the same document semantic kind;
+ * One and many top-level items are the same serializable document semantic kind;
  * `_hson_root` is private structural machinery rather than authored content.
  */
 export class ExactDocumentCarrier {
@@ -273,7 +277,7 @@ export class ExactDocumentCarrier {
     wrap_hson_document = (root) => new ExactDocumentCarrier(root, hson_document_construction_authority);
   }
 
-  /** Parse exact document-context Hson, including zero-length empty documents. */
+  /** Parse exact nonempty document-context Hson. */
   static fromHson(source: HsonCanonical): ExactDocumentCarrier {
     const root = qualify_hson_document_source(source);
     deep_freeze(root);
