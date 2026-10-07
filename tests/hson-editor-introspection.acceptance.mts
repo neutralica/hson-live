@@ -58,6 +58,21 @@ for (const family of canonicalCandidates) {
   assert.equal(interpolation_semantic_mismatch("canonical-value", family), undefined);
   assert.equal(interpolation_semantic_mismatch("quoted-string", family), undefined);
 }
+const unsupportedPrimitives: readonly StaticInterpolationFamily[] = ["undefined", "bigint", "symbol"];
+const interpolationModes: readonly ("canonical" | "data" | "document")[] = ["canonical", "data", "document"];
+for (const family of unsupportedPrimitives) {
+  assert.equal(interpolation_semantic_mismatch("canonical-value", family, "canonical")?.code, "HSON_INTERPOLATION_CANONICAL_STATIC_TYPE");
+  assert.equal(interpolation_semantic_mismatch("data-value", family, "data")?.code, "HSON_INTERPOLATION_DATA_STATIC_TYPE");
+  assert.equal(interpolation_semantic_mismatch("document-content", family, "document")?.code,
+    family === "undefined" ? undefined : "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE");
+  for (const mode of interpolationModes) {
+    assert.equal(interpolation_semantic_mismatch("quoted-string", family, mode)?.code, "HSON_QUOTED_INTERPOLATION_STATIC_TYPE");
+  }
+  assert.equal(interpolation_semantic_mismatch(undefined, family, "document"), undefined);
+}
+// Canonical element content has the same role, but no Document omission rule.
+assert.equal(interpolation_semantic_mismatch("document-content", "undefined", "canonical")?.code, "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE");
+assert.match(interpolation_semantic_mismatch("document-content", "symbol", "document")!.message, /undefined for structural omission/);
 assert.equal(interpolation_semantic_mismatch("document-content", "number")?.code, "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE");
 assert.deepEqual(hson_interpolation_roles("", "canonical", [{ offset: 0, substitution: 0 }]), ["canonical-value"]);
 assert.deepEqual(hson_interpolation_roles("«»", "canonical", [{ offset: 1, substitution: 0 }]), ["data-value"]);

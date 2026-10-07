@@ -706,6 +706,54 @@ check("Canonical static diagnostics accept string candidates and reject object c
   assert.deepEqual(codes('Hson.canonical`"${dynamicString}${canonical}"`;'), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
 });
 
+check("unsupported primitive candidates use context-specific diagnostics through literals, bindings, and aliases", () => {
+  const prefix = 'import { Hson } from "hson-live"; const u = undefined; const b = 1n; declare const Symbol: (description?: string) => symbol; const s = Symbol(); declare const maybeBigint: bigint; declare const maybeSymbol: symbol; declare const uniqueSymbol: unique symbol; type U = undefined; type B = bigint; type S = symbol; type BL = -1n; declare const aliasU: U; declare const aliasB: B; declare const aliasS: S; declare const literalB: BL; ';
+  const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/unsupported-primitives.ts").map(diagnostic => diagnostic.code);
+  const undefinedCandidates = ["undefined", "u", "aliasU"];
+  const unsupportedCandidates = ["1n", "-1n", "b", "s", "maybeBigint", "maybeSymbol", "uniqueSymbol", "aliasB", "aliasS", "literalB"];
+  for (const candidate of [...undefinedCandidates, ...unsupportedCandidates]) {
+    assert.deepEqual(codes('Hson.canonical`${' + candidate + '}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+    assert.deepEqual(codes('Hson.data`${' + candidate + '}`;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
+    assert.deepEqual(codes('Hson.document`<main ${' + candidate + '}/>`;'),
+      undefinedCandidates.includes(candidate) ? [] : ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  }
+  // Shared compatibility tests cover the family/context matrix; integrate one
+  // representative of each family through every tag's quoted-slot path.
+  for (const tag of ["canonical", "data", "document"]) {
+    for (const candidate of ["u", "b", "s"]) {
+      assert.deepEqual(codes('Hson.' + tag + '`"${' + candidate + '}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
+    }
+    assert.deepEqual(codes('Hson.' + tag + '`"x${u}"`;'), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
+    assert.deepEqual(codes('Hson.' + tag + '`"${b}${s}"`;'), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
+  }
+  assert.deepEqual(codes('Hson.canonical`<main ${u}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.canonical`<value ${u}>`;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.document`<main attr=${u}/>`;'), ["HSON_INTERPOLATION_POSITION_INVALID"]);
+});
+
+check("mixed candidate unions and unavailable type evidence remain conservative", () => {
+  const prefix = 'import { Hson } from "hson-live"; type OptionalBigint = bigint | undefined; type OptionalString = string | undefined; declare const aliasOptionalBigint: OptionalBigint; declare const aliasOptionalString: OptionalString; declare const opaque: unknown; declare const unchecked: any; declare const unreachable: never; ';
+  const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/candidate-unions.ts").map(diagnostic => diagnostic.code);
+  for (const type of ["string | undefined", "number | undefined", "string | bigint", "string | symbol", "bigint | symbol", "bigint | undefined"]) {
+    const declaration = 'declare const candidate: ' + type + '; ';
+    for (const tag of ["canonical", "data", "document"]) {
+      assert.deepEqual(codes(declaration + 'Hson.' + tag + '`${candidate}`;'), []);
+      assert.deepEqual(codes(declaration + 'Hson.' + tag + '`"${candidate}"`;'), []);
+    }
+  }
+  for (const candidate of ["aliasOptionalBigint", "aliasOptionalString", "opaque", "unchecked", "unreachable"]) {
+    assert.deepEqual(codes('Hson.canonical`${' + candidate + '}`;'), []);
+    assert.deepEqual(codes('Hson.document`"${' + candidate + '}"`;'), []);
+  }
+  assert.deepEqual(codes('declare const candidate: 1n | 2n; Hson.canonical`${candidate}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+  assert.deepEqual(codes('type B = bigint; declare const candidate: B | B; Hson.canonical`${candidate}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+  assert.deepEqual(codes('function f(undefined: string) { Hson.canonical`${undefined}`; }'), []);
+  assert.deepEqual(codes('const Symbol = () => "37"; const s = Symbol(); Hson.canonical`${s}`;'), []);
+  // The isolated source program has no standard library. An unresolved Symbol
+  // call provides no semantic return type, so it cannot prove incompatibility.
+  assert.deepEqual(codes('const s = Symbol(); Hson.canonical`${s}`;'), []);
+});
+
 check("inferred Hson brands leave serialized candidate qualification to runtime", () => {
   const prefix = 'import { Hson } from "hson-live"; ';
   const familyCodes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/inferred.ts")

@@ -4,6 +4,7 @@ import { interpolation_site } from "../../../src/internal/trusted-schema-diagnos
 import { query_hson_editor_context } from "../../../src/internal/editor-introspection/query.js";
 import { interpolation_semantic_mismatch, type StaticInterpolationFamily } from "../../../src/internal/editor-introspection/interpolation-compatibility.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
+import { diagnose_hson_prefix } from "./tag-admission.js";
 
 /** Static proof only; undecidable expression types remain runtime-owned. */
 export function static_interpolation_diagnostics(fileName: string, text: string): readonly DocumentDiagnosticSpec[] {
@@ -22,6 +23,10 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
   const diagnostics: DocumentDiagnosticSpec[] = [];
   for (const template of discovery.interpolated) {
     if (template.authoringKind === "schema") continue;
+    // A rejected position has no admissible candidate type. In particular,
+    // adjacent quoted holes must retain the existing partial-slot diagnosis.
+    if (diagnose_hson_prefix(template).some(diagnostic => diagnostic.code === "HSON_QUOTED_INTERPOLATION_PARTIAL"
+      || diagnostic.code === "HSON_INTERPOLATION_POSITION_INVALID")) continue;
     const site = interpolation_site(template, fileName);
     let source = "";
     const slots: { offset: number; substitution: number }[] = [];
@@ -35,7 +40,7 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
       if (range === undefined) return;
       const expression = expressions.get(range.start);
       if (expression === undefined) return;
-      const mismatch = interpolation_semantic_mismatch(role, expression_family(expression, checker, new Set()));
+      const mismatch = interpolation_semantic_mismatch(role, expression_family(expression, checker, new Set()), template.authoringKind);
       if (mismatch === undefined) return;
       diagnostics.push({ message: mismatch.message, code: mismatch.code, source: "Hson", range, precision: "exact", related: [] });
     });
@@ -43,16 +48,25 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
   return diagnostics;
 }
 
-function type_family(node: ts.TypeNode, checker: ts.TypeChecker): StaticInterpolationFamily {
-  if (ts.isParenthesizedTypeNode(node)) return type_family(node.type, checker);
+function type_family(node: ts.TypeNode, checker: ts.TypeChecker, seen = new Set<ts.Symbol>()): StaticInterpolationFamily {
+  if (ts.isParenthesizedTypeNode(node)) return type_family(node.type, checker, seen);
   if (ts.isUnionTypeNode(node)) {
-    const families = node.types.map(type => type_family(type, checker));
+    const families = node.types.map(type => type_family(type, checker, new Set(seen)));
     return families.every(family => family === families[0]) ? families[0] ?? "unknown" : "unknown";
   }
   if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
     if (is_official_hson_package_binding(node.typeName, "HsonData", checker)) return "data";
     if (is_official_hson_package_binding(node.typeName, "HsonDocument", checker)) return "document";
+    const symbol = checker.getSymbolAtLocation(node.typeName);
+    const alias = symbol?.declarations?.find(ts.isTypeAliasDeclaration);
+    if (symbol !== undefined && alias !== undefined) {
+      if (seen.has(symbol)) return "unknown";
+      seen.add(symbol);
+      return type_family(alias.type, checker, seen);
+    }
     const type = checker.getTypeFromTypeNode(node);
+    const primitive = unsupported_primitive_family(type);
+    if (primitive !== undefined) return primitive;
     return type.flags & ts.TypeFlags.Object ? "object" : "unknown";
   }
   switch (node.kind) {
@@ -69,7 +83,15 @@ function type_family(node: ts.TypeNode, checker: ts.TypeChecker): StaticInterpol
     if (node.literal.kind === ts.SyntaxKind.TrueKeyword || node.literal.kind === ts.SyntaxKind.FalseKeyword) return "boolean";
     if (node.literal.kind === ts.SyntaxKind.NullKeyword) return "null";
   }
-  return "unknown";
+  return unsupported_primitive_family(checker.getTypeFromTypeNode(node)) ?? "unknown";
+}
+
+/** Only unequivocal primitive type flags; unions remain indeterminate. */
+function unsupported_primitive_family(type: ts.Type): StaticInterpolationFamily | undefined {
+  if (type.flags & ts.TypeFlags.Undefined) return "undefined";
+  if (type.flags & ts.TypeFlags.BigIntLike) return "bigint";
+  if (type.flags & ts.TypeFlags.ESSymbolLike) return "symbol";
+  return undefined;
 }
 
 function expression_family(node: ts.Expression, checker: ts.TypeChecker, seen: Set<ts.Symbol>): StaticInterpolationFamily {
@@ -99,6 +121,8 @@ function expression_family(node: ts.Expression, checker: ts.TypeChecker, seen: S
   }
   const type = checker.getTypeAtLocation(node);
   if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) return "unknown";
+  const primitive = unsupported_primitive_family(type);
+  if (primitive !== undefined) return primitive;
   if (type.flags & ts.TypeFlags.NumberLike) return "number";
   if (type.flags & ts.TypeFlags.BooleanLike) return "boolean";
   if (type.flags & ts.TypeFlags.Null) return "null";
