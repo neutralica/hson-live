@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { Hson, type HsonCanonical, type HsonData, type HsonDocument } from "../src/hson-authoring.ts";
 import { hsonTransform } from "../src/api/transform/transform.facade.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
-import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
+import { tokenize_hson, scan_hson_template_segments } from "../src/api/transform/parsers/tokenize-hson.ts";
+import { parse_hson, parse_hson_interpolated_template } from "../src/api/transform/parsers/parse-hson.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
+import { is_Node } from "../src/core/node-guards.ts";
+import type { HsonNode, NodeContent } from "../src/core/types.ts";
 import { TransformError } from "../src/core/errors.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -40,6 +44,73 @@ function closes(actual: string, expectedSource: string): void {
   assert.equal(serialized, actual);
   assert.equal(canonical_hson_graph_equal(graph, hsonTransform.fromHson(serialized).toNode()), true);
 }
+
+// The private parser accepts already-admitted slot nodes. Supply them explicitly
+// so these assertions inspect insertion/root shaping without any serialization.
+function composed_graph(raw: readonly string[], substitutions: readonly string[], values: readonly (readonly HsonNode[])[] = []): HsonNode {
+  const { source, slots } = scan_hson_template_segments(raw, substitutions);
+  const tokens = tokenize_hson(source, 0, undefined, slots, "canonical", substitutions);
+  return parse_hson_interpolated_template(source, "canonical", values, tokens);
+}
+
+function expected_node($_tag: string, $_content: NodeContent = []): HsonNode {
+  return { $_tag, $_content };
+}
+
+function element_candidate(source: string): readonly HsonNode[] {
+  const candidate = detach_hson_root_value(parse_hson(source));
+  assert.equal(candidate.$_tag, "_hson_elem");
+  return candidate.$_content.map(item => { assert.ok(is_Node(item)); return item; });
+}
+
+check("quoted nested interpolation graph is correct before serialization", () => {
+  assert.deepEqual(composed_graph(['<main "', '"/>'], ["<p/>"]),
+    expected_node("_hson_root", [expected_node("_hson_elem", [
+      expected_node("main", [expected_node("_hson_elem", [expected_node("_hson_str", ["<p/>"])])]),
+    ])]));
+});
+
+check("adjacent generic interpolation nodes retain exact order and wrappers before serialization", () => {
+  assert.deepEqual(composed_graph(["", "", ""], ["<a/>", "<b/>"], [element_candidate("<a/>"), element_candidate("<b/>")]),
+    expected_node("_hson_root", [expected_node("_hson_elem", [expected_node("a"), expected_node("b")])]));
+  assert.deepEqual(composed_graph(["", "", "", ""], ['"a"', "<b/>", '"c"'], [
+    [detach_hson_root_value(parse_hson('"a"'))], element_candidate("<b/>"), [detach_hson_root_value(parse_hson('"c"'))],
+  ]), expected_node("_hson_root", [expected_node("_hson_elem", [
+    expected_node("_hson_str", ["a"]), expected_node("b"), expected_node("_hson_str", ["c"]),
+  ])]));
+});
+
+check("nested object and array candidates preserve one-value cardinality before serialization", () => {
+  const object = "<x 1 y 2>";
+  const objectGraph = expected_node("_hson_obj", [
+    expected_node("x", [expected_node("_hson_obj", [expected_node("_hson_val", [1])])]),
+    expected_node("y", [expected_node("_hson_obj", [expected_node("_hson_val", [2])])]),
+  ]);
+  assert.deepEqual(composed_graph(["<outer ", ">"], [object], [[detach_hson_root_value(parse_hson(object))]]),
+    expected_node("_hson_root", [expected_node("_hson_obj", [expected_node("outer", [objectGraph])])]));
+  const array = "«1,2»";
+  const arrayGraph = expected_node("_hson_arr", [
+    { ...expected_node("_hson_ii", [expected_node("_hson_val", [1])]), $_meta: { index: "0" } },
+    { ...expected_node("_hson_ii", [expected_node("_hson_val", [2])]), $_meta: { index: "1" } },
+  ]);
+  assert.deepEqual(composed_graph(["«", "»"], [array], [[detach_hson_root_value(parse_hson(array))]]),
+    expected_node("_hson_root", [expected_node("_hson_arr", [
+      { ...expected_node("_hson_ii", [arrayGraph]), $_meta: { index: "0" } },
+    ])]));
+});
+
+check("candidate source cannot borrow neighboring syntax", () => {
+  // Concatenating these candidate bytes would form <p/>, but each slot must
+  // admit complete source independently even when the outer grammar is valid.
+  rejects(() => Hson.canonical`${"<p"}${"/>"}`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
+  rejects(() => Hson.canonical`${"<p/>junk"}<b/>`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
+});
+
+check("candidate-local line comments cannot swallow following authored structure", () => {
+  const candidate = "<a/>// candidate-local comment";
+  closes(Hson.canonical`${candidate}<b/>`, "<a/><b/>");
+  closes(Hson.document`${candidate}<b/>`, "<a/><b/>");
+});
 
 check("semantic boundaries prevent numeric token synthesis, rather than banning adjacency", () => {
   // These independent values cannot become 12, 1e2, or 1.2. Generic root

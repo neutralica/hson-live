@@ -689,6 +689,23 @@ check("static interpolation diagnostics report position failures without inferri
   assert.deepEqual(codes('Hson.data`<value ${new String("x")}>`;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
 });
 
+check("Canonical static diagnostics accept string candidates and reject object candidates in whole slots", () => {
+  const prefix = 'import { Hson, type HsonCanonical, type HsonData, type HsonDocument } from "hson-live"; declare const dynamicString: string; declare const canonical: HsonCanonical; declare const data: HsonData; declare const document: HsonDocument; ';
+  const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/canonical-candidates.ts").map(diagnostic => diagnostic.code);
+  for (const candidate of ["dynamicString", "canonical", "data", "document", '"37"', "37", "true", "null"]) {
+    assert.deepEqual(codes('Hson.canonical`${' + candidate + '}`;'), []);
+    assert.deepEqual(codes('Hson.canonical`"${' + candidate + '}"`;'), []);
+  }
+  // These are intentional rejection cases in the public entrypoint fixture.
+  // TypeScript consumes the fixture's @ts-expect-error comments; Hson does not.
+  for (const candidate of ["{}", "[]", "() => {}"]) {
+    assert.deepEqual(codes('// @ts-expect-error\nHson.canonical`${' + candidate + '}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+    assert.deepEqual(codes('Hson.canonical`"${' + candidate + '}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
+  }
+  assert.deepEqual(codes('Hson.canonical`"prefix${dynamicString}"`;'), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
+  assert.deepEqual(codes('Hson.canonical`"${dynamicString}${canonical}"`;'), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
+});
+
 check("inferred Hson brands leave serialized candidate qualification to runtime", () => {
   const prefix = 'import { Hson } from "hson-live"; ';
   const familyCodes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/inferred.ts")

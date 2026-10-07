@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { hson_grammar_checkpoint, hson_interpolation_roles } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { query_hson_editor_context } from "../src/internal/editor-introspection/query.ts";
-import { interpolation_semantic_mismatch } from "../src/internal/editor-introspection/interpolation-compatibility.ts";
+import { interpolation_semantic_mismatch, type StaticInterpolationFamily } from "../src/internal/editor-introspection/interpolation-compatibility.ts";
 
 const checkpoint = (source: string, mode: "data" | "document" | "schema" | "canonical" = "data") => hson_grammar_checkpoint(source, source.length, mode);
 assert.equal(checkpoint("<")?.kind, "member");
@@ -53,6 +53,11 @@ assert.equal(interpolation_semantic_mismatch("quoted-string", "data"), undefined
 assert.equal(interpolation_semantic_mismatch("quoted-string", "number"), undefined);
 assert.equal(interpolation_semantic_mismatch("quoted-string", "object")?.code, "HSON_QUOTED_INTERPOLATION_STATIC_TYPE");
 assert.equal(interpolation_semantic_mismatch("canonical-value", "object")?.code, "HSON_INTERPOLATION_CANONICAL_STATIC_TYPE");
+const canonicalCandidates: readonly StaticInterpolationFamily[] = ["string", "canonical", "data", "document", "number", "boolean", "null"];
+for (const family of canonicalCandidates) {
+  assert.equal(interpolation_semantic_mismatch("canonical-value", family), undefined);
+  assert.equal(interpolation_semantic_mismatch("quoted-string", family), undefined);
+}
 assert.equal(interpolation_semantic_mismatch("document-content", "number")?.code, "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE");
 assert.deepEqual(hson_interpolation_roles("", "canonical", [{ offset: 0, substitution: 0 }]), ["canonical-value"]);
 assert.deepEqual(hson_interpolation_roles("«»", "canonical", [{ offset: 1, substitution: 0 }]), ["data-value"]);
