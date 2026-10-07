@@ -48,15 +48,15 @@ function has_direct_template_segment_correspondence(template: ts.TemplateExpress
     .every(literal => (literal.rawText ?? literal.text) === literal.text);
 }
 
-/** Discover exact static strings and safe interpolation ranges at current official facade identities. */
-export function discover_static_from_hson_sources(fileName: string, hostText: string): StaticFromHsonDiscovery {
+/** Discover exact static strings and safe interpolation ranges; a supplied program represents the same host text. */
+export function discover_static_from_hson_sources(fileName: string, hostText: string, sourceProgram?: ts.Program): StaticFromHsonDiscovery {
   const empty = (): StaticFromHsonDiscovery => Object.freeze({
     sources: Object.freeze([]),
     interpolated: Object.freeze([]),
     dynamicCallRanges: Object.freeze([]),
   });
   if (!/\.tsx?$/.test(fileName)) return empty();
-  const program = create_hson_source_program(fileName, hostText);
+  const program = sourceProgram ?? create_hson_source_program(fileName, hostText);
   const file = program.getSourceFile(fileName);
   if (file === undefined) return empty();
   const diagnostics = program.getSyntacticDiagnostics(file);

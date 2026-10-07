@@ -28,6 +28,7 @@ import {
 } from "../src/hson-schema-symbols.js";
 import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_tool_arguments, schema_watch_output_state } from "../src/schema-tooling.js";
 import { HsonEditorCompletionCache } from "../src/editor-completion.js";
+import "./diagnostic-expectations.test.js";
 
 let checks = 0;
 function check(name: string, body: () => void): void {

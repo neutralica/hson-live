@@ -124,15 +124,55 @@ async function main(): Promise<void> {
     controller.dispose();
   });
 
-  await check("workspace diagnostics publish inferred data-in-document mismatches from open TypeScript", () => {
+  await check("marker-only files remain candidates on disk and after deleting an open target", async () => {
+    const host = new Host(); const publisher = new Publisher();
+    const value = source("/workspace/stale-expectation.ts");
+    const stale = "// @hson-expect-error SOME_CODE\n";
+    host.discovered = [value]; host.contents.set(value.uri, stale);
+    const controller = start_workspace_diagnostics(host, publisher);
+    await settle();
+    assert.deepEqual(publisher.values.get(value.uri)?.map(item => item.code), ["HSON_EXPECT_ERROR_UNUSED"]);
+    const text = 'import { Hson } from "hson-live";\n// @hson-expect-error HSON_INTERPOLATION_CANONICAL_STATIC_TYPE\nHson.canonical`${{}}`;';
+    const opened = document(value, text, 1);
+    host.documents = [opened]; host.fire(host.opens, opened);
+    assert.deepEqual(publisher.values.get(value.uri), []);
+    const removed = document(value, stale, 2);
+    host.documents = [removed]; host.fire(host.changes, removed); host.runTimers();
+    assert.deepEqual(publisher.values.get(value.uri)?.map(item => item.code), ["HSON_EXPECT_ERROR_UNUSED"]);
+    assert.deepEqual(host.unexpected, []);
+    controller.dispose();
+  });
+
+  await check("deleting a final block target publishes its retained stale assertion", () => {
+    const host = new Host(); const publisher = new Publisher();
+    const value = source("/workspace/block-expectation.ts");
+    const text = 'import { Hson } from "hson-live";\nfunction fixture() {\n// @hson-expect-error HSON_INTERPOLATION_CANONICAL_STATIC_TYPE\nHson.canonical`${{}}`;\n}';
+    const opened = document(value, text, 1);
+    host.documents = [opened];
+    const controller = start_workspace_diagnostics(host, publisher);
+    assert.deepEqual(publisher.values.get(value.uri), []);
+    const stale = text.replace('Hson.canonical`${{}}`;\n', "");
+    const removed = document(value, stale, 2);
+    host.documents = [removed]; host.fire(host.changes, removed); host.runTimers();
+    assert.deepEqual(publisher.values.get(value.uri)?.map(item => item.code), ["HSON_EXPECT_ERROR_UNUSED"]);
+    assert.deepEqual(publisher.values.get(value.uri)?.[0]?.range,
+      { start: stale.indexOf("@hson-expect-error"), end: stale.indexOf("\n}") });
+    const malformed = document(value, stale.replace(" HSON_INTERPOLATION_CANONICAL_STATIC_TYPE", ""), 3);
+    host.documents = [malformed]; host.fire(host.changes, malformed); host.runTimers();
+    assert.deepEqual(publisher.values.get(value.uri)?.map(item => item.code), ["HSON_EXPECT_ERROR_INVALID"]);
+    assert.deepEqual(host.unexpected, []);
+    controller.dispose();
+  });
+
+  await check("workspace diagnostics publish positional failures from open TypeScript", () => {
     const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/inferred-interpolation.ts");
     const text = 'import { Hson } from "hson-live"; const data = Hson.data`<main "">`; const route = "/"; Hson.document`<html <head <style "a>b"/> /> ${data} <body <iframe src=${route} title="Pulse"/> /> />`;';
     const opened = document(value, text, 1);
     host.documents = [opened];
     const controller = start_workspace_diagnostics(host, publisher);
-    const diagnostic = publisher.values.get(value.uri)?.find(item => item.code === "HSON_INTERPOLATION_DATA_IN_DOCUMENT");
-    assert.equal(diagnostic?.message.startsWith("HsonData cannot be interpolated into Hson.document content."), true);
-    assert.deepEqual(diagnostic?.range, { start: text.indexOf("${data}") + 2, end: text.indexOf("${data}") + 6 });
+    const diagnostic = publisher.values.get(value.uri)?.find(item => item.code === "HSON_INTERPOLATION_POSITION_INVALID");
+    assert.equal(diagnostic?.message.includes("interpolation cannot appear in an unquoted attribute value"), true);
+    assert.deepEqual(diagnostic?.range, { start: text.indexOf("${route}"), end: text.indexOf("${route}") + "${route}".length });
     controller.dispose();
   });
 

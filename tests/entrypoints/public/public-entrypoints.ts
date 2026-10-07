@@ -862,16 +862,21 @@ hson(null);
 // @ts-expect-error Ordinary calls are unsupported.
 hson({});
 // @ts-expect-error Tagged substitutions exclude undefined.
+// @hson-expect-error HSON_INTERPOLATION_CANONICAL_STATIC_TYPE
 Hson.canonical`${undefined}`;
 // @ts-expect-error Tagged substitutions exclude bigint.
+// @hson-expect-error HSON_INTERPOLATION_CANONICAL_STATIC_TYPE
 Hson.canonical`${1n}`;
 // @ts-expect-error Tagged substitutions exclude symbol.
 Hson.canonical`${Symbol()}`;
 // @ts-expect-error Tagged substitutions exclude objects.
+// @hson-expect-error HSON_INTERPOLATION_CANONICAL_STATIC_TYPE
 Hson.canonical`${{}}`;
 // @ts-expect-error Tagged substitutions exclude arrays.
+// @hson-expect-error HSON_INTERPOLATION_CANONICAL_STATIC_TYPE
 Hson.canonical`${[]}`;
 // @ts-expect-error Tagged substitutions exclude functions.
+// @hson-expect-error HSON_INTERPOLATION_CANONICAL_STATIC_TYPE
 Hson.canonical`${() => {}}`;
 // @ts-expect-error Transform textual admission has no .string surface.
 hson.transform.string;

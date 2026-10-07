@@ -6,7 +6,7 @@ import {
   type TransformErrorDetails,
   type TransformErrorSource,
 } from "../../../src/core/errors.js";
-import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { create_hson_source_program, discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import {
   source_point_range_at,
   type HostSourceRange,
@@ -14,6 +14,7 @@ import {
 import { diagnose_hson_tag, diagnose_hson_prefix } from "./tag-admission.js";
 import { static_interpolation_diagnostics } from "./static-interpolation-diagnostics.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
+import { apply_hson_diagnostic_expectations, HSON_EXPECT_ERROR_MARKER, type ExpectationRegion } from "./diagnostic-expectations.js";
 import {
   map_static_hson_point,
   type StaticHsonSource,
@@ -145,16 +146,20 @@ function validateStandalone(text: string): readonly DocumentDiagnosticSpec[] {
   }
 }
 
-function validateEmbedded(input: DocumentDiagnosticInput): readonly DocumentDiagnosticSpec[] {
-  const discovery = discover_hson_tagged_templates(input.fileName, input.text);
+function validateEmbedded(input: DocumentDiagnosticInput, ignoreDiagnostics: boolean): readonly DocumentDiagnosticSpec[] {
+  // Share the discovery program's parsed host with the expectation processor.
+  // No extra expectation parse is needed, and marker-free production is unchanged.
+  const program = input.text.includes(HSON_EXPECT_ERROR_MARKER)
+    ? create_hson_source_program(input.fileName, input.text) : undefined;
+  const discovery = discover_hson_tagged_templates(input.fileName, input.text, program);
   const diagnostics: DocumentDiagnosticSpec[] = [];
-  for (const source of discovery.sources) {
-    diagnostics.push(...diagnose_hson_tag(source));
+  if (!ignoreDiagnostics) {
+    for (const source of discovery.sources) diagnostics.push(...diagnose_hson_tag(source));
+    for (const source of discovery.interpolated) diagnostics.push(...diagnose_hson_prefix(source));
+    diagnostics.push(...static_interpolation_diagnostics(input.fileName, input.text));
   }
-  for (const source of discovery.interpolated) diagnostics.push(...diagnose_hson_prefix(source));
-  diagnostics.push(...static_interpolation_diagnostics(input.fileName, input.text));
-  const staticSources = discover_static_from_hson_sources(input.fileName, input.text).sources;
-  for (const source of staticSources) {
+  const staticSources = discover_static_from_hson_sources(input.fileName, input.text, program).sources;
+  for (const source of ignoreDiagnostics ? [] : staticSources) {
     try {
       parse_hson(source.runtimeText);
     } catch (error) {
@@ -166,7 +171,16 @@ function validateEmbedded(input: DocumentDiagnosticInput): readonly DocumentDiag
   // Runtime substitution values are intentionally opaque to the editor. The
   // discovery result records interpolated templates, but only substitution-free
   // templates can receive authoritative whole-source parsing here.
-  return Object.freeze(diagnostics);
+  const ordinary = Object.freeze(diagnostics);
+  const file = program?.getSourceFile(input.fileName);
+  if (file === undefined) return ordinary;
+  const regions: ExpectationRegion[] = [
+    ...[...discovery.sources, ...discovery.interpolated].map((source): ExpectationRegion => ({
+      kind: "template", range: { start: source.tagRange.start, end: source.templateRange.end },
+    })),
+    ...staticSources.map((source): ExpectationRegion => ({ kind: "static-source", range: source.callRange })),
+  ];
+  return apply_hson_diagnostic_expectations(file, regions, ordinary);
 }
 
 function staticTransformDiagnostic(
@@ -193,8 +207,9 @@ export function produce_document_diagnostics(
   input: DocumentDiagnosticInput,
 ): readonly DocumentDiagnosticSpec[] {
   if (!is_supported_document(input)) return Object.freeze([]);
-  if (hasDiagnosticsIgnoreFileDirective(input)) return Object.freeze([]);
+  const ignoreDiagnostics = hasDiagnosticsIgnoreFileDirective(input);
+  if (ignoreDiagnostics && (input.languageId === "hson" || !input.text.includes(HSON_EXPECT_ERROR_MARKER))) return Object.freeze([]);
   return input.languageId === "hson"
     ? validateStandalone(input.text)
-    : validateEmbedded(input);
+    : validateEmbedded(input, ignoreDiagnostics);
 }

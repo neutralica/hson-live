@@ -296,10 +296,11 @@ export function read_template_substitution_ranges(
   return Object.freeze(ranges);
 }
 
-/** Discover semantic member tags rooted in an official Hson import. */
+/** Discover semantic member tags rooted in an official Hson import; a supplied program represents the same host text. */
 export function discover_hson_tagged_templates(
   fileName: string,
   hostText: string,
+  sourceProgram?: ts.Program,
 ): HsonTaggedTemplateDiscoveryResult {
   const empty = (): HsonTaggedTemplateDiscoveryResult => Object.freeze({
     sources: Object.freeze([]),
@@ -311,7 +312,7 @@ export function discover_hson_tagged_templates(
     return empty();
   }
 
-  const program = create_hson_source_program(fileName, hostText);
+  const program = sourceProgram ?? create_hson_source_program(fileName, hostText);
   const sourceFile = program.getSourceFile(fileName);
   if (sourceFile === undefined) return empty();
   const diagnostics = program.getSyntacticDiagnostics(sourceFile);

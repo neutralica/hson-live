@@ -5,6 +5,7 @@ import {
   type DocumentDiagnosticSpec,
 } from "./document-diagnostics.js";
 import type { DiagnosticDocument, DiagnosticPublisher, Disposable } from "./diagnostics.js";
+import { HSON_EXPECT_ERROR_MARKER } from "./diagnostic-expectations.js";
 
 export type WorkspaceDiagnosticSource = Readonly<{
   uri: string;
@@ -40,7 +41,7 @@ export type WorkspaceDiagnosticOptions = Readonly<{
 }>;
 
 function tsCandidate(text: string): boolean {
-  return text.includes("Hson") || text.includes("fromHson");
+  return text.includes("Hson") || text.includes("fromHson") || text.includes(HSON_EXPECT_ERROR_MARKER);
 }
 
 export function start_workspace_diagnostics(

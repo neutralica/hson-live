@@ -132,6 +132,16 @@ export const hsonValidationFailed = "Hson validation failed.";
 // Uses literal point/EOF or body fallback; this is not a new admission rule.
 export const hsonAdmissionFailed = "Hson admission failed.";
 
+export const hsonExpectationInvalid = "@hson-expect-error requires exactly one diagnostic code.";
+
+export function hsonExpectationUnused(code: string): string {
+  return `Expected Hson diagnostic ${code} was not reported for this target.`;
+}
+
+export function hsonExpectationNoTarget(code: string): string {
+  return `Expected Hson diagnostic ${code}, but no unique Hson template target was found.`;
+}
+
 // The trusted client caught a non-Error value while validating.
 // Status tooltip only; no source diagnostic or exception detail is invented.
 export const schemaRuntimeFailed = "Trusted Schema runtime failed.";
