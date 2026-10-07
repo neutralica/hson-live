@@ -19,7 +19,7 @@ export type ParseTokensOptions = Readonly<{
     /** Internal document admission for top-level text and structural slots. */
     allowTopLevelDocumentText?: boolean;
     /** Private already-admitted tagged-template slot content. */
-    interpolation?: Readonly<{ mode: "document" | "data"; values: readonly (readonly HsonNode[])[] }>;
+    interpolation?: Readonly<{ mode: "canonical" | "document" | "data"; values: readonly (readonly HsonNode[])[] }>;
 }>;
 
 
@@ -106,12 +106,12 @@ export function parse_tokens(
     const N = tokens.length;
     function slotNodes(token: TokenInterpolationSlot): readonly HsonNode[] {
         const interpolation = options.interpolation;
-        if (interpolation === undefined || token.context !== (interpolation.mode === "document" ? "document-content" : "data-value")) {
+        if (interpolation === undefined || (interpolation.mode !== "canonical" && token.context !== (interpolation.mode === "document" ? "document-content" : "data-value"))) {
             _throw_transform_err("interpolation is unavailable in this parser mode", "parse_tokens",
                 undefined, undefined, sourceDetails(token.pos, "HSON_INTERPOLATION_POSITION_INVALID", "template-admission"));
         }
         const content = interpolation.values[token.slot];
-        if (content === undefined || (interpolation.mode === "data" && content.length !== 1)) {
+        if (content === undefined || (token.context === "data-value" && content.length !== 1)) {
             _throw_transform_err("invalid interpolation slot", "parse_tokens",
                 undefined, undefined, sourceDetails(token.pos, "HSON_INTERPOLATION_POSITION_INVALID", "template-admission"));
         }

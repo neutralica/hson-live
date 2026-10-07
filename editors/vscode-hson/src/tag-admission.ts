@@ -1,5 +1,5 @@
 import * as messages from "./diagnostic-messages.js";
-import { admit_hson, admit_hson_source, reconstruct_hson_template_source, encode_hson_template_substitution } from "../../../src/api/transform/hson-admission.js";
+import { admit_hson, reconstruct_hson_interpolated_template } from "../../../src/api/transform/hson-admission.js";
 import { admit_canonical_hson_data_value } from "../../../src/api/data/hson-data-hson.js";
 import { qualify_hson_document_source } from "../../../src/api/document/hson-document.js";
 import { tokenize_hson, scan_hson_template_segments } from "../../../src/api/transform/parsers/tokenize-hson.js";
@@ -44,8 +44,8 @@ export function diagnose_hson_tag(source: HsonTaggedTemplateSource): readonly Do
   try {
     // Reflect keeps the real tagged-template cooked-segment guard without eval.
     if (source.authoringKind === "document") {
-      const raw = Reflect.apply(reconstruct_hson_template_source, undefined, [strings, []]);
-      qualify_hson_document_source(raw);
+      const raw = Reflect.apply(reconstruct_hson_interpolated_template, undefined, [strings, []]);
+      qualify_hson_document_source(raw.source);
     } else {
       const canonical = Reflect.apply(admit_hson, undefined, [strings]);
       if (source.authoringKind === "data" || source.authoringKind === "schema") admit_canonical_hson_data_value(canonical);
@@ -68,8 +68,6 @@ export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate): 
   const preview = scan_hson_template_segments(
     site.literals.map(part => part.raw),
     site.expressions.map(() => "x"),
-    () => '"x"',
-    source.authoringKind === "document" || source.authoringKind === "data",
   );
   if (source.authoringKind === "schema") return [{
     message: "Hson.schema requires a substitution-free tagged template.",
@@ -79,9 +77,18 @@ export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate): 
   if (preview.slots.length !== 0) {
     try {
       tokenize_hson(preview.source, 0, undefined, preview.slots,
-        source.authoringKind === "document" ? "document" : "data", site.expressions.map(() => "x"));
+        source.authoringKind, site.expressions.map(() => "x"), source.authoringKind);
     } catch (error) {
       const details = read_transform_error_details(error);
+      // Authored object/element mode crossings are knowable without evaluating
+      // a substitution. Use the same scanner's contextual grammar observation.
+      if (details?.code === "HSON_STRUCTURAL_MODE_CROSSING") {
+        if (details.source && details.source.index < literal.raw.length) {
+          return [diagnostic(error, literal, source.bodyRange, source.authoringKind)];
+        }
+        return [{ message: error instanceof Error ? error.message : "Invalid Hson context.",
+          range: source.bodyRange, source: "Hson", code: details.code, precision: "fallback", related: [] }];
+      }
       if (details?.code === "HSON_INTERPOLATION_POSITION_INVALID" || details?.code === "HSON_QUOTED_INTERPOLATION_PARTIAL") {
         const slot = preview.slots.find(item => item.offset === details.source?.index) ?? preview.slots[0]!;
         return [{ message: error instanceof Error ? error.message : "Interpolation is not allowed here.",
@@ -94,30 +101,6 @@ export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate): 
     if (!details) throw error;
     if (prefixFailures.has(details.code) && details.source && details.source.index < literal.raw.length - 1) {
       return [diagnostic(error, literal, literal.range)];
-    }
-  }
-  // One safely encoded primitive hole can only change a scalar token. Require
-  // every scalar class to parse neutrally and fail the same contextual mode.
-  if ((source.authoringKind === "data" || source.authoringKind === "document")
-    && source.substitutionRanges.length === 1 && site.literals.length === 2) {
-    const [before, after] = site.literals;
-    if (before !== undefined && after !== undefined) {
-      let contextualFailures = 0;
-      for (const value of ["x", 0, true, null]) {
-        const candidate = before.raw + encode_hson_template_substitution(value, 0) + after.raw;
-        try {
-          const canonical = admit_hson_source(candidate);
-          try {
-            if (source.authoringKind === "data") admit_canonical_hson_data_value(canonical);
-            else qualify_hson_document_source(candidate);
-            break;
-          } catch { contextualFailures += 1; }
-        } catch { break; }
-      }
-      if (contextualFailures === 4) return [{
-        message: `Hson.${source.authoringKind} requires ${source.authoringKind}-mode Hson.`,
-        range: source.bodyRange, source: "Hson", precision: "fallback", related: [],
-      }];
     }
   }
   return [];

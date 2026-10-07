@@ -46,9 +46,16 @@ assert.deepEqual(hson_interpolation_roles(firstLiteral + secondLiteral + finalLi
   { offset: firstLiteral.length, substitution: 0 },
   { offset: firstLiteral.length + secondLiteral.length, substitution: 1 },
 ]), ["document-content", undefined]);
-assert.equal(interpolation_semantic_mismatch("document-content", "data")?.code, "HSON_INTERPOLATION_DATA_IN_DOCUMENT");
-assert.equal(interpolation_semantic_mismatch("data-value", "document")?.code, "HSON_INTERPOLATION_DOCUMENT_IN_DATA");
+assert.equal(interpolation_semantic_mismatch("document-content", "data"), undefined);
+assert.equal(interpolation_semantic_mismatch("data-value", "document"), undefined);
 assert.equal(interpolation_semantic_mismatch("document-content", "string"), undefined);
 assert.equal(interpolation_semantic_mismatch("quoted-string", "data"), undefined);
-assert.equal(interpolation_semantic_mismatch("quoted-string", "number")?.code, "HSON_QUOTED_INTERPOLATION_STATIC_TYPE");
+assert.equal(interpolation_semantic_mismatch("quoted-string", "number"), undefined);
+assert.equal(interpolation_semantic_mismatch("quoted-string", "object")?.code, "HSON_QUOTED_INTERPOLATION_STATIC_TYPE");
+assert.equal(interpolation_semantic_mismatch("canonical-value", "object")?.code, "HSON_INTERPOLATION_CANONICAL_STATIC_TYPE");
+assert.equal(interpolation_semantic_mismatch("document-content", "number")?.code, "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE");
+assert.deepEqual(hson_interpolation_roles("", "canonical", [{ offset: 0, substitution: 0 }]), ["canonical-value"]);
+assert.deepEqual(hson_interpolation_roles("«»", "canonical", [{ offset: 1, substitution: 0 }]), ["data-value"]);
+assert.deepEqual(hson_interpolation_roles("<x >", "canonical", [{ offset: 3, substitution: 0 }]), ["data-value"]);
+assert.deepEqual(hson_interpolation_roles("<main />", "canonical", [{ offset: 6, substitution: 0 }]), ["document-content"]);
 console.log("ok - compiler-owned editor checkpoint, completion, and interpolation compatibility");

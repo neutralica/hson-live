@@ -23,7 +23,11 @@ const direct: HsonCanonical = serialize_hson(node);
 const normalized: HsonCanonical = hsonTransform.fromHson(arbitrary).toHson().serialize();
 const directlyTagged: HsonCanonical = Hson.canonical`<main/>`;
 const taggedNumber: HsonCanonical = Hson.canonical`${42}`;
-const taggedString: HsonCanonical = Hson.canonical`${"42"}`;
+const taggedString: HsonCanonical = Hson.canonical`"${"42"}"`;
+const taggedSource: HsonCanonical = Hson.canonical`${"<main/>"}`;
+const dataIntoDocument = Hson.document`${Hson.data`"hello"`}`;
+const documentIntoData = Hson.data`${Hson.document`"hello"`}`;
+const quotedDocumentNumber = Hson.document`"${-0}"`;
 const taggedBoolean: HsonCanonical = Hson.canonical`${true}`;
 const taggedNull: HsonCanonical = Hson.canonical`${null}`;
 const branded: HsonCanonical = normalized;
@@ -106,6 +110,21 @@ type CanonicalTagReturnsExactlyHsonCanonical = Expect<
 type CanonicalTagValuesArePrimitive = Expect<
   Equal<Parameters<typeof Hson.canonical>[1], string | number | boolean | null>
 >;
+type DataTagValuesArePrimitive = Expect<
+  Equal<Parameters<typeof Hson.data>[1], string | number | boolean | null>
+>;
+type DocumentTagValuesAddOnlyUndefined = Expect<
+  Equal<Parameters<typeof Hson.document>[1], string | number | boolean | null | undefined>
+>;
+// @ts-expect-error Public slots do not admit HsonNode objects.
+Hson.canonical`${node}`;
+// @ts-expect-error Public slots do not admit HsonNode arrays.
+Hson.document`${[node]}`;
+// @ts-expect-error Data has no undefined omission value.
+Hson.data`${undefined}`;
+// @ts-expect-error Schema remains a substitution-free tag.
+Hson.schema`${"1"}`;
+
 type NoUnsafeHsonCast = Expect<
   Equal<"asHsonCanonical" extends keyof typeof hson ? true : false, false>
 >;
@@ -130,6 +149,10 @@ void repeated;
 void directlyTagged;
 void taggedNumber;
 void taggedString;
+void taggedSource;
+void dataIntoDocument;
+void documentIntoData;
+void quotedDocumentNumber;
 void taggedBoolean;
 void taggedNull;
 void readable;

@@ -1,3 +1,5 @@
+import { admit_hson_number } from "../../../core/hson-number.js";
+import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../../core/hson-content-string.js";
 import { HSON_MAX_NESTING, OBJ_TAG } from "../../../core/constants.js";
 import {
@@ -36,7 +38,7 @@ export type HsonGrammarCheckpoint = Readonly<{
   openContainers: readonly ("object" | "array" | "element")[];
   rootType?: "data" | "document";
 }>;
-export type HsonInterpolationRole = "data-value" | "document-content" | "quoted-string";
+export type HsonInterpolationRole = "canonical-value" | "data-value" | "document-content" | "quoted-string";
 
 /** Observe the production scanner at a cursor, before incomplete suffixes fail. */
 export function hson_grammar_checkpoint(
@@ -47,7 +49,7 @@ export function hson_grammar_checkpoint(
   const stop = {};
   let result: HsonGrammarCheckpoint | undefined;
   const scanner = new HsonScanner(source, 0, undefined, slots.filter(slot => slot.offset < cursor),
-    mode === "document" ? "document" : "data", slots.map(() => ""), mode, cursor, checkpoint => { result = checkpoint; throw stop; });
+    mode === "schema" ? "data" : mode, slots.map(() => ""), mode, cursor, checkpoint => { result = checkpoint; throw stop; });
   try { scanner.scan(); } catch (error) { if (error !== stop) return undefined; }
   return result;
 }
@@ -55,7 +57,7 @@ export function hson_grammar_checkpoint(
 /** Observe only proven interpolation roles; malformed prefixes yield no role. */
 export function hson_interpolation_roles(source: string, mode: HsonEditorMode, slots: readonly HsonTemplateSlot[]): readonly (HsonInterpolationRole | undefined)[] {
   const roles: (HsonInterpolationRole | undefined)[] = Array(slots.length).fill(undefined);
-  if (mode !== "data" && mode !== "document" || source.length > 128_000) return roles;
+  if (mode === "schema" || source.length > 128_000) return roles;
   const substitutions = slots.map(() => "");
   const scanner = new HsonScanner(source, 0, undefined, slots, mode, substitutions, mode, undefined, undefined,
     (index, role) => { roles[index] = role; });
@@ -80,15 +82,12 @@ export function hson_interpolation_roles(source: string, mode: HsonEditorMode, s
 export function scan_hson_template_segments(
   raw: readonly string[],
   substitutions: readonly unknown[],
-  encodePrimitive: (value: unknown, index: number) => string,
-  preserveSlots = false,
 ): Readonly<{ source: string; slots: readonly HsonTemplateSlot[] }> {
   let source = "";
   const slots: HsonTemplateSlot[] = [];
   for (let index = 0; index < substitutions.length; index += 1) {
     source += raw[index]!;
-    if (preserveSlots) slots.push({ offset: source.length, substitution: index });
-    else source += encodePrimitive(substitutions[index], index);
+    slots.push({ offset: source.length, substitution: index });
   }
   source += raw[substitutions.length] ?? "";
   return { source, slots };
@@ -115,8 +114,9 @@ export function tokenize_hson(
   depth = 0,
   collector?: HsonSourceLexicalCollector,
   templateSlots: readonly HsonTemplateSlot[] = [],
-  interpolationMode?: "document" | "data",
+  interpolationMode?: "canonical" | "document" | "data",
   substitutions: readonly unknown[] = [],
+  editorMode?: HsonEditorMode,
 ): Tokens[] {
   if (depth < 0 || depth >= HSON_MAX_NESTING) {
     _throw_transform_err(
@@ -125,7 +125,7 @@ export function tokenize_hson(
     );
   }
 
-  return new HsonScanner(hson, depth, collector, templateSlots, interpolationMode, substitutions).scan();
+  return new HsonScanner(hson, depth, collector, templateSlots, interpolationMode, substitutions, editorMode).scan();
 }
 
 class HsonScanner {
@@ -140,7 +140,7 @@ class HsonScanner {
     private readonly initialDepth: number,
     private readonly collector?: HsonSourceLexicalCollector,
     private readonly templateSlots: readonly HsonTemplateSlot[] = [],
-    private readonly interpolationMode?: "document" | "data",
+    private readonly interpolationMode?: "canonical" | "document" | "data",
     private readonly substitutions: readonly unknown[] = [],
     private readonly editorMode?: HsonEditorMode,
     private readonly editorCursor?: number,
@@ -158,10 +158,10 @@ class HsonScanner {
     return slot?.offset === this.index ? slot : undefined;
   }
 
-  private emitSlot(context: "document-content" | "data-value"): void {
+  private emitSlot(context: "canonical-value" | "document-content" | "data-value"): void {
     const slot = this.slotHere();
     if (slot === undefined) return;
-    if (context !== (this.interpolationMode === "document" ? "document-content" : "data-value")) {
+    if (this.interpolationMode !== "canonical" && context !== (this.interpolationMode === "document" ? "document-content" : "data-value")) {
       this.rejectSlot(context === "document-content" ? "document content under a data tag" : "a data value under a document tag");
     }
     this.editorSlot?.(slot.substitution, context);
@@ -176,8 +176,12 @@ class HsonScanner {
   private quotedSlot(): { slot: number; value: string } {
     const slot = this.slotHere();
     if (slot === undefined) this.rejectSlot("a quoted string");
-    const value = this.substitutions[slot.substitution];
-    if (typeof value !== "string") this.fail("quoted interpolation requires a primitive string", this.position(), "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
+    const candidate = this.substitutions[slot.substitution];
+    let value: string;
+    if (typeof candidate === "string") value = candidate;
+    else if (candidate === null || typeof candidate === "boolean" || typeof candidate === "number") {
+      value = serialize_primitive_hson(typeof candidate === "number" ? admit_hson_number(candidate) : candidate);
+    } else this.fail("quoted interpolation requires a primitive string, finite number, boolean, or null", this.position(), "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
     this.nextSlot += 1;
     return { slot: slot.substitution, value };
   }
@@ -218,7 +222,7 @@ class HsonScanner {
       this.skipTrivia();
       this.completionSlot("value");
       if (this.slotHere() !== undefined) {
-        this.emitSlot(this.interpolationMode === "document" ? "document-content" : "data-value");
+        this.emitSlot(this.interpolationMode === "canonical" ? "canonical-value" : this.interpolationMode === "document" ? "document-content" : "data-value");
         continue;
       }
       if (this.atEnd()) {
@@ -1513,6 +1517,7 @@ class HsonScanner {
         if (this.slotHere() !== undefined) this.rejectSlot("a comment");
         this.consume();
       }
+      if (this.slotHere() !== undefined) this.rejectSlot("a comment");
       if (this.atEnd()) this.editorCommentEof = true;
       if (!this.atEnd()) this.consume();
     }
@@ -1597,11 +1602,15 @@ class HsonScanner {
 
   /** Consume one logical source character; CRLF advances one line but two indices. */
   private consume(): string {
+    // Literal lexemes (including names, escapes and comments) cannot cross a
+    // substitution. Only emitSlot/quotedSlot may consume a semantic boundary.
+    if (this.slotHere() !== undefined) this.rejectSlot("a lexical token");
     if (this.atEnd()) this.fail(`unexpected end of input`);
     const ch = this.source[this.index];
 
     if (ch === "\r") {
-      if (this.source[this.index + 1] === "\n") this.index += 2;
+      if (this.source[this.index + 1] === "\n"
+        && this.templateSlots[this.nextSlot]?.offset !== this.index + 1) this.index += 2;
       else this.index += 1;
       this.line += 1;
       this.col = 1;

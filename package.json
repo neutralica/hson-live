@@ -144,6 +144,7 @@
     "test:hson-source-provenance-parser": "node --import=tsx tests/hson-source-provenance-parser.acceptance.mts",
     "test:hson-source-provenance-boundary": "node --import=tsx tests/hson-source-provenance-boundary.acceptance.mts",
     "test:hson-tagged-template": "node --import=tsx tests/hson-tagged-template.acceptance.mts",
+    "test:hson-interpolation-boundaries": "node --import=tsx tests/hson-interpolation-boundaries.acceptance.mts",
     "test:hson-structural-interpolation": "node --import=tsx tests/hson-structural-interpolation.acceptance.mts",
     "test:hson-definition-identity": "node --import=tsx tests/hson-definition-identity.acceptance.mts",
     "test:hson-multiline": "node --import=tsx tests/hson-multiline.acceptance.mts",

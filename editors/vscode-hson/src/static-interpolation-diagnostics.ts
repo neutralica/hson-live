@@ -21,7 +21,7 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
   visit(file);
   const diagnostics: DocumentDiagnosticSpec[] = [];
   for (const template of discovery.interpolated) {
-    if (template.authoringKind !== "data" && template.authoringKind !== "document") continue;
+    if (template.authoringKind === "schema") continue;
     const site = interpolation_site(template, fileName);
     let source = "";
     const slots: { offset: number; substitution: number }[] = [];

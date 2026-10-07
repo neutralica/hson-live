@@ -41,13 +41,13 @@ export function parse_hson_exact_runtime(str: string, options: ParseTokensOption
 /** Private tagged-template path: slot content is resolved before validation. */
 export function parse_hson_interpolated_template(
     source: string,
-    mode: "document" | "data",
+    mode: "canonical" | "document" | "data",
     values: readonly (readonly HsonNode[])[],
     tokens: Tokens[],
 ): HsonNode {
     if (tokens.length === 0) {
         _throw_transform_err("interpolated template has no semantic value", "parse_hson",
-            undefined, undefined, { code: "HSON_SOURCE_EMPTY", stage: "source-admission" });
+            undefined, undefined, { code: "HSON_SOURCE_EMPTY", stage: "source-admission", source: { index: 0, line: 1, column: 1 } });
     }
     reject_portable_quid_tokens(tokens);
     const root = parse_tokens(tokens, {

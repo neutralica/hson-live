@@ -64,9 +64,13 @@ const document: HsonDocument = Hson.document`<main/><aside/>`;
 const schema = Hson.schema`<type "data" content <count "number">>`;
 ```
 
-`Hson.canonical` leaves data/document classification open. `Hson.data` parses in data context; `Hson.document` parses nonempty source in document context and returns at least one content item. The same canonical bytes can have different semantics in those contexts. All three values are primitive strings; ordinary string operations return plain `string` and lose their brands. Bare `Hson\`...\`` is not supported.
+`Hson.canonical` leaves data/document classification open. `Hson.data` parses in data context; `Hson.document` parses nonempty source in document context and returns at least one content item. Their contextual qualification can accept or reject the same canonical value. All three values are primitive strings; ordinary string operations return plain `string` and lose their brands. Bare `Hson\`...\`` is not supported.
 
-For `Hson.canonical`, primitive `string`, finite `number`, `boolean`, and `null` substitutions are encoded before full-source admission. A substituted string becomes Hson string data and cannot inject delimiters. Schema tags require substitution-free source so generated proof can be checked statically.
+Canonical, Data, and Document use one syntax-driven interpolation engine. Unquoted `${value}` independently admits Hson structure/value: a runtime string is complete Hson source, while finite numbers, booleans, and null supply typed primitive nodes. Canonical retains generic roots; Data and Document apply their contextual admission rules. A string's TypeScript brand does not change its meaning. Empty or trivia-only unquoted source rejects.
+
+A whole quoted slot `"${value}"` constructs string content directly. Strings preserve their exact contents; finite numbers, booleans, and null use their canonical Hson textual spelling, including `-0` → `"-0"`. Hson-looking quoted text stays text. Partial or multiple slots within one quoted string remain unsupported.
+
+Interpolation boundaries are semantic boundaries and never fuse into surrounding lexical tokens. `${1}${2}`, `${1}e${2}`, and `${1}.${2}` reject rather than manufacturing numeric tokens; `«${1}, ${2}»` contains two values. Grammar-valid adjacent element/string nodes remain valid. Deliberate source synthesis is available through ordinary JavaScript first: `` const source = `${1}e${2}` `` produces one source candidate `"1e2"`, which `` Hson.canonical`${source}` `` parses as numeric `100`. Schema tags remain substitution-free so generated proof can be checked statically.
 
 ### Data
 
@@ -112,9 +116,10 @@ const canonical: HsonCanonical = hsonTransform
 ```
 
 Use `.toNode()` when validation is needed without serialized output. `fromHson`
-truthfully owns runtime source admission. ``Hson.canonical`${source}``` encodes it
-as Hson string data; unquoted interpolation in `Hson.document` or `Hson.data`
-instead admits the source under that receiving mode.
+truthfully owns runtime source admission. Unquoted `` Hson.canonical`${source}` ``
+also parses that source independently; `Hson.document` and `Hson.data` narrow
+the admitted candidate to their receiving domains. Use quoted interpolation
+to construct string data.
 
 Only unquoted document structural slots admit `undefined`, which contributes zero nodes directly. The completed document still requires at least one item: `<main ${undefined}/>` succeeds, while `${undefined}` alone throws. An unquoted `""` candidate rejects as empty source; quoted `"${""}"` inserts one empty STR. Quoted `undefined` rejects, and data/canonical interpolation does not gain omission semantics.
 

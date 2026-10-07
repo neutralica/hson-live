@@ -95,7 +95,8 @@ check("unquoted data primitives and candidate modes are checked independently", 
     assert.equal(Hson.data.materialize(Hson.data`${value}`), value);
     assert.deepEqual(Hson.data.materialize(Hson.data`«${value}»`), [value]);
     error(() => Hson.document`<body ${value}/>`, "HSON_INTERPOLATION_CANDIDATE_TYPE_INVALID");
-    error(() => Hson.data`<value "${value}">`, "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
+    const text = Object.is(value, -0) ? "-0" : String(value);
+    assert.deepEqual(Hson.data.materialize(Hson.data`<value "${value}">`), { value: text });
   }
   assert.equal(Hson.data`${-0}`, "-0");
   error(() => Hson.data`${Infinity}`, "HSON_NUMBER_NONFINITE");
@@ -111,8 +112,8 @@ check("unquoted data primitives and candidate modes are checked independently", 
   assert.equal(Hson.document`<body ${"<main/>"}/>`, Hson.document`<body <main/>/>`);
 });
 
-check("whole quoted slots are string-only; partial strings reject", () => {
-  for (const value of [undefined, 123, true, null, {}, new String("x")]) {
+check("whole quoted slots accept primitives; unsupported values and partial strings reject", () => {
+  for (const value of [undefined, {}, new String("x")]) {
     error(() => (Hson.document as any)`<p "${value}"/>`, "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
   }
   const value = "x";
@@ -151,9 +152,9 @@ check("names, comments, and fused slots cannot be interpolated", () => {
   error(() => Hson.data`<a 1 ${Hson.data`2`}>`, "HSON_INTERPOLATION_POSITION_INVALID");
 });
 
-check("canonical and schema keep their existing boundaries", () => {
-  assert.equal(Hson.canonical`${Hson.data`1`}`, '"1"');
-  assert.equal(Hson.canonical`${"<main/>"}`, '"<main/>"');
+check("canonical shares source interpolation while Schema remains substitution-free", () => {
+  assert.equal(Hson.canonical`${Hson.data`1`}`, "1");
+  assert.equal(Hson.canonical`${"<main/>"}`, "<main/>");
   assert.equal(Hson.canonical`${-0}`, "-0");
   assert.equal(Hson.canonical`${true}`, "true");
   assert.equal(Hson.canonical`${false}`, "false");

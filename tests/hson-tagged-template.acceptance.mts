@@ -114,57 +114,57 @@ check("null interpolation matches null source", () => {
   assert.equal(Hson.canonical`${null}`, canonicalize("null"));
 });
 
-check("string interpolation matches double-quoted Hson string source", () => {
-  assert.equal(Hson.canonical`${"37"}`, canonicalize('"37"'));
-  assert.equal(Hson.canonical`${"true"}`, canonicalize('"true"'));
-  assert.equal(Hson.canonical`${"hello"}`, canonicalize('"hello"'));
+check("unquoted strings are independently parsed Hson source", () => {
+  assert.equal(Hson.canonical`${"37"}`, canonicalize("37"));
+  assert.equal(Hson.canonical`${"true"}`, canonicalize("true"));
+  assert.equal(Hson.canonical`${'"hello"'}`, canonicalize('"hello"'));
+  assert.throws(() => Hson.canonical`${"hello"}`, /valid Hson source/);
 });
 
-check("empty string interpolation produces an empty Hson string", () => {
-  assert.equal(Hson.canonical`${""}`, '""');
+check("empty source rejects while quoted empty content constructs a STR", () => {
+  assert.throws(() => Hson.canonical`${""}`, /valid Hson source/);
+  assert.equal(Hson.canonical`"${""}"`, '""');
 });
 
 check("string interpolation uses canonical quote, slash, and control escaping", () => {
   const value = 'quote " slash \\ newline\n tab\t';
-  assert.equal(hsonTransform.fromHson(Hson.canonical`${value}`).toHson().noBreak().serialize(), JSON.stringify(value));
+  assert.equal(hsonTransform.fromHson(Hson.canonical`"${value}"`).toHson().noBreak().serialize(), JSON.stringify(value));
 });
 
 check("string interpolation preserves Unicode and astral characters", () => {
   const value = "café 😀 𝄞";
-  assert.equal(Hson.canonical`${value}`, JSON.stringify(value));
+  assert.equal(Hson.canonical`"${value}"`, JSON.stringify(value));
 });
 
 check("dollar-brace and backticks remain ordinary string data", () => {
   const value = "${notSource} `tick`";
-  assert.equal(Hson.canonical`${value}`, JSON.stringify(value));
+  assert.equal(Hson.canonical`"${value}"`, JSON.stringify(value));
 });
 
-check("multiple primitive substitutions reconstruct one complete Hson source", () => {
+check("multiple primitive substitutions remain separate semantic values", () => {
   assert.equal(
-    Hson.canonical`«${37}, ${"37"}, ${true}, ${false}, ${null}»`,
+    Hson.canonical`«${37}, "${"37"}", ${true}, ${false}, ${null}»`,
     canonicalize(`«37,"37",true,false,null»`),
   );
 });
 
-check("Hson-looking interpolated strings remain string data", () => {
+check("Hson-looking strings parse structurally regardless of static branding", () => {
   const value = `<foo "evil"/>`;
-  const brandedSource = canonicalize(value);
-  assert.equal(Hson.canonical`${value}`, JSON.stringify(value));
-  assert.equal(Hson.canonical`${brandedSource}`, JSON.stringify(value));
-  assert.equal(canonicalize(value), `<foo "evil"/>`);
-  assert.notEqual(Hson.canonical`${value}`, canonicalize(value));
+  const brandedSource = Hson.canonical`<foo "evil"/>`;
+  assert.equal(Hson.canonical`${value}`, canonicalize(value));
+  assert.equal(Hson.canonical`${brandedSource}`, canonicalize(value));
+  assert.equal(Hson.canonical`"${value}"`, JSON.stringify(value));
 });
 
-check("Hson-looking strings cannot acquire structure inside a tag", () => {
+check("unquoted structural source inserts an element child", () => {
   const value = `<foo "evil"/>`;
-  assert.equal(Hson.canonical`<main ${value}/>`, `<main "<foo \\"evil\\"/>"/>`);
+  assert.equal(Hson.canonical`<main ${value}/>`, canonicalize(`<main <foo "evil"/>/>`));
 });
 
-check("ordinary template coercion and tagged interpolation differ deliberately", () => {
-  assert.equal(canonicalize(`${"37"}`), canonicalize("37"));
-  assert.equal(canonicalize(`${"37"}`), "37");
-  assert.equal(Hson.canonical`${"37"}`, '"37"');
-  assert.notEqual(canonicalize(`${"37"}`), Hson.canonical`${"37"}`);
+check("explicit JavaScript source construction admits one complete candidate", () => {
+  const source = `${1}e${2}`;
+  assert.equal(Hson.canonical`${source}`, "100");
+  assert.throws(() => Hson.canonical`${1}e${2}`);
 });
 
 check("raw tagged Hson escapes remain parser-owned", () => {
@@ -211,10 +211,10 @@ check("empty tagged source retains the ordinary parser diagnostic", () => {
   assert.deepEqual(tagged.source, ordinary.source);
 });
 
-check("multiline source canonicalizes after complete reconstruction", () => {
+check("multiline source canonicalizes after semantic slot insertion", () => {
   assert.equal(Hson.canonical`
     <main
-      <h1 ${"Hello"}/>
+      <h1 "${"Hello"}"/>
     />
   `, `<main
   <h1 "Hello"/>

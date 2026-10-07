@@ -170,7 +170,7 @@ export type TokenEmptyObj = {
 export type TokenInterpolationSlot = {
   kind: typeof TOKEN_KIND.INTERPOLATION_SLOT;
   slot: number;
-  context: "document-content" | "data-value";
+  context: "canonical-value" | "document-content" | "data-value";
   pos: Position;
 };
 
