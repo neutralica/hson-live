@@ -1,0 +1,310 @@
+import { ARR_TAG, ELEM_TAG, HSON_META_TRANSIT_PREFIX, HSON_SYS_PREFIX, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG, _TRANSIT_PREFIX } from '../../core/constants.js';
+import { _throw_transform_err } from '../../core/errors.js';
+import { hson_metadata_candidate_key, hson_metadata_policy, hson_metadata_value_is_valid } from '../../core/hson-metadata.js';
+import { is_valid_hson_attribute_name, is_valid_hson_data_name } from '../../core/hson-name.js';
+import { is_Node } from '../../core/node-guards.js';
+import type { HsonNode } from '../../core/types.js';
+
+// Private to Transform: no node fields, public modes, or identity authority flags.
+const snapshots = new WeakSet<object>();
+const structuralTags: readonly string[] = [STR_TAG, VAL_TAG, OBJ_TAG, ARR_TAG, ELEM_TAG, II_TAG];
+const dataTags: readonly string[] = [STR_TAG, VAL_TAG, OBJ_TAG, ARR_TAG];
+type Trace = Readonly<{ parent?: Trace; key: string | number }>;
+type Storage = 'node' | 'content' | 'attrs' | 'meta' | 'style' | 'css-leaf' | 'typed-style' | 'scalar';
+type CopyJob = { kind: 'enter'; source: unknown; storage: Storage; path: Trace; target: object; key: string }
+  | { kind: 'leave'; source: object };
+const rootPath: Trace = { key: '$' };
+
+function child(path: Trace, key: string | number): Trace { return { parent: path, key }; }
+function path_text(path: Trace): string {
+  const parts: Array<string | number> = [];
+  for (let cursor: Trace | undefined = path; cursor; cursor = cursor.parent) append(parts, cursor.key);
+  let result = '$';
+  for (let index = parts.length - 2; index >= 0; index--) result += '[' + JSON.stringify(parts[index]) + ']';
+  return result;
+}
+function fail(operation: string, path: Trace, message: string, code = 'HSON_CANONICAL_INVARIANT_VIOLATION', cause?: unknown): never {
+  return _throw_transform_err(message, operation, undefined, cause, {
+    code, stage: operation === 'toHson' || operation === 'toBinary' ? 'serialization-admission' : 'source-admission', path: path_text(path),
+  });
+}
+function reflect<T>(operation: string, path: Trace, read: () => T): T {
+  try { return read(); } catch (cause) { return fail(operation, path, 'graph storage reflection failed', undefined, cause); }
+}
+function put(target: object, key: string, value: unknown): void {
+  Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
+}
+function append<T>(target: T[], value: T): void {
+  // Capture/verification jobs and diagnostic paths must bypass inherited setters.
+  put(target, String(target.length), value);
+}
+function finite(value: unknown, operation: string, path: Trace): void {
+  if (typeof value === 'number' && !Number.isFinite(value)) fail(operation, path, 'Hson numbers must be finite', 'HSON_NUMBER_NONFINITE');
+}
+
+/** Descriptor observations are not an atomic view of an adversarial Proxy target. */
+function capture(input: unknown, operation: string, portable: boolean): HsonNode {
+  const holder: Record<string, unknown> = Object.create(null);
+  const active = new WeakMap<object, Trace>();
+  const copied = new WeakMap<object, Map<Storage, object>>();
+  const stack: CopyJob[] = [{ kind: 'enter', source: input, storage: 'node', path: rootPath, target: holder, key: 'value' }];
+  while (stack.length) {
+    const job = stack.pop();
+    if (!job) break;
+    if (job.kind === 'leave') { active.delete(job.source); continue; }
+    const { source, path, target, key } = job;
+    let storage = job.storage;
+    if (storage === 'scalar' || (storage === 'style' && typeof source === 'string')
+      || (storage === 'css-leaf' && (source === null || typeof source !== 'object'))) {
+      if (source !== null && source !== undefined && typeof source !== 'string' && typeof source !== 'number' && typeof source !== 'boolean') {
+        fail(operation, path, 'unsupported semantic value type');
+      }
+      if (storage === 'css-leaf') {
+        if (source === undefined) fail(operation, path, 'undefined style declaration is not canonical');
+        finite(source, operation, path);
+      }
+      put(target, key, source);
+      continue;
+    }
+    if (storage === 'css-leaf') storage = 'typed-style';
+    if (typeof source !== 'object' || source === null) fail(operation, path, 'semantic container must be an object');
+    const origin = active.get(source);
+    if (origin) fail(operation, path, 'cycle returns to ' + path_text(origin));
+    const previous = copied.get(source)?.get(storage);
+    if (previous) { put(target, key, previous); continue; }
+
+    const array = reflect(operation, path, () => Array.isArray(source));
+    if (storage === 'content' ? !array : array) fail(operation, path, storage === 'content' ? 'content must be an array' : 'record must not be an array');
+    const prototype = reflect(operation, path, () => Object.getPrototypeOf(source));
+    if (storage !== 'content' && prototype !== Object.prototype && prototype !== null) fail(operation, path, 'record must have Object.prototype or null prototype');
+    const keys = reflect(operation, path, () => Reflect.ownKeys(source));
+    if (portable && storage === 'meta' && keys.includes('quid')) {
+      fail(operation, child(path, 'quid'), 'generated runtime QUID metadata is invalid in portable Transform input', 'PORTABLE_RUNTIME_QUID_FORBIDDEN');
+    }
+    const entries = new Map<string, unknown>();
+    for (const entryKey of keys) {
+      if (typeof entryKey === 'symbol') fail(operation, path, 'own symbol properties are not canonical storage');
+      const entryPath = child(path, entryKey);
+      if (storage === 'node' && !['$_tag', '$_content', '$_attrs', '$_meta'].includes(entryKey)) fail(operation, entryPath, 'unknown node storage field');
+      if (storage === 'typed-style' && entryKey !== 'value' && entryKey !== 'unit') fail(operation, entryPath, 'unknown typed style field');
+      const descriptor = reflect(operation, entryPath, () => Reflect.getOwnPropertyDescriptor(source, entryKey));
+      if (!descriptor || !Object.hasOwn(descriptor, 'value')) fail(operation, entryPath, 'semantic fields must be own data properties');
+      if (!(storage === 'content' && entryKey === 'length') && !descriptor.enumerable) fail(operation, entryPath, 'semantic fields must be enumerable');
+      entries.set(entryKey, descriptor.value);
+    }
+    const semanticKeys = storage === 'node' ? ['$_tag', '$_content', '$_attrs', '$_meta']
+      : storage === 'typed-style' ? ['value', 'unit'] : storage === 'meta' ? ['index', 'quid'] : [];
+    for (const semanticKey of semanticKeys) {
+      if (!entries.has(semanticKey) && prototype !== null
+        && reflect(operation, child(path, semanticKey), () => Reflect.has(prototype, semanticKey))) {
+        fail(operation, child(path, semanticKey), 'inherited semantic fields are not canonical storage');
+      }
+    }
+    if (storage === 'node') {
+      if (!entries.has('$_tag') || typeof entries.get('$_tag') !== 'string') fail(operation, child(path, '$_tag'), 'node must own a string $_tag');
+      const contentPath = child(path, '$_content');
+      if (!entries.has('$_content') || !reflect(operation, contentPath, () => Array.isArray(entries.get('$_content')))) fail(operation, contentPath, 'node must own array $_content');
+      for (const optional of ['$_attrs', '$_meta']) {
+        if (entries.has(optional) && (typeof entries.get(optional) !== 'object' || entries.get(optional) === null
+          || reflect(operation, child(path, optional), () => Array.isArray(entries.get(optional))))) {
+          fail(operation, child(path, optional), 'present optional container must be a plain record');
+        }
+      }
+    }
+    if ((storage === 'attrs' || storage === 'meta') && entries.size === 0) {
+      fail(operation, path, 'empty optional container is not canonical; omit it', storage === 'attrs' ? 'HSON_EMPTY_ATTRIBUTES' : 'HSON_EMPTY_METADATA');
+    }
+    if (storage === 'typed-style') {
+      const value = entries.get('value');
+      if (!entries.has('value') || (typeof value !== 'string' && typeof value !== 'number')) fail(operation, child(path, 'value'), 'typed style value must be a string or finite number');
+      finite(value, operation, child(path, 'value'));
+      if (entries.has('unit') && entries.get('unit') !== undefined && typeof entries.get('unit') !== 'string') fail(operation, child(path, 'unit'), 'style unit must be a string or own-present undefined');
+    }
+    if (storage === 'content') {
+      const length = entries.get('length');
+      if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) fail(operation, path, 'invalid array length');
+      if (entries.size !== length + 1) fail(operation, path, 'content arrays must be dense and have no extra properties');
+      for (const entryKey of entries.keys()) {
+        if (entryKey === 'length') continue;
+        const index = Number(entryKey);
+        if (!Number.isInteger(index) || index < 0 || index >= length || String(index) !== entryKey) fail(operation, child(path, entryKey), 'extra content-array property');
+      }
+      for (let index = 0; index < length; index++) if (!entries.has(String(index))) fail(operation, child(path, index), 'sparse content array');
+    }
+
+    // Copies must not reintroduce inherited semantic fields after admission.
+    const result: object = storage === 'content' ? [] : Object.create(null);
+    let variants = copied.get(source);
+    if (!variants) { variants = new Map(); copied.set(source, variants); }
+    variants.set(storage, result);
+    put(target, key, result);
+    active.set(source, path);
+    append(stack, { kind: 'leave', source });
+    const children: CopyJob[] = [];
+    for (const [entryKey, value] of entries) {
+      if (storage === 'content' && entryKey === 'length') continue;
+      let next: Storage = 'scalar';
+      if (storage === 'node') next = entryKey === '$_content' ? 'content' : entryKey === '$_attrs' ? 'attrs' : entryKey === '$_meta' ? 'meta' : 'scalar';
+      else if (storage === 'content') next = typeof value === 'object' && value !== null ? 'node' : 'scalar';
+      else if (storage === 'attrs' && entryKey === 'style') next = 'style';
+      else if (storage === 'style') next = 'css-leaf';
+      append(children, { kind: 'enter', source: value, storage: next, path: child(path, storage === 'content' ? Number(entryKey) : entryKey), target: result, key: entryKey });
+    }
+    for (let index = children.length - 1; index >= 0; index--) append(stack, children[index]);
+  }
+  if (!is_captured_node(holder.value)) return fail(operation, rootPath, 'input must be a HsonNode');
+  return holder.value;
+}
+
+function is_captured_node(value: unknown): value is HsonNode {
+  if (typeof value !== 'object' || value === null) return false;
+  const tag = Reflect.getOwnPropertyDescriptor(value, '$_tag');
+  const content = Reflect.getOwnPropertyDescriptor(value, '$_content');
+  return tag !== undefined && Object.hasOwn(tag, 'value') && typeof tag.value === 'string'
+    && content !== undefined && Object.hasOwn(content, 'value') && Array.isArray(content.value);
+}
+
+type Role = 'complete' | 'data' | 'member' | 'object-relationship' | 'item' | 'element-content' | 'branch' | 'text';
+type VerifyJob = { node: HsonNode; role: Role; path: Trace; index?: number };
+
+/** Only captured/private graphs enter this contextual verifier. */
+function qualify(root: HsonNode, operation: string): void {
+  const seen = new WeakMap<object, Set<Role>>();
+  const stack: VerifyJob[] = [{ node: root, role: 'complete', path: rootPath }];
+  while (stack.length) {
+    const job = stack.pop();
+    if (!job) break;
+    const { node, role, path } = job;
+    const tag = node.$_tag;
+    const content = node.$_content;
+    // Sibling-dependent evidence must be checked at every occurrence.
+    if (role === 'item' && node.$_meta?.index !== String(job.index)) fail(operation, child(child(path, '$_meta'), 'index'), 'II index must equal its physical position');
+    const visited = seen.get(node);
+    if (visited?.has(role)) continue;
+    if (visited) visited.add(role); else seen.set(node, new Set([role]));
+    if (tag === ROOT_TAG) fail(operation, path, '_hson_root is an internal attachment carrier, not a complete portable value');
+    const structural = tag.startsWith(HSON_SYS_PREFIX);
+    if (structural && !structuralTags.includes(tag)) fail(operation, child(path, '$_tag'), 'unknown structural node tag');
+    if (role === 'complete' && !structural) fail(operation, path, 'bare named branch is not a complete portable value');
+    if (role === 'data' && !dataTags.includes(tag)) fail(operation, path, 'array value must be a complete data value');
+    if (role === 'text' && tag !== STR_TAG) fail(operation, path, 'element text must be STR');
+    if (role === 'member' && structural) fail(operation, path, 'object members require ordinary names');
+    if (role === 'branch' && structural) fail(operation, path, 'element content requires a named element branch');
+    if (role === 'item' && tag !== II_TAG) fail(operation, path, 'only II may occur under ARR');
+    if (role === 'object-relationship' && tag !== OBJ_TAG && tag !== ARR_TAG) fail(operation, path, 'object member requires OBJ or ARR relationship');
+    if (role === 'element-content' && tag !== ELEM_TAG) fail(operation, path, 'named element requires ELEM relationship');
+    if (tag === II_TAG && role !== 'item') fail(operation, path, 'II may occur only directly under ARR');
+
+    if (node.$_meta) {
+      for (const key of Object.keys(node.$_meta)) {
+        const fieldPath = child(child(path, '$_meta'), key);
+        if (key === 'quid') fail(operation, fieldPath, 'portable runtime QUID claim is forbidden', 'PORTABLE_RUNTIME_QUID_FORBIDDEN');
+        const policy = hson_metadata_policy(tag, key);
+        const value: unknown = Reflect.getOwnPropertyDescriptor(node.$_meta, key)?.value;
+        if (!policy.valid || !hson_metadata_value_is_valid(key, value)) fail(operation, fieldPath, 'invalid metadata value or placement');
+      }
+    }
+    if (node.$_attrs) {
+      if (structural || role === 'member') fail(operation, child(path, '$_attrs'), 'attributes belong to named element roles');
+      for (const key of Object.keys(node.$_attrs)) {
+        const attrPath = child(child(path, '$_attrs'), key);
+        const lower = key.toLowerCase();
+        if (!is_valid_hson_attribute_name(key) || hson_metadata_candidate_key(key) !== undefined || lower.startsWith(HSON_META_TRANSIT_PREFIX) || lower.startsWith(_TRANSIT_PREFIX)) fail(operation, attrPath, 'invalid or reserved attribute name');
+        if (key !== 'style' && typeof node.$_attrs[key] !== 'string') fail(operation, attrPath, 'portable ordinary attribute values must be strings');
+      }
+    }
+    const enqueue = (value: unknown, nextRole: Role, index: number, expectedIndex?: number): void => {
+      const at = child(child(path, '$_content'), index);
+      if (!is_Node(value)) fail(operation, at, 'content must contain nodes outside primitive leaves');
+      append(stack, { node: value, role: nextRole, path: at, ...(expectedIndex === undefined ? {} : { index: expectedIndex }) });
+    };
+    if (tag === STR_TAG || tag === VAL_TAG) {
+      if (content.length !== 1) fail(operation, child(path, '$_content'), 'primitive leaf must contain exactly one value');
+      const value = content[0];
+      finite(value, operation, child(child(path, '$_content'), 0));
+      if (tag === STR_TAG ? typeof value !== 'string' : value !== null && typeof value !== 'number' && typeof value !== 'boolean') fail(operation, child(child(path, '$_content'), 0), 'wrong primitive leaf type');
+      continue;
+    }
+    if (!structural) {
+      if (!is_valid_hson_data_name(tag) || (role === 'branch' && tag.length === 0)) fail(operation, child(path, '$_tag'), 'invalid ordinary name for structural role');
+      if (role === 'branch' && content.length === 0) continue;
+      if (content.length !== 1) fail(operation, child(path, '$_content'), 'ordinary relationship must contain exactly one structural node');
+      enqueue(content[0], role === 'member' ? 'object-relationship' : 'element-content', 0);
+    } else if (tag === II_TAG) {
+      if (content.length !== 1) fail(operation, child(path, '$_content'), 'II must contain exactly one value');
+      enqueue(content[0], 'data', 0);
+    } else if (tag === ARR_TAG) {
+      for (let index = content.length - 1; index >= 0; index--) enqueue(content[index], 'item', index, index);
+    } else if (tag === OBJ_TAG) {
+      const only = content[0];
+      const scalar = content.length === 1 && is_Node(only) && (only.$_tag === STR_TAG || only.$_tag === VAL_TAG);
+      if (scalar) {
+        if (role !== 'object-relationship') fail(operation, path, 'complete OBJ scalar carrier is forbidden');
+        enqueue(only, 'data', 0);
+      } else {
+        const names = new Set<string>();
+        for (let index = 0; index < content.length; index++) {
+          const member = content[index];
+          if (!is_Node(member)) fail(operation, child(child(path, '$_content'), index), 'object members must be nodes');
+          if (names.has(member.$_tag)) fail(operation, child(child(path, '$_content'), index), 'duplicate object member name');
+          names.add(member.$_tag);
+        }
+        for (let index = content.length - 1; index >= 0; index--) enqueue(content[index], 'member', index);
+      }
+    } else if (tag === ELEM_TAG) {
+      if (content.length === 0) fail(operation, path, 'empty ELEM relationship is invalid');
+      if (role === 'complete' && content.length === 1 && is_Node(content[0]) && content[0].$_tag === STR_TAG) fail(operation, path, 'complete ELEM string carrier is forbidden');
+      for (let index = content.length - 1; index >= 0; index--) {
+        const value = content[index];
+        enqueue(value, is_Node(value) && value.$_tag === STR_TAG ? 'text' : 'branch', index);
+      }
+    }
+  }
+}
+
+function own(node: HsonNode): HsonNode {
+  const seen = new WeakSet<object>();
+  const stack: object[] = [node];
+  while (stack.length) {
+    const value = stack.pop();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    for (const key of Reflect.ownKeys(value)) {
+      const nested: unknown = Reflect.getOwnPropertyDescriptor(value, key)?.value;
+      if (typeof nested === 'object' && nested !== null) {
+        // Publication traverses captured semantic records before freezing them.
+        // Do not expose those records to an inherited index setter here.
+        Object.defineProperty(stack, stack.length, {
+          value: nested, enumerable: true, writable: true, configurable: true,
+        });
+      }
+    }
+    Object.freeze(value);
+    snapshots.add(value);
+  }
+  return node;
+}
+
+/** Raw public portable admission; no normalization and no caller references. */
+export function admit_exact_portable_node(input: unknown, operation = 'fromNode'): HsonNode {
+  const node = capture(input, operation, true);
+  qualify(node, operation);
+  return own(node);
+}
+
+/** Preserve an already parsed source's ownership/output shape during staging. */
+export function own_transform_source(node: HsonNode): HsonNode {
+  return snapshots.has(node) ? node : own(capture(node, 'Transform.snapshot', false));
+}
+
+/** Independent mutable observation; descriptor flags/topology are not semantics. */
+export function copy_transform_node(node: HsonNode): HsonNode {
+  return capture(node, 'Transform.toNode', false);
+}
+
+export function is_transform_snapshot(value: unknown): value is HsonNode {
+  return typeof value === 'object' && value !== null && snapshots.has(value) && is_Node(value);
+}
+
+/** Generic Binary's source-owner extraction happens before this qualification. */
+export function qualify_transform_value(node: HsonNode, operation: 'toBinary' | 'toHson'): void { qualify(node, operation); }

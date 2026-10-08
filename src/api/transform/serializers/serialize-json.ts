@@ -8,6 +8,7 @@ import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_T
 import {  HsonNode } from "../../../core/types.js";
 import { JsonValue } from "../../../core/types.js";
 import { clone_node } from "../../../core/clone-node.js";
+import { copy_transform_node, is_transform_snapshot } from "../node-exact.js";
 import { make_string } from "../../../core/stringify.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import {
@@ -82,7 +83,7 @@ export function serialize_json($node: HsonNode): string {
 function ordered_json_value_from_node($node: HsonNode): OrderedProjectedValue {
     assert_invariants($node, "serialize_json");
     collect_hson_node_quid_claims($node);
-    const clone = collapse_redundant_roots(clone_node($node));
+    const clone = collapse_redundant_roots(is_transform_snapshot($node) ? copy_transform_node($node) : clone_node($node));
     assert_invariants(clone, "serialize_json");
     if (is_projected_value_hson_node(clone)) {
         return projected_value_from_hson_node(clone);
@@ -172,11 +173,11 @@ function orderedJsonFromNode(node: HsonNode): OrderedProjectedValue {
 
             const entries: Array<readonly [string, OrderedProjectedValue]> = [[node.$_tag, payload]];
             if (node.$_attrs && Object.keys(node.$_attrs).length > 0) {
-                entries.push([ATTRS_KEY, ordered_json_from_runtime_value(node.$_attrs as JsonValue)]);
+                append_json_item(entries, [ATTRS_KEY, ordered_json_from_runtime_value(node.$_attrs as JsonValue)]);
             }
             const meta = portable_node_meta(node);
             if (meta !== undefined) {
-                entries.push([META_KEY, ordered_json_from_runtime_value(meta)]);
+                append_json_item(entries, [META_KEY, ordered_json_from_runtime_value(meta)]);
             }
             return ordered_projected_object(entries);
         }
@@ -230,7 +231,7 @@ export function json_value_from_node($node: HsonNode): JsonValue {
     // though projected application JSON intentionally omits node identity.
     assert_invariants($node, "serialize_json");
     collect_hson_node_quid_claims($node);
-    const clone = collapse_redundant_roots(clone_node($node))
+    const clone = collapse_redundant_roots(is_transform_snapshot($node) ? copy_transform_node($node) : clone_node($node))
     assert_invariants(clone, 'serialize_json')
     if (is_projected_value_hson_node(clone)) {
         return materialize_projected_value(projected_value_from_hson_node(clone));
@@ -255,6 +256,17 @@ function collapse_redundant_roots(node: HsonNode): HsonNode {
     }
 
     return current;
+}
+
+// Materialized JSON remains an ordinary JavaScript object. Install its own
+// entries without consulting or invoking inherited properties or setters.
+function define_json_property(target: JsonObj, key: string, value: unknown): void {
+    Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
+}
+
+// Fresh semantic arrays need own indices just as objects need own members.
+function append_json_item<T>(target: T[], value: T): void {
+    Object.defineProperty(target, target.length, { value, enumerable: true, writable: true, configurable: true });
 }
 
 /**
@@ -364,7 +376,7 @@ function jsonFromNode(node: HsonNode): JsonValue {
                 /*  content of _hson_arr node must be _hson_ii nodes */
                 for (const iiNode of node.$_content as HsonNode[]) {
                     if (is_indexed(iiNode)) {
-                        array.push(jsonFromNode(iiNode.$_content[0] as HsonNode));
+                        append_json_item(array, jsonFromNode(iiNode.$_content[0] as HsonNode));
                     } else {
                         _throw_transform_err(`malformed _hson_ii node in _hson_arr`, 'serialize-json');
                     }
@@ -388,10 +400,10 @@ function jsonFromNode(node: HsonNode): JsonValue {
                     let value: JsonValue = {};
                     if (propNode.$_content && propNode.$_content.length > 0) {
                         const child = propNode.$_content[0];
-                        // assign directly; do NOT Object.assign into {}
+                        // Keep the recursively projected value as this member's own value.
                         value = jsonFromNode(child as HsonNode);
                     }
-                    jsonObj[key] = value as JsonValue;
+                    define_json_property(jsonObj, key, value);
                 }
             }
             return jsonObj;
@@ -411,7 +423,7 @@ function jsonFromNode(node: HsonNode): JsonValue {
             for (const itemNode of (node.$_content)) {
                 /* recursively convert each item node in the _hson_elem to its JSON equivalent */
                 const jsonItem = jsonFromNode(itemNode as HsonNode);
-                elemItems.push(jsonItem);
+                append_json_item(elemItems, jsonItem);
             }
             return { [ELEM_TAG]: elemItems };
         }
@@ -442,14 +454,15 @@ function jsonFromNode(node: HsonNode): JsonValue {
             const finalJson: JsonObj = tempJson;
 
             if (hasAttrs) {
-                (finalJson as any).$_attrs = {
-                    ...(finalJson as any).$_attrs,
+                const ownAttrs = Object.getOwnPropertyDescriptor(finalJson, ATTRS_KEY);
+                define_json_property(finalJson, ATTRS_KEY, {
+                    ...(ownAttrs === undefined ? undefined : ownAttrs.value),
                     ...(node.$_attrs as Record<string, unknown>)
-                };
+                });
             }
 
             if (meta !== undefined) {
-                (finalJson as any).$_meta = meta;
+                define_json_property(finalJson, META_KEY, meta);
             }
             return finalJson;
         }

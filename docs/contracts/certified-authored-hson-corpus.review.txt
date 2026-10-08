@@ -7,30 +7,28 @@ SUMMARY
     "transparentAcceptedAuthoredHson": 50,
     "literalRejectedAuthoredHson": 56,
     "transparentRejectedAuthoredHson": 117,
-    "graphOnlyAcceptedTransport": 11,
-    "graphOnlyRejectedTransport": 9,
+    "graphOnlyAcceptedTransport": 9,
+    "graphOnlyRejectedTransport": 20,
     "structuralJsonTransport": 14,
     "structuralHtmlTransport": 47,
     "diagnosticCircuitRegressions": 4,
     "specializedTestReferences": 10,
-    "totalConcreteDescriptors": 368,
+    "totalConcreteDescriptors": 377,
     "uniqueAuthoredSources": 273,
     "declaredSourceReuse": 0
   }
 }
 
 TRANSPORT INVENTORY
-- graph.accept.element-string-empty
-- graph.accept.element-string-ordinary
-- graph.accept.object-false
-- graph.accept.object-negative-number
-- graph.accept.object-negative-zero
-- graph.accept.object-null
-- graph.accept.object-positive-number
-- graph.accept.object-string-empty
-- graph.accept.object-string-ordinary
-- graph.accept.object-true
-- graph.accept.object-zero
+- graph.accept.false
+- graph.accept.negative-number
+- graph.accept.negative-zero
+- graph.accept.null
+- graph.accept.positive-number
+- graph.accept.string-empty
+- graph.accept.string-ordinary
+- graph.accept.true
+- graph.accept.zero
 - graph.reject.direct-element-false
 - graph.reject.direct-element-negative-number
 - graph.reject.direct-element-negative-zero
@@ -39,7 +37,18 @@ TRANSPORT INVENTORY
 - graph.reject.direct-element-true
 - graph.reject.direct-element-zero
 - graph.reject.element-carrier-child
+- graph.reject.element-string-empty
+- graph.reject.element-string-ordinary
 - graph.reject.nested-element-number
+- graph.reject.object-string-empty
+- graph.reject.object-string-ordinary
+- graph.reject.object-value-0
+- graph.reject.object-value-1
+- graph.reject.object-value-2
+- graph.reject.object-value-3
+- graph.reject.object-value-4
+- graph.reject.object-value-5
+- graph.reject.object-value-6
 - html.accept.control-empty-unicode-adjacent
 - html.accept.empty-nonempty-empty
 - html.accept.identical-adjacent
@@ -309,85 +318,15 @@ declared source reuse: —
 tags: diagnostic-circuit, baseline
 rationale: Every diagnostic route compares against the original admitted graph baseline.
 
-=== graph.accept.element-string-empty ===
-claim: A detached Hson element string carrier normalizes to its empty text leaf.
+=== graph.accept.false ===
+claim: A complete false value is VAL.
 classification: graph-ingress-accepted-transport
 ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"\"]}]}"
+escaped input: "{\"$_tag\":\"_hson_val\",\"$_content\":[false]}"
 verbatim input: —
-semantic shape: _hson_elem
+semantic shape: _hson_val
 slot: detached-semantic-boundary
-variation: element-string-empty
-defect: —
-disposition: accept
-hand-authored expected graph:
-{
-  "$_content": [
-    ""
-  ],
-  "$_tag": "_hson_str"
-}
-exact Hson output: "\"\""
-exact JSON output: "\"\""
-exact HTML output: "<_hson_obj><!--hson-text:--></_hson_obj>"
-exact diagnostic output: —
-expected key sequences: —
-expected string leaves: —
-negative-zero paths: —
-structured rejection: —
-origin: transport-totality
-provenance: —
-novelty: —
-human-review priority: —
-specialized-test reference: —
-declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson element string carrier normalizes to its empty text leaf.
-
-=== graph.accept.element-string-ordinary ===
-claim: A detached Hson element string carrier normalizes to its ordinary text leaf.
-classification: graph-ingress-accepted-transport
-ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"ordinary\"]}]}"
-verbatim input: —
-semantic shape: _hson_elem
-slot: detached-semantic-boundary
-variation: element-string-ordinary
-defect: —
-disposition: accept
-hand-authored expected graph:
-{
-  "$_content": [
-    "ordinary"
-  ],
-  "$_tag": "_hson_str"
-}
-exact Hson output: "\"ordinary\""
-exact JSON output: "\"ordinary\""
-exact HTML output: "<_hson_obj><!--hson-text:006f007200640069006e006100720079-->ordinary</_hson_obj>"
-exact diagnostic output: —
-expected key sequences: —
-expected string leaves: —
-negative-zero paths: —
-structured rejection: —
-origin: transport-totality
-provenance: —
-novelty: —
-human-review priority: —
-specialized-test reference: —
-declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson element string carrier normalizes to its ordinary text leaf.
-
-=== graph.accept.object-false ===
-claim: A detached Hson object carrier transports false.
-classification: graph-ingress-accepted-transport
-ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[false]}]}"
-verbatim input: —
-semantic shape: _hson_obj
-slot: detached-semantic-boundary
-variation: object-false
+variation: false
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -405,24 +344,24 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: transport-totality
+origin: exact-node-admission
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson object carrier transports false.
+tags: graph-ingress, universal-primitive, transport
+rationale: A complete false value is VAL.
 
-=== graph.accept.object-negative-number ===
-claim: A detached Hson object carrier transports a negative finite number.
+=== graph.accept.negative-number ===
+claim: A complete negative finite number is VAL.
 classification: graph-ingress-accepted-transport
 ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[-12.5]}]}"
+escaped input: "{\"$_tag\":\"_hson_val\",\"$_content\":[-12.5]}"
 verbatim input: —
-semantic shape: _hson_obj
+semantic shape: _hson_val
 slot: detached-semantic-boundary
-variation: object-negative-number
+variation: negative-number
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -440,24 +379,24 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: transport-totality
+origin: exact-node-admission
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson object carrier transports a negative finite number.
+tags: graph-ingress, universal-primitive, transport
+rationale: A complete negative finite number is VAL.
 
-=== graph.accept.object-negative-zero ===
-claim: A detached Hson object carrier transports negative zero.
+=== graph.accept.negative-zero ===
+claim: A complete negative-zero value retains its sign.
 classification: graph-ingress-accepted-transport
 ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[0]}]}"
+escaped input: "{\"$_tag\":\"_hson_val\",\"$_content\":[0]}"
 verbatim input: —
-semantic shape: _hson_obj
+semantic shape: _hson_val
 slot: detached-semantic-boundary
-variation: object-negative-zero
+variation: negative-zero
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -480,24 +419,24 @@ negative-zero paths:
   "$.$_content[0]"
 ]
 structured rejection: —
-origin: transport-totality
+origin: exact-node-admission
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson object carrier transports negative zero.
+tags: graph-ingress, universal-primitive, transport
+rationale: A complete negative-zero value retains its sign.
 
-=== graph.accept.object-null ===
-claim: A detached Hson object carrier transports null.
+=== graph.accept.null ===
+claim: A complete null value is VAL.
 classification: graph-ingress-accepted-transport
 ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[null]}]}"
+escaped input: "{\"$_tag\":\"_hson_val\",\"$_content\":[null]}"
 verbatim input: —
-semantic shape: _hson_obj
+semantic shape: _hson_val
 slot: detached-semantic-boundary
-variation: object-null
+variation: null
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -515,24 +454,24 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: transport-totality
+origin: exact-node-admission
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson object carrier transports null.
+tags: graph-ingress, universal-primitive, transport
+rationale: A complete null value is VAL.
 
-=== graph.accept.object-positive-number ===
-claim: A detached Hson object carrier transports a positive finite number.
+=== graph.accept.positive-number ===
+claim: A complete positive finite number is VAL.
 classification: graph-ingress-accepted-transport
 ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[12.5]}]}"
+escaped input: "{\"$_tag\":\"_hson_val\",\"$_content\":[12.5]}"
 verbatim input: —
-semantic shape: _hson_obj
+semantic shape: _hson_val
 slot: detached-semantic-boundary
-variation: object-positive-number
+variation: positive-number
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -550,24 +489,24 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: transport-totality
+origin: exact-node-admission
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson object carrier transports a positive finite number.
+tags: graph-ingress, universal-primitive, transport
+rationale: A complete positive finite number is VAL.
 
-=== graph.accept.object-string-empty ===
-claim: A detached Hson object string carrier normalizes to its empty string leaf.
+=== graph.accept.string-empty ===
+claim: A complete empty string is a real STR.
 classification: graph-ingress-accepted-transport
 ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"\"]}]}"
+escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\"]}"
 verbatim input: —
-semantic shape: _hson_obj
+semantic shape: _hson_str
 slot: detached-semantic-boundary
-variation: object-string-empty
+variation: string-empty
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -585,24 +524,24 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: transport-totality
+origin: exact-node-admission
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson object string carrier normalizes to its empty string leaf.
+tags: graph-ingress, universal-primitive, transport
+rationale: A complete empty string is a real STR.
 
-=== graph.accept.object-string-ordinary ===
-claim: A detached Hson object string carrier normalizes to its ordinary string leaf.
+=== graph.accept.string-ordinary ===
+claim: A complete string is a context-free STR.
 classification: graph-ingress-accepted-transport
 ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"ordinary\"]}]}"
+escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"ordinary\"]}"
 verbatim input: —
-semantic shape: _hson_obj
+semantic shape: _hson_str
 slot: detached-semantic-boundary
-variation: object-string-ordinary
+variation: string-ordinary
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -620,24 +559,24 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: transport-totality
+origin: exact-node-admission
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson object string carrier normalizes to its ordinary string leaf.
+tags: graph-ingress, universal-primitive, transport
+rationale: A complete string is a context-free STR.
 
-=== graph.accept.object-true ===
-claim: A detached Hson object carrier transports true.
+=== graph.accept.true ===
+claim: A complete true value is VAL.
 classification: graph-ingress-accepted-transport
 ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[true]}]}"
+escaped input: "{\"$_tag\":\"_hson_val\",\"$_content\":[true]}"
 verbatim input: —
-semantic shape: _hson_obj
+semantic shape: _hson_val
 slot: detached-semantic-boundary
-variation: object-true
+variation: true
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -655,24 +594,24 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: transport-totality
+origin: exact-node-admission
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson object carrier transports true.
+tags: graph-ingress, universal-primitive, transport
+rationale: A complete true value is VAL.
 
-=== graph.accept.object-zero ===
-claim: A detached Hson object carrier transports zero.
+=== graph.accept.zero ===
+claim: A complete zero value is VAL.
 classification: graph-ingress-accepted-transport
 ingress format: graph
-escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[0]}]}"
+escaped input: "{\"$_tag\":\"_hson_val\",\"$_content\":[0]}"
 verbatim input: —
-semantic shape: _hson_obj
+semantic shape: _hson_val
 slot: detached-semantic-boundary
-variation: object-zero
+variation: zero
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -690,14 +629,14 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: transport-totality
+origin: exact-node-admission
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: graph-ingress, scalar-carrier, transport
-rationale: A detached Hson object carrier transports zero.
+tags: graph-ingress, universal-primitive, transport
+rationale: A complete zero value is VAL.
 
 === graph.reject.direct-element-false ===
 claim: A detached Hson element carrier may not contain a typed false leaf.
@@ -718,10 +657,11 @@ structured rejection:
 {
   "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
   "operation": "fromNode",
-  "stage": "canonical-invariant-admission"
+  "path": "$[\"$_content\"][0]",
+  "stage": "source-admission"
 }
 source evidence: —
-path evidence: —
+path evidence: $["$_content"][0]
 related evidence: —
 origin: mode-sensitive-scalar-normalization
 provenance: —
@@ -751,10 +691,11 @@ structured rejection:
 {
   "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
   "operation": "fromNode",
-  "stage": "canonical-invariant-admission"
+  "path": "$[\"$_content\"][0]",
+  "stage": "source-admission"
 }
 source evidence: —
-path evidence: —
+path evidence: $["$_content"][0]
 related evidence: —
 origin: mode-sensitive-scalar-normalization
 provenance: —
@@ -784,10 +725,11 @@ structured rejection:
 {
   "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
   "operation": "fromNode",
-  "stage": "canonical-invariant-admission"
+  "path": "$[\"$_content\"][0]",
+  "stage": "source-admission"
 }
 source evidence: —
-path evidence: —
+path evidence: $["$_content"][0]
 related evidence: —
 origin: mode-sensitive-scalar-normalization
 provenance: —
@@ -817,10 +759,11 @@ structured rejection:
 {
   "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
   "operation": "fromNode",
-  "stage": "canonical-invariant-admission"
+  "path": "$[\"$_content\"][0]",
+  "stage": "source-admission"
 }
 source evidence: —
-path evidence: —
+path evidence: $["$_content"][0]
 related evidence: —
 origin: mode-sensitive-scalar-normalization
 provenance: —
@@ -850,10 +793,11 @@ structured rejection:
 {
   "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
   "operation": "fromNode",
-  "stage": "canonical-invariant-admission"
+  "path": "$[\"$_content\"][0]",
+  "stage": "source-admission"
 }
 source evidence: —
-path evidence: —
+path evidence: $["$_content"][0]
 related evidence: —
 origin: mode-sensitive-scalar-normalization
 provenance: —
@@ -883,10 +827,11 @@ structured rejection:
 {
   "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
   "operation": "fromNode",
-  "stage": "canonical-invariant-admission"
+  "path": "$[\"$_content\"][0]",
+  "stage": "source-admission"
 }
 source evidence: —
-path evidence: —
+path evidence: $["$_content"][0]
 related evidence: —
 origin: mode-sensitive-scalar-normalization
 provenance: —
@@ -916,10 +861,11 @@ structured rejection:
 {
   "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
   "operation": "fromNode",
-  "stage": "canonical-invariant-admission"
+  "path": "$[\"$_content\"][0]",
+  "stage": "source-admission"
 }
 source evidence: —
-path evidence: —
+path evidence: $["$_content"][0]
 related evidence: —
 origin: mode-sensitive-scalar-normalization
 provenance: —
@@ -949,10 +895,11 @@ structured rejection:
 {
   "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
   "operation": "fromNode",
-  "stage": "canonical-invariant-admission"
+  "path": "$[\"$_content\"][1]",
+  "stage": "source-admission"
 }
 source evidence: —
-path evidence: —
+path evidence: $["$_content"][1]
 related evidence: —
 origin: mode-sensitive-scalar-normalization
 provenance: —
@@ -962,6 +909,74 @@ specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
 rationale: An element content carrier containing one typed child rejects as a whole.
+
+=== graph.reject.element-string-empty ===
+claim: An empty STR does not legalize a complete ELEM carrier.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"\"]}]}"
+verbatim input: —
+semantic shape: _hson_elem
+slot: element-content
+variation: —
+defect: element-string-empty
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: An empty STR does not legalize a complete ELEM carrier.
+
+=== graph.reject.element-string-ordinary ===
+claim: A complete ELEM/STR alias is forbidden.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"ordinary\"]}]}"
+verbatim input: —
+semantic shape: _hson_elem
+slot: element-content
+variation: —
+defect: element-string-ordinary
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: A complete ELEM/STR alias is forbidden.
 
 === graph.reject.nested-element-number ===
 claim: An ordinary element may not retain a typed numeric leaf beneath its element content.
@@ -982,10 +997,11 @@ structured rejection:
 {
   "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
   "operation": "fromNode",
-  "stage": "canonical-invariant-admission"
+  "path": "$[\"$_content\"][0][\"$_content\"][0][\"$_content\"][0]",
+  "stage": "source-admission"
 }
 source evidence: —
-path evidence: —
+path evidence: $["$_content"][0]["$_content"][0]["$_content"][0]
 related evidence: —
 origin: mode-sensitive-scalar-normalization
 provenance: —
@@ -995,6 +1011,312 @@ specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
 rationale: An ordinary element may not retain a typed numeric leaf beneath its element content.
+
+=== graph.reject.object-string-empty ===
+claim: An empty STR does not legalize a complete OBJ carrier.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"\"]}]}"
+verbatim input: —
+semantic shape: _hson_obj
+slot: element-content
+variation: —
+defect: object-string-empty
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: An empty STR does not legalize a complete OBJ carrier.
+
+=== graph.reject.object-string-ordinary ===
+claim: A complete OBJ/STR carrier is forbidden.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"ordinary\"]}]}"
+verbatim input: —
+semantic shape: _hson_obj
+slot: element-content
+variation: —
+defect: object-string-ordinary
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: A complete OBJ/STR carrier is forbidden.
+
+=== graph.reject.object-value-0 ===
+claim: A complete OBJ/VAL carrier is forbidden.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[true]}]}"
+verbatim input: —
+semantic shape: _hson_obj
+slot: element-content
+variation: —
+defect: object-value-0
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: A complete OBJ/VAL carrier is forbidden.
+
+=== graph.reject.object-value-1 ===
+claim: A complete OBJ/VAL carrier is forbidden.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[false]}]}"
+verbatim input: —
+semantic shape: _hson_obj
+slot: element-content
+variation: —
+defect: object-value-1
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: A complete OBJ/VAL carrier is forbidden.
+
+=== graph.reject.object-value-2 ===
+claim: A complete OBJ/VAL carrier is forbidden.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[null]}]}"
+verbatim input: —
+semantic shape: _hson_obj
+slot: element-content
+variation: —
+defect: object-value-2
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: A complete OBJ/VAL carrier is forbidden.
+
+=== graph.reject.object-value-3 ===
+claim: A complete OBJ/VAL carrier is forbidden.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[12.5]}]}"
+verbatim input: —
+semantic shape: _hson_obj
+slot: element-content
+variation: —
+defect: object-value-3
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: A complete OBJ/VAL carrier is forbidden.
+
+=== graph.reject.object-value-4 ===
+claim: A complete OBJ/VAL carrier is forbidden.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[-12.5]}]}"
+verbatim input: —
+semantic shape: _hson_obj
+slot: element-content
+variation: —
+defect: object-value-4
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: A complete OBJ/VAL carrier is forbidden.
+
+=== graph.reject.object-value-5 ===
+claim: A complete OBJ/VAL carrier is forbidden.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[0]}]}"
+verbatim input: —
+semantic shape: _hson_obj
+slot: element-content
+variation: —
+defect: object-value-5
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: A complete OBJ/VAL carrier is forbidden.
+
+=== graph.reject.object-value-6 ===
+claim: A complete OBJ/VAL carrier is forbidden.
+classification: graph-ingress-rejected-transport
+ingress format: graph
+escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[0]}]}"
+verbatim input: —
+semantic shape: _hson_obj
+slot: element-content
+variation: —
+defect: object-value-6
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
+  "operation": "fromNode",
+  "path": "$",
+  "stage": "source-admission"
+}
+source evidence: —
+path evidence: $
+related evidence: —
+origin: mode-sensitive-scalar-normalization
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: graph-ingress, typed-value, structural-mode, rejection
+rationale: A complete OBJ/VAL carrier is forbidden.
 
 === hson.accept.basis.number.negative-exponent-sign ===
 claim: An exponent may contain a minus sign.

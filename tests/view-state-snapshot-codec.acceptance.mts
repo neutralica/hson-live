@@ -439,22 +439,26 @@ check("persisted QUIDs round-trip and invalid identity is rejected", () => {
   );
 });
 
-check("view-state requires canonical empty bags and canonicalizes legacy empty metadata", () => {
+check("portable admission rejects empty bags while internal recovery retains its existing legacy policy", () => {
   const absent = round_trip(element_capture(node("div"))).decoded;
   const emptyAttrsCandidate = element_capture(node("div", [], {}));
   expect_codec_error(
     () => encode_view_state_snapshot(emptyAttrsCandidate),
     "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
   );
-  const admittedRoot = hson.fromNode(emptyAttrsCandidate.root).toNode();
-  const admitted = round_trip({ ...emptyAttrsCandidate, root: admittedRoot }).decoded;
+  const attrsBefore = structuredClone(emptyAttrsCandidate);
+  assert.throws(() => hson.fromNode(emptyAttrsCandidate.root),
+    (error) => error instanceof Error && "code" in error && error.code === "HSON_EMPTY_ATTRIBUTES");
+  assert.deepEqual(emptyAttrsCandidate, attrsBefore);
   const emptyMetaCandidate = element_capture(node("div", [], undefined, {}));
   expect_codec_error(
     () => encode_view_state_snapshot(emptyMetaCandidate),
     "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
   );
-  const admittedMetaRoot = hson.fromNode(emptyMetaCandidate.root).toNode();
-  const emptyMeta = round_trip({ ...emptyMetaCandidate, root: admittedMetaRoot }).decoded;
+  const metaBefore = structuredClone(emptyMetaCandidate);
+  assert.throws(() => hson.fromNode(emptyMetaCandidate.root),
+    (error) => error instanceof Error && "code" in error && error.code === "HSON_EMPTY_METADATA");
+  assert.deepEqual(emptyMetaCandidate, metaBefore);
   const rootOf = (capture: LiveMapDocumentCapture): HsonNode => {
     const cluster = capture.root.$_content[0];
     if (typeof cluster !== "object" || cluster === null) throw new Error("Expected cluster.");
@@ -463,11 +467,7 @@ check("view-state requires canonical empty bags and canonicalizes legacy empty m
     return root;
   };
   assert.equal(Object.hasOwn(rootOf(absent), "$_attrs"), false);
-  assert.equal(Object.hasOwn(rootOf(admitted), "$_attrs"), false);
   assert.equal(Object.hasOwn(rootOf(absent), "$_meta"), false);
-  assert.equal(Object.hasOwn(rootOf(emptyMeta), "$_meta"), false);
-  assert.equal(canonical_hson_graph_equal(absent.root, admitted.root), true);
-  assert.equal(canonical_hson_graph_equal(absent.root, emptyMeta.root), true);
 
   const encodedAbsent = encode_view_state_snapshot(absent);
   const legacyEmpty = encoding_with_payload(

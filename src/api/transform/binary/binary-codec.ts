@@ -10,7 +10,8 @@ import {
   HSON_META_QUID,
 } from "../../../core/constants.js";
 import { is_typed_css_value } from "../../../core/inline-style.js";
-import { normalize_empty_hson_metadata } from "../../../core/normalize-hson-graph.js";
+import { _throw_transform_err } from "../../../core/errors.js";
+import { admit_exact_portable_node } from "../node-exact.js";
 import type { HsonAttrs, HsonMeta, HsonNode } from "../../../core/types.js";
 import type { BinaryDecodeOptions } from "../transform.types.js";
 
@@ -49,6 +50,18 @@ function fail(message: string): never {
   throw new Error(`Binary Hson: ${message}`);
 }
 
+function fail_decode_limit(
+  message: string,
+  code: "HSON_BINARY_OPTIONS_INVALID" | "HSON_BINARY_CAPACITY_EXCEEDED",
+  path?: string,
+): never {
+  const cause = new Error(`Binary Hson: ${message}`);
+  return _throw_transform_err(cause.message, "fromBinary", undefined, cause, {
+    code, stage: code === "HSON_BINARY_OPTIONS_INVALID" ? "source-options" : "source-decoding",
+    ...(path === undefined ? {} : { path }),
+  });
+}
+
 function compare_code_units(left: string, right: string): number {
   const count = Math.min(left.length, right.length);
   for (let index = 0; index < count; index++) {
@@ -64,23 +77,29 @@ function is_plain_record(value: unknown): value is PlainRecord {
   return prototype === Object.prototype || prototype === null;
 }
 
+// Decoded content, UTF-16 chunks and canonical re-encoding bytes are fresh
+// semantic storage; inherited index setters must not participate in creation.
+function append_binary_item<T>(target: T[], value: T): void {
+  Object.defineProperty(target, target.length, { value, enumerable: true, writable: true, configurable: true });
+}
+
 class BinaryWriter {
   private readonly bytes: number[] = [];
 
   byte(value: number): void {
-    this.bytes.push(value);
+    append_binary_item(this.bytes, value);
   }
 
   u32(value: number): void {
     if (!Number.isSafeInteger(value) || value < 0 || value > 0xffff_ffff) {
       fail(`count is outside the u32 range: ${String(value)}`);
     }
-    this.bytes.push(
+    for (const byte of [
       Math.floor(value / 0x1000000) & 0xff,
       Math.floor(value / 0x10000) & 0xff,
       Math.floor(value / 0x100) & 0xff,
       value & 0xff,
-    );
+    ]) this.byte(byte);
   }
 
   f64(value: number): void {
@@ -88,14 +107,15 @@ class BinaryWriter {
     const buffer = new ArrayBuffer(8);
     new DataView(buffer).setFloat64(0, value, false);
     const bytes = new Uint8Array(buffer);
-    for (let index = 0; index < bytes.length; index++) this.bytes.push(bytes[index]);
+    for (let index = 0; index < bytes.length; index++) this.byte(bytes[index]);
   }
 
   string(value: string): void {
     this.u32(value.length);
     for (let index = 0; index < value.length; index++) {
       const unit = value.charCodeAt(index);
-      this.bytes.push(unit >>> 8, unit & 0xff);
+      this.byte(unit >>> 8);
+      this.byte(unit & 0xff);
     }
   }
 
@@ -251,15 +271,26 @@ type Limits = Readonly<{
 
 function positive_integer(value: number | undefined, fallback: number, name: string): number {
   const result = value ?? fallback;
-  if (!Number.isSafeInteger(result) || result <= 0) fail(`${name} must be a positive integer`);
+  if (!Number.isSafeInteger(result) || result <= 0) {
+    fail_decode_limit(`${name} must be a positive integer`, "HSON_BINARY_OPTIONS_INVALID", `$["${name}"]`);
+  }
   return result;
+}
+
+function read_decode_option(options: BinaryDecodeOptions, key: keyof BinaryDecodeOptions): number | undefined {
+  try {
+    return options[key];
+  } catch (cause) {
+    return _throw_transform_err("Binary Hson: decoding options could not be read", "fromBinary", undefined, cause,
+      { code: "HSON_BINARY_OPTIONS_INVALID", stage: "source-options", path: `$["${key}"]` });
+  }
 }
 
 function decode_limits(options: BinaryDecodeOptions): Limits {
   return {
-    maxBytes: positive_integer(options.maxBytes, DEFAULT_MAX_BYTES, "maxBytes"),
-    maxGraphDepth: positive_integer(options.maxGraphDepth, DEFAULT_MAX_GRAPH_DEPTH, "maxGraphDepth"),
-    maxGraphNodes: positive_integer(options.maxGraphNodes, DEFAULT_MAX_GRAPH_NODES, "maxGraphNodes"),
+    maxBytes: positive_integer(read_decode_option(options, "maxBytes"), DEFAULT_MAX_BYTES, "maxBytes"),
+    maxGraphDepth: positive_integer(read_decode_option(options, "maxGraphDepth"), DEFAULT_MAX_GRAPH_DEPTH, "maxGraphDepth"),
+    maxGraphNodes: positive_integer(read_decode_option(options, "maxGraphNodes"), DEFAULT_MAX_GRAPH_NODES, "maxGraphNodes"),
   };
 }
 
@@ -315,7 +346,7 @@ class BinaryReader {
     for (let index = 0; index < count; index++) {
       const high = this.byte("UTF-16 code unit");
       const low = this.byte("UTF-16 code unit");
-      chunk.push((high << 8) | low);
+      append_binary_item(chunk, (high << 8) | low);
       if (chunk.length === 4096) {
         value += String.fromCharCode(...chunk);
         chunk.length = 0;
@@ -341,9 +372,9 @@ class BinaryReader {
   }
 
   node(depth: number): HsonNode {
-    if (depth > this.limits.maxGraphDepth) fail("maxGraphDepth exceeded");
+    if (depth > this.limits.maxGraphDepth) fail_decode_limit("maxGraphDepth exceeded", "HSON_BINARY_CAPACITY_EXCEEDED");
     this.graphNodes += 1;
-    if (this.graphNodes > this.limits.maxGraphNodes) fail("maxGraphNodes exceeded");
+    if (this.graphNodes > this.limits.maxGraphNodes) fail_decode_limit("maxGraphNodes exceeded", "HSON_BINARY_CAPACITY_EXCEEDED");
 
     const discriminator = this.byte("node discriminator");
     let tag: string;
@@ -367,12 +398,16 @@ class BinaryReader {
       content = [this.scalar()];
     } else {
       const count = this.count("content", 3);
-      if (count > this.limits.maxGraphNodes - this.graphNodes) fail("content count exceeds remaining node budget");
+      if (count > this.limits.maxGraphNodes - this.graphNodes) fail_decode_limit("content count exceeds remaining node budget", "HSON_BINARY_CAPACITY_EXCEEDED");
       content = [];
-      for (let index = 0; index < count; index++) content.push(this.node(depth + 1));
+      for (let index = 0; index < count; index++) append_binary_item(content, this.node(depth + 1));
     }
 
-    const node: HsonNode = { $_tag: tag, $_content: content };
+    // Scratch semantic storage must be safe before canonical wire re-encoding,
+    // not only after portable admission has taken its private snapshot.
+    const node: HsonNode = Object.create(null);
+    node.$_tag = tag;
+    node.$_content = content;
     if (attrs !== undefined) node.$_attrs = attrs;
     if (meta !== undefined) node.$_meta = meta;
     return node;
@@ -412,10 +447,12 @@ class BinaryReader {
       else if (valueDiscriminator === STRING) value = this.string();
       else return fail("typed style value must be a string or finite number");
       const unitState = this.byte("typed style unit state");
-      if (unitState === ABSENT) return { value };
-      if (unitState === PRESENT) return { value, unit: undefined };
-      if (unitState === UNIT_STRING) return { value, unit: this.string() };
-      return fail(`invalid typed style unit state 0x${unitState.toString(16).padStart(2, "0")}`);
+      const leaf: { value: string | number; unit?: string } = Object.create(null);
+      leaf.value = value;
+      if (unitState === PRESENT) leaf.unit = undefined;
+      else if (unitState === UNIT_STRING) leaf.unit = this.string();
+      else if (unitState !== ABSENT) return fail(`invalid typed style unit state 0x${unitState.toString(16).padStart(2, "0")}`);
+      return leaf;
     }
     return fail(`invalid style value discriminator 0x${discriminator.toString(16).padStart(2, "0")}`);
   }
@@ -465,7 +502,7 @@ function same_bytes(left: Uint8Array, right: Uint8Array): boolean {
 export function parse_binary(input: Uint8Array, options: BinaryDecodeOptions = {}): HsonNode {
   if (!(input instanceof Uint8Array)) fail("input must be a Uint8Array");
   const limits = decode_limits(options);
-  if (input.byteLength > limits.maxBytes) fail("maxBytes exceeded");
+  if (input.byteLength > limits.maxBytes) fail_decode_limit("maxBytes exceeded", "HSON_BINARY_CAPACITY_EXCEEDED");
   const reader = new BinaryReader(input, limits);
   for (const expected of MARKER) {
     if (reader.byte("marker") !== expected) fail("marker mismatch");
@@ -474,7 +511,5 @@ export function parse_binary(input: Uint8Array, options: BinaryDecodeOptions = {
   if (!reader.at_end()) fail("trailing bytes");
   const canonical = serialize_binary_representation(decoded, true);
   if (!same_bytes(canonical, input)) fail("accepted bytes are not canonically spelled");
-  const node = normalize_empty_hson_metadata(decoded);
-  assert_invariants(node, "fromBinary");
-  return node;
+  return admit_exact_portable_node(decoded, "fromBinary");
 }

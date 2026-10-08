@@ -4,8 +4,9 @@ import { is_Node } from "../../src/core/node-guards.ts";
 import type { HsonNode } from "../../src/core/types.ts";
 
 /**
- * Admit a QUID-free local node first, then exercise the public terminals after
- * local runtime metadata appears. This is an egress fixture, never ingress.
+ * Admit a QUID-free local node, then restore the caller's runtime metadata.
+ * The portable Transform owns its earlier snapshot and never observes those
+ * restored claims. Owner-side identity behavior needs its own separate proof.
  */
 export function source_before_local_identity(
   root: HsonNode,

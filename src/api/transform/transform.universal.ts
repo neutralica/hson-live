@@ -9,13 +9,11 @@ import type {
   TransformFrame,
   TransformOutput,
 } from "./transform.types.js";
-import { admit_portable_hson_node, scan_ingested_hson_node_quids } from "./utils/hson-utils/quid-ingress.js";
-import { normalize_detached_hson_semantic_value } from "../../core/normalize-hson-semantic-value.js";
-import { assert_invariants } from "../../core/assert-invariants.js";
+import { admit_exact_portable_node } from "./node-exact.js";
 import { detach_hson_root_value } from "./utils/node-utils/detach-hson-root-value.js";
 import { parse_binary } from "./binary/binary-codec.js";
-import { collect_hson_node_quid_claims } from "../../core/hson-node-quid.js";
 import { _throw_transform_err } from "./utils/sys-utils/throw-transform-err.utils.js";
+import { is_transform_error } from "../../core/errors.js";
 
 function frame_meta(origin: string, unsafe: boolean): Record<string, unknown> {
   return {
@@ -30,7 +28,7 @@ export function transform_from_json(
   unsafe = true,
 ): TransformOutput {
   const node = parse_json(input);
-  const raw = typeof input === "string" ? input : JSON.stringify(input);
+  const raw = typeof input === "string" ? input : "[JSON value]";
   const frame: TransformFrame = {
     input: raw,
     node,
@@ -58,7 +56,7 @@ export function transform_from_hson(
 
   const getOutput = (): TransformOutput => construct_output_2(getFrame());
   return {
-    toNode: () => getFrame().node,
+    toNode: () => getOutput().toNode(),
     toBinary: () => getOutput().toBinary(),
     toHson: () => getOutput().toHson(),
     toJson: () => getOutput().toJson(),
@@ -71,16 +69,12 @@ export function transform_from_binary(
   options: BinaryDecodeOptions = {},
   unsafe = true,
 ): TransformOutput {
-  const node = parse_binary(input, options);
-  scan_ingested_hson_node_quids(node, "fromBinary");
-  if (collect_hson_node_quid_claims(node).length > 0) {
-    _throw_transform_err(
-      "generated runtime QUID metadata is invalid in portable Transform input",
-      "fromBinary",
-      undefined,
-      undefined,
-      { code: "PORTABLE_RUNTIME_QUID_FORBIDDEN", stage: "source-admission" },
-    );
+  let node: HsonNode;
+  try { node = parse_binary(input, options); }
+  catch (cause) {
+    if (is_transform_error(cause)) throw cause;
+    _throw_transform_err(cause instanceof Error ? cause.message : "Binary decode failed", "fromBinary", undefined, cause,
+      { code: "HSON_BINARY_WIRE_INVALID", stage: "source-decoding", path: "$" });
   }
   const frame: TransformFrame = {
     input: "[Binary Hson]",
@@ -94,18 +88,12 @@ export function transform_from_node(
   input: HsonNode,
   unsafe = true,
 ): TransformOutput {
-  admit_portable_hson_node(input, "fromNode");
-  const node = normalize_detached_hson_semantic_value(input, "fromNode");
-  scan_ingested_hson_node_quids(node, "fromNode");
-  assert_invariants(node, "fromNode");
+  const node = admit_exact_portable_node(input, "fromNode");
   const frame: TransformFrame = {
-    input: JSON.stringify(node),
+    input: "[HsonNode]",
     node,
     meta: {
       ...frame_meta("node", unsafe),
-      // Binary validates and emits this exact source graph. Other projections
-      // retain the established permissive fromNode normalization above.
-      binaryNode: input,
     },
   };
   return construct_output_2(frame);

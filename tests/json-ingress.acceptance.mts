@@ -199,7 +199,8 @@ check("raw-node and JSON ingress both reject root metadata", () => {
     $_meta: { quid: QUID },
     $_content: [{ $_tag: "_hson_elem", $_content: [{ $_tag: "div", $_content: [] }] }],
   };
-  assert.throws(() => hson.fromNode(raw).toNode(), /runtime QUID metadata is invalid in portable node input/);
+  assert.throws(() => hson.fromNode(raw),
+    (error) => error instanceof TransformError && error.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN");
   assert.throws(() => parse_json(explicit_root({ quid: QUID })), /runtime QUID metadata is invalid/);
 
   const malformedRaw = {
@@ -207,7 +208,8 @@ check("raw-node and JSON ingress both reject root metadata", () => {
     $_meta: [],
     $_content: [],
   } as unknown as HsonNode;
-  assert.throws(() => hson.fromNode(malformedRaw).toNode(), /\$_meta must be a plain object/);
+  assert.throws(() => hson.fromNode(malformedRaw),
+    (error) => error instanceof TransformError && error.path === '$["$_meta"]');
 });
 
 check("structured style normalizes only after a detached copy", () => {
@@ -368,7 +370,7 @@ check("shared acyclic caller references are copied by value", () => {
   const input = { left: shared, right: shared } as JsonValue;
   const result = parse_json(input);
   shared.value = 2;
-  assert.deepEqual(hson.fromNode(result).toJson().value(), {
+  assert.deepEqual(hson.fromNode(detach_hson_root_value(result)).toJson().value(), {
     left: { value: 1 },
     right: { value: 1 },
   });
@@ -396,8 +398,8 @@ check("JSON text and parsed values produce canonically equal graphs", () => {
 check("direct JSON values preserve negative zero while JSON text has JSON's zero semantics", () => {
   const direct = parse_json({ value: -0 });
   const text = parse_json(JSON.stringify({ value: -0 }));
-  const directValue = hson.fromNode(direct).toJson().value() as { value: number };
-  const textValue = hson.fromNode(text).toJson().value() as { value: number };
+  const directValue = hson.fromNode(detach_hson_root_value(direct)).toJson().value() as { value: number };
+  const textValue = hson.fromNode(detach_hson_root_value(text)).toJson().value() as { value: number };
   assert.equal(Object.is(directValue.value, -0), true);
   assert.equal(Object.is(textValue.value, 0), true);
   assert.equal(Object.is(textValue.value, -0), false);

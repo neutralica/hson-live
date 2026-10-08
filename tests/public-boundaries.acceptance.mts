@@ -143,8 +143,10 @@ function replace_first_primitive(root: HsonNode, value: Primitive): boolean {
 
 check("JSON value and HTML serialization finalizers expose no parse method", () => {
   const node = hson.fromJson({ a: 1, nested: [true, null] }).toNode();
-  const json = hson.fromNode(node).toJson();
-  const html = hson.fromNode(node).toHtml();
+  const source = hson.fromJson({ a: 1, nested: [true, null] });
+  assert.throws(() => hson.fromNode(node));
+  const json = source.toJson();
+  const html = source.toHtml();
 
   assert.equal("value" in json, true);
   assert.equal("parse" in json, false);

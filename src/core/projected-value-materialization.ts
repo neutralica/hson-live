@@ -18,7 +18,11 @@ export function materialize_projected_value(value: OrderedProjectedValue): JsonV
     }
     if (Array.isArray(candidate)) {
       const result: JsonValue[] = [];
-      for (const child of candidate) result.push(visit(child));
+      for (const child of candidate) {
+        Object.defineProperty(result, result.length, {
+          value: visit(child), enumerable: true, writable: true, configurable: true,
+        });
+      }
       return result;
     }
     if (!is_ordered_projected_object(candidate)) {

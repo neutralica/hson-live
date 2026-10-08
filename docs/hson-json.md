@@ -22,6 +22,11 @@ JSON property names become ordinary `$_tag` values. The `_hson_` prefix is reser
 
 The explicit `_hson_root` interchange form may omit `$_meta` or supply a neutral empty optional record as a compatibility candidate. Admission canonicalizes the empty record to absence; populated or malformed root metadata is invalid and rejects rather than being ignored. The empty `_hson_root` runtime carrier is a separate exception and remains outside direct Hson-text serialization.
 
+This describes external JSON lowering, not direct graph admission. Generic
+`fromNode()` rejects ROOT and present-empty optional bags without repair.
+JSON sources privately retain their current source-owned graph shape and
+return independent `toNode()` copies; producer alignment is staged separately.
+
 ---
 
 ## Objects
@@ -59,7 +64,7 @@ _hson_arr
    └─ _hson_val (true)
 ```
 
-JSON source order is intrinsic, so parsing creates wrappers in source order with indexes `"0"` through `String(length - 1)`. For wrapper-bearing ingress, `index` is required semantic ordering metadata: a valid permutation is sorted at admission, while malformed, duplicate, missing, noncontiguous, or out-of-range strings reject. Canonical graph state always has physical wrapper order equal to index order.
+JSON source order is intrinsic, so parsing creates wrappers in source order with indexes `"0"` through `String(length - 1)`. The external JSON parser can also lower explicit wrapper candidates: it orders a valid permutation by `index`, while malformed, duplicate, missing, noncontiguous, or out-of-range strings reject. Strict generic portable `fromNode()` does not perform that construction step and rejects noncanonical physical II order. Canonical graph state always has physical wrapper order equal to index order.
 
 Array items can be scalars, arrays, or objects. An object item uses the same one angle-pair object value syntax as an object anywhere else:
 

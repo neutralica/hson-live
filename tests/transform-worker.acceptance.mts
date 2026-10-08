@@ -65,7 +65,7 @@ check("Transform outputs omit browser-dependent post-output sanitation", () => {
   for (const output of [
     hsonTransform.fromHson(`<worker/>`),
     hsonTransform.fromJson({ ready: true }),
-    hsonTransform.fromNode({ $_tag: "worker", $_content: [] }),
+    hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [{ $_tag: "worker", $_content: [] }] }),
   ]) assert.equal("sanitizeBEWARE" in output, false);
 });
 
@@ -163,13 +163,13 @@ check("existing HTML graphs are sanitized by explicit untrusted re-ingress", () 
   const trusted = hsonTransform.fromTrustedHtml(
     `<section onclick="run()"><script>alert(1)</script><b>ready</b></section>`,
   );
-  const html = hsonTransform.fromNode(trusted.toNode()).toHtml().serialize();
+  const html = trusted.toHtml().serialize();
   const sanitized = hsonTransform.fromUntrustedHtml(html).toNode();
   walk(sanitized, (current) => {
     assert.notEqual(current.$_tag, "script");
     assert.equal(current.$_attrs?.onclick, undefined);
   });
-  assert.equal(hsonTransform.fromNode(sanitized).toHtml().serialize().includes("ready"), true);
+  assert.equal(hsonTransform.fromNode(detach_hson_root_value(sanitized)).toHtml().serialize().includes("ready"), true);
 });
 
 check("untrusted Worker parsing retains ordinary data while removing unsafe behavior", () => {
@@ -251,11 +251,11 @@ check("untrusted Worker parsing keeps data-* application-owned", () => {
   walk(node, (current) => {
     if (current.$_tag === "main") main = current;
   });
-  assert.deepEqual(main?.$_attrs, {
-    "data-_quid": "q",
-    "data-_index": "i",
-    "data--attrmap": "map",
-  });
+  assert.deepEqual(Object.entries(main?.$_attrs ?? {}), [
+    ["data-_quid", "q"],
+    ["data-_index", "i"],
+    ["data--attrmap", "map"],
+  ]);
   assert.equal(main?.$_meta, undefined);
 });
 

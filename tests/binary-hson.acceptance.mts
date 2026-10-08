@@ -161,7 +161,7 @@ const GOLDEN_ORDERED_ELEMENT_CONTENT = fixedHex(`
         11 00 00 00000001 0062
 `);
 
-const GOLDEN_ATTRS = fixedHex(`
+const HISTORICAL_TYPED_ATTRS = fixedHex(`
   48 53 4f 4e
   15 00 00 00000001
     10 00000004 006d 0061 0069 006e
@@ -170,6 +170,17 @@ const GOLDEN_ATTRS = fixedHex(`
         00000002 0069 0064 24 00000001 0078
       00
       00000000
+`);
+
+const GOLDEN_ATTRS = fixedHex(`
+  48 53 4f 4e
+  15 00 00 00000001
+    10 00000004 006d 0061 0069 006e
+      01 00000002
+        00000008 0064 0069 0073 0061 0062 006c 0065 0064
+        24 00000005 0066 0061 006c 0073 0065
+        00000002 0069 0064 24 00000001 0078
+      00 00000000
 `);
 
 const GOLDEN_PRESENT_EMPTY_META = fixedHex(`
@@ -294,7 +305,7 @@ const emptyElement = hson.fromHson(`<main/>`).toNode();
 const orderedElement = hson.fromHson(`<main "a" "" "b"/>`).toNode();
 const quidElement = elem(node("main", [], undefined, { quid: "000000001" }));
 const nestedElement = hson.fromHson(`<main <strong "ok"/>/>`).toNode();
-const attrsElement = elem(node("main", [], { id: "x", disabled: false }));
+const attrsElement = elem(node("main", [], { id: "x", disabled: "false" }));
 const rawStyleAttrs: HsonAttrs = {};
 Reflect.set(rawStyleAttrs, "style", "color:red");
 const rawStyleElement = elem(node("main", [], rawStyleAttrs));
@@ -321,15 +332,23 @@ await check("an array preserves canonical item indexes", () => assertGolden(inde
 await check("an empty ordinary element has its fixed Binary Hson vector", () => assertGolden(emptyElement, GOLDEN_EMPTY_ELEMENT));
 await check("element content preserves ordering, adjacent text, and empty text", () => assertGolden(orderedElement, GOLDEN_ORDERED_ELEMENT_CONTENT));
 await check("ordinary attributes sort their keys without changing values", () => assertGolden(attrsElement, GOLDEN_ATTRS));
-await check("legacy present-empty metadata decodes to canonical absence", () => {
+await check("typed ordinary attributes reject at both portable ingress boundaries", () => {
+  assert.throws(() => hsonTransform.fromNode(elem(node("main", [], { disabled: false }))));
+  assert.throws(() => hsonTransform.fromBinary(HISTORICAL_TYPED_ATTRS));
+});
+await check("present-empty metadata rejects without being normalized to absence", () => {
   const candidate = str("m", {});
-  const encoded = hsonTransform.fromNode(candidate).toBinary().serialize();
+  assert.throws(() => hsonTransform.fromNode(candidate), (cause: unknown) =>
+    cause instanceof Error && "code" in cause && cause.code === "HSON_EMPTY_METADATA");
+  const encoded = hsonTransform.fromNode(str("m")).toBinary().serialize();
   assert.deepEqual(encoded, GOLDEN_ASCII.map((byte, index) => index === GOLDEN_ASCII.length - 1 ? "m".charCodeAt(0) : byte));
-  const decoded = hsonTransform.fromBinary(GOLDEN_PRESENT_EMPTY_META).toNode();
+  assert.throws(() => hsonTransform.fromBinary(GOLDEN_PRESENT_EMPTY_META), (cause: unknown) =>
+    cause instanceof Error && "code" in cause && cause.code === "HSON_EMPTY_METADATA");
+  const decoded = hsonTransform.fromBinary(encoded).toNode();
   assert.equal(Object.hasOwn(decoded, "$_meta"), false);
   assert.deepEqual(hsonTransform.fromNode(decoded).toBinary().serialize(), encoded);
 });
-await check("portable Binary Hson omits runtime QUID metadata", () => {
+await check("a pre-identity Binary snapshot stays portable after caller identity appears", () => {
   assert.deepEqual(source_before_local_identity(quidElement).toBinary().serialize(), GOLDEN_EMPTY_ELEMENT);
   assert.throws(() => hsonTransform.fromBinary(GOLDEN_QUID).toNode(), (cause: unknown) =>
     cause instanceof Error && "code" in cause && cause.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN");

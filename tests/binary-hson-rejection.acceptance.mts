@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { read_transform_error_details, TransformError } from "../src/core/errors.ts";
 import type { HsonAttrs, HsonNode, Primitive } from "../src/core/types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
@@ -66,6 +67,22 @@ function expectBinaryRejection(bytes: Uint8Array, options?: Parameters<typeof hs
   assert.throws(() => hsonTransform.fromBinary(bytes, options).toNode());
 }
 
+function expectBinaryError(
+  bytes: Uint8Array,
+  code: string,
+  stage: string,
+  options?: Parameters<typeof hsonTransform.fromBinary>[1],
+  path?: string,
+): void {
+  assert.throws(() => hsonTransform.fromBinary(bytes, options), (error: unknown) => {
+    const details = read_transform_error_details(error);
+    assert.equal(details?.operation, "fromBinary"); assert.equal(details?.code, code);
+    assert.equal(details?.stage, stage); assert.equal(details?.path, path);
+    if (stage !== "source-admission") assert.equal(error instanceof Error && error.cause instanceof Error, true);
+    return true;
+  });
+}
+
 function sha256Oracle(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -106,9 +123,8 @@ await check("Binary snapshots admitted input and refuses to repair a noncanonica
   source.$_content[0] = "B";
   assert.deepEqual(bytes, GOLDEN_ASCII);
 
-  const repairedForEstablishedTerminals = hsonTransform.fromNode(node("main", [], {}));
-  assert.equal(repairedForEstablishedTerminals.toNode().$_attrs, undefined);
-  assert.throws(() => repairedForEstablishedTerminals.toBinary().serialize());
+  assert.throws(() => hsonTransform.fromNode(elem(node("main", [], {}))),
+    (cause: unknown) => cause instanceof Error && "code" in cause && cause.code === "HSON_EMPTY_ATTRIBUTES");
 });
 
 await check("wrong and truncated representation markers reject", () => {
@@ -288,26 +304,41 @@ await check("invalid structural crossings reject through the Binary boundary", (
 
 await check("decode options require positive integers", () => {
   for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-    expectBinaryRejection(GOLDEN_NULL, { maxBytes: value });
-    expectBinaryRejection(GOLDEN_NULL, { maxGraphDepth: value });
-    expectBinaryRejection(GOLDEN_NULL, { maxGraphNodes: value });
+    expectBinaryError(GOLDEN_NULL, "HSON_BINARY_OPTIONS_INVALID", "source-options", { maxBytes: value }, '$["maxBytes"]');
+    expectBinaryError(GOLDEN_NULL, "HSON_BINARY_OPTIONS_INVALID", "source-options", { maxGraphDepth: value }, '$["maxGraphDepth"]');
+    expectBinaryError(GOLDEN_NULL, "HSON_BINARY_OPTIONS_INVALID", "source-options", { maxGraphNodes: value }, '$["maxGraphNodes"]');
   }
+  expectBinaryError(GOLDEN_NULL, "HSON_BINARY_OPTIONS_INVALID", "source-options", {
+    get maxBytes(): number { throw new Error("unreadable option"); },
+  }, '$["maxBytes"]');
+  expectBinaryError(GOLDEN_NULL, "HSON_BINARY_OPTIONS_INVALID", "source-options", {
+    get maxBytes(): number {
+      throw new TransformError("caller option failure", { operation: "caller", code: "HSON_CANONICAL_INVARIANT_VIOLATION" });
+    },
+  }, '$["maxBytes"]');
 });
 
 await check("maxBytes rejects before marker parsing and has the approved default", () => {
-  expectBinaryRejection(GOLDEN_NULL, { maxBytes: GOLDEN_NULL.length - 1 });
-  expectBinaryRejection(new Uint8Array(1_048_577));
+  expectBinaryError(GOLDEN_NULL, "HSON_BINARY_CAPACITY_EXCEEDED", "source-decoding", { maxBytes: GOLDEN_NULL.length - 1 });
+  expectBinaryError(new Uint8Array(1_048_577), "HSON_BINARY_CAPACITY_EXCEEDED", "source-decoding");
   assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(GOLDEN_NULL, { maxBytes: GOLDEN_NULL.length }).toNode(), val(null)), true);
 });
 
 await check("maxGraphDepth rejects before excessive descent", () => {
-  expectBinaryRejection(GOLDEN_NESTED, { maxGraphDepth: 1 });
+  expectBinaryError(GOLDEN_NESTED, "HSON_BINARY_CAPACITY_EXCEEDED", "source-decoding", { maxGraphDepth: 1 });
   assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(GOLDEN_NULL, { maxGraphDepth: 1 }).toNode(), val(null)), true);
 });
 
 await check("maxGraphNodes rejects before exceeding its node budget", () => {
-  expectBinaryRejection(GOLDEN_ARRAY, { maxGraphNodes: 4 });
+  expectBinaryError(GOLDEN_ARRAY, "HSON_BINARY_CAPACITY_EXCEEDED", "source-decoding", { maxGraphNodes: 4 });
   assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(GOLDEN_ARRAY, { maxGraphNodes: 5 }).toNode(), indexedArray), true);
+});
+
+await check("wire format errors remain distinct from exact decoded graph admission", () => {
+  expectBinaryError(fixedHex("00 53 4f 4e 12 00 00 20"), "HSON_BINARY_WIRE_INVALID", "source-decoding", undefined, "$");
+  expectBinaryError(fixedHex("48 53 4f 4e 12 00 00 20 00"), "HSON_BINARY_WIRE_INVALID", "source-decoding", undefined, "$");
+  expectBinaryError(fixedHex("48 53 4f 4e 10 00000001 0070 00 00 00000000"), "HSON_CANONICAL_INVARIANT_VIOLATION", "source-admission", undefined, "$");
+  expectBinaryError(fixedHex("48 53 4f 4e 11 00 01 00000000 00000001 0078"), "HSON_EMPTY_METADATA", "source-admission", undefined, '$["$_meta"]');
 });
 
 await check("an actual Worker has byte, decode/encode, and SHA parity", async () => {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 
 import { hson } from "../src/hson.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
@@ -76,11 +77,14 @@ function rejectsEveryBoundary(candidate: HsonNode, pattern: RegExp): void {
   const before = structuredClone(candidate);
   assert.throws(() => assert_invariants(candidate, "structural-mode regression"), pattern);
   assert.deepEqual(candidate, before);
-  assert.throws(() => hson.fromNode(candidate).toNode(), pattern);
-  assert.deepEqual(candidate, before);
   const serializerCandidate = candidate.$_tag === "_hson_root"
     ? candidate.$_content[0] as HsonNode
     : candidate;
+  assert.throws(() => hson.fromNode(serializerCandidate),
+    (error) => error instanceof TransformError
+      && error.code === "HSON_CANONICAL_INVARIANT_VIOLATION"
+      && error.stage === "source-admission");
+  assert.deepEqual(candidate, before);
   assert.throws(() => serialize_hson(serializerCandidate), pattern);
   assert.deepEqual(candidate, before);
 }
@@ -192,13 +196,14 @@ check("canonical value leaf accepts finite numbers, negative zero, booleans, and
   }
 });
 
-check("fromNode elides only a sole empty element wrapper without mutating its caller", () => {
-  const source = node("empty", [elem()]);
+check("fromNode rejects an empty element relationship and preserves a valid empty named branch", () => {
+  const source = elem(node("empty", [elem()]));
   const before = structuredClone(source);
-  const normalized = hson.fromNode(source).toNode();
+  assert.throws(() => hson.fromNode(source));
   assert.deepEqual(source, before);
-  assert.deepEqual(normalized, node("empty"));
-  assert.notEqual(normalized, source);
+  const canonical = elem(node("empty"));
+  assert.equal(canonical_hson_graph_equal(hson.fromNode(canonical).toNode(), canonical), true);
+  assert.notEqual(hson.fromNode(canonical).toNode(), canonical);
 });
 
 check("standalone empty element wrappers reject at every canonical boundary", () => {

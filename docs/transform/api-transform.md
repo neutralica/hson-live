@@ -44,12 +44,18 @@ hson.transform.calc(() => number): HsonNumber
 
 The same numeric operation is exported as `hsonCalc`. Runtime authored-Hson text is admitted by `fromHson`.
 
-Every constructor method parses and normalizes input to Hson's canonical node graph.
+External-format constructors parse and lower their source format. Direct node
+and Binary ingress qualify an exact complete portable graph without repair.
+Every generic source privately owns stable graph state; `toNode()` returns an
+independent mutable copy, and all terminals observe that same source version.
 
-Hson source parsing and data admission share a nesting bound of 256: the root
+Hson source parsing and data admission currently share a resource bound of 256: the root
 value has depth zero, and every object member or array item adds one. Values at
 depth 256 reject before publication; admitted data closes through serialization,
-`fromHson`, and materialization within the same bound.
+`fromHson`, and materialization within the same bound. This is an implementation
+capacity safeguard, not canonical graph grammar. Direct node capture and role
+verification are iterative and impose no semantic depth cutoff; individual
+transports retain their existing capacity limits.
 
 ## Hson authoring and semantic strings
 
@@ -234,13 +240,29 @@ Parses Hson text into HsonNodes.
 - Hson serializes numeric values unquoted and use JSON number syntax and admit only finite   JavaScript numbers: a leading plus is forbidden, while an exponent plus is allowed (for example, `1e+3`).
 ### `hson.fromNode(node: HsonNode)`
 
-Parses and validates an external HsonNode graph .
+Captures own enumerable data descriptors, validates storage and contextual
+relationships, and owns an exact private snapshot. Rejection is eager, with
+`operation: fromNode`, `stage: source-admission`, and a graph storage path.
 
 - Does not sanitize.
+- Complete values are STR, VAL, canonical OBJ/ARR, and nonempty ELEM ordered
+  content except a sole STR. Bare named branches, II, ROOT, complete OBJ/scalar
+  and ELEM/STR carriers reject. Nested scalar relationships remain intact.
+- Empty attrs/meta, unknown own fields or symbols, accessors, hidden semantic
+  storage, sparse or decorated content arrays, cycles, misordered II indexes,
+  and typed ordinary attributes reject without normalization. Plain and
+  null-prototype records are supported; descriptor writable/configurable flags
+  are nonsemantic. Ordinary attribute values must be strings; style storage
+  retains its separate existing forms.
 - Public graph admission rejects generated runtime QUID metadata with
   `PORTABLE_RUNTIME_QUID_FORBIDDEN`, including metadata in nested nodes.
-- A QUID-free node remains valid input and may acquire new local identity after
-  admission to a LiveMap or LiveTree runtime.
+- A qualifying QUID-free caller graph or returned copy can separately acquire
+  identity through an authorized runtime owner. That mutation cannot affect
+  the portable Transform snapshot.
+- Proxy reflection can execute traps. Admission guarantees a validated private
+  graph from observed descriptors, not an atomic view of an adversarial target.
+- Mutable `toNode()` copies use null-prototype semantic records to exclude
+  inherited storage; no inherited semantic getter is read during copying.
 
 ### `hson.fromBinary(input: Uint8Array, options?)`
 
@@ -277,15 +299,16 @@ All transform source constructors return a common surface:
 .toJson()           // returns a JSON object or string
 .toHson()           // returns an Hson string
 .toBinary()         // returns canonical Binary Hson bytes
-.toNode()           // returns the underlying in-memory HsonNode graph
+.toNode()           // returns an independent exact graph copy
 ```
 
-`toNode()` exposes an in-memory graph and may retain local runtime metadata.
-It is local inspection material, not a portable transfer format. A node with
-generated QUID metadata cannot be passed to any public `fromNode()` constructor,
-even after `JSON.stringify()` and `JSON.parse()`. Use the Hson, JSON, HTML, or
-Binary output terminal for portable serialization. Same-runtime exact capture
-uses a separate internal facility.
+`toNode()` returns a separate copy of the privately owned source graph. During
+the staged producer migration, this may retain a source-owned ROOT or branch
+shape that does not qualify as a complete raw `fromNode()` input. Runtime
+owners have separate inspection and exact-capture facilities; their generated
+QUID metadata cannot be passed to public portable admission, even after JSON
+stringification and parsing. A generic Transform snapshot does not acquire
+identity when another runtime owner later mutates the original input.
 
 HTML trust is selected when HTML enters Transform. Use `fromTrustedHtml` only
 for trusted input and `fromUntrustedHtml` for external or user-authored input;
@@ -322,13 +345,20 @@ Selects Hson output.
 - `serialize()` returns `HsonCanonical`, a primitive Hson string.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
 - Hson text is produced lazily by `serialize()`, after Hson options have been   accumulated. The source graph is not cloned or mutated.
-- Every admitted Hson-serializable semantic value is emitted without literal structural VSN names, raw metadata containers, array-index metadata, or generated QUID metadata. Parsing the output reconstructs the application structure and content. Exact runtime graph comparison can still distinguish the source graph's QUID metadata. Object-member metadata is outside this domain and rejects.
+- Hson output omits literal structural VSN names, raw metadata containers,
+  array-index metadata and generated QUID metadata. Structural closure is tested
+  on the supported domain; style notation closure remains unresolved in the
+  deferred ledger. Exact runtime comparison can distinguish QUID metadata.
+  Object-member metadata is outside this domain and rejects.
 - For QUID-free admitted nodes, direct `serialize_hson(node)` and
   `hson.fromNode(node).toHson().serialize()` use the same canonical serializer.
   `noBreak` changes presentation only: readable strings containing LF use physical formatted multiline syntax, while compact output uses escaped newlines. Attributes remain escaped on one line. Both outputs preserve exact decoded values.
 - Canonical names use the established preferred bare grammar where possible.   Names requiring quoting use apostrophe delimiters, escape apostrophes as   `\'`, and treat backticks as ordinary data. Canonical Hson never emits a   backtick-delimited name.
 - Direct or fluent Hson serialization of any caller-supplied `_hson_root` rejects before layout options. Parser-owned JSON/HTML roots and the Hson parser root are explicitly detached by their source pipeline first.
-- `fromNode()` treats its input as a detached semantic value. Redundant detached   scalar `_hson_obj`/`_hson_elem` carriers normalize to their scalar before   output, while owned object-member carriers, element text clusters, and arrays   remain intact. Direct serialization rejects a detached carrier that bypassed   admission.
+- `fromNode()` rejects redundant complete scalar carriers instead of collapsing
+  them. Object-member relationships and nested element text remain intact.
+  Generic Hson egress qualifies a complete value after established source-owner
+  extraction; explicit owned Document/runtime serializers remain separate.
 
 ### `.toBinary()`
 
@@ -349,8 +379,11 @@ Hson, JSON, or HTML. A `_hson_root` carrier is not a detached Binary Hson value
 and rejects. Generated QUID metadata is omitted; other admitted metadata keeps
 its binary representation.
 
-`toBinary()` snapshots the source graph when that output is selected. Later
-mutation of a caller-owned node cannot change the returned representation.
+Binary uses the same private source snapshot and complete portable domain as
+generic Hson. No original-input bypass exists. Decode validates raw wire shape
+and complete-value qualification; present-empty metadata is not removed.
+Source-owned ROOT shapes remain inspectable through copied `toNode()` results
+pending producer alignment, with existing JSON/HTML owner extraction at egress.
 
 ### `HsonCanonical`
 
@@ -382,7 +415,7 @@ type FrameOptions = {
 
 Readable, two-space-indented Hson is the default. `noBreak` selects canonical compact Hson without cosmetic newlines or indentation while retaining conventional spaces between tag/header/content terms. Portable Hson always omits generated `quid` metadata without altering live identity registration. `index` is the separate operational field on `_hson_ii`. Every `data-*` spelling is an ordinary application attribute.
 
-Ordinary Hson attributes have string-valued wire semantics in either layout. The parser accepts both `count=2` and `count="2"` as `{ count: "2" }`, while canonical serialization emits `count="2"`. Programmatic number, boolean, and null values are likewise stringified and quoted without mutating the source graph. Presence flags are the distinct exact-equality form `{ disabled: "disabled" }` and serialize as bare `disabled`.
+Ordinary portable Hson attributes have string-valued semantics in either layout. The parser accepts both `count=2` and `count="2"` as `{ count: "2" }`, while canonical serialization emits `count="2"`. Strict raw portable `fromNode()` requires string ordinary attributes and rejects number, boolean, null, and undefined candidates rather than stringifying them. Runtime attribute mutation and construction retain typed values; an explicit runtime-to-portable projection may stringify them at its export boundary. Presence flags are the distinct exact-equality form `{ disabled: "disabled" }` and serialize as bare `disabled`. Style storage has its separate, richer representation and deferred notation-closure limitations.
 
 ### Generated QUID boundary
 
@@ -397,7 +430,7 @@ hson.fromNode(node).toHson().noBreak().serialize();
 hson.fromNode(node).toHson().withOptions({ noBreak: true }).serialize();
 ```
 
-The former `spaced`, `linted`, and `lineLength` options have been removed. `.toJson()` materializes the in-memory projection once; `value()` returns that projection and `serialize()` stringifies it. HTML output behavior is unchanged.
+The former `spaced`, `linted`, and `lineLength` options have been removed. `.toJson()` selects a projection of the private admitted source state. `value()` returns an independently materialized JavaScript value; `serialize()` emits ordered JSON text directly from the admitted graph. Both observe the same semantic version. Ordinary JavaScript object enumeration can reorder integer-like keys, while text emission preserves graph member order and signed zero. This does not claim full JSON transport closure; existing sidecar representation limitations remain deferred. HTML output behavior is unchanged.
 
 ---
 
@@ -516,17 +549,29 @@ try {
 `undefined` for another failure type. Do not parse the human message to recover
 source evidence.
 
-Not every terminal failure is a `TransformError`: Binary Hson currently throws
-ordinary `Error` values prefixed with `Binary Hson`, WebCrypto hashing rejects
+Not every terminal failure is a `TransformError`: Binary encoding/resource
+failures may throw ordinary `Error` values prefixed with `Binary Hson`, while
+public Binary decode/admission failures are structured. WebCrypto hashing rejects
 with an ordinary `Error`, and a caller's `hsonCalc` callback failure propagates
 unchanged. Consumers should classify with `is_transform_error` before relying
 on Transform fields.
+
+Public Binary failures retain `operation: fromBinary` and distinguish:
+
+| Failure | Code | Stage |
+| --- | --- | --- |
+| Configured capacity exhausted | `HSON_BINARY_CAPACITY_EXCEEDED` | `source-decoding` |
+| Invalid/unreadable decoding options | `HSON_BINARY_OPTIONS_INVALID` | `source-options` |
+| Malformed wire representation | `HSON_BINARY_WIRE_INVALID` | `source-decoding` |
+| Invalid decoded canonical graph | Existing exact-admission code/path | `source-admission` |
+
+Resource limits do not redefine canonical graph validity.
 
 ---
 
 ## Design Notes
 
-- Transformations normalize through `HsonNode`.
+- External formats lower into source graphs; direct node admission is exact.
 - Transform sources do not mutate the DOM.
 - LiveTree construction is explicit and separate.
 - Public output finalizers expose no `.parse()` terminal.
@@ -534,8 +579,13 @@ on Transform fields.
 - `sha256()` hashes the selected serialized representation, not an abstract
   format-independent graph.
 - VSN tag values remain in the `_hson_` namespace; internal node fields use the   `$_` names.
-- For admitted QUID-free graphs, `fromNode(node).toNode()` returns the same graph
-  reference; it is not a clone operation.
+- Every `toNode()` result is independent of the private source state and of
+  other results. Later caller or returned-copy mutations do not affect any
+  terminal, options, or representation hash.
+- Exact admission and snapshot consistency do not imply total transport
+  closure. Style notation, JSON sidecars/materialization order, HTML/SVG
+  transport gaps, producer alignment and transport resource limits remain
+  tracked in [the representation contract](../contracts/hson-node-representation.md#pass-1-deferred-failure-ledger).
 
 A separate `hson-transform.md` overview is not currently necessary. The pipeline is small, while `hson-syntax.md`, `hson-nodes.md`, `hson-json.md`, and `hson-html.md` already document the parsers' shared model and format-specific behavior. This file is the appropriate home for the callable transform chain.
 

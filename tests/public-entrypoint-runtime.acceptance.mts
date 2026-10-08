@@ -166,7 +166,7 @@ check("construction facades preserve root and subpath identity and immutability"
     let genericEmptyRejected = false;
     try { hson.fromHson("").toNode(); } catch { genericEmptyRejected = true; }
     if (!genericEmptyRejected) throw new Error("generic Transform admitted empty source");
-    for (const output of [hson.fromHson("<root/>"), hson.fromJson({ ready: true }), hsonTransform.fromNode({ $_tag: "main", $_content: [] })]) {
+    for (const output of [hson.fromHson("<root/>"), hson.fromJson({ ready: true }), hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [{ $_tag: "main", $_content: [] }] })]) {
       if ("sanitizeBEWARE" in output) throw new Error("Transform sanitizer compatibility shape remains");
     }
     if (Reflect.set(rootMap, "replacement", null)) throw new Error("LiveMap facade accepted an addition");

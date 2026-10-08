@@ -325,12 +325,12 @@ check("authored Hson, JSON values, and raw nodes share finite admission", () => 
   assert.equal(Object.is(first_number(raw), -0), true);
 
   for (const value of [NaN, Infinity, -Infinity]) {
-    for (const admit of [
-      () => hson.fromJson(value).toNode(),
-      () => hson.fromNode({ $_tag: "_hson_val", $_content: [value] }).toNode(),
-    ]) {
+    for (const [operation, admit] of [
+      ["hson.number-admission", () => hson.fromJson(value).toNode()],
+      ["fromNode", () => hson.fromNode({ $_tag: "_hson_val", $_content: [value] }).toNode()],
+    ] as const) {
       assert.deepEqual(error_details(admit), {
-        operation: "hson.number-admission",
+        operation,
         code: HSON_NUMBER_NONFINITE,
       });
     }

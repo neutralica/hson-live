@@ -394,13 +394,19 @@ function seg(t: string) {
   return t.startsWith(HSON_SYS_PREFIX) ? `/${t}` : `/tag:${t}`;
 }
 
+function append<T>(items: T[], value: T): void {
+  Object.defineProperty(items, items.length, {
+    value, writable: true, enumerable: true, configurable: true,
+  });
+}
+
 function push(
   errs: InvariantIssue[],
   _cfg: DevCfg,
   s: string,
   details?: Readonly<{ code?: string; path?: string }>,
 ) {
-  errs.push({ message: s, ...details });
+  append(errs, { message: s, ...details });
 }
 
 function is_plain_record(value: unknown): value is Record<string, unknown> {
@@ -453,7 +459,7 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
     }
     if (complete.has(node)) continue;
     active.set(node, here);
-    stack.push({ kind: "leave", value: node });
+    append(stack, { kind: "leave", value: node });
 
     const metaProperty = own_enumerable_data_property(node, "$_meta");
     const attrsProperty = own_enumerable_data_property(node, "$_attrs");
@@ -524,7 +530,7 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
     for (let index = contentItems.length - 1; index >= 0; index--) {
       const child = contentItems[index];
       if (typeof child === "object" && child !== null) {
-        stack.push({ kind: "enter", value: child, path: `${here}/$_content[${index}]` });
+        append(stack, { kind: "enter", value: child, path: `${here}/$_content[${index}]` });
       }
     }
   }

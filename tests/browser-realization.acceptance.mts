@@ -122,7 +122,9 @@ for (const [label, value, reason] of [
 ] as const) {
   for (const tag of ["main", "svg"] as const) {
     const canonical: HsonNode = { $_tag: "_hson_root", $_content: [element(tag, [], { "data-value": value })] };
-    const admitted = hsonTransform.fromNode(canonical).toNode();
+    assert.throws(() => hsonTransform.fromNode(canonical));
+    // E: the existing realization owner accepts ROOT without portable admission.
+    const admitted = canonical;
     const domPlan = plan_browser_realization(admitted, { capability: "dom" });
     assert.equal(domPlan.parserClosure, "not-required", `${label} ${tag} direct-DOM capability`);
     const projected = materialize_browser_realization(
@@ -261,7 +263,8 @@ for (const supported of [
 {
   const parserUnstable = element("p", [element("div", [leaf("direct")])]);
   const canonical = { $_tag: "_hson_root", $_content: [structuredClone(parserUnstable)] };
-  const admitted = hsonTransform.fromNode(canonical).toNode();
+  assert.throws(() => hsonTransform.fromNode(canonical));
+  const admitted = canonical;
   assert.deepEqual(admitted, canonical);
   rejectsSsr(admitted, /implicitly close.*<p>/);
   const projected = project_livetree(structuredClone(parserUnstable), "html", create_livetree_runtime(), globalThis.document) as unknown as FakeElement;

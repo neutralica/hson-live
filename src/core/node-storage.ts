@@ -22,7 +22,9 @@ export function enumerable_own_data_entries(
   for (const key of Object.getOwnPropertyNames(record)) {
     const inspected = own_enumerable_data_property(record, key);
     if (inspected === undefined || !inspected.present) return undefined;
-    entries.push([key, inspected.value]);
+    Object.defineProperty(entries, entries.length, {
+      value: [key, inspected.value], enumerable: true, writable: true, configurable: true,
+    });
   }
   return entries;
 }
@@ -37,7 +39,9 @@ export function enumerable_own_data_array_items(
     if (descriptor === undefined || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) {
       return undefined;
     }
-    items.push(descriptor.value);
+    Object.defineProperty(items, items.length, {
+      value: descriptor.value, enumerable: true, writable: true, configurable: true,
+    });
   }
   return items;
 }

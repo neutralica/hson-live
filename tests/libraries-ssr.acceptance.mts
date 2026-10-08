@@ -12,6 +12,7 @@ import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-st
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" attrs <props <title <optional "string">>> content <repeat <tag "item" content "empty">>>`;
@@ -279,7 +280,7 @@ await check("interaction storage follows selected documents and preserves enable
     const aggregate = internal_livemap_aggregate_authority(installed);
     const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
     assert.ok(system);
-    return hsonTransform.fromNode(aggregate.systemRoot(system)).toJson().serialize();
+    return hsonTransform.fromNode(detach_hson_root_value(aggregate.systemRoot(system))).toJson().serialize();
   };
   const selected = map.cut({ data: [], documents: ["page"] });
   assert.deepEqual(selected.libs.registry.libraries.map(entry => entry.name), ["page", INTERACTION_RESERVED_LIBRARY_KEY]);

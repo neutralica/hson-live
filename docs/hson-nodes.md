@@ -4,11 +4,12 @@
 ## Nodes, Structure, and Invariants
 Updated: 2026-07-31
 
-Hson transformations normalize through one ordered tree representation,
-`HsonNode`. The graph preserves the semantic structure needed to project JSON,
+External Hson transformations lower into one ordered tree representation,
+`HsonNode`; direct generic `fromNode()` admission accepts exactly or rejects.
+The graph preserves the semantic structure needed to project JSON,
 HTML, and Hson, but it is not a byte-for-byte record of source spelling.
-Parsers and serializers can canonicalize whitespace, quoting, attribute form,
-tag case, object-key order, and other surface details.
+External parsers lower source-specific surface forms; exact node admission
+preserves member/content order and does not coerce attribute values.
 
 ---
 
@@ -77,10 +78,10 @@ element-structured. This restriction keeps untyped HTML text separate from
 typed JSON structure.
 
 An empty ordinary element is represented by `$_content: []`. A retained empty
-`_hson_elem` is invalid canonical state. Node ingress has one narrow legacy
-normalization: when an empty `_hson_elem` is the sole relationship beneath an
-ordinary node, it is elided without mutating the caller. Empty `_hson_obj` and
-`_hson_arr` nodes remain valid and distinct.
+`_hson_elem` is invalid canonical state and rejects at direct generic node
+admission. Some internal/external construction helpers retain the historical
+empty-relationship normalization at their own boundaries; it is not a public
+`fromNode()` fallback. Empty `_hson_obj` and `_hson_arr` remain valid and distinct.
 
 ### `_hson_arr` and `_hson_ii`
 
@@ -95,11 +96,14 @@ Each `_hson_ii`:
 An ordinary array-item object must therefore sit beneath an `_hson_obj` child
 of `_hson_ii`; an ordinary node directly beneath `_hson_ii` is invalid.
 
-Wrapper-bearing inputs use `index` as semantic ordering metadata during
-admission. The complete sibling set must be the exact strings `"0"` through
+Wrapper-bearing graphs use `index` as semantic ordering metadata. The complete
+sibling set must be the exact strings `"0"` through
 `String(wrapperCount - 1)`: no gaps, duplicates, signs, leading zeros,
 fractions, exponents, nonnumeric text, or out-of-range values are valid. A
-valid physical permutation is sorted by index without mutating caller input.
+physical permutation with otherwise valid indices rejects at strict generic
+portable `fromNode()` admission. External JSON wrapper construction and explicit
+runtime normalization helpers may order candidates by index at their own
+construction boundaries; that behavior is not canonical direct-node admission.
 
 Canonical graph state then requires physical wrapper order to match semantic
 array order and every wrapper index to equal `String(physicalPosition)`.
@@ -138,13 +142,14 @@ store canonical boolean and null values; deletion is explicit through
 The graph type continues to permit ordinary string, number, boolean, and null
 attribute values for programmatic compatibility; this is not a promise of typed
 wire attributes. Hson parsing stores ordinary attribute values as strings, and
-Transform node admission projects non-style attribute primitives to strings
-before Hson serialization. Thus `fromNode()` admits `{ count: 2 }` as
-`{ count: "2" }`, which serializes as `count="2"`. Direct canonical equality
+Transform node admission rejects non-style attribute values that are not
+strings. `{ count: 2 }` rejects while `{ count: "2" }` is admitted exactly
+and serializes as `count="2"`. Runtime attribute APIs retain typed values;
+an explicit runtime export may project them into portable strings. Canonical equality
 does not imitate that projection: `{ count: 2 }` and `{ count: "2" }` are
 distinct graphs. Direct serializer input must already satisfy its string-valued
-Hson attribute domain. Structured style values retain their separate existing
-CSS-string normalization behavior. Canonical no-attribute state omits
+Hson attribute domain. Direct admission preserves valid style storage without
+CSS-string normalization; style notation closure remains deferred. Canonical no-attribute state omits
 `$_attrs`; invariant validation rejects a present empty `$_attrs` container.
 
 Metadata is structural support, not semantic JSON/HTML content. QUID identity
@@ -189,7 +194,9 @@ QUIDs are not a universal transform round-trip guarantee:
 - terminal destruction releases active QUID ownership;
 - ordinary Hson output omits generated QUID metadata without mutating graph identity or
   runtime ownership; and
-- transform/canonicalization operations may rebuild or normalize graphs.
+- external-format lowering and runtime construction may rebuild graphs;
+  generic direct-node Transform snapshots preserve admitted semantics and
+  remain independent of later runtime identity changes.
 
 Application data should not depend on QUID spelling or persistence outside the
 live runtime contract.

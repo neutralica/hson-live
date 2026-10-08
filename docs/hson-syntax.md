@@ -161,7 +161,7 @@ Attribute declaration names are case-sensitive and duplicates reject before cano
 
 Quoted attribute values accept exactly the same JSON escape set as quoted content: `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX`. Unknown, incomplete, malformed, and unterminated escapes reject; `\/` decodes to `/`.
 
-For example, permissive input `<tag count=2/>` parses as `{ count: "2" }` and canonical reserialization produces `<tag count="2"/>`. Canonical Hson always quotes ordinary valued attributes. Permissive node ingress converts programmatic number, boolean, and null values to strings before they enter the canonical graph. This differs from primitive content, which retains primitive typing.
+For example, external input `<tag count=2/>` parses as `{ count: "2" }` and reserialization produces `<tag count="2"/>`. Hson quotes ordinary valued attributes. Direct node ingress rejects programmatic number, boolean, and null ordinary attribute values instead of converting them. Primitive content retains its primitive type, and runtime attribute APIs retain their separate typed domain.
 
 A bare attribute is a presence flag:
 

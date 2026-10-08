@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { hsonTransform } from "../../src/api/transform/index.ts";
 import { hson } from "../../src/hson.ts";
 import { detach_hson_root_value } from "../../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
+import { normalize_detached_hson_semantic_value } from "../../src/core/normalize-hson-semantic-value.ts";
 import {
   canonical_hson_graph_difference,
   canonical_hson_graph_equal,
@@ -45,9 +46,14 @@ class AtomicAssertions {
   }
 }
 
-function semanticNode(node: HsonNode): HsonNode {
+function semanticNode(node: HsonNode, source: "json" | "html"): HsonNode {
   const detached = node.$_tag === "_hson_root" ? detach_hson_root_value(node) : node;
-  return hsonTransform.fromNode(detached).toNode();
+  // Match the existing diagnostic HTML transport boundary explicitly. This
+  // measures external lowering, not raw parser graph closure or node admission.
+  // Raw graph-ingress candidates always pass through strict fromNode above.
+  return source === "html"
+    ? normalize_detached_hson_semantic_value(detached, "corpus.html-transport")
+    : detached;
 }
 
 function strictEqual(left: HsonNode, right: HsonNode): boolean {
@@ -142,12 +148,12 @@ function runAcceptedGraph(entry: AcceptedCorpusCase, atomic: AtomicAssertions): 
   atomic.equal(strictEqual(hsonReparsed, entry.expectedGraph), true, entry.id + ": Hson reparse");
   const json = transform.toJson().serialize();
   atomic.equal(json, entry.expectedOutputs.json, entry.id + ": JSON output");
-  const jsonReparsed = semanticNode(hsonTransform.fromJson(json).toNode());
+  const jsonReparsed = semanticNode(hsonTransform.fromJson(json).toNode(), "json");
   atomic.equal(strictEqual(jsonReparsed, entry.expectedGraph), true, entry.id + ": JSON reparse");
   const html = transform.toHtml().serialize();
   atomic.equal(html, entry.expectedOutputs.html, entry.id + ": HTML output");
-  const htmlReparsed = semanticNode(hsonTransform.fromTrustedHtml(html).toNode());
-  atomic.equal(strictEqual(htmlReparsed, entry.expectedGraph), true, entry.id + ": HTML reparse");
+  const htmlReparsed = semanticNode(hsonTransform.fromTrustedHtml(html).toNode(), "html");
+  atomic.equal(strictEqual(htmlReparsed, entry.expectedGraph), true, entry.id + ": HTML reparse after external lowering");
   atomic.deepEqual(
     [transform.toHson().serialize(), transform.toJson().serialize(), transform.toHtml().serialize()],
     [hson, json, html],
@@ -167,14 +173,14 @@ function runAcceptedJson(entry: AcceptedCorpusCase, atomic: AtomicAssertions): v
   const json = transform.toJson().serialize();
   atomic.equal(json, entry.expectedOutputs.json, entry.id + ": exact JSON");
   atomic.deepEqual(objectKeySequences(entry.expectedGraph), entry.expectedKeySequences, entry.id + ": baseline key sequences");
-  const reparsed = semanticNode(hsonTransform.fromJson(json).toNode());
+  const reparsed = semanticNode(hsonTransform.fromJson(json).toNode(), "json");
   atomic.equal(strictEqual(reparsed, entry.expectedGraph), true, entry.id + ": reparse equality");
   atomic.deepEqual(objectKeySequences(reparsed), entry.expectedKeySequences, entry.id + ": reparsed key sequences");
   atomic.deepEqual(entry.graphIngress, before, entry.id + ": graph nonmutation");
   atomic.equal(transform.toJson().serialize(), json, entry.id + ": deterministic JSON");
   let current = reparsed;
   for (let cycle = 0; cycle < (entry.cycles ?? 1); cycle += 1) {
-    current = semanticNode(hsonTransform.fromJson(hsonTransform.fromNode(current).toJson().serialize()).toNode());
+    current = semanticNode(hsonTransform.fromJson(hsonTransform.fromNode(current).toJson().serialize()).toNode(), "json");
     assert.equal(strictEqual(current, entry.expectedGraph), true, entry.id + ": cycle " + cycle + " baseline");
   }
   atomic.equal(strictEqual(current, entry.expectedGraph), true, entry.id + ": repeated cycles retain original baseline");
@@ -188,13 +194,13 @@ function runAcceptedHtml(entry: AcceptedCorpusCase, atomic: AtomicAssertions): v
   if (entry.graphIngress !== undefined) admitted = hsonTransform.fromNode(entry.graphIngress).toNode();
   else {
     assert.ok(entry.transportIngress !== undefined);
-    admitted = semanticNode(hsonTransform.fromTrustedHtml(entry.transportIngress).toNode());
+    admitted = semanticNode(hsonTransform.fromTrustedHtml(entry.transportIngress).toNode(), "html");
   }
   atomic.ok(admitted !== undefined, entry.id + ": admission");
   const output = hsonTransform.fromNode(entry.expectedGraph).toHtml().serialize();
   atomic.equal(output, entry.expectedOutputs.html, entry.id + ": exact HTML");
-  const reparsed = semanticNode(hsonTransform.fromTrustedHtml(output).toNode());
-  atomic.equal(strictEqual(reparsed, entry.expectedGraph), true, entry.id + ": HTML reparse");
+  const reparsed = semanticNode(hsonTransform.fromTrustedHtml(output).toNode(), "html");
+  atomic.equal(strictEqual(reparsed, entry.expectedGraph), true, entry.id + ": HTML reparse after external lowering");
   atomic.equal(strictEqual(admitted, entry.expectedGraph), true, entry.id + ": ownership normalization boundary");
   atomic.deepEqual(
     entry.expectedStringLeaves === undefined ? [] : stringLeaves(reparsed),

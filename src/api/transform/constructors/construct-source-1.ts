@@ -17,9 +17,7 @@ import {
   node_from_svg,
   SVG_NS,
 } from "../utils/node-utils/node-from-svg.js";
-import { admit_portable_hson_node, scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
-import { normalize_detached_hson_semantic_value } from "../../../core/normalize-hson-semantic-value.js";
-import { assert_invariants } from "../../../core/assert-invariants.js";
+import { admit_exact_portable_node } from "../node-exact.js";
 import { detach_hson_root_value } from "../utils/node-utils/detach-hson-root-value.js";
 
 /**
@@ -43,7 +41,7 @@ export interface HtmlSourceOptions {
  *
  * This is stage 1 of the NEW pipeline:
  *   - It accepts *source formats* (HTML / JSON / Hson / DOM / IR),
- *   - Normalizes them into a single HsonNode frame,
+ *   - Parses external formats or exactly admits complete portable node input,
  *   - Then hands that frame to `construct_output_2` (stage 2).
  *
  * It does **not** attach anything to the DOM.
@@ -65,7 +63,7 @@ export interface HtmlSourceOptions {
  *   that explicitly later (e.g. Node → HTML → DOMPurify → Node).
  *
  * @param pipelineOptions - Pipeline configuration (safe vs unsafe parsing).
- * @returns Stage-1 constructor API for creating a normalized Hson frame.
+ * @returns Stage-1 constructor API for privately owned source graph state.
  */
 export function construct_source_1(
   pipelineOptions: { unsafe: boolean } = { unsafe: false }
@@ -141,7 +139,7 @@ export function construct_source_1(
     fromJson(input: string | JsonValue): TransformOutput {
       const node: HsonNode = parse_json(input);
       const raw: string =
-        typeof input === "string" ? input : JSON.stringify(input);
+        typeof input === "string" ? input : "[JSON value]";
 
       const frame: TransformFrame = {
         input: raw,
@@ -192,7 +190,7 @@ export function construct_source_1(
 
       return {
         toNode(): HsonNode {
-          return getFrame().node;
+          return getOutput().toNode();
         },
         toBinary() {
           return getOutput().toBinary();
@@ -223,18 +221,14 @@ export function construct_source_1(
      * should already be reflected in how it was constructed.
      */
     fromNode(input: HsonNode): TransformOutput {
-      admit_portable_hson_node(input, "fromNode");
-      const node = normalize_detached_hson_semantic_value(input, "fromNode");
-      scan_ingested_hson_node_quids(node, "fromNode");
-      assert_invariants(node, "fromNode");
+      const node = admit_exact_portable_node(input, "fromNode");
       const frame: TransformFrame = {
-        input: JSON.stringify(node),
+        input: "[HsonNode]",
         node,
         meta: {
           origin: "node",
           unsafePipeline: pipelineOptions.unsafe,
           sanitized: false,
-          binaryNode: input,
         },
       };
 

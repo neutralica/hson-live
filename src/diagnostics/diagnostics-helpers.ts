@@ -1,6 +1,5 @@
 // diagnostics-helpers.ts
 
-import { hson } from "../hson.js";
 import { FixtureAtom, SourceFormat, CoreOpt, Fmt, LoopDir, Step, Artifact, NodeMark, LoopReport } from "../types/diagnostics.types.js";
 import { HsonNode } from "../core/types.js";
 import { is_Node } from "../core/node-guards.js";
@@ -169,6 +168,7 @@ export function is_html_element(x: unknown): x is HTMLElement {
   return typeof H === "function" && x instanceof H;
 }
 function snapshot_node_hson(n: HsonNode, max = 4000): string {
-  const s = make_string(hson.fromNode(n as any).toNode());
+  // Diagnostics inspect owner graphs too; portable admission is not cloning.
+  const s = make_string(n);
   return s.length > max ? s.slice(0, max) + `…(+${s.length - max})` : s;
 }

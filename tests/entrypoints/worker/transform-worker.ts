@@ -25,7 +25,7 @@ const universalCircuit: UniversalCircuitVerificationResult = verify_universal_ci
 });
 void universalCircuit;
 void hsonTransform.fromNode({
-  $_tag: "_object",
+  $_tag: "_hson_obj",
   $_content: [],
 }).toJson().value();
 void hsonTransform.fromTrustedHtml(`<worker ready></worker>`).toNode();

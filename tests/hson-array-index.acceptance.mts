@@ -183,14 +183,15 @@ function with_browser_parser(fn: () => void): void {
 const reversed = array_root([item("1", "b"), item("0", "a")]);
 const ordered = array_root([item("0", "a"), item("1", "b")]);
 
-check("raw HsonNode valid permutations canonicalize without mutating caller input", () => {
+check("raw HsonNode permutations reject without mutating caller input", () => {
   const before = structuredClone(reversed);
-  const canonical = hsonTransform.fromNode(reversed).toNode();
+  assert.throws(() => hsonTransform.fromNode(array_node(reversed)));
+  const canonical = hsonTransform.fromNode(detach_hson_root_value(ordered)).toNode();
   assert.deepEqual(payload_tags(canonical), ["a", "b"]);
   assert.deepEqual(indexes(canonical), ["0", "1"]);
   assert.deepEqual(reversed, before);
   assert.notEqual(canonical, reversed);
-  assert.deepEqual(payload_tags(hsonTransform.fromNode(ordered).toNode()), ["a", "b"]);
+  assert.deepEqual(payload_tags(canonical), ["a", "b"]);
 });
 
 check("all malformed exact index spellings and contradictory sets reject", () => {
@@ -212,7 +213,7 @@ check("all malformed exact index spellings and contradictory sets reject", () =>
   ];
   for (const [name, graph] of cases) {
     assert.throws(
-      () => hsonTransform.fromNode(graph),
+      () => hsonTransform.fromNode(array_node(graph)),
       name,
     );
   }
@@ -220,11 +221,8 @@ check("all malformed exact index spellings and contradictory sets reject", () =>
 
 check("index metadata on the wrong node kind rejects", () => {
   assert.throws(() => hsonTransform.fromNode({
-    $_tag: "_hson_root",
-    $_content: [{
-      $_tag: "_hson_elem",
-      $_content: [{ $_tag: "div", $_meta: { index: "0" }, $_content: [] }],
-    }],
+    $_tag: "_hson_elem",
+    $_content: [{ $_tag: "div", $_meta: { index: "0" }, $_content: [] }],
   }));
 });
 
@@ -263,8 +261,9 @@ check("direct XML-shaped structural ingress canonicalizes explicit wrapper order
   assert.deepEqual(indexes(canonical), ["0", "1"]);
 });
 
-check("Worker-safe raw-node ingress canonicalizes permutations and rejects invalid sets", () => {
-  const canonical = hsonTransform.fromNode(reversed).toNode();
+check("Worker-safe raw-node ingress preserves ordered arrays and rejects permutations and invalid sets", () => {
+  assert.throws(() => hsonTransform.fromNode(array_node(reversed)));
+  const canonical = hsonTransform.fromNode(detach_hson_root_value(ordered)).toNode();
   assert.deepEqual(payload_tags(canonical), ["a", "b"]);
   assert.deepEqual(indexes(canonical), ["0", "1"]);
   for (const invalid of [
@@ -272,7 +271,7 @@ check("Worker-safe raw-node ingress canonicalizes permutations and rejects inval
     array_root([item("0", "a"), item("0", "b")]),
     array_root([item("banana", "a")]),
   ]) {
-    assert.throws(() => hsonTransform.fromNode(invalid));
+    assert.throws(() => hsonTransform.fromNode(array_node(invalid)));
   }
 });
 
@@ -282,7 +281,7 @@ check("JSON and Hson native arrays generate canonical positional indexes", () =>
   assert.deepEqual(indexes(fromJson), ["0", "1", "2"]);
   assert.deepEqual(indexes(fromHson), ["0", "1", "2"]);
   assert.deepEqual(
-    hsonTransform.fromJson(JSON.parse(hsonTransform.fromNode(fromJson).toJson().serialize())).toNode(),
+    hsonTransform.fromJson(JSON.parse(hsonTransform.fromNode(detach_hson_root_value(fromJson)).toJson().serialize())).toNode(),
     fromJson,
   );
   const wire = hsonTransform.fromNode(fromHson).toHson().serialize();
@@ -295,21 +294,24 @@ check("Transform serializers consume canonical order and reject noncanonical egr
     scalar_item("1", "b"),
     scalar_item("0", "a"),
   ]);
-  const scalarCanonical = hsonTransform.fromNode(scalarReversed).toNode();
+  assert.throws(() => hsonTransform.fromNode(array_node(scalarReversed)));
+  const scalarCanonical = hsonTransform.fromNode(detach_hson_root_value(array_root([
+    scalar_item("0", "a"), scalar_item("1", "b"),
+  ]))).toNode();
   assert.deepEqual(JSON.parse(serialize_json(scalarCanonical)), ["a", "b"]);
-  const scalarValue = detach_hson_root_value(scalarCanonical);
+  const scalarValue = scalarCanonical;
   const hsonWire = serialize_hson(scalarValue);
   assert.match(hsonWire, /"a"[\s\S]*"b"/);
   assert.equal(
     canonical_hson_graph_equal(hsonTransform.fromHson(hsonWire).toNode(), scalarValue),
     true,
   );
-  const elementCanonical = hsonTransform.fromNode(reversed).toNode();
+  const elementCanonical = hsonTransform.fromNode(detach_hson_root_value(ordered)).toNode();
   const htmlWire = serialize_html(elementCanonical);
   assert.match(htmlWire, /hson:index="0"[\s\S]*hson:index="1"/);
   with_browser_parser(() => {
     assert.equal(
-      canonical_hson_graph_equal(parse_html(htmlWire), elementCanonical),
+      canonical_hson_graph_equal(detach_hson_root_value(parse_html(htmlWire)), elementCanonical),
       true,
     );
   });
@@ -318,22 +320,24 @@ check("Transform serializers consume canonical order and reject noncanonical egr
   }
 });
 
-check("canonical equality is strict while array admission owns physical index reconstruction", () => {
+check("canonical equality and exact array admission both retain physical index order", () => {
   assert.equal(canonical_hson_graph_equal(reversed, ordered), false);
   assert.equal(canonical_hson_graph_difference(reversed, ordered)?.kind, "content-ordering");
-  const admitted = hsonTransform.fromNode(reversed).toNode();
-  assert.equal(canonical_hson_graph_equal(admitted, ordered), true);
-  assert.throws(() => hsonTransform.fromNode(array_root([item("0", "a"), item("0", "b")])).toNode());
+  assert.throws(() => hsonTransform.fromNode(array_node(reversed)));
+  const portable = detach_hson_root_value(ordered);
+  const admitted = hsonTransform.fromNode(portable).toNode();
+  assert.equal(canonical_hson_graph_equal(admitted, portable), true);
+  assert.throws(() => hsonTransform.fromNode(array_node(array_root([item("0", "a"), item("0", "b")]))));
 });
 
 check("LiveMap projection and every numeric path follow canonical physical order", () => {
   const schema: HsonSchema = Hson.schema`<type "data" defs <Root <array "string">> content <ref "Root">>`;
   const source = array_root([
-    scalar_item("1", "b"),
     scalar_item("0", "a"),
+    scalar_item("1", "b"),
   ]);
   const map = hson.liveMap.fromLibraries({ data: {
-    data: hsonTransform.fromNode(source).toJson().serialize(),
+    data: hsonTransform.fromNode(detach_hson_root_value(source)).toJson().serialize(),
     schema,
   } });
   const data = map.lib("data");

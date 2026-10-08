@@ -3,11 +3,11 @@
 Hson 3.0 stores only `$_tag` and `$_content` on a node with no attributes or
 metadata. `$_content` remains required. `$_attrs` and `$_meta` are optional
 storage containers. Canonical no-attribute state requires `$_attrs` to be
-absent; a present empty `$_attrs` is a noncanonical candidate spelling.
-Candidate admission removes it without mutating caller input. Empty metadata
-uses the same compatibility rule: candidate admission accepts `$_meta: {}`
-and canonicalizes it to absence. Absence is the sole canonical no-metadata
-state.
+absent; a present empty `$_attrs` rejects at generic public portable `fromNode()`.
+Present-empty `$_meta` likewise rejects rather than being removed. Absence is
+the sole canonical no-metadata state. Runtime construction helpers and external
+format lowering may omit empty accumulators at their own boundaries; they do
+not define the exact raw node admission contract.
 
 ## Construction and mutation rules
 
@@ -54,19 +54,22 @@ empty storage container for inspection.
   attributes. Lifecycle and representation tests retain a few direct literals
   specifically to exercise malformed or explicitly empty compatibility shapes.
 
-## Invariants and permissive Transform ingress
+## Historical normalization and current exact admission
 
-Runtime invariant validation rejects a present empty `$_attrs` container.
-Transform node ingress recognizes absent, `undefined`, `{}`, and legacy empty
-`[]` attribute candidates and returns a detached canonical graph with the
-property omitted. It also converts non-style ordinary attribute primitives to
-strings as an explicit ingress projection. Strict canonical equality never
-performs either conversion: numeric `0` and string `"0"` remain distinct, as
-do an absent field and a present field. An ordinary node with
-`$_content: []` is the canonical empty element form. The one authorized legacy
-structural normalization maps an ordinary node whose sole relationship is an
-empty `_hson_elem` to `$_content: []`, without mutating the caller. Empty
-`_hson_obj` and `_hson_arr` clusters remain explicit and distinct.
+Before Pass 1, generic Transform node ingress removed undefined, empty-record,
+and legacy empty-array attribute candidates, stringified primitive ordinary
+attribute values, and elided a sole empty `_hson_elem` relationship. Those are
+historical behaviors, not current public admission rules.
+
+Current generic portable `fromNode()` admits an exact snapshot or rejects
+eagerly. Present undefined, empty, or array-valued attrs/meta reject; ordinary
+attribute values must be strings; an empty `_hson_elem` relationship rejects.
+Strict equality preserves numeric `0` versus string `"0"` and absent versus
+present fields. An empty named element uses `$_content: []` in its proper
+enclosing role. Empty complete `_hson_obj` and `_hson_arr` remain distinct.
+Internal runtime construction and external-format lowering retain their actual
+context-specific helpers pending their separate migrations. They are not
+routed through forgiving public `fromNode()` admission.
 
 Invariant validation rejects non-plain node objects, missing/non-array
 `$_content`, non-empty array/null/class-instance containers, malformed
@@ -87,17 +90,21 @@ string remain distinct canonical states.
 The optional `$_attrs` and `$_meta` fields, when present and populated, and every string-keyed
 entry within their record values are likewise enumerable own data properties.
 Accessor-backed, non-enumerable, or custom-prototype record state rejects before
-any getter can run. Symbol properties and writable/configurable descriptor flags
-are not graph semantics. `$_meta: {}` and `$_attrs: {}` are compatible candidate
-spellings only; admission omits both, and an already-canonical invariant
-assertion rejects either present empty bag.
+any getter can run. Writable/configurable descriptor flags are not graph
+semantics. Public portable admission rejects own symbols on all semantic
+records and content arrays. `$_meta: {}` and `$_attrs: {}` reject; the operation
+emptying an optional bag must omit it rather than relying on admission repair.
 
 Every canonical node stores `$_tag` and `$_content` as required enumerable own
 Data properties. `$_content` is a dense array whose semantic slots are
 enumerable own data properties. Inherited, accessor-backed, hidden, or sparse
 required storage rejects without executing user code. Canonical node objects
-use `Object.prototype` or `null`; writable/configurable flags and symbol
-decorations remain outside graph meaning.
+use `Object.prototype` or `null`; writable/configurable flags remain outside
+graph meaning. Own array extras, methods and iterator overrides reject.
+Inherited ordinary array behavior is permitted and is not used for capture.
+Mutable Transform observation copies use null-prototype semantic records, so
+later inherited properties cannot become graph fields. Copy construction uses
+own descriptors and does not invoke inherited semantic getters.
 
 Element and object structural modes apply recursively to their full branches.
 Contradictory wrappers, cross-mode ordinary children, empty retained
@@ -105,33 +112,45 @@ Contradictory wrappers, cross-mode ordinary children, empty retained
 admission. Direct Hson serialization validates before normalization and never
 uses the narrow legacy empty-element normalization to repair malformed egress.
 It does not compensate for structural crossings with explicit VSN syntax.
-Every admitted Hson-serializable semantic value reparses, detaches, and compares
-equal in application structure and content, including order, negative zero,
-array indexes, and structural mode. Generated element QUIDs are omitted. `_hson_root`, object-member metadata, cross-mode arrays,
+Structural Hson serialization preserves application order, primitive typing,
+negative zero, array indexes and structural mode on its supported domain.
+Style notation closure remains unresolved as recorded below; successful output
+alone does not certify graph equality. Generated element QUIDs are omitted. `_hson_root`, object-member metadata, cross-mode arrays,
 and detached scalar carrier clusters are outside that serialization domain and
 reject rather than projecting lossily.
 
 Serializer projection is intentionally lossy only for implementation
 scaffolding that Hson syntax reconstructs: `_hson_ii` wrappers and their
 `index` metadata are represented by array position, and structural VSN names
-are represented by notation rather than literal tags. Ordinary attributes and
-generated element QUID metadata remains runtime-local and is omitted without
+are represented by notation rather than literal tags. Ordinary attributes retain
+their portable representation. Generated element QUID metadata remains runtime-local and is omitted without
 mutating its source graph. This cannot legalize object metadata.
 
-Transform `fromNode()` is a detached semantic admission boundary. It collapses
-an unowned `_hson_obj([_hson_str])`, `_hson_obj([_hson_val])`, or
-`_hson_elem([_hson_str])` to the scalar while preserving object-member scalar
-carriers, element text clusters, established root-owned text content, and
-every array cluster. `_hson_elem([_hson_val])` is never a scalar carrier: it
-remains visible until canonical invariant admission rejects typed element
-content. Root detachment itself remains exact. Direct serialization rejects an
-unadmitted detached carrier.
+Transform `fromNode()` exactly admits complete portable STR, VAL, canonical
+OBJ and ARR, and nonempty ELEM ordered content except a sole STR. Complete
+OBJ/STR, OBJ/VAL, ELEM/STR, ordinary named branches, II and ROOT reject.
+Receiving parents supply object-member and element-content relationships;
+valid nested scalar carriers remain intact. OBJ/OBJ, OBJ/ARR, nested ROOT,
+cross-mode element content and empty ELEM relationships reject.
 
-The legacy empty-array optional-container spelling does not apply to metadata.
-An empty plain `_hson_root.$_meta` candidate is accepted and normalized to
-absence by ordinary admission; populated or malformed root metadata rejects and
-is never ignored or filtered. The empty-root runtime carrier remains a separate
-content-shape exception and does not permit populated root metadata.
+Direct raw capture inspects descriptors before evidence can disappear, without
+getters, custom serialization hooks or array methods. Capture, role checking,
+cycle tracking, private freezing and output copying are iterative. Acyclic
+sharing is permitted, but every occurrence must qualify in its actual role and
+each II index must equal its physical position. No semantic depth cutoff is
+introduced. Proxy reflection failures are structured errors; reflection is not
+an atomic view of a hostile target.
+
+All generic sources own stable private snapshots. Every `toNode()` returns an
+independent exact mutable copy. Source-specific parser ROOT/branch shapes remain
+distinct from portable direct admission pending Pass 2. Binary ingress and
+egress use the portable complete-value domain; richer runtime codecs retain
+their explicit authority boundaries. Shared `assert_invariants`, normalizers
+and runtime cloning contracts are unchanged by this private admission seam.
+
+Generic raw ROOT admission rejects, including ROOT[]. Internal empty-root
+ownership remains valid through its existing owner APIs. Public Document
+remains nonempty. Pass 1 does not migrate runtime owner normalization.
 
 `$_meta` is a reserved, closed, internally extensible metadata plane. Each
 registered member defines its own value domain and exact node placement;
@@ -139,11 +158,10 @@ unknown members reject. Structural VSN metadata is therefore an explicit
 member exception rather than a general user-data channel. `_hson_ii` must carry
 canonical string ordering metadata at `index`; other currently registered
 structural VSN metadata is invalid. Wrapper-bearing admission accepts
-only the exact complete sibling set `"0"` through
-`String(wrapperCount - 1)`, sorts a valid permutation, and rejects every
-malformed or contradictory set. Canonical physical order and index order must
-then agree. Native JSON and Hson arrays generate sequential indexes from their
-intrinsic source order.
+only exact physical indexes `"0"` through `String(wrapperCount - 1)` in that
+order. Direct node/Binary admission never sorts a permutation. Native JSON and
+Hson arrays generate sequential indexes from intrinsic source order; existing
+external HTML lowering and internal recovery normalization remain separate.
 
 | Node category | Valid `$_meta` keys |
 | --- | --- |
@@ -163,6 +181,31 @@ value and placement rules rather than inheriting placement from `quid` or
 Hson `//` comments and HTML `<!-- ... -->` comments are ingress/source trivia.
 Neither creates a graph node or metadata, participates in equality, survives
 serialization, or changes this registry.
+
+### Pass 1 deferred failure ledger
+
+Exact storage admission and one semantic snapshot are established independently
+of complete format closure. Known failures must not be described as round-trip
+success or hidden by normalizing an admitted graph:
+
+- Pass 2: parser/source carrier alignment (including explicit JSON ELEM/string
+  carriers and standalone SVG branches), runtime raw ingress, and exact
+  recovery codecs that still normalize bags/index order. Generic Hson/Binary
+  egress explicitly rejects nonqualifying source shapes after existing owner
+  extraction. Owner APIs retain ROOT[], ordered content and identity authority.
+- Pass 3: style empty declarations, whitespace trimming, typed leaves,
+  negative zero, projected name collisions, and raw/structured notation
+  differences. Valid style storage is admitted unchanged, including empty maps
+  and absent/undefined/string unit distinctions; Binary preserves it. Hson
+  style notation closure is unresolved. No style grammar/rendering was changed.
+- Later transport work: JSON sidecar/key collisions and metadata ambiguity;
+  ordinary JavaScript `.value()` integer-key ordering differs from exact JSON
+  text ordering. HTML casing, text boundaries, SVG ownership, void elements,
+  encoded names and raw-text transport still have representation gaps. No name
+  bans or compatibility repairs are added by Pass 1.
+- Resource policy: parser, projection and codec limits remain implementation
+  capacities. Deep admitted graphs may exceed a terminal's existing capacity;
+  their semantic validity is not reduced to the narrowest transport limit.
 
 ### Internal root boundary
 

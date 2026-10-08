@@ -235,11 +235,11 @@ check("nested top-level object retains nested object structure", () => {
 });
 
 check("empty guillemet array detaches as _hson_arr", () => {
-  assert.deepEqual(publicNode(`«»`), node("_hson_arr"));
+  assert.equal(canonical_hson_graph_equal(publicNode(`«»`), node("_hson_arr")), true);
 });
 
 check("empty bracket array detaches as _hson_arr and canonicalizes to guillemets", () => {
-  assert.deepEqual(publicNode(`[]`), node("_hson_arr"));
+  assert.equal(canonical_hson_graph_equal(publicNode(`[]`), node("_hson_arr")), true);
   assert.equal(canonicalize(`[]`), `«»`);
 });
 
@@ -293,8 +293,8 @@ check("nonempty canonical content roots close exactly in readable and compact la
     [`"a"<p/>"b"`, elem(str("a"), node("p"), str("b"))],
   ];
   for (const [source, expected] of fixtures) {
-    assert.deepEqual(publicNode(source), expected, source);
-    assert.deepEqual(hsonTransform.fromHson(source).toNode(), expected, source);
+    assert.equal(canonical_hson_graph_equal(publicNode(source), expected), true, source);
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromHson(source).toNode(), expected), true, source);
     assert.deepEqual(detach_hson_root_value(parse_hson(source)), expected, source);
     for (const noBreak of [false, true]) {
       const serialized = serialize_hson(expected, { noBreak });
@@ -302,8 +302,8 @@ check("nonempty canonical content roots close exactly in readable and compact la
       assert.equal(canonical_hson_graph_equal(publicNode(serialized), expected), true, serialized);
     }
   }
-  assert.deepEqual(publicNode(Hson.canonical`"a" "b"`), elem(str("a"), str("b")));
-  assert.deepEqual(publicNode(Hson.canonical`"a"<p/>"b"`), elem(str("a"), node("p"), str("b")));
+  assert.equal(canonical_hson_graph_equal(publicNode(Hson.canonical`"a" "b"`), elem(str("a"), str("b"))), true);
+  assert.equal(canonical_hson_graph_equal(publicNode(Hson.canonical`"a"<p/>"b"`), elem(str("a"), node("p"), str("b"))), true);
 });
 
 check("root text segmentation and empty leaves remain semantic distinctions", () => {
@@ -313,12 +313,12 @@ check("root text segmentation and empty leaves remain semantic distinctions", ()
   const emptySingle = publicNode(`""`);
   assert.equal(canonical_hson_graph_equal(split, combined), false);
   assert.equal(canonical_hson_graph_equal(emptyPair, emptySingle), false);
-  assert.deepEqual(publicNode(`"a" "" "b"`).$_content, [
+  assert.equal(canonical_hson_graph_equal(publicNode(`"a" "" "b"`), node("_hson_elem", [
     node("_hson_str", ["a"]), node("_hson_str", [""]), node("_hson_str", ["b"]),
-  ]);
+  ])), true);
 });
 
-check("legal JSON ELEM scaffolds close through Hson and retain their exact Binary graphs", () => {
+check("JSON ELEM scaffolds retain source shape while portable terminals reject the singleton alias", () => {
   const str = (value: string) => node("_hson_str", [value]);
   const elem = (...items: HsonNode[]) => node("_hson_elem", items);
   const fixtures: readonly (readonly [JsonValue, HsonNode, HsonNode])[] = [
@@ -330,10 +330,17 @@ check("legal JSON ELEM scaffolds close through Hson and retain their exact Binar
   ];
   for (const [json, carrier, completeValue] of fixtures) {
     const admitted = hsonTransform.fromJson(json);
-    assert.deepEqual(admitted.toNode(), root(carrier));
+    assert.equal(canonical_hson_graph_equal(admitted.toNode(), root(carrier)), true);
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromJson(admitted.toJson().serialize()).toNode(), root(carrier)), true);
+    if (carrier.$_content.length === 1 && (carrier.$_content[0] as HsonNode).$_tag === "_hson_str") {
+      // D: explicit source carrier alignment belongs to Pass 2; no graph repair.
+      assert.throws(() => admitted.toBinary());
+      assert.throws(() => admitted.toHson().serialize());
+      continue;
+    }
     const binary = admitted.toBinary().serialize();
     assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(binary).toNode(), carrier), true);
-    assert.deepEqual(hsonTransform.fromJson(admitted.toJson().serialize()).toNode(), root(carrier));
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromJson(admitted.toJson().serialize()).toNode(), root(carrier)), true);
     for (const noBreak of [false, true]) {
       const text = noBreak ? admitted.toHson().noBreak().serialize() : admitted.toHson().serialize();
       assert.equal(canonical_hson_graph_equal(publicNode(text), completeValue), true, text);
@@ -574,9 +581,10 @@ check("JSON and HTML parser-owned roots still convert to Hson through explicit d
   assert.equal(hsonTransform.fromTrustedHtml(`<a></a>`).toHson().noBreak().serialize(), `<a/>`);
 });
 
-check("Hson source frame caches one detached semantic node identity", () => {
+check("Hson source frame owns one semantic version and publishes independent copies", () => {
   const source = hson.fromHson(`<a/>`);
-  assert.equal(source.toNode(), source.toNode());
+  assert.notEqual(source.toNode(), source.toNode());
+  assert.deepEqual(source.toNode(), source.toNode());
   assert.equal(source.toNode().$_tag, "_hson_elem");
 });
 
@@ -634,9 +642,9 @@ check("canonical equality remains root-sensitive", () => {
 });
 
 check("root string and element content closes while arbitrary bare names remain invalid", () => {
-  assert.deepEqual(publicNode(`"x" <a/>`), node("_hson_elem", [
+  assert.equal(canonical_hson_graph_equal(publicNode(`"x" <a/>`), node("_hson_elem", [
     node("_hson_str", ["x"]), node("a"),
-  ]));
+  ])), true);
   assert.throws(() => publicNode(`value`), /unexpected bare token/);
 });
 

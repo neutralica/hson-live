@@ -11,14 +11,16 @@ import { default_livetree_runtime } from "../src/api/livetree/runtime/livetree-r
 import { read_transform_error_details } from "../src/core/errors.ts";
 import { read_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 
 const schema = Hson.schema`<type "document" tag "main" content "empty">`;
 const authored: HsonNode = { $_tag: "_hson_root", $_content: [{ $_tag: "main", $_content: [] }] };
 const activeRoot: HsonNode = { $_tag: "main", $_content: [] };
-const source = hsonTransform.fromNode(activeRoot);
+const source = hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [activeRoot] });
 const tree = new LiveTree(activeRoot);
 const localQuid = tree.quid;
-assert.equal(read_hson_node_quid(source.toNode()), localQuid);
+assert.equal(read_hson_node_quid(activeRoot), localQuid);
+assert.doesNotMatch(JSON.stringify(source.toNode()), /"quid"/);
 
 function forbidden(run: () => unknown): void {
   const before = new Set(default_livetree_runtime().issuedQuids);
@@ -29,7 +31,7 @@ function forbidden(run: () => unknown): void {
 }
 
 // Local inspection may carry identity. JSON reconstruction must not authorize it.
-const reconstructed = JSON.parse(JSON.stringify(source.toNode())) as HsonNode;
+const reconstructed = JSON.parse(JSON.stringify(activeRoot)) as HsonNode;
 const reconstructedBefore = structuredClone(reconstructed);
 assert.equal(read_hson_node_quid(reconstructed), localQuid);
 forbidden(() => hson.fromNode(reconstructed));
@@ -53,8 +55,10 @@ forbidden(() => hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_ro
 // Index evidence is valid only on an indexed structural node, so use an array
 // parsed through the ordinary JSON route rather than inventing placement.
 const indexed = hsonTransform.fromJson([1]).toNode();
-assert.deepEqual(hsonTransform.fromNode(indexed).toNode(), indexed);
-assert.equal(hsonTransform.fromNode({ $_tag: "main", $_content: [] }).toHson().serialize(), "<main/>");
+const indexedValue = detach_hson_root_value(indexed);
+assert.deepEqual(hsonTransform.fromNode(indexedValue).toNode(), indexedValue);
+assert.throws(() => hsonTransform.fromNode({ $_tag: "main", $_content: [] }));
+assert.equal(hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [{ $_tag: "main", $_content: [] }] }).toHson().serialize(), "<main/>");
 const admittedTree = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] }, { isolated: true });
 assert.notEqual(admittedTree.quid, localQuid);
 assert.equal(hsonLiveMap.fromLibraries({ page: { document: authored, schema } }).lib("page").mode, "document");
@@ -85,6 +89,7 @@ const object = dataRoot.$_content[0] as HsonNode;
 const member = object.$_content[0] as HsonNode;
 const dataTree = new LiveTree(member);
 assert.equal(read_hson_node_quid(member), dataTree.quid);
+assert.doesNotMatch(JSON.stringify(dataSource.toNode()), /"quid"/);
 const applicationJson = dataSource.toJson().serialize();
 assert.doesNotMatch(applicationJson, /"quid"/);
 const receivedData = hsonTransform.fromJson(applicationJson);

@@ -2,6 +2,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
+import { TransformError } from "../src/core/errors.ts";
 import {
   canonical_hson_graph_difference,
   canonical_hson_graph_equal,
@@ -234,7 +235,7 @@ check("authored object order survives admission, serialization, and reparsing", 
   assert.equal(canonical_hson_graph_equal(admitted, hsonTransform.fromHson(serialized).toNode()), true);
 });
 
-check("admission canonicalizes empty metadata before strict equality", () => {
+check("admission rejects present-empty metadata while strict equality retains presence", () => {
   const absent = document(node("div"));
   const emptyAttrs = document(node("div", [], {}));
   const emptyMeta = document(node("div", [], undefined, {}));
@@ -243,9 +244,10 @@ check("admission canonicalizes empty metadata before strict equality", () => {
   assert.equal(canonical_hson_graph_difference(absent, emptyAttrs)?.kind, "attribute-presence");
   assert.equal(canonical_hson_graph_difference(absent, emptyMeta)?.kind, "metadata-presence");
 
-  const admittedEmptyMeta = hsonTransform.fromNode(emptyMeta).toNode();
-  assert.equal(canonical_hson_graph_equal(admittedEmptyMeta, emptyMeta), false);
-  assert.equal(canonical_hson_graph_equal(admittedEmptyMeta, absent), true);
+  assert.throws(() => hsonTransform.fromNode(emptyMeta),
+    (error) => error instanceof TransformError && error.code === "HSON_EMPTY_METADATA");
+  const portable = absent.$_content[0] as HsonNode;
+  assert.equal(canonical_hson_graph_equal(hsonTransform.fromNode(portable).toNode(), portable), true);
   assert.throws(
     () => assert_invariants(emptyMeta, "empty-metadata candidate"),
     (error) => error instanceof Error && "code" in error && error.code === "HSON_EMPTY_METADATA",
@@ -253,13 +255,12 @@ check("admission canonicalizes empty metadata before strict equality", () => {
 
   const structuralCandidate = node("_hson_str", ["value"], undefined, {});
   const structuralBefore = structuredClone(structuralCandidate);
-  const admittedStructural = hsonTransform.fromNode(structuralCandidate).toNode();
+  assert.throws(() => hsonTransform.fromNode(structuralCandidate),
+    (error) => error instanceof TransformError && error.code === "HSON_EMPTY_METADATA");
   assert.deepEqual(structuralCandidate, structuralBefore, "VSN admission must not mutate caller input");
-  assert.equal(Object.hasOwn(admittedStructural, "$_meta"), false);
-  assert.doesNotThrow(() => assert_invariants(admittedStructural, "admitted structural empty metadata"));
 });
 
-check("candidate admission removes empty attributes and direct invariant admission rejects them", () => {
+check("candidate admission and direct invariants both reject empty attributes", () => {
   const candidate = document(node("div", [], {}));
   const before = structuredClone(candidate);
   assert.throws(
@@ -268,12 +269,11 @@ check("candidate admission removes empty attributes and direct invariant admissi
       && "code" in error
       && error.code === "HSON_EMPTY_ATTRIBUTES",
   );
-  const admitted = hsonTransform.fromNode(candidate).toNode();
+  assert.throws(() => hsonTransform.fromNode(candidate),
+    (error) => error instanceof TransformError && error.code === "HSON_EMPTY_ATTRIBUTES");
   assert.deepEqual(candidate, before, "candidate admission must not mutate caller input");
-  const cluster = admitted.$_content[0] as HsonNode;
-  const element = cluster.$_content[0] as HsonNode;
-  assert.equal(Object.hasOwn(element, "$_attrs"), false);
-  assert.doesNotThrow(() => assert_invariants(admitted, "admitted empty attributes"));
+  const valid = node("_hson_elem", [node("div")]);
+  assert.equal(canonical_hson_graph_equal(hsonTransform.fromNode(valid).toNode(), valid), true);
 });
 
 check("nested records are key-order-insensitive, arrays ordered, and records differ from arrays", () => {

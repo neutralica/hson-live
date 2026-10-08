@@ -114,6 +114,11 @@ export function admit_projected_value(
   return visit(input, Object.freeze([...initialPath]));
 }
 
+// These fresh lists carry semantic entries/descriptors into the ordered carrier.
+function append_admission_item<T>(target: T[], value: T): void {
+  Object.defineProperty(target, target.length, { value, enumerable: true, writable: true, configurable: true });
+}
+
 function admit_object(
   value: object,
   prototype: object | null,
@@ -137,7 +142,7 @@ function admit_object(
     const childPath = append_path(path, key);
     const descriptor = own_descriptor(value, key, childPath);
     assert_enumerable_data_descriptor(descriptor, key, childPath);
-    entries.push([key, visit(descriptor.value, childPath)]);
+    append_admission_item(entries, [key, visit(descriptor.value, childPath)]);
   }
   return ordered_projected_object(entries);
 }
@@ -179,7 +184,7 @@ function admit_array(
       );
     }
     assert_enumerable_data_descriptor(descriptor, key, keyPath);
-    indexed.push(Object.freeze({ index, descriptor }));
+    append_admission_item(indexed, Object.freeze({ index, descriptor }));
   }
 
   if (lengthDescriptor === undefined || !("value" in lengthDescriptor)) {

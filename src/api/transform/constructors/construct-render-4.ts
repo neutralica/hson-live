@@ -16,6 +16,7 @@ import { detach_hson_root_value } from "../utils/node-utils/detach-hson-root-val
 import { admit_projected_value } from "../../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../../core/projected-value-materialization.js";
 import { sha256_text } from "../sha256.js";
+import { qualify_transform_value } from "../node-exact.js";
 
 /**
  * Hson pipeline, stage 4: finalize the selected output.
@@ -64,6 +65,7 @@ export function construct_hson_render_4(
     const node = parserOwnsRoot && context.frame.node.$_tag === ROOT_TAG
       ? detach_hson_root_value(context.frame.node)
       : context.frame.node;
+    qualify_transform_value(node, "toHson");
     return serialize_hson(node, {
       noBreak: context.frame.options?.noBreak ?? false,
     });
