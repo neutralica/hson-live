@@ -207,6 +207,22 @@ For raw HTML strings, ordinary attribute names compare case-insensitively for du
 
 Repeated `class` declarations merge unique tokens in the order encountered. Canonical-valid colonized ordinary names are carried reversibly through the XML-backed browser parser and admitted under their original semantic name. Invalid names and authored private parser-transit names reject.
 
+HTML sources keep source-owned ROOT visible through independent `toNode()`
+copies. Both parsers construct OBJ relationships for scalar object members;
+complete OBJ scalar source carriers lower to STR/VAL without collapsing nested
+member relationships. Generic standalone SVG sources own `ROOT[ELEM[svg…]]`,
+including `ROOT[ELEM[svg[]]]` for `<svg/>`. The lower-level SVG converter and
+LiveTree branch consumers retain their branch contract. These source conventions
+do not make ROOT, bare branches or complete scalar carriers valid raw
+`fromNode()` inputs.
+
+Standalone SVG selection considers the entire parsed source. SVG with sibling
+elements or surrounding text uses the full HTML source path, which preserves
+content order and inspects every admitted sibling. The generic adapter qualifies
+the complete semantic child before publication; ROOT ownership remains separate.
+Failed standalone SVG XML parsing rejects before conversion. Array-item scalar
+OBJ carriers reject instead of being unwrapped into complete data values.
+
 ### `hson.fromJson(input: string | JsonValue)`
 
 Parses JSON data into Hson nodes.

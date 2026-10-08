@@ -37,6 +37,8 @@ import { is_valid_hson_attribute_name } from "../../../core/hson-name.js";
 import { normalize_html_source_attributes } from "../utils/html-preflights/ordinary-attribute-transit.js";
 import { classify_ordinary_hson_structure } from "../../../core/hson-structural-mode.js";
 import { decode_html_raw_text, decode_html_text_boundary } from "../utils/html-utils/html-text-transport.js";
+import { is_svg_markup } from "../utils/node-utils/node-from-svg.js";
+import { admit_exact_portable_node } from "../node-exact.js";
 
 const ALLOWED_ATTRS = new Set([
   "href",
@@ -314,7 +316,14 @@ function element_to_hson(
     return finish(CREATE_NODE({ $_tag: VAL_TAG, $_content: [primitive] }));
   }
 
-  if (tag === OBJ_TAG) return finish(CREATE_NODE({ $_tag: OBJ_TAG, $_content: childNodes }));
+  if (tag === OBJ_TAG) {
+    const scalar = childNodes.length === 1
+      && (childNodes[0].$_tag === STR_TAG || childNodes[0].$_tag === VAL_TAG);
+    if (!scalar && childNodes.some((child) => EVERY_VSN.includes(child.$_tag))) {
+      _throw_transform_err("<_hson_obj> must contain named members or one source scalar", "parse-html-string");
+    }
+    return finish(CREATE_NODE({ $_tag: OBJ_TAG, $_content: childNodes }));
+  }
   if (tag === ARR_TAG) {
     if (!childNodes.every(is_indexed)) {
       _throw_transform_err("_hson_array children are not valid index tags", "parse-html-string");
@@ -325,16 +334,39 @@ function element_to_hson(
     if (childNodes.length !== 1) {
       _throw_transform_err("<_hson_ii> must have exactly one child", "parse-html-string");
     }
+    const value = childNodes[0];
+    const scalarObject = value.$_tag === OBJ_TAG && value.$_content.length === 1
+      && is_Node(value.$_content[0])
+      && (value.$_content[0].$_tag === STR_TAG || value.$_content[0].$_tag === VAL_TAG);
+    if ((value.$_tag !== STR_TAG && value.$_tag !== VAL_TAG && value.$_tag !== OBJ_TAG && value.$_tag !== ARR_TAG) || scalarObject) {
+      _throw_transform_err("array item requires a complete data value, not a scalar OBJ carrier or element content",
+        "parse-html-string", undefined, undefined,
+        { code: "HSON_CANONICAL_INVARIANT_VIOLATION", stage: "source-admission" });
+    }
     return finish(CREATE_NODE({ $_tag: II_TAG, $_content: [childNodes[0]], $_meta: meta }));
   }
-  const content = childNodes.length === 0
+  if (tag === ROOT_TAG) {
+    if (childNodes.some((child) => child.$_tag === ROOT_TAG)) {
+      _throw_transform_err("nested HTML source ROOT is invalid", "parse-html-string");
+    }
+    return finish(CREATE_NODE({
+      $_tag: ROOT_TAG,
+      $_attrs: attrs,
+      $_meta: meta,
+      $_content: root_from_nodes(childNodes).$_content,
+    }));
+  }
+  const scalarRelationship = childNodes.length === 1
+    && (parentTag === OBJ_TAG || childNodes[0].$_tag === VAL_TAG)
+    && (childNodes[0].$_tag === STR_TAG || childNodes[0].$_tag === VAL_TAG);
+  const content = scalarRelationship
+    ? [CREATE_NODE({ $_tag: OBJ_TAG, $_content: childNodes })]
+    : childNodes.length === 0
     ? []
     : childNodes.length === 1 &&
     (childNodes[0].$_tag === OBJ_TAG ||
       childNodes[0].$_tag === ARR_TAG ||
-      childNodes[0].$_tag === ELEM_TAG ||
-      (typeof values[0] !== "string"
-        && (childNodes[0].$_tag === STR_TAG || childNodes[0].$_tag === VAL_TAG)))
+      childNodes[0].$_tag === ELEM_TAG)
       ? childNodes
       : [CREATE_NODE({ $_tag: ELEM_TAG, $_content: childNodes })];
 
@@ -361,7 +393,10 @@ function root_from_children(children: ChildNode[], sanitize: boolean): HsonNode 
       ? CREATE_NODE({ $_tag: STR_TAG, $_content: [value] })
       : value,
   );
+  return root_from_nodes(nodes);
+}
 
+function root_from_nodes(nodes: HsonNode[]): HsonNode {
   if (nodes.length === 0) return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [] });
 
   if (
@@ -373,7 +408,8 @@ function root_from_children(children: ChildNode[], sanitize: boolean): HsonNode 
   ) {
     const only = nodes[0];
     if (only.$_tag === OBJ_TAG && only.$_content.length === 1
-      && is_Node(only.$_content[0]) && only.$_content[0].$_tag === STR_TAG) {
+      && is_Node(only.$_content[0])
+      && (only.$_content[0].$_tag === STR_TAG || only.$_content[0].$_tag === VAL_TAG)) {
       return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [only.$_content[0]] });
     }
     return only.$_tag === ROOT_TAG
@@ -498,10 +534,18 @@ export function parse_html_string(input: string, sanitize: boolean): HsonNode {
     xmlMode: xmlShaped,
   });
   let root: HsonNode | undefined;
-  if (!sanitize && /^<\s*svg[\s>]/i.test(normalizedInput.trimStart())) {
-    const svg = document.children.find(isTag);
-    if (svg !== undefined && svg.name.toLowerCase() === "svg") {
-      root = standalone_svg_node(svg);
+  const sourceChildren = document.children.filter(child => isTag(child) || (isText(child) && child.data.trim() !== "")
+    || (isComment(child) && child.data.startsWith("hson-text")));
+  if (!sanitize && is_svg_markup(normalizedInput.trimStart())) {
+    const svg = sourceChildren[0];
+    if (sourceChildren.length === 1 && isTag(svg) && svg.name.toLowerCase() === "svg") {
+      // The specialized converter supplies a branch; this HTML source owns
+      // complete document content independently of that branch contract.
+      root = CREATE_NODE({
+        $_tag: ROOT_TAG,
+        $_content: [CREATE_NODE({ $_tag: ELEM_TAG, $_content: [standalone_svg_node(svg)] })],
+      });
+      admit_exact_portable_node(root.$_content[0], "parse-html-string");
     }
   }
   root ??= root_from_children(document.children, sanitize);

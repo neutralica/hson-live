@@ -3,7 +3,27 @@
 <title>Transform trust ingress acceptance</title>
 <body>
 <script type="module">
-import { hson } from "./bundle.js";
+import { hson, hsonTransform, node_from_svg, SVG_NS, canonical_hson_graph_equal, detach_hson_root_value,
+  scalarHtmlFixtures, memberHtmlFixtures, arrayHtmlFixtures, mixedSvgFixtures, invalidHtmlFixtures, invalidSvgFixtures, svgSourceFixtures } from "./bundle.js";
+
+function same(actual, expected, label) {
+  if (!canonical_hson_graph_equal(actual, expected)) throw new Error(`raw graph mismatch: ${label}`);
+}
+function rejects(run, label, code, stage) {
+  let rejected = false;
+  try { run(); } catch (error) {
+    if ((code && error.code !== code) || (stage && error.stage !== stage)) throw error;
+    rejected = true;
+  }
+  if (!rejected) throw new Error(`missing source rejection: ${label}`);
+}
+function sourceElement(source, svg = false) {
+  const wrapper = new DOMParser().parseFromString(
+    `<fixture xmlns:hson="urn:hson-test"${svg ? ` xmlns="${SVG_NS}"` : ""}>${source}</fixture><?fixture-complete?>`, "application/xml",
+  );
+  if (wrapper.lastChild?.nodeType !== 7 || wrapper.lastChild.nodeName !== 'fixture-complete') throw new Error("invalid native Element fixture");
+  return wrapper.documentElement.firstElementChild;
+}
 
 try {
   const source = `<section id="kept" aria-label="safe" onclick="run()" style="color:red">`
@@ -29,12 +49,183 @@ try {
   const reparsed = hson.fromTrustedHtml(safeHtml).toHson().noBreak().serialize();
   if (canonical !== reparsed) throw new Error("sanitized browser output is not canonically stable");
 
-  const existingGraphHtml = hson.fromNode(trusted.toNode()).toHtml().serialize();
+  rejects(() => hson.fromNode(trusted.toNode()), "caller-owned ROOT remains nonportable");
+  const existingGraphHtml = hson.fromNode(detach_hson_root_value(trusted.toNode())).toHtml().serialize();
   const readmitted = hson.fromUntrustedHtml(existingGraphHtml).toHson().noBreak().serialize();
   if (readmitted !== canonical) throw new Error("existing HTML graph did not sanitize through explicit untrusted re-ingress");
 
+  for (const fixture of [...scalarHtmlFixtures, ...memberHtmlFixtures, ...arrayHtmlFixtures]) {
+    const universal = hsonTransform.fromTrustedHtml(fixture.source);
+    const browser = hson.fromTrustedHtml(fixture.source);
+    const direct = hson.fromTrustedHtml(sourceElement(fixture.source));
+    for (const source of [universal, browser, direct]) {
+      same(source.toNode(), fixture.graph, fixture.id);
+      source.toHson().serialize();
+      same(hson.fromBinary(source.toBinary().serialize()).toNode(), detach_hson_root_value(fixture.graph), fixture.id);
+    }
+  }
+  for (const input of ['<_hson_root/>', sourceElement('<_hson_root/>')]) {
+    same(hson.fromTrustedHtml(input).toNode(), { $_tag: '_hson_root', $_content: [] }, 'empty source ROOT');
+  }
+  for (const source of invalidHtmlFixtures) {
+    rejects(() => hson.fromTrustedHtml(source), source);
+    rejects(() => hson.fromTrustedHtml(sourceElement(source)), source);
+  }
+  for (const fixture of mixedSvgFixtures) {
+    for (const source of [hsonTransform.fromTrustedHtml(fixture.source), hson.fromTrustedHtml(fixture.source)]) {
+      same(source.toNode(), fixture.graph, fixture.id);
+      source.toHson().serialize();
+      same(hson.fromBinary(source.toBinary().serialize()).toNode(), fixture.graph.$_content[0], fixture.id);
+    }
+    if (fixture.id !== 'reserved empty text sibling') {
+      // An explicit source ROOT Element owns all siblings; one SVG Element does not.
+      const namespacedSource = fixture.source.replace(/<svg(?=[\s/>])/g, `<svg xmlns="${SVG_NS}"`);
+      const owner = sourceElement(`<_hson_root>${namespacedSource}</_hson_root>`);
+      const captured = hson.fromTrustedHtml(owner);
+      same(captured.toNode(), fixture.graph, `native owner ${fixture.id}`);
+      const before = [captured.toHson().serialize(), captured.toJson().serialize(), captured.toHtml().serialize()];
+      owner.replaceChildren(); captured.toNode().$_content.length = 0;
+      same(captured.toNode(), fixture.graph, 'mixed native owner snapshot');
+      if (JSON.stringify([captured.toHson().serialize(), captured.toJson().serialize(), captured.toHtml().serialize()]) !== JSON.stringify(before)) throw new Error('mixed source snapshot changed');
+      same(hson.fromBinary(captured.toBinary().serialize()).toNode(), fixture.graph.$_content[0], 'mixed native owner Binary');
+    }
+  }
+  for (const source of invalidSvgFixtures) {
+    const branch = node_from_svg(sourceElement(source, true));
+    same(branch, { $_tag: 'svg', $_content: [{ $_tag: source.includes('_hson_obj') ? '_hson_obj' : '_hson_arr', $_content: [] }] }, 'lower SVG branch relationship');
+    for (const input of [source, sourceElement(source, true)]) {
+      rejects(() => hson.fromTrustedHtml(input), 'SVG receiving context', 'HSON_CANONICAL_INVARIANT_VIOLATION', 'source-admission');
+    }
+  }
+  for (const source of ['<svg><g></svg>', '<svg><g/>', '<svg>&undefined;</svg>', '<svg><?hson-svg-source-end?><g></svg>']) {
+    rejects(() => hson.fromTrustedHtml(source), 'failed SVG XML parse', 'TRANSFORM_ERROR', 'source-decoding');
+  }
+  // Chromium can retain the root AND completion PI on namespace failure. Its
+  // XHTML diagnostics have no privileged DOM marker: a lawful authored copy
+  // can be identical. Rejection must establish source provenance, not ban names.
+  const namespaceFailures = [
+    '<svg><x:g/></svg>',
+    '<svg xmlns:xml="wrong"/>',
+    '<svg xmlns:x=""><x:g/></svg>',
+    '<svg xmlns:xmlns="u"/>',
+    '<svg xmlns:p="http://www.w3.org/XML/1998/namespace"/>',
+    '<svg><g><x:path/></g></svg>',
+    '<svg><?hson-svg-source-end?><?hson-svg-source-end_?><x:g/></svg>',
+    '<svg><g x:id="unbound"/></svg>',
+    '<svg x:id="unbound"/>',
+    '<svg xmlns:x="urn:x"><g xmlns:x=""><x:path/></g></svg>',
+    '<svg xmlns:x="urn:x"><g xmlns:xml="urn:wrong"/></svg>',
+    '<svg xmlns="http://www.w3.org/XML/1998/namespace"/>',
+    '<svg xmlns:x="http://www.w3.org/2000/xmlns/"/>',
+    '<svg xmlns="http://www.w3.org/2000/xmlns/"/>',
+    '<svg><xmlns:g/></svg>',
+    '<svg xmlns:x="u v"><x:g/></svg>',
+    '<svg xmlns:x="urn:x" xmlns:y="urn:x" x:id="a" y:id="b"/>',
+    '<svg/><?xml?>',
+  ];
+  for (const source of namespaceFailures) {
+    rejects(() => hson.fromTrustedHtml(source), `failed SVG namespace/XML source: ${source}`, 'TRANSFORM_ERROR', 'source-decoding');
+  }
+  const branch = (tag, attrs = {}, children = []) => ({ $_tag: tag,
+    $_content: children.length ? [{ $_tag: '_hson_elem', $_content: children }] : [],
+    ...(Object.keys(attrs).length ? { $_attrs: attrs } : {}) });
+  const svgGraph = svg => ({ $_tag: '_hson_root', $_content: [{ $_tag: '_hson_elem', $_content: [svg] }] });
+  const legalNamespaceSources = [
+    ['<svg/>', branch('svg')],
+    ['<svg viewBox="0 0 10 10"><g id="kept"/></svg>', branch('svg', { viewBox: '0 0 10 10' }, [branch('g', { id: 'kept' })])],
+    ['<svg><g><path/></g></svg>', branch('svg', {}, [branch('g', {}, [branch('path')])])],
+    ['<svg xmlns:x="urn:x"><x:g x:id="kept"/></svg>', branch('svg', { 'xmlns:x': 'urn:x' }, [branch('x:g', { 'x:id': 'kept' })])],
+    ['<svg><g xmlns:x="urn:x"><x:path/></g></svg>', branch('svg', {}, [branch('g', { 'xmlns:x': 'urn:x' }, [branch('x:path')])])],
+    ['<svg><x:g xmlns:x="urn:x" x:id="kept"/></svg>', branch('svg', {}, [branch('x:g', { 'xmlns:x': 'urn:x', 'x:id': 'kept' })])],
+    ['<svg xmlns:x="urn:outer"><g xmlns:x="urn:inner"><x:path/></g><x:circle/></svg>', branch('svg', { 'xmlns:x': 'urn:outer' }, [branch('g', { 'xmlns:x': 'urn:inner' }, [branch('x:path')]), branch('x:circle')])],
+    [`<svg xmlns="${SVG_NS}"><g/></svg>`, branch('svg', { xmlns: SVG_NS }, [branch('g')])],
+    [`<svg xmlns="${SVG_NS}"><g xmlns=""><path/></g></svg>`, branch('svg', { xmlns: SVG_NS }, [branch('g', { xmlns: '' }, [branch('path')])])],
+    ['<svg xml:lang="en"><g xml:space="preserve"/></svg>', branch('svg', { 'xml:lang': 'en' }, [branch('g', { 'xml:space': 'preserve' })])],
+    ['<svg xmlns:xml="http://www.w3.org/XML/1998/namespace" xml:lang="en"/>', branch('svg', { 'xml:lang': 'en' })],
+    ['<svg xmlns:x="u"><x:g/></svg>', branch('svg', { 'xmlns:x': 'u' }, [branch('x:g')])],
+    ['<svg xmlns="u"/>', branch('svg', { xmlns: 'u' })],
+    ['<svg><parsererror/></svg>', branch('svg', {}, [branch('parsererror')])],
+    ['<svg><?plan data > <x:g/>?><g/></svg>', branch('svg', {}, [branch('g')])],
+    ['<svg/><?after data > <x:g/>?>', branch('svg')],
+    ['<svg><?hson-svg-source-end?><?hson-svg-source-end_?><g/></svg>', branch('svg', {}, [branch('g')])],
+    ['<svg><!--<?plan data > <x:g/>?>--><g/></svg>', branch('svg', {}, [branch('g')])],
+    ['<svg><![CDATA[<?plan data > <x:g/>?>]]><g/></svg>', branch('svg', {}, [branch('g')])],
+  ];
+  for (const [source, svg] of legalNamespaceSources) {
+    const admitted = hson.fromTrustedHtml(source);
+    const expected = svgGraph(svg);
+    same(admitted.toNode(), expected, `legal namespace/PI: ${source}`);
+    admitted.toHson().serialize();
+    same(hson.fromBinary(admitted.toBinary().serialize()).toNode(), expected.$_content[0], 'legal namespace Binary');
+  }
+  const failedDocument = new DOMParser().parseFromString('<svg><x:g/></svg><?complete?>', 'image/svg+xml');
+  const diagnostic = failedDocument.documentElement.firstElementChild;
+  if (diagnostic?.localName !== 'parsererror' || diagnostic.namespaceURI !== 'http://www.w3.org/1999/xhtml'
+    || failedDocument.lastChild?.nodeName !== 'complete') throw new Error('Chromium diagnostic characterization changed');
+  // outerHTML synthesizes a namespace declaration for the generated node.
+  // Inherit that same namespace instead, matching its actual attributes too.
+  const authoredCopy = `<svg xmlns="http://www.w3.org/1999/xhtml">${diagnostic.outerHTML.replace(' xmlns="http://www.w3.org/1999/xhtml"', '')}</svg>`;
+  const authoredElement = sourceElement(authoredCopy);
+  if (!diagnostic.isEqualNode(authoredElement.firstElementChild)) throw new Error('authored diagnostic copy differs');
+  const authoredOutput = hson.fromTrustedHtml(authoredCopy);
+  same(authoredOutput.toNode(), svgGraph(node_from_svg(authoredElement)), 'identical authored diagnostic is valid');
+  authoredOutput.toHson().serialize(); authoredOutput.toBinary().serialize();
+  for (const source of ['<svg><parsererror>authored</parsererror></svg>', '<svg><parsererror xmlns="http://www.w3.org/1999/xhtml">authored</parsererror></svg>', '<svg><?hson-svg-source-end?><g/></svg>']) {
+    const admitted = hson.fromTrustedHtml(source);
+    same(admitted.toNode(), { $_tag: '_hson_root', $_content: [{ $_tag: '_hson_elem', $_content: [node_from_svg(sourceElement(source, true))] }] }, 'authored diagnostic-like element or PI');
+    admitted.toHson().serialize(); admitted.toBinary().serialize();
+  }
+  const siblingAttack = '<svg/><p hson:quid="000000001"/>';
+  for (const from of [hson.fromTrustedHtml, hson.fromUntrustedHtml, hsonTransform.fromTrustedHtml, hsonTransform.fromUntrustedHtml]) {
+    rejects(() => from(siblingAttack), 'QUID-bearing sibling', 'PORTABLE_RUNTIME_QUID_FORBIDDEN', 'source-admission');
+  }
+  // DOMPurify continues removing SVG; supported surviving HTML/text is owned.
+  for (const [source, graph] of [
+    ['<svg/><p></p>', { $_tag: '_hson_root', $_content: [{ $_tag: '_hson_elem', $_content: [{ $_tag: 'p', $_content: [] }] }] }],
+    ['<p></p><svg/>', { $_tag: '_hson_root', $_content: [{ $_tag: '_hson_elem', $_content: [{ $_tag: 'p', $_content: [] }] }] }],
+    ['<svg/>tail', { $_tag: '_hson_root', $_content: [{ $_tag: '_hson_str', $_content: ['tail'] }] }],
+    ['lead<svg/>', { $_tag: '_hson_root', $_content: [{ $_tag: '_hson_str', $_content: ['lead'] }] }],
+    ['<svg/><p></p><span></span>', { $_tag: '_hson_root', $_content: [{ $_tag: '_hson_elem', $_content: [{ $_tag: 'p', $_content: [] }, { $_tag: 'span', $_content: [] }] }] }],
+  ]) {
+    for (const output of [hson.fromUntrustedHtml(source), hsonTransform.fromUntrustedHtml(source)]) {
+      same(output.toNode(), graph, 'sanitized mixed source');
+      output.toHson().serialize();
+      same(hson.fromBinary(output.toBinary().serialize()).toNode(), graph.$_content[0], 'sanitized Binary');
+    }
+  }
+  const upper = '<svg xmlns:HSON="urn:hson-test" HSON:QUID="000000001"/>';
+  const upperGraph = hson.fromTrustedHtml(upper).toNode();
+  if (upperGraph.$_content[0].$_content[0].$_meta?.quid !== undefined) throw new Error('uppercase attribute gained identity authority');
+  rejects(() => hson.fromTrustedHtml(`${upper}<p/>`), 'mixed uppercase QUID', 'PORTABLE_RUNTIME_QUID_FORBIDDEN', 'source-admission');
+  for (const fixture of svgSourceFixtures) {
+    const input = sourceElement(fixture.source, true);
+    const branch = node_from_svg(input);
+    same(branch, fixture.graph.$_content[0].$_content[0], `SVG branch ${fixture.id}`);
+    rejects(() => hson.fromNode(branch), "bare SVG branch");
+    for (const source of [hsonTransform.fromTrustedHtml(fixture.source), hson.fromTrustedHtml(fixture.source), hson.fromTrustedHtml(input)]) {
+      same(source.toNode(), fixture.graph, fixture.id);
+      source.toHson().serialize();
+      same(hson.fromBinary(source.toBinary().serialize()).toNode(), fixture.graph.$_content[0], fixture.id);
+    }
+    const captured = hson.fromTrustedHtml(input);
+    const before = { node: captured.toNode(), hson: captured.toHson().noBreak().serialize(), json: captured.toJson().serialize(), html: captured.toHtml().serialize(), bytes: captured.toBinary().serialize() };
+    const hashes = await Promise.all([captured.toHson().sha256(), captured.toJson().sha256(), captured.toHtml().sha256(), captured.toBinary().sha256()]);
+    input.replaceChildren(); input.setAttribute("viewBox", "caller changed");
+    captured.toNode().$_content.length = 0;
+    const jsonCopy = captured.toJson().value(); jsonCopy.changed = true;
+    captured.toBinary().serialize().fill(0);
+    same(captured.toNode(), before.node, "native Element snapshot");
+    if (captured.toHson().noBreak().serialize() !== before.hson || captured.toJson().serialize() !== before.json || captured.toHtml().serialize() !== before.html) throw new Error("snapshot terminal changed");
+    same(hson.fromBinary(captured.toBinary().serialize()).toNode(), before.node.$_content[0], "Binary byte copy");
+    if (JSON.stringify(await Promise.all([captured.toHson().sha256(), captured.toJson().sha256(), captured.toHtml().sha256(), captured.toBinary().sha256()])) !== JSON.stringify(hashes)) throw new Error("snapshot hashes changed");
+  }
+  const textValue = hson.fromHson('<p "a" "" "b"/>').toNode();
+  same(hson.fromTrustedHtml(hson.fromNode(textValue).toHtml().serialize()).toNode().$_content[0], textValue, "native text boundaries");
+  for (const svg of ['<svg/>', '<svg><g/></svg>']) rejects(() => hson.fromUntrustedHtml(svg), "safe SVG policy");
+  for (const svg of ['<svg xmlns:hson="urn:hson-test" hson:quid="000000001"/>', '<svg xmlns:hson="urn:hson-test"><g hson:quid="000000001"/></svg>']) rejects(() => hson.fromTrustedHtml(svg), "public identity SVG source");
+
   document.documentElement.dataset.status = "pass";
-  document.documentElement.dataset.detail = "trusted/raw and untrusted/DOMPurify ingress paths passed";
+  document.documentElement.dataset.detail = `source-mapped trust, HTML producer parity, SVG branch/ownership and snapshots; ${namespaceFailures.length} XML/namespace rejections and ${legalNamespaceSources.length + 1} namespace/PI/authored-diagnostic controls passed`;
 } catch (cause) {
   document.documentElement.dataset.status = "fail";
   document.documentElement.dataset.detail = cause instanceof Error ? cause.stack ?? cause.message : String(cause);

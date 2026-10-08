@@ -38,7 +38,7 @@ export const HTML_NS = "http://www.w3.org/1999/xhtml"; // unused
  * @param s - Raw markup string to test.
  * @returns True when the string begins with an `<svg ...>` tag.
  */
-export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
+export const is_svg_markup = (s: string) => /^<\s*svg(?=[\s/>])/i.test(s);
 
 /**
  * Convert an SVG DOM `Element` subtree into an Hson node tree.

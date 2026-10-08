@@ -35,10 +35,10 @@ export function namespace_svg(src: string): string {
     const usesXlink = /\bxlink:/i.test(src);
     const hasXlink = /<svg\b[^>]*\bxmlns:xlink\s*=/i.test(src);
 
-    return src.replace(/<svg\b([^>]*)>/i, (_m, attrs) => {
+    return src.replace(/<svg\b([^>]*?)(\/?)>/i, (_m, attrs, close) => {
         let add = "";
         if (!hasSvgNS) add += ` xmlns="http://www.w3.org/2000/svg"`;
         if (usesXlink && !hasXlink) add += ` xmlns:xlink="http://www.w3.org/1999/xlink"`;
-        return `<svg${attrs}${add}>`;
+        return `<svg${attrs}${add}${close}>`;
     });
 }

@@ -61,7 +61,7 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 function prepare_parser_element(node: Record<string, unknown>, inheritedNamespace = HTML_NS): void {
-  if (node.nodeType === 3) {
+  if (node.nodeType === 3 || node.nodeType === 8) {
     Object.defineProperty(node, "textContent", { configurable: true, value: String(node.data ?? "") });
     return;
   }
@@ -78,7 +78,7 @@ function prepare_parser_element(node: Record<string, unknown>, inheritedNamespac
   for (const child of node.childNodes as Record<string, unknown>[]) prepare_parser_element(child, namespace);
 }
 
-function parser_document(source: string): { documentElement: Element; querySelector(selector: string): null } {
+function parser_document(source: string): { documentElement: Element; lastChild: Pick<Node, 'nodeType' | 'nodeName'> | null; querySelector(selector: string): null } {
   const parsed = parseDocument(source, {
     xmlMode: true,
     lowerCaseAttributeNames: false,
@@ -88,7 +88,12 @@ function parser_document(source: string): { documentElement: Element; querySelec
   const root = parsed.childNodes.find((node) => node.nodeType === 1);
   assert.ok(root);
   prepare_parser_element(root as unknown as Record<string, unknown>);
-  return { documentElement: root as unknown as Element, querySelector: () => null };
+  const last = parsed.lastChild;
+  // htmlparser2 models XML processing instructions as directive nodes.
+  const lastChild = last?.type === 'directive'
+    ? { nodeType: 7, nodeName: last.name.replace(/^\?|\?$/g, '') }
+    : null;
+  return { documentElement: root as unknown as Element, lastChild, querySelector: () => null };
 }
 
 export function with_browser_parser<T>(run: () => T): T {

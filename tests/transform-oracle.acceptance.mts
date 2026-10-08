@@ -218,7 +218,7 @@ check("HTML reserved boundary annotations preserve text topology", () => {
   );
   assert.doesNotMatch(wire, /<\/?_hson_(?:str|elem)(?=[\s>])/);
   const reparsed = detach_hson_root_value(hsonTransform.fromTrustedHtml(wire).toNode());
-  assert.deepEqual(reparsed, adjacent);
+  assert.equal(canonical_hson_graph_equal(reparsed, adjacent), true);
 
   const literal = node("_hson_elem", [node("div", [
     node("_hson_elem", [node("_hson_str", ["<_hson_str>literal</_hson_str>"])]),
@@ -226,14 +226,19 @@ check("HTML reserved boundary annotations preserve text topology", () => {
   const literalWire = hsonTransform.fromNode(literal).toHtml().serialize();
   assert.ok(literalWire.includes("&lt;_hson_str&gt;literal&lt;/_hson_str&gt;"));
   assert.doesNotMatch(literalWire, /<\/?_hson_(?:str|elem)(?=[\s>])/);
-  assert.deepEqual(detach_hson_root_value(hsonTransform.fromTrustedHtml(literalWire).toNode()), literal);
+  assert.equal(canonical_hson_graph_equal(detach_hson_root_value(hsonTransform.fromTrustedHtml(literalWire).toNode()), literal), true);
 
   const objectScalar = detach_hson_root_value(
     hsonTransform.fromTrustedHtml(`<value><_hson_val>-0</_hson_val></value>`).toNode(),
   );
   assert.equal(objectScalar.$_tag, "_hson_obj");
+  assert.equal(canonical_hson_graph_equal(objectScalar, node("_hson_obj", [
+    node("value", [node("_hson_obj", [node("_hson_val", [-0])])]),
+  ])), true);
   const member = objectScalar.$_content[0] as HsonNode;
-  const leaf = member.$_content[0] as HsonNode;
+  const relationship = member.$_content[0] as HsonNode;
+  assert.equal(relationship.$_tag, "_hson_obj");
+  const leaf = relationship.$_content[0] as HsonNode;
   assert.equal(leaf.$_tag, "_hson_val");
   assert.equal(Object.is(leaf.$_content[0], -0), true);
 });

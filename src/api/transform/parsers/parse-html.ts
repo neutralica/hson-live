@@ -1,4 +1,6 @@
 // parse-html.ts
+import { parseDocument } from "htmlparser2";
+import { isComment, isTag, isText } from "domhandler";
 
 import { HsonNode } from "../../../core/types.js";
 import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG, HSON_SYS_PREFIX, HTML_KEY_PREFIX } from "../../../core/constants.js";
@@ -21,7 +23,7 @@ import { quote_unquoted_attrs } from "../utils/html-preflights/quoted-unquoted.j
 import { normalize_html_source_attributes } from "../utils/html-preflights/ordinary-attribute-transit.js";
 import { encode_hson_metadata_transit } from "../utils/html-preflights/hson-metadata-transit.js";
 import { namespace_svg } from "../utils/html-preflights/namespace-svg.js";
-import { is_indexed } from "../../../core/node-guards.js";
+import { is_Node, is_indexed } from "../../../core/node-guards.js";
 import { Primitive } from "../../../core/types.js";
 import { should_try_optional_endtags, should_try_void_expand } from "../utils/html-preflights/preflight-helpers.js";
 import { decode_html_key_tag } from "../utils/html-utils/encode-html-tag.js";
@@ -159,6 +161,15 @@ function parse_html_internal(
         // Firefox rejects bare `&` in quoted attrs such as url('a&b.png'), even
         // when Chrome's XML parser appears to tolerate it.
         let xmlSrc = esc_attrs_quoted_angles(voidSafe);
+        // Establish the existing source ROOT before XML parsing for fragments.
+        // This includes leading text, which XML diagnostic wording does not
+        // reliably classify as "extra content" across browser engines.
+        const sourceChildren = parseDocument(xmlSrc, { xmlMode: true, recognizeSelfClosing: true })
+            .children.filter(child => isTag(child) || (isText(child) && child.data.trim() !== '')
+                || (isComment(child) && child.data.startsWith('hson-text')));
+        if (sourceChildren.length > 1 || (sourceChildren.length === 1 && isText(sourceChildren[0]))) {
+            xmlSrc = `<${ROOT_TAG}>${xmlSrc}</${ROOT_TAG}>`;
+        }
         const parser = new DOMParser();
         let parsed = parser.parseFromString(xmlSrc, "application/xml");
         let err = parsed.querySelector("parsererror");
@@ -346,8 +357,9 @@ function parse_html_internal(
  *       - Must have exactly one child, returned as `_hson_ii` with optional meta.
  *   - `_hson_elem` and `_hson_str` HTML carrier elements are obsolete and reject.
  * - Default HTML element path:
+ *   - Scalar children of object members construct an OBJ relationship directly.
  *   - For zero children:
- *       - Produce an element with an empty `_hson_elem` cluster.
+ *       - Produce an element with empty content.
  *   - For a single cluster child (`_hson_obj`, `_hson_arr`, `_hson_elem`):
  *       - Pass through the cluster unchanged.
  *   - For mixed/multiple non-cluster children:
@@ -487,7 +499,11 @@ function convert(
     }
 
     if (dec === OBJ_TAG) {
-        // Children are property nodes (already produced under this element)
+        const scalar = childNodes.length === 1
+            && (childNodes[0].$_tag === STR_TAG || childNodes[0].$_tag === VAL_TAG);
+        if (!scalar && childNodes.some((child) => EVERY_VSN.includes(child.$_tag))) {
+            _throw_transform_err('<_hson_obj> must contain named members or one source scalar', 'parse-html');
+        }
         return finish(CREATE_NODE({ $_tag: OBJ_TAG, $_content: childNodes }));
     }
 
@@ -502,10 +518,34 @@ function convert(
         if (childNodes.length !== 1) {
             _throw_transform_err('<_hson_ii> must have exactly one child', 'parse-html');
         }
+        const value = childNodes[0];
+        const scalarObject = value.$_tag === OBJ_TAG && value.$_content.length === 1
+            && is_Node(value.$_content[0])
+            && (value.$_content[0].$_tag === STR_TAG || value.$_content[0].$_tag === VAL_TAG);
+        if ((value.$_tag !== STR_TAG && value.$_tag !== VAL_TAG && value.$_tag !== OBJ_TAG && value.$_tag !== ARR_TAG) || scalarObject) {
+            _throw_transform_err('array item requires a complete data value, not a scalar OBJ carrier or element content',
+                'parse-html', undefined, undefined,
+                { code: 'HSON_CANONICAL_INVARIANT_VIOLATION', stage: 'source-admission' });
+        }
         return finish(CREATE_NODE({
             $_tag: II_TAG,
             $_content: [childNodes[0]],
             $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
+        }));
+    }
+    if (dec === ROOT_TAG) {
+        if (childNodes.some((child) => child.$_tag === ROOT_TAG)) {
+            _throw_transform_err('nested HTML source ROOT is invalid', 'parse-html');
+        }
+        const content = childNodes.length === 1
+            ? wrap_as_root(childNodes[0]).$_content
+            : childNodes.length === 0 ? []
+            : [CREATE_NODE({ $_tag: ELEM_TAG, $_content: childNodes })];
+        return finish(CREATE_NODE({
+            $_tag: ROOT_TAG,
+            $_attrs: sortedAcc,
+            $_meta: metaAcc,
+            $_content: content,
         }));
     }
 
@@ -524,9 +564,18 @@ function convert(
     if (childNodes.length === 1) {
         const only = childNodes[0];
 
+        if ((parentTag === OBJ_TAG || only.$_tag === VAL_TAG)
+            && (only.$_tag === STR_TAG || only.$_tag === VAL_TAG)) {
+            return finishOrdinary(CREATE_NODE({
+                $_tag: dec,
+                $_attrs: sortedAcc,
+                $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
+                $_content: [CREATE_NODE({ $_tag: OBJ_TAG, $_content: [only] })],
+            }));
+        }
+
         // Pass through explicit clusters untouched (no mixing, no extra box)
-        if (only.$_tag === OBJ_TAG || only.$_tag === ARR_TAG || only.$_tag === ELEM_TAG
-            || (!is_Primitive(children[0]) && (only.$_tag === STR_TAG || only.$_tag === VAL_TAG))) {
+        if (only.$_tag === OBJ_TAG || only.$_tag === ARR_TAG || only.$_tag === ELEM_TAG) {
             return finishOrdinary(CREATE_NODE({
                 $_tag: dec,
                 $_attrs: sortedAcc,
@@ -564,6 +613,8 @@ function convert(
  * Rules:
  * - If `node.$_tag === ROOT_TAG`:
  *     - Return the node as-is (already rooted).
+ * - A singleton OBJ scalar source carrier lowers to its universal STR/VAL.
+ *   Nested object-member relationships are not passed through this boundary.
  * - If `node` is a cluster node (`_hson_obj`, `_hson_arr`, `_hson_elem`):
  *     - Wrap directly under a new `_hson_root`:
  *       `{ $_tag: _hson_root, $_content: [node] }`.
@@ -580,7 +631,8 @@ function convert(
 function wrap_as_root(node: HsonNode): HsonNode {
     if (node.$_tag === ROOT_TAG) return node; // already rooted
     if (node.$_tag === OBJ_TAG && node.$_content.length === 1
-        && (node.$_content[0] as HsonNode).$_tag === STR_TAG) {
+        && is_Node(node.$_content[0])
+        && (node.$_content[0].$_tag === STR_TAG || node.$_content[0].$_tag === VAL_TAG)) {
         return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [node.$_content[0]] });
     }
     if (node.$_tag === OBJ_TAG || node.$_tag === ARR_TAG || node.$_tag === ELEM_TAG

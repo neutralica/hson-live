@@ -2,7 +2,7 @@
 
 # Hson Spec[3]
 ## HTML transport representation in Hson
-Updated: 2026-09-21
+Updated: 2026-10-08
 
 HTML maps into the Hson graph as ordered element content. The mapping preserves the structure required to re-emit useful equivalent markup, but it is canonicalizing rather than source-text-lossless.
 
@@ -17,6 +17,46 @@ In particular, `_hson_*` names are canonical/transport structure,
 `hson-boundary` is derived browser-realization evidence, and `hson:quid` is
 runtime identity evidence in managed browser markup. Ordinary Transform HTML
 omits `hson:quid` on output and rejects it on input.
+
+HTML source parsing retains source-owned ROOT in `toNode()` observations. Its
+complete child is STR, VAL, OBJ, ARR or qualifying ELEM content. Empty HTML
+source ownership can retain `ROOT[]`; it does not supply a complete value for
+Hson/Binary egress. Generic raw `fromNode(ROOT)` continues to reject.
+
+Both HTML implementations construct scalar object-member relationships
+directly: `<_hson_obj><a><_hson_val>1</_hson_val></a></_hson_obj>` produces
+`ROOT[OBJ[a[OBJ[VAL(1)]]]]`. Existing OBJ and ARR member relationships remain
+single relationships, including empty containers.
+
+At a complete HTML source boundary, a singleton OBJ scalar spelling lowers to
+its universal primitive. For example,
+`<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>` produces `ROOT[VAL(-0)]`.
+The same source convention supports strings, finite numbers, booleans and
+null. Nested `a[OBJ[VAL(1)]]` retains its OBJ relationship. Unnamed structural
+children such as `OBJ[OBJ[]]` reject during source construction; these source
+rules do not admit raw complete OBJ/scalar aliases.
+
+Standalone trusted SVG strings, including `<svg/>`, and browser SVG Elements
+enter generic Transform as complete content owned by ROOT:
+`ROOT[ELEM[svg[ELEM[g[]]]]]`, or `ROOT[ELEM[svg[]]]` for an empty SVG.
+The lower-level `node_from_svg` converter still returns the named branch,
+and LiveTree continues consuming that branch. Browser SVG strings retain their
+existing XML parsing behavior. Public QUID and safe-pipeline SVG policies
+remain unchanged. This does not claim general HTML/XML, namespace or style
+transport closure.
+
+The specialized SVG route requires one standalone SVG across the parsed source,
+with no meaningful siblings. Mixed sources such as `<svg/><p/>` or
+`<svg/>tail` use full HTML source construction, preserving every ordered sibling
+and inspecting their metadata. Generic SVG content is qualified in its ELEM
+receiver before publication; an SVG branch containing OBJ/ARR relationships
+rejects there without changing the lower-level branch API.
+
+Browser standalone SVG strings require a successful complete XML parse before
+conversion. Parser diagnostics reject as source-decoding errors; lawful authored
+elements named `parsererror` are not prohibited. HTML array items require complete
+data values (STR, VAL, OBJ or ARR). Scalar OBJ carrier spellings inside II reject,
+while nested scalar object-member relationships remain intact.
 
 ---
 

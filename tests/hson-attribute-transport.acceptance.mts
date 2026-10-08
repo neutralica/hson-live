@@ -16,6 +16,7 @@ import {
   ordinary_attr_transit_name,
 } from "../src/api/transform/utils/html-preflights/ordinary-attribute-transit.ts";
 import type { HsonNode } from "../src/core/types.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "hson.attribute-transport",
@@ -274,7 +275,10 @@ check("raw canonical private attrs reject before serializer egress", () => {
         $_content: [{ $_tag: "main", $_attrs: { [privateName]: "secret" }, $_content: [] }],
       }],
     };
-    assert.throws(() => hsonTransform.fromNode(graph), /private .* transit name is forbidden/);
+    assert.throws(() => hsonTransform.fromNode(graph), /_hson_root is an internal attachment carrier/);
+    const complete = graph.$_content[0];
+    assert.ok(is_node(complete));
+    assert.throws(() => hsonTransform.fromNode(complete), /invalid or reserved attribute name/);
     assert.throws(() => serialize_html(graph), /private .* transit name is forbidden/);
   }
 });
@@ -282,7 +286,9 @@ check("raw canonical private attrs reject before serializer egress", () => {
 check("ordinary duplicates are last-wins and case-equivalent in HTML", () => {
   const source = `<main id="a" ID="b" title="first" TITLE="last"/>`;
   for (const root of [worker(source), browser(source)]) {
-    assert.deepEqual(must_tag(root, "main").$_attrs, { id: "b", title: "last" });
+    assert.equal(canonical_hson_graph_equal(must_tag(root, "main"), {
+      $_tag: 'main', $_attrs: { id: 'b', title: 'last' }, $_content: [],
+    }), true);
   }
 });
 
@@ -290,7 +296,9 @@ check("duplicate colonized ordinary attrs use semantic identity and never suffix
   const source = `<main a:b="first" A:B="last"/>`;
   for (const root of [worker(source), browser(source)]) {
     const attrs = must_tag(root, "main").$_attrs;
-    assert.deepEqual(attrs, { "a:b": "last" });
+    assert.equal(canonical_hson_graph_equal(must_tag(root, "main"), {
+      $_tag: 'main', $_attrs: { 'a:b': 'last' }, $_content: [],
+    }), true);
     assert.equal(Object.keys(attrs ?? {}).some((key) => key.endsWith("__1")), false);
   }
 });
@@ -510,8 +518,20 @@ check("reserved HTML transport lowering agrees across browser and Worker", () =>
 
   const scalar = detach_hson_root_value(worker(sources[0]!));
   assert.equal(scalar.$_tag, "_hson_obj");
+  const expectedScalar: HsonNode = {
+    $_tag: '_hson_obj', $_content: [{ $_tag: 'value', $_content: [{
+      $_tag: '_hson_obj', $_content: [{ $_tag: '_hson_val', $_content: [-0] }],
+    }] }],
+  };
+  assert.equal(canonical_hson_graph_equal(scalar, expectedScalar), true);
+  assert.equal(canonical_hson_graph_equal(detach_hson_root_value(browser(sources[0]!)), expectedScalar), true);
+  const output = hsonTransform.fromTrustedHtml(sources[0]!);
+  assert.equal(canonical_hson_graph_equal(hsonTransform.fromHson(output.toHson().serialize()).toNode(), expectedScalar), true);
+  assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(output.toBinary().serialize()).toNode(), expectedScalar), true);
   const property = scalar.$_content[0] as HsonNode;
-  const value = property.$_content[0] as HsonNode;
+  const relationship = property.$_content[0] as HsonNode;
+  assert.equal(relationship.$_tag, '_hson_obj');
+  const value = relationship.$_content[0] as HsonNode;
   assert.equal(value.$_tag, "_hson_val");
   assert.equal(Object.is(value.$_content[0], -0), true);
 

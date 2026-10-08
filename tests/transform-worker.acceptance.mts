@@ -259,22 +259,18 @@ check("untrusted Worker parsing keeps data-* application-owned", () => {
   assert.equal(main?.$_meta, undefined);
 });
 
-check("trusted standalone SVG preserves the established direct-node shape", () => {
-  const node = hsonTransform
-    .fromTrustedHtml(`<svg viewBox="0 0 10 10"><path stroke-width="2"/></svg>`)
-    .toNode();
-  assert.equal(node.$_tag, "svg");
-  assert.equal(node.$_attrs?.viewBox, "0 0 10 10");
-  const cluster = node.$_content[0];
-  assert.equal(typeof cluster, "object");
-  assert.notEqual(cluster, null);
-  if (typeof cluster !== "object" || cluster === null) throw new Error("missing SVG element cluster");
-  assert.equal(cluster.$_tag, "_hson_elem");
-  const path = cluster.$_content[0];
-  assert.equal(typeof path, "object");
-  assert.notEqual(path, null);
-  if (typeof path !== "object" || path === null) throw new Error("missing SVG path");
-  assert.equal(path.$_attrs?.["stroke-width"], "2");
+check("trusted standalone SVG owns complete content while retaining branch attributes", () => {
+  const branch: HsonNode = {
+    $_tag: "svg", $_attrs: { viewBox: "0 0 10 10" },
+    $_content: [{ $_tag: "_hson_elem", $_content: [{ $_tag: "path", $_attrs: { "stroke-width": "2" }, $_content: [] }] }],
+  };
+  const complete: HsonNode = { $_tag: "_hson_elem", $_content: [branch] };
+  const expected: HsonNode = { $_tag: "_hson_root", $_content: [complete] };
+  const source = hsonTransform.fromTrustedHtml(`<svg viewBox="0 0 10 10"><path stroke-width="2"/></svg>`);
+  assert.equal(canonical_hson_graph_equal(source.toNode(), expected), true);
+  assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(source.toBinary().serialize()).toNode(), complete), true);
+  assert.equal(canonical_hson_graph_equal(hsonTransform.fromHson(source.toHson().serialize()).toNode(), complete), true);
+  assert.throws(() => hsonTransform.fromNode(branch));
 });
 
 check("fully rejected untrusted markup reports sanitization failure", () => {
