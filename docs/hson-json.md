@@ -2,7 +2,7 @@
 
 # Hson Spec[2]
 ## JSON Representation in Hson
-Updated: 2026-07-13
+Updated: 2026-10-08
 
 This section describes how JSON values map to `HsonNode` and back. JSON input accepts either a JSON string or an already parsed `JsonValue`.
 
@@ -10,13 +10,16 @@ Parsed values are detached recursively before normalization. JSON ingestion does
 
 ---
 
-## Root and cluster model
+## Source ROOT and complete values
 
-Every parsed JSON value is placed under `_hson_root`, whose one child is a cluster:
+Every parsed JSON value is placed under source-owned `_hson_root`, whose one child is a complete value:
 
 - objects use `_hson_obj`;
-- arrays use `_hson_arr`; and
-- a top-level scalar is structurally wrapped so the root still owns a cluster.
+- arrays use `_hson_arr`;
+- strings use `_hson_str` directly, including the empty string; and
+- finite numbers, booleans and null use `_hson_val` directly.
+
+The explicit source form `{"_hson_root":"x"}` therefore constructs `ROOT[STR("x")]`, and `{"_hson_root":1}` constructs `ROOT[VAL(1)]`. Scalars have no element carrier or remembered source-format identity. Authored JSON numeric `-0` and supplied negative-zero values retain their sign.
 
 JSON property names become ordinary `$_tag` values. The `_hson_` prefix is reserved for structural keys and is rejected in ordinary user JSON, apart from the parser's explicit structural `_hson_elem` interchange form.
 
@@ -24,8 +27,9 @@ The explicit `_hson_root` interchange form may omit `$_meta` or supply a neutral
 
 This describes external JSON lowering, not direct graph admission. Generic
 `fromNode()` rejects ROOT and present-empty optional bags without repair.
-JSON sources privately retain their current source-owned graph shape and
-return independent `toNode()` copies; producer alignment is staged separately.
+JSON sources privately retain their constructed source-owned graph and return
+independent `toNode()` copies. Qualifying Hson and Binary terminals observe
+the complete child, while `toNode()` retains its source ROOT.
 
 ---
 
@@ -64,7 +68,7 @@ _hson_arr
    └─ _hson_val (true)
 ```
 
-JSON source order is intrinsic, so parsing creates wrappers in source order with indexes `"0"` through `String(length - 1)`. The external JSON parser can also lower explicit wrapper candidates: it orders a valid permutation by `index`, while malformed, duplicate, missing, noncontiguous, or out-of-range strings reject. Strict generic portable `fromNode()` does not perform that construction step and rejects noncanonical physical II order. Canonical graph state always has physical wrapper order equal to index order.
+JSON source order is intrinsic, so parsing creates wrappers in source order with indexes `"0"` through `String(length - 1)`. Ordinary JSON arrays construct II entries in source order. The reserved explicit `_hson_ii` wrapper candidate is not a way to supply or reorder those entries and rejects. Strict generic portable `fromNode()` also rejects noncanonical physical II order. Canonical graph state always has physical wrapper order equal to index order.
 
 Array items can be scalars, arrays, or objects. An object item uses the same one angle-pair object value syntax as an object anywhere else:
 
@@ -99,6 +103,12 @@ The VSN distinction prevents numbers, booleans, and null from being silently con
 ## HTML structure represented in JSON
 
 JSON output can carry element-mode graphs using a literal `_hson_elem` member whose value is an ordered array. This scaffolding preserves duplicate element tags, text/element interleaving, and attributes—properties that an ordinary JSON object cannot model directly.
+
+At the complete source boundary, `{"_hson_elem":["x"]}` lowers to `ROOT[STR("x")]`; `[""]` likewise retains `STR("")`. This interpretation applies only to complete source content, including an explicit ROOT payload. It does not collapse a nested element relationship.
+
+For example, `{"_hson_elem":[{"p":"x"}]}` constructs `ROOT[ELEM[p[ELEM[STR("x")]]]]` directly. A payload of `{"_hson_elem":["x"]}` inside `p` constructs the same single relationship. Empty named elements retain `p[]`, whether their source payload is `""` or the established `{"_hson_elem":[]}` empty-element projection. A complete empty ELEM source rejects. Typed values and object/array data payloads cannot serve as element content.
+
+Larger ordered content retains every empty and adjacent STR node in order. These source conventions do not make raw complete `ELEM[STR]` or caller-owned ROOT valid generic `fromNode()` inputs. Existing JSON attribute, metadata and style conversion remains separate from this relationship construction; broader JSON transport closure is not implied.
 
 Conversely, converting JSON structure to HTML can emit literal VSN scaffolding needed to preserve JSON objects, arrays, and typed values. Cross-format output is therefore structurally faithful, but it is not promised to look like idiomatic hand-authored data in the other format.
 

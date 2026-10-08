@@ -3,8 +3,9 @@
 import { is_Primitive, is_string } from "../../../core/value-guards.js";
 import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
+import { is_Node } from "../../../core/node-guards.js";
 import { HsonMeta, HsonAttrs, HsonNode } from "../../../core/types.js";
-import { JsonValue, Primitive } from "../../../core/types.js";
+import { JsonValue } from "../../../core/types.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { _snip } from "../utils/sys-utils/snip.utils.js";
 import { make_string } from "../../../core/stringify.js";
@@ -231,6 +232,16 @@ function assertNoForbiddenVSNKeysInJSON(obj: JsonInputObject, where: string) {
     }
 }
 
+// Only a complete JSON source interprets a singleton text scaffold as STR.
+// Recursive element payloads retain their ELEM relationship.
+function complete_json_source_content(node: HsonNode): HsonNode {
+    const only = node.$_content[0];
+    return node.$_tag === ELEM_TAG && node.$_content.length === 1
+        && is_Node(only) && only.$_tag === STR_TAG
+        ? only
+        : node;
+}
+
 /**
  * Convert a JSON value into an `HsonNode` subtree, using a parent tag
  * to decide which Hson shape to build (`_hson_str`, `_hson_val`, `_hson_arr`, `_hson_obj`,
@@ -263,15 +274,15 @@ function assertNoForbiddenVSNKeysInJSON(obj: JsonInputObject, where: string) {
  *    A) Root form: `{ _hson_root: <payload>, ... }`
  *       - Forbids siblings alongside `_hson_root`.
  *       - Recursively parses `<payload>` via `nodeFromJson`.
- *       - Ensures the `_hson_root` child is a cluster:
- *         - Scalar children (`_hson_str` / `_hson_val`) are wrapped in `<_hson_elem>`.
- *       - Returns `<_hson_root>` containing a single cluster child.
+ *       - Constructs a complete value directly, including primitive children
+ *         and singleton text scaffolds lowered to `_hson_str`.
+ *       - Returns `<_hson_root>` containing that complete value.
  *
  *    B) Element form: `{ "_hson_elem": [ ... ] }`
  *       - Requires `_hson_elem` value to be an array.
  *       - Each item must be one of:
  *         - `string` → `<_hson_str>` child,
- *         - `number | boolean | null` → `<_hson_val>` child,
+ *         - Typed primitives reject in element content.
  *         - element-object:
  *           `{ tagName: payload, $_attrs?, $_meta? }`
  *           - Rejects reserved VSN keys via
@@ -283,7 +294,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: JsonInputObject, where: string) {
  *             - style string → `parse_style_string`,
  *             - null/undefined → dropped.
  *           - Recursively builds the child subtree from `payload` using
- *             `nodeFromJson(...)`.
+ *             `nodeFromJson(...)`, constructing an ELEM relationship for text.
  *       - Returns a single `<_hson_elem>` node with these children.
  *
  *    C) Generic object form (plain JSON object)
@@ -386,37 +397,32 @@ export function nodeFromJson(
                 };
             }
             const childTag = getTag(rootPayload);
-            const child = nodeFromJson(rootPayload, childTag).node;
-
-            // Enforce: _hson_root child must be a cluster (_hson_obj|_hson_arr|_hson_elem). If scalar, coerce to _hson_elem wrapper.
-            const isScalar = (child.$_tag === STR_TAG || child.$_tag === VAL_TAG);
-            const clusterChild = isScalar
-                ? CREATE_NODE({ $_tag: ELEM_TAG, $_content: [child] })
-                : child;
+            const child = complete_json_source_content(nodeFromJson(rootPayload, childTag).node);
 
             return {
                 node: CREATE_NODE({
                     $_tag: ROOT_TAG,
                     $_meta: rootMeta,
-                    $_content: [clusterChild],
+                    $_content: [child],
                 }),
             };
         }
 
         // B) ELEMENT HANDLING { _hson_elem: [...] } 
         if (json_input_has(obj, ELEM_TAG)) {
+            assertNoForbiddenVSNKeysInJSON(obj, `at ${ELEM_TAG}`);
             const list = json_input_get(obj, ELEM_TAG);
             if (!Array.isArray(list)) {
                 _throw_transform_err("'_hson_elem' must contain an array", "parse_json", make_string(list));
             }
 
             const children: HsonNode[] = (list as JsonInputValue[]).map((val, ix) => {
-                // string → _hson_str, number|boolean|null → _hson_val
+                // Element content admits text, not typed data primitives.
                 if (typeof val === "string") {
                     return CREATE_NODE({ $_tag: STR_TAG, $_content: [val] });
                 }
                 if (val === null || typeof val === "number" || typeof val === "boolean") {
-                    return CREATE_NODE({ $_tag: VAL_TAG, $_content: [val as Primitive] });
+                    _throw_transform_err("typed values are invalid in element content", "parse_json", `"_hson_elem"[${ix}]`);
                 }
 
                 // object → element-object (allow $_attrs/$_meta; preserve them)
@@ -425,6 +431,9 @@ export function nodeFromJson(
 
                     // guard against raw VSN misuse
                     assertNoForbiddenVSNKeysInJSON(elObj, `"_hson_elem"[${ix}]`);
+                    if (json_input_has(elObj, ELEM_TAG) || json_input_has(elObj, ROOT_TAG)) {
+                        _throw_transform_err("element-object may not mix a named tag with structural carriers", "parse_json", describe_json_input(elObj));
+                    }
 
                     // Exactly one non-underscore tag key required
                     const tagKeys = jsonElementTagKey(elObj);
@@ -478,7 +487,15 @@ export function nodeFromJson(
                     if (rawChildren !== undefined && rawChildren !== "") {
                         const kidTag = getTag(rawChildren);
                         const kidNode = nodeFromJson(rawChildren, kidTag).node;
-                        tagKids = [kidNode];
+                        if (kidNode.$_tag === STR_TAG) {
+                            tagKids = [CREATE_NODE({ $_tag: ELEM_TAG, $_content: [kidNode] })];
+                        } else if (kidNode.$_tag === ELEM_TAG) {
+                            if (kidNode.$_content.length !== 0) tagKids = [kidNode];
+                        } else {
+                            _throw_transform_err("named element payload must be text or '_hson_elem' content", "parse_json", describe_json_input(rawChildren));
+                        }
+                        // An explicit empty ELEM payload is the JSON projection
+                        // of an empty named element, just like its "" spelling.
                     }
 
                     const elemNode = CREATE_NODE({ $_tag: tagName, $_content: tagKids });
@@ -489,7 +506,7 @@ export function nodeFromJson(
                 }
 
                 _throw_transform_err(
-                    `invalid item in "_hson_elem"[${ix}] (must be string|number|boolean/null or element-object)`,
+                    `invalid item in "_hson_elem"[${ix}] (must be string or element-object)`,
                     "parse_json",
                     describe_json_input(val)
                 );
@@ -514,7 +531,7 @@ export function nodeFromJson(
  * Parse JSON into a rooted `HsonNode` tree.
  *
  * Input handling:
- * - If `input` is a string, it is parsed with `JSON.parse`. Any parse
+ * - If `input` is a string, it is parsed by the ordered JSON reader. Any parse
  *   error is wrapped and rethrown via `_throw_transform_err`.
  * - The parsed or supplied value is detached recursively before conversion.
  *   Caller records and arrays are never normalized in place or retained by
@@ -583,7 +600,7 @@ export function parse_json(input: string | JsonValue): HsonNode {
         ? node
         : CREATE_NODE({
             $_tag: ROOT_TAG,
-            $_content: [node],
+            $_content: [complete_json_source_content(node)],
         });
     const normalized = normalize_hson_graph(root, "parse_json");
     assert_invariants(normalized, "parse_json");

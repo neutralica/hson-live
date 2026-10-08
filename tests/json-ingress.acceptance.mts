@@ -2,11 +2,13 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
-import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
+import { nodeFromJson, parse_json } from "../src/api/transform/parsers/parse-json.ts";
+import { hsonTransform } from "../src/api/transform/transform.facade.ts";
+import { SAFE_TRANSFORM_SOURCE, UNSAFE_TRANSFORM_SOURCE } from "../src/api/transform/transform.browser.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
-import type { HsonNode, JsonValue } from "../src/core/types.ts";
+import type { HsonNode, JsonValue, Primitive } from "../src/core/types.ts";
 import {
   read_transform_error_details,
   TransformError,
@@ -54,6 +56,155 @@ function check(name: string, fn: () => void): void {
 }
 
 const QUID = "d1r6x8qwc";
+
+const str = (value: string): HsonNode => ({ $_tag: "_hson_str", $_content: [value] });
+const val = (value: Exclude<Primitive, string>): HsonNode => ({ $_tag: "_hson_val", $_content: [value] });
+const elem = (...content: HsonNode[]): HsonNode => ({ $_tag: "_hson_elem", $_content: content });
+const named = (tag: string, ...content: HsonNode[]): HsonNode => ({ $_tag: tag, $_content: content });
+const root = (content: HsonNode): HsonNode => ({ $_tag: "_hson_root", $_content: [content] });
+
+function assert_source_graph(input: JsonValue, expected: HsonNode): void {
+  // Producer observations precede any serialization or forgiving re-admission.
+  assert.deepEqual(parse_json(input), expected);
+  assert.equal(canonical_hson_graph_equal(hson.fromJson(input).toNode(), expected), true);
+}
+
+check("explicit scalar ROOT constructs direct complete primitives before normalization", () => {
+  for (const payload of ["x", "", 1, 0, -0, true, false, null]) {
+    const input = { _hson_root: payload };
+    const complete = typeof payload === "string" ? str(payload) : val(payload);
+    const expected = root(complete);
+    assert.deepEqual(nodeFromJson(input, "_hson_obj").node, expected);
+    assert_source_graph(input, expected);
+    // JSON.stringify cannot express -0, so use an authored numeric spelling.
+    const text = Object.is(payload, -0) ? '{"_hson_root":-0}' : JSON.stringify(input);
+    assert.deepEqual(parse_json(text), expected);
+    for (const sourceInput of [input, text]) {
+      const source = hson.fromJson(sourceInput);
+      assert.equal(canonical_hson_graph_equal(source.toNode(), expected), true);
+      assert.equal(canonical_hson_graph_equal(hson.fromHson(source.toHson().serialize()).toNode(), complete), true);
+      assert.equal(canonical_hson_graph_equal(hson.fromBinary(source.toBinary().serialize()).toNode(), complete), true);
+    }
+  }
+});
+
+check("only complete singleton JSON text scaffolds lower to STR", () => {
+  for (const text of ["x", "", "\ud800\u0000\udfff", "𝄞"]) {
+    const input = { _hson_elem: [text] };
+    assert_source_graph(input, root(str(text)));
+    assert_source_graph({ _hson_root: input }, root(str(text)));
+    assert.deepEqual(parse_json(JSON.stringify(input)), root(str(text)));
+    const nested = { _hson_elem: [{ p: input }] };
+    const relationship = elem(named("p", elem(str(text))));
+    assert.deepEqual(nodeFromJson(nested, "_hson_obj").node, relationship);
+    assert_source_graph(nested, root(relationship));
+    assert.equal(canonical_hson_graph_equal(hson.fromBinary(hson.fromJson(input).toBinary().serialize()).toNode(), str(text)), true);
+  }
+  // Source interpretation does not change direct canonical admission.
+  assert.throws(() => hson.fromNode(elem(str("x"))));
+  assert.throws(() => hson.fromNode(root(str("x"))));
+});
+
+check("named JSON elements construct relationships before graph normalization", () => {
+  for (const payload of ["x", { _hson_elem: ["x"] }]) {
+    const input = { _hson_elem: [{ p: payload }] };
+    const expected = elem(named("p", elem(str("x"))));
+    assert.deepEqual(nodeFromJson(input, "_hson_obj").node, expected);
+    assert_source_graph(input, root(expected));
+    const source = hson.fromJson(input);
+    assert.equal(canonical_hson_graph_equal(hson.fromHson(source.toHson().serialize()).toNode(), expected), true);
+    assert.equal(canonical_hson_graph_equal(hson.fromBinary(source.toBinary().serialize()).toNode(), expected), true);
+  }
+  for (const payload of ["", { _hson_elem: [] }]) {
+    const input = { _hson_elem: [{ p: payload }] };
+    const expected = elem(named("p"));
+    assert.deepEqual(nodeFromJson(input, "_hson_obj").node, expected);
+    assert_source_graph(input, root(expected));
+  }
+});
+
+check("JSON ordered content preserves adjacent and empty STR nodes and nested empty elements", () => {
+  const fixtures: readonly (readonly [JsonValue, HsonNode])[] = [
+    [{ _hson_elem: ["a", "b"] }, elem(str("a"), str("b"))],
+    [{ _hson_elem: ["a", { p: "x" }] }, elem(str("a"), named("p", elem(str("x"))))],
+    [{ _hson_elem: [{ p: "x" }, "b"] }, elem(named("p", elem(str("x"))), str("b"))],
+    [{ _hson_elem: ["", "a", "", { p: "x" }, "", "b", ""] }, elem(str(""), str("a"), str(""), named("p", elem(str("x"))), str(""), str("b"), str(""))],
+    [{ _hson_elem: [{ p: { _hson_elem: ["", { br: "" }, ""] } }] }, elem(named("p", elem(str(""), named("br"), str(""))))],
+  ];
+  for (const [input, complete] of fixtures) {
+    assert.deepEqual(nodeFromJson(input, "_hson_obj").node, complete);
+    assert_source_graph(input, root(complete));
+    assert.deepEqual(parse_json(JSON.stringify(input)), root(complete));
+    const source = hson.fromJson(input);
+    assert.equal(canonical_hson_graph_equal(hson.fromBinary(source.toBinary().serialize()).toNode(), complete), true);
+    assert.equal(canonical_hson_graph_equal(hson.fromHson(source.toHson().serialize()).toNode(), complete), true);
+  }
+});
+
+check("invalid JSON element structures reject without fallback values", () => {
+  const invalidNamedPayloads: readonly JsonValue[] = [1, true, null, [], {}, { field: "x" }, { _hson_root: "x" }];
+  const invalid: readonly JsonValue[] = [
+    { _hson_elem: [] }, { _hson_root: { _hson_elem: [] } },
+    ...[1, -0, true, false, null].map(payload => ({ _hson_elem: [payload] })),
+    ...invalidNamedPayloads.map(payload => ({ _hson_elem: [{ p: payload }] })),
+    { _hson_elem: [{ p: "x", q: "y" }] },
+    { _hson_elem: [{ p: "x", _hson_elem: ["y"] }] },
+    { _hson_elem: ["x"], _hson_root: "y" },
+    { _hson_elem: ["x"], _hson_obj: {} },
+  ];
+  for (const input of invalid) {
+    const before = structuredClone(input);
+    for (const sourceInput of [input, JSON.stringify(input)]) {
+      assert.throws(() => parse_json(sourceInput));
+      assert.throws(() => hson.fromJson(sourceInput));
+    }
+    assert.deepEqual(input, before);
+  }
+});
+
+check("JSON producer outputs remain isolated across generic source entrypoints and terminals", () => {
+  for (const factory of [hson, hsonTransform, SAFE_TRANSFORM_SOURCE, UNSAFE_TRANSFORM_SOURCE]) {
+    const child = { p: "x", $_attrs: { title: "original" } };
+    const input = { _hson_root: { _hson_elem: ["before", child, "", "after"] } };
+    const source = factory.fromJson(input);
+    const expected = source.toNode();
+    const hsonOutput = source.toHson(); const jsonOutput = source.toJson();
+    const htmlOutput = source.toHtml(); const binaryOutput = source.toBinary();
+    const text = hsonOutput.serialize(); const json = jsonOutput.serialize();
+    const html = htmlOutput.serialize(); const bytes = binaryOutput.serialize();
+    child.p = "changed"; child.$_attrs.title = "caller";
+    input._hson_root._hson_elem.length = 0;
+    const first = source.toNode();
+    only_standard(first, "p").$_content.length = 0;
+    const attrs = only_standard(first, "p").$_attrs;
+    assert.ok(attrs); attrs.title = "copy";
+    first.$_content.length = 0;
+    for (let observation = 0; observation < 2; observation++) {
+      assert.equal(canonical_hson_graph_equal(source.toNode(), expected), true);
+      assert.notEqual(source.toNode(), source.toNode());
+      assert.equal(source.toHson().serialize(), text); assert.equal(hsonOutput.serialize(), text);
+      assert.equal(source.toJson().serialize(), json); assert.equal(jsonOutput.serialize(), json);
+      assert.equal(source.toHtml().serialize(), html); assert.equal(htmlOutput.serialize(), html);
+      assert.deepEqual(source.toBinary().serialize(), bytes); assert.deepEqual(binaryOutput.serialize(), bytes);
+    }
+  }
+});
+
+check("native JSON controls retain data carriers and physical array indexes", () => {
+  const object = (...content: HsonNode[]): HsonNode => ({ $_tag: "_hson_obj", $_content: content });
+  const array = (...content: HsonNode[]): HsonNode => ({ $_tag: "_hson_arr", $_content: content.map((item, index) => ({ $_tag: "_hson_ii", $_meta: { index: String(index) }, $_content: [item] })) });
+  const input: JsonValue = { text: "", nested: [null, false, -0, {}, [], { ok: "x" }] };
+  const expected = object(named("text", object(str(""))), named("nested", array(val(null), val(false), val(-0), object(), array(), object(named("ok", object(str("x")))))));
+  assert_source_graph(input, root(expected));
+  const payloads: readonly JsonValue[] = ["x", "", 1, -0, true, false, null, {}, []];
+  for (const payload of payloads) {
+    const complete = typeof payload === "string" ? str(payload)
+      : typeof payload === "number" || typeof payload === "boolean" || payload === null ? val(payload)
+      : Array.isArray(payload) ? array() : object();
+    const sourceInput = typeof payload === "string" ? JSON.stringify(payload) : payload;
+    assert_source_graph(sourceInput, root(complete));
+  }
+});
 
 function explicit_root(meta: unknown = undefined): JsonValue {
   return {

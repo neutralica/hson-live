@@ -212,9 +212,10 @@ Repeated `class` declarations merge unique tokens in the order encountered. Cano
 Parses JSON data into Hson nodes.
 
 - Accepts a JSON string or a parsed JSON value.
+- Source-owned ROOT contains a complete value: explicit scalar `_hson_root` payloads use STR/VAL directly, and complete singleton `_hson_elem` text scaffolds lower to STR. Named element text constructs its nested ELEM relationship directly; empty and adjacent text in larger ordered content remains distinct.
 - Does not sanitize.
 - Detaches caller-owned records and arrays before normalization. Parsing never   mutates the supplied value or retains mutable aliases into canonical graph   state.
-- Metadata on an explicit `_hson_root` is invalid and rejects; it is not   ignored or filtered. An empty runtime `_hson_root` remains a separate   runtime-carrier exception outside direct Hson-text serialization.
+- Optional metadata records on an explicit `_hson_root` may be omitted when empty. Populated metadata and malformed metadata are subject to their own qualification rules; explicit ROOT metadata is not categorically rejected. An empty runtime `_hson_root` remains a separate runtime-carrier exception outside direct Hson-text serialization.
 - JSON string ingress preserves textual property sequence, including   integer-index property names, before constructing canonical `_hson_obj`   content.
 - JSON string ingress rejects duplicate decoded property names with   `HSON_JSON_DUPLICATE_PROPERTY` before an earlier declaration can be   overwritten. Primary and first-declaration source evidence remain   structured.
 - Already-parsed JavaScript objects admit the enumeration order the supplied   runtime value exposes. They cannot recover textual order or overwritten   duplicate declarations discarded before this API received the value.
@@ -382,8 +383,9 @@ its binary representation.
 Binary uses the same private source snapshot and complete portable domain as
 generic Hson. No original-input bypass exists. Decode validates raw wire shape
 and complete-value qualification; present-empty metadata is not removed.
-Source-owned ROOT shapes remain inspectable through copied `toNode()` results
-pending producer alignment, with existing JSON/HTML owner extraction at egress.
+Source-owned ROOT shapes remain inspectable through copied `toNode()` results,
+with JSON/HTML owner extraction at egress. JSON constructs its complete child
+before snapshot capture; ROOT retention expresses source ownership.
 
 ### `HsonCanonical`
 

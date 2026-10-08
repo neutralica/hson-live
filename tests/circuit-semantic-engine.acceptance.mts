@@ -97,14 +97,16 @@ check("one conversion leg owns serialization, parse, and strict evidence", () =>
   assert.deepEqual(result.operations, { parses: 1, serializations: 1, strictComparisons: 1, laps: 0, directions: 0 });
 });
 
-check("singleton JSON text carriers normalize only at the complete circuit boundary", () => {
+check("singleton JSON text scaffolds are complete STR values before circuit detachment", () => {
   for (const text of ["a", ""]) {
     const source = JSON.stringify({ _hson_elem: [text] });
     const raw = hsonTransform.fromJson(source).toNode();
-    const normalized = universalCircuitBoundary.parse("json", source);
-    assert.equal(normalized.$_tag, "_hson_str");
-    assert.deepEqual(normalized.$_content, [text]);
-    assert.equal(canonical_hson_graph_equal(raw, normalized), false);
+    const complete = detach_hson_root_value(raw);
+    assert.equal(raw.$_tag, "_hson_root");
+    assert.equal(complete.$_tag, "_hson_str");
+    assert.deepEqual(complete.$_content, [text]);
+    const observed = universalCircuitBoundary.parse("json", source);
+    assert.equal(canonical_hson_graph_equal(observed, complete), true);
     const prepared = prepare_explicit_entry(universalCircuitBoundary, "json", source, { now: () => 0 });
     assert.ok(prepared.prepared);
     const leg = run_conversion_leg(

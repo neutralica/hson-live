@@ -318,29 +318,25 @@ check("root text segmentation and empty leaves remain semantic distinctions", ()
   ])), true);
 });
 
-check("JSON ELEM scaffolds retain source shape while portable terminals reject the singleton alias", () => {
+check("JSON complete text scaffolds lower to STR while nested ELEM relationships remain exact", () => {
   const str = (value: string) => node("_hson_str", [value]);
   const elem = (...items: HsonNode[]) => node("_hson_elem", items);
-  const fixtures: readonly (readonly [JsonValue, HsonNode, HsonNode])[] = [
-    [{ _hson_elem: ["a"] }, elem(str("a")), str("a")],
-    [{ _hson_elem: ["a", "b"] }, elem(str("a"), str("b")), elem(str("a"), str("b"))],
-    [{ _hson_elem: ["a", "", "b"] }, elem(str("a"), str(""), str("b")), elem(str("a"), str(""), str("b"))],
-    [{ _hson_elem: ["a", { p: "" }, "b"] }, elem(str("a"), node("p"), str("b")), elem(str("a"), node("p"), str("b"))],
-    [{ _hson_elem: [{ p: "" }, { p: "" }] }, elem(node("p"), node("p")), elem(node("p"), node("p"))],
+  const fixtures: readonly (readonly [JsonValue, HsonNode])[] = [
+    [{ _hson_elem: ["a"] }, str("a")],
+    [{ _hson_elem: [""] }, str("")],
+    [{ _hson_elem: ["a", "b"] }, elem(str("a"), str("b"))],
+    [{ _hson_elem: ["a", "", "b"] }, elem(str("a"), str(""), str("b"))],
+    [{ _hson_elem: ["a", { p: "" }, "b"] }, elem(str("a"), node("p"), str("b"))],
+    [{ _hson_elem: [{ p: "" }, { p: "" }] }, elem(node("p"), node("p"))],
+    [{ _hson_elem: [{ p: "x" }] }, elem(node("p", [elem(str("x"))]))],
+    [{ _hson_elem: [{ p: { _hson_elem: ["x"] } }] }, elem(node("p", [elem(str("x"))]))],
   ];
-  for (const [json, carrier, completeValue] of fixtures) {
+  for (const [json, completeValue] of fixtures) {
     const admitted = hsonTransform.fromJson(json);
-    assert.equal(canonical_hson_graph_equal(admitted.toNode(), root(carrier)), true);
-    assert.equal(canonical_hson_graph_equal(hsonTransform.fromJson(admitted.toJson().serialize()).toNode(), root(carrier)), true);
-    if (carrier.$_content.length === 1 && (carrier.$_content[0] as HsonNode).$_tag === "_hson_str") {
-      // D: explicit source carrier alignment belongs to Pass 2; no graph repair.
-      assert.throws(() => admitted.toBinary());
-      assert.throws(() => admitted.toHson().serialize());
-      continue;
-    }
+    assert.equal(canonical_hson_graph_equal(admitted.toNode(), root(completeValue)), true);
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromJson(admitted.toJson().serialize()).toNode(), root(completeValue)), true);
     const binary = admitted.toBinary().serialize();
-    assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(binary).toNode(), carrier), true);
-    assert.equal(canonical_hson_graph_equal(hsonTransform.fromJson(admitted.toJson().serialize()).toNode(), root(carrier)), true);
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(binary).toNode(), completeValue), true);
     for (const noBreak of [false, true]) {
       const text = noBreak ? admitted.toHson().noBreak().serialize() : admitted.toHson().serialize();
       assert.equal(canonical_hson_graph_equal(publicNode(text), completeValue), true, text);
