@@ -19,7 +19,9 @@ const activeRoot: HsonNode = { $_tag: "main", $_content: [] };
 const source = hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [activeRoot] });
 const tree = new LiveTree(activeRoot);
 const localQuid = tree.quid;
-assert.equal(read_hson_node_quid(activeRoot), localQuid);
+assert.notEqual(tree.node, activeRoot);
+assert.equal(read_hson_node_quid(activeRoot), undefined);
+assert.equal(read_hson_node_quid(tree.node), localQuid);
 assert.doesNotMatch(JSON.stringify(source.toNode()), /"quid"/);
 
 function forbidden(run: () => unknown): void {
@@ -31,7 +33,7 @@ function forbidden(run: () => unknown): void {
 }
 
 // Local inspection may carry identity. JSON reconstruction must not authorize it.
-const reconstructed = JSON.parse(JSON.stringify(activeRoot)) as HsonNode;
+const reconstructed = JSON.parse(JSON.stringify(tree.node)) as HsonNode;
 const reconstructedBefore = structuredClone(reconstructed);
 assert.equal(read_hson_node_quid(reconstructed), localQuid);
 forbidden(() => hson.fromNode(reconstructed));
@@ -88,7 +90,9 @@ const dataRoot = dataSource.toNode();
 const object = dataRoot.$_content[0] as HsonNode;
 const member = object.$_content[0] as HsonNode;
 const dataTree = new LiveTree(member);
-assert.equal(read_hson_node_quid(member), dataTree.quid);
+assert.notEqual(dataTree.node, member);
+assert.equal(read_hson_node_quid(member), undefined);
+assert.equal(read_hson_node_quid(dataTree.node), dataTree.quid);
 assert.doesNotMatch(JSON.stringify(dataSource.toNode()), /"quid"/);
 const applicationJson = dataSource.toJson().serialize();
 assert.doesNotMatch(applicationJson, /"quid"/);

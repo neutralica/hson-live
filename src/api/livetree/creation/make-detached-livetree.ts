@@ -2,12 +2,13 @@
 
 import { CREATE_NODE } from "../../../core/factories.js";
 import { SVG_TAGS, HTML_TAGS } from "../../../core/all-html-tags.js";
-import { TagName, SvgTag, SvgCreateHelper, HtmlTag, DetachedCreateHelper } from "../../../types/livetree.types.js";
+import { TagName, SvgTag, HtmlTag, DetachedCreateHelper } from "../../../types/livetree.types.js";
 import { HsonNode } from "../../../core/types.js";
 import { SvgLiveTree } from "../../../types/svg.types.js";
 import { create_livetree } from "./create-livetree.js";
 import { LiveTree } from "../livetree.js";
 import { TreeSelector } from "./tree-selector.js";
+import { prepare_public_html_branch, prepare_public_svg_branch } from "../methods/create/create-core.js";
 
 
 export function make_detached_livetree_create(): DetachedCreateHelper {
@@ -29,37 +30,16 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
     return create_livetree(node);
   }
 
-  // CHANGED: local detached svg host
-  function makeSvgHost(): SvgLiveTree {
-    const node = CREATE_NODE({
-      $_tag: "svg",
-      $_attrs: {
-        xmlns: "http://www.w3.org/2000/svg",
-      },
-      $_content: [],
-    }) as HsonNode;
-
-    return create_livetree(node) as unknown as SvgLiveTree;
-  }
-
   // CHANGED: central per-call html dispatch
-  function createDetachedHtmlTag(tag: HtmlTag, source?: string, ix?: number): LiveTree {
+  function createDetachedHtmlTag(tag: HtmlTag, source?: string): LiveTree {
     if (source === undefined) {
       return create_livetree(CREATE_NODE({ $_tag: tag, $_content: [] }));
     }
-    const host = makeHtmlHost();
-    const create = typeof ix === "number" ? host.create.at(ix) : host.create;
-    const fn = create[tag];
-
-    const branch = typeof source === "string"
-      ? fn(source)
-      : fn();
-    branch.detach();
-    return branch;
+    return create_livetree(prepare_public_html_branch(tag, source, () => DOMParser));
   }
 
   // CHANGED: central per-call svg dispatch
-  function createDetachedSvgTag(tag: SvgTag, source?: string, ix?: number): SvgLiveTree {
+  function createDetachedSvgTag(tag: SvgTag, source?: string): SvgLiveTree {
     if (source === undefined) {
       return create_livetree(CREATE_NODE({
         $_tag: tag,
@@ -67,28 +47,7 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
         ...(tag === "svg" ? { $_attrs: { xmlns: "http://www.w3.org/2000/svg" } } : {}),
       })) as unknown as SvgLiveTree;
     }
-    // svg root is created from an html host, just like normal tree.create.svg()
-    if (tag === "svg") {
-      const host = makeHtmlHost();
-      const create = typeof ix === "number" ? host.create.at(ix) : host.create;
-
-      const branch = typeof source === "string"
-        ? create.svg(source)
-        : create.svg();
-      branch.detach();
-      return branch;
-    }
-
-    // svg child tags need svg namespace context
-    const host = makeSvgHost();
-    const create = typeof ix === "number" ? host.create.at(ix) : host.create;
-    const fn = (create as SvgCreateHelper)[tag as Exclude<SvgTag, "svg">];
-
-    const branch = typeof source === "string"
-      ? fn(source)
-      : fn();
-    branch.detach();
-    return branch;
+    return create_livetree(prepare_public_svg_branch(tag, source, () => DOMParser)) as unknown as SvgLiveTree;
   }
 
   const helper: Partial<DetachedCreateHelper> & {
@@ -97,13 +56,13 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
   } = {
     // CHANGED: detached generic tag dispatcher
     tag(tag: TagName, source?: string): LiveTree {
-      const ix = consumeIndex();
+      consumeIndex();
 
       if (SVG_TAGS.includes(tag as SvgTag)) {
-        return createDetachedSvgTag(tag as SvgTag, source, ix) as unknown as LiveTree;
+        return createDetachedSvgTag(tag as SvgTag, source) as unknown as LiveTree;
       }
 
-      return createDetachedHtmlTag(tag as HtmlTag, source, ix);
+      return createDetachedHtmlTag(tag as HtmlTag, source);
     },
 
     // CHANGED: preserve existing detached tags() behavior (html host)
@@ -130,8 +89,8 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
     const tag = rawTag as HtmlTag;
 
     (helper as Record<string, unknown>)[tag] = (source?: string): LiveTree => {
-      const ix = consumeIndex();
-      return createDetachedHtmlTag(tag, source, ix);
+      consumeIndex();
+      return createDetachedHtmlTag(tag, source);
     };
   }
 
@@ -140,8 +99,8 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
     const tag = rawTag as SvgTag;
 
     (helper as Record<string, unknown>)[tag] = (source?: string): SvgLiveTree => {
-      const ix = consumeIndex();
-      return createDetachedSvgTag(tag, source, ix);
+      consumeIndex();
+      return createDetachedSvgTag(tag, source);
     };
   }
 

@@ -11,14 +11,15 @@ import type { LiveTreeRuntime } from "../runtime/livetree-runtime.js";
 import { normalize_hson_array_index_order } from "../../../core/hson-array-indexes.js";
 
 /**
- * Normalize a parsed Hson root into a detached `LiveTree` branch.
+ * Prepare an internally owned clone root as a detached `LiveTree` branch.
  *
  * Structural wrapper nodes such as `_hson_root` and `_hson_elem` are unwrapped first so
  * the returned tree always points at one concrete branch root. Exactly one
  * concrete root element must remain after unwrapping.
  *
- * This is the detached-branch path used by `hson.liveTree.from*` entrypoints.
- * It does not graft into the existing live DOM.
+ * Public `hson.liveTree.from*` entrypoints use exact admission and selection
+ * in livetree.node-admission instead. This internal path preserves clone-owned
+ * identity and does not graft into the existing live DOM.
  *
  * @param rootNode - Raw Hson root to validate and normalize.
  * @param opts - Internal proof that an immediately preceding parser or clone

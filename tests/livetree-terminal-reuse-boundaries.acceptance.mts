@@ -203,8 +203,12 @@ check("clone receives fresh identity instead of copied provenance", () => {
 });
 
 check("public fromNode rejects generated identity claims", () => {
-  assert.throws(() => hson.liveTree.fromNode(node("main", Q1)), /runtime QUID metadata is invalid in portable node input/i);
-  assert.throws(() => hson.liveTree.fromNode(node("main", Q1)), /runtime QUID metadata is invalid in portable node input/i);
+  assert.throws(() => hson.liveTree.fromNode(node("main", Q1)), error => error instanceof Error
+    && Reflect.get(error, "code") === "PORTABLE_RUNTIME_QUID_FORBIDDEN"
+    && Reflect.get(error, "stage") === "source-admission");
+  assert.throws(() => hson.liveTree.fromNode({ $_tag: "main", $_content: [{ $_tag: "_hson_elem",
+    $_content: [node("span", Q1)] }] }), error => error instanceof Error
+    && Reflect.get(error, "code") === "PORTABLE_RUNTIME_QUID_FORBIDDEN");
 });
 
 check("remove returns void and no restoration artifact", () => {

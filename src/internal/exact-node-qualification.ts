@@ -164,7 +164,9 @@ function is_captured_node(value: unknown): value is HsonNode {
     && content !== undefined && Object.hasOwn(content, 'value') && Array.isArray(content.value);
 }
 
-export type ExactHsonRole = 'complete' | 'data' | 'member' | 'object-relationship' | 'item' | 'element-content' | 'branch' | 'text'
+// runtime-branch selects an existing element or data relationship for a
+// standalone owner; it never changes the role of children under ELEM.
+export type ExactHsonRole = 'complete' | 'data' | 'member' | 'object-relationship' | 'item' | 'element-content' | 'branch' | 'runtime-branch' | 'text'
   | 'data-root' | 'document-source' | 'document-root' | 'document-item';
 type Role = ExactHsonRole;
 type VerifyJob = { node: HsonNode; role: Role; path: Trace; index?: number };
@@ -200,6 +202,7 @@ export function qualify_exact_hson_graph(root: HsonNode, operation: string, root
     if (role === 'text' && tag !== STR_TAG) fail(operation, path, 'element text must be STR');
     if (role === 'member' && structural) fail(operation, path, 'object members require ordinary names');
     if (role === 'branch' && structural) fail(operation, path, 'element content requires a named element branch');
+    if (role === 'runtime-branch' && structural) fail(operation, path, 'runtime branch receiver requires an ordinary named branch');
     if (role === 'item' && tag !== II_TAG) fail(operation, path, 'only II may occur under ARR');
     if (role === 'object-relationship' && tag !== OBJ_TAG && tag !== ARR_TAG) fail(operation, path, 'object member requires OBJ or ARR relationship');
     if (role === 'element-content' && tag !== ELEM_TAG) fail(operation, path, 'named element requires ELEM relationship');
@@ -263,10 +266,12 @@ export function qualify_exact_hson_graph(root: HsonNode, operation: string, root
       continue;
     }
     if (!structural) {
-      if (!is_valid_hson_data_name(tag) || (role === 'branch' && tag.length === 0)) fail(operation, child(path, '$_tag'), 'invalid ordinary name for structural role');
-      if (role === 'branch' && content.length === 0) continue;
+      if (!is_valid_hson_data_name(tag) || ((role === 'branch' || role === 'runtime-branch') && tag.length === 0)) fail(operation, child(path, '$_tag'), 'invalid ordinary name for structural role');
+      if ((role === 'branch' || role === 'runtime-branch') && content.length === 0) continue;
       if (content.length !== 1) fail(operation, child(path, '$_content'), 'ordinary relationship must contain exactly one structural node');
-      enqueue(content[0], role === 'member' ? 'object-relationship' : 'element-content', 0);
+      const dataRelationship = role === 'runtime-branch' && is_Node(content[0])
+        && (content[0].$_tag === OBJ_TAG || content[0].$_tag === ARR_TAG);
+      enqueue(content[0], role === 'member' || dataRelationship ? 'object-relationship' : 'element-content', 0);
     } else if (tag === II_TAG) {
       if (content.length !== 1) fail(operation, child(path, '$_content'), 'II must contain exactly one value');
       enqueue(content[0], 'data', 0);

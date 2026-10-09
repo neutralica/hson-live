@@ -100,7 +100,12 @@ check("QUID-bearing VSNs reject read, claim, remint, reindex, drop, and clone wi
     const invalid = node(tag);
     const ordinaryBeforeInvalid = node(`before-${index}`);
     const source = node(`root-${index}`, [ordinaryBeforeInvalid, invalid]);
-    const tree = new LiveTree(source);
+    // This was a malformed public positive. Preserve it as an ingress negative;
+    // the remaining case intentionally corrupts already owned state to test
+    // low-level identity and clone preflight, rather than public construction.
+    assert.throws(() => new LiveTree(source));
+    const tree = new LiveTree(node(`root-${index}`));
+    tree.node.$_content = [node("_hson_elem", [ordinaryBeforeInvalid, invalid])];
     invalid.$_meta = { [HSON_META_QUID]: q };
 
     for (const operation of [

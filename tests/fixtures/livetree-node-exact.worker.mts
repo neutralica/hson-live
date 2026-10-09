@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { parentPort } from "node:worker_threads";
+import { hsonLiveTree, LiveTree } from "../../src/api/livetree/index.ts";
+import { hsonTransform } from "../../src/api/transform/index.ts";
+import type { HsonNode } from "../../src/core/types.ts";
+
+assert.equal(typeof document, "undefined");
+const input: HsonNode = { $_tag: "p", $_content: [] };
+const tree = new LiveTree(input);
+input.$_tag = "caller";
+assert.equal(tree.node.$_tag, "p");
+assert.notEqual(tree.node, input);
+assert.throws(() => new LiveTree({ $_tag: "p", $_content: [], $_attrs: {} }));
+assert.throws(() => hsonLiveTree.fromNode({ $_tag: "p", $_content: [], $_meta: { quid: "000000001" } }));
+assert.throws(() => hsonTransform.fromNode({ $_tag: "p", $_content: [] }));
+const parsed = hsonLiveTree.fromHson('<p "x"/>');
+assert.equal(parsed.node.$_tag, "p");
+assert.throws(() => hsonLiveTree.fromHson('<p/><q/>'));
+tree.remove(); parsed.remove();
+parentPort?.postMessage({ sourceWorker: "pass", publicRawIsolation: true, portableBranchRejected: true });

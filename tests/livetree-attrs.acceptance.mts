@@ -1,5 +1,6 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import {
   hson,
   LiveTreeAttributeError,
@@ -342,7 +343,8 @@ check("clear removes the complete attrs bag while preserving identity, metadata,
   assert.equal(element.getAttribute("id"), null);
   assert.equal(element.getAttribute(QUID_ATTR), value.quid);
   assert.equal(value.node.$_tag, beforeTag);
-  assert.deepEqual(value.node.$_content, beforeContent);
+  assert.ok(canonical_hson_graph_equal({ $_tag: beforeTag, $_content: value.node.$_content },
+    { $_tag: beforeTag, $_content: beforeContent }));
   assert.deepEqual(value.node.$_meta, beforeMeta);
 
   const empty = tree();
@@ -421,7 +423,7 @@ check("attrs and flags are converged views over one canonical bag", () => {
   ));
   const before = structuredClone(value.node);
   assert.throws(() => value.flags.set("safe", "bad name"), LiveTreeAttributeError);
-  assert.deepEqual(value.node, before);
+  assert.ok(canonical_hson_graph_equal(value.node, before));
 });
 
 process.stdout.write(`# ${checks} LiveTree canonical attrs checks passed\n`);

@@ -3,7 +3,7 @@
 <title>Transform trust ingress acceptance</title>
 <body>
 <script type="module">
-import { hson, hsonTransform, node_from_svg, SVG_NS, canonical_hson_graph_equal, detach_hson_root_value,
+import { hsonLiveTree, LiveTree, default_livetree_runtime, runtime_for_tree, hson, hsonTransform, node_from_svg, SVG_NS, canonical_hson_graph_equal, detach_hson_root_value,
   scalarHtmlFixtures, memberHtmlFixtures, arrayHtmlFixtures, mixedSvgFixtures, invalidHtmlFixtures, invalidSvgFixtures, svgSourceFixtures } from "./bundle.js";
 
 function same(actual, expected, label) {
@@ -224,8 +224,122 @@ try {
   for (const svg of ['<svg/>', '<svg><g/></svg>']) rejects(() => hson.fromUntrustedHtml(svg), "safe SVG policy");
   for (const svg of ['<svg xmlns:hson="urn:hson-test" hson:quid="000000001"/>', '<svg xmlns:hson="urn:hson-test"><g hson:quid="000000001"/></svg>']) rejects(() => hson.fromTrustedHtml(svg), "public identity SVG source");
 
+  // Cut 4: exercise actual public LiveTree creation, not just parsers.
+  const n = (tag, ...content) => ({ $_tag: tag, $_content: content });
+  const e = (...content) => n('_hson_elem', ...content);
+  const t = value => ({ $_tag: '_hson_str', $_content: [value] });
+  const portableTree = tree => {
+    const node = structuredClone(tree.node);
+    const pending = [node];
+    while (pending.length) {
+      const current = pending.pop();
+      if (current.$_meta?.quid !== undefined) {
+        delete current.$_meta.quid;
+        if (!Object.keys(current.$_meta).length) delete current.$_meta;
+      }
+      for (const child of current.$_content) if (child && typeof child === 'object') pending.push(child);
+    }
+    return node;
+  };
+  const state = runtime => ({ claims: [...runtime.quidToNode.keys()].sort(), issued: [...runtime.issuedQuids].sort(),
+    pending: [...runtime.pendingQuidClaims.keys()], resources: runtime.ownerDisposables.size });
+  const assert = (condition, label) => { if (!condition) throw new Error(label); };
+  const owner = hsonLiveTree.fromNode(n('main'), { isolated: true });
+  const runtime = runtime_for_tree(owner);
+  for (const source of ['<p hson:quid="000000001"/>', '<p><b hson:quid="bad"/></p>',
+    '<p><_hson_elem/></p>', '<p/><p/>', '<p/>tail']) {
+    const graph = structuredClone(owner.node); const before = state(runtime);
+    rejects(() => owner.create.p(source), `public HTML creation ${source}`);
+    same(owner.node, graph, 'rejected HTML owner unchanged');
+    assert(JSON.stringify(state(runtime)) === JSON.stringify(before), 'HTML rejection changed identity');
+  }
+  for (const source of ['<svg xmlns:hson="urn:test" hson:quid="000000001"/>',
+    '<svg xmlns:hson="urn:test"><g hson:quid="000000001"/></svg>', '<svg><_hson_obj/></svg>',
+    '<svg><x:g/></svg>', '<svg/><p/>']) {
+    const graph = structuredClone(owner.node); const before = state(runtime);
+    rejects(() => owner.create.svg(source), `public SVG creation ${source}`);
+    same(owner.node, graph, 'rejected SVG owner unchanged');
+    assert(JSON.stringify(state(runtime)) === JSON.stringify(before), 'SVG rejection changed identity');
+  }
+  const first = owner.create.p('<p id="a">x<b/>y</p>');
+  same(portableTree(first), { ...n('p', e(t('x'), n('b'), t('y'))), $_attrs: { id: 'a' } }, 'public HTML ordered creation');
+  assert(runtime.quidToNode.get(first.quid) === first.node, 'new local identity lookup');
+  const empty = owner.create.p();
+  assert(first.quid !== empty.quid, 'independent creation identity');
+  const svg = owner.create.svg('<svg><g><path/></g><parsererror/></svg>');
+  same(portableTree(svg), n('svg', e(n('g', e(n('path'))), n('parsererror'))), 'public authored SVG diagnostic name');
+  const withPi = owner.create.svg('<?xml version="1.0"?><?authored <parsererror>?>' + '<svg><g/></svg><?authored-end?>');
+  same(portableTree(withPi), n('svg', e(n('g'))), 'SVG known receiver prolog and epilog');
+  const path = svg.create.path('<path id="kept"/>');
+  same(portableTree(path), { ...n('path'), $_attrs: { id: 'kept' } }, 'SVG fragment branch');
+  for (const source of ['<path/><g/>', 'lead<path/>', '<path/>tail', '<path hson:quid="000000001"/>']) {
+    const before = state(runtime); const graph = structuredClone(owner.node);
+    rejects(() => svg.create.path(source), `SVG fragment selection ${source}`);
+    same(owner.node, graph, 'rejected fragment graph');
+    assert(JSON.stringify(state(runtime)) === JSON.stringify(before), 'fragment identity effects');
+  }
+  // Detached helpers must parse before allocating their temporary owner.
+  for (const run of [() => hsonLiveTree.create.p('<p hson:quid="000000001"/>'),
+    () => hsonLiveTree.create.svg('<svg xmlns:hson="urn:test" hson:quid="000000001"/>')]) {
+    const before = state(default_livetree_runtime());
+    rejects(run, 'detached identity source');
+    assert(JSON.stringify(state(default_livetree_runtime())) === JSON.stringify(before), 'detached rejection minted identity');
+  }
+  const detached = hsonLiveTree.create.p('<p>x</p>');
+  same(portableTree(detached), n('p', e(t('x'))), 'detached admitted branch');
+  detached.remove();
+  for (const factory of [hsonLiveTree.fromTrustedHtml, hsonLiveTree.fromUntrustedHtml]) {
+    for (const source of ['<p hson:quid="000000001"/>', '<p><b hson:quid="000000001"/></p>', '<svg/><p hson:quid="000000001"/>']) {
+      const before = state(default_livetree_runtime());
+      rejects(() => factory(source), 'public facade identity');
+      assert(JSON.stringify(state(default_livetree_runtime())) === JSON.stringify(before), 'facade rejection registered identity');
+    }
+    rejects(() => factory('<p></p><q></q>'), 'multiple facade branches');
+  }
+  const trustedTree = hsonLiveTree.fromTrustedHtml('<p id="kept" onclick="run()">x</p>');
+  assert(trustedTree.node.$_attrs.onclick === 'run()', 'trusted attributes');
+  trustedTree.remove();
+  const untrustedTree = hsonLiveTree.fromUntrustedHtml('<p id="kept" onclick="run()">x<script>bad()</scr' + 'ipt></p>');
+  same(portableTree(untrustedTree), { ...n('p', e(t('x'))), $_attrs: { id: 'kept' } }, 'untrusted sanitizer');
+  untrustedTree.remove();
+  const native = sourceElement('<svg><g/></svg>', true);
+  const nativeTree = hsonLiveTree.fromTrustedHtml(native);
+  native.firstElementChild.setAttribute('changed', 'caller');
+  assert(nativeTree.node.$_content[0].$_content[0].$_attrs?.changed === undefined, 'native source isolation');
+  nativeTree.remove();
+  // Graft remains a different boundary and must preserve existing DOM objects.
+  const managed = document.createElement('article');
+  const managedChild = document.createElement('p'); managedChild.textContent = 'keep'; managed.append(managedChild);
+  managed.id = 'cut4-graft'; document.body.append(managed);
+  const grafted = hsonLiveTree.queryDom('#cut4-graft').graft();
+  assert(grafted.dom.el() === managed, 'graft root object replaced');
+  const graftedChild = grafted.find.byTag('p');
+  assert(graftedChild.dom.el() === managedChild, 'graft descendant replaced');
+  const again = hsonLiveTree.queryDom('#cut4-graft').graft();
+  assert(again.node === grafted.node && again.quid === grafted.quid, 'managed graph correspondence lost');
+  const managedRuntime = runtime_for_tree(grafted);
+  let rejectedNotifications = 0;
+  const observeRejected = () => { rejectedNotifications++; };
+  managedRuntime.realizationListeners.add(observeRejected);
+  const managedGraphBefore = structuredClone(grafted.node);
+  const managedHtmlBefore = managed.outerHTML; const managedStateBefore = state(managedRuntime);
+  for (const run of [() => grafted.create.p('<p hson:quid="000000001"/>'),
+    () => grafted.create.svg('<svg xmlns:hson="urn:test"><g hson:quid="000000001"/></svg>')]) {
+    rejects(run, 'mounted public identity rejection');
+    same(grafted.node, managedGraphBefore, 'mounted owner graph unchanged');
+    assert(managed.outerHTML === managedHtmlBefore && managed.firstElementChild === managedChild, 'mounted DOM changed on rejection');
+    assert(JSON.stringify(state(managedRuntime)) === JSON.stringify(managedStateBefore), 'mounted identity changed on rejection');
+  }
+  assert(rejectedNotifications === 0, 'mounted rejection notified realization');
+  managedRuntime.realizationListeners.delete(observeRejected);
+  const graphInput = n('section'); const rawTree = new LiveTree(graphInput);
+  graphInput.$_tag = 'caller';
+  assert(rawTree.node.$_tag === 'section' && rawTree.node !== graphInput, 'browser direct raw ownership');
+  assert(new LiveTree(rawTree).node === rawTree.node, 'existing handle continuity');
+  rawTree.remove(); grafted.remove(); owner.remove();
+
   document.documentElement.dataset.status = "pass";
-  document.documentElement.dataset.detail = `source-mapped trust, HTML producer parity, SVG branch/ownership and snapshots; ${namespaceFailures.length} XML/namespace rejections and ${legalNamespaceSources.length + 1} namespace/PI/authored-diagnostic controls passed`;
+  document.documentElement.dataset.detail = `source-mapped trust, LiveTree public admission/creation/graft, HTML producer parity, SVG branch/ownership and snapshots; ${namespaceFailures.length} XML/namespace rejections and ${legalNamespaceSources.length + 1} namespace/PI/authored-diagnostic controls passed`;
 } catch (cause) {
   document.documentElement.dataset.status = "fail";
   document.documentElement.dataset.detail = cause instanceof Error ? cause.stack ?? cause.message : String(cause);

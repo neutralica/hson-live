@@ -61,12 +61,13 @@ import {
   requested_runtime_for_construction,
   runtime_for_node,
   runtime_for_tree,
+  subject_for_tree,
   type LiveTreeRuntime,
 } from "./runtime/livetree-runtime.js";
-import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
+import { admit_public_livetree_branch } from "./livetree.node-admission.js";
 
 // This capability is scoped to internal construction calls, never to a node's
-// provenance. Public `new LiveTree(node)` always admits a portable graph.
+// provenance. Public `new LiveTree(node)` captures a private QUID-free branch.
 const EXACT_NODE_CONSTRUCTION = new WeakSet<HsonNode>();
 
 /** Construct an exact handle for an already local runtime graph. @internal */
@@ -239,7 +240,9 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * `LiveTree`.
    *
    * Initialization steps:
-   * - Derive and store the `hostRoot` via `setRoot(input)`.
+   * - Exactly admit newly supplied raw input into private mutable ownership.
+   * - Reuse a registered handle's pinned subject without cloning.
+   * - Derive and store the admitted `hostRoot` via `setRoot`.
    * - Create a `NodeRef` and QUID association via `setRef(input)`.
    *
    * When constructed from another `LiveTree`, both the root and the
@@ -250,11 +253,12 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    *                references from.
    */
   constructor(input: HsonNode | LiveTree) {
-    const inputNode = input instanceof LiveTree ? input.node : input;
-    if (!(input instanceof LiveTree) && !EXACT_NODE_CONSTRUCTION.has(inputNode)) {
-      admit_portable_hson_node(inputNode, "LiveTree.constructor");
+    const inputIsHandle = input instanceof LiveTree;
+    let inputNode = inputIsHandle ? subject_for_tree(input) : input;
+    if (!inputIsHandle && !EXACT_NODE_CONSTRUCTION.has(inputNode)) {
+      inputNode = admit_public_livetree_branch(inputNode, "LiveTree.constructor");
     }
-    const runtime = input instanceof LiveTree
+    const runtime = inputIsHandle
       ? runtime_for_tree(input)
       : requested_runtime_for_construction(inputNode)
         ?? runtime_for_node(inputNode)
@@ -270,8 +274,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     }
     bind_tree_runtime(this, runtime, inputNode);
     record_livetree_materialization("liveTreeInstances");
-    this.setRoot(input);
-    this.setRef(input);
+    this.setRoot(inputIsHandle ? input : inputNode);
+    this.setRef(inputNode);
     const node = this.nodeRef.resolveNode();
     if (!node) throw new Error("LiveTree constructor: ref did not resolve");
     index_subtree_ownership(node);

@@ -8,6 +8,7 @@ import { create_echo } from "../src/api/echo/echo.ts";
 import { create_echo_websocket_transport } from "../src/api/echo/echo.websocket.ts";
 import { create_echo_http_transport } from "../src/api/echo/echo.http.ts";
 import { hson, hsonLiveHost, hsonLiveMap, hsonMirror, hsonLiveTree, hsonTransform } from "../src/hson.ts";
+import { read_transform_error_details } from "../src/core/errors.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -162,7 +163,13 @@ check("JSON value and HTML serialization finalizers expose no parse method", () 
 check("LiveTree exposes attrs and flags without obsolete aliases", () => {
   assert.throws(
     () => hson.liveTree.fromJson({}),
-    /ineligible Hson structural node "_hson_root"/,
+    (error: unknown) => {
+      const details = read_transform_error_details(error);
+      assert.equal(details?.code, "HSON_CANONICAL_INVARIANT_VIOLATION");
+      assert.equal(details?.operation, "LiveTree.fromJson");
+      assert.equal(details?.stage, "source-admission");
+      return true;
+    },
   );
   const tree = hson.liveTree.fromHson("<main/>");
   tree.attrs.set("title", "Save");

@@ -656,7 +656,8 @@ check("LiveTree admission claims supplied descendants while preserving sparse ab
     assert.equal(get_node_by_quid(Q5), supplied);
     assert.equal(read_hson_node_quid(absent), undefined);
 
-    absentHandle = new LiveTree(absent);
+    // This descendant is already owned and proven, not newly supplied public input.
+    absentHandle = construct_exact_runtime_livetree(absent);
     const laterQuid = read_hson_node_quid(absent);
     assert.equal(is_persisted_quid(laterQuid), true);
     assert.equal(get_node_by_quid(laterQuid!), absent);
@@ -696,9 +697,11 @@ check("unpublished generated collisions retry and exhaustion is atomic", () => {
     });
     const successfulMetrics = successfulProfile.stop();
     assert.equal(successfulCalls, 2);
-    assert.equal(read_hson_node_quid(retried), Q2);
+    assert.equal(read_hson_node_quid(retried), undefined);
+    assert.notEqual(retriedTree!.node, retried);
+    assert.equal(read_hson_node_quid(retriedTree!.node), Q2);
     assert.equal(get_node_by_quid(Q1), owner);
-    assert.equal(get_node_by_quid(Q2), retried);
+    assert.equal(get_node_by_quid(Q2), retriedTree!.node);
     assert.equal(successfulMetrics.quidEnsureCalls, 1);
     assert.equal(successfulMetrics.quidRegistryWrites, 2);
   } finally {

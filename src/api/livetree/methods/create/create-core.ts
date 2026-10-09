@@ -1,13 +1,15 @@
 // create-core.ts
 
-import { ELEM_TAG, HSON_SYS_PREFIX } from "../../../../core/constants.js";
+import { qualify_exact_hson_graph } from "../../../../internal/exact-node-qualification.js";
+import { ELEM_TAG } from "../../../../core/constants.js";
 import { is_svg_context_tag } from "../../../../core/all-html-tags.js";
-import { parse_html_exact_runtime } from "../../../transform/parsers/parse-html.js";
+import { parse_html } from "../../../transform/parsers/parse-html.js";
 import { TagName, HtmlTag, SvgTag, HtmlCreateHelper } from "../../../../types/livetree.types.js";
 import { SvgLiveTree } from "../../../../types/svg.types.js";
 import { HsonNode } from "../../../../core/types.js";
-import { unwrap_root_elem } from "../../../transform/utils/html-utils/unwrap-root-elem.js";
-import { is_svg_markup, node_from_svg_exact_runtime } from "../../../transform/utils/node-utils/node-from-svg.js";
+import { admit_public_livetree_branch, admit_public_livetree_source } from "../../livetree.node-admission.js";
+import { decode_public_svg_source, standalone_svg_source } from "../../../transform/utils/html-utils/decode-public-svg-source.js";
+import { node_from_svg } from "../../../transform/utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../../core/node-guards.js";
 import { create_livetree_in_runtime } from "../../creation/create-livetree.js";
 import { runtime_for_tree } from "../../runtime/livetree-runtime.js";
@@ -85,18 +87,10 @@ function parse_trusted_markup_to_hson(
   source: string,
   parserForTree: () => DomParserConstructor,
 ): HsonNode {
-  const trimmed = source.trimStart();
-
-  if (is_svg_markup(trimmed)) {
-    const Parser = parserForTree();
-    const el = new Parser()
-      .parseFromString(source, "image/svg+xml")
-      .documentElement;
-
-    return node_from_svg_exact_runtime(el);
+  if (standalone_svg_source(source)) {
+    return node_from_svg(decode_public_svg_source(source, parserForTree(), "LiveTree.create"));
   }
-
-  return parse_html_exact_runtime(source);
+  return parse_html(source);
 }
 
 export function make_create_core(tree: LiveTree): CreateCore {
@@ -146,24 +140,6 @@ export function make_create_core(tree: LiveTree): CreateCore {
     return branch;
   };
 
-  // unwrap element payload and keep only real element tags
-  function extract_real_element_children(node: HsonNode): HsonNode[] {
-    const kids = Array.isArray(node.$_content) ? node.$_content : [];
-
-    const payload =
-      kids.length === 1 &&
-        is_Node(kids[0]) &&
-        kids[0].$_tag === ELEM_TAG &&
-        Array.isArray(kids[0].$_content)
-        ? kids[0].$_content
-        : kids;
-
-    return payload.filter(
-      (child): child is HsonNode =>
-        is_Node(child) && !child.$_tag.startsWith(HSON_SYS_PREFIX)
-    );
-  }
-
   function createForTags(tagOrTags: TagName | TagName[], index?: number): LiveTree | TreeSelector {
     const tags: TagName[] = Array.isArray(tagOrTags) ? tagOrTags : [tagOrTags];
 
@@ -203,53 +179,10 @@ export function make_create_core(tree: LiveTree): CreateCore {
     source: string,
     index?: number,
   ): LiveTree {
-    if (typeof source !== "string" || source.trim() === "") {
-      throw new Error(
-        `[LiveTree.create.${expectedTag}] expected non-empty markup string`,
-      );
-    }
-
-    let parsed: HsonNode | HsonNode[];
-    try {
-      parsed = parse_trusted_markup_to_hson(source, parserForTree);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(
-        `[LiveTree.create.${expectedTag}] failed to parse markup: ${msg}`,
-      );
-    }
-
-    const roots: HsonNode[] = Array.isArray(parsed) ? parsed : [parsed];
-    const createdChildren = roots.flatMap((n) => unwrap_root_elem(n));
-
-    if (createdChildren.length !== 1) {
-      throw new Error(
-        `[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`,
-      );
-    }
-
-    const node = createdChildren[0];
-    if (!node || node.$_tag !== expectedTag) {
-      throw new Error(
-        `[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`,
-      );
-    }
-
+    const node = prepare_public_html_branch(expectedTag, source, parserForTree);
     const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
 
     return attachPrivateBranch(branch, index);
-  }
-
-  function hasParserError(node: HsonNode): boolean {
-    if (node.$_tag === "parsererror") return true;
-
-    const kids = Array.isArray(node.$_content) ? node.$_content : [];
-    for (const child of kids) {
-      if (child && typeof child === "object" && "$_tag" in child) {
-        if (hasParserError(child as HsonNode)) return true;
-      }
-    }
-    return false;
   }
 
   function createSvgTagFromString(
@@ -257,65 +190,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
     source: string,
     index?: number,
   ): SvgLiveTree {
-    if (typeof source !== "string" || source.trim() === "") {
-      throw new Error(
-        `[LiveTree.create.${expectedTag}] expected non-empty markup string`,
-      );
-    }
-
-    const wrapped =
-      expectedTag === "svg"
-        ? source
-        : `<svg xmlns="http://www.w3.org/2000/svg">${source}</svg>`;
-
-    let parsed: HsonNode | HsonNode[];
-    try {
-      parsed = parse_svg_fragment_to_hson(wrapped, parserForTree());
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(
-        `[LiveTree.create.${expectedTag}] failed to parse markup: ${msg}`,
-      );
-    }
-
-    const roots: HsonNode[] = Array.isArray(parsed) ? parsed : [parsed];
-    const baseChildren = roots.flatMap((n) => unwrap_root_elem(n));
-
-    let createdChildren: HsonNode[];
-
-    if (expectedTag === "svg") {
-      createdChildren = baseChildren;
-    } else {
-      if (baseChildren.length !== 1 || baseChildren[0]?.$_tag !== "svg") {
-        throw new Error(
-          `[LiveTree.create.${expectedTag}] expected temporary <svg> wrapper`,
-        );
-      }
-
-      const svgRoot = baseChildren[0];
-      // ignore _hson_str / _hson_elem / other VSN noise, keep only real element children
-      createdChildren = extract_real_element_children(svgRoot);
-    }
-
-    if (createdChildren.length !== 1) {
-      throw new Error(
-        `[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`,
-      );
-    }
-
-    const node = createdChildren[0];
-    if (!node || node.$_tag !== expectedTag) {
-      throw new Error(
-        `[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`,
-      );
-    }
-
-    if (hasParserError(node)) {
-      throw new Error(
-        `[LiveTree.create.${expectedTag}] failed to parse markup: parsererror`,
-      );
-    }
-
+    const node = prepare_public_svg_branch(expectedTag, source, parserForTree);
     const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
 
     return attachPrivateBranch(branch, index) as unknown as SvgLiveTree;
@@ -336,12 +211,57 @@ export function make_tree_create(tree: LiveTree): HtmlCreateHelper {
 }
 
 function parse_svg_fragment_to_hson(source: string, Parser: DomParserConstructor): HsonNode {
-  const doc = new Parser().parseFromString(source, "image/svg+xml");
-  const root = doc.documentElement;
+  return node_from_svg(decode_public_svg_source(source, Parser, "LiveTree.create.svg"));
+}
 
-  if (!root || root.tagName === "parsererror") {
-    throw new Error("failed to parse svg fragment");
+/** Source preparation precedes any owner construction, including detached creation. @internal */
+export function prepare_public_html_branch(expectedTag: HtmlTag, source: string,
+  parserForTree: () => DomParserConstructor): HsonNode {
+  if (typeof source !== "string" || source.trim() === "") {
+    throw new Error(
+      `[LiveTree.create.${expectedTag}] expected non-empty markup string`,
+    );
   }
 
-  return node_from_svg_exact_runtime(root);
+  const node = admit_public_livetree_source(
+    parse_trusted_markup_to_hson(source, parserForTree), `LiveTree.create.${expectedTag}`);
+  if (node.$_tag !== expectedTag) {
+    throw new Error(`[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`);
+  }
+
+  return node;
+}
+
+/** Public SVG fragment receiver; all wrapper contents are qualified before selection. @internal */
+export function prepare_public_svg_branch(expectedTag: SvgTag, source: string,
+  parserForTree: () => DomParserConstructor): HsonNode {
+  if (typeof source !== "string" || source.trim() === "") {
+    throw new Error(
+      `[LiveTree.create.${expectedTag}] expected non-empty markup string`,
+    );
+  }
+
+  const wrapped =
+    expectedTag === "svg"
+      ? source
+      : `<svg xmlns="http://www.w3.org/2000/svg">${source}</svg>`;
+
+  const svgRoot = admit_public_livetree_branch(
+    parse_svg_fragment_to_hson(wrapped, parserForTree()), `LiveTree.create.${expectedTag}`);
+  qualify_exact_hson_graph(svgRoot, `LiveTree.create.${expectedTag}`, "branch", true);
+  let node = svgRoot;
+  if (expectedTag !== "svg") {
+    const relationship = svgRoot.$_content[0];
+    if (svgRoot.$_tag !== "svg" || svgRoot.$_content.length !== 1 || !is_Node(relationship)
+      || relationship.$_tag !== ELEM_TAG || relationship.$_content.length !== 1
+      || !is_Node(relationship.$_content[0])) {
+      throw new Error(`[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`);
+    }
+    node = relationship.$_content[0];
+  }
+  if (node.$_tag !== expectedTag) {
+    throw new Error(`[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`);
+  }
+
+  return node;
 }

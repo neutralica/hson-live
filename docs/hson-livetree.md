@@ -61,13 +61,30 @@ const hsonBranch = hson.liveTree.fromHson('<card "Text"/>');
 const existing = hson.liveTree.fromNode(node);
 ```
 
-These constructors do not mutate the document. The constructor unwraps an `_hson_root` only when its sole child is an `_hson_elem`; JSON/object/array sources can intentionally remain rooted at `_hson_root`.
+These constructors do not mutate the document. Public sources must supply one
+named branch. A ROOT/ELEM source carrier is qualified in full before its sole
+branch is selected; additional branches or meaningful text reject. A complete
+JSON data object or array is not a standalone named LiveTree branch.
 
-`fromNode` uses the supplied graph rather than cloning it. Use
-`cloneBranch()` when a deep detached copy with fresh QUIDs is required.
-Public `fromNode` rejects generated QUID metadata, including QUIDs in a
-`toNode()` result from an active tree. Use it for QUID-free graph construction;
-same-runtime exact capture has a separate internal path.
+`fromNode` and public `new LiveTree(rawNode)` capture exact own data descriptors,
+qualify the receiving branch role, and establish a private mutable graph.
+`tree.node !== rawNode`: the caller's input is neither mutated nor frozen, and
+later caller changes cannot change the tree. Runtime-issued QUIDs belong to the
+private owned graph. Empty named branches and correctly related object/array-mode
+branches remain supported; malformed wrappers, optional bags and physical array
+order reject without normalization. Runtime ordinary attributes retain finite
+primitive values, and lawful style storage retains its field presence.
+
+Public node construction rejects generated QUID claims, including claims in an
+active tree's `toNode()` observation. Public HTML/SVG markup creation also uses
+public-source identity admission before ownership; selecting a destination tree
+does not authorize imported identity. SVG fragments must contain exactly the
+expected branch, without discarded siblings or text.
+
+Existing LiveTree handles and internally proven linked, Mirror, LiveMap and
+continuation handoffs retain their graph references and identity authority.
+Graft/adoption remains non-destructive and preserves existing DOM objects; the
+public raw-input private-copy rule does not apply to that boundary.
 
 ### Grafted DOM
 

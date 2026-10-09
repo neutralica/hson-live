@@ -89,11 +89,30 @@ hson.liveTree.create
 
 Use `queryDom`, not `queryDOM`.
 
-The `from*` facade unwraps `_hson_root` only when its sole child is an
-`_hson_elem`. JSON/object/array inputs may therefore return a LiveTree whose
-current node is `_hson_root`. `fromNode` retains the supplied node graph; it
-does not clone it. Public node construction rejects generated QUID metadata,
-including metadata on a graph returned by an active tree's `toNode()`.
+Public `from*` source selection requires one named branch. A ROOT/ELEM carrier
+is qualified in full before extracting its sole branch; empty carriers, extra
+branches and meaningful sibling text reject. Public raw `new LiveTree(node)`
+expects a named branch directly; `fromNode` additionally supports that qualified
+single-branch source carrier.
+
+Public raw input is descriptor-captured into a private mutable owned graph.
+`tree.node !== input`; construction does not mutate or freeze caller input, and
+later caller changes do not affect the tree. Valid named element branches and
+object/array-mode branches retain their contextual relationships. Invalid raw
+storage rejects before normalization or identity registration. Public supplied
+QUID claims reject, including metadata in an active tree's `toNode()` result.
+New local identity is issued on the admitted owned graph.
+
+Existing handles and internally proven ownership handoffs retain references
+and identity continuity. This includes linked/Mirror/LiveMap/continuation paths
+and non-destructive managed DOM graft/adoption.
+
+Public `create.p(markup)`, SVG helpers and detached markup helpers parse and
+qualify their source before constructing identity-bearing branches. Authored
+markup has no authority to import generated QUIDs. A matching single root is
+required, and SVG fragment selection does not discard meaningful siblings or
+text. Trusted markup remains trusted; untrusted facade sources retain the
+existing sanitizer. These rules do not imply full HTML/XML transport closure.
 
 A direct HTML or SVG `Element` is the source root, not an `innerHTML` snapshot.
 Its attributes, metadata, and descendants enter the graph. `queryDom` and
