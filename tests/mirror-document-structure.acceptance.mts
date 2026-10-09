@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -35,11 +36,11 @@ function check(name: string, run: () => void): void {
 check("insert projects a Schema-valid child and routes its linked attributes", () => {
   const page = element(`<main <a title="first"/>/>`);
   const binding = hsonMirror(page);
-  const dom = mount(binding.tree.node);
+  const dom = mount(retained_subject(binding.tree));
   page.document.content.insert(path(0), 1, projected_element(`<a title="second"/>`));
-  const inserted = raw_node(binding.tree.node, [0, 1]);
+  const inserted = raw_node(retained_subject(binding.tree), [0, 1]);
   assert.equal((dom.childNodes[1] as FakeElement).tagName, "a");
-  create_livetree(inserted).adoptRoots(binding.tree.hostRootNode()).attrs.set("bound", "yes");
+  create_livetree(inserted).adoptRoots(retained_historic_root(binding.tree)).attrs.set("bound", "yes");
   assert.equal(page.document.attrs.get(path(0, 1), "bound"), "yes");
   assert.equal(binding.sourceRevision, 2);
   binding.dispose();
@@ -48,10 +49,10 @@ check("insert projects a Schema-valid child and routes its linked attributes", (
 check("remove reindexes surviving projected correspondence", () => {
   const page = element(`<main <a title="first"/> <a title="second"/>/>`);
   const binding = hsonMirror(page);
-  const shifted = raw_node(binding.tree.node, [0, 1]);
+  const shifted = raw_node(retained_subject(binding.tree), [0, 1]);
   page.document.content.remove(path(0), 0);
-  assert.equal(raw_node(binding.tree.node, [0, 0]), shifted);
-  create_livetree(shifted).adoptRoots(binding.tree.hostRootNode()).attrs.set("after", true);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), shifted);
+  create_livetree(shifted).adoptRoots(retained_historic_root(binding.tree)).attrs.set("after", true);
   assert.equal(page.document.attrs.get(path(0, 0), "after"), true);
   binding.dispose();
 });
@@ -59,23 +60,23 @@ check("remove reindexes surviving projected correspondence", () => {
 check("moves preserve the projected node and mounted DOM", () => {
   const page = element(`<main <a title="first"/> <a title="second"/>/>`);
   const binding = hsonMirror(page);
-  mount(binding.tree.node);
-  const moved = raw_node(binding.tree.node, [0, 0]);
+  mount(retained_subject(binding.tree));
+  const moved = raw_node(retained_subject(binding.tree), [0, 0]);
   const dom = get_el_for_node(moved);
   page.document.content.move(path(0), 0, 1);
-  assert.equal(raw_node(binding.tree.node, [0, 1]), moved);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 1]), moved);
   assert.equal(get_el_for_node(moved), dom);
   page.document.content.move(path(0), 1, 0);
-  assert.equal(raw_node(binding.tree.node, [0, 0]), moved);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), moved);
   binding.dispose();
 });
 
 check("compatible replacement lineage retains the exact projected root", () => {
   const page = element(`<main <a @000000408 title="old"/>/>`);
   const binding = hsonMirror(page);
-  const original = raw_node(binding.tree.node, [0, 0]);
+  const original = raw_node(retained_subject(binding.tree), [0, 0]);
   page.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
-  assert.equal(raw_node(binding.tree.node, [0, 0]), original);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), original);
   assert.equal(original.$_attrs?.title, "new");
   binding.dispose();
 });
@@ -88,7 +89,7 @@ check("one registry aggregate stages structural and attribute operations togethe
     { domain: "graph", op: "set-attr", target: path(0, 1), name: "mixed", value: 1 },
     { domain: "graph", op: "move-content", target: path(0), from: 1, to: 0 },
   ]);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.mixed, 1);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_attrs?.mixed, 1);
   assert.equal(binding.sourceRevision, 1);
   assert.equal(binding.diagnostics().updatesApplied, 1);
   binding.dispose();
@@ -107,7 +108,7 @@ check("foreign generated QUID insertion rejects before projection", () => {
 check("bound structural mutation is rejected until Mirror disposal", () => {
   const page = element(`<main <a/>/>`);
   const binding = hsonMirror(page);
-  const root = create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode());
+  const root = create_livetree(raw_node(retained_subject(binding.tree), [])).adoptRoots(retained_historic_root(binding.tree));
   assert.throws(() => root.detachContents(), (error) => error instanceof DocumentMirrorError && error.code === DOCUMENT_MIRROR_UNSUPPORTED_OPERATION_ERROR_CODE);
   binding.dispose();
   root.detachContents();
@@ -116,7 +117,7 @@ check("bound structural mutation is rejected until Mirror disposal", () => {
 check("DOM application failure leaves the accepted registry commit intact", () => {
   const page = element(`<main <a/>/>`);
   const binding = hsonMirror(page);
-  const dom = mount(binding.tree.node);
+  const dom = mount(retained_subject(binding.tree));
   dom.failReplace = true;
   const commit = page.document.content.insert(path(0), 1, projected_element(`<a/>`));
   assert.equal(commit.changed, true);
@@ -131,7 +132,7 @@ check("registry snapshot restore rebuilds the reflected document", () => {
   const binding = hsonMirror(page);
   const replacement = element(`<main <a title="new"/>/>`);
   registry_for_document_library(page).restore(registry_for_document_library(replacement).capture());
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.title, "new");
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_attrs?.title, "new");
   assert.equal(binding.status, "active");
   binding.dispose();
 });

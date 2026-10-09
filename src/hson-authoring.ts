@@ -179,7 +179,7 @@ export const Hson = Object.freeze({
 
 export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchema, HsonFromSchema, JsonFromSchema } from "./api/transform/transform.types.js";
 export type {
-  BasicValue, HsonAttrs, HsonMeta, HsonNode, HsonSemanticPrimitive, JsonValue, NodeContent, Primitive,
+  BasicValue, HsonAttrs, HsonMeta, HsonNode, ReadonlyHsonNode, HsonSemanticPrimitive, JsonValue, NodeContent, Primitive,
 } from "./core/types.js";
 export { TransformError, is_transform_error, read_transform_error_details } from "./core/errors.js";
 export type { TransformErrorDetails, TransformErrorRelated, TransformErrorSource } from "./core/errors.js";

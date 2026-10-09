@@ -41,6 +41,7 @@ import {
 } from "../../internal/interaction-storage.js";
 import {
   observe_livetree_realizations_internal,
+  active_subject_for_tree,
 } from "../livetree/runtime/livetree-runtime.js";
 
 import { interaction_schema_internal } from "./interactions.projection.js";
@@ -192,7 +193,7 @@ export function activate_interactions(options: InteractionActivationOptions): ()
           catch { subject = undefined; }
           const fingerprint = descriptor === undefined ? undefined : descriptor_fingerprint(descriptor);
           if (descriptor === undefined || subject === undefined
-            || subject.node !== record.node || fingerprint !== record.fingerprint) {
+            || active_subject_for_tree(subject) !== record.node || fingerprint !== record.fingerprint) {
             record.sub.off();
             records.delete(id);
           }
@@ -279,7 +280,7 @@ export function activate_interactions(options: InteractionActivationOptions): ()
             }
             records.set(descriptor.id, Object.freeze({
               fingerprint: descriptor_fingerprint(descriptor),
-              node: subject.node,
+              node: active_subject_for_tree(subject),
               subject,
               sub,
               state,
@@ -350,9 +351,9 @@ function resolve_local_subject(activation: ActivationSnapshot, descriptor: Inter
   if (descriptor.subject.library !== activation.document) return undefined;
   const path = validate_document_path(descriptor.subject.path);
   let node;
-  const root = activation.tree.node.$_tag === ROOT_TAG
-    ? activation.tree.node
-    : { $_tag: ROOT_TAG, $_content: [activation.tree.node] };
+  const root = active_subject_for_tree(activation.tree).$_tag === ROOT_TAG
+    ? active_subject_for_tree(activation.tree)
+    : { $_tag: ROOT_TAG, $_content: [active_subject_for_tree(activation.tree)] };
   try { node = resolve_document_path(root, "document", path); }
   catch { return undefined; }
   return is_Node(node) ? wrap_in_tree(activation.tree, node) : undefined;

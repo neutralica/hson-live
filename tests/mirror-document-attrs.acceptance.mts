@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
@@ -111,14 +112,14 @@ function document_element(root: HsonNode): HsonNode {
 }
 
 function document_element_tree(binding: ReturnType<typeof hsonMirror>) {
-  return create_livetree(document_element(binding.tree.node)).adoptRoots(binding.tree.hostRootNode());
+  return create_livetree(document_element(retained_subject(binding.tree))).adoptRoots(retained_historic_root(binding.tree));
 }
 
 check("initial binding owns a detached graph and indexes raw canonical paths", () => {
   const map = element(`<main id="root" @000000301 <section @000000302 <span/>/>/>`);
   const canonicalRead = map.root();
   const binding = hsonMirror(map);
-  assert.notEqual(binding.tree.node, canonicalRead);
+  assert.notEqual(retained_subject(binding.tree), canonicalRead);
   assert.deepEqual(binding.tree.node, canonicalRead);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, map.rev);
@@ -130,9 +131,9 @@ check("canonical attrs project by path into graph and mounted DOM", () => {
   const map = element(`<main id="root" @000000303 <section @000000304 <span/>/>/>`);
   const binding = hsonMirror(map);
   const mainTree = document_element_tree(binding);
-  const rootDom = mount(mainTree.node);
-  const sectionNode = raw_node(binding.tree.node, [0, 0, 0]);
-  const spanNode = raw_node(binding.tree.node, [0, 0, 0, 0, 0]);
+  const rootDom = mount(retained_subject(mainTree));
+  const sectionNode = raw_node(retained_subject(binding.tree), [0, 0, 0]);
+  const spanNode = raw_node(retained_subject(binding.tree), [0, 0, 0, 0, 0]);
   const sectionDom = mount(sectionNode);
   const spanDom = mount(spanNode);
 
@@ -149,7 +150,7 @@ check("canonical attrs project by path into graph and mounted DOM", () => {
   assert.equal(spanDom.getAttribute("nullable"), null);
   assert.equal(binding.sourceRevision, map.rev);
   assert.equal(binding.diagnostics().updatesApplied, 3);
-  const spanTree = create_livetree(spanNode).adoptRoots(binding.tree.hostRootNode());
+  const spanTree = create_livetree(spanNode).adoptRoots(retained_historic_root(binding.tree));
   spanTree.attrs.set("delegated", "by-path");
   assert.equal(map.document.attrs.get(path(0, 0, 0, 0), "delegated"), "by-path");
   assert.equal(spanDom.getAttribute("delegated"), "by-path");
@@ -160,7 +161,7 @@ check("bound attrs and convenience managers delegate without feedback", () => {
   const map = element(`<main @000000305/>`);
   const binding = hsonMirror(map);
   const mainTree = document_element_tree(binding);
-  const dom = mount(mainTree.node);
+  const dom = mount(retained_subject(mainTree));
   const observations: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => observations.push(event));
 
@@ -224,13 +225,13 @@ check("bound style edits preserve unrelated structured canonical declarations", 
 check("multi-operation attrs replay is one projection transaction", () => {
   const map = element(`<main @000000306/>`);
   const binding = hsonMirror(map);
-  mount(document_element(binding.tree.node));
+  mount(document_element(retained_subject(binding.tree)));
   commit_document_operations(map, [
       { domain: "graph", op: "set-attr", target: path(), name: "a", value: 1 },
       { domain: "graph", op: "set-attr", target: path(), name: "b", value: 2 },
   ]);
   assert.equal(map.rev, 1);
-  assert.deepEqual(document_element(binding.tree.node).$_attrs, { a: 1, b: 2 });
+  assert.deepEqual(document_element(retained_subject(binding.tree)).$_attrs, { a: 1, b: 2 });
   assert.equal(binding.diagnostics().updatesApplied, 1);
   binding.dispose();
 });
@@ -244,7 +245,7 @@ check("new-epoch root replacement reconstructs and remains canonically delegated
   assert.equal(document_element(map.root()).$_tag, "main");
   assert.notEqual(binding.tree, before);
   assert.equal(before.isDisposed, true);
-  assert.equal(document_element(binding.tree.node).$_tag, "main");
+  assert.equal(document_element(retained_subject(binding.tree)).$_tag, "main");
   assert.equal(binding.status, "active");
   const articleTree = document_element_tree(binding);
   articleTree.attrs.set("id", "delegated");
@@ -257,7 +258,7 @@ check("new-epoch root replacement reconstructs and remains canonically delegated
 check("projection failure is isolated from the committed map mutation", () => {
   const map = element(`<main @000000308/>`);
   const binding = hsonMirror(map);
-  const dom = mount(document_element(binding.tree.node));
+  const dom = mount(document_element(retained_subject(binding.tree)));
   dom.failOn = "boom";
   const commit = map.document.attrs.set(path(), "boom", "canonical");
   assert.equal(commit.changed, true);
@@ -271,7 +272,7 @@ check("projection failure is isolated from the committed map mutation", () => {
 check("a previously mounted node losing its DOM mapping fails closed", () => {
   const map = element(`<main @000000312/>`);
   const binding = hsonMirror(map);
-  const mainNode = document_element(binding.tree.node);
+  const mainNode = document_element(retained_subject(binding.tree));
   mount(mainNode);
   map.document.attrs.set(path(), "first", "projected");
   unlinkNode(mainNode);
@@ -285,7 +286,7 @@ check("a previously mounted node losing its DOM mapping fails closed", () => {
 check("projected path and persisted-QUID divergence fail closed", () => {
   const quidMap = element(`<main @000000313/>`);
   const quidBinding = hsonMirror(quidMap);
-  const quidMain = document_element(quidBinding.tree.node);
+  const quidMain = document_element(retained_subject(quidBinding.tree));
   if (quidMain.$_meta === undefined) throw new Error("Expected projected metadata");
   quidMain.$_meta["quid"] = "000000314";
   quidMap.document.attrs.set(path(), "canonical", "retained");
@@ -295,7 +296,7 @@ check("projected path and persisted-QUID divergence fail closed", () => {
 
   const pathMap = element(`<main @000000315 <span/>/>`);
   const pathBinding = hsonMirror(pathMap);
-  document_element(pathBinding.tree.node).$_content.length = 0;
+  document_element(retained_subject(pathBinding.tree)).$_content.length = 0;
   pathMap.document.attrs.set(path(0, 0), "canonical", "retained");
   assert.equal(pathBinding.status, "failed");
   assert.equal(pathBinding.failure?.code, DOCUMENT_MIRROR_TARGET_MISSING_ERROR_CODE);
@@ -306,7 +307,7 @@ check("cardinality and disposal preserve authority boundaries", () => {
   const map = element(`<main @000000309/>`);
   const binding = hsonMirror(map);
   const mainTree = document_element_tree(binding);
-  const dom = mount(mainTree.node);
+  const dom = mount(retained_subject(mainTree));
   assert.throws(
     () => hsonMirror(map),
     (cause) => cause instanceof DocumentMirrorError

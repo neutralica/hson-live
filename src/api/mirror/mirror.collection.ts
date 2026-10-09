@@ -4,7 +4,10 @@ import { append_branches_atomic } from "../livetree/methods/appends.js";
 import { record_livetree_materialization } from "../livetree/debug/materialization-profile.js";
 import { parent_for_node } from "../livetree/lifecycle/graph-ownership.js";
 import { own_disposable_for_subject } from "../livetree/managers/lifecycle-registry.js";
-import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
+import {
+  runtime_for_tree,
+  active_subject_for_tree,
+} from "../livetree/runtime/livetree-runtime.js";
 import { get_el_for_node } from "../livetree/utils/node-map-helpers.js";
 import { path_is_prefix, paths_equal, relative_live_path } from "../livemap/livemap.path.js";
 import type {
@@ -297,7 +300,7 @@ class CollectionMirroror<TItem extends JsonValue> {
     const oldByKey = this.recordsByKey;
     const staged: CollectionMirrorRecord<TItem>[] = [];
     const nextRecords: CollectionMirrorRecord<TItem>[] = [];
-    const usedTrees = new Set(this.records.map((record) => record.tree.node));
+    const usedTrees = new Set(this.records.map((record) => active_subject_for_tree(record.tree)));
 
     const renderStarted = materialization_now();
     try {
@@ -308,7 +311,7 @@ class CollectionMirroror<TItem extends JsonValue> {
           continue;
         }
         const record = this.createRecord(item, usedTrees);
-        usedTrees.add(record.tree.node);
+        usedTrees.add(active_subject_for_tree(record.tree));
         staged.push(record);
         nextRecords.push(record);
       }
@@ -453,7 +456,7 @@ class CollectionMirroror<TItem extends JsonValue> {
       return record;
     } catch (error) {
       owner.disposeUnattached();
-      if (!tree.isDisposed && parent_for_node(tree.node) === undefined) tree.remove();
+      if (!tree.isDisposed && parent_for_node(active_subject_for_tree(tree)) === undefined) tree.remove();
       throw error;
     }
   }
@@ -465,7 +468,7 @@ class CollectionMirroror<TItem extends JsonValue> {
         "Projection renderer must return one active LiveTree branch.",
       );
     }
-    const node = tree.node;
+    const node = active_subject_for_tree(tree);
     if (usedTrees.has(node)) {
       throw new CollectionMirrorError(
         COLLECTION_MIRROR_MAPPING_CONFLICT_ERROR_CODE,
@@ -731,7 +734,7 @@ function makeRendererOwner(): RendererOwner {
     resources.add(resource);
     if (attachedTree !== undefined) {
       resource.off = own_disposable_for_subject(
-        attachedTree.node,
+        active_subject_for_tree(attachedTree),
         resource.run,
         "other",
         runtime_for_tree(attachedTree),
@@ -749,7 +752,7 @@ function makeRendererOwner(): RendererOwner {
       attachedTree = tree;
       for (const resource of resources) {
         resource.off = own_disposable_for_subject(
-          tree.node,
+          active_subject_for_tree(tree),
           resource.run,
           "other",
           runtime_for_tree(tree),

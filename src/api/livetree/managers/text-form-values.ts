@@ -19,7 +19,11 @@ import {
 import { release_node_parent, release_subtree_ownership } from "../lifecycle/graph-ownership.js";
 import { dispose_node_deep } from "../utils/dispose-node.js";
 import { reconcile_browser_realization_children } from "../../../internal/browser-realization/browser-realization-dom.js";
-import { default_livetree_runtime, runtime_for_node } from "../runtime/livetree-runtime.js";
+import {
+  default_livetree_runtime,
+  runtime_for_node,
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 
 /**
  * Options for form state writers that mirror to the DOM when available.
@@ -332,29 +336,29 @@ export function make_form_api<TTree extends LiveTree>(
 ): LiveFormApi<TTree> {
     return {
         setValue: (value, opts) => {
-            set_form_value(tree.node, value, opts);
+            set_form_value(active_subject_for_tree(tree), value, opts);
             return tree;
         },
 
         getValue: () => {
-            return get_form_value(tree.node);
+            return get_form_value(active_subject_for_tree(tree));
         },
 
         getChecked: () => {
-            return get_input_checked(tree.node);
+            return get_input_checked(active_subject_for_tree(tree));
         },
 
         setChecked: (value, opts) => {
-            set_input_checked(tree.node, value, opts);
+            set_input_checked(active_subject_for_tree(tree), value, opts);
             return tree;
         },
 
         getSelected: () => {
-            return get_input_selected(tree.node);
+            return get_input_selected(active_subject_for_tree(tree));
         },
 
         setSelected: (value, opts) => {
-            set_input_selected(tree.node, value, opts);
+            set_input_selected(active_subject_for_tree(tree), value, opts);
             return tree;
         },
     };
@@ -487,23 +491,23 @@ export function make_text_api<TTree extends LiveTree>(
 ): LiveTextApi<TTree> {
     return {
         set: (value) => {
-            set_node_text_content(tree.node, value);
+            set_node_text_content(active_subject_for_tree(tree), value);
             return tree;
         },
         add: (value) => {
-            add_node_text_content(tree.node, value);
+            add_node_text_content(active_subject_for_tree(tree), value);
             return tree;
         },
         overwrite: (value) => {
-            overwrite_node_text_content(tree.node, value);
+            overwrite_node_text_content(active_subject_for_tree(tree), value);
             return tree;
         },
         insert: (ix, value) => {
-            insert_node_text_leaf(tree.node, ix, value);
+            insert_node_text_leaf(active_subject_for_tree(tree), ix, value);
             return tree;
         },
         get: () => {
-            return get_node_text_content(tree.node);
+            return get_node_text_content(active_subject_for_tree(tree));
         },
     };
 }

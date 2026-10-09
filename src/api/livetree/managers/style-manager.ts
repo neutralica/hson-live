@@ -1,3 +1,6 @@
+import {
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 // style-manager.ts
 
 import { HsonAttrs, HsonNode, type CanonicalPublicAttrs } from "../../../core/types.js";
@@ -388,8 +391,8 @@ export class StyleManager<TTree extends LiveTree> {
         });
         // getter reads from the node’s style attr (internal truth)
         const getterAdapters = {
-            read: (propCanon: string) => readStyleFromNode(this.tree.node, propCanon),
-            readMany: () => readAllStyleFromNode(this.tree.node),
+            read: (propCanon: string) => readStyleFromNode(active_subject_for_tree(this.tree), propCanon),
+            readMany: () => readAllStyleFromNode(active_subject_for_tree(this.tree)),
         };
 
         this.getter = make_style_getter(getterAdapters);
@@ -400,7 +403,7 @@ export class StyleManager<TTree extends LiveTree> {
             // CHANGED: `.var.value()` should not route through the public `get`
             // surface. `get.var()` is being removed; this reads the inline-style
             // backend directly.
-            (name) => readStyleFromNode(this.tree.node, name),
+            (name) => readStyleFromNode(active_subject_for_tree(this.tree), name),
         );
     }
 
@@ -432,7 +435,7 @@ export class StyleManager<TTree extends LiveTree> {
 
         const val = value == null ? "" : String(value);
 
-        const binding = document_binding_for_node(this.tree.node);
+        const binding = document_binding_for_node(active_subject_for_tree(this.tree));
         if (binding !== undefined) {
             const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
             binding.delegateAttrs({
@@ -452,7 +455,7 @@ export class StyleManager<TTree extends LiveTree> {
             return this.tree;
         }
 
-        applyStyleToNode(this.tree.node, kebab, val);
+        applyStyleToNode(active_subject_for_tree(this.tree), kebab, val);
         return this.tree;
     }
 
@@ -477,7 +480,7 @@ export class StyleManager<TTree extends LiveTree> {
             ? propertyName
             : camel_to_kebab(propertyName);
 
-        const binding = document_binding_for_node(this.tree.node);
+        const binding = document_binding_for_node(active_subject_for_tree(this.tree));
         if (binding !== undefined) {
             const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
             binding.delegateAttrs({
@@ -496,7 +499,7 @@ export class StyleManager<TTree extends LiveTree> {
             return this.tree;
         }
 
-        removeStyleFromNode(this.tree.node, kebab);
+        removeStyleFromNode(active_subject_for_tree(this.tree), kebab);
         return this.tree;
     }
 
@@ -520,7 +523,7 @@ export class StyleManager<TTree extends LiveTree> {
      * is a no-op.
      */
     private clearAll(): void {
-        const node = this.tree.node;
+        const node = active_subject_for_tree(this.tree);
         if (document_binding_for_node(node) !== undefined) {
             this.tree.attrs.drop("style");
             return;

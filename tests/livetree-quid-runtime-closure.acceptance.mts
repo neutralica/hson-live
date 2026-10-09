@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -72,9 +73,9 @@ function reflectedSubject(
   runtime: ReturnType<typeof _create_livetree_runtime_test_handle>,
   binding: ReturnType<typeof _reflect_document_for_runtime_test>,
 ) {
-  const subject = binding.tree.node.$_content[0];
+  const subject = retained_subject(binding.tree).$_content[0];
   if (subject === undefined || subject === null || typeof subject !== "object") throw new Error("Expected authored document root");
-  return _create_livetree_for_runtime_test(runtime, subject).adoptRoots(binding.tree.hostRootNode());
+  return _create_livetree_for_runtime_test(runtime, subject).adoptRoots(retained_historic_root(binding.tree));
 }
 
 check("projection writes active QUID metadata to DOM", () => {
@@ -102,7 +103,7 @@ check("find.byQuid resolves an active descendant", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const child = node("span", Q2);
   const root = _create_livetree_for_runtime_test(runtime, node("main", Q1, [child]));
-  assert.equal(root.find.byQuid(Q2)?.node, child);
+  assert.equal(retained_subject(root.find.byQuid(Q2)), child);
 });
 
 check("find.byQuid becomes absent after descendant removal", () => {
@@ -214,7 +215,7 @@ check("detach retains the same active registry claim", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const tree = _create_livetree_for_runtime_test(runtime, node("main", Q1));
   tree.detach();
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), tree.node);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), retained_subject(tree));
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
 });
 

@@ -1,3 +1,6 @@
+import {
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 // content-manager.ts
 
 import { ELEM_OBJ, EVERY_VSN, LEAF_NODES } from "../../../core/constants.js";
@@ -74,7 +77,7 @@ export class LiveTreeContentManager implements ContentManager {
 
   /** Return the raw `$_content` array with no VSN unwrapping or filtering. */
   private pure_nodes(): readonly ContentItem[] {
-    const n = this.owner.node as HsonNode;
+    const n = active_subject_for_tree(this.owner) as HsonNode;
     return (n.$_content ?? []) as readonly ContentItem[];
   }
 
@@ -166,7 +169,7 @@ export class LiveTreeContentManager implements ContentManager {
    * as QUID metadata.
    */
   public get markup(): ContentMarkupApi {
-    const node = this.owner.node as HsonNode;
+    const node = active_subject_for_tree(this.owner) as HsonNode;
 
     return Object.freeze({
       get innerHTML(): string {
@@ -234,7 +237,7 @@ export class LiveTreeContentManager implements ContentManager {
     if (kids.length !== 1) {
       const msg =
         `ContentManager.mustOnly(): expected 1 node-content, got ${kids.length}.\n` +
-        `(on: ${this.owner.node.$_tag})`;
+        `(on: ${active_subject_for_tree(this.owner).$_tag})`;
       if (warn) console.warn(msg);
       throw new Error(msg);
     }

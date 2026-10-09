@@ -4,7 +4,11 @@ import type { DocumentCssRuleFacade, DocumentCssRuleHandle, DocumentCssMap, Docu
 import { make_style_setter } from "./style-setter.js";
 import { is_css_declaration_value } from "../../../core/inline-style.js";
 import type { LiveTree } from "../livetree.js";
-import { runtime_for_tree, type LiveTreeRuntime } from "../runtime/livetree-runtime.js";
+import {
+  runtime_for_tree,
+  type LiveTreeRuntime,
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
 import { is_runtime_infrastructure, mark_runtime_infrastructure } from "../../../internal/browser-realization/browser-realization-dom.js";
 import { MANAGED_DOCUMENT_CSS_MARKER } from "../../../internal/browser-realization/managed-document-css.js";
@@ -23,7 +27,7 @@ export function runtime_has_document_css_binding(runtime: LiveTreeRuntime): bool
 }
 
 export function bound_document_css_for_tree(tree: LiveTree): Binding | undefined {
-  const owner = document_binding_for_node(tree.node)?.owner;
+  const owner = document_binding_for_node(active_subject_for_tree(tree))?.owner;
   return owner === undefined ? undefined : BINDINGS.get(owner);
 }
 
@@ -34,7 +38,7 @@ export function bind_document_css_tree(
   style: HTMLStyleElement | undefined,
   hosted: boolean,
 ): () => void {
-  const owner = document_binding_for_node(tree.node)?.owner;
+  const owner = document_binding_for_node(active_subject_for_tree(tree))?.owner;
   if (owner === undefined) throw new Error("Document CSS binding requires active Mirror correspondence.");
   if (BINDINGS.has(owner)) throw new Error("Mirror already has a document CSS binding.");
   const binding: Binding = { document, hosted, active: true };

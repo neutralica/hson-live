@@ -3,7 +3,7 @@
 <title>Transform trust ingress acceptance</title>
 <body>
 <script type="module">
-import { hsonLiveTree, LiveTree, default_livetree_runtime, runtime_for_tree, hson, hsonTransform, node_from_svg, SVG_NS, canonical_hson_graph_equal, detach_hson_root_value,
+import { hsonLiveTree, LiveTree, default_livetree_runtime, runtime_for_tree, runtime_for_node, subject_for_tree, historic_root_for_tree, hson, hsonTransform, node_from_svg, SVG_NS, canonical_hson_graph_equal, detach_hson_root_value,
   scalarHtmlFixtures, memberHtmlFixtures, arrayHtmlFixtures, mixedSvgFixtures, invalidHtmlFixtures, invalidSvgFixtures, svgSourceFixtures } from "./bundle.js";
 
 function same(actual, expected, label) {
@@ -263,7 +263,7 @@ try {
   }
   const first = owner.create.p('<p id="a">x<b/>y</p>');
   same(portableTree(first), { ...n('p', e(t('x'), n('b'), t('y'))), $_attrs: { id: 'a' } }, 'public HTML ordered creation');
-  assert(runtime.quidToNode.get(first.quid) === first.node, 'new local identity lookup');
+  assert(runtime.quidToNode.get(first.quid) === subject_for_tree(first), 'new local identity lookup');
   const empty = owner.create.p();
   assert(first.quid !== empty.quid, 'independent creation identity');
   const svg = owner.create.svg('<svg><g><path/></g><parsererror/></svg>');
@@ -316,7 +316,7 @@ try {
   const graftedChild = grafted.find.byTag('p');
   assert(graftedChild.dom.el() === managedChild, 'graft descendant replaced');
   const again = hsonLiveTree.queryDom('#cut4-graft').graft();
-  assert(again.node === grafted.node && again.quid === grafted.quid, 'managed graph correspondence lost');
+  assert(subject_for_tree(again) === subject_for_tree(grafted) && again.quid === grafted.quid, 'managed graph correspondence lost');
   const managedRuntime = runtime_for_tree(grafted);
   let rejectedNotifications = 0;
   const observeRejected = () => { rejectedNotifications++; };
@@ -332,10 +332,158 @@ try {
   }
   assert(rejectedNotifications === 0, 'mounted rejection notified realization');
   managedRuntime.realizationListeners.delete(observeRejected);
+  // N1: inspection copies cannot become historic-root ownership capabilities.
+  const foreignRoot = hsonLiveTree.fromNode(n('aside'), { isolated: true });
+  const genuineRoot = historic_root_for_tree(graftedChild);
+  let adoptionClicks = 0;
+  const adoptionSubscription = graftedChild.listen.onClick(() => adoptionClicks++);
+  const adoptionState = state(managedRuntime), foreignState = state(runtime_for_tree(foreignRoot));
+  const adoptionResources = [...managedRuntime.ownerDisposables].map(([node, entries]) => [node, [...entries]]);
+  const adoptionKinds = [...managedRuntime.ownerDisposableKinds].map(([node, entries]) => [node, [...entries]]);
+  const adoptionGraph = grafted.node, adoptionHtml = managed.outerHTML;
+  let adoptionNotifications = 0;
+  const adoptionListener = () => adoptionNotifications++;
+  managedRuntime.realizationListeners.add(adoptionListener);
+  try {
+    for (const root of [grafted.hostRootNode(), structuredClone(grafted.hostRootNode()),
+      foreignRoot.hostRootNode(), subject_for_tree(foreignRoot)]) {
+      rejects(() => graftedChild.adoptRoots(root), 'unproven/foreign historic root');
+      assert(historic_root_for_tree(graftedChild) === genuineRoot, 'rejected adoption replaced context');
+      same(grafted.node, adoptionGraph, 'adoption graph changed');
+      assert(JSON.stringify(state(managedRuntime)) === JSON.stringify(adoptionState), 'adoption identity changed');
+      assert(JSON.stringify(state(runtime_for_tree(foreignRoot))) === JSON.stringify(foreignState), 'foreign identity changed');
+      const resources = [...managedRuntime.ownerDisposables];
+      assert(resources.length === adoptionResources.length && resources.every(([node, entries], index) =>
+        node === adoptionResources[index][0] && [...entries].every((entry, offset) => entry === adoptionResources[index][1][offset])
+        && entries.size === adoptionResources[index][1].length), 'adoption resources changed');
+      const kinds = [...managedRuntime.ownerDisposableKinds];
+      assert(kinds.length === adoptionKinds.length && kinds.every(([node, entries], index) =>
+        node === adoptionKinds[index][0] && entries.size === adoptionKinds[index][1].length
+        && [...entries].every(([stop, kind], offset) => stop === adoptionKinds[index][1][offset][0]
+          && kind === adoptionKinds[index][1][offset][1])), 'adoption resource kinds changed');
+      assert(managed.outerHTML === adoptionHtml && grafted.dom.el() === managed
+        && graftedChild.dom.el() === managedChild, 'adoption DOM identity changed');
+    }
+    assert(adoptionNotifications === 0, 'rejected adoption published realization');
+    assert(graftedChild.adoptRoots(genuineRoot) === graftedChild, 'genuine root handoff failed');
+    managedChild.click(); assert(adoptionClicks === 1, 'rejected adoption changed listener resource');
+  } finally {
+    managedRuntime.realizationListeners.delete(adoptionListener); adoptionSubscription.off(); foreignRoot.remove();
+  }
+  grafted.attrs.set('data-n1', 'changed');
+  assert(graftedChild.hostRootNode().$_attrs['data-n1'] === 'changed', 'child historic root became stale');
+  assert(historic_root_for_tree(grafted.find.byTag('p')) === genuineRoot, 'new handle root context changed');
+  // N2: surviving active handles authenticate context after the original root retires.
+  const historicElement = document.createElement('main'); historicElement.id = 'n2-historic';
+  const survivingElement = document.createElement('span'); historicElement.append(survivingElement);
+  document.body.append(historicElement);
+  const historicParent = hsonLiveTree.queryDom('#n2-historic').graft();
+  const surviving = historicParent.find.must.byTag('span'), historicalAlias = new LiveTree(surviving);
+  const survivingSubject = subject_for_tree(surviving), retiredRoot = historic_root_for_tree(historicalAlias);
+  const historicalRuntime = runtime_for_tree(historicalAlias), retiredQuid = historicParent.quid;
+  let historicClicks = 0, inheritanceNotifications = 0;
+  const historicSubscription = historicalAlias.listen.onClick(() => historicClicks++);
+  const inheritanceListener = () => inheritanceNotifications++;
+  try {
+    surviving.detach(); historicParent.remove();
+    assert(historicParent.isDisposed && !surviving.isDisposed && !historicalAlias.isDisposed, 'N2 lifecycle transition');
+    assert(runtime_for_node(retiredRoot) === undefined && runtime_for_node(survivingSubject) === historicalRuntime, 'N2 routing transition');
+    const identityBefore = state(historicalRuntime), graphBefore = historicalAlias.node;
+    const rootBefore = historicalAlias.hostRootNode(), htmlBefore = survivingElement.outerHTML;
+    const resourcesBefore = [...historicalRuntime.ownerDisposables].map(([node, entries]) => [node, [...entries]]);
+    const kindsBefore = [...historicalRuntime.ownerDisposableKinds].map(([node, entries]) => [node, [...entries]]);
+    historicalRuntime.realizationListeners.add(inheritanceListener);
+    const laterAlias = await Promise.resolve().then(() => new LiveTree(historicalAlias));
+    assert(subject_for_tree(laterAlias) === survivingSubject && historic_root_for_tree(laterAlias) === retiredRoot, 'N2 pinned references changed');
+    assert(runtime_for_tree(laterAlias) === historicalRuntime && runtime_for_node(retiredRoot) === undefined, 'N2 revived root');
+    assert(!historicalRuntime.quidToNode.has(retiredQuid) && historicalRuntime.pendingQuidClaims.size === identityBefore.pending.length, 'N2 revived identity');
+    assert(JSON.stringify(state(historicalRuntime)) === JSON.stringify(identityBefore), 'N2 claims or ledger changed');
+    same(laterAlias.node, graphBefore, 'N2 subject observation'); same(laterAlias.hostRootNode(), rootBefore, 'N2 historic observation');
+    for (const [node, entries] of resourcesBefore) {
+      const current = historicalRuntime.ownerDisposables.get(node);
+      assert(current?.size === entries.length && [...current].every((stop, index) => stop === entries[index]), 'N2 resources changed');
+    }
+    for (const [node, entries] of kindsBefore) {
+      const current = historicalRuntime.ownerDisposableKinds.get(node);
+      assert(current?.size === entries.length && [...current].every(([stop, kind], index) => stop === entries[index][0] && kind === entries[index][1]), 'N2 resource kinds changed');
+    }
+    assert(historicalRuntime.ownerDisposables.size === resourcesBefore.length && historicalRuntime.ownerDisposableKinds.size === kindsBefore.length, 'N2 extra resources');
+    assert(laterAlias.dom.el() === survivingElement && survivingElement.outerHTML === htmlBefore && survivingElement.parentNode === null, 'N2 DOM correspondence changed');
+    assert(inheritanceNotifications === 0, 'N2 inheritance notified realization');
+    assert(Object.isFrozen(laterAlias.node) && Object.isFrozen(laterAlias.hostRootNode()) && laterAlias.node !== laterAlias.node && laterAlias.hostRootNode() !== laterAlias.hostRootNode(), 'N2 observation contract changed');
+    rejects(() => laterAlias.adoptRoots(rootBefore), 'N1 remains closed after inheritance');
+    assert(historic_root_for_tree(laterAlias) === retiredRoot && JSON.stringify(state(historicalRuntime)) === JSON.stringify(identityBefore), 'N1 rejection changed inherited state');
+    survivingElement.click(); assert(historicClicks === 1, 'N2 retained listener lost');
+    const descendant = laterAlias.create.em();
+    assert(historic_root_for_tree(descendant) === retiredRoot && historic_root_for_tree(laterAlias.find.must.byTag('em')) === retiredRoot, 'N2 descendant inheritance');
+    await laterAlias.async.attrs.set('data-n2', 'active');
+    assert(survivingElement.dataset.n2 === 'active', 'N2 deferred active mutation');
+    const deferred = laterAlias.async; laterAlias.remove();
+    assert(runtime_for_node(retiredRoot) === undefined && runtime_for_node(survivingSubject) === undefined, 'N2 cleanup retained routing');
+    let disposedRejected = false;
+    try { await Promise.resolve().then(() => new LiveTree(laterAlias)); } catch { disposedRejected = true; }
+    assert(disposedRejected, 'N2 disposed handle provided deferred authority');
+    disposedRejected = false;
+    try { await deferred.attrs.set('data-n2', 'disposed'); } catch { disposedRejected = true; }
+    assert(disposedRejected && survivingElement.dataset.n2 === 'active', 'N2 disposed deferred mutation changed DOM');
+    const cleanupClicks = historicClicks; survivingElement.click(); assert(historicClicks === cleanupClicks, 'N2 terminal listener cleanup');
+    assert(historic_root_for_tree(laterAlias) === retiredRoot, 'N2 historical teardown context lost');
+  } finally {
+    historicalRuntime.realizationListeners.delete(inheritanceListener); historicSubscription.off(); surviving.remove(); historicParent.remove();
+  }
   const graphInput = n('section'); const rawTree = new LiveTree(graphInput);
   graphInput.$_tag = 'caller';
   assert(rawTree.node.$_tag === 'section' && rawTree.node !== graphInput, 'browser direct raw ownership');
-  assert(new LiveTree(rawTree).node === rawTree.node, 'existing handle continuity');
+  assert(subject_for_tree(new LiveTree(rawTree)) === subject_for_tree(rawTree), 'existing handle continuity');
+  const issuedBeforeObservation = state(managedRuntime);
+  const beforeObservation = grafted.node;
+  const nextObservation = grafted.node;
+  const hostObservation = graftedChild.hostRootNode();
+  assert(beforeObservation !== nextObservation && beforeObservation !== subject_for_tree(grafted), 'observation ownership');
+  assert(hostObservation !== historic_root_for_tree(graftedChild), 'host-root isolation');
+  function verifyFrozen(root) {
+    const pending = [root]; const seen = new Set();
+    while (pending.length) {
+      const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+      assert(Object.isFrozen(value), 'nested observation is mutable');
+      for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+        if (descriptor.value && typeof descriptor.value === 'object') pending.push(descriptor.value);
+      }
+    }
+  }
+  verifyFrozen(beforeObservation); verifyFrozen(hostObservation);
+  assert(!Reflect.set(beforeObservation, '$_tag', 'changed'), 'root observation mutation succeeded');
+  assert(JSON.stringify(state(managedRuntime)) === JSON.stringify(issuedBeforeObservation), 'observation minted identity');
+  const nodeDescriptor = Object.getOwnPropertyDescriptor(LiveTree.prototype, 'node');
+  const hostDescriptor = Object.getOwnPropertyDescriptor(LiveTree.prototype, 'hostRootNode');
+  Object.defineProperty(LiveTree.prototype, 'node', { configurable: true, get() { throw new Error('internal public observation read'); } });
+  Object.defineProperty(LiveTree.prototype, 'hostRootNode', { configurable: true, value() { throw new Error('internal public historic-root read'); } });
+  let detachedBranch;
+  try {
+    grafted.attrs.set('title', 'after'); grafted.style.setMany({ color: 'navy' });
+    graftedChild.text.set('updated');
+    assert(grafted.find.byTag('p').dom.el() === managedChild, 'query correspondence with observation disabled');
+    detachedBranch = hsonLiveTree.create.aside();
+    const detachedSubject = subject_for_tree(detachedBranch);
+    grafted.append(detachedBranch);
+    assert(subject_for_tree(detachedBranch) === detachedSubject && detachedBranch.dom.el() === managed.lastElementChild, 'detached attachment identity');
+    const reused = hsonLiveTree.queryDom('#cut4-graft').graft();
+    assert(subject_for_tree(reused) === subject_for_tree(grafted) && reused.dom.el() === managed, 'managed reuse with observation disabled');
+    let clicks = 0;
+    const subscription = graftedChild.listen.onClick(() => clicks++);
+    managedChild.click(); assert(clicks === 1, 'listener resource identity');
+    subscription.off();
+  } finally {
+    Object.defineProperty(LiveTree.prototype, 'node', nodeDescriptor);
+    Object.defineProperty(LiveTree.prototype, 'hostRootNode', hostDescriptor);
+  }
+  assert(beforeObservation.$_attrs?.title === undefined && grafted.node.$_attrs.title === 'after', 'before/after observations');
+  assert(managed.firstElementChild === managedChild && grafted.dom.el() === managed, 'graft actual DOM objects changed');
+  const selected = hsonLiveTree.create.select();
+  for (const scalar of [2, false, null, 'color:red']) { selected.attrs.set('style', scalar); assert(Object.is(selected.node.$_attrs.style, scalar), 'scalar style lost'); }
+  selected.form.setSelected(['a', 'b']);
+  verifyFrozen(selected.node); assert(Object.isFrozen(selected.node.$_attrs.values), 'form array not frozen');
+  selected.remove(); detachedBranch.remove();
   rawTree.remove(); grafted.remove(); owner.remove();
 
   document.documentElement.dataset.status = "pass";

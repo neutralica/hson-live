@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -62,7 +63,7 @@ function source(rootAttrs = "", sectionAttrs = "", text = "hello"): string {
 function admitted(sourceText: string): { map: LiveMapDocumentLibrary; tree: LiveTree; root: FakeElement; section: FakeElement } {
   const map = element(sourceText);
   const tree = create_livetree_in_runtime(projected_element(sourceText), runtime);
-  const root = project_livetree(tree.node, "html", runtime, globalThis.document) as unknown as FakeElement;
+  const root = project_livetree(retained_subject(tree), "html", runtime, globalThis.document) as unknown as FakeElement;
   const section = root.childNodes[0] as FakeElement;
   return { map, tree, root, section };
 }
@@ -105,7 +106,7 @@ check("ordinary later commit uses existing Mirror projection and retains Element
   const fixture = admitted(source("", 'data-state="before"'));
   const binding = reflect_existing_document_in_runtime(fixture.map, fixture.tree, runtime);
   const beforeRevision = fixture.map.rev;
-  const sectionNode = raw_node(fixture.tree.node, [0, 0]);
+  const sectionNode = raw_node(retained_subject(fixture.tree), [0, 0]);
 
   const commit = fixture.map.document.attrs.set(path(0, 0), "data-state", "after");
   assert.equal(commit.rev, beforeRevision + 1);
@@ -116,7 +117,7 @@ check("ordinary later commit uses existing Mirror projection and retains Element
   assert.equal(raw_node(fixture.map.root(), [0, 0]).$_attrs?.["data-state"], "after");
   assert.equal(sectionNode.$_attrs?.["data-state"], "after");
   assert.equal(canonical_hson_graph_equal(
-    { $_tag: "_hson_root", $_content: [fixture.tree.node] },
+    { $_tag: "_hson_root", $_content: [retained_subject(fixture.tree)] },
     fixture.map.root(),
   ), true);
 
@@ -150,7 +151,7 @@ check("canonical content mismatch rejects without disposing the borrowed tree", 
     reflect_existing_document_in_runtime(conflicting, fixture.tree, runtime));
   assert.equal(fixture.tree.isDisposed, false);
   assert.equal(fixture.tree.dom.el(), fixture.root as unknown as Element);
-  assert.equal(document_binding_for_node(fixture.tree.node), undefined);
+  assert.equal(document_binding_for_node(retained_subject(fixture.tree)), undefined);
   fixture.tree.remove();
 });
 
@@ -219,7 +220,7 @@ check("revision change during observe activation rolls back without touching bor
   assert.deepEqual(fixture.tree.node, rootBefore);
   assert.deepEqual(fixture.section.attrs, attrsBefore);
   assert.equal(fixture.tree.isDisposed, false);
-  assert.equal(document_binding_for_node(fixture.tree.node), undefined);
+  assert.equal(document_binding_for_node(retained_subject(fixture.tree)), undefined);
   fixture.map.document.attrs.set(path(0, 0), "data-race", "before");
   const retry = reflect_existing_document_in_runtime(racing, fixture.tree, runtime);
   assert.equal(retry.sourceRevision, racing.rev);
@@ -230,12 +231,12 @@ check("revision change during observe activation rolls back without touching bor
 check("borrowed root identity epoch replacement fails closed", () => {
   const fixture = admitted(source());
   const binding = reflect_existing_document_in_runtime(fixture.map, fixture.tree, runtime);
-  const rootBefore = fixture.tree.node;
+  const rootBefore = retained_subject(fixture.tree);
   const elementBefore = fixture.root;
   registry_for_document_library(fixture.map).restore(registry_for_document_library(element(source())).capture());
   assert.equal(binding.status, "failed");
   assert.equal(binding.failure?.code, DOCUMENT_MIRROR_UNSUPPORTED_OPERATION_ERROR_CODE);
-  assert.equal(binding.tree.node, rootBefore);
+  assert.equal(retained_subject(binding.tree), rootBefore);
   assert.equal(binding.tree.isDisposed, false);
   assert.equal(binding.tree.dom.el(), elementBefore as unknown as Element);
   binding.dispose();

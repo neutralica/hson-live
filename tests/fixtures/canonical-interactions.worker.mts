@@ -1,3 +1,4 @@
+import { retained_subject } from "../helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../../src/internal/governor-maps.js";
 import { authority_definition_from_fixture_options } from "../helpers/locus-definition-fixture.mts";
 import type { LocusActionContext } from "../../src/types/locus.core.types.ts";
@@ -88,7 +89,7 @@ acquire_document_identity(page.document, { kind: "path", path: validate_document
 if (page.document.byQuid(QUID) !== undefined) throw new Error("Worker Echo inherited the Locus QUID.");
 const subject = reflection.tree.find.must.byQuid(localQ);
 const target = new EventTarget();
-link_node_to_el(subject.node, target as unknown as Element);
+link_node_to_el(retained_subject(subject), target as unknown as Element);
 const dispose = activate_interactions({
   map: replicaMap,
   tree: reflection.tree,

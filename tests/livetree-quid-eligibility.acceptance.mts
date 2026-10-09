@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -105,7 +106,7 @@ check("QUID-bearing VSNs reject read, claim, remint, reindex, drop, and clone wi
     // low-level identity and clone preflight, rather than public construction.
     assert.throws(() => new LiveTree(source));
     const tree = new LiveTree(node(`root-${index}`));
-    tree.node.$_content = [node("_hson_elem", [ordinaryBeforeInvalid, invalid])];
+    retained_subject(tree).$_content = [node("_hson_elem", [ordinaryBeforeInvalid, invalid])];
     invalid.$_meta = { [HSON_META_QUID]: q };
 
     for (const operation of [
@@ -196,7 +197,7 @@ check("clone remints every ordinary node and leaves nested VSN wrappers unquidde
   const sourceQuids = ordinarySource.map((value) => ensure_quid(value));
   for (const value of vsnSource) assert.equal(get_quid(value), undefined);
 
-  const clone = construct_exact_runtime_livetree(source).cloneBranch().node;
+  const clone = retained_subject(construct_exact_runtime_livetree(source).cloneBranch());
   const cloneNodes: HsonNode[] = [];
   const collectClone = (current: HsonNode): void => {
     cloneNodes.push(current);

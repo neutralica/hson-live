@@ -2,7 +2,10 @@
 
 import { LiveTree } from "../../livetree.js";
 import { disposable_add_for_subject, disposable_remove_for_subject } from "../lifecycle-registry.js";
-import { runtime_for_tree } from "../../runtime/livetree-runtime.js";
+import {
+  runtime_for_tree,
+  active_subject_for_tree,
+} from "../../runtime/livetree-runtime.js";
 import { CanvasApi, CanvasDisplayMatchOptions, CanvasDisplaySize, CanvasMatchFn, CanvasPoint, CanvasSize, CanvasWatchHandle } from "./canvas.types.js";
 
 export function make_canvas_api<TTree extends LiveTree>(
@@ -136,6 +139,7 @@ export function make_canvas_api<TTree extends LiveTree>(
     });
 
     observer.observe(canvas);
+    const subject = active_subject_for_tree(tree);
 
     let active = true;
 
@@ -144,11 +148,11 @@ export function make_canvas_api<TTree extends LiveTree>(
 
       active = false;
       observer.disconnect();
-      disposable_remove_for_subject(tree.node, off, runtime_for_tree(tree));
+      disposable_remove_for_subject(subject, off, runtime_for_tree(tree));
     };
 
     disposable_add_for_subject(
-      tree.node,
+      subject,
       off,
       "resize-observer",
       runtime_for_tree(tree),
@@ -237,7 +241,7 @@ export function make_canvas_api<TTree extends LiveTree>(
   };
 
   return {
-    inScope: () => tree.node.$_tag === "canvas",
+    inScope: () => active_subject_for_tree(tree).$_tag === "canvas",
 
     el,
 

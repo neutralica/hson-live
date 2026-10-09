@@ -11,6 +11,7 @@ import {
   type LiveTreeRuntime,
   with_linked_livetree_construction_runtime,
   with_livetree_construction_runtime,
+  inherit_tree_historic_root,
 } from "../runtime/livetree-runtime.js";
 
 // CHANGE: canonical creation for a standalone branch (no parent roots).
@@ -43,7 +44,7 @@ export function create_linked_livetree_in_runtime(
  *
  * Semantics:
  * - Constructs a new `LiveTree` over `node`.
- * - Copies the parent’s `hostRoot` via `adoptRoots(parent.getHostRoots())`
+ * - Inherits the parent’s pinned `hostRoot` through private registered-handle authority
  *   so the new tree participates in the same “document root” context
  *   (for removal, grafting, etc.).
  *
@@ -57,7 +58,7 @@ export function create_linked_livetree_in_runtime(
  * @returns A `LiveTree` bound to `node` with inherited host roots.
  */
 export function wrap_in_tree(parent: LiveTree, node: HsonNode): LiveTree {
-  // CHANGE: adopt the parent’s host root context.
-  return create_livetree_in_runtime(node, runtime_for_tree(parent))
-    .adoptRoots(parent.hostRootNode());
+  const branch = create_livetree_in_runtime(node, runtime_for_tree(parent));
+  inherit_tree_historic_root(branch, parent);
+  return branch;
 }

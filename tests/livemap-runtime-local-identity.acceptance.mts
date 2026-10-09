@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -193,7 +194,7 @@ check("local Mirror demand installs one QUID in map, LiveTree, and DOM", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main <a/> <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  mount(binding.tree.node);
+  mount(retained_subject(binding.tree));
   let commits = 0;
   map.commits.observe((event) => { if (event.kind === "commit") commits += 1; });
   const tree = binding.tree.find.byTag("a")!;
@@ -203,7 +204,7 @@ check("local Mirror demand installs one QUID in map, LiveTree, and DOM", () => {
   assert.equal(map.rev, 0);
   assert.equal(commits, 0);
   assert.equal(map.document.byQuid(quid)?.$_tag, "a");
-  assert.equal(get_el_for_node(tree.node)?.getAttribute("hson:quid"), quid);
+  assert.equal(get_el_for_node(retained_subject(tree))?.getAttribute("hson:quid"), quid);
   map.document.content.move(path(0), 0, 1);
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "active");

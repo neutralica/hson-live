@@ -12,7 +12,12 @@ import { decode_public_svg_source, standalone_svg_source } from "../../../transf
 import { node_from_svg } from "../../../transform/utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../../core/node-guards.js";
 import { create_livetree_in_runtime } from "../../creation/create-livetree.js";
-import { runtime_for_tree } from "../../runtime/livetree-runtime.js";
+import {
+  runtime_for_tree,
+  active_subject_for_tree,
+  inherit_tree_historic_root,
+  subject_for_tree,
+} from "../../runtime/livetree-runtime.js";
 import { make_tree_selector } from "../../creation/make-tree-selector.js";
 import { LiveTree } from "../../livetree.js";
 import { TreeSelector } from "../../creation/tree-selector.js";
@@ -64,7 +69,7 @@ export function assert_valid_tag_name(name: unknown, ctx?: string): asserts name
 export function inferCreateNs(tree: LiveTree, tag: string): CreateNs {
   if (is_svg_context_tag(tag)) return "svg";
 
-  const ownTag = tree.node.$_tag; // or however you access canonical tag
+  const ownTag = active_subject_for_tree(tree).$_tag; // or however you access canonical tag
   if (typeof ownTag === "string" && is_svg_context_tag(ownTag)) return "svg";
 
   return "html";
@@ -129,14 +134,15 @@ export function make_create_core(tree: LiveTree): CreateCore {
     } catch (cause) {
       // A branch that never entered the destination graph is still exclusively
       // owned by this factory and cannot be returned to the caller.
-      if (parent_for_node(branch.node) === undefined) {
-        dispose_node_deep(branch.node, runtime_for_tree(branch));
-        release_subtree_ownership(branch.node);
+      const subject = subject_for_tree(branch);
+      if (parent_for_node(subject) === undefined) {
+        dispose_node_deep(subject, runtime_for_tree(branch));
+        release_subtree_ownership(subject);
       }
       throw cause;
     }
 
-    branch.adoptRoots(tree.hostRootNode());
+    inherit_tree_historic_root(branch, tree);
     return branch;
   };
 

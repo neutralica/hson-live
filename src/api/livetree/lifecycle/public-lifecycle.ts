@@ -25,12 +25,13 @@ import {
 import {
   runtime_for_tree,
   type LiveTreeRuntime,
+  active_subject_for_tree,
 } from "../runtime/livetree-runtime.js";
 
 type LifecycleTree = Pick<LiveTree, "node">;
 
 export function empty_livetree_contents<TTree extends LifecycleTree>(tree: TTree): TTree {
-  const owner = tree.node;
+  const owner = active_subject_for_tree(tree);
   if (delegate_document_empty_if_bound(owner)) return tree;
   const roots = owner.$_content.filter(is_Node);
 
@@ -48,7 +49,7 @@ export function empty_livetree_contents<TTree extends LifecycleTree>(tree: TTree
 }
 
 export function detach_livetree_contents<TTree extends LifecycleTree>(tree: TTree): DetachedLiveContent {
-  const owner = tree.node;
+  const owner = active_subject_for_tree(tree);
   assert_document_structural_mutation_allowed(owner, "detach contents");
   const content = [...owner.$_content];
   const roots = content.filter(is_Node);
@@ -64,7 +65,7 @@ export function detach_livetree_contents<TTree extends LifecycleTree>(tree: TTre
 }
 
 export function detach_livetree(tree: LiveTree): LiveTreeLifecycleResult {
-  const node = tree.node;
+  const node = active_subject_for_tree(tree);
   assert_document_structural_mutation_allowed(node, "detach branch");
   assert_not_browser_owned_root(node, "detach");
 

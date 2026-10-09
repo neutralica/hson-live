@@ -1,5 +1,5 @@
 import { ELEM_TAG, HSON_SYS_PREFIX, OBJ_TAG, ROOT_TAG } from "./constants.js";
-import type { HsonNode } from "./types.js";
+import type { ReadonlyHsonNode } from "./types.js";
 
 export type CanonicalHsonDifferenceKind =
   | "array-index-difference"
@@ -55,7 +55,7 @@ function is_record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function is_node_record(value: unknown): value is HsonNode {
+function is_node_record(value: unknown): value is ReadonlyHsonNode {
   return is_record(value)
     && typeof value.$_tag === "string"
     && Array.isArray(value.$_content);
@@ -170,8 +170,8 @@ function compare_named_record(
 }
 
 function compare_node(
-  left: HsonNode,
-  right: HsonNode,
+  left: ReadonlyHsonNode,
+  right: ReadonlyHsonNode,
   path: string,
   state: ComparisonState,
 ): CanonicalHsonDifference | undefined {
@@ -271,8 +271,8 @@ function compare_value(
  * operand.
  */
 export function canonical_hson_graph_difference(
-  left: HsonNode,
-  right: HsonNode,
+  left: ReadonlyHsonNode,
+  right: ReadonlyHsonNode,
 ): CanonicalHsonDifference | undefined {
   return compare_value(left, right, "$", {
     active: new WeakMap(),
@@ -281,6 +281,6 @@ export function canonical_hson_graph_difference(
 }
 
 /** Strict canonical graph equality with no comparison-time transformation. */
-export function canonical_hson_graph_equal(left: HsonNode, right: HsonNode): boolean {
+export function canonical_hson_graph_equal(left: ReadonlyHsonNode, right: ReadonlyHsonNode): boolean {
   return canonical_hson_graph_difference(left, right) === undefined;
 }

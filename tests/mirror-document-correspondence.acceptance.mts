@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import {
@@ -72,9 +73,9 @@ const documentRuntime = _create_livetree_runtime_test_handle();
 check("insert incrementally shifts later projected correspondence", () => {
   const map = element(`<main <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
-  const shifted = raw_node(binding.tree.node, [0, 1]);
+  const shifted = raw_node(retained_subject(binding.tree), [0, 1]);
   map.document.content.insert(path(0), 0, projected_element(`<a/>`));
-  const handle = _create_livetree_for_runtime_test(runtime, shifted).adoptRoots(binding.tree.hostRootNode());
+  const handle = _create_livetree_for_runtime_test(runtime, shifted).adoptRoots(retained_historic_root(binding.tree));
   handle.attrs.set("shifted", true);
   assert.equal(map.document.attrs.get(path(0, 2), "shifted"), true);
   binding.dispose();
@@ -83,9 +84,9 @@ check("insert incrementally shifts later projected correspondence", () => {
 check("remove incrementally shifts surviving projected correspondence", () => {
   const map = element(`<main <a/> <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
-  const shifted = raw_node(binding.tree.node, [0, 2]);
+  const shifted = raw_node(retained_subject(binding.tree), [0, 2]);
   map.document.content.remove(path(0), 0);
-  const handle = _create_livetree_for_runtime_test(runtime, shifted).adoptRoots(binding.tree.hostRootNode());
+  const handle = _create_livetree_for_runtime_test(runtime, shifted).adoptRoots(retained_historic_root(binding.tree));
   handle.attrs.set("shifted", true);
   assert.equal(map.document.attrs.get(path(0, 1), "shifted"), true);
   binding.dispose();
@@ -94,11 +95,11 @@ check("remove incrementally shifts surviving projected correspondence", () => {
 check("forward move publishes the moved projected path", () => {
   const map = element(`<main <a/> <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
-  const moved = raw_node(binding.tree.node, [0, 0]);
+  const moved = raw_node(retained_subject(binding.tree), [0, 0]);
   map.document.content.move(path(0), 0, 2);
-  const handle = _create_livetree_for_runtime_test(runtime, moved).adoptRoots(binding.tree.hostRootNode());
+  const handle = _create_livetree_for_runtime_test(runtime, moved).adoptRoots(retained_historic_root(binding.tree));
   handle.attrs.set("moved", "forward");
-  const finalIndex = raw_node(binding.tree.node, [0]).$_content.indexOf(moved);
+  const finalIndex = raw_node(retained_subject(binding.tree), [0]).$_content.indexOf(moved);
   assert.ok(finalIndex >= 0);
   assert.equal(map.document.attrs.get(path(0, finalIndex), "moved"), "forward");
   binding.dispose();
@@ -107,11 +108,11 @@ check("forward move publishes the moved projected path", () => {
 check("backward move publishes the moved projected path", () => {
   const map = element(`<main <a/> <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
-  const moved = raw_node(binding.tree.node, [0, 2]);
+  const moved = raw_node(retained_subject(binding.tree), [0, 2]);
   map.document.content.move(path(0), 2, 0);
-  const handle = _create_livetree_for_runtime_test(runtime, moved).adoptRoots(binding.tree.hostRootNode());
+  const handle = _create_livetree_for_runtime_test(runtime, moved).adoptRoots(retained_historic_root(binding.tree));
   handle.attrs.set("moved", "backward");
-  const finalIndex = raw_node(binding.tree.node, [0]).$_content.indexOf(moved);
+  const finalIndex = raw_node(retained_subject(binding.tree), [0]).$_content.indexOf(moved);
   assert.ok(finalIndex >= 0);
   assert.equal(map.document.attrs.get(path(0, finalIndex), "moved"), "backward");
   binding.dispose();
@@ -121,8 +122,8 @@ check("replacement publishes correspondence for the replacement subtree", () => 
   const map = element(`<main <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
   map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
-  const replacement = raw_node(binding.tree.node, [0, 0]);
-  const handle = _create_livetree_for_runtime_test(runtime, replacement).adoptRoots(binding.tree.hostRootNode());
+  const replacement = raw_node(retained_subject(binding.tree), [0, 0]);
+  const handle = _create_livetree_for_runtime_test(runtime, replacement).adoptRoots(retained_historic_root(binding.tree));
   handle.attrs.set("replacement", true);
   assert.equal(map.document.attrs.get(path(0, 0), "replacement"), true);
   binding.dispose();
@@ -131,13 +132,13 @@ check("replacement publishes correspondence for the replacement subtree", () => 
 check("staged multi-operation replay publishes only final correspondence", () => {
   const map = element(`<main <a @${Q1}/> <a @${Q2}/>/` + `>`);
   const { runtime, binding } = reflected(map);
-  const a = raw_node(binding.tree.node, [0, 0]);
+  const a = raw_node(retained_subject(binding.tree), [0, 0]);
   replay(map, [
     { domain: "graph", op: "insert-content", target: path(0), index: 1, content: projected_element(`<a/>`), },
     { domain: "graph", op: "move-content", target: path(0), from: 0, to: 2 },
     { domain: "graph", op: "set-attr", target: path(0, 2), name: "final", value: true },
   ]);
-  const handle = _create_livetree_for_runtime_test(runtime, a).adoptRoots(binding.tree.hostRootNode());
+  const handle = _create_livetree_for_runtime_test(runtime, a).adoptRoots(retained_historic_root(binding.tree));
   handle.attrs.set("delegated", true);
   assert.equal(map.document.attrs.get(path(0, 2), "delegated"), true);
   assert.equal(binding.diagnostics().incrementalCorrespondenceUpdates, 1);
@@ -172,7 +173,7 @@ check("rejected identity insertion publishes no correspondence revision", () => 
 check("post-commit DOM application failure has a distinct code", () => {
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(documentRuntime, map);
-  const rootDom = mount(binding.tree.node);
+  const rootDom = mount(retained_subject(binding.tree));
   rootDom.failReplace = true;
   map.document.content.insert(path(0), 1, projected_element(`<a/>`));
   assert.equal(binding.failure?.code, DOCUMENT_MIRROR_STRUCTURAL_UPDATE_FAILED_ERROR_CODE);
@@ -182,7 +183,7 @@ check("post-commit DOM application failure has a distinct code", () => {
 check("DOM projection failure does not roll back the canonical commit", () => {
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(documentRuntime, map);
-  const rootDom = mount(binding.tree.node);
+  const rootDom = mount(retained_subject(binding.tree));
   rootDom.failReplace = true;
   const commit = map.document.content.insert(path(0), 1, projected_element(`<a/>`));
   assert.equal(commit.changed, true);
@@ -194,12 +195,12 @@ check("DOM projection failure does not roll back the canonical commit", () => {
 check("a fresh binding rebuilds correspondence from canonical recovery state", () => {
   const map = element(`<main <a/>/>`);
   const failed = _reflect_document_for_runtime_test(documentRuntime, map);
-  const rootDom = mount(failed.tree.node);
+  const rootDom = mount(retained_subject(failed.tree));
   rootDom.failReplace = true;
   map.document.content.insert(path(0), 1, projected_element(`<a/>`));
   failed.dispose();
   const recovered = _reflect_document_for_runtime_test(documentRuntime, map);
-  assert.equal(raw_node(recovered.tree.node, [0, 1]).$_tag, "a");
+  assert.equal(raw_node(retained_subject(recovered.tree), [0, 1]).$_tag, "a");
   assert.equal(recovered.diagnostics().wholeCorrespondenceBuilds, 1);
   recovered.dispose();
 });
@@ -282,7 +283,7 @@ check("path input remains canonical before Reflection observes it", () => {
   const operation = observation.commit.ops[0];
   assert.ok(operation !== undefined && is_graph_operation(operation) && operation.op !== "replace-root");
   assert.equal(operation.target.kind, "path");
-  assert.equal(raw_node(binding.tree.node, []).$_attrs?.path, true);
+  assert.equal(raw_node(retained_subject(binding.tree), []).$_attrs?.path, true);
   binding.dispose();
 });
 

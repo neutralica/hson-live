@@ -33,6 +33,9 @@ import { assert_document_structural_mutation_allowed } from "../lifecycle/docume
 import {
   runtime_for_tree,
   type LiveTreeRuntime,
+  active_subject_for_tree,
+  active_historic_root_for_tree,
+  inherit_tree_historic_root,
 } from "../runtime/livetree-runtime.js";
 import { reconcile_browser_realization_children } from "../../../internal/browser-realization/browser-realization-dom.js";
 
@@ -125,7 +128,7 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
   branches: readonly AppendTreeLike[],
   index?: number,
 ): TTree {
-  assert_document_structural_mutation_allowed(target.node, "append branches");
+  assert_document_structural_mutation_allowed(active_subject_for_tree(target), "append branches");
   if (branches.length === 0) return target;
   const runtime = runtime_for_tree(target);
   for (const branch of branches) {
@@ -136,7 +139,7 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
       );
     }
   }
-  const targetNode = target.node;
+  const targetNode = active_subject_for_tree(target);
   const branchRoots = branches.map((branch) => {
     if (!can_append_branch_to_tree(target, branch)) {
       throw new LiveTreeBatchError(
@@ -144,7 +147,7 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
         "LiveTree batch contains a branch incompatible with the target namespace.",
       );
     }
-    return unwrap_root_elem(branch.node);
+    return unwrap_root_elem(active_subject_for_tree(branch));
   });
   const roots = branchRoots.flat();
 
@@ -197,7 +200,7 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
   const containerNode = existingContainer ?? CREATE_NODE({ $_tag: ELEM_TAG, $_content: priorContent });
   const childContent = containerNode.$_content ??= [];
   const insertIx = typeof index === "number" ? normalize_ix(index, childContent.length) : childContent.length;
-  const hostRoot = target.hostRootNode();
+  active_historic_root_for_tree(target);
   let domInserted = false;
 
   try {
@@ -212,7 +215,7 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
     }
     childContent.splice(insertIx, 0, ...roots);
     for (const root of roots) claim_node_parent(root, containerNode);
-    for (const branch of branches) branch.adoptRoots(hostRoot);
+    for (const branch of branches) inherit_tree_historic_root(branch, target);
     record_livetree_materialization("hsonHostInsertions", roots.length);
     if (liveElement !== undefined) reconcile_browser_realization_children(targetNode, runtime);
     return target;
@@ -265,10 +268,10 @@ export function append_branch<TTree extends AppendTreeLike>(
   branch: AppendTreeLike,
   index?: number,
 ): TTree {
-  assert_document_structural_mutation_allowed(this.node, "append branch");
+  assert_document_structural_mutation_allowed(active_subject_for_tree(this), "append branch");
   record_livetree_materialization("appendBranchCalls");
-  const targetNode = this.node;
-  const srcNode = branch.node;
+  const targetNode = active_subject_for_tree(this);
+  const srcNode = active_subject_for_tree(branch);
   const runtime = runtime_for_tree(this);
   if (runtime_for_tree(branch) !== runtime) {
     throw new Error("[LiveTree.append] cannot append a branch from another runtime scope.");
@@ -285,7 +288,7 @@ export function append_branch<TTree extends AppendTreeLike>(
   assert_appendable_nodes(targetNode, nodesToAppend, "append branch", runtime);
 
   appendNodes(targetNode, nodesToAppend, runtime, index);
-  branch.adoptRoots(this.hostRootNode());
+  inherit_tree_historic_root(branch, this);
   return this;
 }
 
@@ -295,8 +298,8 @@ export function append_detached_content<TTree extends AppendTreeLike>(
   content: NodeContent,
   sourceRuntime: LiveTreeRuntime,
 ): TTree {
-  assert_document_structural_mutation_allowed(target.node, "append detached content");
-  const targetNode = target.node;
+  assert_document_structural_mutation_allowed(active_subject_for_tree(target), "append detached content");
+  const targetNode = active_subject_for_tree(target);
   const runtime = runtime_for_tree(target);
   if (runtime !== sourceRuntime) {
     throw new Error("Detached LiveTree content cannot cross runtime scopes.");
@@ -420,9 +423,9 @@ function is_svg_tag(tag: string): boolean {
 }
 
 function can_append_branch_to_tree(target: AppendTreeLike, branch: AppendTreeLike): boolean {
-  const targetTag = String(target.node.$_tag);
+  const targetTag = String(active_subject_for_tree(target).$_tag);
 
-  const roots = unwrap_root_elem(branch.node);
+  const roots = unwrap_root_elem(active_subject_for_tree(branch));
   const first = roots[0];
   if (!first) return false;
 

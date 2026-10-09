@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
@@ -112,7 +113,7 @@ class FlowEvent extends Event {
 function fixture(defaultView: TestTarget | null = new TestTarget()): { tree: LiveTree; element: TestElement } {
   const tree = create_livetree({ $_tag: "button", $_content: [] });
   const element = new TestElement(new TestDocument(defaultView));
-  link_node_to_el(tree.node, element as unknown as Element);
+  link_node_to_el(retained_subject(tree), element as unknown as Element);
   return { tree, element };
 }
 

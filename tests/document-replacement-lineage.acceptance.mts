@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -73,11 +74,11 @@ check("accepted map-global commit records explicit path lineage", () => {
 check("Mirror follows local replacement lineage for compatible descendants", () => {
   const map = fixture();
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
-  const oldFirst = raw_node(binding.tree.node, [0, 0, 0, 0]);
-  const oldThird = raw_node(binding.tree.node, [0, 0, 0, 2]);
+  const oldFirst = raw_node(retained_subject(binding.tree), [0, 0, 0, 0]);
+  const oldThird = raw_node(retained_subject(binding.tree), [0, 0, 0, 2]);
   map.document.content.replace(path(0), 0, replacement(), rearranged);
-  assert.equal(raw_node(binding.tree.node, [0, 0, 0, 0]), oldThird);
-  assert.equal(raw_node(binding.tree.node, [0, 0, 0, 2]), oldFirst);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0, 0, 0]), oldThird);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0, 0, 2]), oldFirst);
   binding.dispose();
 });
 

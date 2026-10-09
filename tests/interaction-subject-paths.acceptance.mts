@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type InteractionDescriptor } from "../src/index.ts";
@@ -60,9 +61,9 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const authority = internal_livemap_aggregate_authority(map);
   const library = authority.libraries()[0]!;
   const reflection = hsonMirror(map.lib("page"));
-  project_livetree(reflection.tree.node);
+  project_livetree(retained_subject(reflection.tree));
   const localSubject = reflection.tree.find.must.byQuid("000007102");
-  const localNode = localSubject.node;
+  const localNode = retained_subject(localSubject);
   const localElement = get_el_for_node(localNode);
   if (localElement === undefined) throw new Error("Expected local subject element.");
   const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => undefined } });
@@ -75,12 +76,12 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   assert.deepEqual(paths(map), { a: [0, 0, 2], b: [0, 0, 2] });
   assert.deepEqual(seen, [{ a: [0, 0, 2], b: [0, 0, 2] }]);
   assert.deepEqual(authority.documentOverlay(library).pathForQuid("000007102"), [0, 0, 2]);
-  assert.equal(reflection.tree.find.must.byQuid("000007102").node, localNode);
+  assert.equal(retained_subject(reflection.tree.find.must.byQuid("000007102")), localNode);
   assert.equal((localElement as unknown as { listeners: Map<string, Set<unknown>> }).listeners.get("click")?.size, 2);
   map.lib("page").document.content.move({ kind: "path", path: [0, 0] }, 2, 0);
   assert.deepEqual(paths(map), { a: [0, 0, 0], b: [0, 0, 0] });
   assert.deepEqual(authority.documentOverlay(library).pathForQuid("000007102"), [0, 0, 0]);
-  assert.equal(reflection.tree.find.must.byQuid("000007102").node, localNode);
+  assert.equal(retained_subject(reflection.tree.find.must.byQuid("000007102")), localNode);
   const beforeFailure = JSON.stringify(paths(map));
   const beforeRev = map.rev;
   assert.throws(() => map.lib("page").document.content.insert({ kind: "path", path: [0, 0] }, 99, button()));
@@ -161,10 +162,10 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   map.lib("page").document.content.insert({ kind: "path", path: [0, 0] }, 1, button());
   assert.deepEqual(paths(map), { unresolved: [0, 0, 1] });
   const reflection = hsonMirror(map.lib("page"));
-  project_livetree(reflection.tree.node);
+  project_livetree(retained_subject(reflection.tree));
   let calls = 0;
   const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
-  const node = resolve_document_path(reflection.tree.node, "document", validate_document_path([0, 0, 1]));
+  const node = resolve_document_path(retained_subject(reflection.tree), "document", validate_document_path([0, 0, 1]));
   assert.equal(is_Node(node), true);
   if (!is_Node(node)) throw new Error("Expected realized subject.");
   get_el_for_node(node)?.dispatchEvent(new Event("click"));

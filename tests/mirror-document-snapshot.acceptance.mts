@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
@@ -74,7 +75,7 @@ check("mounted snapshot constructs a fresh tree and descendant identity epoch", 
   const map = element(`<main @000000601 class="old" <p @000000602 "old"/> <i/>/>`);
   const binding = hsonMirror(map);
   const tree = binding.tree;
-  const root = raw_node(tree.node, []);
+  const root = raw_node(retained_subject(tree), []);
   const rootDom = mount(root);
   const paragraph = raw_node(root, [0, 0]);
   const paragraphDom = get_el_for_node(paragraph);
@@ -86,7 +87,7 @@ check("mounted snapshot constructs a fresh tree and descendant identity epoch", 
 
   assert.equal(binding.status, "active");
   const nextTree = binding.tree;
-  const nextRoot = raw_node(nextTree.node, []);
+  const nextRoot = raw_node(retained_subject(nextTree), []);
   const nextParagraph = raw_node(nextRoot, [0, 0]);
   const nextRootDom = get_el_for_node(nextRoot) as FakeElement | undefined;
   assert.notEqual(nextTree, tree);
@@ -112,14 +113,14 @@ check("mounted snapshot constructs a fresh tree and descendant identity epoch", 
 check("detached QUID-less snapshot is fresh and preserves canonical identity absence", () => {
   const map = element(`<main class="old" "before"/>`);
   const binding = hsonMirror(map);
-  const root = raw_node(binding.tree.node, []);
+  const root = raw_node(retained_subject(binding.tree), []);
   assert.equal(root.$_meta?.["quid"], undefined);
   const restored = element(`<main class="restored" "detached"/>`);
   restored.document.attrs.set(path(), "rev", 1);
   registry_for_document_library(map).restore(registry_for_document_library(restored).capture());
-  assert.notEqual(raw_node(binding.tree.node, []), root);
-  assert.equal(get_el_for_node(raw_node(binding.tree.node, [])), undefined);
-  assert.equal(raw_node(binding.tree.node, []).$_meta?.["quid"], undefined);
+  assert.notEqual(raw_node(retained_subject(binding.tree), []), root);
+  assert.equal(get_el_for_node(raw_node(retained_subject(binding.tree), [])), undefined);
+  assert.equal(raw_node(retained_subject(binding.tree), []).$_meta?.["quid"], undefined);
   assert.equal(raw_node(map.root(), []).$_meta?.["quid"], undefined);
   assert.equal(binding.sourceRevision, 1);
   binding.dispose();
@@ -136,7 +137,7 @@ check("restore followed by commit projects from the exact restored revision", ()
   assert.equal(commit.prevRev, 2);
   assert.equal(commit.rev, 3);
   assert.equal(binding.sourceRevision, 3);
-  assert.equal(raw_node(binding.tree.node, []).$_attrs?.after, "commit");
+  assert.equal(raw_node(retained_subject(binding.tree), []).$_attrs?.after, "commit");
   assert.equal(binding.diagnostics().updatesApplied, 2);
   binding.dispose();
 });
@@ -149,7 +150,7 @@ check("snapshot publication consumes private accepted evidence without public re
   assert.equal(raw_node(map.root(), []).$_attrs?.class, "canonical");
   assert.notEqual(binding.tree, before);
   assert.equal(before.isDisposed, true);
-  assert.equal(raw_node(binding.tree.node, []).$_attrs?.class, "canonical");
+  assert.equal(raw_node(retained_subject(binding.tree), []).$_attrs?.class, "canonical");
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
@@ -172,7 +173,7 @@ check("repeated snapshots independently reconstruct from accepted evidence", () 
   assert.notEqual(binding.tree, firstTree);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(raw_node(binding.tree.node, []).$_attrs?.state, "second");
+  assert.equal(raw_node(retained_subject(binding.tree), []).$_attrs?.state, "second");
   assert.equal(binding.diagnostics().updatesApplied, 2);
   binding.dispose();
 });
@@ -185,16 +186,16 @@ check("new snapshot epochs admit tag changes without source QUID continuity", ()
   assert.equal(tagBinding.status, "active");
   assert.notEqual(tagBinding.tree, tagTree);
   assert.equal(tagTree.isDisposed, true);
-  assert.equal(raw_node(tagBinding.tree.node, []).$_tag, "main");
+  assert.equal(raw_node(retained_subject(tagBinding.tree), []).$_tag, "main");
   tagBinding.dispose();
 
   const quidMap = element(`<main @000000607/>`);
   const quidBinding = hsonMirror(quidMap);
-  const quidRoot = quidBinding.tree.node;
+  const quidRoot = retained_subject(quidBinding.tree);
   registry_for_document_library(quidMap).restore(registry_for_document_library(element(`<main @000000608/>`)).capture());
   assert.equal(quidBinding.status, "active");
-  assert.notEqual(quidBinding.tree.node, quidRoot);
-  assert.equal(raw_node(quidBinding.tree.node, []).$_meta?.quid, undefined);
+  assert.notEqual(retained_subject(quidBinding.tree), quidRoot);
+  assert.equal(raw_node(retained_subject(quidBinding.tree), []).$_meta?.quid, undefined);
   quidBinding.dispose();
 });
 
@@ -202,7 +203,7 @@ check("new snapshot epochs do not reuse stale DOM convergence hooks", () => {
   const failedMap = element(`<main @000000610 <a/>/>`);
   const failedBinding = hsonMirror(failedMap);
   const failedTree = failedBinding.tree;
-  const failedDom = mount(failedBinding.tree.node);
+  const failedDom = mount(retained_subject(failedBinding.tree));
   failedDom.failReplace = true;
   registry_for_document_library(failedMap).restore(registry_for_document_library(element(`<main @000000610 <a title="fresh"/>/>`)).capture());
   assert.equal(failedBinding.status, "active");
@@ -213,7 +214,7 @@ check("new snapshot epochs do not reuse stale DOM convergence hooks", () => {
 
   const reentrantMap = element(`<main @000000611 <a/>/>`);
   const reentrantBinding = hsonMirror(reentrantMap);
-  const reentrantDom = mount(reentrantBinding.tree.node);
+  const reentrantDom = mount(retained_subject(reentrantBinding.tree));
   let invoked = 0;
   reentrantDom.beforeReplace = () => {
     invoked += 1;
@@ -230,7 +231,7 @@ check("new snapshot epochs do not reuse stale DOM convergence hooks", () => {
 check("stale snapshot convergence hooks cannot dispose the fresh binding", () => {
   const map = element(`<main @000000612 <a/>/>`);
   const binding = hsonMirror(map);
-  const rootDom = mount(binding.tree.node);
+  const rootDom = mount(retained_subject(binding.tree));
   const oldTree = binding.tree;
   let invoked = 0;
   rootDom.beforeReplace = () => {
@@ -244,7 +245,7 @@ check("stale snapshot convergence hooks cannot dispose the fresh binding", () =>
   assert.equal(oldTree.isDisposed, true);
   assert.equal(binding.sourceRevision, 0);
   assert.equal(raw_node(map.root(), []).$_tag, "main");
-  create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode()).attrs.set("local", true);
+  create_livetree(raw_node(retained_subject(binding.tree), [])).adoptRoots(retained_historic_root(binding.tree)).attrs.set("local", true);
   assert.equal(map.document.attrs.get(path(), "local"), true);
   binding.dispose();
 });

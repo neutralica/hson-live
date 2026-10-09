@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -62,7 +63,7 @@ const tag = (value: unknown): string | undefined =>
     : undefined;
 
 const authoredTree = (binding: ReturnType<typeof hsonMirror>) =>
-  create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode());
+  create_livetree(raw_node(retained_subject(binding.tree), [])).adoptRoots(retained_historic_root(binding.tree));
 
 check("document watch sees canonical revision n+1 before Reflection revision advances", () => {
   const map = element(`<main <a/>/>`);
@@ -73,7 +74,7 @@ check("document watch sees canonical revision n+1 before Reflection revision adv
       mapRevision: map.rev,
       canonicalTag: tag(map.at([0]).snap()),
       reflectionRevision: binding.sourceRevision,
-      projectedTag: raw_node(binding.tree.node, [0, 0]).$_tag,
+      projectedTag: raw_node(retained_subject(binding.tree), [0, 0]).$_tag,
     };
   });
   map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
@@ -84,14 +85,14 @@ check("document watch sees canonical revision n+1 before Reflection revision adv
     projectedTag: "a",
   });
   assert.equal(binding.sourceRevision, 1);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "a");
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_tag, "a");
   binding.dispose();
 });
 
 check("mounted DOM remains at n inside the pre-Reflection watch and converges afterward", () => {
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
-  const rootDom = mount(binding.tree.node);
+  const rootDom = mount(retained_subject(binding.tree));
   let insideTag: string | undefined;
   map.at([0]).watch(() => {
     insideTag = (rootDom.childNodes[0] as FakeElement | undefined)?.tagName;
@@ -108,7 +109,7 @@ check("local QUID retirement precedes Mirror runtime correspondence cleanup", ()
   const map = element(`<main <a @${oldQuid}/>/` + `>`);
   const runtime = _create_livetree_runtime_test_handle();
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const oldProjected = raw_node(binding.tree.node, [0, 0]);
+  const oldProjected = raw_node(retained_subject(binding.tree), [0, 0]);
   let seam: unknown;
   map.at([0]).watch(() => {
     seam = {
@@ -127,7 +128,7 @@ check("local QUID retirement precedes Mirror runtime correspondence cleanup", ()
   });
   assert.equal(_lookup_livetree_runtime_test_node(runtime, oldQuid), undefined);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, nextQuid), undefined);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "a");
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_tag, "a");
   binding.dispose();
 });
 
@@ -140,7 +141,7 @@ check("an ordinary observer registered before Reflection sees the same seam", ()
       mapRevision: map.rev,
       canonicalTag: tag(map.at([0]).snap()),
       reflectionRevision: binding.sourceRevision,
-      projectedTag: raw_node(binding.tree.node, [0, 0]).$_tag,
+      projectedTag: raw_node(retained_subject(binding.tree), [0, 0]).$_tag,
     };
   });
   binding = hsonMirror(map);
@@ -162,7 +163,7 @@ check("an ordinary observer registered after Reflection sees converged projectio
     seen = {
       mapRevision: map.rev,
       reflectionRevision: binding.sourceRevision,
-      projectedTag: raw_node(binding.tree.node, [0, 0]).$_tag,
+      projectedTag: raw_node(retained_subject(binding.tree), [0, 0]).$_tag,
     };
   });
   map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
@@ -197,15 +198,15 @@ check("registry observers surround Reflection before library watch delivery", ()
 check("a linked LiveTree read after registry publication sees the converged handle", () => {
   const map = element(`<main <a title="old"/>/>`);
   const binding = hsonMirror(map);
-  const childNode = raw_node(binding.tree.node, [0, 0]);
-  const linked = create_livetree(childNode).adoptRoots(binding.tree.hostRootNode());
+  const childNode = raw_node(retained_subject(binding.tree), [0, 0]);
+  const linked = create_livetree(childNode).adoptRoots(retained_historic_root(binding.tree));
   let inside: unknown;
   map.at([0]).watch(() => {
-    inside = { exact: linked.node === childNode, title: linked.attrs.get("title") };
+    inside = { exact: retained_subject(linked) === childNode, title: linked.attrs.get("title") };
   });
   map.document.attrs.set(path(0, 0), "title", "new");
   assert.deepEqual(inside, { exact: true, title: "new" });
-  assert.equal(linked.node, childNode);
+  assert.equal(retained_subject(linked), childNode);
   assert.equal(linked.attrs.get("title"), "new");
   binding.dispose();
 });
@@ -213,7 +214,7 @@ check("a linked LiveTree read after registry publication sees the converged hand
 check("binding disposal from a watch follows the completed Reflection delivery", () => {
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
-  const retained = binding.tree.node;
+  const retained = retained_subject(binding.tree);
   map.at([0]).watch(() => binding.dispose());
   map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   assert.equal(binding.status, "disposed");
@@ -304,7 +305,7 @@ check("queued structural observations consume each accepted document root", () =
   map.document.content.replace(path(0), 0, projected_element(`<a title="first"/>`));
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.title, "second");
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_attrs?.title, "second");
   binding.dispose();
 });
 
@@ -358,7 +359,7 @@ check("an observer throwing after Reflection leaves accepted Reflection current"
 check("Reflection application failure is isolated and later observers still execute", () => {
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
-  const rootDom = mount(binding.tree.node);
+  const rootDom = mount(retained_subject(binding.tree));
   rootDom.failReplace = true;
   let later = 0;
   map.commits.observe(() => { later += 1; });
@@ -375,7 +376,7 @@ check("Reflection application failure is isolated and later observers still exec
 check("a failed Reflection binding remains failed while future canonical commits continue", () => {
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
-  const rootDom = mount(binding.tree.node);
+  const rootDom = mount(retained_subject(binding.tree));
   rootDom.failReplace = true;
   map.document.content.insert(path(0), 1, projected_element(`<a title="new"/>`));
   rootDom.failReplace = false;
@@ -390,7 +391,7 @@ check("a failed Reflection binding remains failed while future canonical commits
 check("a fresh binding reconstructs current canonical state after failed binding disposal", () => {
   const map = element(`<main <a/>/>`);
   const failed = hsonMirror(map);
-  const rootDom = mount(failed.tree.node);
+  const rootDom = mount(retained_subject(failed.tree));
   rootDom.failReplace = true;
   map.document.content.insert(path(0), 1, projected_element(`<a title="new"/>`));
   map.document.attrs.set(path(), "later", true);
@@ -399,7 +400,7 @@ check("a fresh binding reconstructs current canonical state after failed binding
   const fresh = hsonMirror(map);
   assert.equal(fresh.sourceRevision, 2);
   assert.equal(authoredTree(fresh).attrs.get("later"), true);
-  assert.equal(raw_node(fresh.tree.node, [0]).$_content.length, 2);
+  assert.equal(raw_node(retained_subject(fresh.tree), [0]).$_content.length, 2);
   fresh.dispose();
 });
 

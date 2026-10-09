@@ -1,3 +1,6 @@
+import {
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 // id-classlist.ts
 
 import { IdApi, ClassApi } from "../../../types/dom.types.js";
@@ -34,7 +37,7 @@ export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TT
   const transform = (
     operation: (current: Set<string>) => Set<string>,
   ): TTree | undefined => {
-    const binding = document_binding_for_node(tree.node);
+    const binding = document_binding_for_node(active_subject_for_tree(tree));
     if (binding === undefined) return undefined;
     binding.delegateAttrs({
       kind: "transform",

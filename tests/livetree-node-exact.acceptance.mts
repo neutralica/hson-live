@@ -1,7 +1,8 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
-import type { HsonNode } from "../src/core/types.ts";
+import type { HsonNode, ReadonlyHsonNode } from "../src/core/types.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { read_transform_error_details } from "../src/core/errors.ts";
@@ -34,8 +35,10 @@ const obj = (...content: HsonNode[]) => n("_hson_obj", ...content);
 const ii = (value: HsonNode, index: string): HsonNode => ({ $_tag: "_hson_ii", $_content: [value], $_meta: { index } });
 const root = (...content: HsonNode[]) => n("_hson_root", ...content);
 function same(actual: HsonNode, expected: HsonNode): void { assert.ok(canonical_hson_graph_equal(actual, expected)); }
-function withoutIdentity(value: HsonNode): HsonNode {
-  const copy = structuredClone(value);
+function withoutIdentity(value: ReadonlyHsonNode): HsonNode {
+  const cloned: unknown = structuredClone(value);
+  assert.ok(is_Node(cloned));
+  const copy = cloned;
   const stack = [copy];
   while (stack.length) {
     const node = stack.pop()!;
@@ -81,10 +84,10 @@ check("element and data-mode branch roles qualify without portable grammar chang
     for (const construct of publicConstructors) {
       const before = structuredClone(input);
       const tree = construct(input);
-      assert.notEqual(tree.node, input);
+      assert.notEqual(retained_subject(tree), input);
       same(withoutIdentity(tree.node), before);
       assert.deepEqual(input, before);
-      assert.equal(get_node_by_quid(tree.quid), tree.node);
+      assert.equal(get_node_by_quid(tree.quid), retained_subject(tree));
       assert.equal(Object.isFrozen(input), false);
       tree.remove();
     }
@@ -115,7 +118,7 @@ check("original inputs and descendants remain independent mutable input material
     tree.id.set("live");
     assert.equal(input.$_attrs, undefined);
     assert.equal(tree.node.$_attrs?.id, "live");
-    assert.equal(new LiveTree(tree).node, tree.node);
+    assert.equal(retained_subject(new LiveTree(tree)), retained_subject(tree));
     tree.remove();
   }
 });
@@ -128,7 +131,7 @@ check("Proxy semantic values cannot replace the descriptor-admitted private grap
   for (const construct of publicConstructors) {
     const tree = construct(input);
     assert.equal(calls, 0);
-    assert.notEqual(tree.node, input);
+    assert.notEqual(retained_subject(tree), input);
     assert.notEqual(tree.quid, "000000001");
     assert.equal(default_livetree_runtime().quidToNode.has("000000001"), false);
     assert.equal(default_livetree_runtime().issuedQuids.has("000000001"), false);
@@ -141,10 +144,10 @@ check("only registered LiveTree handles confer retained-subject reuse", () => {
   const before = runtimeState();
   assert.throws(() => new LiveTree(fake), /no runtime subject/);
   assert.equal(calls, 0); assert.deepEqual(runtimeState(), before);
-  const original = new LiveTree(n("p")); const subject = original.node;
+  const original = new LiveTree(n("p")); const subject = retained_subject(original);
   Object.defineProperty(original, "node", { configurable: true, get() { calls++; return { ...n("p"), $_meta: { quid: "000000001" } }; } });
   const alias = new LiveTree(original);
-  assert.equal(alias.node, subject); assert.equal(calls, 0);
+  assert.equal(retained_subject(alias), subject); assert.equal(calls, 0);
   assert.equal(default_livetree_runtime().issuedQuids.has("000000001"), false);
   Reflect.deleteProperty(original, "node"); original.remove();
 });
@@ -204,7 +207,7 @@ check("source carriers qualify completely and select only one meaningful branch"
   const input = root(elem(n("p", elem(str("x")))));
   const tree = hsonLiveTree.fromNode(input);
   same(withoutIdentity(tree.node), n("p", elem(str("x"))));
-  assert.notEqual(tree.node, child(child(input)));
+  assert.notEqual(retained_subject(tree), child(child(input)));
   same(input, root(elem(n("p", elem(str("x"))))));
   tree.remove();
   for (const bad of [root(), root(elem()), root(elem(n("p"), n("q"))), root(elem(n("p")), n("q")),
@@ -226,18 +229,18 @@ check("known tag creation still mints distinct local identity", () => {
   const first = parent.create.p(); const second = parent.create.p();
   assert.notEqual(first.quid, second.quid);
   const runtime = runtime_for_tree(parent);
-  assert.equal(runtime.quidToNode.get(first.quid), first.node);
-  assert.equal(runtime.quidToNode.get(second.quid), second.node);
+  assert.equal(runtime.quidToNode.get(first.quid), retained_subject(first));
+  assert.equal(runtime.quidToNode.get(second.quid), retained_subject(second));
   parent.remove();
 });
 check("internal owned and linked references retain their proven identity contracts", () => {
   const runtime = create_livetree_runtime();
   const owned = { ...n("p"), $_meta: { quid: "000000001" } };
   const tree = create_livetree_in_runtime(owned, runtime);
-  assert.equal(tree.node, owned); assert.equal(tree.quid, "000000001");
+  assert.equal(retained_subject(tree), owned); assert.equal(tree.quid, "000000001");
   const absent = n("span");
   const linked = create_linked_livetree_in_runtime(absent, runtime);
-  assert.equal(linked.node, absent); assert.equal(absent.$_meta, undefined);
+  assert.equal(retained_subject(linked), absent); assert.equal(absent.$_meta, undefined);
   assert.equal(runtime.quidToNode.size, 1);
   tree.remove();
 });

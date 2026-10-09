@@ -321,8 +321,10 @@ All transform source constructors return a common surface:
 
 `toNode()` returns a separate copy of the privately owned source graph. During
 the staged producer migration, this may retain a source-owned ROOT or branch
-shape that does not qualify as a complete raw `fromNode()` input. Runtime
-owners have separate inspection and exact-capture facilities; their generated
+shape that does not qualify as a complete raw `fromNode()` input. LiveTree
+`node` and `hostRootNode()` instead return fresh detached, deeply frozen
+`ReadonlyHsonNode` observations of actual runtime state. Internal runtime
+ownership handoffs use registered subjects rather than these observations; their generated
 QUID metadata cannot be passed to public portable admission, even after JSON
 stringification and parsing. A generic Transform snapshot does not acquire
 identity when another runtime owner later mutates the original input.

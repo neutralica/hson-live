@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -74,7 +75,7 @@ function tree(source = `<main/>`): LiveTree {
 function mount(treeValue: LiveTree): AttributeProjection {
   const element = new AttributeProjection();
   element.setAttribute(QUID_ATTR, treeValue.quid);
-  link_node_to_el(treeValue.node, element as unknown as Element);
+  link_node_to_el(retained_subject(treeValue), element as unknown as Element);
   return element;
 }
 
@@ -177,9 +178,9 @@ check("set stores false, null, zero, and empty string while undefined is rejecte
   assert.equal(element.getAttribute("empty"), "");
   assert.equal(element.getAttribute("enabled"), "");
 
-  const unchangedIdentity = value.node.$_attrs;
+  const unchangedIdentity = retained_subject(value).$_attrs;
   value.attrs.set("zero", 0);
-  assert.equal(value.node.$_attrs, unchangedIdentity);
+  assert.equal(retained_subject(value).$_attrs, unchangedIdentity);
 
   const before = snapshot(value, element);
   errorCode(
@@ -287,9 +288,9 @@ check("setMany overlays atomically and canonical equality is order-insensitive",
   assert.equal(element.getAttribute("hidden"), null);
   assert.equal(element.getAttribute("style"), "color: red");
 
-  const attrsIdentity = value.node.$_attrs;
+  const attrsIdentity = retained_subject(value).$_attrs;
   value.attrs.setMany({ style: { color: "red" }, count: 0, id: "after", hidden: false });
-  assert.equal(value.node.$_attrs, attrsIdentity);
+  assert.equal(retained_subject(value).$_attrs, attrsIdentity);
 
   const before = snapshot(value, element);
   errorCode(
@@ -307,9 +308,9 @@ check("drop and dropMany remove explicit complete-bag names atomically", () => {
     element.setAttribute(name, String(attrValue));
   }
   value.attrs.drop("id");
-  const afterDrop = value.node.$_attrs;
+  const afterDrop = retained_subject(value).$_attrs;
   value.attrs.drop("absent");
-  assert.equal(value.node.$_attrs, afterDrop);
+  assert.equal(retained_subject(value).$_attrs, afterDrop);
   value.attrs.dropMany(["title", "absent", "title"]);
   assert.deepEqual(value.attrs.keys(), ["class"]);
   assert.equal(element.getAttribute("id"), null);
@@ -343,7 +344,7 @@ check("clear removes the complete attrs bag while preserving identity, metadata,
   assert.equal(element.getAttribute("id"), null);
   assert.equal(element.getAttribute(QUID_ATTR), value.quid);
   assert.equal(value.node.$_tag, beforeTag);
-  assert.ok(canonical_hson_graph_equal({ $_tag: beforeTag, $_content: value.node.$_content },
+  assert.ok(canonical_hson_graph_equal({ $_tag: beforeTag, $_content: retained_subject(value).$_content },
     { $_tag: beforeTag, $_content: beforeContent }));
   assert.deepEqual(value.node.$_meta, beforeMeta);
 
@@ -378,9 +379,9 @@ check("replace applies one exact complete bag with canonical distinctions", () =
   assert.equal(element.getAttribute("disabled"), null);
   assert.equal(element.getAttribute("style"), "color: blue");
 
-  const attrsIdentity = value.node.$_attrs;
+  const attrsIdentity = retained_subject(value).$_attrs;
   value.attrs.replace({ added: "yes", style: { color: "blue" }, hidden: false, empty: "", zero: 0, nullable: null });
-  assert.equal(value.node.$_attrs, attrsIdentity);
+  assert.equal(retained_subject(value).$_attrs, attrsIdentity);
 
   const beforeInvalid = snapshot(value, element);
   errorCode(
@@ -423,7 +424,7 @@ check("attrs and flags are converged views over one canonical bag", () => {
   ));
   const before = structuredClone(value.node);
   assert.throws(() => value.flags.set("safe", "bad name"), LiveTreeAttributeError);
-  assert.ok(canonical_hson_graph_equal(value.node, before));
+  assert.ok(canonical_hson_graph_equal(retained_subject(value), before));
 });
 
 process.stdout.write(`# ${checks} LiveTree canonical attrs checks passed\n`);

@@ -3,7 +3,10 @@
 import { ListenerBuilder, ListenOpts, MissingPolicy, ListenerSub, ElemMap } from "../../../types/listen.types.js";
 import { LiveTree } from "../livetree.js";
 import { own_disposable_for_subject } from "./lifecycle-registry.js";
-import { runtime_for_tree } from "../runtime/livetree-runtime.js";
+import {
+  runtime_for_tree,
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 
 
 type RegistrationConfig = Readonly<{
@@ -75,7 +78,7 @@ function addWithOff(
   type: string,
   handler: EventListener,
   opts: AddEventListenerOptions,
-  owner: LiveTree["node"],
+  owner: import("../../../core/types.js").HsonNode,
   tree: LiveTree,
   onOff: () => void,
 ): () => void {
@@ -220,7 +223,7 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     try {
       for (const tgt of targets) {
         let off: () => void = () => undefined;
-        off = addWithOff(tgt, String(type), wrapped, aelo, tree.node, tree, () => {
+        off = addWithOff(tgt, String(type), wrapped, aelo, active_subject_for_tree(tree), tree, () => {
           const index = offs.indexOf(off);
           if (index >= 0) offs.splice(index, 1);
         });

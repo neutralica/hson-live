@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -68,14 +69,14 @@ check("runtime registry resolves the exact reflected node", () => {
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const tree = binding.tree.find.byTag("item");
   assert.equal(tree?.quid, Q1);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), tree?.node);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), retained_subject(tree));
   binding.dispose();
 });
 
 check("mounted registration keeps the exact DOM and publishes hson:quid", () => {
   const { map, binding } = reflected();
-  mount(binding.tree.node);
-  const item = raw_node(binding.tree.node, [0, 0]);
+  mount(retained_subject(binding.tree));
+  const item = raw_node(retained_subject(binding.tree), [0, 0]);
   const dom = get_el_for_node(item);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   assert.equal(binding.tree.find.byTag("item")?.quid, Q1);

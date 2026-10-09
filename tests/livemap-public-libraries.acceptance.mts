@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
@@ -373,9 +374,9 @@ check("tree-originated selected-document mutation crosses the same Schema bounda
   const map = create_map();
   const page = map.lib("page");
   const binding = hsonMirror(page);
-  const projected = binding.tree.node.$_content[0];
+  const projected = retained_subject(binding.tree).$_content[0];
   if (!is_Node(projected)) throw new Error("Expected projected page root");
-  const tree = create_livetree(projected).adoptRoots(binding.tree.hostRootNode());
+  const tree = create_livetree(projected).adoptRoots(retained_historic_root(binding.tree));
   tree.attrs.set("title", "from-tree");
   assert.equal(page.at([]).asElement()!.attrs.get("title"), "from-tree");
   assert.equal(binding.sourceRevision, 1);

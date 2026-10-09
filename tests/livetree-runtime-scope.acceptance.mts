@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { document_from_node } from "./helpers/mirror-unit6.mts";
 import { construct_exact_runtime_livetree } from "../src/api/livetree/livetree.ts";
@@ -330,9 +331,9 @@ check("lookup never crosses runtime boundaries", () => {
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
   const tree = runtimeTree(left, node());
-  const exactNode = tree.node;
+  const exactNode = retained_subject(tree);
   assert.equal(_lookup_livetree_runtime_test_node(left, tree.quid), exactNode);
-  assert.equal(tree.node, exactNode);
+  assert.equal(retained_subject(tree), exactNode);
   assert.equal(_lookup_livetree_runtime_test_node(right, tree.quid), undefined);
 });
 
@@ -351,20 +352,20 @@ check("terminal destruction releases only the owning runtime claim", () => {
   const rightTree = runtimeTree(right, node("main", SAME_QUID));
   leftTree.remove();
   assert.equal(_lookup_livetree_runtime_test_node(left, SAME_QUID), undefined);
-  assert.equal(_lookup_livetree_runtime_test_node(right, SAME_QUID), rightTree.node);
+  assert.equal(_lookup_livetree_runtime_test_node(right, SAME_QUID), retained_subject(rightTree));
 });
 
 check("detach retains identity and resources in its runtime", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const parent = runtimeTree(runtime, node());
   const child = runtimeTree(runtime, node("section", SAME_QUID));
-  const exactNode = child.node;
+  const exactNode = retained_subject(child);
   const exactQuid = child.quid;
   parent.append(child);
   let cleaned = 0;
   _own_livetree_runtime_test_disposable(runtime, child.quid, () => { cleaned += 1; }, "other");
   assert.equal(child.detach(), 1);
-  assert.equal(child.node, exactNode);
+  assert.equal(retained_subject(child), exactNode);
   assert.equal(child.quid, exactQuid);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, child.quid), exactNode);
   assert.equal(_livetree_runtime_test_resource_counts(runtime, child.quid).total, 1);
@@ -403,15 +404,15 @@ check("cross-runtime append rejects without transferring either branch", () => {
   const branch = runtimeTree(right, node("aside"));
   assert.throws(() => target.append(branch), /another runtime scope/);
   assert.equal(target.content.count(), 0);
-  assert.equal(_lookup_livetree_runtime_test_node(right, branch.quid), branch.node);
+  assert.equal(_lookup_livetree_runtime_test_node(right, branch.quid), retained_subject(branch));
 });
 
 check("rejected private creation unwinds its unpublished runtime claim", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const binding = _reflect_document_for_runtime_test(runtime, elementMap(`<main/>`));
-  const mainNode = binding.tree.node.$_content[0];
+  const mainNode = retained_subject(binding.tree).$_content[0];
   if (!is_Node(mainNode)) throw new Error("Expected one document element");
-  const boundRoot = runtimeTree(runtime, mainNode).adoptRoots(binding.tree.hostRootNode());
+  const boundRoot = runtimeTree(runtime, mainNode).adoptRoots(retained_historic_root(binding.tree));
   const before = _livetree_runtime_test_claim_count(runtime);
   assert.throws(() => boundRoot.create.div(), /unavailable while document-bound/);
   assert.equal(_livetree_runtime_test_claim_count(runtime), before);
@@ -433,7 +434,7 @@ check("text overwrite terminally disposes displaced descendants and leaves its o
   const childNode = node("section", "000000rt7");
   parentNode.$_content.push(childNode);
   const parent = runtimeTree(runtime, parentNode);
-  const child = runtimeTree(runtime, childNode).adoptRoots(parent.hostRootNode());
+  const child = runtimeTree(runtime, childNode).adoptRoots(retained_historic_root(parent));
   assert.equal(_lookup_livetree_runtime_test_node(runtime, "000000rt7"), childNode);
   assert.equal(parent.text.overwrite("replacement"), parent);
   assert.equal(parent.text.get(), "replacement");
@@ -666,7 +667,7 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   assert.equal(_livetree_runtime_test_claim_count(runtime), claimsBeforeQuery + 1);
   assert.equal(
     descendant === undefined ? undefined : _lookup_livetree_runtime_test_node(runtime, descendant.quid),
-    descendant?.node,
+    retained_subject(descendant),
   );
   assert.equal(root.dom.el(), undefined);
   assert.equal(descendant?.dom.el(), undefined);
@@ -676,7 +677,7 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   assert.equal(descendant?.dom.el()?.tagName.toLowerCase(), "span");
 
   const appended = runtimeTree(runtime, node("em"));
-  const appendedNode = appended.node;
+  const appendedNode = retained_subject(appended);
   const appendedQuid = appended.quid;
   root.append(appended);
   const batchA = runtimeTree(runtime, node("strong"));
@@ -684,7 +685,7 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   _append_livetree_branches_atomic(root, [batchA, batchB]);
   appended.detach();
   root.append(appended);
-  assert.equal(appended.node, appendedNode);
+  assert.equal(retained_subject(appended), appendedNode);
   assert.equal(appended.quid, appendedQuid);
   const clone = appended.cloneBranch();
   root.append(clone);
@@ -763,8 +764,8 @@ check("Mirror projects equal persisted QUIDs in separate runtimes", () => {
   const rightMap = elementMap(`<main @${SAME_QUID}/>`);
   const leftBinding = _reflect_document_for_runtime_test(left, leftMap);
   const rightBinding = _reflect_document_for_runtime_test(right, rightMap);
-  const leftElement = leftBinding.tree.node.$_content[0];
-  const rightElement = rightBinding.tree.node.$_content[0];
+  const leftElement = retained_subject(leftBinding.tree).$_content[0];
+  const rightElement = retained_subject(rightBinding.tree).$_content[0];
   if (leftElement === undefined || rightElement === undefined) {
     throw new Error("Expected reflected document elements");
   }

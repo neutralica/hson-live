@@ -83,7 +83,7 @@ export interface NodeRef {
  *       (e.g. test helpers).
  *
  * Implementations typically:
- *   - run `search_nodes` starting from `tree.node`,
+ *   - run `search_nodes` starting from the private active subject,
  *   - wrap found `HsonNode` instances via a child `LiveTree`
  *     constructor (`wrap_in_tree`),
  *   - maintain the host root identity across branches.

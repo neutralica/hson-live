@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { capture_internal_document } from "./helpers/document-capture.mts";
@@ -566,7 +567,7 @@ for (const mode of ["reconcile", "replay"] as const) {
   if (sameMap === undefined || page?.mode !== "document" || panel?.mode !== "document") throw new Error("Expected projected and local documents.");
   const pageMirror = hsonMirror(page);
   const panelMirror = hsonMirror(panel);
-  const localTree = panelMirror.tree.node;
+  const localTree = retained_subject(panelMirror.tree);
   const projectedHandle = acquire_livemap_document_identity(page.document, { kind: "path", path: [0] });
   const localHandle = acquire_livemap_document_identity(panel.document, { kind: "path", path: [0] });
   const projectedExact = capture_internal_document(sameMap, "page", { identity: "same-epoch" });
@@ -609,7 +610,7 @@ for (const mode of ["reconcile", "replay"] as const) {
   assert.equal(client.lastAppliedRev, 1);
   assert.equal(panel.document.attrs.get({ kind: "path", path: [0] }, "title"), "LOCAL_DOCUMENT_DISCONNECTED");
   assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), "PROJECTED_DOCUMENT_FALLBACK");
-  assert.equal(panelMirror.tree.node, localTree);
+  assert.equal(retained_subject(panelMirror.tree), localTree);
   assert.equal(panelMirror.diagnostics().updatesApplied, localUpdates);
   assert.equal(localHandle.active, true);
   assert.equal(panelMirror.tree.find.must.byTag("aside").quid, localQuid);
@@ -648,7 +649,7 @@ for (const mode of ["reconcile", "replay"] as const) {
   if (page?.mode !== "document" || panel?.mode !== "document") throw new Error("Expected two document Libraries.");
   const projectedMirror = hsonMirror(page);
   const localMirror = hsonMirror(panel);
-  const localTree = localMirror.tree.node;
+  const localTree = retained_subject(localMirror.tree);
   const localQuid = localMirror.tree.find.must.byTag("aside").quid;
   client.disconnect(); detach();
   panel.document.attrs.set({ kind: "path", path: [0] }, "title", "LOCAL_DOCUMENT_REPLAY_SURVIVES");
@@ -668,7 +669,7 @@ for (const mode of ["reconcile", "replay"] as const) {
   assert.equal(client.lastAppliedRev, 2);
   assert.equal(projectedMirror.tree.find.must.byTag("main").attrs.get("title"), "PROJECTED_DOCUMENT_REPLAY");
   assert.equal(localMirror.tree.find.must.byTag("aside").attrs.get("title"), "LOCAL_DOCUMENT_REPLAY_SURVIVES");
-  assert.equal(localMirror.tree.node, localTree);
+  assert.equal(retained_subject(localMirror.tree), localTree);
   assert.equal(localMirror.tree.find.must.byTag("aside").quid, localQuid);
   assert.equal(localMirror.diagnostics().updatesApplied, localUpdates);
   const replayFrames = pair.serverSent.filter((raw) => ["recovery-commit", "recovery-progress"].includes(JSON.parse(raw).type));

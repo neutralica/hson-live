@@ -7,7 +7,8 @@ import {
   get_quid,
   register_supplied_livetree_quid,
 } from "./quid/data-quid.js";
-import { HsonNode } from "../../core/types.js";
+import { HsonNode, type ReadonlyHsonNode } from "../../core/types.js";
+import { observe_exact_hson_graph } from "../../internal/exact-node-qualification.js";
 import { ListenerBuilder } from "../../types/listen.types.js";
 import { get_el_for_node } from "./utils/node-map-helpers.js";
 import { CssTreeHandle, StyleHandle } from "../../types/css.types.js";
@@ -56,6 +57,9 @@ import {
 } from "./lifecycle/document-binding-state.js";
 import {
   bind_tree_runtime,
+  bind_tree_historic_root,
+  inherit_tree_historic_root,
+  historic_root_for_tree,
   default_livetree_runtime,
   linked_livetree_construction_requested,
   requested_runtime_for_construction,
@@ -63,6 +67,7 @@ import {
   runtime_for_tree,
   subject_for_tree,
   type LiveTreeRuntime,
+  active_subject_for_tree,
 } from "./runtime/livetree-runtime.js";
 import { admit_public_livetree_branch } from "./livetree.node-admission.js";
 
@@ -147,14 +152,12 @@ function makeRef(node: HsonNode, tree: LiveTree): NodeRef {
  *
  * Instances maintain:
  * - nodeRef: A `NodeRef` that pins the exact current node and resolves QUID on demand.
- * - hostRoot: Hson node representing the historic root of the subtree.
+ * - historic root: stored privately in the runtime handle registry.
  * - Lazily constructed managers for style (`StyleManager`) and dataset (`DataManager`).
  */
 export class LiveTree implements LiveTreeApi<LiveTree> {
   /* the HsonNode being referenced */
   declare private nodeRef: NodeRef;
-  /* the root node or historic root node */
-  declare private hostRoot: HsonNode;
   /* inline style editor */
   declare private styleApiInternal?: StyleHandle<this>;
   /* dataset property manager */
@@ -193,7 +196,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * or another `LiveTree`.
    *
    * Behavior:
-   * - When given a `LiveTree`, re-wraps its `.node` in a fresh `NodeRef`
+   * - When given a `LiveTree`, re-wraps its registered subject in a fresh `NodeRef`
    *   to ensure a stable QUID and consistent `resolve*` behavior.
    * - When given a `HsonNode`, wraps it directly via `makeRef`.
    *
@@ -206,7 +209,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   private setRef(input: HsonNode | LiveTree): void {
     this.invalidate_dom_api();
     if (input instanceof LiveTree) {
-      this.nodeRef = makeRef(input.node, this);
+      this.nodeRef = makeRef(active_subject_for_tree(input), this);
       return;
     }
     this.nodeRef = makeRef(input, this);
@@ -220,20 +223,14 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * - When given a `HsonNode`, treats that node as the root for this
    *   instance.
    *
-   * Throws if the resulting `hostRoot` is falsy, as a missing root would
-   * break features that depend on a stable root context.
+   * Stores the context in the internal runtime handle registry.
    *
    * @param input - Either a `HsonNode` or another `LiveTree`.
    */
   private setRoot(input: HsonNode | LiveTree): void {
     this.invalidate_dom_api();
-    if (input instanceof LiveTree) {
-      this.hostRoot = input.hostRoot;
-      if (!this.hostRoot) { throw new Error('could not set host root'); }
-      return;
-    }
-    this.hostRoot = input; /* HsonNode fallback */
-    if (!this.hostRoot) { throw new Error('could not set host root'); }
+    if (input instanceof LiveTree) inherit_tree_historic_root(this, input);
+    else bind_tree_historic_root(this, input);
   }
   /**
    * Construct a new `LiveTree` from either a raw `HsonNode` or another
@@ -397,7 +394,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   /** Create HTML or SVG children according to the current namespace scope. */
   public get create(): HtmlCreateHelper {
     this.assertActive("create content");
-    assert_document_structural_mutation_allowed(this.node, "create content");
+    assert_document_structural_mutation_allowed(active_subject_for_tree(this), "create content");
     return (
       this.svg.inScope() ? make_svg_tree_create(this) : make_html_tree_create(this)
     ) as unknown as HtmlCreateHelper;
@@ -424,10 +421,10 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     return node ? is_livetree_node_disposed(node) : false;
   }
 
-  /** Return the host root node for this branch. */
-  public hostRootNode(): HsonNode {
+  /** Fresh detached, deeply frozen observation of this branch's historic root. */
+  public hostRootNode(): ReadonlyHsonNode {
     this.assertActive("access host root");
-    return this.hostRoot;
+    return observe_exact_hson_graph(historic_root_for_tree(this), "LiveTree.hostRootNode");
   }
 
   /** Content manager bound to this branch. */
@@ -440,26 +437,18 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     ));
   }
 
-  /** Adopt a new host-root context for this branch. */
+  /** Adopt an actual same-runtime owned root; observations and copies cannot
+   * establish historic-root provenance. */
   public adoptRoots(root: HsonNode): this {
     this.assertActive("adopt roots");
     assert_livetree_node_active(root, "adopt disposed root");
-    const rootRuntime = runtime_for_node(root);
-    if (rootRuntime !== undefined && rootRuntime !== runtime_for_tree(this)) {
-      throw new Error("LiveTree cannot adopt a host root from another runtime scope.");
-    }
-    this.hostRoot = root;
+    bind_tree_historic_root(this, root);
     return this;
   }
 
-  /** Resolve and return the backing Hson node.   */
-  public get node(): HsonNode {
-    const n = this.nodeRef.resolveNode();
-    if (!n) {
-      throw new Error("LiveTree2.node: ref did not resolve");
-    }
-    assert_livetree_node_active(n, "access node");
-    return n;
+  /** Fresh detached, deeply frozen inspection; never grants runtime ownership. */
+  public get node(): ReadonlyHsonNode {
+    return observe_exact_hson_graph(active_subject_for_tree(this), "LiveTree.node");
   }
 
   private assertActive(operation: string): void {
@@ -529,7 +518,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     this.assertActive("access events");
     if (!this.eventsInternal) {
       this.eventsInternal = guard_api_surface(
-        make_tree_events(this.node, runtime_for_tree(this)),
+        make_tree_events(active_subject_for_tree(this), runtime_for_tree(this)),
         () => this.assertActive("access events"),
         this,
       );

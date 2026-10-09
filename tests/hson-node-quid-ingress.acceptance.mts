@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -650,8 +651,8 @@ check("LiveTree admission claims supplied descendants while preserving sparse ab
   const tree = make_branch_from_node(source);
   let absentHandle: LiveTree | undefined;
   try {
-    assert.equal(read_hson_node_quid(tree.node), Q4);
-    assert.equal(get_node_by_quid(Q4), tree.node);
+    assert.equal(read_hson_node_quid(retained_subject(tree)), Q4);
+    assert.equal(get_node_by_quid(Q4), retained_subject(tree));
     assert.equal(read_hson_node_quid(supplied), Q5);
     assert.equal(get_node_by_quid(Q5), supplied);
     assert.equal(read_hson_node_quid(absent), undefined);
@@ -662,8 +663,8 @@ check("LiveTree admission claims supplied descendants while preserving sparse ab
     assert.equal(is_persisted_quid(laterQuid), true);
     assert.equal(get_node_by_quid(laterQuid!), absent);
   } finally {
-    if (absentHandle !== undefined) destroy_subtree_quids(absentHandle.node);
-    destroy_subtree_quids(tree.node);
+    if (absentHandle !== undefined) destroy_subtree_quids(retained_subject(absentHandle));
+    destroy_subtree_quids(retained_subject(tree));
   }
 });
 
@@ -672,14 +673,14 @@ check("LiveTree detach retains ownership and terminal removal releases it", () =
   const branch = make_branch_from_node(document_root(element("section", Q3)));
   try {
     parent.append(branch);
-    assert.equal(get_node_by_quid(Q3), branch.node);
+    assert.equal(get_node_by_quid(Q3), retained_subject(branch));
     assert.equal(branch.detach(), 1);
-    assert.equal(read_hson_node_quid(branch.node), Q3);
-    assert.equal(get_node_by_quid(Q3), branch.node);
+    assert.equal(read_hson_node_quid(retained_subject(branch)), Q3);
+    assert.equal(get_node_by_quid(Q3), retained_subject(branch));
     branch.remove();
     assert.equal(get_node_by_quid(Q3), undefined);
   } finally {
-    destroy_subtree_quids(parent.node);
+    destroy_subtree_quids(retained_subject(parent));
   }
 });
 
@@ -698,15 +699,15 @@ check("unpublished generated collisions retry and exhaustion is atomic", () => {
     const successfulMetrics = successfulProfile.stop();
     assert.equal(successfulCalls, 2);
     assert.equal(read_hson_node_quid(retried), undefined);
-    assert.notEqual(retriedTree!.node, retried);
-    assert.equal(read_hson_node_quid(retriedTree!.node), Q2);
+    assert.notEqual(retained_subject(retriedTree!), retried);
+    assert.equal(read_hson_node_quid(retained_subject(retriedTree!)), Q2);
     assert.equal(get_node_by_quid(Q1), owner);
-    assert.equal(get_node_by_quid(Q2), retriedTree!.node);
+    assert.equal(get_node_by_quid(Q2), retained_subject(retriedTree!));
     assert.equal(successfulMetrics.quidEnsureCalls, 1);
     assert.equal(successfulMetrics.quidRegistryWrites, 2);
   } finally {
     successfulProfile.stop();
-    if (retriedTree !== undefined) destroy_subtree_quids(retriedTree.node);
+    if (retriedTree !== undefined) destroy_subtree_quids(retained_subject(retriedTree));
   }
 
   const exhausted = element("exhausted", undefined, [element("cold-supplied", Q7)]);
@@ -753,12 +754,12 @@ check("public Element identity is rejected while absent identity is minted local
     assert.equal(read_hson_node_quid(must_tag(coldAbsent, "button")), undefined);
     const minted = hsonLiveTree.fromTrustedHtml(absentSource);
     try {
-      const mintedQuid = read_hson_node_quid(minted.node);
+      const mintedQuid = read_hson_node_quid(retained_subject(minted));
       assert.equal(is_persisted_quid(mintedQuid), true);
-      assert.equal(get_node_by_quid(mintedQuid!), minted.node);
+      assert.equal(get_node_by_quid(mintedQuid!), retained_subject(minted));
       assert.equal(minted.node.$_attrs?.["data-user"], "kept");
     } finally {
-      destroy_subtree_quids(minted.node);
+      destroy_subtree_quids(retained_subject(minted));
     }
   });
 });
@@ -783,20 +784,20 @@ check("cloneBranch keeps fresh identity semantics independently of Element inges
     );
     const clone = source.cloneBranch();
     try {
-      const sourceSpan = must_tag(source.node, "span");
-      const cloneSpan = must_tag(clone.node, "span");
-      assert.notEqual(read_hson_node_quid(clone.node), read_hson_node_quid(source.node));
+      const sourceSpan = must_tag(retained_subject(source), "span");
+      const cloneSpan = must_tag(retained_subject(clone), "span");
+      assert.notEqual(read_hson_node_quid(retained_subject(clone)), read_hson_node_quid(retained_subject(source)));
       assert.notEqual(read_hson_node_quid(cloneSpan), read_hson_node_quid(sourceSpan));
-      assert.equal(is_persisted_quid(read_hson_node_quid(clone.node)), true);
+      assert.equal(is_persisted_quid(read_hson_node_quid(retained_subject(clone))), true);
       assert.equal(is_persisted_quid(read_hson_node_quid(cloneSpan)), true);
-      for (const wrapper of nodes(clone.node).filter((node) => node.$_tag.startsWith("_hson_"))) {
+      for (const wrapper of nodes(retained_subject(clone)).filter((node) => node.$_tag.startsWith("_hson_"))) {
         assert.equal(read_hson_node_quid(wrapper), undefined);
       }
-      assert.equal(is_persisted_quid(read_hson_node_quid(source.node)), true);
+      assert.equal(is_persisted_quid(read_hson_node_quid(retained_subject(source))), true);
       assert.equal(read_hson_node_quid(sourceSpan), undefined);
     } finally {
-      destroy_subtree_quids(clone.node);
-      destroy_subtree_quids(source.node);
+      destroy_subtree_quids(retained_subject(clone));
+      destroy_subtree_quids(retained_subject(source));
     }
   });
 });

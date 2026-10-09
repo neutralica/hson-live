@@ -33,6 +33,24 @@ export interface HsonNode {
   $_content: NodeContent;
 }
 
+type ObservedStyle = {
+  readonly [key: string]: Primitive | undefined | ObservedStyle;
+};
+
+/**
+ * Detached, deeply frozen inspection of actual LiveTree runtime storage.
+ * This is an observation type, not a mutable authoring or admission type.
+ */
+export interface ReadonlyHsonNode {
+  readonly $_tag: string;
+  readonly $_meta?: Readonly<HsonMeta>;
+  readonly $_attrs?: {
+    readonly [key: string]: Primitive | undefined | readonly Primitive[] | ObservedStyle;
+    readonly style?: Primitive | ObservedStyle;
+  };
+  readonly $_content: readonly (ReadonlyHsonNode | Primitive)[];
+}
+
 export type NodeContent = (HsonNode | Primitive)[];
 
 /** Ordinary attributes plus the one structured `style` attribute. */

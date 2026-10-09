@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -47,7 +48,7 @@ const page = map.lib("page");
 if (page.mode !== "document") throw new Error("Expected document Library.");
 const local = map.lib("preferences");
 const mirror = hsonMirror(page);
-const tree = mirror.tree.node;
+const tree = retained_subject(mirror.tree);
 const sessionId = echo.session.sessionId;
 assert.ok(sessionId);
 echo.disconnect();
@@ -74,7 +75,7 @@ assert.equal((await echo.connect()).outcome, "reconcile");
 assert.equal(echo.map, map);
 assert.equal(map.lib("page"), page);
 assert.equal(map.lib("preferences"), local);
-assert.equal(mirror.tree.node, tree);
+assert.equal(retained_subject(mirror.tree), tree);
 assert.equal(echo.lastAppliedRev, server.rev);
 const added = map.lib("added");
 if (!("snap" in added) || !("snap" in local)) throw new Error("Expected data Libraries.");
@@ -106,7 +107,7 @@ if (!("snap" in oldAdded)) throw new Error("Expected stale data Library.");
 assert.throws(() => oldAdded.snap(["value"]), /authority|map/i);
 assert.equal(map.lib("page"), page);
 assert.equal(map.lib("preferences"), local);
-assert.equal(mirror.tree.node, tree);
+assert.equal(retained_subject(mirror.tree), tree);
 process.stdout.write("ok - live contraction removes only projected authority state\n");
 
 const regrant = await server.sessions.updateProjection(sessionId,
@@ -359,7 +360,7 @@ assert.ok(interactionMap);
 const keep = interactionMap.lib("keep"), revoke = interactionMap.lib("revoke");
 if (keep.mode !== "document" || revoke.mode !== "document") throw new Error("Expected document Libraries.");
 const keepMirror = hsonMirror(keep), revokedMirror = hsonMirror(revoke);
-const keepTree = keepMirror.tree.node;
+const keepTree = retained_subject(keepMirror.tree);
 await interactionServer.stage((draft) => add_interaction(draft, {
   id: "revoked-listener", subject: { library: "revoke", path: [99] },
   listener: { event: "click", target: "element", capture: false, once: false, passive: false,
@@ -373,7 +374,7 @@ assert.ok(interactionSession);
 const interactionStart = interactionWire.serverSent.length;
 await interactionServer.session.get(interactionSession)!.update({ libraries: ["keep"], systemFeatures: ["interactions"] });
 assert.equal(interactionMap.lib("keep"), keep);
-assert.equal(keepMirror.tree.node, keepTree);
+assert.equal(retained_subject(keepMirror.tree), keepTree);
 assert.equal(keepMirror.status, "active");
 assert.equal(revokedMirror.status, "failed");
 assert.throws(() => interactionMap.lib("revoke"), /Unknown/);

@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -60,9 +61,9 @@ const runtime = _create_livetree_runtime_test_handle();
 const SUPPLIED = "000001101";
 
 function authoredRoot(binding: ReturnType<typeof _reflect_document_for_runtime_test>) {
-  const node = binding.tree.node.$_content[0];
+  const node = retained_subject(binding.tree).$_content[0];
   if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
-  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
+  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(retained_historic_root(binding.tree));
 }
 
 check("standalone LiveTree construction still mints root identity", () => {
@@ -81,7 +82,7 @@ check("standalone LiveTree construction preserves supplied identity", () => {
 check("standalone projection still mints descendant identity", () => {
   const tree = _create_livetree_for_runtime_test(runtime, projected_element(`<main <span/>/>`));
   _project_livetree_for_runtime_test(runtime, tree, syntheticDocument);
-  const child = raw_node(tree.node, [0, 0]);
+  const child = raw_node(retained_subject(tree), [0, 0]);
   assert.equal(typeof child.$_meta?.quid, "string");
   tree.remove();
 });
@@ -106,7 +107,7 @@ check("standalone graft of an existing projection retains identity", () => {
   const tree = _create_livetree_for_runtime_test(runtime, projected_element(`<main/>`));
   const dom = _project_livetree_for_runtime_test(runtime, tree, syntheticDocument);
   const grafted = graft(dom as HTMLElement);
-  assert.equal(grafted.node, tree.node);
+  assert.equal(retained_subject(grafted), retained_subject(tree));
   assert.equal(grafted.quid, tree.quid);
   tree.remove();
 });
@@ -128,7 +129,7 @@ check("QUID-free LiveMap begins with an empty sparse overlay", () => {
 check("Reflection leaves a QUID-free LiveMap overlay empty", () => {
   const map = element(`<main <span/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  mount(binding.tree.node);
+  mount(retained_subject(binding.tree));
   assert.equal(livemap_document_identity_overlay_for(map).size, 0);
   binding.dispose();
   binding.tree.remove();
@@ -138,7 +139,7 @@ check("rendering does not mutate canonical LiveMap metadata", () => {
   const map = element(`<main class="same" <span/>/>`);
   const before = { root: map.root(), rev: map.rev };
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  mount(binding.tree.node);
+  mount(retained_subject(binding.tree));
   assert.deepEqual({ root: map.root(), rev: map.rev }, before);
   binding.dispose();
   binding.tree.remove();
@@ -149,7 +150,7 @@ check("QUID-free structural insertion keeps the overlay empty", () => {
   const binding = _reflect_document_for_runtime_test(runtime, map);
   map.document.content.insert(path(0), 1, projected_element(`<a/>`));
   assert.equal(livemap_document_identity_overlay_for(map).size, 0);
-  assert.equal(raw_node(binding.tree.node, [0, 1]).$_meta?.quid, undefined);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 1]).$_meta?.quid, undefined);
   binding.dispose();
   binding.tree.remove();
 });
@@ -168,9 +169,9 @@ check("path-first delegated attributes remain canonical", () => {
 check("path-first move retains exact QUID-less correspondence", () => {
   const map = element(`<main <a/> <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const moved = raw_node(binding.tree.node, [0, 0]);
+  const moved = raw_node(retained_subject(binding.tree), [0, 0]);
   map.document.content.move(path(0), 0, 1);
-  assert.deepEqual(raw_node(binding.tree.node, [0, 1]), moved);
+  assert.deepEqual(raw_node(retained_subject(binding.tree), [0, 1]), moved);
   assert.equal(moved.$_meta?.quid, undefined);
   binding.dispose();
   binding.tree.remove();

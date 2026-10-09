@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
@@ -126,9 +127,9 @@ function make_client_map(server: ReturnType<typeof make_map>): ReturnType<typeof
 }
 
 function reflected_document_element(reflection: ReturnType<typeof hsonMirror>) {
-  const node = reflection.tree.node.$_content[0];
+  const node = retained_subject(reflection.tree).$_content[0];
   if (node === null || typeof node !== "object") throw new Error("Expected reflected document element.");
-  return create_livetree(node).adoptRoots(reflection.tree.hostRootNode());
+  return create_livetree(node).adoptRoots(retained_historic_root(reflection.tree));
 }
 
 function wait_for_aggregate_revision(map: ReturnType<typeof make_map>, revision: number): Promise<void> {
@@ -409,7 +410,7 @@ await check("projected fallback restores the observed authority document in plac
   const stateHandle = staleMap.lib("state").at(["theme"]);
   const reflection = hsonMirror(staleMap.lib("page"));
   const staleMain = reflected_document_element(reflection);
-  const staleMainNode = staleMain.node;
+  const staleMainNode = retained_subject(staleMain);
   await locus.stage((draft) => { const state = draft.lib("state"); if (state.mode !== "document") state.at(["theme"]).set("x".repeat(6_000)); });
   await locus.stage((draft) => {
     const state = draft.lib("state");
@@ -430,7 +431,7 @@ await check("projected fallback restores the observed authority document in plac
   assert.equal(reflection.sourceRevision, 1);
   const restoredMain = reflected_document_element(reflection);
   assert.equal(staleMain.isDisposed, true);
-  assert.notEqual(restoredMain.node, staleMainNode);
+  assert.notEqual(retained_subject(restoredMain), staleMainNode);
   snapshotClient.dispose();
 
   await locus.stage((draft) => {

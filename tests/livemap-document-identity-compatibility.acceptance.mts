@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { capture_internal_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -226,7 +227,7 @@ check("internal acquisition coordinates with an active Reflection participant", 
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const handle = acquire_document_identity(map.document, target());
-  const projected = binding.tree.node.$_content[0];
+  const projected = retained_subject(binding.tree).$_content[0];
   if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   assert.equal(handle.snap()?.$_meta?.quid, Q1);
   assert.equal(projected.$_meta?.quid, Q1);
@@ -239,12 +240,12 @@ check("reflected acquisition preserves the exact projected node and DOM", () => 
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const projected = binding.tree.node.$_content[0];
+  const projected = retained_subject(binding.tree).$_content[0];
   if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   const dom = mount(projected);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
-  assert.equal(binding.tree.node.$_content[0], projected);
-  assert.equal(mount(binding.tree.node), dom);
+  assert.equal(retained_subject(binding.tree).$_content[0], projected);
+  assert.equal(mount(retained_subject(binding.tree)), dom);
   assert.equal(dom.getAttribute("hson:quid"), quid);
   binding.dispose();
   binding.tree.remove();
@@ -256,7 +257,7 @@ check("reflected acquisition installs one protected runtime claim", () => {
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
-  const projected = binding.tree.node.$_content[0];
+  const projected = retained_subject(binding.tree).$_content[0];
   if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, quid!), projected);
@@ -272,7 +273,7 @@ check("existing reflected canonical identity is reused without a commit", () => 
   let events = 0;
   map.commits.observe(() => events += 1);
   const handle = acquire_document_identity(map.document, target());
-  const projected = binding.tree.node.$_content[0];
+  const projected = retained_subject(binding.tree).$_content[0];
   if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   assert.equal(handle.snap()?.$_meta?.quid, Q1);
   assert.equal(projected.$_meta?.quid, Q1);

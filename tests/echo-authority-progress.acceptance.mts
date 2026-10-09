@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
@@ -118,7 +119,7 @@ function live_progress(snapshot: ReturnType<ReturnType<typeof fixture>["aggregat
 await check("progress advances only managed authority position and Mirror bookkeeping", () => {
   const { map, replica, aggregate, state, page, snapshot } = fixture();
   const mirror = hsonMirror(page);
-  const treeRoot = mirror.tree.node;
+  const treeRoot = retained_subject(mirror.tree);
   const mirrorWork = mirror.diagnostics().updatesApplied;
   const beforeRoots = aggregate.captureHosted().libraries;
   const issued = aggregate.captureHosted().identity.issuedQuids;
@@ -141,7 +142,7 @@ await check("progress advances only managed authority position and Mirror bookke
   assert.deepEqual(aggregate.captureHosted().libraries, beforeRoots);
   assert.deepEqual(aggregate.captureHosted().identity.issuedQuids, issued);
   assert.equal(mirror.sourceRevision, 2);
-  assert.equal(mirror.tree.node, treeRoot);
+  assert.equal(retained_subject(mirror.tree), treeRoot);
   assert.equal(mirror.diagnostics().updatesApplied, mirrorWork);
   assert.equal(mirror.status, "active");
   mirror.dispose();

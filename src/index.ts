@@ -217,3 +217,5 @@ export type {
   LiveHostPrincipal,
   LiveHostRequestRoute,
 } from "./types/livehost.types.js";
+
+export type { ReadonlyHsonNode } from "./core/types.js";

@@ -1,3 +1,4 @@
+import { retained_subject } from "../helpers/retained-livetree-subject.mts";
 import assert from "node:assert/strict";
 import { parentPort } from "node:worker_threads";
 import { hsonLiveTree, LiveTree } from "../../src/api/livetree/index.ts";
@@ -9,7 +10,7 @@ const input: HsonNode = { $_tag: "p", $_content: [] };
 const tree = new LiveTree(input);
 input.$_tag = "caller";
 assert.equal(tree.node.$_tag, "p");
-assert.notEqual(tree.node, input);
+assert.notEqual(retained_subject(tree), input);
 assert.throws(() => new LiveTree({ $_tag: "p", $_content: [], $_attrs: {} }));
 assert.throws(() => hsonLiveTree.fromNode({ $_tag: "p", $_content: [], $_meta: { quid: "000000001" } }));
 assert.throws(() => hsonTransform.fromNode({ $_tag: "p", $_content: [] }));

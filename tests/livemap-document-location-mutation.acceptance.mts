@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -100,9 +101,9 @@ check("Mirror consumes location replacement and deletion", () => {
   const map = fixture();
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
   map.at([0]).replace(projected_element('<item id="new"/>'));
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.id, "new");
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_attrs?.id, "new");
   map.at([0]).delete();
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.id, "b");
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_attrs?.id, "b");
   binding.dispose();
 });
 

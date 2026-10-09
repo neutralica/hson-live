@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -75,9 +76,9 @@ function close(binding: ReturnType<typeof reflected>["binding"]): void {
   binding.tree.remove();
 }
 function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
-  const node = binding.tree.node.$_content[0];
+  const node = retained_subject(binding.tree).$_content[0];
   if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
-  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
+  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(retained_historic_root(binding.tree));
 }
 function source(...values: string[]): () => string {
   let index = 0;
@@ -132,7 +133,7 @@ check("malformed deterministic candidates exhaust without publication", () => {
 check("DOM preflight failure leaves canonical state unchanged", () => {
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
-  const dom = mount(root.node);
+  const dom = mount(retained_subject(root));
   dom.setAttribute("hson:quid", Q1);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q2);
   assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_MIRROR_QUID_MISMATCH");
@@ -144,7 +145,7 @@ check("DOM preflight failure leaves canonical state unchanged", () => {
 check("private projected metadata inconsistency fails before commit", () => {
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
-  root.node.$_meta = { quid: Q1 };
+  retained_subject(root).$_meta = { quid: Q1 };
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q2);
   assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_MIRROR_QUID_MISMATCH");
   assert.equal(map.rev, 0);
@@ -158,7 +159,7 @@ check("missing exact correspondence rejects a stale linked handle", () => {
     // The exact owner is intentionally opaque; a foreign owner removes nothing.
     {},
   );
-  unregister_document_binding_node(root.node, registrationOwner);
+  unregister_document_binding_node(retained_subject(root), registrationOwner);
   binding.dispose();
   assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE);
   assert.equal(map.rev, 0);
@@ -178,27 +179,27 @@ check("two local acquisitions remain distinct without a replay commit", () => {
   assert.equal(binding.tree.find.byTag("b")!.quid, Q2);
   assert.equal(map.rev, 0);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 2);
-  assert.notEqual(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, raw_node(binding.tree.node, [0, 1]).$_meta?.quid);
+  assert.notEqual(raw_node(retained_subject(binding.tree), [0, 0]).$_meta?.quid, raw_node(retained_subject(binding.tree), [0, 1]).$_meta?.quid);
   close(binding);
 });
 
 check("local acquisition followed by move maps QUID to the final path", () => {
   const { map, binding } = reflected(`<main <a/> <a/>/>`);
-  const moved = raw_node(binding.tree.node, [0, 0]);
+  const moved = raw_node(retained_subject(binding.tree), [0, 0]);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   assert.equal(binding.tree.find.byTag("a")!.quid, Q1);
   map.document.content.move(path(0), 0, 1);
-  assert.equal(raw_node(binding.tree.node, [0, 1]), moved);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 1]), moved);
   assert.equal(map.document.byQuid(Q1)?.$_tag, "a");
   close(binding);
 });
 
 check("move followed by local acquisition resolves the moved path", () => {
   const { map, binding } = reflected(`<main <a/> <a/>/>`);
-  const moved = raw_node(binding.tree.node, [0, 0]);
+  const moved = raw_node(retained_subject(binding.tree), [0, 0]);
   map.document.content.move(path(0), 0, 1);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
-  assert.equal(_create_livetree_for_runtime_test(runtime, moved).adoptRoots(binding.tree.hostRootNode()).quid, Q1);
+  assert.equal(_create_livetree_for_runtime_test(runtime, moved).adoptRoots(retained_historic_root(binding.tree)).quid, Q1);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), moved);
   assert.equal(map.document.byQuid(Q1)?.$_tag, "a");
   close(binding);
@@ -206,7 +207,7 @@ check("move followed by local acquisition resolves the moved path", () => {
 
 check("local acquisition followed by removal publishes no retired runtime claim", () => {
   const { map, binding } = reflected(`<main <a/> <a/>/>`);
-  const removed = raw_node(binding.tree.node, [0, 0]);
+  const removed = raw_node(retained_subject(binding.tree), [0, 0]);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   assert.equal(binding.tree.find.byTag("a")!.quid, Q1);
   map.document.content.remove(path(0), 0);
@@ -221,11 +222,11 @@ check("local acquisition followed by removal publishes no retired runtime claim"
 check("root preflight retains exact projected and DOM objects", () => {
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
-  const node = root.node;
+  const node = retained_subject(root);
   const dom = mount(node);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   void root.quid;
-  assert.equal(root.node, node);
+  assert.equal(retained_subject(root), node);
   assert.equal(mount(node), dom);
   close(binding);
 });
@@ -233,10 +234,10 @@ check("root preflight retains exact projected and DOM objects", () => {
 check("descendant preflight retains exact projected node", () => {
   const { map, binding } = reflected(`<main <span/>/>`);
   const child = binding.tree.find.byTag("span")!;
-  const node = child.node;
+  const node = retained_subject(child);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q2);
   assert.equal(child.quid, Q2);
-  assert.equal(child.node, node);
+  assert.equal(retained_subject(child), node);
   close(binding);
 });
 

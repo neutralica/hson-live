@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
@@ -122,7 +123,7 @@ class RealmElement {
 
 function mappedTree(tag: string, element: RealmElement) {
   const tree = create_livetree({ $_tag: tag, $_content: [] });
-  link_node_to_el(tree.node, element as unknown as Element);
+  link_node_to_el(retained_subject(tree), element as unknown as Element);
   return tree;
 }
 

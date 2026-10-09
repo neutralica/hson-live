@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -261,9 +262,9 @@ check("portable output is identity-free while local ownership remains intact", (
   link_node_to_el(root, projection as unknown as Element);
   const before = structuredClone(root);
   try {
-    assert.equal(tree.node, root);
-    const normal = serialize_hson(tree.node, { noBreak: true });
-    const filtered = serialize_hson(tree.node, { noBreak: true });
+    assert.equal(retained_subject(tree), root);
+    const normal = serialize_hson(retained_subject(tree), { noBreak: true });
+    const filtered = serialize_hson(retained_subject(tree), { noBreak: true });
     assert.equal(occurrences(normal, "@"), 0);
     assert.doesNotMatch(filtered, /@[0-9a-z]{9}/);
     assert.match(filtered, /data-user="keep"/);
@@ -271,9 +272,9 @@ check("portable output is identity-free while local ownership remains intact", (
     assert.equal(projection.getAttribute(HSON_QUID_MARKUP_NAME), Q1);
     assert.equal(get_node_by_quid(Q1), root);
     assert.equal(get_node_by_quid(Q2), child);
-    assert.equal(serialize_hson(tree.node, { noBreak: true }), normal);
+    assert.equal(serialize_hson(retained_subject(tree), { noBreak: true }), normal);
     assert.equal(tree.content.markup.outerHTML, '<main data-user="keep"><span></span></main>');
-    assert.equal(serialize_html(tree.node), tree.content.markup.outerHTML);
+    assert.equal(serialize_html(retained_subject(tree)), tree.content.markup.outerHTML);
     assert.equal(tree.quid, Q1);
   } finally {
     destroy_subtree_quids(root);
@@ -287,9 +288,9 @@ check("serialization never mints an absent descendant identity", () => {
   const before = structuredClone(root);
   try {
     assert.equal(read_hson_node_quid(child), undefined);
-    assert.equal(serialize_hson(tree.node, { noBreak: true }), "<main <span/>/>");
-    assert.equal(serialize_hson(tree.node, { noBreak: true }), "<main <span/>/>");
-    assert.equal(serialize_html(tree.node), "<main><span></span></main>");
+    assert.equal(serialize_hson(retained_subject(tree), { noBreak: true }), "<main <span/>/>");
+    assert.equal(serialize_hson(retained_subject(tree), { noBreak: true }), "<main <span/>/>");
+    assert.equal(serialize_html(retained_subject(tree)), "<main><span></span></main>");
     assert.equal(tree.content.markup.outerHTML, "<main><span></span></main>");
     assert.equal(tree.content.markup.innerHTML, "<span></span>");
     assert.equal(read_hson_node_quid(child), undefined);

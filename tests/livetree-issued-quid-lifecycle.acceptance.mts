@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -202,7 +203,7 @@ check("detach preserves active and issued identity", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const tree = _create_livetree_for_runtime_test(runtime, node("main", Q1));
   tree.detach();
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), tree.node);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), retained_subject(tree));
   assert.equal(_livetree_runtime_test_issued_count(runtime), 1);
 });
 

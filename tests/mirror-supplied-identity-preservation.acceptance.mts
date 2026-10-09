@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -82,9 +83,9 @@ function authoredRoot(
   binding: ReturnType<typeof _reflect_document_for_runtime_test>,
   selectedRuntime = runtime,
 ) {
-  const node = binding.tree.node.$_content[0];
+  const node = retained_subject(binding.tree).$_content[0];
   if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
-  return _create_livetree_for_runtime_test(selectedRuntime, node).adoptRoots(binding.tree.hostRootNode());
+  return _create_livetree_for_runtime_test(selectedRuntime, node).adoptRoots(retained_historic_root(binding.tree));
 }
 
 check("canonical root QUID is preserved by linked construction", () => {
@@ -97,39 +98,39 @@ check("canonical root QUID is preserved by linked construction", () => {
 
 check("canonical descendant QUID is preserved by linked construction", () => {
   const { binding } = reflected(`<main <span @${Q2}/>/>`);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, Q2);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_meta?.quid, Q2);
   close(binding);
 });
 
 check("root DOM hson:quid matches canonical metadata", () => {
   const { binding } = reflected(`<main @${Q1}/>`);
-  assert.equal(mount(binding.tree.node).getAttribute("hson:quid"), Q1);
+  assert.equal(mount(retained_subject(binding.tree)).getAttribute("hson:quid"), Q1);
   close(binding);
 });
 
 check("descendant DOM hson:quid matches canonical metadata", () => {
   const { binding } = reflected(`<main <span @${Q2}/>/>`);
-  const root = mount(binding.tree.node);
+  const root = mount(retained_subject(binding.tree));
   assert.equal((root.childNodes[0] as FakeElement).getAttribute("hson:quid"), Q2);
   close(binding);
 });
 
 check("runtime lookup resolves the canonical root claim", () => {
   const { binding } = reflected(`<main @${Q1}/>`);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), authoredRoot(binding).node);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), retained_subject(authoredRoot(binding)));
   close(binding);
 });
 
 check("runtime lookup resolves the canonical descendant claim", () => {
   const { binding } = reflected(`<main <span @${Q2}/>/>`);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q2), raw_node(binding.tree.node, [0, 0]));
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q2), raw_node(retained_subject(binding.tree), [0, 0]));
   close(binding);
 });
 
 check("linked admission retains exactly the supplied sparse claims", () => {
   const { binding } = reflected(`<main @${Q1} <span/> <i @${Q2}/>/>`);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 2);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_meta?.quid, undefined);
   close(binding);
 });
 
@@ -145,8 +146,8 @@ check("linked admission never calls the QUID allocator", () => {
 check("repeated supplied projection performs no remint or registry rewrite", () => {
   const { binding } = reflected(`<main @${Q1}/>`);
   const profile = begin_livetree_materialization_profile();
-  const first = mount(binding.tree.node);
-  const second = mount(binding.tree.node);
+  const first = mount(retained_subject(binding.tree));
+  const second = mount(retained_subject(binding.tree));
   const result = profile.stop();
   assert.equal(second, first);
   assert.equal(result.quidEnsureCalls, 0);
@@ -158,13 +159,13 @@ check("find returns the exact supplied-QUID descendant", () => {
   const { binding } = reflected(`<main <span @${Q2}/>/>`);
   const child = binding.tree.find.byTag("span");
   assert.equal(child?.quid, Q2);
-  assert.equal(child?.node, raw_node(binding.tree.node, [0, 0]));
+  assert.equal(retained_subject(child), raw_node(retained_subject(binding.tree), [0, 0]));
   close(binding);
 });
 
 check("DOM reverse lookup returns the supplied-QUID descendant", () => {
   const { binding } = reflected(`<main <span @${Q2}/>/>`);
-  const root = mount(binding.tree.node);
+  const root = mount(retained_subject(binding.tree));
   const child = binding.tree.dom.treeFromEl(root.childNodes[0] as unknown as Element);
   assert.equal(child?.quid, Q2);
   close(binding);
@@ -181,11 +182,11 @@ check("delegated attributes retain the canonical claim", () => {
 
 check("QUID-free insertion permits local descendant identity demand", () => {
   const { map, binding } = reflected(`<main @${Q1} <span/>/>`);
-  mount(binding.tree.node);
+  mount(retained_subject(binding.tree));
   map.document.content.insert(path(0), 1, projected_element(`<span/>`));
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q3);
   assert.equal(binding.tree.find.byTag("span")?.quid, Q3);
-  const acquired = raw_node(binding.tree.node, [0, 0]);
+  const acquired = raw_node(retained_subject(binding.tree), [0, 0]);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q3), acquired);
   assert.equal(get_el_for_node(acquired)?.getAttribute("hson:quid"), Q3);
   close(binding);
@@ -194,8 +195,8 @@ check("QUID-free insertion permits local descendant identity demand", () => {
 check("mixed insertion preserves existing identity and QUID absence", () => {
   const { map, binding } = reflected(`<main @${Q1} <a/>/>`);
   map.document.content.insert(path(0), 1, projected_element(`<a/>`));
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
-  assert.equal(raw_node(binding.tree.node, [0, 1]).$_meta?.quid, undefined);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_meta?.quid, undefined);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 1]).$_meta?.quid, undefined);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   close(binding);
 });
@@ -259,7 +260,7 @@ check("identity-stripped capture projects with no supplied claims", () => {
   registry_for_document_library(stripped).restore(registry_for_document_library(source).capture());
   const binding = _reflect_document_for_runtime_test(runtime, stripped);
   assert.equal(authoredRoot(binding).node.$_meta?.quid, undefined);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_meta?.quid, undefined);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
   close(binding);
 });

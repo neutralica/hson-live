@@ -1,5 +1,6 @@
 import type { HsonNode } from "../../../core/types.js";
 import { is_Node } from "../../../core/node-guards.js";
+import { assert_livetree_node_active } from "../livetree-state.js";
 import type { LifecycleResourceKind } from "../managers/lifecycle-registry.js";
 
 /**
@@ -50,6 +51,7 @@ const DEFAULT_LIVETREE_RUNTIME = make_runtime();
 const RUNTIME_FOR_NODE = new WeakMap<HsonNode, LiveTreeRuntime>();
 const RUNTIME_FOR_TREE = new WeakMap<object, LiveTreeRuntime>();
 const SUBJECT_FOR_TREE = new WeakMap<object, HsonNode>();
+const HISTORIC_ROOT_FOR_TREE = new WeakMap<object, HsonNode>();
 const REQUESTED_CONSTRUCTION_RUNTIME = new WeakMap<HsonNode, LiveTreeRuntime>();
 const REQUESTED_LINKED_CONSTRUCTION = new WeakSet<HsonNode>();
 const RUNTIME_FOR_DOCUMENT = new WeakMap<Document, LiveTreeRuntime>();
@@ -109,6 +111,53 @@ export function subject_for_tree(tree: object): HsonNode {
   const subject = SUBJECT_FOR_TREE.get(tree);
   if (subject === undefined) throw new Error("LiveTree handle has no runtime subject.");
   return subject;
+}
+
+/** Ordinary operations retain the lifecycle eligibility of LiveTree.node. @internal */
+export function active_subject_for_tree(tree: object): HsonNode {
+  const subject = subject_for_tree(tree);
+  assert_livetree_node_active(subject, "access node");
+  return subject;
+}
+
+/** Store the actual historic context; it cannot be inferred from parentage. @internal */
+export function bind_tree_historic_root(tree: object, root: HsonNode): void {
+  subject_for_tree(tree);
+  const runtime = RUNTIME_FOR_TREE.get(tree);
+  // Exact-object graph ownership includes structural and sparse linked roots;
+  // QUID presence or an unregistered observation is not provenance.
+  if (runtime === undefined || RUNTIME_FOR_NODE.get(root) !== runtime) {
+    throw new Error("LiveTree historic root must be owned by the handle's runtime.");
+  }
+  HISTORIC_ROOT_FOR_TREE.set(tree, root);
+}
+
+/** Inherit pinned context from an authenticated active handle, including a retired root. @internal */
+export function inherit_tree_historic_root(tree: object, source: object): void {
+  const subject = active_subject_for_tree(tree);
+  const sourceSubject = active_subject_for_tree(source);
+  const runtime = RUNTIME_FOR_TREE.get(tree);
+  if (runtime === undefined || RUNTIME_FOR_TREE.get(source) !== runtime
+    || RUNTIME_FOR_NODE.get(subject) !== runtime || RUNTIME_FOR_NODE.get(sourceSubject) !== runtime) {
+    throw new Error("LiveTree historic context inheritance requires active same-runtime handles.");
+  }
+  // The source handle already authenticates this exact context. Its historic
+  // root may have retired; do not re-admit or re-register that root.
+  const root = historic_root_for_tree(source);
+  HISTORIC_ROOT_FOR_TREE.set(tree, root);
+}
+
+/** Historical correspondence/teardown access, without active-read eligibility. @internal */
+export function historic_root_for_tree(tree: object): HsonNode {
+  const root = HISTORIC_ROOT_FOR_TREE.get(tree);
+  if (root === undefined) throw new Error("LiveTree handle has no historic root.");
+  return root;
+}
+
+/** Ordinary host-root reads retain the owning handle's lifecycle guard. @internal */
+export function active_historic_root_for_tree(tree: object): HsonNode {
+  assert_livetree_node_active(subject_for_tree(tree), "access host root");
+  return historic_root_for_tree(tree);
 }
 
 /** Observe exact realization creation/release inside one active tree runtime. @internal */

@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -189,9 +190,9 @@ check("runtime replacement fences the old issued lifetime", () => {
 check("detach preserves the exact node rather than restoring it", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const tree = _create_livetree_for_runtime_test(runtime, node("main", Q1));
-  const exact = tree.node;
+  const exact = retained_subject(tree);
   tree.detach();
-  assert.equal(tree.node, exact);
+  assert.equal(retained_subject(tree), exact);
   assert.equal(tree.quid, Q1);
 });
 
@@ -222,7 +223,7 @@ check("remove returns void and no restoration artifact", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const childNode = node("span", Q1);
   const parent = _create_livetree_for_runtime_test(runtime, node("main", Q2, [childNode]));
-  const child = _create_livetree_for_runtime_test(runtime, childNode).adoptRoots(parent.hostRootNode());
+  const child = _create_livetree_for_runtime_test(runtime, childNode).adoptRoots(retained_historic_root(parent));
   assert.equal(parent.empty(), parent);
   assert.equal(child.isDisposed, true);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), undefined);

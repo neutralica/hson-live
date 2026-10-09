@@ -68,3 +68,5 @@ export type * from "../../types/css.types.js";
 export type * from "../../types/animate.types.js";
 export type * from "../../types/keyframes.types.js";
 export type * from "../../types/svg.types.js";
+
+export type { ReadonlyHsonNode } from "../../core/types.js";

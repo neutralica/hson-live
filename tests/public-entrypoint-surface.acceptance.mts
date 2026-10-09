@@ -30,7 +30,7 @@ LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocu
 LiveMapLibraryAddOperation LiveMapLibraryDefinition LiveMapDefinitions LiveMapDynamicLibrary LiveMapKnownNames LiveMapLibraryInput LiveMapLibrarySchemaUseOperation LiveMapStagedWriter LiveMapWithLibrarySchema LiveTree LiveTreeAlreadyAttachedError LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult LiveTreeLinkedIdentityRequiredError
 LiveTreeProtectedRootError LiveTreeQuidReuseError BrowserInteractionDescriptor Locus LocusActionContext LocusActionHandler LocusActionName LocusActionPayloads
 LocusActions LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError LocusDisconnectedError LocusHttpBinding
-LocusDuplicateActionIdError LocusAuthorityLibraryDefinition LocusLocalLibraryDefinition LocusRuntimeLibraryAdditions LocusDefinitionOptions LocusResumeOptions LocusResult LocusStage LocusWebSocketLike Mirror HsonFromSchema JsonFromSchema SsrBootstrapCodecError SsrBootstrapCodecOptions
+LocusDuplicateActionIdError LocusAuthorityLibraryDefinition LocusLocalLibraryDefinition LocusRuntimeLibraryAdditions LocusDefinitionOptions LocusResumeOptions LocusResult LocusStage LocusWebSocketLike Mirror ReadonlyHsonNode HsonFromSchema JsonFromSchema SsrBootstrapCodecError SsrBootstrapCodecOptions
 SsrBootstrapKind TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource TreeSelector activate_interactions
 add_interaction bind_locus_http bind_locus_websocket continue_document continue_hosted_document create_livehost_locus_registry decode_ssr_bootstrap enable_interactions
 encode_ssr_bootstrap hson hsonCalc hsonLiveMap hsonLiveTree hsonMirror hsonLiveHost
@@ -174,8 +174,9 @@ await check("LiveTree declarations expose styling capabilities without runtime m
 });
 
 const ownerProofs = Object.freeze({
-  "dist/hson-authoring.d.ts": ["HsonDocument", "HsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
-  "dist/api/livetree/index.d.ts": ["make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
+  "dist/index.d.ts": ["ReadonlyHsonNode"],
+  "dist/hson-authoring.d.ts": ["HsonDocument", "HsonNode", "ReadonlyHsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
+  "dist/api/livetree/index.d.ts": ["ReadonlyHsonNode", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
   "dist/api/livemap/index.d.ts": ["LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
   "dist/api/mirror/index.d.ts": ["reflect_collection", "CollectionMirror", "CollectionMirrorErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoSync", "EchoSyncStrategy"],
@@ -193,7 +194,7 @@ await check("specialist contracts remain available from owning entrypoints", () 
     const actual = new Set(declaration_exports(file));
     for (const name of expected) {
       assert.equal(actual.has(name), true, `${name} must remain exported by ${file}`);
-      if (!["HsonDocument", "BrowserRealizationHtml", "DocumentSsrError", "create_livehost_locus_registry", "LiveHost", "LiveHostRuntime", "hsonLiveHost", "LocusDefinitionOptions", "LocusResumeOptions"].includes(name)) {
+      if (!["ReadonlyHsonNode", "HsonDocument", "BrowserRealizationHtml", "DocumentSsrError", "create_livehost_locus_registry", "LiveHost", "LiveHostRuntime", "hsonLiveHost", "LocusDefinitionOptions", "LocusResumeOptions"].includes(name)) {
         assert.equal(root.has(name), false, `${name} must not leak back into the root`);
       }
     }

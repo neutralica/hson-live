@@ -30,9 +30,9 @@ This document explains the model and its boundaries. The complete callable surfa
 
 ## The handle and the graph
 
-A `LiveTree` is a handle to one node in a host graph, not a second tree model. Its `node` getter resolves the backing `HsonNode`, while `quid` provides the node's stable live identity. Child handles share the same host-root context.
+A `LiveTree` is a handle to one node in a host graph, not a second tree model. Its `node` getter returns a fresh detached, deeply frozen `ReadonlyHsonNode` observation, while `quid` provides the node's stable live identity. Child handles share the same host-root context.
 
-The current node shape is:
+The mutable authoring node shape is:
 
 ```ts
 type HsonNode = {
@@ -44,6 +44,29 @@ type HsonNode = {
 ```
 
 The `$_*` names are node fields. Virtual structural node (VSN) tags remain ordinary tag strings such as `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_ii`, `_hson_str`, and `_hson_val` in `node.$_tag`.
+
+Three ownership boundaries are distinct: caller-owned raw input is privately
+admitted at construction; the LiveTree-owned graph remains mutable through its
+methods and managers; public `node` and `hostRootNode()` observations own their
+storage independently. `ReadonlyHsonNode` is exported from the package root,
+`/hson`, and `/livetree`; the mutable `HsonNode` authoring type remains available.
+
+Every observation read makes a new exact copy. Earlier observations retain their
+earlier values after mutation; even consecutive reads do not share containers.
+Nested nodes, content arrays, attrs, metadata, style maps/typed leaves and form
+selection arrays are frozen. Existing QUID metadata is visible without issuing
+identity or conferring registration authority. Observation performs no public
+admission, relationship repair or normalization: empty/adjacent text, signed
+zero, UTF-16, optional field presence, physical array order and runtime mutation
+results remain exact. Unsupported storage produces an explicit runtime
+observation invariant failure. There is no cache or live readonly Proxy.
+
+```ts
+const before = tree.node;
+tree.attrs.set("title", "after");
+const after = tree.node; // fresh readonly observation of the updated graph
+// before retains its earlier contents; mutate through LiveTree managers.
+```
 
 LiveTree mutations update this graph first. When a corresponding DOM element is mounted, DOM-aware managers mirror the change. Detached branches therefore retain traversal, serialization, content, attribute, and styling state even when DOM-only reads are unavailable.
 
@@ -76,7 +99,7 @@ order reject without normalization. Runtime ordinary attributes retain finite
 primitive values, and lawful style storage retains its field presence.
 
 Public node construction rejects generated QUID claims, including claims in an
-active tree's `toNode()` observation. Public HTML/SVG markup creation also uses
+active tree's `node` observation. Public HTML/SVG markup creation also uses
 public-source identity admission before ownership; selecting a destination tree
 does not authorize imported identity. SVG fragments must contain exactly the
 expected branch, without discarded siblings or text.
@@ -133,7 +156,7 @@ QUID is graph identity, not trust, authorization, authentication, or execution c
 A raw QUID resolves only while its claim is active. After terminal removal it
 remains absent and cannot retarget to unrelated content in the same runtime.
 
-`hostRootNode()` exposes the graph root used by a handle. `adoptRoots(root)` rebinds that context and is mainly relevant when attaching or moving branches.
+`hostRootNode()` returns a fresh detached, deeply frozen observation of the stored historic root used by a handle. The historic context is preserved independently of current parentage. `adoptRoots(root)` rebinds that context only to an actual graph object already owned by the handle's runtime. Observations, copies and unregistered raw roots reject without replacing the previous context. Internal attachment, wrapping and existing-handle construction inherit pinned context from an authenticated active same-runtime handle. That established historic root may remain retired and unregistered; inheritance does not revive it or issue identity. Fresh structural ROOTs and sparse linked roots qualify by exact runtime ownership without QUIDs; matching metadata or graph contents does not establish provenance.
 
 ---
 

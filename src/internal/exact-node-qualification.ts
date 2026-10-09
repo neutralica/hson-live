@@ -4,13 +4,13 @@ import { hson_metadata_candidate_key, hson_metadata_policy, hson_metadata_value_
 import { read_hson_node_quid } from '../core/hson-node-quid.js';
 import { is_valid_hson_attribute_name, is_valid_hson_data_name } from '../core/hson-name.js';
 import { is_Node } from '../core/node-guards.js';
-import type { HsonNode } from '../core/types.js';
+import type { HsonNode, ReadonlyHsonNode } from '../core/types.js';
 
 // Internal structural proof only: receiving roles confer no runtime identity authority.
 const structuralTags: readonly string[] = [STR_TAG, VAL_TAG, OBJ_TAG, ARR_TAG, ELEM_TAG, II_TAG];
 const dataTags: readonly string[] = [STR_TAG, VAL_TAG, OBJ_TAG, ARR_TAG];
 type Trace = Readonly<{ parent?: Trace; key: string | number }>;
-type Storage = 'node' | 'content' | 'attrs' | 'meta' | 'style' | 'css-leaf' | 'typed-style' | 'scalar';
+type Storage = 'node' | 'content' | 'attrs' | 'meta' | 'style' | 'css-leaf' | 'typed-style' | 'scalar' | 'observed-style' | 'observed-array' | 'observed-primitive';
 type CopyJob = { kind: 'enter'; source: unknown; storage: Storage; path: Trace; target: object; key: string }
   | { kind: 'leave'; source: object };
 const rootPath: Trace = { key: '$' };
@@ -25,7 +25,8 @@ function path_text(path: Trace): string {
 }
 function fail(operation: string, path: Trace, message: string, code = 'HSON_CANONICAL_INVARIANT_VIOLATION', cause?: unknown): never {
   return _throw_transform_err(message, operation, undefined, cause, {
-    code, stage: operation === 'toHson' || operation === 'toBinary' ? 'serialization-admission' : 'source-admission', path: path_text(path),
+    code, stage: operation === 'LiveTree.node' || operation === 'LiveTree.hostRootNode'
+      ? 'runtime-observation' : operation === 'toHson' || operation === 'toBinary' ? 'serialization-admission' : 'source-admission', path: path_text(path),
   });
 }
 function reflect<T>(operation: string, path: Trace, read: () => T): T {
@@ -44,6 +45,29 @@ function finite(value: unknown, operation: string, path: Trace): void {
 
 /** Descriptor observations are not an atomic view of an adversarial Proxy target. */
 export function capture_exact_hson_graph(input: unknown, operation: string, portable: boolean): HsonNode {
+  return capture_graph(input, operation, portable, false);
+}
+
+/** Copy runtime storage without public admission qualification or snapshot branding. @internal */
+export function observe_exact_hson_graph(input: HsonNode, operation: string): ReadonlyHsonNode {
+  const copy = capture_graph(input, operation, false, true);
+  const seen = new WeakSet<object>();
+  const stack: object[] = [copy];
+  while (stack.length) {
+    const value = stack.pop();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+      if (typeof descriptor.value === 'object' && descriptor.value !== null) append(stack, descriptor.value);
+    }
+    Object.freeze(value);
+  }
+  // Capture establishes the observation domain, which includes runtime form
+  // arrays and scalar styles that the mutable authoring type does not admit.
+  return copy;
+}
+
+function capture_graph(input: unknown, operation: string, portable: boolean, observation: boolean): HsonNode {
   const holder: Record<string, unknown> = Object.create(null);
   const active = new WeakMap<object, Trace>();
   const copied = new WeakMap<object, Map<Storage, object>>();
@@ -54,15 +78,19 @@ export function capture_exact_hson_graph(input: unknown, operation: string, port
     if (job.kind === 'leave') { active.delete(job.source); continue; }
     const { source, path, target, key } = job;
     let storage = job.storage;
-    if (storage === 'scalar' || (storage === 'style' && typeof source === 'string')
+    if (storage === 'scalar' || storage === 'observed-primitive'
+      || (storage === 'observed-style' && (source === null || typeof source !== 'object'))
+      || (storage === 'style' && typeof source === 'string')
       || (storage === 'css-leaf' && (source === null || typeof source !== 'object'))) {
       if (source !== null && source !== undefined && typeof source !== 'string' && typeof source !== 'number' && typeof source !== 'boolean') {
         fail(operation, path, 'unsupported semantic value type');
       }
+      if (storage === 'observed-primitive' && source === undefined) fail(operation, path, 'runtime content and form arrays require primitive values');
       if (storage === 'css-leaf') {
         if (source === undefined) fail(operation, path, 'undefined style declaration is not canonical');
         finite(source, operation, path);
       }
+      if (observation) finite(source, operation, path);
       put(target, key, source);
       continue;
     }
@@ -70,13 +98,18 @@ export function capture_exact_hson_graph(input: unknown, operation: string, port
     if (typeof source !== 'object' || source === null) fail(operation, path, 'semantic container must be an object');
     const origin = active.get(source);
     if (origin) fail(operation, path, 'cycle returns to ' + path_text(origin));
-    const previous = copied.get(source)?.get(storage);
-    if (previous) { put(target, key, previous); continue; }
+    const variantsForSource = copied.get(source);
+    const previous = observation ? variantsForSource?.values().next().value : variantsForSource?.get(storage);
+    // One observation object per source object, including sharing across
+    // container roles. Validate each newly encountered role before reusing it.
+    if (previous && (!observation || variantsForSource?.has(storage))) { put(target, key, previous); continue; }
 
     const array = reflect(operation, path, () => Array.isArray(source));
-    if (storage === 'content' ? !array : array) fail(operation, path, storage === 'content' ? 'content must be an array' : 'record must not be an array');
+    const arrayStorage = storage === 'content' || storage === 'observed-array';
+    if (arrayStorage ? !array : array) fail(operation, path, storage === 'content'
+      ? 'content must be an array' : arrayStorage ? 'form values must be an array' : 'record must not be an array');
     const prototype = reflect(operation, path, () => Object.getPrototypeOf(source));
-    if (storage !== 'content' && prototype !== Object.prototype && prototype !== null) fail(operation, path, 'record must have Object.prototype or null prototype');
+    if (!arrayStorage && prototype !== Object.prototype && prototype !== null) fail(operation, path, 'record must have Object.prototype or null prototype');
     const keys = reflect(operation, path, () => Reflect.ownKeys(source));
     if (portable && storage === 'meta' && keys.includes('quid')) {
       fail(operation, child(path, 'quid'), 'generated runtime QUID metadata is invalid in portable Transform input', 'PORTABLE_RUNTIME_QUID_FORBIDDEN');
@@ -89,7 +122,7 @@ export function capture_exact_hson_graph(input: unknown, operation: string, port
       if (storage === 'typed-style' && entryKey !== 'value' && entryKey !== 'unit') fail(operation, entryPath, 'unknown typed style field');
       const descriptor = reflect(operation, entryPath, () => Reflect.getOwnPropertyDescriptor(source, entryKey));
       if (!descriptor || !Object.hasOwn(descriptor, 'value')) fail(operation, entryPath, 'semantic fields must be own data properties');
-      if (!(storage === 'content' && entryKey === 'length') && !descriptor.enumerable) fail(operation, entryPath, 'semantic fields must be enumerable');
+      if (!(arrayStorage && entryKey === 'length') && !descriptor.enumerable) fail(operation, entryPath, 'semantic fields must be enumerable');
       entries.set(entryKey, descriptor.value);
     }
     const semanticKeys = storage === 'node' ? ['$_tag', '$_content', '$_attrs', '$_meta']
@@ -111,7 +144,7 @@ export function capture_exact_hson_graph(input: unknown, operation: string, port
         }
       }
     }
-    if ((storage === 'attrs' || storage === 'meta') && entries.size === 0) {
+    if (!observation && (storage === 'attrs' || storage === 'meta') && entries.size === 0) {
       fail(operation, path, 'empty optional container is not canonical; omit it', storage === 'attrs' ? 'HSON_EMPTY_ATTRIBUTES' : 'HSON_EMPTY_METADATA');
     }
     if (storage === 'typed-style') {
@@ -120,7 +153,7 @@ export function capture_exact_hson_graph(input: unknown, operation: string, port
       finite(value, operation, child(path, 'value'));
       if (entries.has('unit') && entries.get('unit') !== undefined && typeof entries.get('unit') !== 'string') fail(operation, child(path, 'unit'), 'style unit must be a string or own-present undefined');
     }
-    if (storage === 'content') {
+    if (arrayStorage) {
       const length = entries.get('length');
       if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) fail(operation, path, 'invalid array length');
       if (entries.size !== length + 1) fail(operation, path, 'content arrays must be dense and have no extra properties');
@@ -133,7 +166,7 @@ export function capture_exact_hson_graph(input: unknown, operation: string, port
     }
 
     // Copies must not reintroduce inherited semantic fields after admission.
-    const result: object = storage === 'content' ? [] : Object.create(null);
+    const result: object = previous ?? (arrayStorage ? [] : Object.create(observation ? prototype : null));
     let variants = copied.get(source);
     if (!variants) { variants = new Map(); copied.set(source, variants); }
     variants.set(storage, result);
@@ -142,11 +175,14 @@ export function capture_exact_hson_graph(input: unknown, operation: string, port
     append(stack, { kind: 'leave', source });
     const children: CopyJob[] = [];
     for (const [entryKey, value] of entries) {
-      if (storage === 'content' && entryKey === 'length') continue;
+      if (arrayStorage && entryKey === 'length') continue;
       let next: Storage = 'scalar';
       if (storage === 'node') next = entryKey === '$_content' ? 'content' : entryKey === '$_attrs' ? 'attrs' : entryKey === '$_meta' ? 'meta' : 'scalar';
-      else if (storage === 'content') next = typeof value === 'object' && value !== null ? 'node' : 'scalar';
-      else if (storage === 'attrs' && entryKey === 'style') next = 'style';
+      else if (storage === 'content') next = typeof value === 'object' && value !== null ? 'node' : observation ? 'observed-primitive' : 'scalar';
+      else if (storage === 'observed-array') next = 'observed-primitive';
+      else if (storage === 'attrs' && entryKey === 'style') next = observation ? 'observed-style' : 'style';
+      else if (observation && storage === 'attrs' && Array.isArray(value)) next = 'observed-array';
+      else if (storage === 'observed-style') next = 'observed-style';
       else if (storage === 'style') next = 'css-leaf';
       append(children, { kind: 'enter', source: value, storage: next, path: child(path, storage === 'content' ? Number(entryKey) : entryKey), target: result, key: entryKey });
     }

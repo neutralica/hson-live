@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -61,9 +62,9 @@ function close(binding: ReturnType<typeof reflected>["binding"]): void {
 }
 
 function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
-  const node = binding.tree.node.$_content[0];
+  const node = retained_subject(binding.tree).$_content[0];
   if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
-  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
+  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(retained_historic_root(binding.tree));
 }
 
 function assert_no_claims(): void {
@@ -79,14 +80,14 @@ check("QUID-less reflected root preserves metadata absence", () => {
 
 check("QUID-less reflected descendant preserves metadata absence", () => {
   const { binding } = reflected(`<main <span/>/>`);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
 });
 
 check("mounted QUID-less root has no hson:quid markup", () => {
   const { binding } = reflected(`<main/>`);
-  const root = mount(binding.tree.node);
+  const root = mount(retained_subject(binding.tree));
   assert.equal(root.getAttribute("hson:quid"), null);
   assert_no_claims();
   close(binding);
@@ -94,7 +95,7 @@ check("mounted QUID-less root has no hson:quid markup", () => {
 
 check("mounted QUID-less descendant has no hson:quid markup", () => {
   const { binding } = reflected(`<main <span/>/>`);
-  const root = mount(binding.tree.node);
+  const root = mount(retained_subject(binding.tree));
   const child = root.childNodes[0] as FakeElement;
   assert.equal(child.getAttribute("hson:quid"), null);
   assert_no_claims();
@@ -103,8 +104,8 @@ check("mounted QUID-less descendant has no hson:quid markup", () => {
 
 check("repeated projection retains exact DOM without minting", () => {
   const { binding } = reflected(`<main/>`);
-  const first = mount(binding.tree.node);
-  const second = mount(binding.tree.node);
+  const first = mount(retained_subject(binding.tree));
+  const second = mount(retained_subject(binding.tree));
   assert.equal(second, first);
   assert_no_claims();
   close(binding);
@@ -113,7 +114,7 @@ check("repeated projection retains exact DOM without minting", () => {
 check("find wraps a QUID-less linked descendant without minting", () => {
   const { binding } = reflected(`<main <span/>/>`);
   const child = binding.tree.find.byTag("span");
-  assert.equal(child?.node, raw_node(binding.tree.node, [0, 0]));
+  assert.equal(retained_subject(child), raw_node(retained_subject(binding.tree), [0, 0]));
   assert.equal(child?.node.$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
@@ -121,9 +122,9 @@ check("find wraps a QUID-less linked descendant without minting", () => {
 
 check("direct linked-node wrapping preserves QUID absence", () => {
   const { binding } = reflected(`<main <span/>/>`);
-  const childNode = raw_node(binding.tree.node, [0, 0]);
+  const childNode = raw_node(retained_subject(binding.tree), [0, 0]);
   const child = _create_livetree_for_runtime_test(runtime, childNode);
-  assert.equal(child.node, childNode);
+  assert.equal(retained_subject(child), childNode);
   assert.equal(child.node.$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
@@ -131,10 +132,10 @@ check("direct linked-node wrapping preserves QUID absence", () => {
 
 check("DOM reverse lookup uses exact correspondence without minting", () => {
   const { binding } = reflected(`<main <span/>/>`);
-  const root = mount(binding.tree.node);
-  const childNode = raw_node(binding.tree.node, [0, 0]);
+  const root = mount(retained_subject(binding.tree));
+  const childNode = raw_node(retained_subject(binding.tree), [0, 0]);
   const child = binding.tree.dom.treeFromEl(root.childNodes[0] as unknown as Element);
-  assert.equal(child?.node, childNode);
+  assert.equal(retained_subject(child), childNode);
   assert_no_claims();
   close(binding);
 });
@@ -185,9 +186,9 @@ check("delegated text writes do not mint", () => {
 
 check("canonical insertion projects a QUID-less node without minting", () => {
   const { map, binding } = reflected(`<main <span/>/>`);
-  mount(binding.tree.node);
+  mount(retained_subject(binding.tree));
   map.document.content.insert(path(0), 1, projected_element(`<span/>`));
-  const inserted = raw_node(binding.tree.node, [0, 1]);
+  const inserted = raw_node(retained_subject(binding.tree), [0, 1]);
   assert.equal(inserted.$_meta?.quid, undefined);
   assert.equal(get_el_for_node(inserted)?.getAttribute("hson:quid"), null);
   assert_no_claims();
@@ -196,9 +197,9 @@ check("canonical insertion projects a QUID-less node without minting", () => {
 
 check("QUID-less move preserves canonical content without minting", () => {
   const { map, binding } = reflected(`<main <a/> <a/>/>`);
-  const moved = raw_node(binding.tree.node, [0, 0]);
+  const moved = raw_node(retained_subject(binding.tree), [0, 0]);
   map.document.content.move(path(0), 0, 1);
-  assert.deepEqual(raw_node(binding.tree.node, [0, 1]), moved);
+  assert.deepEqual(raw_node(retained_subject(binding.tree), [0, 1]), moved);
   assert.equal(moved.$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
@@ -206,17 +207,17 @@ check("QUID-less move preserves canonical content without minting", () => {
 
 check("QUID-less replacement disposes the old exact node", () => {
   const { map, binding } = reflected(`<main <a/>/>`);
-  const old = raw_node(binding.tree.node, [0, 0]);
+  const old = raw_node(retained_subject(binding.tree), [0, 0]);
   map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   assert.equal(_is_livetree_node_disposed(old), true);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
 });
 
 check("QUID-less removal disposes the removed exact node", () => {
   const { map, binding } = reflected(`<main <a/> <a/>/>`);
-  const removed = raw_node(binding.tree.node, [0, 0]);
+  const removed = raw_node(retained_subject(binding.tree), [0, 0]);
   map.document.content.remove(path(0), 0);
   assert.equal(_is_livetree_node_disposed(removed), true);
   assert_no_claims();
@@ -225,9 +226,9 @@ check("QUID-less removal disposes the removed exact node", () => {
 
 check("new-epoch QUID-less root install is fresh and retains absence", () => {
   const { map, binding } = reflected(`<main class="old"/>`);
-  const root = binding.tree.node;
+  const root = retained_subject(binding.tree);
   registry_for_document_library(map).restore(registry_for_document_library(element(`<main class="new"/>`)).capture());
-  assert.notEqual(binding.tree.node, root);
+  assert.notEqual(retained_subject(binding.tree), root);
   assert.equal(_is_livetree_node_disposed(root), true);
   assert.equal(authoredRoot(binding).node.$_meta?.quid, undefined);
   assert_no_claims();

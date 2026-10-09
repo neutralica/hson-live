@@ -39,7 +39,10 @@ import type { LiveTree } from "../livetree.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
 import { get_quid } from "../quid/data-quid.js";
-import { runtime_for_tree } from "../runtime/livetree-runtime.js";
+import {
+  runtime_for_tree,
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 import { lower_browser_attribute_value } from "../../../internal/browser-realization/browser-realization-plan.js";
 
 const UNASSIGNED_QUID_DIAGNOSTIC = "<unassigned>";
@@ -80,13 +83,13 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     must,
     has: (name) => {
       const key = normalize_livetree_attr_name(tree, name, "has");
-      return has_attr(tree.node, key);
+      return has_attr(active_subject_for_tree(tree), key);
     },
-    keys: () => Object.freeze(read_attr_keys(tree.node)),
+    keys: () => Object.freeze(read_attr_keys(active_subject_for_tree(tree))),
     set: (name, value) => {
       const key = normalize_livetree_attr_name(tree, name, "set");
       const decoded = normalize_livetree_attr_value(tree, key, value, "set");
-      const binding = document_binding_for_node(tree.node);
+      const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "set", name: key, value: decoded });
         return tree;
@@ -96,7 +99,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     setMany: (values) => {
       const additions = normalize_livetree_attrs_input(tree, values, "setMany");
-      const binding = document_binding_for_node(tree.node);
+      const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "setMany", values: additions });
         return tree;
@@ -110,7 +113,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     drop: (name) => {
       const key = normalize_livetree_attr_name(tree, name, "drop");
-      const binding = document_binding_for_node(tree.node);
+      const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "drop", name: key });
         return tree;
@@ -120,7 +123,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     dropMany: (names) => {
       const normalized = normalize_livetree_drop_names(tree, names, "dropMany");
-      const binding = document_binding_for_node(tree.node);
+      const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "dropMany", names: normalized });
         return tree;
@@ -129,7 +132,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
       return apply_attrs_replacement(tree, current, plan_public_attrs_drop_many(current, normalized));
     },
     clear: () => {
-      const binding = document_binding_for_node(tree.node);
+      const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "clear" });
         return tree;
@@ -139,7 +142,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     replace: (values) => {
       const next = normalize_livetree_attrs_input(tree, values, "replace");
-      const binding = document_binding_for_node(tree.node);
+      const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "replace", values: next });
         return tree;
@@ -175,7 +178,7 @@ export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTr
     },
     set: (...names): TTree => {
       const normalized = normalize_livetree_flag_names(tree, names, "flags.set", true);
-      const binding = document_binding_for_node(tree.node);
+      const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "setMany", values: livetree_flag_values(normalized) });
         return tree;
@@ -185,7 +188,7 @@ export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTr
     },
     clear: (...names): TTree => {
       const normalized = normalize_livetree_flag_names(tree, names, "flags.clear", true);
-      const binding = document_binding_for_node(tree.node);
+      const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({
           kind: "transform",
@@ -247,8 +250,8 @@ function read_canonical_attr(
   key: string,
   operation: string,
 ): CanonicalPublicAttrValue | undefined {
-  if (!has_attr(tree.node, key)) return undefined;
-  const decoded = decode_public_attr_value(key, tree.node.$_attrs?.[key]);
+  if (!has_attr(active_subject_for_tree(tree), key)) return undefined;
+  const decoded = decode_public_attr_value(key, active_subject_for_tree(tree).$_attrs?.[key]);
   if (decoded !== undefined) return decoded;
   throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, operation, key, "stored value is not canonical");
 }
@@ -267,7 +270,7 @@ function read_attr_keys(node: HsonNode): string[] {
 
 function read_attrs(tree: LiveTree, operation: string): CanonicalPublicAttrs {
   const input: Record<string, unknown> = {};
-  for (const name of read_attr_keys(tree.node)) input[name] = tree.node.$_attrs?.[name];
+  for (const name of read_attr_keys(active_subject_for_tree(tree))) input[name] = active_subject_for_tree(tree).$_attrs?.[name];
   const attrs = decode_public_attrs(input);
   if (attrs !== undefined) return attrs;
   throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, operation, undefined, "stored attrs are not canonical");
@@ -360,7 +363,7 @@ function apply_attrs_replacement<TTree extends LiveTree>(
 ): TTree {
   if (canonical_public_attrs_equal(current, next)) return tree;
 
-  const node = tree.node;
+  const node = active_subject_for_tree(tree);
   if (Object.keys(next).length === 0) delete node.$_attrs;
   else node.$_attrs = clone_node(next);
   project_attrs_replacement(node, current, next);
@@ -466,7 +469,7 @@ function attr_error(
 }
 
 function diagnostic_quid(tree: LiveTree): string {
-  return get_quid(tree.node, runtime_for_tree(tree)) ?? UNASSIGNED_QUID_DIAGNOSTIC;
+  return get_quid(active_subject_for_tree(tree), runtime_for_tree(tree)) ?? UNASSIGNED_QUID_DIAGNOSTIC;
 }
 
 function is_plain_record(value: unknown): value is Readonly<Record<string, unknown>> {

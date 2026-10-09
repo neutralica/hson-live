@@ -264,3 +264,16 @@ node --expose-gc benchmarks/hson-node-representation.mjs 100 parse
 
 The projection harness lives in `hson-demo2/benchmarks` because JSDOM is a demo
 test dependency rather than an hson-live runtime dependency.
+
+## LiveTree runtime observations
+
+Public `tree.node` and `tree.hostRootNode()` copy actual retained storage into
+fresh detached, deeply frozen `ReadonlyHsonNode` observations. They never
+materialize containers on the owner, issue QUIDs, or run public raw admission.
+They preserve present empty optional containers or noncanonical relationships
+left by earlier runtime mutations; observation does not repair the graph.
+Runtime scalar styles, form-value arrays and own-present typed style
+`unit: undefined` are included in the observation type. The mutable `HsonNode`
+authoring type and its admission requirements remain separate. Authorized
+internal code uses registered subjects and the stored historic-root context;
+it never uses public observations as identity-bearing or writable graph storage.

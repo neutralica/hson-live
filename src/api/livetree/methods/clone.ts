@@ -9,7 +9,11 @@ import { CREATE_NODE } from "../../../core/factories.js";
 import { is_ordinary_element_node } from "../../../core/node-guards.js";
 import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
 import { scan_hson_node_quids } from "../../../core/hson-node-quid.js";
-import { runtime_for_tree, type LiveTreeRuntime } from "../runtime/livetree-runtime.js";
+import {
+  runtime_for_tree,
+  type LiveTreeRuntime,
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 
 
 // clone + remint in one traversal so mapping is correct by construction
@@ -86,7 +90,7 @@ function clone_branch_with_quids(
 // Runtime resources are deliberately not copied. The clone is structural-only:
 // fresh QUIDs, no CSS/listener/event/observer/binding ownership transfer.
 export function clone_branch_method<TSelf extends LiveTree>(this: TSelf): TSelf {
-  const srcNode: HsonNode = this.node;
+  const srcNode: HsonNode = active_subject_for_tree(this);
   const runtime = runtime_for_tree(this);
   const clonedRootNode: HsonNode = clone_branch_with_quids(srcNode, runtime).root;
 

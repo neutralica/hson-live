@@ -1,3 +1,6 @@
+import {
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 // svg-api.ts
 
 import { SVG_TAGS } from "../../../core/all-html-tags.js";
@@ -192,7 +195,7 @@ export function make_svg_api<TTree extends LiveTree>(tree: TTree): SvgApi<TTree>
         return tree;
     };
     return {
-        inScope: () => SVG_TAGS.includes(tree.node.$_tag as SvgTag),
+        inScope: () => SVG_TAGS.includes(active_subject_for_tree(tree).$_tag as SvgTag),
 
 
         preserveAspectRatio: {

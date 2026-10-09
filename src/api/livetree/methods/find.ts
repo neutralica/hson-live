@@ -12,7 +12,10 @@ import { SvgLiveTree } from "../../../types/svg.types.js";
 import { HSON_META_QUID, ensure_quid, get_node_by_quid } from "../quid/data-quid.js";
 import { wrap_in_tree } from "../creation/create-livetree.js";
 import { is_Node } from "../../../core/node-guards.js";
-import { runtime_for_tree } from "../runtime/livetree-runtime.js";
+import {
+  runtime_for_tree,
+  active_subject_for_tree,
+} from "../runtime/livetree-runtime.js";
 
 // “batching” helpers + queryish types
 
@@ -169,7 +172,7 @@ function search_nodes_for_find(
  * Find *all* matching nodes under a `LiveTree` and return them as a `TreeSelector`.
  *
  * Semantics:
- * - Rooted search: delegates to `search_nodes([tree.node], query, { findFirst: false })`,
+ * - Rooted search: delegates to `search_nodes` on the private active subject,
  *   so the traversal is confined to this tree’s subtree.
  * - For each matching `HsonNode`, constructs a child `LiveTree` via
  *   `wrap_in_tree`, preserving the original host root.
@@ -191,7 +194,7 @@ function search_nodes_for_find(
  */
 export function find_all_in_tree(tree: LiveTree, q: HsonQuery | string): TreeSelector {
   const query = typeof q === "string" ? parse_selector(q) : q;
-  const found: HsonNode[] = search_nodes_for_find([tree.node], query, { findFirst: false });
+  const found: HsonNode[] = search_nodes_for_find([active_subject_for_tree(tree)], query, { findFirst: false });
 
   const trees = found.map(node => wrap_in_tree(tree, node)); // ← changed
   return make_tree_selector(trees);
@@ -224,7 +227,7 @@ function normalizeOne(q: FindQuery): HsonQuery {
 /**
  * Build a single-result finder bound to a `LiveTree` subtree.
  *
- * The returned function searches only within `tree.node` and exposes helper
+ * The returned function searches only within the retained graph and exposes helper
  * lookups for common cases:
  * - `byId(id)`
  * - `byAttrs(attr, value)`
@@ -241,7 +244,7 @@ function normalizeOne(q: FindQuery): HsonQuery {
 export function make_find_for(tree: LiveTree): FindWithById {
   const base = ((q: FindQuery): LiveTree | undefined => {
     const query = typeof q === "string" ? parse_selector(q) : q;
-    const found = search_nodes_for_find([tree.node], query, { findFirst: true });
+    const found = search_nodes_for_find([active_subject_for_tree(tree)], query, { findFirst: true });
     if (!found.length) return undefined;
     return wrap_in_tree(tree, found[0]);
   }) as FindWithById;
@@ -356,7 +359,7 @@ export function make_find_for(tree: LiveTree): FindWithById {
   base.byQuid = (quid: string): LiveTree | undefined => {
     const node = get_node_by_quid(quid, runtime_for_tree(tree));
     if (!node) return undefined;
-    if (!node_in_subtree(tree.node, node)) return undefined;
+    if (!node_in_subtree(active_subject_for_tree(tree), node)) return undefined;
     return wrap_in_tree(tree, node);
   };
 
@@ -388,7 +391,7 @@ export function make_find_all_for(tree: LiveTree): FindMany {
     const out: LiveTree[] = [];
     for (const one of qs) {
       const query = normalizeOne(one);
-      const found = search_nodes_for_find([tree.node], query, { findFirst: false });
+      const found = search_nodes_for_find([active_subject_for_tree(tree)], query, { findFirst: false });
       for (const node of found) out.push(wrap_in_tree(tree, node));
     }
 

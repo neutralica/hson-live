@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { sha256_sync } from "../src/core/sha256-sync.ts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
@@ -127,7 +128,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   const panel = client.lib("panel");
   if (ui.mode === "document" || panel.mode !== "document") throw new Error("Wrong local library modes.");
   const localMirror = hsonMirror(panel);
-  const localTree = localMirror.tree.node;
+  const localTree = retained_subject(localMirror.tree);
   assert.equal(client.rev, 0);
   const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: client });
   echo.connect();
@@ -147,7 +148,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   assert.equal(client.rev, before + 3);
   assert.equal(pair.clientSent.length, sentDuringOffline);
   assert.equal(echo.sync.appliedRev, 0);
-  assert.equal(localMirror.tree.node, localTree);
+  assert.equal(retained_subject(localMirror.tree), localTree);
   await locus.stage((draft) => { draft.lib("state").at(["value"]).set(4); });
   bind_locus_websocket(locus, pair.server);
   echo.connect();
@@ -161,7 +162,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   if (projectedState.mode === "document") throw new Error("Expected projected data library.");
   assert.equal(projectedState.snap(["value"]), 4);
   assert.equal(panel.document.attrs.get({ kind: "path", path: [0] }, "title"), "offline");
-  assert.equal(localMirror.tree.node, localTree);
+  assert.equal(retained_subject(localMirror.tree), localTree);
   localMirror.dispose();
   echo.dispose();
   locus.dispose();
@@ -194,7 +195,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   assert.equal(state.at(["value"]).snap(), 0);
   const projectedMirror = hsonMirror(page);
   const localMirror = hsonMirror(panel);
-  const localTree = localMirror.tree.node;
+  const localTree = retained_subject(localMirror.tree);
   const localEpoch = livemap_identity_epoch_accounting(panel).epoch;
   const projectedHandle = acquire_livemap_document_identity(page.document, { kind: "path", path: [0] });
   const localHandle = acquire_livemap_document_identity(panel.document, { kind: "path", path: [0] });
@@ -238,7 +239,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   assert.equal(projectedHandle.active, true);
   assert.equal(localHandle.active, true);
   assert.equal(projectedMirror.tree.find.must.byTag("main").attrs.get("title"), "replayed");
-  assert.equal(localMirror.tree.node, localTree);
+  assert.equal(retained_subject(localMirror.tree), localTree);
 
   const progress = { ...snapshot.authority, registryDigest: snapshot.registryDigest, prevRev: 2, rev: 3 };
   const projectedUpdates = projectedMirror.diagnostics().updatesApplied;
@@ -272,7 +273,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   assert.equal(projectedHandle.active, false);
   assert.equal(livemap_identity_epoch_accounting(panel).epoch, localEpoch);
   assert.equal(livemap_identity_epoch_accounting(panel).issued, issuedBeforeFallback);
-  assert.equal(localMirror.tree.node, localTree);
+  assert.equal(retained_subject(localMirror.tree), localTree);
   assert.equal(localMirror.status, "active");
   assert.equal(projectedMirror.status, "active");
   assert.equal(projectedMirror.tree.find.must.byTag("main").attrs.get("title"), "authority");

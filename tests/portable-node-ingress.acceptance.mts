@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson } from "../src/hson-authoring.ts";
@@ -19,9 +20,9 @@ const activeRoot: HsonNode = { $_tag: "main", $_content: [] };
 const source = hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [activeRoot] });
 const tree = new LiveTree(activeRoot);
 const localQuid = tree.quid;
-assert.notEqual(tree.node, activeRoot);
+assert.notEqual(retained_subject(tree), activeRoot);
 assert.equal(read_hson_node_quid(activeRoot), undefined);
-assert.equal(read_hson_node_quid(tree.node), localQuid);
+assert.equal(read_hson_node_quid(retained_subject(tree)), localQuid);
 assert.doesNotMatch(JSON.stringify(source.toNode()), /"quid"/);
 
 function forbidden(run: () => unknown): void {
@@ -90,9 +91,9 @@ const dataRoot = dataSource.toNode();
 const object = dataRoot.$_content[0] as HsonNode;
 const member = object.$_content[0] as HsonNode;
 const dataTree = new LiveTree(member);
-assert.notEqual(dataTree.node, member);
+assert.notEqual(retained_subject(dataTree), member);
 assert.equal(read_hson_node_quid(member), undefined);
-assert.equal(read_hson_node_quid(dataTree.node), dataTree.quid);
+assert.equal(read_hson_node_quid(retained_subject(dataTree)), dataTree.quid);
 assert.doesNotMatch(JSON.stringify(dataSource.toNode()), /"quid"/);
 const applicationJson = dataSource.toJson().serialize();
 assert.doesNotMatch(applicationJson, /"quid"/);

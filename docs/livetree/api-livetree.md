@@ -100,7 +100,7 @@ Public raw input is descriptor-captured into a private mutable owned graph.
 later caller changes do not affect the tree. Valid named element branches and
 object/array-mode branches retain their contextual relationships. Invalid raw
 storage rejects before normalization or identity registration. Public supplied
-QUID claims reject, including metadata in an active tree's `toNode()` result.
+QUID claims reject, including metadata in an active tree's `node` observation.
 New local identity is issued on the admitted owned graph.
 
 Existing handles and internally proven ownership handoffs retain references
@@ -173,6 +173,30 @@ not part of hosted success. Use `.sync` for projected/runtime reads and inspect
 Mirror health independently. A hosted canonical mutation attempted through
 ordinary LiveTree—including through `.async.sync`—throws synchronously before
 enqueueing any request.
+
+`tree.node` and `tree.hostRootNode()` return `ReadonlyHsonNode`: fresh detached,
+deeply frozen observations on every invocation. The latter observes the stored
+historic root, which need not equal the current subject or current parent root.
+Neither observation grants mutation or runtime identity authority. Earlier
+observations remain unchanged after authorized mutation. Existing runtime QUIDs
+remain visible, but reading never issues or registers identity. Runtime scalar
+styles, selected-value arrays, typed style units (including own-present
+`undefined`) and exact relationship/optional-container presence are preserved.
+Unsupported runtime storage fails explicitly rather than being repaired.
+
+Use `attrs`, `style`, `text`, `form`, content and lifecycle operations to mutate
+the tree. Internal linked and ownership handoffs resolve actual registered
+subjects and stored historic context independently of these public observations.
+Mutable `HsonNode` remains the raw authoring/admission type; the readonly runtime
+observation type does not widen public raw admission or portable QUID policy.
+
+`adoptRoots(root)` requires an actual same-runtime owned graph object. Detached
+observations, copied roots and unregistered inputs cannot establish historic-root
+authority; rejection preserves the existing context. Internal owned ROOTs and
+sparse linked roots qualify by runtime provenance without requiring a QUID.
+Internal handle inheritance instead carries forward an authenticated active
+same-runtime handle's pinned context, even after the historic root retires.
+It neither re-registers that root nor permits public unregistered-root adoption.
 
 ```ts
 tree.node

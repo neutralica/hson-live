@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
@@ -148,7 +149,7 @@ for (const sharedFeature of [true, false]) {
   const reflection = mirror_document(client, "panel");
   const subject = reflection.tree.find.must.byTag("button");
   const target = new EventTarget();
-  link_node_to_el(subject.node, target as unknown as Element);
+  link_node_to_el(retained_subject(subject), target as unknown as Element);
   let calls = 0;
   const dispose = activate_interactions({ map: client, tree: reflection.tree, document: "panel",
     local: { run: () => { calls += 1; } } });
@@ -165,8 +166,8 @@ for (const sharedFeature of [true, false]) {
   const panelMirror = mirror_document(client, "panel");
   const pageTarget = new EventTarget();
   const panelTarget = new EventTarget();
-  link_node_to_el(pageMirror.tree.find.must.byTag("button").node, pageTarget as unknown as Element);
-  link_node_to_el(panelMirror.tree.find.must.byTag("button").node, panelTarget as unknown as Element);
+  link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
+  link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   const calls: string[] = [];
   const local = { shared: () => { calls.push("shared"); }, next: () => { calls.push("next"); },
     local: () => { calls.push("local"); } };
@@ -231,8 +232,8 @@ for (const sharedFeature of [true, false]) {
   const panelMirror = mirror_document(client, "panel");
   const pageTarget = new EventTarget();
   const panelTarget = new EventTarget();
-  link_node_to_el(pageMirror.tree.find.must.byTag("button").node, pageTarget as unknown as Element);
-  link_node_to_el(panelMirror.tree.find.must.byTag("button").node, panelTarget as unknown as Element);
+  link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
+  link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   const calls: string[] = [];
   const local = { shared: () => { calls.push("shared"); }, next: () => { calls.push("next"); },
     local: () => { calls.push("local"); } };
@@ -261,8 +262,8 @@ for (const sharedFeature of [true, false]) {
   const panelMirror = mirror_document(client, "panel");
   const pageTarget = new EventTarget();
   const panelTarget = new EventTarget();
-  link_node_to_el(pageMirror.tree.find.must.byTag("button").node, pageTarget as unknown as Element);
-  link_node_to_el(panelMirror.tree.find.must.byTag("button").node, panelTarget as unknown as Element);
+  link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
+  link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   const calls: string[] = [];
   const local = { shared: () => { calls.push("shared"); }, next: () => { calls.push("next"); },
     local: () => { calls.push("local"); } };
@@ -298,8 +299,8 @@ for (const sharedFeature of [true, false]) {
   const panelMirror = mirror_document(client, "panel");
   const pageTarget = new EventTarget();
   const panelTarget = new EventTarget();
-  link_node_to_el(pageMirror.tree.find.must.byTag("button").node, pageTarget as unknown as Element);
-  link_node_to_el(panelMirror.tree.find.must.byTag("button").node, panelTarget as unknown as Element);
+  link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
+  link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   let shared = 0, localCalls = 0;
   const local = { shared: () => { shared += 1; }, local: () => { localCalls += 1; } };
   const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page", local });
@@ -337,7 +338,7 @@ for (const sharedFeature of [true, false]) {
   assert.equal(replica.clientProjection()?.registry.digest, digest);
   const reflection = mirror_document(client, "panel");
   const target = new EventTarget();
-  link_node_to_el(reflection.tree.find.must.byTag("button").node, target as unknown as Element);
+  link_node_to_el(retained_subject(reflection.tree.find.must.byTag("button")), target as unknown as Element);
   let calls = 0;
   const dispose = activate_interactions({ map: client, tree: reflection.tree, document: "panel",
     local: { run: () => { calls += 1; } } });
@@ -384,8 +385,8 @@ for (const sharedFeature of [true, false]) {
   const panelMirror = mirror_document(client, "panel");
   const pageTarget = new EventTarget();
   const panelTarget = new EventTarget();
-  link_node_to_el(pageMirror.tree.find.must.byTag("button").node, pageTarget as unknown as Element);
-  link_node_to_el(panelMirror.tree.find.must.byTag("button").node, panelTarget as unknown as Element);
+  link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
+  link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   const calls: string[] = [];
   const local = { "shared-browser": () => { calls.push("shared-browser"); },
     "local-browser": () => { calls.push("local-browser"); } };
@@ -435,7 +436,7 @@ for (const sharedFeature of [true, false]) {
   const panel = echo.lib("panel");
   const reflection = mirror_document(echo_map_internal(echo), "panel");
   const target = new EventTarget();
-  link_node_to_el(reflection.tree.find.must.byTag("button").node, target as unknown as Element);
+  link_node_to_el(retained_subject(reflection.tree.find.must.byTag("button")), target as unknown as Element);
   let calls = 0;
   const dispose = activate_interactions({ map: echo_map_internal(echo), tree: reflection.tree, document: "panel",
     local: { run: () => { calls += 1; } } });

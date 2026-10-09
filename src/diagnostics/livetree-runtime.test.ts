@@ -27,6 +27,7 @@ import {
   runtime_owns_document,
   runtime_for_tree,
   type LiveTreeRuntime,
+  active_subject_for_tree,
 } from "../api/livetree/runtime/livetree-runtime.js";
 
 export type LiveTreeRuntimeTestHandle = Readonly<{ kind: "LiveTreeRuntimeTestHandle" }>;
@@ -135,7 +136,7 @@ export function project_livetree_for_runtime_test(
   if (runtime_for_tree(tree) !== runtime) {
     throw new Error("LiveTree runtime test handle does not own the supplied tree.");
   }
-  return project_livetree(tree.node, "html", runtime, document);
+  return project_livetree(active_subject_for_tree(tree), "html", runtime, document);
 }
 
 export function dispose_livetree_runtime_test_handle(

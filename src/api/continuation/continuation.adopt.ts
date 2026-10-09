@@ -16,6 +16,7 @@ import {
   runtime_owns_document,
   type LiveTreeRuntime,
   type SilentRuntimeDocumentClaim,
+  active_subject_for_tree,
 } from "../livetree/runtime/livetree-runtime.js";
 import { collect_subtree_nodes } from "../livetree/utils/subtree-traversal.js";
 import {
@@ -100,13 +101,13 @@ function reusable_cached_tree(target: Element, canonicalRoot: HsonNode, css: str
   const tree = entry.tree;
   const runtime = runtime_for_tree(tree);
   try {
-    if (is_livetree_node_disposed(tree.node) || runtime.disposed) throw new Error("Cached tree is terminal.");
-    if (get_el_for_node(tree.node) !== target || get_node_for_el(target) !== tree.node) {
+    if (is_livetree_node_disposed(active_subject_for_tree(tree)) || runtime.disposed) throw new Error("Cached tree is terminal.");
+    if (get_el_for_node(active_subject_for_tree(tree)) !== target || get_node_for_el(target) !== active_subject_for_tree(tree)) {
       throw new Error("Cached root mapping is stale.");
     }
     if (!runtime_owns_document(runtime, target.ownerDocument)) throw new Error("Cached runtime document ownership is stale.");
-    const plan = plan_browser_realization(tree.node, {
-      parentNamespace: browser_parent_namespace_for_target(target, tree.node.$_tag),
+    const plan = plan_browser_realization(active_subject_for_tree(tree), {
+      parentNamespace: browser_parent_namespace_for_target(target, active_subject_for_tree(tree).$_tag),
     });
     const match = match_browser_realization_root(plan, target, { allowRuntimeInfrastructure: true });
     assert_browser_realization_mappings(match);
@@ -228,7 +229,7 @@ export function adopt_exact_existing_document(
         tree: adoptedTree,
         stopTerminalObservation: () => {},
       };
-      entry.stopTerminalObservation = observe_livetree_node_terminal(adoptedTree.node, () => {
+      entry.stopTerminalObservation = observe_livetree_node_terminal(active_subject_for_tree(adoptedTree), () => {
         evict_adopted_root(target, entry);
       });
       ADOPTED_ROOTS.set(target, entry);

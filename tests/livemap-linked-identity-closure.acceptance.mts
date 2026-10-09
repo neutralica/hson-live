@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -61,9 +62,9 @@ function close(binding: ReturnType<typeof reflected>["binding"]): void {
   binding.tree.remove();
 }
 function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
-  const node = binding.tree.node.$_content[0];
+  const node = retained_subject(binding.tree).$_content[0];
   if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
-  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
+  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(retained_historic_root(binding.tree));
 }
 
 check("registry capture keeps linked identity local without a registration commit", () => {
@@ -120,7 +121,7 @@ check("first linked CSS demand acquires local identity", () => {
 check("linked TreeEvents registration remains realization-local", () => {
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
-  const subject = root.node;
+  const subject = retained_subject(root);
   const initialRevision = map.rev;
   let publications = 0;
   const stop = map.commits.observe(() => { publications += 1; });
@@ -207,9 +208,9 @@ check("move retains runtime claim and updates canonical lookup", () => {
   const { map, binding } = reflected(`<main <a/> <a/>/>`);
   const child = binding.tree.find.byTag("a")!;
   const quid = child.quid;
-  const node = child.node;
+  const node = retained_subject(child);
   map.document.content.move(path(0), 0, 1);
-  assert.equal(raw_node(binding.tree.node, [0, 1]), node);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 1]), node);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, quid), node);
   assert.equal(map.document.byQuid(quid)?.$_tag, "a");
   close(binding);

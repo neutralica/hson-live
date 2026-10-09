@@ -1,3 +1,4 @@
+import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -61,11 +62,11 @@ check("explicit self lineage preserves canonical local identity", () => {
 check("compatible lineage preserves reflected subject and DOM", () => {
   const map = fixture();
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
-  mount(binding.tree.node);
-  const original = raw_node(binding.tree.node, [0, 0]);
+  mount(retained_subject(binding.tree));
+  const original = raw_node(retained_subject(binding.tree), [0, 0]);
   const dom = get_el_for_node(original);
   map.document.content.replace(path(0), 0, projected_element('<item title="new"/>'), self);
-  assert.equal(raw_node(binding.tree.node, [0, 0]), original);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), original);
   assert.equal(get_el_for_node(original), dom);
   assert.equal(original.$_attrs?.title, "new");
   binding.dispose();

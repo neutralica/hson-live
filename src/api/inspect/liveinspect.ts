@@ -32,7 +32,10 @@ import { reflect_collection } from "../mirror/mirror.collection.js";
 import { CollectionMirrorError, COLLECTION_MIRROR_DUPLICATE_KEY_ERROR_CODE } from "../mirror/mirror.collection.error.js";
 import { construct_source_1 } from "../transform/constructors/construct-source-1.js";
 import { record_livetree_materialization } from "../livetree/debug/materialization-profile.js";
-import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
+import {
+  runtime_for_tree,
+  active_subject_for_tree,
+} from "../livetree/runtime/livetree-runtime.js";
 import {
   LIVE_INSPECTOR_DISPOSED_ERROR_CODE,
   LIVE_INSPECTOR_DUPLICATE_ARRAY_KEY_ERROR_CODE,
@@ -240,7 +243,7 @@ class InspectorController {
       this.recordMaterialization(this.rootProjection, rootStarted);
       this.rootProjectionOff = this.rootProjection.subscribe(() => this.onRootProjectionChange());
       own_disposable_for_subject(
-        this.inspectorRoot.node,
+        active_subject_for_tree(this.inspectorRoot),
         () => this.dispose(),
         "other",
         runtime_for_tree(this.inspectorRoot),
@@ -1248,7 +1251,7 @@ class BranchController {
       this.previewHost.append(normalized.tree);
       if (normalized.dispose !== undefined) {
         own_disposable_for_subject(
-          normalized.tree.node,
+          active_subject_for_tree(normalized.tree),
           normalized.dispose,
           "other",
           runtime_for_tree(normalized.tree),

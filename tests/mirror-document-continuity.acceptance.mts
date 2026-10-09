@@ -1,3 +1,4 @@
+import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import {
@@ -69,28 +70,28 @@ const Q4 = "000000714";
 check("move preserves the exact projected element node", () => {
   const map = element(`<main <a @${Q1}/> <a @${Q2}/>/` + `>`);
   const { binding } = reflected(map);
-  const moved = raw_node(binding.tree.node, [0, 0]);
+  const moved = raw_node(retained_subject(binding.tree), [0, 0]);
   map.document.content.move(path(0), 0, 1);
-  assert.equal(raw_node(binding.tree.node, [0, 1]), moved);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 1]), moved);
   binding.dispose();
 });
 
 check("move preserves exact descendant identities", () => {
   const map = element(`<main <section @${Q1} <i @${Q2}/>/` + `> <section <i/>/>/>`);
   const { binding } = reflected(map);
-  const section = raw_node(binding.tree.node, [0, 0]);
-  const descendant = raw_node(binding.tree.node, [0, 0, 0, 0]);
+  const section = raw_node(retained_subject(binding.tree), [0, 0]);
+  const descendant = raw_node(retained_subject(binding.tree), [0, 0, 0, 0]);
   map.document.content.move(path(0), 0, 1);
-  assert.equal(raw_node(binding.tree.node, [0, 1]), section);
-  assert.equal(raw_node(binding.tree.node, [0, 1, 0, 0]), descendant);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 1]), section);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 1, 0, 0]), descendant);
   binding.dispose();
 });
 
 check("move preserves the mounted DOM subtree", () => {
   const map = element(`<main <a @${Q4}/> <a/>/>`);
   const { binding } = reflected(map, documentRuntime);
-  mount(binding.tree.node);
-  const moved = raw_node(binding.tree.node, [0, 0]);
+  mount(retained_subject(binding.tree));
+  const moved = raw_node(retained_subject(binding.tree), [0, 0]);
   const dom = get_el_for_node(moved);
   map.document.content.move(path(0), 0, 1);
   assert.equal(get_el_for_node(moved), dom);
@@ -100,8 +101,8 @@ check("move preserves the mounted DOM subtree", () => {
 check("move preserves CSS ownership on the exact handle", () => {
   const map = element(`<main <a @${Q1}/> <a/>/>`);
   const { binding } = reflected(map, documentRuntime);
-  const moved = raw_node(binding.tree.node, [0, 0]);
-  const handle = create_livetree(moved).adoptRoots(binding.tree.hostRootNode());
+  const moved = raw_node(retained_subject(binding.tree), [0, 0]);
+  const handle = create_livetree(moved).adoptRoots(retained_historic_root(binding.tree));
   Reflect.set(globalThis, "requestAnimationFrame", () => 1);
   handle.css.set.color("red");
   map.document.content.move(path(0), 0, 1);
@@ -136,9 +137,9 @@ check("move preserves tree-event and other resource ownership", () => {
 check("compatible path-lineage replacement preserves the exact root node", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
   const { binding } = reflected(map);
-  const original = raw_node(binding.tree.node, [0, 0]);
+  const original = raw_node(retained_subject(binding.tree), [0, 0]);
   map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
-  assert.equal(raw_node(binding.tree.node, [0, 0]), original);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), original);
   assert.equal(original.$_attrs?.title, "new");
   binding.dispose();
 });
@@ -146,8 +147,8 @@ check("compatible path-lineage replacement preserves the exact root node", () =>
 check("compatible path-lineage replacement preserves root DOM identity", () => {
   const map = element(`<main <a @${Q3}/>/` + `>`);
   const { binding } = reflected(map, documentRuntime);
-  mount(binding.tree.node);
-  const original = raw_node(binding.tree.node, [0, 0]);
+  mount(retained_subject(binding.tree));
+  const original = raw_node(retained_subject(binding.tree), [0, 0]);
   const dom = get_el_for_node(original);
   map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
   assert.equal(get_el_for_node(original), dom);
@@ -157,9 +158,9 @@ check("compatible path-lineage replacement preserves root DOM identity", () => {
 check("replacement without lineage allocates a new projected node", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
   const { binding } = reflected(map);
-  const original = raw_node(binding.tree.node, [0, 0]);
+  const original = raw_node(retained_subject(binding.tree), [0, 0]);
   map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'));
-  assert.notEqual(raw_node(binding.tree.node, [0, 0]), original);
+  assert.notEqual(raw_node(retained_subject(binding.tree), [0, 0]), original);
   binding.dispose();
 });
 
@@ -178,8 +179,8 @@ check("insertion admits a portable subtree without supplied identity", () => {
   const map = element(`<main <a/>/>`);
   const { binding } = reflected(map, documentRuntime);
   map.document.content.insert(path(0), 0, projected_element('<a/>'));
-  const inserted = raw_node(binding.tree.node, [0, 0]);
-  mount(binding.tree.node);
+  const inserted = raw_node(retained_subject(binding.tree), [0, 0]);
+  mount(retained_subject(binding.tree));
   assert.equal(inserted.$_tag, 'a');
   assert.equal(get_el_for_node(inserted)?.tagName, 'a');
   binding.dispose();
@@ -217,10 +218,10 @@ check("deletion retires runtime QUID correspondence", () => {
 check("same-position move preserves identity without churn", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
   const { binding } = reflected(map);
-  const original = raw_node(binding.tree.node, [0, 0]);
+  const original = raw_node(retained_subject(binding.tree), [0, 0]);
   const before = binding.diagnostics();
   map.document.content.move(path(0), 0, 0);
-  assert.equal(raw_node(binding.tree.node, [0, 0]), original);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), original);
   assert.equal(binding.diagnostics().correspondenceEntriesChanged, before.correspondenceEntriesChanged);
   binding.dispose();
 });
@@ -228,11 +229,11 @@ check("same-position move preserves identity without churn", () => {
 check("durable root replacement crosses an exact projected-object boundary", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const { binding } = reflected(map);
-  const root = binding.tree.node;
+  const root = retained_subject(binding.tree);
   const replacement = element(`<main @${Q1} <a @${Q3} title="new"/>/>`);
   registry_for_document_library(map).restore(registry_for_document_library(replacement).capture());
-  assert.notEqual(binding.tree.node, root);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.title, "new");
+  assert.notEqual(retained_subject(binding.tree), root);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_attrs?.title, "new");
   binding.dispose();
 });
 
@@ -249,8 +250,8 @@ check("root replacement is an admitted whole-correspondence rebuild boundary", (
 check("bound direct structural mutation is rejected before drift", () => {
   const map = element(`<main @${Q1} <a/>/>`);
   const { runtime, binding } = reflected(map);
-  const rootTree = _create_livetree_for_runtime_test(runtime, raw_node(binding.tree.node, []))
-    .adoptRoots(binding.tree.hostRootNode());
+  const rootTree = _create_livetree_for_runtime_test(runtime, raw_node(retained_subject(binding.tree), []))
+    .adoptRoots(retained_historic_root(binding.tree));
   const before = structuredClone(binding.tree.node);
   assert.throws(
     () => rootTree.detachContents(),
@@ -264,14 +265,14 @@ check("bound direct structural mutation is rejected before drift", () => {
 check("unbound detach and reinsert semantics remain unchanged after disposal", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const { runtime, binding } = reflected(map);
-  const childNode = raw_node(binding.tree.node, [0, 0]);
-  const child = _create_livetree_for_runtime_test(runtime, childNode).adoptRoots(binding.tree.hostRootNode());
-  const rootTree = _create_livetree_for_runtime_test(runtime, raw_node(binding.tree.node, []))
-    .adoptRoots(binding.tree.hostRootNode());
+  const childNode = raw_node(retained_subject(binding.tree), [0, 0]);
+  const child = _create_livetree_for_runtime_test(runtime, childNode).adoptRoots(retained_historic_root(binding.tree));
+  const rootTree = _create_livetree_for_runtime_test(runtime, raw_node(retained_subject(binding.tree), []))
+    .adoptRoots(retained_historic_root(binding.tree));
   binding.dispose();
   assert.equal(child.detach(), 1);
   assert.equal(rootTree.append(child), rootTree);
-  assert.equal(raw_node(binding.tree.node, [0, 0]), childNode);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), childNode);
 });
 
 process.stdout.write(`# ${checks} Unit 6 continuity and lifecycle checks passed\n`);

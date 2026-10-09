@@ -1,3 +1,6 @@
+import {
+  active_subject_for_tree,
+} from "./runtime/livetree-runtime.js";
 import { canonical_attr_is_flag } from "../../core/public-attr-transitions.js";
 import type { CanonicalPublicAttrs, Primitive } from "../../core/types.js";
 import type {
@@ -153,7 +156,7 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
 
     const attrs = (mutation: DocumentBoundAttrsMutation, local: () => void): Promise<AsyncLiveTree<TOwner>> =>
       fluent(async () => {
-        const binding = document_binding_for_node(owner.node);
+        const binding = document_binding_for_node(active_subject_for_tree(owner));
         if (binding !== undefined) await binding.delegateAttrsAsync(mutation);
         else local();
       });
@@ -162,7 +165,7 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
       fluent(async () => {
         const key = normalize_livetree_attr_name(owner, name, operation);
         const decoded = normalize_livetree_attr_value(owner, key, value, operation);
-        const binding = document_binding_for_node(owner.node);
+        const binding = document_binding_for_node(active_subject_for_tree(owner));
         if (binding !== undefined) await binding.delegateAttrsAsync({ kind: "set", name: key, value: decoded });
         else owner.attrs.set(key, decoded);
       });
@@ -170,7 +173,7 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
     const attrDrop = (name: string, operation: string): Promise<AsyncLiveTree<TOwner>> =>
       fluent(async () => {
         const key = normalize_livetree_attr_name(owner, name, operation);
-        const binding = document_binding_for_node(owner.node);
+        const binding = document_binding_for_node(active_subject_for_tree(owner));
         if (binding !== undefined) await binding.delegateAttrsAsync({ kind: "drop", name: key });
         else owner.attrs.drop(key);
       });
@@ -179,21 +182,21 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
       set: (name, value) => attrSet(name, value, "set"),
       setMany: (values) => fluent(async () => {
         const normalized = normalize_livetree_attrs_input(owner, values, "setMany");
-        const binding = document_binding_for_node(owner.node);
+        const binding = document_binding_for_node(active_subject_for_tree(owner));
         if (binding !== undefined) await binding.delegateAttrsAsync({ kind: "setMany", values: normalized });
         else owner.attrs.setMany(normalized);
       }),
       drop: (name) => attrDrop(name, "drop"),
       dropMany: (names) => fluent(async () => {
         const normalized = normalize_livetree_drop_names(owner, names, "dropMany");
-        const binding = document_binding_for_node(owner.node);
+        const binding = document_binding_for_node(active_subject_for_tree(owner));
         if (binding !== undefined) await binding.delegateAttrsAsync({ kind: "dropMany", names: normalized });
         else owner.attrs.dropMany(normalized);
       }),
       clear: () => attrs({ kind: "clear" }, () => { owner.attrs.clear(); }),
       replace: (values) => fluent(async () => {
         const normalized = normalize_livetree_attrs_input(owner, values, "replace");
-        const binding = document_binding_for_node(owner.node);
+        const binding = document_binding_for_node(active_subject_for_tree(owner));
         if (binding !== undefined) await binding.delegateAttrsAsync({ kind: "replace", values: normalized });
         else owner.attrs.replace(normalized);
       }),
@@ -202,13 +205,13 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
     this.flags = Object.freeze({
       set: (...names) => fluent(async () => {
         const normalized = normalize_livetree_flag_names(owner, names, "flags.set", true);
-        const binding = document_binding_for_node(owner.node);
+        const binding = document_binding_for_node(active_subject_for_tree(owner));
         if (binding !== undefined) await binding.delegateAttrsAsync({ kind: "setMany", values: livetree_flag_values(normalized) });
         else owner.flags.set(...normalized);
       }),
       clear: (...names) => fluent(async () => {
         const normalized = normalize_livetree_flag_names(owner, names, "flags.clear", true);
-        const binding = document_binding_for_node(owner.node);
+        const binding = document_binding_for_node(active_subject_for_tree(owner));
         if (binding !== undefined) {
           await binding.delegateAttrsAsync({
             kind: "transform",
@@ -268,7 +271,7 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
     });
 
     const text = (kind: "set" | "add", value: Primitive): Promise<AsyncLiveTree<TOwner>> => fluent(async () => {
-      const binding = document_binding_for_node(owner.node);
+      const binding = document_binding_for_node(active_subject_for_tree(owner));
       if (binding !== undefined) await binding.delegateTextAsync({ kind, value });
       else owner.text[kind](value);
     });
@@ -276,7 +279,7 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
       set: (value) => text("set", value),
       add: (value) => text("add", value),
       insert: (index, value) => fluent(async () => {
-        const binding = document_binding_for_node(owner.node);
+        const binding = document_binding_for_node(active_subject_for_tree(owner));
         if (binding !== undefined) await binding.delegateTextAsync({ kind: "insert", index, value });
         else owner.text.insert(index, value);
       }),
@@ -296,7 +299,7 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
 
   public empty(): Promise<AsyncLiveTree<TOwner>> {
     try {
-      const binding = document_binding_for_node(this.owner.node);
+      const binding = document_binding_for_node(active_subject_for_tree(this.owner));
       const operation = binding !== undefined
         ? binding.delegateEmptyAsync()
         : Promise.resolve(this.owner.empty()).then(() => {});
@@ -308,9 +311,9 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
 
   public remove(): Promise<void> {
     try {
-      const binding = document_binding_for_node(this.owner.node);
+      const binding = document_binding_for_node(active_subject_for_tree(this.owner));
       if (binding !== undefined) return binding.delegateRemoveAsync();
-      if (parent_for_node(this.owner.node) === undefined) {
+      if (parent_for_node(active_subject_for_tree(this.owner)) === undefined) {
         return Promise.reject(new Error("AsyncLiveTree.remove requires a non-root tree."));
       }
       this.owner.remove();

@@ -1,3 +1,4 @@
+import { retained_historic_root, retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import type { HsonNode } from "../src/core/types.ts";
@@ -157,9 +158,9 @@ await check("detach, reinsertion, and aliases preserve exact ownership", () => {
   const firstNode: HsonNode = { $_tag: "button", $_content: [] };
   const secondNode: HsonNode = { $_tag: "button", $_content: [] };
   const parent = create_livetree({ $_tag: "main", $_content: [firstNode, secondNode] });
-  const first = create_livetree(firstNode).adoptRoots(parent.hostRootNode());
-  const alias = create_livetree(firstNode).adoptRoots(parent.hostRootNode());
-  const second = create_livetree(secondNode).adoptRoots(parent.hostRootNode());
+  const first = create_livetree(firstNode).adoptRoots(retained_historic_root(parent));
+  const alias = create_livetree(firstNode).adoptRoots(retained_historic_root(parent));
+  const second = create_livetree(secondNode).adoptRoots(retained_historic_root(parent));
   const firstTarget = attach(firstNode);
   const secondTarget = attach(secondNode);
   let firstCalls = 0;
@@ -194,8 +195,8 @@ await check("QUID-free local Mirror registration leaves graph, revision, publica
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const node = raw_node(binding.tree.node, []);
-  const tree = _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
+  const node = raw_node(retained_subject(binding.tree), []);
+  const tree = _create_livetree_for_runtime_test(runtime, node).adoptRoots(retained_historic_root(binding.tree));
   const target = attach(node);
   const beforeState = { root: map.root(), rev: map.rev };
   const beforeRevision = map.rev;
@@ -228,10 +229,10 @@ await check("distinct QUID-free reflected subjects keep independent resources", 
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main <a/> <b/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const firstNode = raw_node(binding.tree.node, [0, 0]);
-  const secondNode = raw_node(binding.tree.node, [0, 1]);
-  const first = _create_livetree_for_runtime_test(runtime, firstNode).adoptRoots(binding.tree.hostRootNode());
-  const second = _create_livetree_for_runtime_test(runtime, secondNode).adoptRoots(binding.tree.hostRootNode());
+  const firstNode = raw_node(retained_subject(binding.tree), [0, 0]);
+  const secondNode = raw_node(retained_subject(binding.tree), [0, 1]);
+  const first = _create_livetree_for_runtime_test(runtime, firstNode).adoptRoots(retained_historic_root(binding.tree));
+  const second = _create_livetree_for_runtime_test(runtime, secondNode).adoptRoots(retained_historic_root(binding.tree));
   const firstTarget = attach(firstNode);
   const secondTarget = attach(secondNode);
   let firstCalls = 0;
@@ -254,8 +255,8 @@ await check("compatible Mirror reuse preserves resources on the same exact subje
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const original = raw_node(binding.tree.node, [0, 0]);
-  const tree = _create_livetree_for_runtime_test(runtime, original).adoptRoots(binding.tree.hostRootNode());
+  const original = raw_node(retained_subject(binding.tree), [0, 0]);
+  const tree = _create_livetree_for_runtime_test(runtime, original).adoptRoots(retained_historic_root(binding.tree));
   const acquired = tree.quid;
   const target = attach(original);
   let calls = 0;
@@ -264,7 +265,7 @@ await check("compatible Mirror reuse preserves resources on the same exact subje
   map.document.content.replace(path(0), 0, projected_element(`<a title="same"/>`), [
     { source: validate_document_path([]), destination: validate_document_path([]) },
   ]);
-  assert.equal(raw_node(binding.tree.node, [0, 0]), original);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), original);
   assert.equal(typeof acquired, "string");
   assert.equal(get_el_for_node(original), target);
   target.dispatch("click");
@@ -277,8 +278,8 @@ await check("incompatible path-lineage replacement cleans the outgoing subject w
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const original = raw_node(binding.tree.node, [0, 0]);
-  const tree = _create_livetree_for_runtime_test(runtime, original).adoptRoots(binding.tree.hostRootNode());
+  const original = raw_node(retained_subject(binding.tree), [0, 0]);
+  const tree = _create_livetree_for_runtime_test(runtime, original).adoptRoots(retained_historic_root(binding.tree));
   assert.equal(typeof tree.quid, "string");
   const outgoingEvents = tree.events;
   let calls = 0;
@@ -288,7 +289,7 @@ await check("incompatible path-lineage replacement cleans the outgoing subject w
   assert.equal(calls, 1);
 
   map.document.content.replace(path(0), 0, projected_element(`<a title="different"/>`));
-  const replacement = raw_node(binding.tree.node, [0, 0]);
+  const replacement = raw_node(retained_subject(binding.tree), [0, 0]);
   assert.notEqual(replacement, original);
   assert.equal(lifecycle_resource_counts_for_subject(original, runtime_for_tree(tree)).treeEvent, 0);
   assert.equal(lifecycle_resource_counts_for_subject(replacement, runtime_for_tree(tree)).treeEvent, 0);

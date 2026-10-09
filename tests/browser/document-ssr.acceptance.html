@@ -8,6 +8,10 @@
 <div id="result"></div>
 <script type="module">
 import {
+  subject_for_tree,
+  historic_root_for_tree,
+  runtime_for_tree,
+  LiveTree,
   ANY_DATA,
   ANY_DOCUMENT,
   Hson,
@@ -25,6 +29,15 @@ const check = (name, condition) => {
   results.push({ name, pass: Boolean(condition) });
   if (!condition) throw new Error(`Failed: ${name}`);
 };
+
+async function withoutObservationReads(run) {
+  const node = Object.getOwnPropertyDescriptor(LiveTree.prototype, 'node');
+  const root = Object.getOwnPropertyDescriptor(LiveTree.prototype, 'hostRootNode');
+  Object.defineProperty(LiveTree.prototype, 'node', { configurable: true, get() { throw new Error('internal public observation read'); } });
+  Object.defineProperty(LiveTree.prototype, 'hostRootNode', { configurable: true, value() { throw new Error('internal public host-root read'); } });
+  try { return await run(); }
+  finally { Object.defineProperty(LiveTree.prototype, 'node', node); Object.defineProperty(LiveTree.prototype, 'hostRootNode', root); }
+}
 
 try {
   const emptyMap = hsonLiveMap.create();
@@ -47,7 +60,17 @@ try {
   const localPage = localMap.lib(state.local.document);
   const observer = new MutationObserver(() => {});
   observer.observe(localRoot, { subtree: true, childList: true, attributes: true, characterData: true });
-  const localContinuation = continue_document({ map: localMap, document: localPage, root: localRoot });
+  const localContinuation = await withoutObservationReads(() => continue_document({ map: localMap, document: localPage, root: localRoot }));
+  const localSubject = subject_for_tree(localContinuation.tree);
+  const localRuntime = runtime_for_tree(localContinuation.tree);
+  const localIssued = [...localRuntime.issuedQuids];
+  const localObservation = localContinuation.tree.node;
+  const localHostObservation = localContinuation.tree.hostRootNode();
+  check("local readonly observation preserves sparse identity", localObservation.$_meta?.quid === undefined
+    && JSON.stringify([...localRuntime.issuedQuids]) === JSON.stringify(localIssued));
+  check("local observations detach and freeze", localObservation !== localSubject && Object.isFrozen(localObservation)
+    && Object.isFrozen(localObservation.$_content) && localHostObservation !== historic_root_for_tree(localContinuation.tree));
+  check("local observation cannot mutate adopted root", !Reflect.set(localObservation, '$_tag', 'bad'));
   check("local root identity survives continuation", localContinuation.tree.dom.el() === localRoot);
   check("local element identity survives continuation", localRoot.firstElementChild === localParagraph);
   check("local text identity survives continuation", localParagraph.firstChild === localText);
@@ -319,14 +342,18 @@ try {
   check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.libs.revision === state.libraries.libs.revision);
   const librariesTransport = hsonLiveMap.echo.transport.websocket({ url: state.librariesSocketUrl });
   let interactionCalls = 0;
-  const librariesContinuation = await continue_hosted_document({
+  const librariesContinuation = await withoutObservationReads(() => continue_hosted_document({
     now: { ...state.libraries, ...decodedHostedLibraries.bootstrap },
     credential: state.credential,
     transport: librariesTransport,
     document: state.libraries.document,
     root: librariesRoot,
     interactions: { local: { clicker: () => { interactionCalls += 1; } } },
-  });
+  }));
+  const hostedSubject = subject_for_tree(librariesContinuation.tree);
+  const hostedBefore = librariesContinuation.tree.node;
+  check("hosted observation detaches and freezes", hostedBefore !== hostedSubject && Object.isFrozen(hostedBefore)
+    && Object.isFrozen(hostedBefore.$_content) && !Reflect.set(hostedBefore, '$_tag', 'bad'));
   const librariesEcho = librariesContinuation.echo;
   const librariesMap = librariesEcho;
   check("aggregate install restores included Libraries", librariesMap.lib("admin").mode === "document" && librariesMap.lib("state").mode !== "document");
@@ -357,7 +384,12 @@ try {
   const librariesButtonTree = librariesContinuation.tree.find.must.byTag("button");
   const librariesLocalQuid = librariesButtonTree.quid;
   check("aggregate browser identity is acquired locally", typeof librariesLocalQuid === "string" && librariesButton.getAttribute("hson:quid") === librariesLocalQuid);
-  await librariesButtonTree.async.attrs.set("data-async", "accepted");
+  await withoutObservationReads(() => librariesButtonTree.async.attrs.set("data-async", "accepted"));
+  check("hosted Mirror retains exact subject after async convergence", subject_for_tree(librariesContinuation.tree) === hostedSubject
+    && librariesContinuation.tree.dom.el() === librariesRoot && librariesRoot.firstElementChild === librariesButton);
+  const afterAsync = librariesButtonTree.node;
+  check("hosted readonly observations show fresh async state", afterAsync.$_attrs?.['data-async'] === 'accepted'
+    && afterAsync !== librariesButtonTree.node && Object.isFrozen(afterAsync.$_attrs));
   check("aggregate AsyncLiveTree uses local map revision", librariesButton.getAttribute("data-async") === "accepted" && librariesMap.rev === 3);
   const action = await librariesEcho.action("state.increment");
   check("configured aggregate action remains operational", action.type === "ack" && librariesEcho.lib("state").snap(["count"]) === 2 && librariesMap.rev === 4);

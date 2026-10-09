@@ -83,6 +83,8 @@ import {
   runtime_for_tree,
   runtime_owns_document,
   type LiveTreeRuntime,
+  active_subject_for_tree,
+  subject_for_tree,
 } from "../livetree/runtime/livetree-runtime.js";
 import {
   assert_browser_realization_mappings,
@@ -209,13 +211,13 @@ function reflect_document_binding_in_runtime(
   try {
     if (borrowedTree === undefined) {
       tree = create_linked_livetree_in_runtime(sourceRoot, runtime);
-      projectedRoot = tree.node;
+      projectedRoot = active_subject_for_tree(tree);
     } else {
       tree = borrowedTree;
       borrowedCarrier = validate_borrowed_document_tree(sourceRoot, tree, runtime);
       projectedRoot = borrowedCarrier;
       bind_graph_runtime(borrowedCarrier, runtime);
-      claim_node_parent(tree.node, borrowedCarrier);
+      claim_node_parent(active_subject_for_tree(tree), borrowedCarrier);
     }
   } catch (cause) {
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
@@ -247,10 +249,12 @@ function reflect_document_binding_in_runtime(
 
   const release_borrowed_carrier = (): void => {
     if (borrowedCarrier === undefined) return;
-    release_node_parent(tree.node, borrowedCarrier);
+    // Teardown may run after retirement; retain the historical subject.
+    const subject = subject_for_tree(tree);
+    release_node_parent(subject, borrowedCarrier);
     release_nodes_runtime([borrowedCarrier], runtime);
     borrowedCarrier = undefined;
-    projectedRoot = tree.node;
+    projectedRoot = subject;
   };
 
   // Publish the fail-closed state before releasing callbacks so any cleanup
@@ -511,7 +515,7 @@ function reflect_document_binding_in_runtime(
 
   const delegate_remove = (registration: ProjectedRegistration): boolean => {
     canonical_node_for(registration);
-    if (borrowed && registration.node === tree.node) {
+    if (borrowed && registration.node === active_subject_for_tree(tree)) {
       throw new DocumentMirrorError(
         DOCUMENT_MIRROR_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Borrowed document root removal is unavailable while document-bound.",
@@ -553,7 +557,7 @@ function reflect_document_binding_in_runtime(
 
   const delegate_remove_async = async (registration: ProjectedRegistration): Promise<void> => {
     canonical_node_for(registration);
-    if (borrowed && registration.node === tree.node) {
+    if (borrowed && registration.node === active_subject_for_tree(tree)) {
       throw new DocumentMirrorError(
         DOCUMENT_MIRROR_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Borrowed document root removal is unavailable while document-bound.",
@@ -1129,7 +1133,7 @@ function reflect_document_binding_in_runtime(
     if (currentStatus !== "replacing") return;
 
     tree = create_linked_livetree_in_runtime(incomingRoot, runtime);
-    projectedRoot = tree.node;
+    projectedRoot = active_subject_for_tree(tree);
     register_root_lifecycle();
     walk(projectedRoot, []);
     wholeCorrespondenceBuilds += 1;
@@ -1220,7 +1224,7 @@ function reflect_document_binding_in_runtime(
       if (evidence.continuity === "new-epoch") {
         reconstruct_new_epoch(evidence, observation.revision);
       } else {
-        if (borrowed) assert_borrowed_root_continuity(evidence.root, tree.node);
+        if (borrowed) assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree));
         converge_compatible_root(
           evidence,
           evidence,
@@ -1249,7 +1253,7 @@ function reflect_document_binding_in_runtime(
       currentRevision = commit.rev;
       return;
     }
-    if (borrowed) assert_borrowed_root_continuity(evidence.root, tree.node);
+    if (borrowed) assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree));
     consume_identity_effects(commit);
     const hasIdentityRegistration = commit.ops.some((operation) => operation.op === "ensure-quid");
     const identityReservation = livemap_document_identity_reservation_for(commit);
@@ -1426,7 +1430,7 @@ function reflect_document_binding_in_runtime(
     if (borrowed) {
       release_borrowed_carrier();
     } else {
-      const privateRoot = tree.node;
+      const privateRoot = subject_for_tree(tree);
       dispose_node_deep(privateRoot, runtime);
       release_subtree_ownership(privateRoot);
     }
@@ -1465,7 +1469,7 @@ function validate_borrowed_document_tree(
   tree: LiveTree,
   runtime: LiveTreeRuntime,
 ): HsonNode {
-  const borrowedRoot = tree.node;
+  const borrowedRoot = active_subject_for_tree(tree);
   if (!is_ordinary_element_node(borrowedRoot)
     || canonicalRoot.$_tag !== ROOT_TAG
     || canonicalRoot.$_content.length !== 1

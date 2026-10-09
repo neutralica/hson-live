@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
 import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_test } from "../src/_tests/diagnostics-internal.ts";
 import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
-import type { HsonNode } from "../src/core/types.ts";
+import type { HsonNode, ReadonlyHsonNode } from "../src/core/types.ts";
 import type { LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -30,9 +30,9 @@ const Text = Hson.schema`<type "document" tag "main" content "string">`;
 const registry = (document: string, schema = Items) => hsonLiveMap.fromLibraries({ page: { document, schema } });
 const item = (id: string): HsonNode => ({ $_tag: "item", $_attrs: { id }, $_content: [] });
 const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
-const ids = (root: HsonNode): string[] => {
+const ids = (root: ReadonlyHsonNode): string[] => {
   const found: string[] = [];
-  const visit = (node: HsonNode): void => {
+  const visit = (node: ReadonlyHsonNode): void => {
     if (node.$_tag === "item") { found.push(String(node.$_attrs?.id)); return; }
     for (const child of node.$_content) if (typeof child === "object" && child !== null) visit(child);
   };

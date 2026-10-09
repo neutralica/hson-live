@@ -13,7 +13,7 @@ import { LiveTreeDom, IdApi, ClassApi } from "./dom.types.js";
 import { TreeEvents } from "./events.types.js";
 import { ListenerBuilder } from "./listen.types.js";
 import { FindWithById, HtmlCreateHelper } from "./livetree.types.js";
-import { HsonNode } from "../core/types.js";
+import { HsonNode, type ReadonlyHsonNode } from "../core/types.js";
 import type { DetachedLiveContent, LiveTreeLifecycleResult } from "./lifecycle.types.js";
 
 export interface LiveTreeIdentity extends LiveTreeNodeHost {
@@ -44,29 +44,19 @@ export interface LiveTreeNodeHost {
     readonly quid: string;
 
 
-    /**
-     * Resolve and return the underlying `HsonNode` for this tree.
-     *
-     * Delegates to `nodeRef.resolveNode()` and throws if the reference
-     * fails to resolve, as this indicates a broken or stale link between
-     * the tree and its node.
-     *
-     * @returns The `HsonNode` currently referenced by this `LiveTree`.
-     * @throws If `resolveNode()` returns a falsy value.
-     * @see NodeRef.resolveNode
-     */
-    readonly node: HsonNode;
+    /** Fresh detached, deeply frozen observation of current runtime storage. */
+    readonly node: ReadonlyHsonNode;
 
 
     /**
      * Return the historic root node associated with this `LiveTree`.
      *
-     * The host root represents the top-level Hson node for the tree this
-     * instance belongs to, even if the current node is a nested descendant.
+     * This detached, deeply frozen observation represents the stored historic
+     * context, even if the current node is a nested descendant.
      *
-     * @returns The root `HsonNode` for this tree's context.
+     * @returns A fresh `ReadonlyHsonNode` observation of this tree's context.
      */
-    hostRootNode(): HsonNode;
+    hostRootNode(): ReadonlyHsonNode;
 }
 
 export interface LiveTreeAttrsAccess<TSelf> {
