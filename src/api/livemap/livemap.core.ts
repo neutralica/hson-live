@@ -49,6 +49,7 @@ import {
 import { livemap_document_identity_overlay_equal, livemap_document_identity_quids, register_livemap_document_identity_at_path, register_livemap_document_identity_effects, type LiveMapDocumentIdentityEffect } from "./livemap.document.identity.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
 import { classify_live_root_mode, prepare_livemap_root } from "./livemap.document.js";
+import { admit_owned_livemap_root, admit_public_livemap_root } from "./livemap.node-admission.js";
 import {
   admit_public_document_graph_operation,
   prepare_document_graph_operation,
@@ -822,19 +823,20 @@ function make_livemap_registry_engine(
       if (candidates.has(library.identity)) {
         throw new Error("One authority transition cannot install two prepared candidates for one document Library.");
       }
+      const admittedRoot = admit_owned_livemap_root(prepared.root, "document", "LiveMap.preparedDocument");
       aggregateCandidateRootsCloned += 1;
       const baseRoot = clone_live_root(library.root);
       const candidate: AggregateDocumentCandidate = {
         library,
         baseRoot,
-        root: prepared.root,
+        root: admittedRoot,
         overlay: prepared.overlay,
         operations: [...prepared.operations],
         identityEffects: [...prepared.identityEffects],
         ...(prepared.sourceCandidate === undefined ? {} : { sourceCandidate: prepared.sourceCandidate }),
         ...(prepared.continuity === undefined ? {} : { continuity: prepared.continuity }),
       };
-      if (canonical_graph_equal(library.root, prepared.root)
+      if (canonical_graph_equal(library.root, admittedRoot)
         && livemap_document_identity_overlay_equal(prepared.overlay, library.documentOverlay)
         && prepared.issuedLedger === undefined) {
         candidate.operations.length = 0;
@@ -932,13 +934,15 @@ function make_livemap_registry_engine(
         if (!is_aggregate_document_candidate(candidate)) {
           throw new Error("Aggregate graph operations require a document library.");
         }
-        if (write.publicStaged === true) admit_public_document_graph_operation(write.operation);
+        const admittedOperation = write.publicStaged === true
+          ? admit_public_document_graph_operation(write.operation)
+          : write.operation;
         const priorRoot = candidate.root;
         const priorOverlay = candidate.overlay;
         const planned = prepare_document_graph_operation(
           candidate.root,
           "document",
-          write.operation,
+          admittedOperation,
           candidate.overlay,
         );
         if (!canonical_graph_equal(candidate.root, planned.root)
@@ -1453,8 +1457,8 @@ function make_livemap_registry_engine(
     if (definitions.length === 0) throw new Error("LiveMap topology batch is empty.");
     const hosted = require_hosted_state();
     const prepared = definitions.map(({ name, root, hsonSchema, family, css }) => {
-      admit_portable_hson_node(root, `LiveMap Library ${JSON.stringify(name)}`);
-      const graph = prepare_livemap_root(root, family);
+      const admitted = admit_public_livemap_root(root, family, `LiveMap Library ${JSON.stringify(name)}`);
+      const graph = prepare_livemap_root(admitted, family);
       must_hson_schema_family(hsonSchema, family);
       must_hson_schema_root(hsonSchema, graph.root);
       const state = make_livemap_library(graph, hsonSchema);

@@ -91,6 +91,7 @@ import {
   HOSTED_MAX_SNAPSHOT_BYTES,
 } from "./livemap.hosted.js";
 import { node_to_json_value } from "./livemap.editor.js";
+import { admit_owned_livemap_root, admit_public_livemap_root } from "./livemap.node-admission.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import type { LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
@@ -275,6 +276,20 @@ export function reconcile_client_projection_snapshot_internal(
 /** True only for the dedicated local multi-library public facade. @internal */
 export function is_public_multi_library_livemap(value: unknown): value is object {
   return typeof value === "object" && value !== null && PUBLIC_MULTI_LIBRARY_MAPS.has(value);
+}
+
+/** Select public configuration once; only admitted material crosses into ownership. @internal */
+export function admit_public_livemap_definitions<const TLibraries extends LiveMapDefinitions>(inputs: TLibraries): TLibraries {
+  const entries = Object.entries(inputs);
+  const admitted: TLibraries = Object.create(null);
+  for (const [name, value] of entries) {
+    const selected = must_library_input(name, value);
+    const input = Object.hasOwn(selected, "document") && typeof selected.document !== "string"
+      ? Object.freeze(Object.assign(Object.create(null), selected, { document: admit_public_livemap_root(selected.document, "document", `LiveMap.fromLibraries(${name})`) }))
+      : selected;
+    Object.defineProperty(admitted, name, { value: input, enumerable: true, configurable: true, writable: true });
+  }
+  return admitted;
 }
 
 /**
@@ -1218,21 +1233,26 @@ function must_library_input(name: string, value: unknown): LiveMapLibraryInput &
   if (Object.hasOwn(value, "css")) {
     throw new TypeError("Initial Library CSS input is not supported; author through the document Library css handle.");
   }
-  const schema = value.schema === undefined
-    ? (Object.hasOwn(value, "data") ? ANY_DATA : ANY_DOCUMENT)
-    : value.schema;
+  // Configuration getters are supported. Select their values once before
+  // classification, then retain only this stable envelope downstream.
+  const hasData = Object.hasOwn(value, "data");
+  const hasDocument = Object.hasOwn(value, "document");
+  const selected: Record<string, unknown> = Object.assign(Object.create(null), value);
+  const schemaValue = Object.hasOwn(selected, "schema") ? selected.schema : value.schema;
+
+  const schema = schemaValue === undefined ? (hasData ? ANY_DATA : ANY_DOCUMENT) : schemaValue;
   if (!(schema instanceof HsonSchemaHandle)) {
     throw new TypeError(`LiveMap Library ${JSON.stringify(name)} requires an HsonSchema.`);
   }
-  const hasData = Object.hasOwn(value, "data");
-  const hasDocument = Object.hasOwn(value, "document");
-  if (hasData === hasDocument) {
+  if (hasData === hasDocument || hasData !== Object.hasOwn(selected, "data")
+    || hasDocument !== Object.hasOwn(selected, "document")) {
     throw new TypeError(
       `LiveMap Library ${JSON.stringify(name)} must specify exactly one of data or document.`,
     );
   }
-  if (hasData) return Object.freeze({ ...value, schema }) as LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
-  if (typeof value.document === "string" || is_Node(value.document)) return Object.freeze({ ...value, schema }) as LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
+  if (hasData) return Object.freeze(Object.assign(Object.create(null), selected, { schema })) as LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
+  // Node fields are inspected only by exact admission, never by a getter-reading guard.
+  if (typeof selected.document === "string" || typeof selected.document === "object" && selected.document !== null) return Object.freeze(Object.assign(Object.create(null), selected, { schema })) as LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
   throw new TypeError(`LiveMap document Library ${JSON.stringify(name)} requires Hson source or a canonical node.`);
 }
 
@@ -1254,6 +1274,7 @@ function library_root(input: LiveMapLibraryInput): HsonNode {
 /** A string in the public data input is JSON source, so re-encode stored string values. */
 /** @internal Reconstruct a public data definition from one admitted exact root. */
 export function reconstructed_data_internal(root: HsonNode): JsonValue {
-  const value = node_to_json_value(root);
+  const qualified = admit_owned_livemap_root(root, "data", "LiveMap.reconstructData");
+  const value = node_to_json_value(qualified);
   return typeof value === "string" ? JSON.stringify(value) : value;
 }

@@ -1,7 +1,6 @@
 import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
-import { clone_node } from "../../core/clone-node.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
@@ -103,8 +102,7 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   const document_library = (identity: LiveMapLibraryIdentity): StagedDocumentLibrary => {
     const graph = (operation: LiveMapGraphOp): void => {
       assert_open();
-      const captured = clone_node(operation);
-      admit_public_document_graph_operation(captured);
+      const captured = admit_public_document_graph_operation(operation);
       const path = captured.op === "replace-root" ? [] : captured.target.path;
       writes.push(Object.freeze({ target: aggregate.target(identity, path), kind: "graph", operation: captured, publicStaged: true }));
     };

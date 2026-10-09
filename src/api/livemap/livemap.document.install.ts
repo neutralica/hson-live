@@ -1,5 +1,4 @@
 import type { LiveMapDocumentCapture } from "./livemap.document.capture.js";
-import { is_Node } from "../../core/node-guards.js";
 import { collect_hson_node_quid_claims } from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
 export { canonical_hson_graph_equal as canonical_graph_equal } from "../../core/canonical-hson-equal.js";
@@ -9,7 +8,6 @@ import type {
   LiveMapGraphCommit,
   LiveMapGraphReplaceRootOp,
 } from "../../types/livemap.types.js";
-import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentInstallError, LiveMapRevError } from "./livemap.error.js";
 import {
   same_epoch_livemap_document_overlay,
@@ -22,7 +20,7 @@ import {
   LiveMapDocumentIdentityError,
   type LiveMapDocumentIdentityOverlay,
 } from "./livemap.document.identity.js";
-import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
+import { admit_owned_livemap_root, qualify_livemap_document } from "./livemap.node-admission.js";
 
 export type PreparedDocumentInstall = Readonly<{
   mode: LiveMapDocumentMode;
@@ -61,6 +59,9 @@ export function install_livemap_document_capture(
     options?.identity,
   );
   const candidate = prepare_document_install(capture, controller.mode, identity);
+  // Bind authority to the exact private graph that will be installed, rather
+  // than a second observation of mutable caller/capture storage.
+  validate_livemap_document_admission(controller.identityEpoch, capture, identity, undefined, candidate.root);
   return controller.apply(candidate, identity === "same-epoch" ? "same-epoch" : "new-epoch");
 }
 
@@ -78,6 +79,9 @@ export function restore_livemap_document_capture(
     options?.identity,
   );
   const candidate = prepare_document_install(capture, controller.mode, identity);
+  // Bind authority to the exact private graph that will be installed, rather
+  // than a second observation of mutable caller/capture storage.
+  validate_livemap_document_admission(controller.identityEpoch, capture, identity, undefined, candidate.root);
   controller.restore(
     candidate,
     capture.rev,
@@ -121,18 +125,11 @@ export function prepare_document_install(
       `capture revision must be a non-negative integer; observed ${String(capture.rev)}`,
     );
   }
-  if (!is_Node(capture.root)) {
-    throw new LiveMapDocumentInstallError("capture root is not a canonical Hson node");
-  }
-
   let root: HsonNode;
   let observedMode;
   try {
-    const detachedRoot = clone_live_root(capture.root);
-    root = normalize_hson_array_index_order(
-      detachedRoot,
-      "prepare_document_install",
-    );
+    root = admit_owned_livemap_root(capture.root, "document", "prepare_document_install");
+    qualify_livemap_document(root, "prepare_document_install");
     observedMode = classify_live_root_mode(root);
   } catch (cause) {
     throw new LiveMapDocumentInstallError("capture root is malformed", { cause });
@@ -186,8 +183,14 @@ function assert_capture_object(capture: LiveMapDocumentCapture): void {
   if (typeof capture !== "object" || capture === null || Array.isArray(capture)) {
     throw new LiveMapDocumentInstallError("capture must be an object");
   }
-  const keys = Object.keys(capture);
-  if (keys.length !== 4 || !keys.every((key) => ["kind", "mode", "rev", "root"].includes(key))) {
+  const keys = Reflect.ownKeys(capture);
+  if (keys.length !== 4 || !keys.every((key) => typeof key === "string" && ["kind", "mode", "rev", "root"].includes(key))) {
     throw new LiveMapDocumentInstallError("capture contains missing or unknown fields");
+  }
+  for (const key of keys) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(capture, key);
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, "value")) {
+      throw new LiveMapDocumentInstallError("capture fields must be own enumerable data properties");
+    }
   }
 }

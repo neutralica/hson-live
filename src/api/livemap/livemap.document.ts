@@ -3,9 +3,8 @@ import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
 import type { DataLiveMapMode, LiveMapRootMode } from "../../types/livemap.types.js";
-import { clone_live_root } from "./livemap.editor.js";
 import { build_livemap_document_identity_overlay, type LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
-import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
+import { admit_owned_livemap_root } from "./livemap.node-admission.js";
 import { build_livemap_projected_identity_overlay, type LiveMapProjectedIdentityOverlay } from "./livemap.projected.identity.js";
 import { assert_document_special_tags } from "../../core/document-special-tags.js";
 
@@ -16,16 +15,11 @@ export type PreparedLiveMapRoot = Readonly<{
   projectedOverlay?: LiveMapProjectedIdentityOverlay;
 }>;
 
-/** Clone, validate, classify, and establish document identity before ownership. */
+/** Exactly capture/qualify raw storage before owner projection or identity. */
 export function prepare_livemap_root(input: HsonNode, family?: "data" | "document"): PreparedLiveMapRoot {
-  const cloned = normalize_hson_array_index_order(
-    clone_live_root(input),
-    "prepare_livemap_root",
-  );
-  // Validate before carrier normalization so nonempty metadata on a discarded
-  // structural wrapper can never disappear during LiveMap admission.
-  assert_invariants(cloned, "prepare_livemap_root");
-  const root = normalize_document_root(cloned);
+  const captured = admit_owned_livemap_root(input, family, "prepare_livemap_root");
+  // This established owner projection is applied only to a qualified carrier.
+  const root = normalize_document_root(captured);
   let mode: LiveMapRootMode;
   try {
     mode = classify_live_root_shape(root, family);
@@ -107,13 +101,16 @@ function primitive_data_mode(node: HsonNode): DataLiveMapMode {
 
 /** Convert parser/detached element carriers into the one retained document root shape. */
 function normalize_document_root(root: HsonNode): HsonNode {
-  if (root.$_tag === ELEM_TAG) {
-    return { $_tag: ROOT_TAG, $_content: root.$_content.slice() };
-  }
-  if (root.$_tag !== ROOT_TAG || root.$_content.length !== 1) return root;
-  const child = root.$_content[0];
-  if (!is_Node(child) || child.$_tag !== ELEM_TAG) return root;
-  return { $_tag: ROOT_TAG, $_content: child.$_content.slice() };
+  const first = root.$_content[0];
+  const carrier = root.$_tag === ELEM_TAG ? root
+    : root.$_tag === ROOT_TAG && root.$_content.length === 1 && is_Node(first) && first.$_tag === ELEM_TAG ? first
+    : undefined;
+  if (carrier === undefined) return root;
+  // Projection must not reintroduce inherited semantic storage after capture.
+  const retained: HsonNode = Object.create(null);
+  retained.$_tag = ROOT_TAG;
+  retained.$_content = carrier.$_content.slice();
+  return retained;
 }
 
 /** Assert a classified root mode for internal construction paths that require it. */

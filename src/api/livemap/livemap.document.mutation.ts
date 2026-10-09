@@ -1,5 +1,5 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
-import { ELEM_TAG, ROOT_TAG, STR_TAG, HSON_META_MARKUP_PREFIX } from "../../core/constants.js";
+import { ELEM_TAG, ROOT_TAG, STR_TAG, VAL_TAG, HSON_META_MARKUP_PREFIX } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
 import {
   plan_public_attr_drop,
@@ -43,7 +43,9 @@ import type { LiveMapGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import type { LiveMapRuntimeIdentityParticipant } from "./livemap.runtime-identity.js";
 import { LiveMapDocumentMutationError } from "./livemap.error.js";
 import { clone_live_root } from "./livemap.editor.js";
-import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
+import { TransformError } from "../../core/errors.js";
+import { capture_exact_hson_graph } from "../../internal/exact-node-qualification.js";
+import { admit_public_livemap_root, is_livemap_primitive_slot, qualify_livemap_content, qualify_livemap_document } from "./livemap.node-admission.js";
 import {
   build_livemap_document_identity_overlay,
   LiveMapDocumentIdentityError,
@@ -410,10 +412,7 @@ function prepare_replace_document_content(
 ): PreparedDocumentMutation<LiveMapGraphReplaceContentOp> {
   const operationName = "replace-content";
   const index = normalize_content_index(indexInput, operationName);
-  if (targetAuthority === "request" && is_Node(replacementInput)) {
-    admit_portable_hson_node(replacementInput, "LiveMap.document.content.replace");
-  }
-  const replacement = clone_content(replacementInput, operationName);
+  const replacement = clone_content(replacementInput, operationName, targetAuthority === "request");
   const root = clone_live_root(inputRoot);
   const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
@@ -424,6 +423,7 @@ function prepare_replace_document_content(
       `content index ${index} is outside the existing ${endpoint.$_content.length} slot(s)`,
     );
   }
+  qualify_content_slot(endpoint, replacement, operationName, endpoint.$_content.length === 1);
   const canonicalReplacement = insertion_content(endpoint, replacement);
   const before = endpoint.$_content[index];
   if (before === undefined) {
@@ -477,10 +477,7 @@ function prepare_insert_document_content(
 ): PreparedDocumentMutation<LiveMapGraphInsertContentOp> {
   const operationName = "insert-content";
   const index = normalize_content_index(indexInput, operationName);
-  if (targetAuthority === "request" && is_Node(contentInput)) {
-    admit_portable_hson_node(contentInput, "LiveMap.document.content.insert");
-  }
-  const content = clone_content(contentInput, operationName);
+  const content = clone_content(contentInput, operationName, targetAuthority === "request");
   const root = clone_live_root(inputRoot);
   const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
@@ -491,6 +488,7 @@ function prepare_insert_document_content(
       `content index ${index} is outside the insertion range 0 through ${endpoint.$_content.length}`,
     );
   }
+  qualify_content_slot(endpoint, content, operationName, endpoint.$_content.length === 0);
   endpoint.$_content.splice(index, 0, insertion_content(endpoint, content));
 
   const operation: LiveMapGraphInsertContentOp = Object.freeze({
@@ -597,6 +595,10 @@ function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
   operation: TOp,
   operationName: DocumentOperation,
 ): PreparedDocumentMutation<TOp> {
+  try { qualify_livemap_document(root, `LiveMap.${operationName}`); }
+  catch (cause) {
+    throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operationName, "candidate graph violates its document receiving context", cause);
+  }
   let reconciliation;
   try {
     reconciliation = reconcile_operation_identity(currentOverlay, operation);
@@ -755,24 +757,108 @@ function reconcile_operation_identity(
   return reconcile_livemap_document_identity_overlay(overlay, effect);
 }
 
-/** Reject runtime identity on a caller-authored graph operation. */
-export function admit_public_document_graph_operation(operation: LiveMapGraphOp): void {
-  if (operation.op === "ensure-quid") {
-    throw new Error("Public graph operations cannot install generated identity.");
+/** Capture only public graph instruction records/arrays, never semantic graph content. */
+function capture_public_instruction<T>(input: T, deep = true): T {
+  const holder: { value: T } = Object.create(null);
+  type Job = { source: unknown; target: object; key: string } | { leave: object };
+  const jobs: Job[] = [{ source: input, target: holder, key: "value" }];
+  const active = new WeakSet<object>();
+  const copied = new WeakMap<object, object>();
+  const put = (target: object, key: string, value: unknown): void => {
+    Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
+  };
+  const enqueue = (job: Job): void => {
+    // Work items contain private instruction references; bypass inherited setters.
+    put(jobs, String(jobs.length), job);
+  };
+  try {
+    while (jobs.length > 0) {
+      const job = jobs.pop(); if (job === undefined) break;
+      if ("leave" in job) { active.delete(job.leave); continue; }
+      const { source, target, key } = job;
+      if (source === null || typeof source !== "object") {
+        if (source !== null && source !== undefined && typeof source !== "string" && typeof source !== "number" && typeof source !== "boolean") {
+          throw new TypeError("graph instruction values must be records, arrays or primitives");
+        }
+        put(target, key, source); continue;
+      }
+      if (active.has(source)) throw new TypeError("graph instruction contains a cycle");
+      const prior = copied.get(source); if (prior !== undefined) { put(target, key, prior); continue; }
+      const array = Array.isArray(source);
+      const prototype = Object.getPrototypeOf(source);
+      if (!array && prototype !== Object.prototype && prototype !== null) throw new TypeError("graph instruction records must be plain");
+      const fields = new Map<string, unknown>();
+      for (const name of Reflect.ownKeys(source)) {
+        if (typeof name !== "string") throw new TypeError("graph instruction contains a symbol field");
+        const descriptor = Reflect.getOwnPropertyDescriptor(source, name);
+        if (descriptor === undefined || !Object.hasOwn(descriptor, "value")
+          || (!(array && name === "length") && !descriptor.enumerable)) {
+          throw new TypeError("graph instruction fields must be own enumerable data properties");
+        }
+        fields.set(name, descriptor.value);
+      }
+      if (array) {
+        const length = fields.get("length");
+        if (typeof length !== "number" || !Number.isSafeInteger(length) || length < 0 || fields.size !== length + 1) {
+          throw new TypeError("graph instruction arrays must be dense and undecorated");
+        }
+        for (let index = 0; index < length; index++) if (!fields.has(String(index))) throw new TypeError("graph instruction array is sparse or decorated");
+      }
+      const result: object = array ? [] : Object.create(null);
+      copied.set(source, result); put(target, key, result);
+      active.add(source); enqueue({ leave: source });
+      for (const [name, value] of fields) {
+        if (array && name === "length") continue;
+        if (deep) { put(result, name, undefined); enqueue({ source: value, target: result, key: name }); }
+        else put(result, name, value);
+      }
+    }
+    return holder.value;
+  } catch (cause) {
+    throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", "replace-content", "public graph instruction storage is malformed", cause);
   }
-  if (operation.op === "replace-root") {
-    if (is_Node(operation.root)) admit_portable_hson_node(operation.root, "LiveMap graph operation");
-    return;
+}
+
+/** Admit one stable public instruction and its raw content before staging. */
+export function admit_public_document_graph_operation(operation: LiveMapGraphOp): LiveMapGraphOp {
+  // The shallow observation establishes all field selections without getters.
+  const selected = capture_public_instruction(operation, false);
+  if (!is_plain_record(selected) || selected.domain !== "graph") {
+    throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", "replace-content", "graph operation must have explicit graph domain");
   }
-  if (operation.target?.witness !== undefined) {
-    throw new Error("Public graph operations cannot admit a QUID witness.");
+  switch (selected.op) {
+    case "ensure-quid": throw new Error("Public graph operations cannot install generated identity.");
+    case "replace-root": {
+      must_exact_keys(selected, ["domain", "op", "mode", "root"], "replace-content");
+      const root = admit_public_livemap_root(selected.root, "document", "LiveMap graph operation");
+      return { ...capture_public_instruction({ ...selected, root: null }), root };
+    }
+    case "insert-content": {
+      must_exact_keys(selected, ["domain", "op", "target", "index", "content"], selected.op);
+      const content = clone_content(selected.content, selected.op, true);
+      const admitted = { ...capture_public_instruction({ ...selected, content: null }), content };
+      if (admitted.target?.witness !== undefined) throw new Error("Public graph operations cannot admit a QUID witness.");
+      return admitted;
+    }
+    case "replace-content": {
+      must_exact_keys(selected, Object.hasOwn(selected, "lineage")
+        ? ["domain", "op", "target", "index", "replacement", "lineage"]
+        : ["domain", "op", "target", "index", "replacement"], selected.op);
+      const replacement = clone_content(selected.replacement, selected.op, true);
+      const admitted = { ...capture_public_instruction({ ...selected, replacement: null }), replacement };
+      if (admitted.target?.witness !== undefined) throw new Error("Public graph operations cannot admit a QUID witness.");
+      return admitted;
+    }
+    case "set-attr": must_exact_keys(selected, ["domain", "op", "target", "name", "value"], selected.op); break;
+    case "remove-attr": must_exact_keys(selected, ["domain", "op", "target", "name"], selected.op); break;
+    case "replace-attrs": must_exact_keys(selected, ["domain", "op", "target", "attrs"], selected.op); break;
+    case "remove-content": must_exact_keys(selected, ["domain", "op", "target", "index"], selected.op); break;
+    case "move-content": must_exact_keys(selected, ["domain", "op", "target", "from", "to"], selected.op); break;
+    default: throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", "replace-content", "unsupported public graph operation");
   }
-  if (operation.op === "insert-content" && is_Node(operation.content)) {
-    admit_portable_hson_node(operation.content, "LiveMap graph operation");
-  }
-  if (operation.op === "replace-content" && is_Node(operation.replacement)) {
-    admit_portable_hson_node(operation.replacement, "LiveMap graph operation");
-  }
+  const admitted = capture_public_instruction(selected);
+  if (admitted.target?.witness !== undefined) throw new Error("Public graph operations cannot admit a QUID witness.");
+  return admitted;
 }
 
 /** Validate and plan one graph operation against a detached candidate root. */
@@ -906,16 +992,32 @@ function normalize_content_index(input: unknown, operation: DocumentOperation): 
   return input;
 }
 
-function clone_content(input: unknown, operation: DocumentOperation): LiveMapDocumentContent {
-  if (is_Node(input)) {
+function clone_content(input: unknown, operation: DocumentOperation, publicInput = false): LiveMapDocumentContent {
+  if (typeof input === "object" && input !== null) {
     try {
-      return clone_live_root(input);
+      return capture_exact_hson_graph(input, `LiveMap.${operation}`, publicInput);
     } catch (cause) {
-      throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "replacement node cannot be cloned", cause);
+      if (cause instanceof TransformError && cause.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN") throw cause;
+      throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "replacement node storage is not exact", cause);
     }
   }
   if (is_finite_primitive(input)) return input;
   throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "replacement must be one canonical Hson node or primitive");
+}
+
+function qualify_content_slot(endpoint: HsonNode, content: LiveMapDocumentContent, operation: DocumentOperation, rootCarrier: boolean): void {
+  try {
+    if (is_Node(content)) {
+      if (endpoint.$_tag === STR_TAG || endpoint.$_tag === VAL_TAG) {
+        throw new TypeError("primitive leaves cannot receive node content");
+      }
+      qualify_livemap_content(content, endpoint, `LiveMap.${operation}`, rootCarrier);
+    } else if (!is_livemap_primitive_slot(endpoint, content)) {
+      throw new TypeError("primitive content is incompatible with the receiving slot");
+    }
+  } catch (cause) {
+    throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "replacement is invalid in its receiving context", cause);
+  }
 }
 
 function insertion_content(endpoint: HsonNode, content: LiveMapDocumentContent): LiveMapDocumentContent {
@@ -931,6 +1033,7 @@ export function make_internal_document_content_carrier(
 ): HsonNode {
   const content = clone_content(contentInput, "insert-content");
   const carrier: HsonNode = { $_tag: ELEM_TAG, $_content: [] };
+  qualify_content_slot(carrier, content, "insert-content", false);
   carrier.$_content.push(insertion_content(carrier, content));
   return carrier;
 }

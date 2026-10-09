@@ -10,6 +10,8 @@ import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentIdentityProvenanceError } from "./livemap.error.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
+import { admit_owned_livemap_root } from "./livemap.node-admission.js";
+import { capture_exact_hson_graph } from "../../internal/exact-node-qualification.js";
 
 /** Detached document state; only an owner-proven same-epoch capability retains identity. */
 export type LiveMapDocumentCapture<
@@ -70,7 +72,8 @@ export function capture_livemap_document<TMode extends LiveMapDocumentMode>(
   continuity?: () => object | undefined,
 ): LiveMapDocumentCapture<TMode> {
   const category = capture_category(options);
-  const captureRoot = clone_hson_graph_without_quids(root);
+  const qualified = admit_owned_livemap_root(root, "document", "LiveMap.document.capture");
+  const captureRoot = clone_hson_graph_without_quids(qualified);
   const capture: LiveMapDocumentCapture<TMode> = Object.freeze({
     kind: "hson-document",
     mode,
@@ -108,6 +111,7 @@ export function validate_livemap_document_admission(
   capture: LiveMapDocumentCapture,
   identity: unknown,
   continuity?: () => object | undefined,
+  admittedRoot?: HsonNode,
 ): LiveMapDocumentInstallIdentity {
   const policy = install_identity(identity);
   if (policy !== "same-epoch") return policy;
@@ -143,9 +147,16 @@ export function validate_livemap_document_admission(
       "Projected document exact capture belongs to an earlier recovery continuity boundary.",
     );
   }
+  // The installer can supply its already captured private candidate. Otherwise
+  // detach exact descriptor observations before equality reads semantic values.
+  let capturedRoot: HsonNode;
+  try { capturedRoot = admittedRoot ?? capture_exact_hson_graph(capture.root, "LiveMap.capture.provenance", false); }
+  catch {
+    throw provenance_error("IDENTITY_POLICY_MISMATCH", "The same-epoch capture graph storage changed after the capability was issued.");
+  }
   if (capture.mode !== provenance.mode
     || capture.rev !== provenance.rev
-    || !canonical_hson_graph_equal(capture.root, provenance.root)) {
+    || !canonical_hson_graph_equal(capturedRoot, provenance.root)) {
     throw provenance_error(
       "IDENTITY_POLICY_MISMATCH",
       "The same-epoch capture envelope or graph changed after the capability was issued.",

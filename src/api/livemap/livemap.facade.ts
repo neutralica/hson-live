@@ -1,6 +1,5 @@
 import type { LiveMap, LiveMapDefinitions, LiveMapKnownDefinitions } from "../../types/livemap.types.js";
-import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
-import { make_livemap_libraries } from "./livemap.libraries.js";
+import { admit_public_livemap_definitions, make_livemap_libraries } from "./livemap.libraries.js";
 
 export interface HsonLiveMapFacade {
   readonly create: typeof create;
@@ -14,12 +13,7 @@ export function create(): LiveMap<{}> {
 
 /** Establish one named local Library registry. */
 export function fromLibraries<const TLibraries extends LiveMapDefinitions>(libraries: TLibraries): LiveMap<LiveMapKnownDefinitions<TLibraries>> {
-  for (const [name, input] of Object.entries(libraries)) {
-    if ("document" in input && input.document !== undefined && typeof input.document !== "string") {
-      admit_portable_hson_node(input.document, `LiveMap.fromLibraries(${name})`);
-    }
-  }
-  return make_livemap_libraries(libraries);
+  return make_livemap_libraries(admit_public_livemap_definitions(libraries));
 }
 
 export const hsonLiveMap: HsonLiveMapFacade = /* @__PURE__ */ Object.freeze({
