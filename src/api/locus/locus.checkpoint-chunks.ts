@@ -20,7 +20,7 @@ export type CheckpointChunkDescriptor = Readonly<{
   sha256: string;
 }>;
 
-type Token = readonly ["o" | "a" | "e" | "z"]
+type Token = readonly ["o" | "a" | "e" | "z" | "-0" | "u"]
   | readonly ["k" | "s", string, boolean]
   | readonly ["n", number]
   | readonly ["b", boolean];
@@ -36,11 +36,11 @@ function* string_tokens(kind: "k" | "s", value: string): Generator<Token> {
 /** Emits a deterministic stream without stringifying an entire root. */
 function* tokens(value: unknown): Generator<Token> {
   type Work =
-    | { kind: "value"; value: unknown; depth: number }
+    | { kind: "value"; value: unknown; depth: number; field?: true }
     | { kind: "array"; value: unknown[]; index: number; depth: number }
     | { kind: "object"; value: Record<string, unknown>; keys: Iterator<string>; depth: number };
   function* own_keys(object: Record<string, unknown>): Generator<string> {
-    for (const key in object) if (Object.hasOwn(object, key) && object[key] !== undefined) yield key;
+    for (const key in object) if (Object.hasOwn(object, key)) yield key;
   }
   const stack: Work[] = [{ kind: "value", value, depth: 0 }];
   while (stack.length > 0) {
@@ -55,15 +55,21 @@ function* tokens(value: unknown): Generator<Token> {
       if (key.done) { stack.pop(); yield ["e"]; }
       else {
         yield* string_tokens("k", key.value);
-        stack.push({ kind: "value", value: next.value[key.value], depth: next.depth + 1 });
+        stack.push({ kind: "value", value: next.value[key.value], depth: next.depth + 1, field: true });
       }
       continue;
     }
     stack.pop();
     const current = next.value;
     if (current === null) { yield ["z"]; continue; }
+    // Undefined is a field-presence distinction in typed storage, never an
+    // arbitrary graph primitive. Receiving-context qualification remains later.
+    if (current === undefined && next.field) { yield ["u"]; continue; }
     if (typeof current === "string") { yield* string_tokens("s", current); continue; }
-    if (typeof current === "number" && Number.isFinite(current)) { yield ["n", current]; continue; }
+    if (typeof current === "number" && Number.isFinite(current)) {
+      yield Object.is(current, -0) ? ["-0"] : ["n", current];
+      continue;
+    }
     if (typeof current === "boolean") { yield ["b", current]; continue; }
     if (Array.isArray(current)) {
       if (next.depth >= CHECKPOINT_MAX_DEPTH) throw new Error("Checkpoint nesting exceeds its supported bound.");
@@ -155,7 +161,14 @@ export class CheckpointTokenDecoder {
           const frame = this.stack.pop();
           if (frame === undefined || frame.key !== undefined) throw new Error("Checkpoint container end is misplaced.");
         } else if (kind === "z" && token.length === 1) this.attach(null);
-        else if (kind === "n" && token.length === 2 && typeof token[1] === "number" && Number.isFinite(token[1])) this.attach(token[1]);
+        else if (kind === "-0" && token.length === 1) this.attach(-0);
+        else if (kind === "u" && token.length === 1) {
+          const parent = this.stack.at(-1);
+          if (parent?.kind !== "object" || parent.key === undefined) throw new Error("Checkpoint undefined field is misplaced.");
+          this.attach(undefined);
+        }
+        else if (kind === "n" && token.length === 2 && typeof token[1] === "number"
+          && Number.isFinite(token[1]) && !Object.is(token[1], -0)) this.attach(token[1]);
         else if (kind === "b" && token.length === 2 && typeof token[1] === "boolean") this.attach(token[1]);
         else throw new Error("Checkpoint token is malformed.");
       }

@@ -9,6 +9,7 @@ import { CREATE_NODE } from "../../../core/factories.js";
 import { is_ordinary_element_node } from "../../../core/node-guards.js";
 import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
 import { scan_hson_node_quids } from "../../../core/hson-node-quid.js";
+import { materialize_owned_occurrences } from "../runtime/materialize-occurrences.js";
 import {
   runtime_for_tree,
   type LiveTreeRuntime,
@@ -32,7 +33,7 @@ function clone_branch_inner(
   const dst = CREATE_NODE({ $_tag: src.$_tag });
 
   // deep clone containers
-  if (has_own_entries(src.$_attrs)) dst.$_attrs = { ...src.$_attrs };
+  if (has_own_entries(src.$_attrs)) dst.$_attrs = materialize_owned_occurrences(src.$_attrs);
   if (has_own_entries(src.$_meta)) {
     dst.$_meta = { ...src.$_meta };
 

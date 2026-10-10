@@ -7,6 +7,9 @@ import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LiveMapDocumentLibrary, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
 import { is_Node } from "../src/core/node-guards.ts";
+import { without_structured_clone } from "./helpers/without-structured-clone.mts";
+import { runtime_for_tree } from "../src/api/livetree/runtime/livetree-runtime.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { unlinkNode } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -113,6 +116,54 @@ function document_element(root: HsonNode): HsonNode {
 
 function document_element_tree(binding: ReturnType<typeof hsonMirror>) {
   return create_livetree(document_element(retained_subject(binding.tree))).adoptRoots(retained_historic_root(binding.tree));
+}
+
+for (const mode of ["native", "fallback"] as const) {
+  check(`Cut 8 ${mode}: authoritative signed-zero attrs converge without duplicate effects or identity changes`, () => {
+    const run = () => {
+      const map = document_from_node({ $_tag: "_hson_root", $_content: [{ $_tag: "main",
+        $_attrs: { count: 0, style: { width: { value: 0, unit: "px" } } }, $_content: [] }] });
+      const binding = hsonMirror(map), tree = document_element_tree(binding);
+      const subject = retained_subject(tree), runtime = runtime_for_tree(tree);
+      const issued = [...runtime.issuedQuids], registered = binding.diagnostics().registeredElements;
+      const dom = mount(subject);
+      const observations: LiveMapCommitObservation[] = [];
+      const stop = map.commits.observe(event => observations.push(event));
+      try {
+        for (const [round, value] of [-0, 0, -0].entries()) {
+          assert.equal(map.document.attrs.set(path(), "count", value).changed, true);
+          tree.attrs.set("style", { width: { value, unit: "px" } });
+          const observation = binding.tree.node.$_content[0];
+          assert.ok(typeof observation === "object" && observation !== null);
+          const style = observation.$_attrs?.style;
+          assert.ok(style !== null && typeof style === "object");
+          const width = style.width;
+          assert.ok(width !== null && typeof width === "object");
+          assert.ok(Object.is(observation.$_attrs?.count, value));
+          assert.ok(Object.is(width.value, value));
+          assert.ok(canonical_hson_graph_equal(map.root(), binding.tree.node));
+          const revision = (round + 1) * 2;
+          assert.equal(map.rev, revision);
+          assert.equal(binding.sourceRevision, revision);
+          assert.equal(binding.status, "active");
+          assert.equal(binding.diagnostics().updatesApplied, revision);
+          assert.equal(observations.length, revision);
+          assert.equal(binding.diagnostics().registeredElements, registered);
+          assert.deepEqual([...runtime.issuedQuids], issued);
+          assert.equal(retained_subject(tree), subject);
+          assert.equal(tree.dom.el(), dom);
+          const writes = dom.writes;
+          tree.attrs.set("count", value);
+          tree.attrs.set("style", { width: { value, unit: "px" } });
+          assert.equal(map.rev, revision);
+          assert.equal(binding.diagnostics().updatesApplied, revision);
+          assert.equal(observations.length, revision);
+          assert.equal(dom.writes, writes);
+        }
+      } finally { stop(); binding.dispose(); unlinkNode(subject); tree.remove(); }
+    };
+    if (mode === "fallback") without_structured_clone(run); else run();
+  });
 }
 
 check("initial binding owns a detached graph and indexes raw canonical paths", () => {

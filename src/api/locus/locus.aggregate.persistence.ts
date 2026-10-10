@@ -1,6 +1,7 @@
 import { registry_from_entries } from "../livemap/livemap.hosted.js";
 import { hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { HsonNode } from "../../core/types.js";
+import { canonical_hson_graph_equal } from "../../core/canonical-hson-equal.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   HostedAggregateCommit,
@@ -14,7 +15,7 @@ import { make_livemap_mirror_from_semantic_checkpoint_internal } from "../livema
 import type { LiveMapSemanticCheckpoint } from "../livemap/livemap.internal.js";
 import type { HostedRegistry, HostedRegistryEntry } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
-import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
 import {
   CHECKPOINT_CHUNK_MAX_BYTES, CHECKPOINT_MAX_CHUNKS, CHECKPOINT_MAX_MANIFEST_BYTES,
   CheckpointTokenDecoder, encode_checkpoint_chunks, validate_checkpoint_chunk,
@@ -169,6 +170,24 @@ function checkpoint_id(): string {
   return id;
 }
 
+/** Roots retain canonical value/presence semantics; CSS retains its text contract. */
+function checkpoint_libraries_equal(
+  left: LiveMapSemanticCheckpoint["libraries"],
+  right: LiveMapSemanticCheckpoint["libraries"],
+): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((library, index) => {
+    const other = right[index];
+    if (other === undefined || library.name !== other.name
+      || !canonical_hson_graph_equal(library.root, other.root)
+      || Object.hasOwn(library, "css") !== Object.hasOwn(other, "css")) return false;
+    if (library.css === undefined || other.css === undefined) return library.css === other.css;
+    return portable_document_stylesheet_equal(
+      decode_portable_document_stylesheet(library.css), decode_portable_document_stylesheet(other.css),
+    );
+  });
+}
+
 /** Stage bounded semantic pieces, then atomically activate one manifest. */
 export async function write_semantic_checkpoint(
   checkpoint: LiveMapSemanticCheckpoint,
@@ -190,7 +209,7 @@ export async function write_semantic_checkpoint(
       || expected.map.registry.format !== checkpoint.registry.format
       || expected.map.registry.digest !== checkpoint.registry.digest
       || expected.map.registry.digest !== registry_from_entries(checkpoint.registry.libraries).digest
-      || JSON.stringify(expected.map.libraries) !== JSON.stringify(checkpoint.libraries)
+      || !checkpoint_libraries_equal(expected.map.libraries, checkpoint.libraries)
       || JSON.stringify(expected.runtimeOwnership) !== JSON.stringify(ownership)) throw invalid_state();
   }
   const expectedId = previous === undefined ? undefined : active_checkpoint_id(previous.checkpoint);

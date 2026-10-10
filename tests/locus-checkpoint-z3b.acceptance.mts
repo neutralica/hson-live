@@ -24,6 +24,7 @@ import {
 } from "../src/api/locus/locus.aggregate.persistence.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
+import { cut8_checkpoint_cases } from "./fixtures/cut8-checkpoint-cases.mts";
 
 const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const Page: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
@@ -65,6 +66,8 @@ async function case_(name: string, run: () => Promise<void>) {
   await run();
   process.stdout.write(`ok - ${name}\n`);
 }
+
+await cut8_checkpoint_cases(case_);
 
 await case_("checkpoint prefix compares semantic Schema identity and retains registry format", async () => {
   const adapter = new MemoryCheckpointAdapter();

@@ -69,7 +69,7 @@ function canonical_attr_value_equal(
   left: CanonicalPublicAttrValue | undefined,
   right: CanonicalPublicAttrValue | undefined,
 ): boolean {
-  if (left === right) return true;
+  if (Object.is(left, right)) return true;
   if (!is_plain_record(left) || !is_plain_record(right)) return false;
   const leftKeys = Object.keys(left);
   const rightKeys = Object.keys(right);
@@ -79,7 +79,7 @@ function canonical_attr_value_equal(
     if (key === undefined || key !== rightKeys[index]) return false;
     const leftValue = left[key];
     const rightValue = right[key];
-    if (leftValue === rightValue) continue;
+    if (Object.is(leftValue, rightValue)) continue;
     if (!is_plain_record(leftValue) || !is_plain_record(rightValue)
       || !canonical_attr_value_equal(leftValue, rightValue)) return false;
   }
