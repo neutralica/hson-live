@@ -1,3 +1,4 @@
+import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 import { SVG_TAGS } from "../../../core/all-html-tags.js";
 import { HSON_META_MARKUP_PREFIX } from "../../../core/constants.js";
 import { clone_node } from "../../../core/clone-node.js";
@@ -89,6 +90,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     set: (name, value) => {
       const key = normalize_livetree_attr_name(tree, name, "set");
       const decoded = normalize_livetree_attr_value(tree, key, value, "set");
+      assert_mutation_publication_available(active_subject_for_tree(tree));
       const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "set", name: key, value: decoded });
@@ -99,6 +101,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     setMany: (values) => {
       const additions = normalize_livetree_attrs_input(tree, values, "setMany");
+      assert_mutation_publication_available(active_subject_for_tree(tree));
       const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "setMany", values: additions });
@@ -113,6 +116,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     drop: (name) => {
       const key = normalize_livetree_attr_name(tree, name, "drop");
+      assert_mutation_publication_available(active_subject_for_tree(tree));
       const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "drop", name: key });
@@ -123,6 +127,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     dropMany: (names) => {
       const normalized = normalize_livetree_drop_names(tree, names, "dropMany");
+      assert_mutation_publication_available(active_subject_for_tree(tree));
       const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "dropMany", names: normalized });
@@ -132,6 +137,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
       return apply_attrs_replacement(tree, current, plan_public_attrs_drop_many(current, normalized));
     },
     clear: () => {
+      assert_mutation_publication_available(active_subject_for_tree(tree));
       const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "clear" });
@@ -142,6 +148,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     replace: (values) => {
       const next = normalize_livetree_attrs_input(tree, values, "replace");
+      assert_mutation_publication_available(active_subject_for_tree(tree));
       const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "replace", values: next });
@@ -178,6 +185,7 @@ export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTr
     },
     set: (...names): TTree => {
       const normalized = normalize_livetree_flag_names(tree, names, "flags.set", true);
+      assert_mutation_publication_available(active_subject_for_tree(tree));
       const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "setMany", values: livetree_flag_values(normalized) });
@@ -188,6 +196,7 @@ export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTr
     },
     clear: (...names): TTree => {
       const normalized = normalize_livetree_flag_names(tree, names, "flags.clear", true);
+      assert_mutation_publication_available(active_subject_for_tree(tree));
       const binding = document_binding_for_node(active_subject_for_tree(tree));
       if (binding !== undefined) {
         binding.delegateAttrs({

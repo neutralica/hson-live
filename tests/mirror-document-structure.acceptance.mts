@@ -1,8 +1,10 @@
+import { runtime_for_tree } from "../src/api/livetree/runtime/livetree-runtime.ts";
+import type { HsonNode } from "../src/core/types.ts";
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element, mount, path, projected_element, raw_node, commit_document_operations, registry_for_document_library } from "./helpers/mirror-unit6.mts";
+import { document_from_node, element, mount, path, projected_element, raw_node, commit_document_operations, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { hsonMirror } from "../src/api/mirror/mirror.facade.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
@@ -118,13 +120,41 @@ check("DOM application failure leaves the accepted registry commit intact", () =
   const page = element(`<main <a/>/>`);
   const binding = hsonMirror(page);
   const dom = mount(retained_subject(binding.tree));
+  const before = binding.tree.node, child = raw_node(retained_subject(binding.tree), [0, 0]), native = dom.childNodes[0];
+  const runtime = runtime_for_tree(binding.tree), claims = [...runtime.quidToNode], issued = [...runtime.issuedQuids];
   dom.failReplace = true;
   const commit = page.document.content.insert(path(0), 1, projected_element(`<a/>`));
   assert.equal(commit.changed, true);
   assert.equal(page.rev, 1);
   assert.equal(binding.status, "failed");
   assert.equal(binding.failure?.code, DOCUMENT_MIRROR_STRUCTURAL_UPDATE_FAILED_ERROR_CODE);
+  assert.deepEqual(binding.tree.node, before); assert.equal(dom.childNodes[0], native);
+  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), child);
+  assert.deepEqual([...runtime.quidToNode], claims); assert.deepEqual([...runtime.issuedQuids], issued);
+  dom.failReplace = false;
   binding.dispose();
+});
+
+check("fresh inserted and replaced values materialize shared occurrences independently", () => {
+  const n = (tag: string, ...content: HsonNode[]): HsonNode => ({ $_tag: tag, $_content: content });
+  const incoming = (): HsonNode => { const p = n("p"); return n("section", n("_hson_elem", p, p)); };
+  const page = document_from_node(n("_hson_root", n("main", n("_hson_elem", incoming()))));
+  const binding = hsonMirror(page), dom = mount(retained_subject(binding.tree));
+  try {
+    page.document.content.insert(path(0), 1, incoming());
+    let section = raw_node(retained_subject(binding.tree), [0, 1]), a = raw_node(section, [0, 0]), b = raw_node(section, [0, 1]);
+    assert.notEqual(a, b); assert.notEqual(get_el_for_node(a), get_el_for_node(b));
+    assert.equal((dom.childNodes[1] as FakeElement).childNodes.length, 2);
+    create_livetree(a).adoptRoots(retained_historic_root(binding.tree)).attrs.set("title", "first only");
+    assert.equal(b.$_attrs?.title, undefined); assert.equal(binding.status, "active");
+    page.document.content.replace(path(0), 1, incoming());
+    section = raw_node(retained_subject(binding.tree), [0, 1]); a = raw_node(section, [0, 0]); b = raw_node(section, [0, 1]);
+    assert.notEqual(a, b); assert.notEqual(get_el_for_node(a), get_el_for_node(b));
+    page.document.content.replace(path(0, 1), 0, incoming().$_content[0] as HsonNode);
+    section = raw_node(retained_subject(binding.tree), [0, 1]);
+    assert.notEqual(raw_node(section, [0, 0]), raw_node(section, [0, 1]));
+    assert.equal((dom.childNodes[1] as FakeElement).childNodes.length, 2);
+  } finally { binding.dispose(); }
 });
 
 check("registry snapshot restore rebuilds the reflected document", () => {

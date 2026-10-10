@@ -7,6 +7,7 @@ import { is_livemap_document_location } from "../../livemap/livemap.document.loc
 import { is_livemap_projected_location } from "../../livemap/livemap.handle.js";
 import type { LiveTree } from "../livetree.js";
 import { own_disposable_for_subject } from "../managers/lifecycle-registry.js";
+import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 import { runtime_for_tree, subject_for_tree } from "../runtime/livetree-runtime.js";
 
 type LiveTreeBindable = Pick<LiveTree, "quid" | "text" | "attrs" | "css">;
@@ -115,6 +116,7 @@ function bind_path_for<TTree extends LiveTreeBindable, TValue>(
   source: BindingCapability<TValue>,
   apply: InternalPathApply<TTree, TValue>,
 ): LiveMapDisposer {
+  assert_mutation_publication_available(subject_for_tree(tree));
   let previous: TValue | undefined;
   const mode = classify_binding_source(source);
 
@@ -137,6 +139,7 @@ function bind_paths_for<TTree extends LiveTreeBindable, const TSources extends r
   sources: TSources,
   apply: PathsApply<TTree, BindingValues<TSources>>,
 ): LiveMapDisposer {
+  assert_mutation_publication_available(subject_for_tree(tree));
   let previous: BindingValues<TSources> | undefined;
   sources.forEach(classify_binding_source);
 

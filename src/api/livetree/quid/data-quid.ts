@@ -19,6 +19,7 @@ import {
 } from '../../../core/hson-node-quid.js';
 import { is_ordinary_element_node } from '../../../core/node-guards.js';
 import { LiveTreeQuidReuseError } from "../livetree.error.js";
+import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 import {
   assert_graph_runtime_available,
   bind_graph_runtime,
@@ -61,6 +62,7 @@ type FullLiveTreeQuidPlan = Readonly<{
   identities: ReadonlyMap<HsonNode, string>;
   revalidate: () => void;
   publish: () => void;
+  preserveIssuedHistory: () => void;
   rollback: () => void;
 }>;
 
@@ -269,6 +271,15 @@ export function plan_full_livetree_quid_graph(
   }
 
   let applied = false;
+  let observable = false;
+  const priorClaims = [...identities].map(([node, quid]) => ({
+    node, quid,
+    active: runtime.quidToNode.get(quid),
+    reverse: runtime.nodeToQuid.get(node),
+    issued: runtime.issuedQuids.has(quid),
+    meta: node.$_meta,
+  }));
+  const previouslyUnrouted = collect_subtree_nodes(root, "pre").filter(node => runtime_for_node(node) === undefined);
   const revalidate = (): void => {
     assert_livetree_quid_eligible(root, "admit");
     assert_graph_runtime_available(root, runtime);
@@ -291,21 +302,26 @@ export function plan_full_livetree_quid_graph(
 
   const rollback = (): void => {
     if (!applied) return;
-    for (const [node, quid] of identities) {
-      if (runtime.quidToNode.get(quid) === node) runtime.quidToNode.delete(quid);
-      if (runtime.nodeToQuid.get(node) === quid) runtime.nodeToQuid.delete(node);
-      runtime.issuedQuids.delete(quid);
+    for (const { node, quid, active, reverse, issued, meta } of priorClaims) {
+      if (active === undefined && runtime.quidToNode.get(quid) === node) runtime.quidToNode.delete(quid);
+      if (reverse === undefined && runtime.nodeToQuid.get(node) === quid) runtime.nodeToQuid.delete(node);
+      if (!issued && !observable) runtime.issuedQuids.delete(quid);
       if (mintedNodes.has(node) && read_hson_node_quid(node) === quid) {
         remove_hson_node_quid(node);
+        if (meta !== undefined) node.$_meta = meta;
       }
     }
-    release_nodes_runtime(collect_subtree_nodes(root, "pre"), runtime);
+    release_nodes_runtime(previouslyUnrouted, runtime);
     applied = false;
   };
 
   return Object.freeze({
     identities,
     revalidate,
+    // Native callbacks may inspect the entire now-published graph, not just
+    // the element receiving an attribute. Preserve the complete plan's history
+    // before entering any such callback or creating queued native evidence.
+    preserveIssuedHistory(): void { observable = true; },
     publish(): void {
       if (applied) return;
       revalidate();
@@ -342,6 +358,9 @@ export function admit_livetree_quid_graph(
   assert_livetree_quid_eligible(root, "admit");
   const claims = preflight_livetree_quid_graph(root, runtime);
   const existingRootQuid = get_quid(root, runtime);
+  if (existingRootQuid === undefined || claims.some(claim => runtime.quidToNode.get(claim.quid) !== claim.node)) {
+    assert_mutation_publication_available(root);
+  }
   const reserved = new Set(claims.map((claim) => claim.quid));
   const rootQuid = existingRootQuid ?? mint_available_quid(runtime, reserved);
 

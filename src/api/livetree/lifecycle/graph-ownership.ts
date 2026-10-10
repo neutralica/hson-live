@@ -1,3 +1,5 @@
+import { ELEM_TAG } from "../../../core/constants.js";
+import { release_nodes_runtime, runtime_for_node } from "../runtime/livetree-runtime.js";
 import { is_Node } from "../../../core/node-guards.js";
 import type { HsonNode } from "../../../core/types.js";
 import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
@@ -51,5 +53,14 @@ export function unlink_node_from_parent(node: HsonNode): boolean {
 
   parent.$_content.splice(index, 1);
   PARENT_FOR_NODE.delete(node);
+  if (parent.$_tag === ELEM_TAG && parent.$_content.length === 0) {
+    const owner = PARENT_FOR_NODE.get(parent);
+    if (owner && owner.$_content.length === 1 && owner.$_content[0] === parent) {
+      owner.$_content = [];
+      PARENT_FOR_NODE.delete(parent);
+      const runtime = runtime_for_node(parent);
+      if (runtime) release_nodes_runtime([parent], runtime);
+    }
+  }
   return true;
 }

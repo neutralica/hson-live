@@ -1,3 +1,4 @@
+import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 // css-for-quids.ts
 
 
@@ -17,6 +18,14 @@ function manager_for_host(host: LiveTree | void): CssRuntimeManager {
   return CssRuntimeManager.forRuntime(runtime, {
     claimAmbientDocument: runtime === default_livetree_runtime(),
   });
+}
+
+function assert_css_write_available(host: LiveTree | void, ids: readonly string[]): void {
+  const runtime = host ? runtime_for_tree(host) : default_livetree_runtime();
+  for (const quid of ids) {
+    const subject = runtime.quidToNode.get(quid);
+    if (subject) assert_mutation_publication_available(subject);
+  }
 }
 
 function api_for_host(host: LiveTree | void): CssRuleFacade & ReturnType<typeof CssRuntimeManager.apiForRuntime> {
@@ -50,14 +59,17 @@ const mkCssQuidAdapter = (
 } => {
   return {
     apply: (propCanon, value) => {
+      assert_css_write_available(hostOrVoid, ids);
       for (const quid of ids) mgr.setForQuid(quid, propCanon, value);
     },
 
     remove: (propCanon) => {
+      assert_css_write_available(hostOrVoid, ids);
       for (const quid of ids) mgr.unsetForQuid(quid, propCanon);
     },
 
     clear: () => {
+      assert_css_write_available(hostOrVoid, ids);
       for (const quid of ids) {
         mgr.clearQuid(quid);
       }
@@ -68,6 +80,7 @@ const mkCssQuidAdapter = (
       mgr.dropGlobalRulesByPrefix(selectorRuleOwnerKey(hostOrVoid, ids));
     },
     applySelector: (pattern, decls) => {
+      assert_css_write_available(hostOrVoid, ids);
       // CHANGED: setMany selector blocks must opt in with `&`. The public
       // css.selector(...) method remains more permissive, but object-shaped
       // setMany keys should not be guessed into selectors.
@@ -83,6 +96,7 @@ const mkCssQuidAdapter = (
     },
     // pseudo routing for quid-scoped rules
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
+      assert_css_write_available(hostOrVoid, ids);
       // CHANGED: pseudo shorthand keys are now selector-rule sugar. This makes
       // `__before` and `css.selector("&::before")` address the same rule store.
       const selector = resolveSelector(ids, `&${pseudo_to_suffix(pseudo)}`, mgr);
@@ -362,14 +376,17 @@ function mkSelectorStyleSetter<TReturn extends LiveTree | void>(
 
   return make_style_setter<TReturn>(ret, {
     apply: (propCanon, value) => {
+      assert_css_write_available(ret, ids);
       handle.setProp(propCanon as CssKey, value);
     },
 
     remove: (propCanon) => {
+      assert_css_write_available(ret, ids);
       handle.remove(propCanon);
     },
 
     clear: () => {
+      assert_css_write_available(ret, ids);
       // CHANGED: clear both the rule handle's local declaration closure and the
       // manager-backed rendered rule. Dropping only the manager rule leaves this
       // handle's local `decls` copy stale, so a later setMany(all) with the same
@@ -380,6 +397,7 @@ function mkSelectorStyleSetter<TReturn extends LiveTree | void>(
 
     // keep pseudo support working on selector-scoped rules too
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
+      assert_css_write_available(ret, ids);
       const suf = pseudo_to_suffix(pseudo);
       const pseudoHandle = runtimeRuleApi.rule(`${ruleKey}${suf}`, `${selector}${suf}`);
       pseudoHandle.setMany(pseudoDecls);
@@ -405,19 +423,23 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
 
   const setter = make_style_setter<TReturn>(ret, {
     apply: (propCanon, value) => {
+      assert_css_write_available(ret, ids);
       handle.setProp(propCanon as CssKey, value);
     },
 
     remove: (propCanon) => {
+      assert_css_write_available(ret, ids);
       handle.remove(propCanon);
     },
 
     clear: () => {
+      assert_css_write_available(ret, ids);
       handle.clear();
       manager.dropGlobalRulesByPrefix(selectorRuleOwnerKey(ret, ids, scopeKey));
     },
 
     applySelector: (pattern, decls) => {
+      assert_css_write_available(ret, ids);
       if (!is_explicit_selector_pattern(pattern)) return;
 
       const scopedSelector = resolveSelector(ids, pattern, manager);
@@ -428,6 +450,7 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
     },
 
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
+      assert_css_write_available(ret, ids);
       const pseudoSelector = resolveSelector(ids, `&${pseudo_to_suffix(pseudo)}`, manager);
       const pseudoRuleKey = selectorRuleKey(ret, ids, pseudoSelector, scopeKey);
       const pseudoHandle = ruleApi.rule(pseudoRuleKey, pseudoSelector);

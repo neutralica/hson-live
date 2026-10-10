@@ -1,3 +1,8 @@
+import { assert_mutation_publication_available } from "../../lifecycle/mutation-publication.js";
+import { append_factory_branches_atomic } from "../appends.js";
+import { assert_element_receiver, qualify_owned_structure } from "../../lifecycle/mutation-qualification.js";
+import { get_el_for_node } from "../../utils/node-map-helpers.js";
+import { create_staged_livetree_in_runtime } from "../../creation/create-livetree.js";
 // create-core.ts
 
 import { qualify_exact_hson_graph } from "../../../../internal/exact-node-qualification.js";
@@ -11,12 +16,11 @@ import { admit_public_livetree_branch, admit_public_livetree_source } from "../.
 import { decode_public_svg_source, standalone_svg_source } from "../../../transform/utils/html-utils/decode-public-svg-source.js";
 import { node_from_svg } from "../../../transform/utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../../core/node-guards.js";
-import { create_livetree_in_runtime } from "../../creation/create-livetree.js";
 import {
   runtime_for_tree,
   active_subject_for_tree,
-  inherit_tree_historic_root,
   subject_for_tree,
+  notify_livetree_realizations_internal,
 } from "../../runtime/livetree-runtime.js";
 import { make_tree_selector } from "../../creation/make-tree-selector.js";
 import { LiveTree } from "../../livetree.js";
@@ -129,54 +133,51 @@ export function make_create_core(tree: LiveTree): CreateCore {
     index?: number,
   ): TBranch => {
     try {
-      if (typeof index === "number") tree.append(branch, index);
-      else tree.append(branch);
+      append_factory_branches_atomic(tree, [branch], index);
     } catch (cause) {
       // A branch that never entered the destination graph is still exclusively
       // owned by this factory and cannot be returned to the caller.
       const subject = subject_for_tree(branch);
       if (parent_for_node(subject) === undefined) {
-        dispose_node_deep(subject, runtime_for_tree(branch));
+        dispose_node_deep(subject, runtime_for_tree(branch), false);
         release_subtree_ownership(subject);
       }
       throw cause;
     }
 
-    inherit_tree_historic_root(branch, tree);
+    if (get_el_for_node(active_subject_for_tree(tree))) notify_livetree_realizations_internal(runtime_for_tree(tree));
     return branch;
   };
 
   function createForTags(tagOrTags: TagName | TagName[], index?: number): LiveTree | TreeSelector {
-    const tags: TagName[] = Array.isArray(tagOrTags) ? tagOrTags : [tagOrTags];
-
-    const created: LiveTree[] = [];
-    let insertIx: number | undefined = index;
-
-    for (const t of tags) {
-      assert_valid_tag_name(t, "createForTags");
-
-      const ns = inferCreateNs(tree, t);
-      const node = CREATE_NODE({
-        $_tag: t,
-        $_content: [],
-        ...(ns === "svg" && t === "svg" ? { $_attrs: { xmlns: "http://www.w3.org/2000/svg" } } : {}),
-      });
-      const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
-
-      created.push(attachPrivateBranch(branch, insertIx));
-
-      if (typeof insertIx === "number") insertIx += 1;
+    assert_mutation_publication_available(active_subject_for_tree(tree));
+    const tags: TagName[] = Array.isArray(tagOrTags) ? [...tagOrTags] : [tagOrTags];
+    assert_element_receiver(active_subject_for_tree(tree), "create tags");
+    for (const tag of tags) assert_valid_tag_name(tag, "createForTags");
+    const nodes = tags.map(tag => {
+      const ns = inferCreateNs(tree, tag);
+      return CREATE_NODE({ $_tag: tag, $_content: [],
+        ...(ns === "svg" && tag === "svg" ? { $_attrs: { xmlns: "http://www.w3.org/2000/svg" } } : {}) });
+    });
+    const created = nodes.map(node => create_staged_livetree_in_runtime(node, runtime_for_tree(tree)));
+    const result = Array.isArray(tagOrTags) ? make_tree_selector(created) : created[0];
+    if (result === undefined) throw new Error("[LiveTree.create] no children created");
+    try {
+      append_factory_branches_atomic(tree, created, index);
+    } catch (cause) {
+      for (const branch of created) if (parent_for_node(subject_for_tree(branch)) === undefined) {
+        dispose_node_deep(subject_for_tree(branch), runtime_for_tree(tree), false);
+        release_subtree_ownership(subject_for_tree(branch));
+      }
+      throw cause;
     }
 
-    if (!Array.isArray(tagOrTags)) {
-      if (!created.length) throw new Error("[LiveTree.create] no children created");
-      return created[0];
-    }
-
-    return make_tree_selector(created);
+    if (created.length && get_el_for_node(active_subject_for_tree(tree))) notify_livetree_realizations_internal(runtime_for_tree(tree));
+    return result;
   }
 
   function createSingleTag(tag: TagName, index?: number): LiveTree {
+    assert_mutation_publication_available(active_subject_for_tree(tree));
     return createForTags(tag, index) as LiveTree;
   }
 
@@ -185,8 +186,11 @@ export function make_create_core(tree: LiveTree): CreateCore {
     source: string,
     index?: number,
   ): LiveTree {
+    assert_mutation_publication_available(active_subject_for_tree(tree));
     const node = prepare_public_html_branch(expectedTag, source, parserForTree);
-    const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
+    assert_element_receiver(active_subject_for_tree(tree), "create markup");
+    qualify_owned_structure(node, "branch", "create markup");
+    const branch = create_staged_livetree_in_runtime(node, runtime_for_tree(tree));
 
     return attachPrivateBranch(branch, index);
   }
@@ -196,8 +200,11 @@ export function make_create_core(tree: LiveTree): CreateCore {
     source: string,
     index?: number,
   ): SvgLiveTree {
+    assert_mutation_publication_available(active_subject_for_tree(tree));
     const node = prepare_public_svg_branch(expectedTag, source, parserForTree);
-    const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
+    assert_element_receiver(active_subject_for_tree(tree), "create markup");
+    qualify_owned_structure(node, "branch", "create markup");
+    const branch = create_staged_livetree_in_runtime(node, runtime_for_tree(tree));
 
     return attachPrivateBranch(branch, index) as unknown as SvgLiveTree;
   }

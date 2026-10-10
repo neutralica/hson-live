@@ -1,6 +1,6 @@
 import { is_Node } from "../../../core/node-guards.js";
 import type { HsonNode } from "../../../core/types.js";
-import { get_el_for_node } from "../utils/node-map-helpers.js";
+import { get_dom_for_node } from "../utils/node-map-helpers.js";
 
 /**
  * Unmount a subtree without releasing its runtime projection.
@@ -12,12 +12,13 @@ export function unmount_node_preserving_runtime(root: HsonNode): boolean {
   let changed = false;
 
   const visit = (node: HsonNode, mappedAncestor: boolean): void => {
-    const element = get_el_for_node(node);
+    const element = get_dom_for_node(node);
     const nextMappedAncestor = mappedAncestor || Boolean(element);
 
     if (element && !mappedAncestor) {
       if (element.parentNode) {
-        element.remove();
+        if (element.nodeType === 1) (element as Element).remove();
+        else element.parentNode.removeChild(element);
         changed = true;
       }
       return;
@@ -34,7 +35,7 @@ export function unmount_node_preserving_runtime(root: HsonNode): boolean {
 
 export function subtree_has_connected_projection(root: HsonNode): boolean {
   const visit = (node: HsonNode): boolean => {
-    const element = get_el_for_node(node);
+    const element = get_dom_for_node(node);
     if (element?.isConnected) return true;
     return (node.$_content ?? []).some((child) => is_Node(child) && visit(child));
   };

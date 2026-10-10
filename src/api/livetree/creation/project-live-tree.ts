@@ -2,6 +2,7 @@ import type { HsonNode, Primitive } from "../../../core/types.js";
 import { is_Node, is_ordinary_element_node } from "../../../core/node-guards.js";
 import { ensure_quid, register_supplied_livetree_quid } from "../quid/data-quid.js";
 import {
+  is_linked_projection_subject,
   default_livetree_runtime,
   notify_livetree_realizations_internal,
   register_runtime_document,
@@ -26,7 +27,7 @@ export function project_livetree(
   ownerDocument: Document = document,
 ): Node {
   const identityAuthority: BrowserProjectionIdentityAuthority = is_Node(node)
-    && subtree_has_document_binding(node)
+    && (is_linked_projection_subject(node) || subtree_has_document_binding(node))
     ? "linked"
     : "standalone";
   return project_with_authority(node, parentNs, runtime, ownerDocument, identityAuthority);
@@ -75,4 +76,16 @@ function admit_projection_identities(
 function subtree_has_document_binding(node: HsonNode): boolean {
   if (document_binding_for_node(node) !== undefined) return true;
   return node.$_content.some((child) => is_Node(child) && subtree_has_document_binding(child));
+}
+
+/** Fallible attachment projection: no document publication, minting or notification.
+ * The caller commits identity only after the complete forest is attached. */
+export function stage_livetree_projection(node: HsonNode, parentNs: BrowserNamespace,
+  runtime: LiveTreeRuntime, ownerDocument: Document): Node {
+  const plan = plan_browser_realization(node, { parentNamespace: parentNs, capability: "dom" });
+  return materialize_browser_realization(plan, runtime, ownerDocument, "linked");
+}
+
+export function projection_needs_local_identity(node: HsonNode): boolean {
+  return !is_linked_projection_subject(node) && !subtree_has_document_binding(node);
 }

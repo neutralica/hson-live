@@ -3,7 +3,7 @@
 <title>Transform trust ingress acceptance</title>
 <body>
 <script type="module">
-import { hsonLiveTree, LiveTree, default_livetree_runtime, runtime_for_tree, runtime_for_node, subject_for_tree, historic_root_for_tree, hson, hsonTransform, node_from_svg, SVG_NS, canonical_hson_graph_equal, detach_hson_root_value,
+import { cut5_graft_reentrancy_browser_cases, cut5_repair_cases, cut5_nonfatal_reporting_cases, cut5_observable_identity_browser_cases, owned_mutation_browser_cases, hsonLiveTree, LiveTree, default_livetree_runtime, runtime_for_tree, runtime_for_node, subject_for_tree, historic_root_for_tree, hson, hsonTransform, node_from_svg, SVG_NS, canonical_hson_graph_equal, detach_hson_root_value,
   scalarHtmlFixtures, memberHtmlFixtures, arrayHtmlFixtures, mixedSvgFixtures, invalidHtmlFixtures, invalidSvgFixtures, svgSourceFixtures } from "./bundle.js";
 
 function same(actual, expected, label) {
@@ -486,8 +486,19 @@ try {
   selected.remove(); detachedBranch.remove();
   rawTree.remove(); grafted.remove(); owner.remove();
 
+  const newRepairFailures = [];
+  const graftReentrancyReport = await cut5_graft_reentrancy_browser_cases(async (name, run) => {
+    try { await run(); } catch (cause) { newRepairFailures.push(name + ': ' + (cause?.message ?? cause)); }
+  });
+  if (newRepairFailures.length) throw new Error(newRepairFailures.join('\n'));
+  const ownedMutationCases = owned_mutation_browser_cases();
+  let repairCases = 0;
+  cut5_repair_cases((name, run) => { try { run(); repairCases++; } catch (cause) { throw new Error(name, { cause }); } });
+  repairCases += await cut5_nonfatal_reporting_cases();
+  const identityEvidence = await cut5_observable_identity_browser_cases();
+  repairCases += identityEvidence.cases;
   document.documentElement.dataset.status = "pass";
-  document.documentElement.dataset.detail = `source-mapped trust, LiveTree public admission/creation/graft, HTML producer parity, SVG branch/ownership and snapshots; ${namespaceFailures.length} XML/namespace rejections and ${legalNamespaceSources.length + 1} namespace/PI/authored-diagnostic controls passed`;
+  document.documentElement.dataset.detail = `${graftReentrancyReport.cases} graft/reentrancy cases; graft identity evidence ${JSON.stringify(graftReentrancyReport.evidence)}; ${repairCases} Cut 5 repair/fault-injection cases; native identity evidence ${JSON.stringify(identityEvidence.evidence)}; ${ownedMutationCases} native owned-mutation/occurrence cases; source-mapped trust, LiveTree public admission/creation/graft, HTML producer parity, SVG branch/ownership and snapshots; ${namespaceFailures.length} XML/namespace rejections and ${legalNamespaceSources.length + 1} namespace/PI/authored-diagnostic controls passed`;
 } catch (cause) {
   document.documentElement.dataset.status = "fail";
   document.documentElement.dataset.detail = cause instanceof Error ? cause.stack ?? cause.message : String(cause);

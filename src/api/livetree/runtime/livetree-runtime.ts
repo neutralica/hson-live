@@ -54,6 +54,17 @@ const SUBJECT_FOR_TREE = new WeakMap<object, HsonNode>();
 const HISTORIC_ROOT_FOR_TREE = new WeakMap<object, HsonNode>();
 const REQUESTED_CONSTRUCTION_RUNTIME = new WeakMap<HsonNode, LiveTreeRuntime>();
 const REQUESTED_LINKED_CONSTRUCTION = new WeakSet<HsonNode>();
+const LINKED_PROJECTION_SUBJECTS = new WeakSet<HsonNode>();
+
+/** Persist the no-mint projection policy of an authorized linked owner. @internal */
+export function mark_linked_projection_subjects(root: HsonNode): void {
+  for (const node of collect_runtime_graph(root)) LINKED_PROJECTION_SUBJECTS.add(node);
+}
+
+/** Projection policy only: this does not confer identity or root authority. @internal */
+export function is_linked_projection_subject(node: HsonNode): boolean {
+  return LINKED_PROJECTION_SUBJECTS.has(node);
+}
 const RUNTIME_FOR_DOCUMENT = new WeakMap<Document, LiveTreeRuntime>();
 
 function collect_runtime_graph(root: HsonNode): readonly HsonNode[] {
@@ -134,17 +145,24 @@ export function bind_tree_historic_root(tree: object, root: HsonNode): void {
 
 /** Inherit pinned context from an authenticated active handle, including a retired root. @internal */
 export function inherit_tree_historic_root(tree: object, source: object): void {
-  const subject = active_subject_for_tree(tree);
+  inherit_trees_historic_root([tree], source);
+}
+
+/** Validate every authenticated handle before publishing batch context. @internal */
+export function inherit_trees_historic_root(trees: readonly object[], source: object): void {
   const sourceSubject = active_subject_for_tree(source);
-  const runtime = RUNTIME_FOR_TREE.get(tree);
-  if (runtime === undefined || RUNTIME_FOR_TREE.get(source) !== runtime
-    || RUNTIME_FOR_NODE.get(subject) !== runtime || RUNTIME_FOR_NODE.get(sourceSubject) !== runtime) {
-    throw new Error("LiveTree historic context inheritance requires active same-runtime handles.");
+  const runtime = RUNTIME_FOR_TREE.get(source);
+  for (const tree of trees) {
+    const subject = active_subject_for_tree(tree);
+    if (runtime === undefined || RUNTIME_FOR_TREE.get(tree) !== runtime
+      || RUNTIME_FOR_NODE.get(subject) !== runtime || RUNTIME_FOR_NODE.get(sourceSubject) !== runtime) {
+      throw new Error("LiveTree historic context inheritance requires active same-runtime handles.");
+    }
   }
   // The source handle already authenticates this exact context. Its historic
   // root may have retired; do not re-admit or re-register that root.
   const root = historic_root_for_tree(source);
-  HISTORIC_ROOT_FOR_TREE.set(tree, root);
+  for (const tree of trees) HISTORIC_ROOT_FOR_TREE.set(tree, root);
 }
 
 /** Historical correspondence/teardown access, without active-read eligibility. @internal */
@@ -172,7 +190,26 @@ export function observe_livetree_realizations_internal(
 
 /** Publish one completed realization boundary. @internal */
 export function notify_livetree_realizations_internal(runtime: LiveTreeRuntime): void {
-  for (const listener of [...runtime.realizationListeners]) listener();
+  for (const listener of [...runtime.realizationListeners]) {
+    try { listener(); }
+    catch (cause) { report_realization_observer_failure(cause); }
+  }
+}
+
+/** Post-commit observer failures never participate in mutation rollback. */
+function report_realization_observer_failure(cause: unknown): void {
+  let error: Error = new Error("LiveTree realization observer failed after publication.", { cause });
+  try {
+    const reporter = (globalThis as typeof globalThis & { reportError?: (error: unknown) => void }).reportError;
+    if (typeof reporter === "function") { Reflect.apply(reporter, globalThis, [error]); return; }
+  } catch (reportingFailure) {
+    error = new AggregateError([error, reportingFailure], "LiveTree realization error reporter failed.");
+  }
+  // Node and Workers without reportError use the existing runtime-manager
+  // console reporting convention. If every reporting facility fails, host
+  // survival takes precedence over guaranteed error delivery.
+  try { console.error(error); }
+  catch { /* All available nonfatal reporting attempts failed. */ }
 }
 
 /** Validate one complete graph before publishing any runtime correspondence. @internal */

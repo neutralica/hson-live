@@ -7,3 +7,8 @@ export { scalarHtmlFixtures, memberHtmlFixtures, arrayHtmlFixtures, mixedSvgFixt
 export { hsonLiveTree } from "../../src/api/livetree/livetree.facade.ts";
 export { LiveTree } from "../../src/api/livetree/livetree.ts";
 export { default_livetree_runtime, runtime_for_tree, runtime_for_node, subject_for_tree, historic_root_for_tree } from "../../src/api/livetree/runtime/livetree-runtime.ts";
+
+export { owned_mutation_browser_cases } from "../fixtures/livetree-owned-mutation-browser-cases.mts";
+export { cut5_repair_cases, cut5_nonfatal_reporting_cases, cut5_observable_identity_browser_cases } from "../fixtures/cut5-repair-cases.mts";
+
+export { cut5_graft_reentrancy_browser_cases } from "../fixtures/cut5-graft-reentrancy-cases.mts";

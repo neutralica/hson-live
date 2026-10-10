@@ -101,7 +101,11 @@ later caller changes do not affect the tree. Valid named element branches and
 object/array-mode branches retain their contextual relationships. Invalid raw
 storage rejects before normalization or identity registration. Public supplied
 QUID claims reject, including metadata in an active tree's `node` observation.
-New local identity is issued on the admitted owned graph.
+New local identity is issued on the admitted owned graph. Fresh construction
+materializes storage by structural occurrence: repeating one source object twice
+creates two independent owned subjects, including their content, attributes and
+styles. Incidental source sharing is not active runtime identity. Generic
+Transform snapshots keep their separate sharing-preserving contract.
 
 Existing handles and internally proven ownership handoffs retain references
 and identity continuity. This includes linked/Mirror/LiveMap/continuation paths
@@ -239,6 +243,57 @@ appending an attached branch throws `LiveTreeAlreadyAttachedError`. Browser-owne
 for `detach()` and `remove()`; ordinary application roots are removable. A
 `Document` is not an Hson element and therefore cannot currently be wrapped by
 LiveTree; any future document adapter is covered by the same protection policy.
+
+Owned structural writes qualify their complete receiving context before mutation.
+Ordinary append accepts element branches and rejects OBJ/ARR-mode crossings,
+duplicate subjects, overlapping forests, cycles and existing attachments. Multiple
+handles for one subject remain valid; a detach/reuse move preserves that subject.
+Batch attachment and tag creation preflight the whole request.
+
+Removing the last element-content item removes its now-empty ELEM relationship,
+leaving the ordinary owner empty. Empty OBJ/ARR relationships and internal ROOT[]
+ownership remain intact. Detached element contents merge into the destination's
+one ELEM relationship while retaining exact child references and text order,
+including adjacent and empty STR nodes. Failed transfer leaves the single-use
+capability available for a valid retry. Incompatible data/element transfer rejects.
+Namespace compatibility follows the receiving child context in the shared
+realization plan: SVG `foreignObject` receives HTML children. Valid transfer
+retains native Element references throughout nested namespace transitions.
+
+Text writes preserve the receiver's relationship role. Scalar OBJ relationships
+support lawful scalar replacement; text cannot be appended directly inside ARR or
+beside named OBJ members. Clearing an object member rejects if it would remove
+its required relationship. New and displaced text receives appropriate runtime,
+parent and native-node bookkeeping.
+
+Native child reconciliation/cleanup precedes new identity publication or terminal
+resource retirement. Final identity-attribute writes remain transactional: failure
+restores operation-owned graph, native placement, mappings and active claims, but
+issued history survives if callbacks or native records could observe the values.
+Successful realization notifications occur after coherent publication.
+
+Realization notifications are post-commit and best effort. Each listener in the
+notification's registration-order snapshot receives an attempt; a synchronous
+listener exception cannot reject or reverse the completed mutation. Detached
+capabilities are consumed and factory results and identities are complete before
+notification. Validation, graph, DOM, identity and resource-cleanup failures
+remain separate from this observer policy.
+
+Observer errors use platform `reportError` when available. Without it, or when it
+throws, the existing runtime-manager console reporting convention reports the
+observer error and any reporting failure. Failures or inaccessible reporting
+facilities are caught. If every available nonfatal reporting attempt fails, the
+error remains unreported so the host and Worker can continue; no uncaught throw
+is scheduled. This exceptional limitation does not suppress ordinary reportable
+errors or transactional failures. Reporting does not interrupt fan-out.
+
+Rollback-capable publication protects its exact ownership region against
+conflicting synchronous LiveTree writes from native callbacks. Aliases share
+that protection; independent regions and post-commit observer mutations remain
+usable. Graft completes internal QUID issuance before writing native identity
+attributes and protects issued history before any custom-element reaction or
+queued MutationObserver evidence can expose it. Failed graft removes its active
+claims and restores native state without making exposed QUIDs available again.
 
 Reusable detach intentionally retains runtime registrations rather than
 suspending them. Observers, timers, and subscriptions that are not already

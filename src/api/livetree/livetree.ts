@@ -1,3 +1,5 @@
+import { assert_mutation_publication_available } from "./lifecycle/mutation-publication.js";
+import { placement_nodes } from "./lifecycle/mutation-qualification.js";
 // livetree.ts
 
 import {
@@ -56,12 +58,15 @@ import {
   LiveTreeLinkedIdentityRequiredError,
 } from "./lifecycle/document-binding-state.js";
 import {
+  bind_graph_runtime,
   bind_tree_runtime,
   bind_tree_historic_root,
   inherit_tree_historic_root,
   historic_root_for_tree,
   default_livetree_runtime,
   linked_livetree_construction_requested,
+  mark_linked_projection_subjects,
+  is_linked_projection_subject,
   requested_runtime_for_construction,
   runtime_for_node,
   runtime_for_tree,
@@ -74,6 +79,14 @@ import { admit_public_livetree_branch } from "./livetree.node-admission.js";
 // This capability is scoped to internal construction calls, never to a node's
 // provenance. Public `new LiveTree(node)` captures a private QUID-free branch.
 const EXACT_NODE_CONSTRUCTION = new WeakSet<HsonNode>();
+const STAGED_NODE_CONSTRUCTION = new WeakSet<HsonNode>();
+
+/** Factory-owned candidate: runtime routing without identity publication. @internal */
+export function construct_staged_runtime_livetree(node: HsonNode): LiveTree {
+  STAGED_NODE_CONSTRUCTION.add(node);
+  try { return construct_exact_runtime_livetree(node); }
+  finally { STAGED_NODE_CONSTRUCTION.delete(node); }
+}
 
 /** Construct an exact handle for an already local runtime graph. @internal */
 export function construct_exact_runtime_livetree(node: HsonNode): LiveTree {
@@ -115,11 +128,15 @@ class LiveTreeNodeRef implements NodeRef {
   public get q(): string {
     if (this.linked) {
       const binding = document_binding_for_node(this.referencedNode);
-      if (binding !== undefined) return binding.requireCanonicalIdentity();
+      if (binding !== undefined) {
+        if (get_quid(this.referencedNode, this.runtime) === undefined) assert_mutation_publication_available(this.referencedNode);
+        return binding.requireCanonicalIdentity();
+      }
       throw new LiveTreeLinkedIdentityRequiredError("QUID access on a stale linked binding");
     }
     const existing = get_quid(this.referencedNode, this.runtime);
     if (existing !== undefined) return existing;
+    assert_mutation_publication_available(this.referencedNode);
     return ensure_quid(this.referencedNode, undefined, this.runtime);
   }
 
@@ -137,7 +154,7 @@ function makeRef(node: HsonNode, tree: LiveTree): NodeRef {
   return new LiveTreeNodeRef(
     node,
     runtime_for_tree(tree),
-    document_binding_for_node(node) !== undefined || linked_livetree_construction_requested(node),
+    document_binding_for_node(node) !== undefined || linked_livetree_construction_requested(node) || is_linked_projection_subject(node),
   );
 }
 
@@ -261,9 +278,13 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
         ?? runtime_for_node(inputNode)
         ?? default_livetree_runtime();
     assert_livetree_node_active(inputNode, "create a LiveTree handle");
-    const linkedConstruction = linked_livetree_construction_requested(inputNode);
-    if (linkedConstruction) {
+    if (!inputIsHandle) placement_nodes([inputNode], "create a LiveTree owner");
+    const linkedConstruction = linked_livetree_construction_requested(inputNode) || is_linked_projection_subject(inputNode);
+    if (STAGED_NODE_CONSTRUCTION.has(inputNode)) {
+      bind_graph_runtime(inputNode, runtime);
+    } else if (linkedConstruction) {
       admit_livetree_quid_graph_preserving_absence(inputNode, runtime);
+      mark_linked_projection_subjects(inputNode);
     } else if (document_binding_for_node(inputNode) !== undefined) {
       register_supplied_livetree_quid(inputNode, runtime);
     } else {
@@ -441,6 +462,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * establish historic-root provenance. */
   public adoptRoots(root: HsonNode): this {
     this.assertActive("adopt roots");
+    assert_mutation_publication_available(active_subject_for_tree(this));
     assert_livetree_node_active(root, "adopt disposed root");
     bind_tree_historic_root(this, root);
     return this;

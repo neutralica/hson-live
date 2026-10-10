@@ -1,3 +1,4 @@
+import { prepare_terminal_dom } from "../lifecycle/mutation-dom.js";
 import type { HsonNode } from "../../../core/types.js";
 import {
   disposables_drain_for_subjects,
@@ -37,6 +38,8 @@ export type DisposeNodeDeepResult = Readonly<{
 export function dispose_node_deep(
   root: HsonNode,
   runtime: LiveTreeRuntime = runtime_for_node(root) ?? default_livetree_runtime(),
+  notify = true,
+  nativePrepared = false,
 ): DisposeNodeDeepResult {
   const nodes = collect_subtree_nodes(root, "post");
   const formerQuids = new Map<HsonNode, string>();
@@ -49,6 +52,8 @@ export function dispose_node_deep(
     const element = get_el_for_node(node);
     if (element) mappedElements.push(element);
   }
+
+  if (!nativePrepared) prepare_terminal_dom([root]);
 
   // Browser-local lifecycle owners are exact realized nodes, independent of
   // canonical QUID identity and any later identity acquisition.
@@ -64,12 +69,12 @@ export function dispose_node_deep(
   // `detach_node_deep` has already removed node-element mappings, so retain the
   // pre-teardown elements long enough to scrub identity attributes as well.
   for (const element of mappedElements) {
-    element.removeAttribute(HSON_QUID_MARKUP_NAME);
+    if (element.getAttribute(HSON_QUID_MARKUP_NAME) !== null) element.removeAttribute(HSON_QUID_MARKUP_NAME);
   }
 
   mark_livetree_nodes_disposed(nodes, formerQuids);
   release_nodes_runtime(nodes, runtime);
-  notify_livetree_realizations_internal(runtime);
+  if (notify) notify_livetree_realizations_internal(runtime);
 
   return {
     nodesDisposed: nodes.length,

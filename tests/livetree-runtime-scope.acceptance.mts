@@ -432,7 +432,7 @@ check("text overwrite terminally disposes displaced descendants and leaves its o
   const runtime = _create_livetree_runtime_test_handle();
   const parentNode = node("main");
   const childNode = node("section", "000000rt7");
-  parentNode.$_content.push(childNode);
+  parentNode.$_content.push({ $_tag: "_hson_elem", $_content: [childNode] });
   const parent = runtimeTree(runtime, parentNode);
   const child = runtimeTree(runtime, childNode).adoptRoots(retained_historic_root(parent));
   assert.equal(_lookup_livetree_runtime_test_node(runtime, "000000rt7"), childNode);
@@ -660,7 +660,7 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   const document = new StyleDocument();
   const runtime = _create_livetree_runtime_test_handle();
   const rootNode = node("main");
-  rootNode.$_content.push(node("span"));
+  rootNode.$_content.push({ $_tag: "_hson_elem", $_content: [node("span")] });
   const root = runtimeTree(runtime, rootNode);
   const claimsBeforeQuery = _livetree_runtime_test_claim_count(runtime);
   const descendant = root.find.byTag("span");

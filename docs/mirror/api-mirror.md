@@ -133,6 +133,17 @@ complete-root transition either converges compatible same-epoch material or
 creates a fresh projection lineage for a new owner epoch. The binding tracks
 the exact source revision after each successful projection update.
 
+Fresh inserted and replaced structural material is copied by occurrence before
+becoming active projected subjects. Repeated source references produce separate
+subjects and native nodes; position-directed updates stay isolated. Compatible
+continuity planning still reuses authenticated existing subjects. Sparse linked
+projection remains sparse, including detached/reused subjects after binding release.
+
+Structural projection stages native work before retiring removed subjects or
+notifying observers. A failed DOM application restores the prior projected graph,
+subjects, native placement and operation-owned identity changes. The already
+accepted canonical LiveMap commit remains accepted; the Mirror reports failure.
+
 ### Mutating a bound LiveTree
 
 Supported local bound mutations delegate synchronously to LiveMap. The hosted

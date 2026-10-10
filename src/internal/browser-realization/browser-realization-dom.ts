@@ -60,6 +60,34 @@ export function materialize_browser_realization(
   return fragment;
 }
 
+/** Check retained native kinds, tags and namespaces throughout a receiving plan
+ * before transfer staging moves anything. Text and attrs may still reconcile. */
+export function assert_retained_browser_realization_compatibility(plan: BrowserRealizationPlan, ownerDocument?: Document): void {
+  const visit = (node: BrowserRealizationNode): void => {
+    const retained = node.canonicalNode === undefined ? undefined : get_dom_for_node(node.canonicalNode);
+    if (retained !== undefined) assert_retained_kind(node, retained, ownerDocument);
+    if (node.kind === "element" || node.kind === "wrapper") for (const child of node.children) visit(child);
+  };
+  for (const root of plan.roots) visit(root);
+}
+
+function assert_retained_kind(plan: BrowserRealizationNode, retained: Node, ownerDocument?: Document): void {
+  if (ownerDocument !== undefined && retained.ownerDocument !== ownerDocument) {
+    throw new Error("A retained browser realization cannot move between documents implicitly.");
+  }
+  if (plan.kind === "text" || plan.kind === "marker") {
+    if (retained.nodeType !== (plan.kind === "text" ? 3 : 8)) throw new Error("Retained realization has the wrong native kind.");
+    return;
+  }
+  const element = plan.canonicalNode === undefined ? undefined : get_el_for_node(plan.canonicalNode);
+  const expectedNamespace = plan.namespace === "svg" ? BROWSER_SVG_NAMESPACE : BROWSER_HTML_NAMESPACE;
+  const tagMatches = element !== undefined && (plan.namespace === "html"
+    ? element.localName.toLowerCase() === plan.localName : element.localName === plan.localName);
+  if (element === undefined || element !== retained || element.namespaceURI !== expectedNamespace || !tagMatches) {
+    throw new Error(`Retained Element namespace or tag does not match planned <${plan.localName}>.`);
+  }
+}
+
 /** Verify exact parser output against a plan without writing. @internal */
 export function match_browser_realization_root(
   plan: BrowserRealizationPlan,
@@ -116,7 +144,7 @@ function materialize_node(
   if (plan.canonicalNode !== undefined) {
     const retained = get_dom_for_node(plan.canonicalNode);
     if (retained !== undefined) {
-      if ((retained as { ownerDocument?: Document }).ownerDocument !== ownerDocument) {
+      if (retained.ownerDocument !== ownerDocument) {
         throw new Error("A retained browser realization cannot move between documents implicitly.");
       }
       if (plan.kind === "text") {
@@ -224,11 +252,17 @@ function validate_attrs(plan: BrowserRealizationElement | BrowserRealizationWrap
   }
 }
 
-function child_target(element: Element, plan: BrowserRealizationElement | BrowserRealizationWrapper): Element | DocumentFragment {
-  if (plan.childTarget !== "template-content") return element;
+/** The concrete child receiver of an already admitted realized Element. @internal */
+export function browser_realization_content_target(element: Element): Element | DocumentFragment {
+  if (element.namespaceURI !== BROWSER_HTML_NAMESPACE || element.localName !== "template") return element;
   const content = (element as HTMLTemplateElement).content;
   if (content === undefined) throw new Error("The DOM implementation does not expose template.content.");
   return content;
+}
+
+function child_target(element: Element, plan: BrowserRealizationElement | BrowserRealizationWrapper): Element | DocumentFragment {
+  if (plan.childTarget !== "template-content") return element;
+  return browser_realization_content_target(element);
 }
 
 function replace_realization_children(target: Element | DocumentFragment, desired: readonly Node[]): void {

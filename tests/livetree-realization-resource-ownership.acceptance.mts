@@ -157,7 +157,7 @@ await check("QUID-free standalone listeners work, dispose manually, and clean te
 await check("detach, reinsertion, and aliases preserve exact ownership", () => {
   const firstNode: HsonNode = { $_tag: "button", $_content: [] };
   const secondNode: HsonNode = { $_tag: "button", $_content: [] };
-  const parent = create_livetree({ $_tag: "main", $_content: [firstNode, secondNode] });
+  const parent = create_livetree({ $_tag: "main", $_content: [{ $_tag: "_hson_elem", $_content: [firstNode, secondNode] }] });
   const first = create_livetree(firstNode).adoptRoots(retained_historic_root(parent));
   const alias = create_livetree(firstNode).adoptRoots(retained_historic_root(parent));
   const second = create_livetree(secondNode).adoptRoots(retained_historic_root(parent));

@@ -1,7 +1,14 @@
+import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
+import { assert_mutation_publication_available, begin_mutation_publication } from "../lifecycle/mutation-publication.js";
+import { content_target_for_owner, restore_dom_children, prepare_terminal_dom, capture_dom_placement } from "../lifecycle/mutation-dom.js";
+import { qualify_owned_content, qualify_owned_structure, receiver_role } from "../lifecycle/mutation-qualification.js";
+import { claim_node_parent } from "../lifecycle/graph-ownership.js";
+import { bind_graph_runtime, release_nodes_runtime } from "../runtime/livetree-runtime.js";
+import { get_dom_for_node, unlinkNode } from "../utils/node-map-helpers.js";
 // text-form-values.ts
 
-import { HsonAttrs, HsonNode } from "../../../core/types.js";
-import { ELEM_OBJ_ARR, ELEM_TAG, LEAF_NODES, STR_TAG, VAL_TAG } from "../../../core/constants.js";
+import { HsonNode } from "../../../core/types.js";
+import { ELEM_OBJ_ARR, ELEM_TAG, STR_TAG, VAL_TAG } from "../../../core/constants.js";
 import { is_Node } from "../../../core/node-guards.js";
 import { make_string } from "../../../core/stringify.js";
 import { _throw_transform_err } from "../../transform/utils/sys-utils/throw-transform-err.utils.js";
@@ -20,6 +27,7 @@ import { release_node_parent, release_subtree_ownership } from "../lifecycle/gra
 import { dispose_node_deep } from "../utils/dispose-node.js";
 import { reconcile_browser_realization_children } from "../../../internal/browser-realization/browser-realization-dom.js";
 import {
+  notify_livetree_realizations_internal,
   default_livetree_runtime,
   runtime_for_node,
   active_subject_for_tree,
@@ -56,21 +64,6 @@ type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 // const isLeafNode = (tag: string): boolean => LEAF_NODES.includes(tag);
 const isElemObjArr = (tag: string): boolean => ELEM_OBJ_ARR.includes(tag);
-function ensureVsn(node: HsonNode): HsonNode {
-  // find first VSN child
-  const found = node.$_content.find((c): c is HsonNode => is_Node(c) && isElemObjArr(c.$_tag));
-  if (found) return found;
-
-  // create bucket; prefer `_hson_elem` as the generic container
-  const bucket = CREATE_NODE({
-    $_tag: ELEM_TAG,
-    $_content: node.$_content, // move existing content under the bucket
-  });
-
-  node.$_content = [bucket];
-  return bucket;
-}
-
 // function make_dom_leaf(_leaf: HsonNode, value: Primitive): Text {
 //   return document.createTextNode(value === null ? "" : String(value));
 // }
@@ -147,6 +140,7 @@ export function get_node_text_content(node: HsonNode): string {
  * @returns void.
  */
 export function set_form_value(node: HsonNode, value: string, opts?: SetNodeFormOpts): void {
+  assert_mutation_publication_available(node);
   const binding = document_binding_for_node(node);
   if (binding !== undefined) {
     binding.delegateAttrs({ kind: "set", name: "value", value });
@@ -201,6 +195,7 @@ export function get_form_value(node: HsonNode): string {
  * @returns void.
  */
 export function set_input_checked(node: HsonNode, checked: boolean, opts?: SetNodeFormOpts): void {
+  assert_mutation_publication_available(node);
   const binding = document_binding_for_node(node);
   if (binding !== undefined) {
     binding.delegateAttrs({ kind: "set", name: "checked", value: checked });
@@ -261,6 +256,7 @@ export function set_input_selected(
   selected: string | readonly string[],
   opts?: SetNodeFormOpts,
 ): void {
+  assert_mutation_publication_available(node);
   const binding = document_binding_for_node(node);
   if (binding !== undefined) {
     binding.rejectStructuralMutation("form.setSelected");
@@ -386,105 +382,65 @@ function isLeafTag(tag: unknown): boolean {
  *
  * DOM: reconciles the shared browser realization, including Hson boundary markers.
  */
-export function set_node_text_content(node: HsonNode, value: Primitive): void {
-  if (delegate_document_text_mutation_if_bound(node, { kind: "set", value })) return;
-  const text = primitive_to_text(value);
-  const leaf = make_leaf(text);
-
-  // always edit inside the VSN bucket
-  const bucket = ensureVsn(node);
-
-  let replaced = false;
-  const next = [] as typeof bucket.$_content;
-
-  for (const child of bucket.$_content) {
-    if (is_Node(child) && isLeafTag(child.$_tag)) {
-      if (!replaced) {
-        next.push(leaf);
-        replaced = true;
-      }
-      continue;
+function mutate_text(node: HsonNode, value: Primitive, kind: "set" | "add" | "insert" | "overwrite", index = 0): void {
+  if (delegate_document_text_mutation_if_bound(node, kind === "insert" ? { kind, value, index } : { kind, value })) return;
+  qualify_owned_structure(node, receiver_role(node), "text." + kind);
+  const leaf = make_leaf(primitive_to_text(value));
+  const first = node.$_content[0];
+  const existing = is_Node(first) && isElemObjArr(first.$_tag) ? first : undefined;
+  const bucket = existing ?? CREATE_NODE({ $_tag: ELEM_TAG, $_content: [] });
+  const previous = bucket.$_content;
+  let next: HsonNode["$_content"];
+  if (kind === "overwrite") next = [leaf];
+  else if (kind === "add") next = [...previous, leaf];
+  else if (kind === "insert") {
+    const at = Number.isFinite(index) ? Math.max(0, Math.min(previous.length, Math.floor(index))) : previous.length;
+    next = [...previous.slice(0, at), leaf, ...previous.slice(at)];
+  } else {
+    const at = previous.findIndex(child => is_Node(child) && isLeafTag(child.$_tag));
+    const kept = previous.filter(child => !is_Node(child) || !isLeafTag(child.$_tag));
+    const insertion = at < 0 ? 0 : at;
+    next = [...kept.slice(0, insertion), leaf, ...kept.slice(insertion)];
+  }
+  qualify_owned_content(node, [{ $_tag: bucket.$_tag, $_content: next }], "text." + kind);
+  const runtime = runtime_for_node(node) ?? default_livetree_runtime();
+  const displaced = previous.filter((item): item is HsonNode => is_Node(item) && !next.includes(item));
+  const prior = node.$_content, element = content_target_for_owner(node);
+  const oldDom = element ? Array.from(element.childNodes) : [];
+  let restoreDisplaced: (() => void) | undefined;
+  const placement = capture_dom_placement(displaced.flatMap(root => collect_subtree_nodes(root, "pre")));
+  const endPublication = begin_mutation_publication([node, bucket, leaf], [...placement.containers, ...(element ? [element] : [])]);
+  try {
+    try {
+      restoreDisplaced = prepare_terminal_dom(displaced);
+      bucket.$_content = next;
+      if (!existing) node.$_content = [bucket];
+      if (element) reconcile_browser_realization_children(node, runtime);
+      if (!existing) claim_node_parent(bucket, node);
+      claim_node_parent(leaf, bucket);
+      bind_graph_runtime(bucket, runtime);
+    } catch (cause) {
+      bucket.$_content = previous; node.$_content = prior;
+      restoreDisplaced?.();
+      if (element) restore_dom_children(element, oldDom);
+      get_dom_for_node(leaf)?.parentNode?.removeChild(get_dom_for_node(leaf)!); unlinkNode(leaf);
+      release_node_parent(leaf, bucket);
+      if (!existing) release_node_parent(bucket, node);
+      release_nodes_runtime(existing ? [leaf] : [leaf, bucket], runtime);
+      throw cause;
     }
-
-    next.push(child);
-  }
-
-  if (!replaced) next.unshift(leaf);
-  bucket.$_content = next;
-
-  // --- DOM projection (CHANGED): Text nodes only ---
-  if (get_el_for_node(node) === undefined) return;
-  reconcile_browser_realization_children(node, runtime_for_node(node) ?? default_livetree_runtime());
+    for (const root of displaced) {
+      release_node_parent(root, bucket);
+      dispose_node_deep(root, runtime, false, true); release_subtree_ownership(root);
+    }
+  } finally { endPublication(); }
+  if (element) notify_livetree_realizations_internal(runtime);
 }
 
-/**
- * Append another text leaf to $_content (non-destructive).
- *
- * DOM: appends a Text node to the host element.
- */
-export function add_node_text_content(node: HsonNode, value: Primitive): void {
-  if (delegate_document_text_mutation_if_bound(node, { kind: "add", value })) return;
-  const text = primitive_to_text(value);
-  const leaf = make_leaf(text);
-
-  // always edit inside the VSN bucket
-  const bucket = ensureVsn(node);
-  bucket.$_content.push(leaf);
-
-  const host = get_el_for_node(node);
-  if (!host) return;
-
-  reconcile_browser_realization_children(node, runtime_for_node(node) ?? default_livetree_runtime());
-}
-
-/**
- * Insert a text leaf at a specific $_content index.
- * Index counts all items in the VSN bucket $_content.
- */
-export function insert_node_text_leaf(node: HsonNode, index: number, value: Primitive): void {
-  if (delegate_document_text_mutation_if_bound(node, { kind: "insert", index, value })) return;
-  const text = primitive_to_text(value);
-  const leaf = make_leaf(text);
-
-  // always edit inside the VSN bucket
-  const bucket = ensureVsn(node);
-
-  const len = bucket.$_content.length;
-  const ix = Number.isFinite(index)
-    ? Math.max(0, Math.min(len, Math.floor(index)))
-    : len;
-
-  bucket.$_content.splice(ix, 0, leaf);
-
-  const host = get_el_for_node(node);
-  if (!host) return;
-
-  reconcile_browser_realization_children(node, runtime_for_node(node) ?? default_livetree_runtime());
-}
-
-/**
- * Destructive overwrite: replace ALL content with one leaf; mirror to DOM using textContent.
- */
-export function overwrite_node_text_content(node: HsonNode, value: Primitive): void {
-  if (delegate_document_text_mutation_if_bound(node, { kind: "overwrite", value })) return;
-  const text = primitive_to_text(value);
-  const leaf = make_leaf(text);
-
-  // always overwrite the VSN bucket, not node.$_content
-  const bucket = ensureVsn(node);
-  const displacedRoots = bucket.$_content.filter(is_Node);
-  bucket.$_content = [leaf];
-  for (const root of displacedRoots) release_node_parent(root, bucket);
-  for (const root of displacedRoots) {
-    dispose_node_deep(root);
-    release_subtree_ownership(root);
-  }
-
-  const el = get_el_for_node(node);
-  if (!el) return;
-
-  reconcile_browser_realization_children(node, runtime_for_node(node) ?? default_livetree_runtime());
-}
+export function set_node_text_content(node: HsonNode, value: Primitive): void { mutate_text(node, value, "set"); }
+export function add_node_text_content(node: HsonNode, value: Primitive): void { mutate_text(node, value, "add"); }
+export function insert_node_text_leaf(node: HsonNode, index: number, value: Primitive): void { mutate_text(node, value, "insert", index); }
+export function overwrite_node_text_content(node: HsonNode, value: Primitive): void { mutate_text(node, value, "overwrite"); }
 
 export function make_text_api<TTree extends LiveTree>(
     tree: TTree,

@@ -1,3 +1,9 @@
+import { begin_mutation_publication } from "../livetree/lifecycle/mutation-publication.js";
+import { content_target_for_owner, capture_dom_placement, restore_dom_children, restore_dom_attrs, prepare_terminal_dom } from "../livetree/lifecycle/mutation-dom.js";
+import { get_dom_for_node, unlinkNode } from "../livetree/utils/node-map-helpers.js";
+import { parent_for_node, claim_node_parent, release_node_parent } from "../livetree/lifecycle/graph-ownership.js";
+import { release_nodes_runtime } from "../livetree/runtime/livetree-runtime.js";
+import { materialize_owned_occurrences } from "../livetree/runtime/materialize-occurrences.js";
 import {
   ARR_TAG,
   ELEM_TAG,
@@ -27,9 +33,9 @@ import { dispose_node_deep } from "../livetree/utils/dispose-node.js";
 import { get_el_for_node } from "../livetree/utils/node-map-helpers.js";
 import { collect_subtree_nodes } from "../livetree/utils/subtree-traversal.js";
 import {
+  mark_linked_projection_subjects,
   bind_graph_runtime,
   default_livetree_runtime,
-  notify_livetree_realizations_internal,
   runtime_for_node,
   type LiveTreeRuntime,
 } from "../livetree/runtime/livetree-runtime.js";
@@ -207,7 +213,7 @@ export function plan_document_root_structural_transaction(
     transfers: [],
   };
   root.attrs = must_attrs(canonicalFinalRoot.$_attrs ?? {});
-  root.content = canonicalFinalRoot.$_content.map((item, index) =>
+  root.content = materialize_owned_occurrences(canonicalFinalRoot.$_content).map((item, index) =>
     plan_continuous_content(root, root.content[index], item, continuity,
       preserveUnquiddedRootChild && index === 0));
 
@@ -237,7 +243,7 @@ export function plan_document_root_structural_transaction(
 /** Apply one fully validated structural plan through explicit internal graph/DOM machinery. */
 export function apply_document_structural_transaction(
   plan: DocumentStructuralPlan,
-  beforeDomRealization?: () => void,
+  publishCorrespondence?: () => void,
 ): void {
   const transfers: LiveTreeQuidLineageTransfer[] = plan.lineageTransfers.map((transfer) => (
     preflight_livetree_quid_lineage_transfer(
@@ -247,21 +253,83 @@ export function apply_document_structural_transaction(
       plan.runtime,
     )
   ));
-  apply_shadow_node(plan.root);
-  bind_graph_runtime(plan.root.node, plan.runtime);
-  for (const transfer of transfers) transfer.apply();
-  for (const removed of plan.removedRoots) {
-    detach_retained_projection_descendants(removed, plan.finalNodes);
-    prune_retained_graph_descendants(removed, plan.finalNodes);
-    release_subtree_ownership(removed);
-    dispose_node_deep(removed, plan.runtime);
-  }
-  admit_livetree_quid_graph_preserving_absence(plan.root.node, plan.runtime);
-  index_subtree_ownership(plan.root.node);
-  beforeDomRealization?.();
-
-  for (const owner of plan.affectedOwners) reconcile_owner_dom(owner, plan.runtime);
-  if (plan.affectedOwners.length > 0) notify_livetree_realizations_internal(plan.runtime);
+  const oldNodes = collect_subtree_nodes(plan.root.node, "pre");
+  const fresh = [...plan.finalNodes].filter(node => !oldNodes.includes(node));
+  const all = [...oldNodes, ...fresh];
+  const shells = oldNodes.map(node => ({ node, content: node.$_content, attrs: node.$_attrs, meta: node.$_meta,
+    parent: parent_for_node(node) }));
+  const mappings = new Map(all.map(node => [node, get_dom_for_node(node)]));
+  const restorePlacement = capture_dom_placement(oldNodes);
+  const textValues = oldNodes.flatMap(node => { const dom = get_dom_for_node(node); return dom && dom.nodeType !== 1 ? [{ dom, value: dom.nodeValue }] : []; });
+  const dom = oldNodes.flatMap(node => {
+    const element = get_el_for_node(node);
+    return element ? [{ element, contentTarget: content_target_for_owner(node)!, children: Array.from(content_target_for_owner(node)!.childNodes),
+      attrs: element.getAttributeNames().map(name => [name, element.getAttribute(name)!] as const) }] : [];
+  });
+  const identities = all.map(node => ({ node, quid: plan.runtime.nodeToQuid.get(node) }));
+  const issued = new Set(plan.runtime.issuedQuids);
+  let restoreRemoved: (() => void) | undefined;
+  const endPublication = begin_mutation_publication(all, [...restorePlacement.containers, ...dom.map(entry => entry.contentTarget)]);
+  try {
+    try {
+      apply_shadow_node(plan.root);
+      // This validated plan is the complete final placement. Ordinary indexing
+      // intentionally does not steal an already-owned child from another parent.
+      // Continuity, however, can move that exact child (including relationships).
+      for (const owner of plan.finalNodes) {
+        for (const child of owner.$_content) if (is_Node(child)) claim_node_parent(child, owner);
+      }
+      bind_graph_runtime(plan.root.node, plan.runtime);
+      for (const transfer of transfers) transfer.apply();
+      admit_livetree_quid_graph_preserving_absence(plan.root.node, plan.runtime);
+      for (const owner of plan.affectedOwners) reconcile_owner_dom(owner, plan.runtime);
+      // Retained descendants have already moved to their final native positions.
+      // Prune before staging terminal cleanup, so continuity subjects are excluded.
+      for (const removed of plan.removedRoots) prune_retained_graph_descendants(removed, plan.finalNodes);
+      restoreRemoved = prepare_terminal_dom(plan.removedRoots);
+      publishCorrespondence?.();
+    } catch (cause) {
+      restoreRemoved?.();
+      for (const shell of shells) {
+        shell.node.$_content = shell.content;
+        if (shell.attrs === undefined) delete shell.node.$_attrs; else shell.node.$_attrs = shell.attrs;
+        if (shell.meta === undefined) delete shell.node.$_meta; else shell.node.$_meta = shell.meta;
+        release_node_parent(shell.node);
+        if (shell.parent) claim_node_parent(shell.node, shell.parent);
+      }
+      for (const { element, contentTarget, children, attrs } of dom) {
+        restore_dom_children(contentTarget, children);
+        restore_dom_attrs(element, attrs);
+      }
+      restorePlacement();
+      for (const { dom, value } of textValues) dom.nodeValue = value;
+      for (const node of fresh) {
+        release_node_parent(node);
+        if (mappings.get(node) === undefined) { get_dom_for_node(node)?.parentNode?.removeChild(get_dom_for_node(node)!); unlinkNode(node); }
+      }
+      // Restore only this plan's subject claims; unrelated runtime work is not ours.
+      for (const node of all) {
+        const quid = plan.runtime.nodeToQuid.get(node);
+        if (quid && plan.runtime.quidToNode.get(quid) === node) plan.runtime.quidToNode.delete(quid);
+        if (quid && !issued.has(quid)) plan.runtime.issuedQuids.delete(quid);
+        plan.runtime.nodeToQuid.delete(node);
+      }
+      for (const { node, quid } of identities) if (quid) {
+        plan.runtime.nodeToQuid.set(node, quid); plan.runtime.quidToNode.set(quid, node);
+      }
+      release_nodes_runtime(fresh, plan.runtime);
+      bind_graph_runtime(plan.root.node, plan.runtime);
+      throw cause;
+    }
+    // Everything fallible in native projection/cleanup has completed. Retirement
+    // and correspondence publication now refer to the coherent final graph.
+    for (const removed of plan.removedRoots) {
+      release_subtree_ownership(removed);
+      dispose_node_deep(removed, plan.runtime, false, true);
+    }
+    mark_linked_projection_subjects(plan.root.node);
+    index_subtree_ownership(plan.root.node);
+  } finally { endPublication(); }
 }
 
 function shadow_existing(
@@ -297,7 +365,7 @@ function shadow_insert_content(
       continuity,
     );
   }
-  return plan_continuous_content(target, undefined, clone_node(content), continuity);
+  return plan_continuous_content(target, undefined, materialize_owned_occurrences(content), continuity);
 }
 
 function plan_replacement(
@@ -307,7 +375,7 @@ function plan_replacement(
   lineage: LiveMapReplacementLineage | undefined,
   continuity: ContinuityPlanningContext,
 ): ShadowContent {
-  const replacement = clone_node(replacementInput);
+  const replacement = materialize_owned_occurrences(replacementInput);
   if (is_Node(replacement) && is_shadow_node(current) && lineage !== undefined) {
     // Explicit lineage is the portable continuity source. The receiving Mirror
     // realizes its own local QUIDs in this detached planning copy only.
@@ -597,23 +665,6 @@ function index_shadow_quids(root: ShadowNode): ReadonlyMap<string, ShadowNode> {
   return byQuid;
 }
 
-function detach_retained_projection_descendants(
-  removedRoot: HsonNode,
-  finalNodes: ReadonlySet<HsonNode>,
-): void {
-  const visit = (node: HsonNode): void => {
-    if (finalNodes.has(node)) {
-      const element = get_el_for_node(node);
-      if (element !== undefined) {
-        element.remove();
-        return;
-      }
-    }
-    for (const child of node.$_content) if (is_Node(child)) visit(child);
-  };
-  visit(removedRoot);
-}
-
 function prune_retained_graph_descendants(
   removedRoot: HsonNode,
   finalNodes: ReadonlySet<HsonNode>,
@@ -643,7 +694,10 @@ function find_removed_roots(root: HsonNode, finalNodes: ReadonlySet<HsonNode>): 
 }
 
 function collect_shadow_nodes(root: ShadowNode, result: Set<HsonNode>): void {
-  walk_shadow(root, (shadow) => result.add(shadow.node));
+  walk_shadow(root, (shadow) => {
+    if (result.has(shadow.node)) throw new DocumentMirrorError(DOCUMENT_MIRROR_REUSE_INCOMPATIBLE_ERROR_CODE, "One projected subject cannot occupy two structural positions.");
+    result.add(shadow.node);
+  });
 }
 
 function walk_shadow(root: ShadowNode, visit: (node: ShadowNode) => void): void {

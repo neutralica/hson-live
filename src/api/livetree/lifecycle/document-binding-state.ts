@@ -1,3 +1,4 @@
+import { assert_mutation_publication_available } from "./mutation-publication.js";
 import type {
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
@@ -84,6 +85,7 @@ export function unregister_document_binding_node(node: HsonNode, owner: object):
 
 /** Reject a public canonical structural write while a projected node is bound. */
 export function assert_document_structural_mutation_allowed(node: HsonNode, operation: string): void {
+  assert_mutation_publication_available(node);
   document_binding_for_node(node)?.rejectStructuralMutation(operation);
 }
 
@@ -91,6 +93,7 @@ export function delegate_document_text_mutation_if_bound(
   node: HsonNode,
   mutation: DocumentBoundTextMutation,
 ): boolean {
+  assert_mutation_publication_available(node);
   const registration = document_binding_for_node(node);
   if (registration === undefined) return false;
   registration.delegateText(mutation);
@@ -98,6 +101,7 @@ export function delegate_document_text_mutation_if_bound(
 }
 
 export function delegate_document_empty_if_bound(node: HsonNode): boolean {
+  assert_mutation_publication_available(node);
   const registration = document_binding_for_node(node);
   if (registration === undefined) return false;
   registration.delegateEmpty();
@@ -105,6 +109,7 @@ export function delegate_document_empty_if_bound(node: HsonNode): boolean {
 }
 
 export function delegate_document_remove_if_bound(node: HsonNode): boolean {
+  assert_mutation_publication_available(node);
   const registration = document_binding_for_node(node);
   if (registration === undefined) return false;
   return registration.delegateRemove();

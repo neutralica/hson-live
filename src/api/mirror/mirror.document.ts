@@ -82,6 +82,7 @@ import {
   runtime_for_node,
   runtime_for_tree,
   runtime_owns_document,
+  notify_livetree_realizations_internal,
   type LiveTreeRuntime,
   active_subject_for_tree,
   subject_for_tree,
@@ -695,6 +696,26 @@ function reflect_document_binding_in_runtime(
     wholeCorrespondenceBuilds += 1;
   };
 
+  // Native/graph rollback restores the prior projection, not the accepted
+  // canonical document. Retain its exact registrations so failed handles stay
+  // fenced by this binding, even if correspondence publication partly ran.
+  const capture_correspondence = (): (() => void) => {
+    const prior = [...registrations];
+    const priorEpochQuids = new Set(runtimeEpochQuids);
+    return () => {
+      for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
+      registrations = prior;
+      byPath.clear();
+      byQuid.clear();
+      for (const quid of runtimeEpochQuids) if (!priorEpochQuids.has(quid)) runtimeEpochQuids.delete(quid);
+      for (const registration of prior) {
+        register_document_binding_node(registration.node, registration);
+        byPath.set(path_key(registration.canonicalPath), registration);
+        if (registration.persistedQuid !== undefined) byQuid.set(registration.persistedQuid, registration);
+      }
+    };
+  };
+
   const refresh_registration_at_path = (path: LiveMapDocumentPath): void => {
     const prior = byPath.get(path_key(path));
     if (prior === undefined) {
@@ -1178,13 +1199,15 @@ function reflect_document_binding_in_runtime(
       borrowed,
     );
     currentStatus = "replacing";
+    const restoreCorrespondence = capture_correspondence();
     try {
       apply_document_structural_transaction(convergence.structural, () => {
         prune_removed_registrations(convergence.structural.finalNodes);
         rebuild_correspondence();
+        for (const registration of registrations) validate_bound_registration(registration);
       });
     } catch (cause) {
-      prune_removed_registrations(convergence.structural.finalNodes);
+      restoreCorrespondence();
       throw new DocumentMirrorError(
         DOCUMENT_MIRROR_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
         "Compatible projected root convergence failed during graph or DOM application.",
@@ -1200,10 +1223,10 @@ function reflect_document_binding_in_runtime(
         "Compatible root convergence was interrupted before correspondence publication.",
       );
     }
-    for (const registration of registrations) validate_bound_registration(registration);
     currentRevision = targetRevision;
     updatesApplied += 1;
     currentStatus = "active";
+    if (convergence.structural.affectedOwners.length > 0) notify_livetree_realizations_internal(runtime);
   };
 
   const apply_observation = (observation: LiveMapCommitObservation<LiveMapGraphOp>): void => {
@@ -1309,6 +1332,7 @@ function reflect_document_binding_in_runtime(
         },
       );
       let appliedIdentityClaims: readonly LiveMapDocumentIdentityAppliedClaim[] = Object.freeze([]);
+      const restoreCorrespondence = capture_correspondence();
       try {
         apply_document_structural_transaction(plan, () => {
           // The final canonical overlay is already installed at publication.
@@ -1316,18 +1340,17 @@ function reflect_document_binding_in_runtime(
           // that overlay, so its preflighted runtime QUID must be present first.
           appliedIdentityClaims = identityReservation?.apply() ?? Object.freeze([]);
           reconcile_correspondence_incrementally(commit.ops);
+          for (const claim of appliedIdentityClaims) refresh_registration_at_path(claim.path);
+          for (const registration of registrations) validate_bound_registration(registration);
         });
       } catch (cause) {
         identityReservation?.rollback();
-        prune_removed_registrations(plan.finalNodes);
+        restoreCorrespondence();
         throw cause;
       }
-      for (const claim of appliedIdentityClaims) {
-        refresh_registration_at_path(claim.path);
-      }
-      for (const registration of registrations) validate_bound_registration(registration);
       currentRevision = commit.rev;
       updatesApplied += 1;
+      if (plan.affectedOwners.length > 0) notify_livetree_realizations_internal(runtime);
       return;
     }
 

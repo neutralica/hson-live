@@ -1,0 +1,10 @@
+import { cut5_reentrant_mutation_cases } from "./cut5-graft-reentrancy-cases.mts";
+import { parentPort } from 'node:worker_threads';
+import { install_fake_document } from '../helpers/fake-document.mts';
+import { cut5_repair_cases, cut5_nonfatal_reporting_cases } from './cut5-repair-cases.mts';
+install_fake_document();
+let cases = 0;
+cut5_repair_cases((_name, run) => { run(); cases++; });
+cases += cut5_reentrant_mutation_cases((_name, run) => run());
+cases += await cut5_nonfatal_reporting_cases();
+parentPort?.postMessage({ cases });

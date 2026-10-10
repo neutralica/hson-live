@@ -4,7 +4,7 @@
 // create-livetree.ts
 
 import { HsonNode } from "../../../core/types.js";
-import { construct_exact_runtime_livetree, LiveTree } from "../livetree.js";
+import { construct_exact_runtime_livetree, construct_staged_runtime_livetree, LiveTree } from "../livetree.js";
 import { assert_livetree_node_active } from "../livetree-state.js";
 import {
   runtime_for_tree,
@@ -61,4 +61,9 @@ export function wrap_in_tree(parent: LiveTree, node: HsonNode): LiveTree {
   const branch = create_livetree_in_runtime(node, runtime_for_tree(parent));
   inherit_tree_historic_root(branch, parent);
   return branch;
+}
+
+/** Build a private factory candidate without allocating final identity. @internal */
+export function create_staged_livetree_in_runtime(node: HsonNode, runtime: LiveTreeRuntime): LiveTree {
+  return with_livetree_construction_runtime(node, runtime, () => construct_staged_runtime_livetree(node));
 }

@@ -34,6 +34,7 @@ import {
   unlinkNode,
 } from "../utils/node-map-helpers.js";
 import { create_livetree_in_runtime } from "./create-livetree.js";
+import { assert_native_mutation_publication_available, begin_mutation_publication } from "../lifecycle/mutation-publication.js";
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -208,6 +209,11 @@ function apply_normalization(plan: readonly ElementNormalization[]): () => void 
 
   try {
     for (const entry of plan) {
+      // Already canonical native text needs no normalization. Retain its exact
+      // Text objects along with the original Elements and their listeners.
+      if (entry.originalChildren.length === entry.children.length && entry.children.every((child, index) =>
+        child.kind === "element" ? entry.originalChildren[index] === child.element
+          : entry.originalChildren[index]?.nodeType === 3 && entry.originalChildren[index]?.nodeValue === child.value)) continue;
       for (const child of Array.from(entry.element.childNodes)) {
         if (child.nodeType !== 1) entry.element.removeChild(child);
       }
@@ -355,6 +361,7 @@ export function graft(
   const targetElement = element;
   if (!targetElement) _throw_transform_err("error getting target element", "graft", element);
 
+  assert_native_mutation_publication_available(targetElement);
   const existingNode = get_node_for_el(targetElement);
   if (existingNode) {
     return create_livetree_in_runtime(
@@ -385,8 +392,14 @@ export function graft(
   let documentRegistered = false;
   let documentWasRegistered = false;
   const endGraftTransaction = begin_graft_transaction(targetElement);
+  let endPublication = () => {};
   try {
+    endPublication = begin_mutation_publication([root], normalization.map(entry => entry.element));
     rollbackNormalization = apply_normalization(normalization);
+    // Complete fallible internal issuance before a native attribute callback or
+    // queued MutationObserver record can retain any of the planned identities.
+    quidPlan.publish();
+    quidPlan.preserveIssuedHistory();
     write_planned_quids(quidPlan.identities, parsed.elements, quidWrites);
     verify_proposed_realization(
       targetElement,
@@ -396,9 +409,6 @@ export function graft(
       quidPlan.identities,
     );
     assert_runtime_document_available(runtime, targetElement.ownerDocument);
-    quidPlan.revalidate();
-
-    quidPlan.publish();
     for (const entry of normalization) {
       link_node_to_el(entry.node, entry.element);
       linkedNodes.push(entry.node);
@@ -437,6 +447,7 @@ export function graft(
     }
     throw cause;
   } finally {
+    endPublication();
     endGraftTransaction();
   }
 }

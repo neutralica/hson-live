@@ -2,7 +2,7 @@
 
 import { _listeners_off_for_target } from "../managers/listener-builder.js";
 import { HsonNode } from "../../../core/types.js";
-import { get_el_for_node, unlinkNode } from "./node-map-helpers.js";
+import { get_el_for_node, get_dom_for_node, unlinkNode } from "./node-map-helpers.js";
 import { CssRuntimeManager } from "../managers/css-manager.js";
 import { disposables_off_for_subject } from "../managers/lifecycle-registry.js";
 import { get_quid } from "../quid/data-quid.js";
@@ -61,8 +61,11 @@ function detach_node_runtime(node: HsonNode, runtime: LiveTreeRuntime): void {
     for (let i = 0; i < iter.length; i++) {
       _listeners_off_for_target(iter[i] as unknown as EventTarget);
     }
-    el.remove();
+    if (el.parentNode) el.remove();
   }
+
+  const dom = get_dom_for_node(node);
+  if (dom?.parentNode) dom.parentNode.removeChild(dom);
 
   // Runtime resources belong to this exact realization; QUID remains only the
   // canonical identity used by scoped CSS.

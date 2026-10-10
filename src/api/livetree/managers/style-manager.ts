@@ -1,3 +1,4 @@
+import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 import {
   active_subject_for_tree,
 } from "../runtime/livetree-runtime.js";
@@ -429,6 +430,7 @@ export class StyleManager<TTree extends LiveTree> {
      * @see applyStyleToNode
      */
     private apply(propertyName: string, value: string | number | null): LiveTree {
+        assert_mutation_publication_available(active_subject_for_tree(this.tree));
         const kebab = propertyName.startsWith("--")
             ? propertyName
             : camel_to_kebab(propertyName);
@@ -476,6 +478,7 @@ export class StyleManager<TTree extends LiveTree> {
     * @see removeStyleFromNode
     */
     private remove(propertyName: string): LiveTree {
+        assert_mutation_publication_available(active_subject_for_tree(this.tree));
         const kebab = propertyName.startsWith("--")
             ? propertyName
             : camel_to_kebab(propertyName);
@@ -523,6 +526,7 @@ export class StyleManager<TTree extends LiveTree> {
      * is a no-op.
      */
     private clearAll(): void {
+        assert_mutation_publication_available(active_subject_for_tree(this.tree));
         const node = active_subject_for_tree(this.tree);
         if (document_binding_for_node(node) !== undefined) {
             this.tree.attrs.drop("style");

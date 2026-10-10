@@ -1,9 +1,11 @@
+import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 // listener-builder.ts
 
 import { ListenerBuilder, ListenOpts, MissingPolicy, ListenerSub, ElemMap } from "../../../types/listen.types.js";
 import { LiveTree } from "../livetree.js";
 import { own_disposable_for_subject } from "./lifecycle-registry.js";
 import {
+  type LiveTreeRuntime,
   runtime_for_tree,
   active_subject_for_tree,
 } from "../runtime/livetree-runtime.js";
@@ -18,6 +20,20 @@ type RegistrationConfig = Readonly<{
 }>;
 
 const TARGET_LISTENER_REG = new WeakMap<EventTarget, Set<() => void>>();
+type NativeListenerRelease = { detached: boolean; remove: () => void; restore: () => void };
+const NATIVE_RELEASE_FOR_OFF = new WeakMap<() => void, NativeListenerRelease>();
+
+/** Stage only native listener release; ownership callbacks remain active until
+ * terminal acceptance. Failed native cleanup restores every staged listener. @internal */
+export function prepare_native_listener_release(nodes: readonly import("../../../core/types.js").HsonNode[], runtime: LiveTreeRuntime): () => void {
+  const releases = nodes.flatMap(node => [...(runtime.ownerDisposables.get(node) ?? [])])
+    .flatMap(off => { const release = NATIVE_RELEASE_FOR_OFF.get(off); return release && !release.detached ? [release] : []; });
+  const completed = new Set<NativeListenerRelease>();
+  const restore = (): void => { for (const release of completed) { release.restore(); release.detached = false; } completed.clear(); };
+  try { for (const release of releases) { completed.add(release); release.remove(); release.detached = true; } }
+  catch (cause) { restore(); throw cause; }
+  return restore;
+}
 
 function is_event_target(value: unknown): value is EventTarget {
   if (typeof value !== "object" || value === null) return false;
@@ -95,13 +111,21 @@ function addWithOff(
   let set = TARGET_LISTENER_REG.get(target);
   if (!set) { set = new Set(); TARGET_LISTENER_REG.set(target, set); }
 
+  const restoreNative = target.addEventListener.bind(target);
+  const nativeRelease: NativeListenerRelease = {
+    detached: false,
+    remove: () => { target.removeEventListener(type, nativeHandler, opts); },
+    restore: () => { restoreNative(type, nativeHandler, opts); },
+  };
   off = own_disposable_for_subject(owner, () => {
-    target.removeEventListener(type, nativeHandler, opts);
+    if (!nativeRelease.detached) nativeRelease.remove();
+    NATIVE_RELEASE_FOR_OFF.delete(off);
     set?.delete(off);
     if (set?.size === 0) TARGET_LISTENER_REG.delete(target);
     onOff();
   }, "listener", runtime_for_tree(tree));
 
+  NATIVE_RELEASE_FOR_OFF.set(off, nativeRelease);
   set.add(off);
   return off;
 }
@@ -185,6 +209,7 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     type: K,
     handler: (ev: ElemMap[K]) => void
   ): ListenerSub => {
+    assert_mutation_publication_available(active_subject_for_tree(tree));
     const config = takeRegistrationConfig();
     const wrapped: EventListener = (ev: Event) => {
       if (config.stopImmediatePropagation) ev.stopImmediatePropagation();
