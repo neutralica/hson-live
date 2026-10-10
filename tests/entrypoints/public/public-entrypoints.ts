@@ -168,11 +168,7 @@ import {
 } from "hson-live/transform";
 import {
   begin_livetree_materialization_profile,
-  create_live_inspector,
   create_live_trace_collector,
-  hsonInspect,
-  LiveInspectorError,
-  type LiveInspectorOptions,
   type LiveTreeMaterializationProfile,
   type LiveTraceCollector,
 } from "hson-live/diagnostics";
@@ -1109,13 +1105,11 @@ const sameRootMapType: typeof mapSubpath = hsonLiveMap;
 const sameRootTreeType: typeof treeSubpath = hsonLiveTree;
 const sameRootTransformType: typeof transformSubpath = hsonTransform;
 void [originalTypeIdentity, sameRootMapType, sameRootTreeType, sameRootTransformType];
-// @ts-expect-error Experimental inspection is owned by /diagnostics, not the root namespace.
+// @ts-expect-error The archaeological inspector is permanently retired.
 hson.inspect;
-declare const inspectorOptions: LiveInspectorOptions;
 declare const materializationProfile: LiveTreeMaterializationProfile;
 const diagnosticCollector: LiveTraceCollector = create_live_trace_collector({ capacity: 8 });
-void [hsonInspect.create, create_live_inspector, LiveInspectorError,
-  begin_livetree_materialization_profile, inspectorOptions, materializationProfile,
+void [begin_livetree_materialization_profile, materializationProfile,
   diagnosticCollector];
 
 // @ts-expect-error HTML parsing is not a LiveMap construction-facade capability.

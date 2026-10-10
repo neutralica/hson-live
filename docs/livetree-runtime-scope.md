@@ -41,7 +41,6 @@ The process-global registry is implemented by
 - `listener-builder.ts` registers listener cleanup.
 - `make-events.ts` registers tree-event handlers.
 - `make-canvas-api.ts` registers resize-observer cleanup.
-- `liveinspect.ts` registers inspector and auxiliary-renderer cleanup.
 - `reflect.collection.ts` registers renderer cleanup.
 - `dispose-node.ts` drains all owner callbacks before destroying identity.
 - `CssManager` owns QUID declaration maps and QUID-owned keyframes.
@@ -174,7 +173,6 @@ Immutable lookup sets are included for completeness.
 | LiveMap path-handle weak internals | `livemap.handle.ts` | Exact handle internals; per-map path cache remains closure-local. |
 | Locus weak authority/internal tables | Locus core/persistence | Exact Locus/map objects; not LiveTree QUID resource ownership. |
 | sanitizer-by-window weak cache | `sanitize-html.utils.ts` | Correctly keyed by exact DOM window. |
-| LiveInspect pass-value weak map | `liveinspect.source.ts` | Exact inspected object only. |
 
 The runtime implementation may add weak `node -> runtime` and
 `LiveTree -> runtime` correspondence. Those maps are safe shared indexes because
@@ -196,7 +194,7 @@ Deferred to the approved pre-SSR sidecar:
 - materialization profiler module activation state.
 - ambient document assumptions in transform query/body constructors,
   `livetree.facade.ts`,
-  LiveInspect active-element lookup, text-node helper fallbacks, inline
+  text-node helper fallbacks, inline
   document-root style inspection, and default canvas DPR.
 - `CssManager.api()` truly global stylesheet policy across multiple runtime
   documents. This phase must isolate all QUID-owned/tree-handle CSS; a broader

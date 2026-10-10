@@ -210,3 +210,42 @@ export const structuralJsonOrderFixtures: readonly StructuralJsonOrderFixture[] 
   arrayInsideObjectFixture,
   negativeZeroOrderFixture,
 ]);
+
+const completeBoundaryNames = Object.freeze([
+  "10", "alpha", "2", "01", "1", "omega", "4294967294", "0", "100",
+  "00", "0001", "-1", "-0", "+1", "1.0", "1e0", "4294967295",
+]);
+export const orderedRootReconstructionFixtures: readonly StructuralJsonOrderFixture[] = Object.freeze([
+  ...structuralJsonOrderFixtures,
+  ...[false, true].map((equal): StructuralJsonOrderFixture => ({
+    id: `ordered-root.complete-boundary-${equal ? "equal" : "distinct"}`,
+    graph: object(completeBoundaryNames.map((key, index) => property(key, scalar(equal ? 1 : index)))),
+    expectedJson: `{\n${completeBoundaryNames.map((key, index) => `  ${JSON.stringify(key)}: ${equal ? 1 : index}`).join(",\n")}\n}`,
+    expectedObjectOrders: [completeBoundaryNames],
+  })),
+  { id: "ordered-root.empty", graph: object([]), expectedJson: "{}", expectedObjectOrders: [[]] },
+  { id: "ordered-root.singleton", graph: object([property("10", scalar(1))]), expectedJson: '{\n  "10": 1\n}', expectedObjectOrders: [["10"]] },
+  { id: "ordered-root.nonnumeric", graph: object([property("z", scalar(1)), property("a", scalar(2))]),
+    expectedJson: '{\n  "z": 1,\n  "a": 2\n}', expectedObjectOrders: [["z", "a"]] },
+]);
+
+/** Observe the initial receiver too: later exact restoration cannot hide a JS detour. */
+export function forbid_structural_js_enumeration(): () => void {
+  const original = Reflect.ownKeys;
+  let enumerations = 0;
+  Reflect.ownKeys = new Proxy(original, {
+    apply(target, receiver, args) {
+      const value: unknown = args[0];
+      if (typeof value === "object" && value !== null && !Array.isArray(value)
+        && ["10", "2", "1"].every(key => Object.hasOwn(value, key))) {
+        enumerations += 1;
+        throw new Error("Canonical reconstruction enumerated structural members as JS properties.");
+      }
+      return Reflect.apply(target, receiver, args);
+    },
+  });
+  return () => {
+    Reflect.ownKeys = original;
+    if (enumerations !== 0) throw new Error("Initial canonical admission passed through a lossy JS object.");
+  };
+}

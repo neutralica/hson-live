@@ -1,3 +1,8 @@
+import type { LiveMapLibraryAddOperation } from "../src/types/livemap.types.ts";
+import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import type { HsonNode } from "../src/core/types.ts";
+import { install_client_local_initializers_internal } from "../src/api/locus/locus.local-initializer.ts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { sha256_sync } from "../src/core/sha256-sync.ts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
@@ -312,6 +317,56 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   assert.equal(ui.at(["value"]).snap(), 1);
   replica.dispose();
   assert.throws(() => compose_client_portable_aggregate_internal(snapshot, []), /no LiveMap/i);
+}
+
+for (const fixture of orderedRootReconstructionFixtures) {
+  const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
+  const server = hsonLiveMap.fromLibraries({ state: { data: fixture.expectedJson } });
+  const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
+  const seeds = local_initializers({ ui: { data: fixture.expectedJson } });
+  const stopConstruction = forbid_structural_js_enumeration();
+  let client;
+  try { client = compose_client_portable_aggregate_internal(snapshot, seeds); }
+  finally { stopConstruction(); }
+  assert.equal(canonical_hson_graph_equal(client.lib("state").root(), original), true);
+  assert.equal(canonical_hson_graph_equal(client.lib("ui").root(), original), true);
+  const ui = client.lib("ui");
+  const shared = client.lib("state");
+  const engine = internal_livemap_aggregate_authority(client);
+  const identities = engine.libraries();
+  const accounting = livemap_identity_epoch_accounting(ui);
+  const laterSeeds = local_initializers({ later: { data: fixture.expectedJson } });
+  const stopLocal = forbid_structural_js_enumeration();
+  try { install_client_local_initializers_internal(client, laterSeeds); }
+  finally { stopLocal(); }
+  assert.equal(canonical_hson_graph_equal(client.lib("later").root(), original), true);
+  assert.equal(client.lib("ui"), ui);
+  assert.equal(client.lib("state"), shared);
+  assert.deepEqual(engine.libraries().slice(0, identities.length), identities);
+  assert.deepEqual(livemap_identity_epoch_accounting(ui), accounting);
+
+  const replica = create_echo_aggregate_replica_capability_internal(client);
+  const commit = server.addLibraries({ zzAdded: { data: fixture.expectedJson } });
+  const added = commit.operations[0];
+  assert.ok(added && "kind" in added.operation && added.operation.kind === "library-add");
+  const topology: LiveMapLibraryAddOperation = { library: added.library, operation: added.operation };
+  const digest = internal_livemap_aggregate_authority(server).hostedRegistry().digest;
+  const beforeInvalid = client.capture();
+  assert.throws(() => replica.installProjectedTopology(topology, "0".repeat(64)));
+  assert.throws(() => replica.installProjectedTopology({ ...topology, library: "mismatched" }, digest));
+  assert.throws(() => replica.installProjectedTopology({ ...topology, operation: { ...topology.operation,
+    libraries: topology.operation.libraries.map(entry => ({ ...entry, mode: entry.mode === "data-array" ? "data-object" : "data-array" })) } }, digest));
+  assert.deepEqual(client.capture(), beforeInvalid);
+  const stopTopology = forbid_structural_js_enumeration();
+  try { replica.installProjectedTopology(topology, digest); }
+  finally { stopTopology(); }
+  assert.equal(canonical_hson_graph_equal(client.lib("zzAdded").root(), original), true);
+  assert.equal(client.capture().libraries.find(entry => entry.name === "zzAdded")!.root.payload,
+    server.capture().libraries.find(entry => entry.name === "zzAdded")!.root.payload);
+  assert.equal(client.lib("ui"), ui);
+  assert.equal(client.lib("state"), shared);
+  assert.deepEqual(livemap_identity_epoch_accounting(ui), accounting);
+  replica.dispose();
 }
 
 process.stdout.write("ok - client library composition 6A.5\n");

@@ -12,14 +12,14 @@ import { make_livemap_registry_authority } from "../src/api/livemap/livemap.core
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { prepare_livemap_root } from "../src/api/livemap/livemap.document.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
-import { reconstructed_data_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { make_livemap_from_canonical_libraries_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { enumerate_livemap_issued_quids } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { capture_internal_document } from "./helpers/document-capture.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { capture_livemap_document, validate_livemap_document_admission } from "../src/api/livemap/livemap.document.capture.ts";
 import { prepare_document_install, restore_livemap_document_capture } from "../src/api/livemap/livemap.document.install.ts";
 import type { LiveMapDocumentInstallController } from "../src/api/livemap/livemap.document.install.ts";
-import { ANY_DOCUMENT } from "../src/api/schema/hson-schema.ts";
+import { ANY_DATA, ANY_DOCUMENT } from "../src/api/schema/hson-schema.ts";
 import { livemap_document_identity_quids } from "../src/api/livemap/livemap.document.identity.ts";
 import { admit_public_document_graph_operation } from "../src/api/livemap/livemap.document.mutation.ts";
 import type { LiveMapGraphInsertContentOp, LiveMapGraphOp } from "../src/types/livemap.types.ts";
@@ -200,7 +200,7 @@ check("owned data engine admits exact data and rejects array sorting or scalar-c
   const authority = internal_livemap_aggregate_authority(map); const before = state(map);
   for (const input of [reversed, root(obj(val(1))), root(obj(str("x"))), root(obj(obj())), root(obj(arr()))]) {
     assert.throws(() => prepare_livemap_root(input, "data"));
-    assert.throws(() => reconstructed_data_internal(input));
+    assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "rejected", family: "data", schema: ANY_DATA, root: input }]));
     assert.throws(() => authority.addLibraries([{ name: "rejected", root: input, family: "data", hsonSchema: authority.librarySchema(authority.libraries()[0]) }]));
     unchanged(map, before);
   }
@@ -609,6 +609,34 @@ check("prototype-sensitive malformed content rejects without exposing jobs or ch
       assert.equal(probe.intercepted, 0); assert.equal(probe.exposed.size, 0); verify();
     }
   }
+});
+
+check("canonical receiving definitions preserve ordered document relationships", () => {
+  const original = root(node("10"), str("between"), node("2"), node("main", elem(
+    node("10"), str("nested"), node("2"), node("01"), node("1"),
+  )), node("01"), node("1"));
+  const expected = structuredClone(original);
+  const map = make_livemap_from_canonical_libraries_internal([
+    { name: "page", family: "document", schema: ANY_DOCUMENT, root: original },
+  ]);
+  same(map.lib("page").root(), expected);
+  original.$_content.length = 0;
+  same(map.lib("page").root(), expected);
+});
+
+check("canonical receiving definitions reject QUID claims and wrong families and own independent roots", () => {
+  const ordered = obj(node("10", obj(val(1))), node("2", obj(val(2))), node("1", obj(val(-0))));
+  const expected = structuredClone(ordered);
+  const captured = make_livemap_from_canonical_libraries_internal([{ name: "state", family: "data", schema: ANY_DATA, root: ordered }]);
+  same(captured.lib("state").root(), expected);
+  ordered.$_content.length = 0;
+  same(captured.lib("state").root(), expected);
+  const claim = root(node("p")); child(claim).$_meta = { quid: "000000001" };
+  assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "page", family: "document", schema: ANY_DOCUMENT, root: claim }]));
+  assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "state", family: "data", schema: ANY_DATA, root: root(node("p")) }]));
+  assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "page", family: "document", schema: ANY_DOCUMENT, root: expected }]));
+  const empty = make_livemap_from_canonical_libraries_internal([{ name: "page", family: "document", schema: ANY_DOCUMENT, root: root() }]);
+  same(empty.lib("page").root(), root());
 });
 
 events.terminal("pass"); console.log(`1..${checks}`);

@@ -2,7 +2,6 @@ import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import type { HostedLiveMapSnapshot, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
-import { resolveLiveMapNode } from "./livemap.node.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 import type { LiveMapProjectedIdentityOverlay } from "./livemap.projected.identity.js";
@@ -299,9 +298,4 @@ export function internal_livemap_root(owner: object): HsonNode {
   const registered = INTERNAL_OWNERS.get(owner);
   if (registered === undefined) throw new Error("LiveMap internal owner is unavailable.");
   return registered.root();
-}
-
-/** In-package canonical-node inspection. Never exported publicly. */
-export function internal_livemap_node(owner: object, path: LivePath): HsonNode | undefined {
-  return resolveLiveMapNode(internal_livemap_root(owner), path);
 }

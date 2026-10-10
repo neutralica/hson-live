@@ -5,11 +5,11 @@ import type {
   LocusLocalInitializer,
 } from "../../types/locus.projection.types.js";
 import type { LocusSessionNow } from "../../types/locus.core.types.js";
-import type { LiveMap, LiveMapDefinitions, LiveMapDocumentLibrary } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapDocumentLibrary } from "../../types/livemap.types.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import {
   document_css_state_internal,
-  reconstructed_data_internal,
+  type CanonicalLibraryDefinition,
   commit_document_css_internal,
   add_client_local_libraries_internal,
 } from "../livemap/livemap.libraries.js";
@@ -241,13 +241,11 @@ export function install_client_local_initializers_internal(
     }
   }
   if (missing.length === 0) return;
-  const definitions: Record<string, LiveMapDefinitions[string]> = Object.create(null);
+  const definitions: CanonicalLibraryDefinition[] = [];
   for (const initializer of missing) {
     const root = decode_hosted_root(initializer.root, HOSTED_MAX_SNAPSHOT_BYTES);
     const schema = HsonSchema.fromHson(initializer.schema);
-    definitions[initializer.name] = initializer.mode === "document"
-      ? { document: root, schema }
-      : { data: reconstructed_data_internal(root), schema };
+    definitions.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema });
   }
   add_client_local_libraries_internal(map, Object.freeze(definitions));
   apply_client_local_initializer_css_internal(map, missing);

@@ -1,3 +1,18 @@
+import { is_Node } from "../src/core/node-guards.ts";
+import { hsonTransform } from "../src/api/transform/transform.facade.ts";
+import { ANY_DATA } from "../src/api/schema/hson-schema.ts";
+import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import {
+  make_livemap_from_canonical_libraries_internal,
+  make_livemap_mirror_from_snapshot_internal,
+  make_livemap_hosted_mirror_from_snapshot_internal,
+  make_livemap_mirror_from_portable_aggregate_internal,
+  make_livemap_mirror_from_semantic_checkpoint_internal,
+  make_livemap_client_composition_from_portable_aggregate_internal,
+  portable_aggregate_inputs_internal,
+} from "../src/api/livemap/livemap.libraries.ts";
+import { make_portable_aggregate_snapshot, encode_hosted_root, decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
+import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -5,7 +20,7 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../src/core/public-attrs.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
-import type { JsonValue } from "../src/core/types.ts";
+import type { HsonNode, JsonValue } from "../src/core/types.ts";
 import type { LiveMapDataLibrary } from "../src/types/livemap.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -128,6 +143,49 @@ check("document attribute equality is unordered by name", () => {
   if (left === undefined || right === undefined) throw new Error("Expected attrs.");
   assert.equal(canonical_public_attrs_equal(left, right), true);
 });
+
+for (const fixture of orderedRootReconstructionFixtures) {
+  check(`ordered-root receiving paths: ${fixture.id}`, () => {
+    const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
+    const source = hsonLiveMap.fromLibraries({ state: { data: fixture.expectedJson } });
+    assert.equal(canonical_hson_graph_equal(source.lib("state").root(), original), true);
+    const engine = internal_livemap_aggregate_authority(source);
+    const snapshot = source.capture();
+    const hosted = engine.captureHosted();
+    const portable = make_portable_aggregate_snapshot(hosted);
+    const checkpoint = engine.captureSemanticCheckpoint();
+    const admitted = portable_aggregate_inputs_internal(portable);
+    assert.equal(canonical_hson_graph_equal(admitted.inputs[0]!.root, original), true);
+    const receivers = [
+      () => make_livemap_from_canonical_libraries_internal([{ name: "state", family: "data", root: original, schema: ANY_DATA }]),
+      () => make_livemap_mirror_from_snapshot_internal(snapshot),
+      () => make_livemap_hosted_mirror_from_snapshot_internal(hosted),
+      () => make_livemap_mirror_from_portable_aggregate_internal(portable),
+      () => make_livemap_mirror_from_semantic_checkpoint_internal(checkpoint),
+      () => make_livemap_client_composition_from_portable_aggregate_internal(portable),
+    ];
+    for (const receive of receivers) {
+      const stop = forbid_structural_js_enumeration();
+      try {
+        const reconstructed = receive();
+        const observed = reconstructed.lib("state").root();
+        assert.equal(canonical_hson_graph_equal(observed, original), true);
+        const value = observed.$_content[0];
+        assert.ok(is_Node(value));
+        assert.equal(hsonTransform.fromNode(value).toHson().serialize(), hsonTransform.fromNode(fixture.graph).toHson().serialize());
+        assert.equal(reconstructed.capture().libraries[0]!.root.payload, snapshot.libraries[0]!.root.payload);
+      } finally { stop(); }
+    }
+    const js = hsonTransform.fromNode(fixture.graph).toJson().value();
+    assert.deepEqual(source.lib("state").snap(), js);
+    const fromObject = hsonLiveMap.fromLibraries({ state: { data: js } });
+    assert.equal(canonical_hson_graph_equal(fromObject.lib("state").root(), hsonTransform.fromJson(js).toNode()), true);
+    assert.equal(canonical_hson_graph_equal(source.lib("state").root(), original), true);
+    assert.equal(canonical_hson_graph_equal(decode_hosted_root(encode_hosted_root(original)), original), true);
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(hsonTransform.fromJson(fixture.expectedJson).toBinary().serialize()).toNode(), fixture.graph), true);
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromHson(hsonTransform.fromNode(fixture.graph).toHson().serialize()).toNode(), fixture.graph), true);
+  });
+}
 
 process.stdout.write(`# ${checks} exact registry closure checks passed\n`);
 testEvents.terminal("pass");

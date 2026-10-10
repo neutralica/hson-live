@@ -1,12 +1,12 @@
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import type { LocusLocalInitializer } from "../../types/locus.projection.types.js";
-import type { LiveMap, LiveMapDefinitions } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.internal.types.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import {
-  make_livemap_libraries,
+  make_livemap_from_canonical_libraries_internal,
+  type CanonicalLibraryDefinition,
   portable_aggregate_inputs_internal,
-  reconstructed_data_internal,
 } from "../livemap/livemap.libraries.js";
 import { decode_hosted_root, HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
 import { hsonTransform } from "../transform/transform.facade.js";
@@ -35,18 +35,18 @@ export function compose_client_portable_aggregate_internal(
   local: readonly LocusLocalInitializer[],
 ): LiveMap {
   const admitted = portable_aggregate_inputs_internal(snapshot);
-  const inputs: Record<string, LiveMapDefinitions[string]> = Object.assign(Object.create(null), admitted.inputs);
+  const inputs: CanonicalLibraryDefinition[] = [...admitted.inputs];
+  const names = new Set(inputs.map((entry) => entry.name));
   for (const initializer of local) {
-    if (Object.hasOwn(inputs, initializer.name)) {
+    if (names.has(initializer.name)) {
       throw new Error(`Local initializer ${JSON.stringify(initializer.name)} collides with shared state.`);
     }
     const root = decode_hosted_root(initializer.root, HOSTED_MAX_SNAPSHOT_BYTES);
     const schema = HsonSchema.fromHson(initializer.schema);
-    inputs[initializer.name] = initializer.mode === "document"
-      ? { document: root, schema }
-      : { data: reconstructed_data_internal(root), schema };
+    names.add(initializer.name);
+    inputs.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema });
   }
-  if (Object.keys(inputs).length === 0) {
+  if (inputs.length === 0) {
     throw new Error("An action-only client session has no LiveMap; use endpoint-only Echo.");
   }
   const localDocumentExists = local.some((initializer) => initializer.mode === "document");
@@ -56,7 +56,7 @@ export function compose_client_portable_aggregate_internal(
     root: hsonTransform.fromJson({ descriptors: [] }).toNode(),
     hsonSchema: interaction_schema_internal(),
   })];
-  const map = make_livemap_libraries(Object.freeze(inputs), systems, snapshot);
+  const map = make_livemap_from_canonical_libraries_internal(Object.freeze(inputs), systems, snapshot);
   apply_client_local_initializer_css_internal(map, local);
   retain_client_local_seed_contracts_internal(map, local);
   return map;

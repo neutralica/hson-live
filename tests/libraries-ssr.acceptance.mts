@@ -13,6 +13,9 @@ import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-cod
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import type { HsonNode } from "../src/core/types.ts";
+import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" attrs <props <title <optional "string">>> content <repeat <tag "item" content "empty">>>`;
@@ -386,6 +389,26 @@ await check("Libraries rendering selection and hosted cuts preserve the aggregat
   session.close();
   locus.dispose();
 });
+
+for (const fixture of orderedRootReconstructionFixtures) {
+  await check(`SSR cut and bootstrap retain independent source order: ${fixture.id}`, () => {
+    const expected: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
+    const source = hsonLiveMap.fromLibraries({ state: { data: fixture.expectedJson }, page: { document: "<main/>" } });
+    assert.equal(canonical_hson_graph_equal(source.lib("state").root(), expected), true);
+    const cut = source.cut({ html: "page" });
+    const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(cut.libs));
+    assert.equal(decoded.kind, "libraries");
+    assert.deepEqual(decoded.bootstrap, cut.libs);
+    const stop = forbid_structural_js_enumeration();
+    try {
+      const installed = install_libraries_snapshot(decoded.bootstrap).map;
+      assert.equal(canonical_hson_graph_equal(installed.lib("state").root(), expected), true);
+      assert.deepEqual(installed.cut().libs.libraries.find(entry => entry.name === "state")?.root,
+        cut.libs.libraries.find(entry => entry.name === "state")?.root);
+      assert.equal(document(installed, "page").render(), cut.html);
+    } finally { stop(); }
+  });
+}
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");

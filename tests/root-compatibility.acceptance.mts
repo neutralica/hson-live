@@ -64,8 +64,8 @@ try {
   assert.equal(root.hsonLiveMap.locus.create, livemap.locus.create);
   assert.equal(root.hson.transform, root.hsonTransform);
   assert.equal("inspect" in root.hson, false);
-  assert.equal(typeof diagnostics.hsonInspect.create, "function");
-  assert.equal(typeof diagnostics.create_live_inspector, "function");
+  assert.equal("hsonInspect" in diagnostics, false);
+  assert.equal("create_live_inspector" in diagnostics, false);
   testEvents.case_end(caseId, "pass");
 } catch (error) {
   const message = error instanceof Error ? error.message : "Check failed.";

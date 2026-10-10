@@ -38,22 +38,9 @@ hsonTransform is_transform_error read_transform_error_details reflect_document r
 `.trim().split(/\s+/).sort();
 
 const DIAGNOSTICS_EXPORTS = `
-begin_livetree_materialization_profile create_live_inspector create_live_trace_collector
-create_live_trace_console_sink hsonInspect LIVE_INSPECTOR_DISPOSED_ERROR_CODE
-LIVE_INSPECTOR_DUPLICATE_ARRAY_KEY_ERROR_CODE LIVE_INSPECTOR_EXPAND_LIMIT_ERROR_CODE
-LIVE_INSPECTOR_INVALID_PATH_ERROR_CODE LIVE_INSPECTOR_INVALID_ROOT_ERROR_CODE
-LIVE_INSPECTOR_MISSING_ARRAY_KEY_ERROR_CODE LIVE_INSPECTOR_NON_STRUCTURAL_EXPANSION_ERROR_CODE
-LIVE_INSPECTOR_OBSERVER_ERROR_CODE LIVE_INSPECTOR_PROJECTION_ERROR_CODE
-LIVE_INSPECTOR_RENDERER_HOOK_ERROR_CODE LIVE_INSPECTOR_SOURCE_REPLACEMENT_ERROR_CODE
-LIVE_INSPECTOR_SPECIALIZATION_ERROR_CODE LIVE_INSPECTOR_UNREPRESENTABLE_CONVERSION_ERROR_CODE
-LIVE_INSPECTOR_UNSUPPORTED_SERIALIZATION_ERROR_CODE LIVE_INSPECTOR_UNSUPPORTED_SOURCE_ERROR_CODE
-LiveInspector LiveInspectorArrayIdentity LiveInspectorArrayKeyContext LiveInspectorArrayKeyResolver
-LiveInspectorBranchRole LiveInspectorDiagnostics LiveInspectorError LiveInspectorErrorCode LiveInspectorHsonMode
-LiveInspectorListener LiveInspectorMappingSummary LiveInspectorOptions LiveInspectorOwnedHsonOptions
-LiveInspectorOwnedJsonOptions LiveInspectorReadHandle LiveInspectorRendererResult LiveInspectorRenderers
-LiveInspectorRendererUpdate LiveInspectorSelection LiveInspectorSemanticContext LiveInspectorSemanticRenderer
-LiveInspectorSerializationTarget LiveInspectorSnapshot LiveInspectorSource LiveInspectorSpecialization
-LiveInspectorStatus LiveInspectorValueKind LiveTraceCollector LiveTraceCollectorOptions
+begin_livetree_materialization_profile create_live_trace_collector
+create_live_trace_console_sink
+LiveTraceCollector LiveTraceCollectorOptions
 LiveTraceConsoleSinkOptions LiveTraceConsoleWriter LiveTraceDetails LiveTraceDetailValue LiveTraceEvent
 LiveTraceSink LiveTraceStatus LiveTraceSubsystem LiveTreeMaterializationProfile
 `.trim().split(/\s+/).sort();
@@ -185,7 +172,7 @@ const ownerProofs = Object.freeze({
   "dist/api/ssr/index.d.ts": ["BrowserRealizationHtml", "DocumentSsrError"],
   "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost", "LiveHostRuntime", "hsonLiveHost"],
   "dist/api/livehost/node/index.d.ts": ["start_node_application_host", "NodeApplicationHostOptions"],
-  "dist/diagnostics/index.d.ts": ["hsonInspect", "create_live_inspector", "LiveInspector", "create_live_trace_collector"],
+  "dist/diagnostics/index.d.ts": ["begin_livetree_materialization_profile", "create_live_trace_collector", "create_live_trace_console_sink"],
 });
 
 await check("specialist contracts remain available from owning entrypoints", () => {

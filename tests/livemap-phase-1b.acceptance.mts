@@ -1,3 +1,6 @@
+import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import type { HsonNode } from "../src/core/types.ts";
 import { document_html } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { ANY_DATA, ANY_DOCUMENT, Hson, add_interaction, enable_interactions, hsonLiveMap } from "../src/index.ts";
@@ -240,5 +243,31 @@ check("interaction state can target a document admitted after enabling it", () =
   assert.equal(map.rev, 2);
   assert.equal(internal_livemap_aggregate_authority(map).hostedRegistry().libraries.length, 2);
 });
+
+for (const fixture of orderedRootReconstructionFixtures) {
+  check(`topology replay retains original ordered roots: ${fixture.id}`, () => {
+    const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
+    const source = hsonLiveMap.fromLibraries({ control: { document: "<main/>" } });
+    const receiver = hsonLiveMap.fromLibraries({ control: { document: "<main/>" } });
+    const control = receiver.lib("control");
+    const engine = internal_livemap_aggregate_authority(receiver);
+    const beforeIdentity = engine.inspect().libraries[0]!.identity;
+    const beforeRoot = control.root();
+    const beforeAccounting = livemap_identity_epoch_accounting(control);
+    const commit = source.addLibraries({ ordered: { data: fixture.expectedJson } });
+    const stop = forbid_structural_js_enumeration();
+    try {
+      const replayed = receiver.replay(commit);
+      assert.deepEqual(replayed.operations, commit.operations);
+      assert.equal(canonical_hson_graph_equal(receiver.lib("ordered").root(), original), true);
+      assert.equal(receiver.capture().libraries.find(entry => entry.name === "ordered")!.root.payload,
+        source.capture().libraries.find(entry => entry.name === "ordered")!.root.payload);
+      assert.equal(receiver.lib("control"), control);
+      assert.equal(engine.inspect().libraries[0]!.identity, beforeIdentity);
+      assert.equal(canonical_hson_graph_equal(control.root(), beforeRoot), true);
+      assert.deepEqual(livemap_identity_epoch_accounting(control), beforeAccounting);
+    } finally { stop(); }
+  });
+}
 
 events.terminal("pass");

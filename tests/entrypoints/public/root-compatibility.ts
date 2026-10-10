@@ -2,7 +2,6 @@ import { Hson, hson, hsonLiveMap, continue_document, continue_hosted_document, e
 import { bind_locus_websocket, type LocusWebSocketLike } from "hson-live/locus";
 import { bind_node_locus_websocket } from "hson-live/locus/node";
 import { start_node_application_host } from "hson-live/livehost/node";
-import { create_live_inspector } from "hson-live/diagnostics";
 
 declare const documentLibrary: LiveMapDocumentLibrary;
 declare const element: Element;
@@ -14,7 +13,7 @@ const checked: Locus<typeof registry> = locus;
 void (0 as unknown as Locus | LiveMap);
 void [hson, hsonLiveMap.locus, checked, hsonLiveMap.echo.create, continue_document({ map: registry, root: element }),
   continue_hosted_document, registry.cut({ html: "page" }), encode_ssr_bootstrap, decode_ssr_bootstrap, create_livehost_locus_registry,
-  bind_locus_websocket, bind_node_locus_websocket, start_node_application_host, create_live_inspector, socket];
+  bind_locus_websocket, bind_node_locus_websocket, start_node_application_host, socket];
 // @ts-expect-error The one-map Locus bootstrap is retired.
 import { decode_locus_bootstrap } from "hson-live/locus";
 // @ts-expect-error The sessionless Locus wire codec is retired.

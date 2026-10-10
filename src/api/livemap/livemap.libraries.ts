@@ -90,8 +90,7 @@ import {
   encode_hosted_root,
   HOSTED_MAX_SNAPSHOT_BYTES,
 } from "./livemap.hosted.js";
-import { node_to_json_value } from "./livemap.editor.js";
-import { admit_owned_livemap_root, admit_public_livemap_root } from "./livemap.node-admission.js";
+import { admit_public_livemap_root } from "./livemap.node-admission.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import type { LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
@@ -104,8 +103,52 @@ import type { LiveMapAggregateWrite } from "./livemap.library.js";
 type NamedLibrary = Readonly<{
   name: string;
   identity: LiveMapLibraryIdentity;
-  input: LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
+  family: "data" | "document";
+  schema: HsonSchemaHandle;
 }>;
+
+/** Already-canonical material crossing a fresh Library receiver. @internal */
+export type CanonicalLibraryDefinition = Readonly<{
+  name: string;
+  family: "data" | "document";
+  schema: HsonSchemaHandle;
+  root: HsonNode;
+}>;
+
+function public_library_definitions(inputs: LiveMapDefinitions): readonly CanonicalLibraryDefinition[] {
+  return Object.entries(inputs).map(([name, value]) => {
+    const input = must_library_input(name, value);
+    return Object.freeze({ name, root: library_root(input), schema: input.schema,
+      family: "data" in input ? "data" as const : "document" as const });
+  });
+}
+
+function capture_library_definitions(definitions: readonly CanonicalLibraryDefinition[]): readonly CanonicalLibraryDefinition[] {
+  const names = new Set<string>();
+  return definitions.map(({ name, family, schema, root }) => {
+    if (typeof name !== "string" || name === INTERACTION_RESERVED_LIBRARY_KEY || names.has(name)) {
+      throw new Error("Canonical Library name is invalid or duplicated.");
+    }
+    if (family !== "data" && family !== "document" || !(schema instanceof HsonSchemaHandle)) {
+      throw new TypeError("Canonical Library family or Schema is invalid.");
+    }
+    names.add(name);
+    return Object.freeze({ name, family, schema,
+      root: admit_public_livemap_root(root, family, `LiveMap.reconstruct(${name})`) });
+  });
+}
+
+const EXACT_LIBRARY_ADMISSION = new WeakMap<object,
+  (definitions: readonly CanonicalLibraryDefinition[]) => LiveMapCommit>();
+
+/** Add portable canonical roots without manufacturing public value definitions. @internal */
+export function add_livemap_canonical_libraries_internal(
+  map: LiveMap, definitions: readonly CanonicalLibraryDefinition[],
+): LiveMapCommit {
+  const admit = EXACT_LIBRARY_ADMISSION.get(map);
+  if (admit === undefined) throw new Error("Canonical Library admission requires a multi-library LiveMap.");
+  return admit(capture_library_definitions(definitions));
+}
 
 const PUBLIC_MULTI_LIBRARY_MAPS = new WeakSet<object>();
 const CLIENT_LIBRARY_SOURCES = new WeakMap<object, "authority-projected" | "client-local">();
@@ -127,21 +170,23 @@ export function commit_document_css_internal(document: LiveMapDocumentLibrary, o
 }
 const CLIENT_LIBRARY_RETIREMENT = new WeakMap<object, Set<() => void>>();
 const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot) => void>();
-const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (inputs: LiveMapDefinitions) => LiveMapCommit>();
-const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, inputs: LiveMapDefinitions,
+const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (definitions: readonly CanonicalLibraryDefinition[]) => LiveMapCommit>();
+const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, definitions: readonly CanonicalLibraryDefinition[],
   css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Readonly<{
   transition: PreparedLiveMapAuthorityTransition;
   afterInstall: () => void;
 }>>();
 
-function topology_definitions(operation: LiveMapLibraryAddOperation): LiveMapDefinitions {
+function topology_definitions(operation: LiveMapLibraryAddOperation): readonly CanonicalLibraryDefinition[] {
   if (operation.operation.kind !== "library-add" || operation.operation.libraries.length === 0
     || operation.library !== operation.operation.libraries[0]?.name) {
     throw new Error("LiveMap topology replay requires a canonical library-add operation.");
   }
-  const definitions: Record<string, LiveMapLibraryInput> = Object.create(null);
+  const definitions: CanonicalLibraryDefinition[] = [];
+  const names = new Set<string>();
   for (const entry of operation.operation.libraries) {
-    if (Object.hasOwn(definitions, entry.name)) throw new Error("LiveMap topology replay contains a duplicate Library.");
+    if (names.has(entry.name)) throw new Error("LiveMap topology replay contains a duplicate Library.");
+    names.add(entry.name);
     const schema = HsonSchemaHandle.fromHson(entry.schema);
     const root = decode_hosted_root(entry.root);
     admit_portable_hson_node(root, "LiveMap topology replay");
@@ -149,11 +194,9 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): LiveMapDef
       || JSON.stringify(encode_hosted_root(root)) !== JSON.stringify(entry.root)) {
       throw new Error("LiveMap topology replay root mode or encoding is inconsistent.");
     }
-    definitions[entry.name] = entry.mode === "document"
-      ? { document: root, schema }
-      : { data: reconstructed_data_internal(root), schema };
+    definitions.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root, schema });
   }
-  return definitions;
+  return capture_library_definitions(definitions);
 }
 
 function topology_css(operation: LiveMapLibraryAddOperation): Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> {
@@ -212,7 +255,7 @@ export function install_client_projected_topology_internal(
     .sort((a, b) => a.name.localeCompare(b.name));
   const predicted = make_hosted_registry([...application, ...existing.filter((entry) => entry.scope === "hson-internal")]);
   if (predicted.digest !== expectedDigest) throw new Error("Projected topology registry digest is incompatible.");
-  const prepared = prepare_hosted_livemap_library_add_internal(map, owner, definitions, topology_css(operation));
+  const prepared = prepare_library_add(map, owner, definitions, topology_css(operation));
   let installSystem: (() => void) | undefined;
   try {
     installSystem = system === undefined ? undefined
@@ -239,9 +282,16 @@ export function prepare_hosted_livemap_library_add_internal(
   inputs: LiveMapDefinitions,
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
 ): Readonly<{ transition: PreparedLiveMapAuthorityTransition; afterInstall: () => void }> {
+  return prepare_library_add(map, owner, public_library_definitions(inputs), css);
+}
+
+function prepare_library_add(
+  map: LiveMap, owner: object, definitions: readonly CanonicalLibraryDefinition[],
+  css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
+): Readonly<{ transition: PreparedLiveMapAuthorityTransition; afterInstall: () => void }> {
   const prepare = HOSTED_LIBRARY_ADMISSION.get(map);
   if (prepare === undefined) throw new Error("Hosted Library admission requires a multi-library LiveMap.");
-  return prepare(owner, inputs, css);
+  return prepare(owner, definitions, css);
 }
 
 /** Internal ownership evidence for write-propagating link admission. */
@@ -250,10 +300,10 @@ export function client_library_source_internal(value: object): "authority-projec
 }
 
 /** Admit authorized local initializers without exposing topology mutation on the public map. @internal */
-export function add_client_local_libraries_internal(map: LiveMap, inputs: LiveMapDefinitions): LiveMapCommit {
+export function add_client_local_libraries_internal(map: LiveMap, definitions: readonly CanonicalLibraryDefinition[]): LiveMapCommit {
   const admit = CLIENT_LOCAL_LIBRARY_ADMISSION.get(map);
   if (admit === undefined) throw new Error("Client-local topology admission requires a composed LiveMap.");
-  return admit(inputs);
+  return admit(capture_library_definitions(definitions));
 }
 
 /** Observe terminal retirement of one projected document binding. @internal */
@@ -302,16 +352,28 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
   clientSnapshot?: PortableAggregateSnapshot,
   initialCss: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
 ): LiveMap<LiveMapKnownDefinitions<TLibraries>> {
-  const entries = Object.entries(inputs);
+  return make_livemap_library_receiver(public_library_definitions(inputs), systems, clientSnapshot, initialCss) as LiveMap<LiveMapKnownDefinitions<TLibraries>>;
+}
 
-  const definitions = entries.map(([name, value]) => ({
-    name,
-    input: must_library_input(name, value),
-  }));
-  const built = make_livemap_registry_authority(definitions.map(({ name, input }) => ({
-    root: library_root(input),
-    hsonSchema: input.schema,
-    family: "data" in input ? "data" as const : "document" as const,
+/** Fresh graph-native construction; portable inputs never establish runtime provenance. @internal */
+export function make_livemap_from_canonical_libraries_internal(
+  definitions: readonly CanonicalLibraryDefinition[],
+  systems: readonly InitialSystemState[] = [],
+  clientSnapshot?: PortableAggregateSnapshot,
+  initialCss: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
+): LiveMap {
+  return make_livemap_library_receiver(capture_library_definitions(definitions), systems, clientSnapshot, initialCss);
+}
+
+function make_livemap_library_receiver(
+  definitions: readonly CanonicalLibraryDefinition[], systems: readonly InitialSystemState[],
+  clientSnapshot: PortableAggregateSnapshot | undefined,
+  initialCss: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
+): LiveMap {
+  const built = make_livemap_registry_authority(definitions.map(({ name, root, schema, family }) => ({
+    root,
+    hsonSchema: schema,
+    family,
     ...(Object.hasOwn(initialCss, name) ? { css: decode_portable_document_stylesheet(initialCss[name]) } : {}),
   })), systems);
   const aggregate = built.aggregate;
@@ -319,17 +381,18 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
   const named = new Map<string, NamedLibrary>();
   const selectedFacades = new Map<string, LiveMapDataLibrary | LiveMapDocumentLibrary>();
 
-  const add = (name: string, input: LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>, identity: LiveMapLibraryIdentity): void => {
+  const add = (definition: Pick<CanonicalLibraryDefinition, "name" | "family" | "schema">, identity: LiveMapLibraryIdentity): void => {
+    const { name, family, schema } = definition;
     if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
     namesByIdentity.set(identity, name);
-    named.set(name, Object.freeze({ name, identity, input }));
+    named.set(name, Object.freeze({ name, identity, family, schema }));
   };
 
   for (let index = 0; index < definitions.length; index += 1) {
     const definition = definitions[index];
     const identity = built.identities[index];
     if (definition === undefined || identity === undefined) throw new Error("LiveMap registry construction is incomplete.");
-    add(definition.name, definition.input, identity);
+    add(definition, identity);
   }
 
   const inspectedByIdentity = new Map(
@@ -342,7 +405,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       name: entry.name,
       identity: entry.identity,
       mode: inspected.mode,
-      schema: entry.input.schema,
+      schema: entry.schema,
     });
   }));
   if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot);
@@ -439,7 +502,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     if (existing !== undefined) return existing;
     const library = named.get(name);
     if (library === undefined) throw new Error(`Unknown LiveMap Library ${JSON.stringify(name)}.`);
-    const facade = "data" in library.input
+    const facade = library.family === "data"
       ? make_data_library(library, aggregate, public_commit)
       : make_document_library(library, aggregate, public_commit);
     if (clientSnapshot !== undefined) CLIENT_LIBRARY_SOURCES.set(facade,
@@ -448,21 +511,16 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     return facade;
   };
 
-  const addLibrariesInternal = (inputs: LiveMapDefinitions,
+  const addLibrariesInternal = (additions: readonly CanonicalLibraryDefinition[],
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
     clientLocal = false): LiveMapCommit => {
     if (!clientLocal) aggregate.assertPublicMutationAllowed();
-    const additions = Object.entries(inputs).map(([name, value]) => Object.freeze({
-      name, input: must_library_input(name, value),
-    }));
     for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
     }
-    const definitions = additions.map(({ name, input }) => Object.freeze({
-      name,
-      root: library_root(input),
-      hsonSchema: input.schema,
-      family: "data" in input ? "data" as const : "document" as const,
+    const definitions = additions.map(({ name, root, schema, family }) => Object.freeze({
+      name, root, family,
+      hsonSchema: schema,
       ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
     }));
     const admit = clientLocal ? aggregate.addClientLocalLibraries : aggregate.addLibraries;
@@ -471,12 +529,15 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
         const definition = additions[index];
         const identity = identities[index];
         if (definition === undefined || identity === undefined) throw new Error("LiveMap admission lost a Library identity.");
-        add(definition.name, definition.input, identity);
+        add(definition, identity);
       }
     });
     return public_commit(commit);
   };
-  const addLibraries = (inputs: LiveMapDefinitions): LiveMapCommit => addLibrariesInternal(inputs);
+  const addLibraries = (inputs: LiveMapDefinitions): LiveMapCommit => {
+    aggregate.assertPublicMutationAllowed();
+    return addLibrariesInternal(public_library_definitions(inputs));
+  };
 
   const lib = Object.freeze((name: string) => selected(name));
 
@@ -512,7 +573,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       const operation = commit.operations[0];
       if (operation !== undefined && "domain" in operation.operation && operation.operation.domain === "css") {
         const binding = named.get(operation.library);
-        if (binding === undefined || "data" in binding.input) throw new Error("CSS replay requires a document Library.");
+        if (binding === undefined || binding.family === "data") throw new Error("CSS replay requires a document Library.");
         const normalized = canonical_portable_document_css_op(operation.operation);
         const current = aggregate.stylesheet(binding.identity);
         if (portable_document_stylesheet_equal(current, apply_portable_document_css_op(current, normalized))) {
@@ -552,12 +613,13 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     }),
   });
   register_internal_livemap_aggregate_owner(libraries, aggregate);
+  EXACT_LIBRARY_ADMISSION.set(libraries, (definitions) => addLibrariesInternal(definitions));
   if (clientSnapshot !== undefined) CLIENT_LOCAL_LIBRARY_ADMISSION.set(libraries,
-    (inputs) => addLibrariesInternal(inputs, {}, true));
+    (definitions) => addLibrariesInternal(definitions, {}, true));
   register_echo_map_capability_internal(libraries, Object.freeze({
     revision: () => aggregate.inspect().revision,
     documentMaps: () => Object.freeze([...named.values()]
-      .filter((entry) => "document" in entry.input
+      .filter((entry) => entry.family === "document"
         && (clientSnapshot === undefined || clientSnapshot.registry.libraries.some((projected) => projected.name === entry.name)))
       .map((entry) => selected(entry.name))),
     acquire(owner: object) {
@@ -580,19 +642,14 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     },
   }));
   PUBLIC_MULTI_LIBRARY_MAPS.add(libraries);
-  HOSTED_LIBRARY_ADMISSION.set(libraries, (owner, inputs, css) => {
-    const additions = Object.entries(inputs).map(([name, value]) => Object.freeze({
-      name, input: must_library_input(name, value),
-    }));
+  HOSTED_LIBRARY_ADMISSION.set(libraries, (owner, additions, css) => {
     if (additions.length === 0) throw new Error("Hosted Library admission batch is empty.");
     for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
     }
-    const prepared = aggregate.prepareAddLibrariesManaged(owner, additions.map(({ name, input }) => Object.freeze({
-      name,
-      root: library_root(input),
-      hsonSchema: input.schema,
-      family: "data" in input ? "data" as const : "document" as const,
+    const prepared = aggregate.prepareAddLibrariesManaged(owner, additions.map(({ name, root, schema, family }) => Object.freeze({
+      name, root, family,
+      hsonSchema: schema,
       ...(css !== undefined && Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
     })));
     return Object.freeze({
@@ -602,7 +659,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
           const definition = additions[index];
           const identity = prepared.identities[index];
           if (definition === undefined || identity === undefined) throw new Error("Hosted Library admission lost an identity.");
-          add(definition.name, definition.input, identity);
+          add(definition, identity);
         }
       },
     });
@@ -612,14 +669,12 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     if (prior === undefined) throw new Error("Client projection is unavailable.");
     const previousNames = prior.registry.libraries.filter((entry) => entry.scope === undefined)
       .map((entry) => entry.name);
-    const inputs = new Map<string, NamedLibrary["input"]>();
+    const inputs = new Map<string, Pick<CanonicalLibraryDefinition, "name" | "family" | "schema">>();
     for (const entry of snapshot.libraries) {
       const contract = snapshot.registry.libraries.find((candidate) => candidate.name === entry.name);
       if (contract === undefined || contract.scope === "hson-internal") continue;
       const schema = HsonSchemaHandle.fromHson(entry.schema);
-      const root = decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES);
-      inputs.set(entry.name, must_library_input(entry.name, entry.mode === "document"
-        ? { document: root, schema } : { data: reconstructed_data_internal(root), schema }));
+      inputs.set(entry.name, { name: entry.name, family: entry.mode === "document" ? "document" : "data", schema });
     }
     aggregate.restoreClientHostedManaged(owner, snapshot, (projected, retired) => {
       const nextByName = new Map(projected.map((entry) => [entry.name, entry.identity]));
@@ -638,7 +693,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
         if (named.get(entry.name)?.identity === entry.identity) continue;
         const input = inputs.get(entry.name);
         if (input === undefined) throw new Error("Reconciled Library definition is unavailable.");
-        add(entry.name, input, entry.identity);
+        add(input, entry.identity);
       }
       void retired;
       for (const facade of retiredFacades) {
@@ -646,7 +701,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       }
     });
   });
-  return libraries as unknown as LiveMap<LiveMapKnownDefinitions<TLibraries>>;
+  return libraries as unknown as LiveMap;
 }
 
 /**
@@ -676,15 +731,15 @@ export function make_livemap_client_composition_from_portable_aggregate_internal
   snapshot: PortableAggregateSnapshot,
 ): LiveMap {
   const admitted = portable_aggregate_inputs_internal(snapshot);
-  return make_livemap_libraries(admitted.inputs, admitted.systems, snapshot);
+  return make_livemap_from_canonical_libraries_internal(admitted.inputs, admitted.systems, snapshot);
 }
 
 /** Structurally admit one authority partition without constructing its runtime. @internal */
 export function portable_aggregate_inputs_internal(
   snapshot: PortableAggregateSnapshot,
-): Readonly<{ inputs: Readonly<Record<string, LiveMapLibraryInput>>; systems: readonly InitialSystemState[] }> {
+): Readonly<{ inputs: readonly CanonicalLibraryDefinition[]; systems: readonly InitialSystemState[] }> {
   assert_portable_aggregate_snapshot_shape(snapshot);
-  const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
+  const inputs: CanonicalLibraryDefinition[] = [];
   const systems: InitialSystemState[] = [];
   for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
     const entry = snapshot.registry.libraries[index];
@@ -701,9 +756,7 @@ export function portable_aggregate_inputs_internal(
     if (entry.scope === "hson-internal") {
       systems.push(Object.freeze({ key: entry.name, transportName: entry.name, root, hsonSchema: schema }));
     } else {
-      inputs[entry.name] = entry.mode === "document"
-        ? { document: root, schema }
-        : { data: reconstructed_data_internal(root), schema };
+      inputs.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root, schema });
     }
   }
   return Object.freeze({ inputs: Object.freeze(inputs), systems: Object.freeze(systems) });
@@ -716,7 +769,7 @@ export function make_livemap_mirror_from_semantic_checkpoint_internal(
   if (checkpoint.registry.libraries.length !== checkpoint.libraries.length) {
     throw new Error("Semantic checkpoint registry is incomplete.");
   }
-  const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
+  const inputs: CanonicalLibraryDefinition[] = [];
   const systems: InitialSystemState[] = [];
   for (let index = 0; index < checkpoint.registry.libraries.length; index += 1) {
     const entry = checkpoint.registry.libraries[index];
@@ -730,12 +783,10 @@ export function make_livemap_mirror_from_semantic_checkpoint_internal(
       systems.push(Object.freeze({ key: entry.name, transportName: entry.name,
         root: library.root, hsonSchema: schema }));
     } else {
-      inputs[entry.name] = entry.mode === "document"
-        ? { document: library.root, schema }
-        : { data: reconstructed_data_internal(library.root), schema };
+      inputs.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root: library.root, schema });
     }
   }
-  const map = make_livemap_libraries(inputs, systems);
+  const map = make_livemap_from_canonical_libraries_internal(inputs, systems);
   internal_livemap_aggregate_authority(map).installSemanticCheckpoint(checkpoint);
   return map;
 }
@@ -751,7 +802,7 @@ export function make_livemap_mirror_from_snapshot_internal(
     throw new Error("LiveMap Libraries snapshot registry is malformed.");
   }
 
-  const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
+  const inputs: CanonicalLibraryDefinition[] = [];
   const systems: InitialSystemState[] = [];
   for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
     const registry = snapshot.registry.libraries[index];
@@ -775,12 +826,11 @@ export function make_livemap_mirror_from_snapshot_internal(
       }));
       continue;
     }
-    inputs[registry.name] = registry.mode === "document"
-      ? { document: root, schema: HsonSchemaHandle.fromHson(registry.schema) }
-      : { data: reconstructed_data_internal(root), schema: HsonSchemaHandle.fromHson(registry.schema) };
+    inputs.push({ name: registry.name, family: registry.mode === "document" ? "document" : "data", root,
+      schema: HsonSchemaHandle.fromHson(registry.schema) });
   }
 
-  const mirror = make_livemap_libraries(inputs, systems);
+  const mirror = make_livemap_from_canonical_libraries_internal(inputs, systems);
   const aggregate = internal_livemap_aggregate_authority(mirror);
   aggregate.restorePortableLibraries(snapshot);
   return mirror;
@@ -1269,12 +1319,4 @@ function library_root(input: LiveMapLibraryInput): HsonNode {
   return typeof input.document === "string"
     ? parse_hson(input.document, { allowTopLevelDocumentText: true })
     : input.document;
-}
-
-/** A string in the public data input is JSON source, so re-encode stored string values. */
-/** @internal Reconstruct a public data definition from one admitted exact root. */
-export function reconstructed_data_internal(root: HsonNode): JsonValue {
-  const qualified = admit_owned_livemap_root(root, "data", "LiveMap.reconstructData");
-  const value = node_to_json_value(qualified);
-  return typeof value === "string" ? JSON.stringify(value) : value;
 }

@@ -1,3 +1,6 @@
+import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import type { HsonNode } from "../src/core/types.ts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -179,4 +182,26 @@ await assert.rejects(validation.addLibraries({}), /requires a Library/i);
 // @ts-expect-error Local runtime additions are intentionally absent.
 await assert.rejects(validation.addLibraries({ local: [{ name: "local", initializer: { data: 1 } }] }), /private\/shared/i);
 validation.dispose();
+// Durable scalar codec fidelity is Cut 8; negative zero is covered at exact in-memory receivers.
+for (const fixture of orderedRootReconstructionFixtures.filter(entry => entry.id !== "structural-json-order.negative-zero")) {
+  const persistence = new MemoryCheckpointAdapter();
+  const options = { logicalMapId: `ordered-root-${fixture.id}`, shared: [{ name: "base", definition: { data: 1 } }], persistence };
+  const created = await hsonLiveMap.locus.resume(options);
+  await created.addLibraries({ shared: [{ name: "ordered", definition: { data: fixture.expectedJson } }] });
+  const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
+  assert.equal(canonical_hson_graph_equal(locus_map_internal(created).lib("ordered").root(), original), true);
+  const payload = locus_map_internal(created).capture().libraries.find(entry => entry.name === "ordered")!.root.payload;
+  created.dispose();
+  for (const checkpoint of [false, true]) {
+    const stop = forbid_structural_js_enumeration();
+    let resumed;
+    try { resumed = await hsonLiveMap.locus.resume(options); }
+    finally { stop(); }
+    assert.equal(canonical_hson_graph_equal(locus_map_internal(resumed).lib("ordered").root(), original), true, fixture.id);
+    assert.equal(locus_map_internal(resumed).capture().libraries.find(entry => entry.name === "ordered")!.root.payload, payload);
+    if (!checkpoint) await hsonLiveMap.locus.checkpoint(resumed);
+    resumed.dispose();
+  }
+}
+
 console.log("ok - final Locus construction and durable ownership");

@@ -1,4 +1,4 @@
-import type { LiveMap, LiveMapDefinitions } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
   Locus,
@@ -6,7 +6,7 @@ import type {
   LocusPersistenceAdapter,
 } from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { node_to_json_value } from "../livemap/livemap.editor.js";
+import { add_livemap_canonical_libraries_internal, type CanonicalLibraryDefinition } from "../livemap/livemap.libraries.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import { registry_from_entries, type HostedAggregateCommit } from "../livemap/livemap.hosted.js";
 import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
@@ -204,20 +204,17 @@ export async function resume_registry_locus<
       `Hosted registry topology requires complete Locus ownership: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   }
   if (restoredCheckpoint.registry.digest !== initial.registryDigest) {
-    const definitions: Record<string, LiveMapDefinitions[string]> = Object.create(null);
+    const definitions: CanonicalLibraryDefinition[] = [];
     for (const [index, entry] of restoredCheckpoint.registry.libraries.entries()) {
       if (entry.scope === "hson-internal" || !runtimeOwnership.has(entry.name)) continue;
       const root = restoredCheckpoint.libraries[index];
       if (root?.name !== entry.name) throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
         "Restored topology root order is invalid.");
       const schema = HsonSchema.fromHson(entry.schema);
-      if (entry.mode === "document") definitions[entry.name] = { document: root.root, schema };
-      else {
-        const value = node_to_json_value(root.root);
-        definitions[entry.name] = { data: typeof value === "string" ? JSON.stringify(value) : value, schema };
-      }
+      definitions.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data",
+        root: root.root, schema });
     }
-    options.map.addLibraries(definitions);
+    add_livemap_canonical_libraries_internal(options.map, definitions);
   }
   // Rebind the durable authority fence and begin a fresh local identity epoch.
   internal_livemap_aggregate_authority(options.map).installSemanticCheckpoint(restoredCheckpoint);
