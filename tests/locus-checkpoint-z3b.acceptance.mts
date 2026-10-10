@@ -1,4 +1,6 @@
 import { encode_checkpoint_chunks } from "../src/api/locus/locus.checkpoint-chunks.ts";
+import { exact_tagged_payload, invalid_tagged_graphs } from "./helpers/tagged-codec-fixture.mts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
@@ -369,6 +371,40 @@ await case_("missing and corrupt chunks, bad descriptors, schema and tail gaps f
       prevRev: manifest.rev + 1, rev: manifest.rev + 2, operations: [] } }];
   adapter.seed(id, gap);
   await expectInvalid();
+});
+
+await case_("durable graph tails reject malformed current tagged content without historical fallback", async () => {
+  const adapter = new MemoryCheckpointAdapter();
+  const id = "z3b-strict-tagged-tail";
+  const source = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document">` } });
+  const options = authority_definition_from_fixture_options({ map: source, persistence: adapter, logicalMapId: id,
+    libraries: [{ name: "page", ownership: "shared" as const }], defaultProjection: { libraries: ["page"] } });
+  const locus = await hsonLiveMap.locus.resume({ ...options, authorizeProjection: () => ({ libraries: ["page"] }) });
+  await hsonLiveMap.locus.checkpoint(locus);
+  await locus.stage(draft => {
+    const page = draft.lib("page");
+    if (page.mode !== "document") throw new Error("Expected page.");
+    page.content.insert({ kind: "path", path: validate_document_path([]) }, 1, { $_tag: "span", $_content: [] });
+  });
+  const expected = locus.lib("page").root();
+  const valid = adapter.state(id)!;
+  assert.equal(valid.commits.length, 1);
+  locus.dispose();
+  for (const invalid of invalid_tagged_graphs) {
+    const malformed = { ...valid, commits: valid.commits.map(record => ({ ...record,
+      commit: { ...record.commit, operations: record.commit.operations.map(operation => {
+        const representation = JSON.parse(operation.payload);
+        representation.content = exact_tagged_payload(invalid.value);
+        return { ...operation, payload: JSON.stringify(representation) };
+      }) } })) };
+    adapter.seed(id, malformed);
+    await assert.rejects(() => load_persistent_locus_hosted_aggregate_internal(id, { persistence: adapter }), /invalid/i);
+    assert.deepEqual(adapter.state(id), malformed);
+  }
+  adapter.seed(id, valid);
+  const recovered = await load_persistent_locus_hosted_aggregate_internal(id, { persistence: adapter });
+  assert.ok(recovered);
+  assert.equal(canonical_hson_graph_equal(recovered.map.lib("page").root(), expected), true);
 });
 
 await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and restore", async () => {

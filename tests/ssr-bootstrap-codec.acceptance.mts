@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { corrupt_tagged_payload } from "./helpers/tagged-codec-fixture.mts";
 import {
   Hson, decode_ssr_bootstrap, encode_ssr_bootstrap, hsonLiveMap,
   SsrBootstrapCodecError,
 } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
+import { ViewStateSnapshotCodecError } from "../src/api/livemap/livemap.document.view-state-codec.error.ts";
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const utf8 = new TextEncoder();
@@ -71,6 +73,41 @@ assert.equal(Object.is((installedState.snap() as { value: number }).value, -0), 
 
 const canonicalJson = decodeText(encoded);
 const parsed = JSON.parse(canonicalJson) as Record<string, unknown>;
+const beforeMalformed = map.capture();
+const existingLibraries = bootstrap.libraries.map(entry => map.lib(entry.name));
+let malformedPublications = 0;
+const stopMalformed = map.commits.observe(() => { malformedPublications += 1; });
+for (const name of ["state", "page"]) {
+  for (const kind of ["empty metadata", "nested empty metadata"] as const) {
+    const wire = JSON.parse(canonicalJson);
+    assert.deepEqual(decode_ssr_bootstrap(encodeText(JSON.stringify(wire))), decoded);
+    const entry = wire.payload.libraries.find((library: { name: string }) => library.name === name);
+    assert.ok(entry);
+    const originalPayload = entry.rootPayload;
+    entry.rootPayload = corrupt_tagged_payload(originalPayload, kind);
+    assert.notEqual(entry.rootPayload, originalPayload);
+    const invalidPayload = entry.rootPayload;
+    entry.rootPayload = originalPayload;
+    assert.deepEqual(wire, parsed); // Every outer field and other library is unchanged.
+    entry.rootPayload = invalidPayload;
+    assert.throws(() => decode_ssr_bootstrap(encodeText(JSON.stringify(wire))), cause =>
+      cause instanceof SsrBootstrapCodecError && cause.phase === "decode"
+      && cause.code === "SSR_BOOTSTRAP_PAYLOAD_INVALID"
+      && cause.cause instanceof ViewStateSnapshotCodecError
+      && cause.cause.code === "VIEW_STATE_SNAPSHOT_GRAPH_INVALID"
+      && cause.cause.cause instanceof Error && "code" in cause.cause.cause
+      && cause.cause.cause.code === "HSON_EMPTY_METADATA");
+    const malformed = { ...bootstrap, libraries: bootstrap.libraries.map(library => library.name === name
+      ? { ...library, root: { ...library.root, payload: invalidPayload } } : library) };
+    assert.throws(() => encode_ssr_bootstrap(malformed), cause => cause instanceof SsrBootstrapCodecError
+      && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
+    assert.throws(() => install_libraries_snapshot(malformed));
+    assert.deepEqual(map.capture(), beforeMalformed);
+    bootstrap.libraries.forEach((library, index) => assert.equal(map.lib(library.name), existingLibraries[index]));
+    assert.equal(malformedPublications, 0);
+  }
+}
+stopMalformed();
 assert.equal(canonicalJson.includes("identityEpoch"), false);
 assert.equal(canonicalJson.includes("issuedQuids"), false);
 expectCode(encodeText(` ${canonicalJson}`), "SSR_BOOTSTRAP_NON_CANONICAL");

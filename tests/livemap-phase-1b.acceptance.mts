@@ -1,4 +1,5 @@
 import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
+import { corrupt_tagged_payload } from "./helpers/tagged-codec-fixture.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { document_html } from "./helpers/document-library.mts";
@@ -208,6 +209,34 @@ check("portable replay and fresh install preserve topology guarantees", () => {
   assert.equal(map.capture().registry.digest, after.registry.digest);
   assert.equal(document_html(map.lib("page")), "<main>Hello</main>");
   assert.equal(map.lib("page"), oldPage);
+});
+
+check("topology tagged payload contradictions reject atomically and valid retry succeeds", () => {
+  const source = hsonLiveMap.fromLibraries({ existing: { data: { count: 1 } } });
+  const target = install_libraries_snapshot(source.capture()).map;
+  const existing = target.lib("existing");
+  const before = target.capture();
+  const epoch = livemap_identity_epoch_accounting(existing);
+  let published = 0;
+  const stop = target.commits.observe(() => { published += 1; });
+  const valid = source.addLibraries({ added: { data: { items: ["a", "b"] } } });
+  const operation = valid.operations[0];
+  assert.ok(operation && "kind" in operation.operation && operation.operation.kind === "library-add");
+  for (const kind of ["empty metadata", "nested empty metadata", "permuted array"] as const) {
+    const invalid = { ...valid, operations: [{ ...operation, operation: { ...operation.operation,
+      libraries: operation.operation.libraries.map(entry => ({ ...entry, root: { ...entry.root,
+        payload: corrupt_tagged_payload(entry.root.payload, kind) } })) } }] };
+    assert.throws(() => target.replay(invalid));
+    assert.deepEqual(target.capture(), before);
+    assert.equal(target.lib("existing"), existing);
+    assert.deepEqual(livemap_identity_epoch_accounting(existing), epoch);
+    assert.equal(published, 0);
+  }
+  target.replay(valid);
+  assert.equal(published, 1);
+  assert.equal(target.lib("existing"), existing);
+  assert.equal(canonical_hson_graph_equal(target.lib("added").root(), source.lib("added").root()), true);
+  stop();
 });
 
 check("forward replay and compatible restore preserve shared library handles", () => {

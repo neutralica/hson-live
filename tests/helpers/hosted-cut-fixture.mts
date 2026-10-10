@@ -1,4 +1,5 @@
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./locus-definition-fixture.mts";
+import { strict_tagged_receiver_controls } from "./strict-tagged-receivers.mts";
 import { Hson, hsonLiveMap, encode_ssr_bootstrap, decode_ssr_bootstrap, type HsonSchema } from "../../src/index.ts";
 
 const Page: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
@@ -18,5 +19,5 @@ export async function hosted_cut_fixture() {
   const encoded = encode_ssr_bootstrap(cut);
   const decoded = decode_ssr_bootstrap(encoded);
   locus.dispose();
-  return { cut, encoded, decoded, hasDocument: "document" in globalThis };
+  return { cut, encoded, decoded, strictTagged: strict_tagged_receiver_controls(), hasDocument: "document" in globalThis };
 }

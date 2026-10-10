@@ -1,4 +1,5 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
+import { capture_exact_hson_graph, qualify_exact_hson_graph_content } from "../../internal/exact-node-qualification.js";
 import { scan_hson_node_quids } from "../../core/hson-node-quid.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
@@ -137,6 +138,7 @@ function validate_content(content: HsonNode | Primitive): void {
   }
   try {
     assert_invariants(content, "locus graph-content codec");
+    qualify_exact_hson_graph_content(capture_exact_hson_graph(content, "locus graph-content codec", false), "locus graph-content codec");
     scan_hson_node_quids(content);
   } catch (cause) {
     throw graph_error(

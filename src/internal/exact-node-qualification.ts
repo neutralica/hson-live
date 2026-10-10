@@ -207,6 +207,19 @@ export type ExactHsonRole = 'complete' | 'data' | 'member' | 'object-relationshi
 type Role = ExactHsonRole;
 type VerifyJob = { node: HsonNode; role: Role; path: Trace; index?: number };
 
+/** Generic runtime content may be a source carrier or a standalone relationship.
+ * Receiving family, Schema and identity authority remain with its owner. @internal
+ */
+export function qualify_exact_hson_graph_content(root: HsonNode, operation: string): void {
+  const first = root.$_content[0];
+  const role: ExactHsonRole = root.$_tag === ROOT_TAG
+    ? is_Node(first) && (first.$_tag === OBJ_TAG || first.$_tag === ARR_TAG || first.$_tag === VAL_TAG)
+      ? 'data-root' : 'document-source'
+    : root.$_tag === ELEM_TAG ? 'element-content'
+      : structuralTags.includes(root.$_tag) ? 'complete' : 'runtime-branch';
+  qualify_exact_hson_graph(root, operation, role, true);
+}
+
 /** Only captured/private graphs enter this contextual verifier. */
 export function qualify_exact_hson_graph(root: HsonNode, operation: string, rootRole: Role = 'complete', runtime = false): void {
   const seen = new WeakMap<object, Set<Role>>();

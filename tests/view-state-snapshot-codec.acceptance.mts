@@ -1,4 +1,5 @@
 import type { LiveMapDocumentCapture } from "../src/api/livemap/livemap.document.capture.ts";
+import * as viewStateCodec from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
@@ -15,6 +16,7 @@ import {
   ViewStateSnapshotCodecError,
   type ViewStateSnapshotCodecErrorCode,
 } from "../src/api/livemap/livemap.document.view-state-codec.error.ts";
+import { corrupt_tagged_payload, machine_payload, tagged_node, invalid_tagged_graphs } from "./helpers/tagged-codec-fixture.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.view-state-snapshot-codec",
@@ -439,7 +441,7 @@ check("persisted QUIDs round-trip and invalid identity is rejected", () => {
   );
 });
 
-check("portable admission rejects empty bags while internal recovery retains its existing legacy policy", () => {
+check("current view-state encoding and decoding reject present-empty bags without repair", () => {
   const absent = round_trip(element_capture(node("div"))).decoded;
   const emptyAttrsCandidate = element_capture(node("div", [], {}));
   expect_codec_error(
@@ -470,13 +472,34 @@ check("portable admission rejects empty bags while internal recovery retains its
   assert.equal(Object.hasOwn(rootOf(absent), "$_meta"), false);
 
   const encodedAbsent = encode_view_state_snapshot(absent);
-  const legacyEmpty = encoding_with_payload(
+  const emptyRootMetadata = encoding_with_payload(
     add_empty_root_metadata(decoded_payload_value(encodedAbsent)),
   );
-  const decodedLegacy = decode_view_state_snapshot(legacyEmpty);
-  assert.equal(Object.hasOwn(decodedLegacy.root, "$_meta"), false);
-  assert.equal(canonical_hson_graph_equal(decodedLegacy.root, absent.root), true);
-  assert.equal(encode_view_state_snapshot(decodedLegacy).payload, encodedAbsent.payload);
+  expect_codec_error(() => decode_view_state_snapshot(emptyRootMetadata), "VIEW_STATE_SNAPSHOT_GRAPH_INVALID");
+  const nestedEmptyMetadata = { ...encodedAbsent, payload: corrupt_tagged_payload(encodedAbsent.payload, "nested empty metadata") };
+  expect_codec_error(() => decode_view_state_snapshot(nestedEmptyMetadata), "VIEW_STATE_SNAPSHOT_GRAPH_INVALID");
+  for (const invalid of invalid_tagged_graphs) {
+    const malformed = { format: "view-state" as const, payload: machine_payload({
+      captureKind: "hson-document", mode: "document", revision: 0,
+      root: tagged_node("_hson_root", [tagged_node("_hson_elem", [invalid.value])]),
+    }) };
+    expect_codec_error(() => decode_view_state_snapshot(malformed), "VIEW_STATE_SNAPSHOT_GRAPH_INVALID");
+  }
+  const emptyAttrs = { format: "view-state" as const, payload: machine_payload({
+    captureKind: "hson-document", mode: "document", revision: 0,
+    root: tagged_node("_hson_root", [tagged_node("_hson_elem", [{
+      type: "node", tag: "span", attrs: { presence: "present", entries: [] },
+      meta: { presence: "present", entries: [] }, content: [],
+    }])]),
+  }) };
+  expect_codec_error(() => decode_view_state_snapshot(emptyAttrs), "VIEW_STATE_SNAPSHOT_GRAPH_INVALID");
+  const lawful = element_capture(node("div", [], undefined, { quid: "000000001" }));
+  assert.equal(canonical_hson_graph_equal(round_trip(lawful).decoded.root, lawful.root), true);
+  assert.equal(encode_view_state_snapshot(absent).payload, encodedAbsent.payload);
+});
+
+check("the internal view-state module exposes no historical recovery entrypoint", () => {
+  assert.equal(Object.hasOwn(viewStateCodec, "recover_legacy_view_state_snapshot"), false);
 });
 
 check("record insertion order does not affect deterministic payload text", () => {

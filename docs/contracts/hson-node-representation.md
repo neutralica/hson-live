@@ -52,7 +52,8 @@ empty storage container for inspection.
 - The diagnostics `_bad` node literal remains an intentional failure sentinel.
 - Demo render constants remain serialized application fixtures with populated
   attributes. Lifecycle and representation tests retain a few direct literals
-  specifically to exercise malformed or explicitly empty compatibility shapes.
+  specifically to exercise malformed or explicitly empty storage shapes and
+  verify strict rejection.
 
 ## Historical normalization and current exact admission
 

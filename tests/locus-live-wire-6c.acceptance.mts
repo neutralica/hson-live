@@ -1,4 +1,8 @@
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { exact_tagged_payload, invalid_tagged_graphs } from "./helpers/tagged-codec-fixture.mts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { local_initializers } from "./helpers/client-projection.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
@@ -31,7 +35,7 @@ function data(draft: LocusHostedAggregateStageWriter, name: string) {
   if (library.mode === "document") throw new Error("Expected data library.");
   return library;
 }
-function pair() {
+function pair(transform: (raw: string) => string = raw => raw) {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
   const received: string[] = [];
@@ -41,7 +45,7 @@ function pair() {
     onClose() { return () => {}; },
   };
   const socket: LocusWebSocketLike = {
-    send(raw) { received.push(raw); for (const listener of toClient) listener(raw); }, close() {},
+    send(raw) { received.push(raw); for (const listener of toClient) listener(transform(raw)); }, close() {},
     onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; },
   };
@@ -273,4 +277,50 @@ const interactionProgress = live(interactionConnection)[1]!;
 assert.equal(JSON.parse(interactionProgress).type, "progress");
 assert.equal(interactionProgress.includes("HIDDEN_INTERACTION_TWO_WIRE_SENTINEL"), false);
 interactionServer.dispose();
+for (const invalid of invalid_tagged_graphs) {
+  const source = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document">` } });
+  const server = create_locus_hosted_aggregate_authority_internal({ map: source,
+    libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
+    authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
+  let corrupt = true;
+  const connection = pair(raw => {
+    const message = JSON.parse(raw);
+    if (!corrupt || message.type !== "commit") return raw;
+    for (const operation of message.commit.commit.operations) {
+      const representation = JSON.parse(operation.payload);
+      representation.content = exact_tagged_payload(invalid.value);
+      operation.payload = JSON.stringify(representation);
+    }
+    return JSON.stringify(message);
+  });
+  let detach = bind_locus_websocket(server, connection.socket);
+  const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(connection.client), logicalMapId: server.logicalMapId,
+    initializers: local_initializers({ local: { data: { value: "retained" }, schema: Schema } }) });
+  await client.connect();
+  const owned = client.map;
+  if (!owned) throw new Error("Expected live replica.");
+  const before = owned.capture();
+  const local = owned.lib("local");
+  const page = owned.lib("page");
+  let publications = 0;
+  const stop = owned.commits.observe(() => { publications += 1; });
+  await server.stage(draft => {
+    const page = draft.lib("page");
+    if (page.mode !== "document") throw new Error("Expected page.");
+    page.content.insert({ kind: "path", path: validate_document_path([]) }, 1, { $_tag: "span", $_content: [] });
+  });
+  assert.deepEqual(owned.capture(), before, invalid.name);
+  assert.equal(client.lastAppliedRev, 0, invalid.name);
+  assert.equal(owned.lib("page"), page);
+  assert.equal(owned.lib("local"), local);
+  assert.equal(publications, 0);
+  corrupt = false;
+  client.disconnect(); detach();
+  detach = bind_locus_websocket(server, connection.socket);
+  await client.connect();
+  assert.equal(client.lastAppliedRev, 1);
+  assert.equal(canonical_hson_graph_equal(owned.lib("page").root(), source.lib("page").root()), true);
+  assert.equal(owned.lib("local"), local);
+  stop(); client.dispose(); detach(); server.dispose();
+}
 process.stdout.write("Step 6C live socket wire acceptance passed.\n");

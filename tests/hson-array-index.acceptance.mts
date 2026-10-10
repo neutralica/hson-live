@@ -1,5 +1,6 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
+import { exact_tagged_payload, invalid_tagged_graphs, tagged_node, tagged_item } from "./helpers/tagged-codec-fixture.mts";
 import { parseDocument } from "htmlparser2";
 import { hson } from "../src/hson.ts";
 import { Hson, type HsonSchema } from "../src/index.ts";
@@ -376,32 +377,34 @@ check("LiveMap splice and move regenerate dense indexes and preserve addressabil
   }
 });
 
-check("exact graph decoding canonicalizes valid permutations and rejects malformed sets", () => {
-  const payload = encode_exact_hson_value(reversed);
+check("exact graph decoding rejects physical/index permutations without repairing them", () => {
+  const payload = exact_tagged_payload(invalid_tagged_graphs[0].value);
   const representation = hson.fromHson(payload).toJson().value();
   if (typeof representation !== "object" || representation === null || Array.isArray(representation)) {
     throw new Error("Expected exact value representation record.");
   }
   assert.equal(Object.hasOwn(representation, "valueKind"), true);
-  const decoded = decode_exact_hson_value(payload);
+  assert.throws(() => encode_exact_hson_value(reversed));
+  assert.throws(() => decode_exact_hson_value(payload));
+  assert.throws(() => decode_locus_graph_content({ format: "hson-graph", payload }));
+  const decoded = decode_exact_hson_value(encode_exact_hson_value(ordered));
   assert.ok(is_Node(decoded));
   assert.deepEqual(payload_tags(decoded), ["a", "b"]);
   assert.deepEqual(indexes(decoded), ["0", "1"]);
-  assert.notEqual(encode_exact_hson_value(decoded), payload);
+  assert.equal(canonical_hson_graph_equal(decoded, ordered), true);
   const locusDecoded = decode_locus_graph_content({
     format: "hson-graph",
-    payload,
+    payload: encode_exact_hson_value(ordered),
   });
   assert.ok(is_Node(locusDecoded));
   assert.deepEqual(payload_tags(locusDecoded), ["a", "b"]);
   assert.throws(() => decode_exact_hson_value(
     hson.fromJson({ ...representation, unexpectedField: true }).toHson().noBreak().serialize(),
   ));
-  assert.throws(() =>
-    decode_exact_hson_value(
-      encode_exact_hson_value(array_root([item("0", "a"), item("0", "b")])),
-    )
-  );
+  assert.throws(() => decode_exact_hson_value(exact_tagged_payload(tagged_node("_hson_arr", [
+    tagged_item("0", tagged_node("_hson_str", [{ type: "string", value: "a" }])),
+    tagged_item("0", tagged_node("_hson_str", [{ type: "string", value: "b" }])),
+  ]))));
 });
 
 check("canonical document snapshots reject array structure inside an element branch", () => {

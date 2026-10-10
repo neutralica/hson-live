@@ -1,4 +1,5 @@
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
+import { corrupt_tagged_payload } from "./helpers/tagged-codec-fixture.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, type HsonSchema } from "../src/index.ts";
@@ -54,6 +55,14 @@ const projected = capture_locus_session_authority_projection_snapshot(map, sessi
 assert.deepEqual(projected, project_authority_snapshot(complete, effective));
 const encoded = encode_authority_projection_snapshot(projected);
 const decoded = decode_authority_projection_snapshot(encoded);
+for (const kind of ["empty metadata", "nested empty metadata"] as const) {
+  const malformed = { ...decoded, libraries: decoded.libraries.map(entry => ({ ...entry,
+    root: { ...entry.root, payload: corrupt_tagged_payload(entry.root.payload, kind) } })) };
+  assert.throws(() => admit_authority_projection_snapshot(malformed));
+  assert.throws(() => decode_authority_projection_snapshot(JSON.stringify(malformed)));
+  assert.throws(() => client_projection_map({ authority: malformed,
+    local: { localData: { data: { value: "safe" }, schema: DataSchema } } }));
+}
 assert.deepEqual(decoded, projected);
 const equivalentSource = { ...decoded, libraries: decoded.libraries.map(entry => ({ ...entry, schema: ` ${entry.schema} ` })) };
 assert.deepEqual(admit_authority_projection_snapshot(equivalentSource), decoded);

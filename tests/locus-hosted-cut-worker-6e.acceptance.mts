@@ -12,6 +12,8 @@ const worker = await new Promise<ReturnType<typeof hosted_cut_fixture>>((resolve
 });
 assert.equal(node.hasDocument, false);
 assert.equal(worker.hasDocument, false);
+assert.deepEqual(worker.strictTagged, node.strictTagged);
+assert.deepEqual(worker.strictTagged, { snapshotRejections: 5, actionRejections: 14, replayRejections: 7 });
 const parityBinding = "0".repeat(32);
 assert.notEqual(worker.cut.sessionBinding, node.cut.sessionBinding);
 assert.deepEqual({ ...worker.cut, sessionBinding: parityBinding }, { ...node.cut, sessionBinding: parityBinding });

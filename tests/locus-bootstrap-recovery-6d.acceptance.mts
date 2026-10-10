@@ -1,4 +1,6 @@
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
+import { corrupt_tagged_payload } from "./helpers/tagged-codec-fixture.mts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { capture_internal_document } from "./helpers/document-capture.mts";
@@ -24,6 +26,62 @@ const VisibleSchema: HsonSchema = Hson.schema`<type "data" content <value "strin
 const PrivateSchema: HsonSchema = Hson.schema`<type "data" content <PRIVATE_SCHEMA_SENTINEL "string">>`;
 const UnselectedSchema: HsonSchema = Hson.schema`<type "data" content <UNSELECTED_SCHEMA_SENTINEL "string">>`;
 const LocalSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+
+for (const kind of ["empty metadata", "nested empty metadata", "permuted array"] as const) {
+  const authority = hsonLiveMap.fromLibraries({ state: { data: { items: ["a", "b"] } } });
+  const server = create_locus_hosted_aggregate_authority_internal({ map: authority,
+    libraries: [{ name: "state", ownership: "shared" }], defaultProjection: { libraries: ["state"] },
+    authorizeProjection: () => ({ libraries: ["state"] }), maxHistoryBytes: 1 });
+  const pair = socket_pair();
+  const corrupt = (message: Record<string, unknown>) => {
+    if (message.type !== "recovery-snapshot") return message;
+    const snapshot = message.snapshot as AuthorityProjectionSnapshot;
+    return { ...message, snapshot: { ...snapshot, libraries: snapshot.libraries.map(entry => ({ ...entry,
+      root: { ...entry.root, payload: corrupt_tagged_payload(entry.root.payload, kind) } })) } };
+  };
+  pair.transformServer(corrupt);
+  let detach = bind_locus_websocket(server, pair.server);
+  const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId,
+    initializers: local_initializers({ local: { data: { value: "LOCAL_UNCHANGED" }, schema: LocalSchema } }) });
+  await assert.rejects(client.connect());
+  const rejectedInitialMap = client.map;
+  assert.equal(rejectedInitialMap, undefined);
+  pair.transformServer(message => message);
+  await client.connect();
+  const owned = client.map;
+  if (!owned) throw new Error("Expected composed map.");
+  const shared = owned.lib("state");
+  const local = owned.lib("local");
+  const before = owned.capture();
+  const engine = internal_livemap_aggregate_authority(owned);
+  const identities = engine.libraries();
+  const accounting = livemap_identity_epoch_accounting(local);
+  let published = 0;
+  const stop = owned.commits.observe(() => { published += 1; });
+  client.disconnect(); detach();
+  await server.stage(draft => {
+    const state = draft.lib("state");
+    if (state.mode === "document") throw new Error("Expected data state.");
+    state.at(["items", 0]).set("new");
+  });
+  pair.transformServer(corrupt);
+  detach = bind_locus_websocket(server, pair.server);
+  await assert.rejects(client.connect());
+  assert.equal(client.map, owned);
+  assert.deepEqual(owned.capture(), before);
+  assert.deepEqual(engine.libraries(), identities);
+  assert.deepEqual(livemap_identity_epoch_accounting(local), accounting);
+  assert.equal(owned.lib("state"), shared);
+  assert.equal(owned.lib("local"), local);
+  assert.equal(client.lastAppliedRev, 0);
+  assert.equal(published, 0);
+  pair.transformServer(message => message);
+  await client.connect();
+  assert.equal(client.lastAppliedRev, 1);
+  assert.equal(canonical_hson_graph_equal(owned.lib("state").root(), authority.lib("state").root()), true);
+  assert.equal(owned.lib("local"), local);
+  stop(); client.dispose(); detach(); server.dispose();
+}
 
 function fixture(maxHistoryBytes?: number, afterRecoveryCut?: () => void | Promise<void>) {
   const map = hsonLiveMap.fromLibraries({

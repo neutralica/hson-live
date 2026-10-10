@@ -2,7 +2,8 @@ import type { LiveMapLibraryAddOperation } from "../src/types/livemap.types.ts";
 import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import { install_client_local_initializers_internal } from "../src/api/locus/locus.local-initializer.ts";
+import { admit_locus_local_initializers, install_client_local_initializers_internal } from "../src/api/locus/locus.local-initializer.ts";
+import { corrupt_tagged_payload } from "./helpers/tagged-codec-fixture.mts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { sha256_sync } from "../src/core/sha256-sync.ts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
@@ -366,6 +367,48 @@ for (const fixture of orderedRootReconstructionFixtures) {
   assert.equal(client.lib("ui"), ui);
   assert.equal(client.lib("state"), shared);
   assert.deepEqual(livemap_identity_epoch_accounting(ui), accounting);
+  replica.dispose();
+}
+
+{
+  const { snapshot, client, engine, replica } = setup();
+  const shared = client.lib("state");
+  const local = client.lib("panel");
+  const before = client.capture();
+  const identities = engine.libraries();
+  const accounting = livemap_identity_epoch_accounting(local);
+  let publications = 0;
+  const stop = client.commits.observe(() => { publications += 1; });
+  const seeds = local_initializers({ later: { data: { items: ["a", "b"] } } });
+  for (const kind of ["empty metadata", "nested empty metadata", "permuted array"] as const) {
+    const malformed = seeds.map(seed => ({ ...seed, root: { ...seed.root,
+      payload: corrupt_tagged_payload(seed.root.payload, kind) } }));
+    // Retain the valid outer fingerprint: old decoding repaired back to that seed.
+    assert.equal(malformed[0]!.fingerprint, seeds[0]!.fingerprint);
+    assert.throws(() => admit_locus_local_initializers(malformed));
+    assert.throws(() => compose_client_portable_aggregate_internal(snapshot, malformed));
+    assert.throws(() => install_client_local_initializers_internal(client, malformed));
+    assert.deepEqual(client.capture(), before);
+    assert.deepEqual(engine.libraries(), identities);
+    assert.deepEqual(livemap_identity_epoch_accounting(local), accounting);
+    assert.equal(client.lib("state"), shared);
+    assert.equal(client.lib("panel"), local);
+    assert.equal(publications, 0);
+  }
+  for (const kind of ["empty metadata", "nested empty metadata"] as const) {
+    const malformed = { ...snapshot, libraries: snapshot.libraries.map(entry => ({ ...entry,
+      root: { ...entry.root, payload: corrupt_tagged_payload(entry.root.payload, kind) } })) };
+    assert.throws(() => compose_client_portable_aggregate_internal(malformed, []));
+    assert.throws(() => replica.restoreHosted(malformed));
+    assert.deepEqual(client.capture(), before);
+    assert.equal(publications, 0);
+  }
+  stop();
+  install_client_local_initializers_internal(client, seeds);
+  assert.equal(canonical_hson_graph_equal(client.lib("later").root(), hsonTransform.fromJson({ items: ["a", "b"] }).toNode()), true);
+  assert.equal(client.lib("panel"), local);
+  replica.restoreHosted(snapshot);
+  assert.equal(client.lib("state"), shared);
   replica.dispose();
 }
 

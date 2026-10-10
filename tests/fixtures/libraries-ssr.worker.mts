@@ -1,4 +1,5 @@
 import { document_html } from "../helpers/document-library.mts";
+import { strict_tagged_receiver_controls } from "../helpers/strict-tagged-receivers.mts";
 import { parentPort } from "node:worker_threads";
 import { Hson, decode_ssr_bootstrap, encode_ssr_bootstrap, hsonLiveMap, type HsonSchema } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
@@ -32,6 +33,7 @@ parentPort?.postMessage(Object.freeze({
   state: state.snap(),
   page: installed.lib("page").root(),
   hasDocument: "document" in globalThis,
+  strictTagged: strict_tagged_receiver_controls(),
   runtimeAdmission: Object.freeze({ rev: runtime.rev, html: document_html(runtime.lib("runtimePage")),
     replayDigest: runtimeReplay.capture().registry.digest, digest: runtime.capture().registry.digest }),
 }));

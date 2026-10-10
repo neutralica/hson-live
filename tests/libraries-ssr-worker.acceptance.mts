@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { strict_tagged_receiver_controls } from "./helpers/strict-tagged-receivers.mts";
 import { Hson, encode_ssr_bootstrap, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
@@ -24,6 +25,8 @@ const worker = await new Promise<any>((resolve, reject) => {
 });
 
 assert.equal(worker.hasDocument, false);
+assert.deepEqual(worker.strictTagged, strict_tagged_receiver_controls());
+assert.deepEqual(worker.strictTagged, { snapshotRejections: 5, actionRejections: 14, replayRejections: 7 });
 assert.deepEqual(worker.runtimeAdmission, {
   rev: 1, html: "<main>worker</main>", digest: worker.runtimeAdmission.digest,
   replayDigest: worker.runtimeAdmission.digest,

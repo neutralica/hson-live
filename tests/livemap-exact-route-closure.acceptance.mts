@@ -1,4 +1,5 @@
 import { is_Node } from "../src/core/node-guards.ts";
+import { strict_tagged_receiver_controls } from "./helpers/strict-tagged-receivers.mts";
 import { hsonTransform } from "../src/api/transform/transform.facade.ts";
 import { ANY_DATA } from "../src/api/schema/hson-schema.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -186,6 +187,10 @@ for (const fixture of orderedRootReconstructionFixtures) {
     assert.equal(canonical_hson_graph_equal(hsonTransform.fromHson(hsonTransform.fromNode(fixture.graph).toHson().serialize()).toNode(), fixture.graph), true);
   });
 }
+
+check("malformed tagged snapshots, document actions and portable replay reject before publication", () => {
+  assert.deepEqual(strict_tagged_receiver_controls(), { snapshotRejections: 5, actionRejections: 14, replayRejections: 7 });
+});
 
 process.stdout.write(`# ${checks} exact registry closure checks passed\n`);
 testEvents.terminal("pass");

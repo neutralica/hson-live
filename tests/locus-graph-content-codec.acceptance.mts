@@ -4,11 +4,15 @@ import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-cod
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { is_Node } from "../src/core/node-guards.ts";
+import type { HsonNode } from "../src/core/types.ts";
+import { exact_tagged_payload, invalid_tagged_graphs } from "./helpers/tagged-codec-fixture.mts";
+import { decode_exact_hson_value, encode_exact_hson_value } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import {
   decode_locus_graph_content,
   decode_locus_portable_graph_content,
   encode_locus_portable_graph_content,
   encode_locus_graph_content,
+  is_locus_encoded_graph_content,
   LocusGraphContentCodecError,
 } from "../src/api/locus/locus.graph-content-codec.ts";
 
@@ -74,8 +78,60 @@ check("exact graph payload round-trips nested nodes, typed attributes, structure
 });
 
 check("canonical primitives round-trip without JSON-node projection", () => {
-  for (const value of ["text", 0, false, null] as const) {
+  for (const value of ["text", "", 0, -0, false, true, null] as const) {
     assert.deepEqual(decode_locus_graph_content(encode_locus_graph_content(value)), value);
+  }
+});
+
+check("direct malformed machine graphs reject without selecting recovery", () => {
+  for (const invalid of invalid_tagged_graphs) {
+    const payload = exact_tagged_payload(invalid.value);
+    assert.throws(() => decode_exact_hson_value(payload), invalid.name);
+    expect_rejection({ format: "hson-graph", payload }, "LOCUS_GRAPH_CONTENT_PAYLOAD_INVALID");
+    assert.equal(is_locus_encoded_graph_content({ format: "hson-graph", payload }), false, invalid.name);
+    assert.throws(() => decode_locus_portable_graph_content({ format: "hson-graph-portable", payload }), invalid.name);
+  }
+  const invalidGraphs: HsonNode[] = [
+    { $_tag: "span", $_content: [], $_meta: {} },
+    { $_tag: "_hson_elem", $_content: [{ $_tag: "span", $_content: [], $_meta: {} }] },
+    { $_tag: "_hson_obj", $_content: [{ $_tag: "_hson_obj", $_content: [] }] },
+  ];
+  for (const invalid of invalidGraphs) {
+    assert.throws(() => encode_exact_hson_value(invalid));
+    assert.throws(() => encode_locus_graph_content(invalid));
+  }
+});
+
+check("generic carriers preserve lawful runtime distinctions with independent graph oracles", () => {
+  const str = (value: string): HsonNode => ({ $_tag: "_hson_str", $_content: [value] });
+  const graphs: HsonNode[] = [
+    { $_tag: "_hson_root", $_content: [{ $_tag: "_hson_obj", $_content: [] }] },
+    { $_tag: "_hson_root", $_content: [{ $_tag: "_hson_arr", $_content: [] }] },
+    { $_tag: "_hson_root", $_content: [{ $_tag: "_hson_val", $_content: [-0] }] },
+    { $_tag: "_hson_root", $_content: [{ $_tag: "_hson_elem", $_content: [str("")] }] },
+    { $_tag: "_hson_arr", $_content: [] },
+    { $_tag: "_hson_val", $_content: [-0] },
+    { $_tag: "_hson_elem", $_content: [str("")] },
+    { $_tag: "span", $_content: [{ $_tag: "_hson_elem", $_content: [str(""), str(" "), str("tail")] }],
+      $_attrs: { checked: false, count: -0, optional: null, style: { width: { value: 2, unit: undefined } } }, $_meta: { quid: "000000001" } },
+    { $_tag: "span", $_content: [], $_attrs: { style: {} } },
+    { $_tag: "member", $_content: [{ $_tag: "_hson_obj", $_content: [str("")] }] },
+  ];
+  for (const graph of graphs) {
+    const wire = encode_locus_graph_content(graph);
+    const decoded = decode_locus_graph_content(wire);
+    assert.ok(is_Node(decoded));
+    assert.equal(canonical_hson_graph_equal(decoded, graph), true);
+    assert.equal(is_locus_encoded_graph_content(wire), true);
+    assert.equal(encode_locus_graph_content(decoded).payload, wire.payload);
+    if (graph.$_meta?.quid) {
+      assert.throws(() => decode_locus_portable_graph_content({ format: "hson-graph-portable", payload: wire.payload }));
+      const style = decoded.$_attrs?.style;
+      assert.ok(typeof style === "object" && style !== null && "width" in style);
+      const width = style.width;
+      assert.ok(typeof width === "object" && width !== null);
+      assert.equal(Object.hasOwn(width, "unit"), true);
+    }
   }
 });
 
