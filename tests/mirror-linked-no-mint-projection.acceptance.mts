@@ -250,7 +250,11 @@ check("QUID-scoped CSS acquires once and later TreeEvents access adds no acquisi
   const profile = begin_livetree_materialization_profile();
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
-  assert.ok(root.css);
+  const css = root.css;
+  assert.equal(css.snapshot(), "");
+  assert.equal(root.node.$_meta?.quid, undefined);
+  assert_no_claims();
+  assert.equal(css.get.opacity(), undefined);
   const revisionAfterCss = map.rev;
   assert.equal(revisionAfterCss, 0);
   assert.ok(root.events);

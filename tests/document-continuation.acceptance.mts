@@ -1,3 +1,4 @@
+import { CssRuntimeManager } from "../src/api/livetree/managers/css-manager.ts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import {
@@ -11,6 +12,7 @@ import {
   type HsonSchema,
   type InteractionDescriptor,
 } from "../src/index.ts";
+import { runtime_for_tree } from "../src/api/livetree/runtime/livetree-runtime.ts";
 import { begin_livetree_materialization_profile } from "../src/api/livetree/debug/materialization-profile.ts";
 import { set_document_adoption_fault_hook_for_tests } from "../src/api/continuation/continuation.adopt.ts";
 import { get_node_for_el, unlinkElement } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -70,6 +72,61 @@ function source(quid?: string): string {
   const rebound = continue_document({ map, root: fixture.root as unknown as Element });
   assert.equal(rebound.tree, continuation.tree);
   rebound.dispose();
+}
+
+function cssFixture() {
+  const root = new FakeElement("html"), head = new FakeElement("head"), body = new FakeElement("body"), child = new FakeElement("button");
+  root.appendChild(head); root.appendChild(body); body.appendChild(child);
+  return { root, child };
+}
+
+// An unresolved document-global capability must retain its authority on disposal.
+{
+  const map = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <button/>/>/>' } });
+  const fixture = cssFixture();
+  const continuation = continue_document({ map, root: fixture.root as unknown as Element });
+  await Promise.resolve(); // Complete adoption activation before headless snapshots.
+  const tree = continuation.tree.find.must.byTag("button"), css = tree.css;
+  const resolved = continuation.tree.css.global;
+  resolved.sel("button").set.color("green");
+  const rule = resolved.sel("button");
+  const runtime = runtime_for_tree(tree), issued = [...runtime.issuedQuids];
+  const activeClaims = [...runtime.quidToNode.keys()], pendingClaims = [...runtime.pendingQuidClaims.keys()];
+  const graph = tree.node, documentCss = map.lib("page").css.snapshot(), rev = map.rev;
+  let commits = 0;
+  const stop = map.commits.observe(() => { commits++; });
+  continuation.dispose();
+  // HEAD permits a snapshot of runtime-only CSS after disposal, not a stale
+  // document read. This must remain passive and must not resolve global writes.
+  assert.equal(css.snapshot(), "");
+  assert.throws(() => css.global, /disposed/);
+  assert.throws(() => css.global.stylesheet("button{color:red}"), /disposed/);
+  assert.throws(() => css.global.sel("button").set.color("red"), /disposed/);
+  assert.throws(() => resolved.clearAll(), /disposed/);
+  assert.throws(() => rule.set.color("red"), /disposed/);
+  assert.equal(CssRuntimeManager.forRuntime(runtime).renderCss(), "");
+  assert.equal(map.lib("page").css.snapshot(), documentCss);
+  assert.equal(map.rev, rev); assert.equal(commits, 0);
+  assert.deepEqual(tree.node, graph); assert.deepEqual([...runtime.issuedQuids], issued);
+  assert.deepEqual([...runtime.quidToNode.keys()], activeClaims);
+  assert.deepEqual([...runtime.pendingQuidClaims.keys()], pendingClaims);
+  assert.equal(tree.node.$_meta?.quid, undefined);
+  assert.equal(tree.dom.el(), fixture.child as unknown as Element);
+  stop();
+}
+
+// Legitimate rebind before first global resolution selects the new capability.
+{
+  const map = documentMap(source()), fixture = mainFixture();
+  const first = continue_document({ map, root: fixture.root as unknown as Element });
+  const tree = first.tree, css = tree.css;
+  first.dispose();
+  const second = continue_document({ map, root: fixture.root as unknown as Element });
+  assert.equal(second.tree, tree);
+  assert.deepEqual(css.global.list(), []);
+  assert.equal(tree.node.$_meta?.quid, undefined);
+  second.dispose();
+  assert.throws(() => css.global.clearAll(), /disposed/);
 }
 
 for (const point of ["after-first-link", "after-links", "after-runtime", "after-tree"] as const) {

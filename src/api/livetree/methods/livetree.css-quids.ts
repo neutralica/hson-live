@@ -656,10 +656,15 @@ export function css_for_quids(
   }
 };
 
-/** A bound document's global view does not need node identity until QUID CSS is used. */
-export function css_for_bound_tree(host: LiveTree): CssTreeHandle {
+/** Global and snapshot access do not demand subject identity. Subject capabilities
+ * delegate lazily to the existing QUID-authorized handle. */
+export function css_for_tree(host: LiveTree): CssTreeHandle {
   let scoped: CssTreeHandle | undefined;
   let global: ReturnType<typeof bound_document_css_api> | undefined;
+  // Retain document authority even before the global namespace is resolved.
+  // Its capability enforces revocation; losing correspondence cannot authorize
+  // runtime-global fallback. A current binding still permits legitimate rebinding.
+  let documentBinding = bound_document_css_for_tree(host);
   const withQuid = (): CssTreeHandle => {
     scoped ??= css_for_quids(host, [host.quid]);
     return scoped;
@@ -672,15 +677,25 @@ export function css_for_bound_tree(host: LiveTree): CssTreeHandle {
   return new Proxy({} as CssTreeHandle, {
     get(_target, key) {
       if (key === "global") {
-        const binding = bound_document_css_for_tree(host);
-        if (binding !== undefined) return global ??= bound_document_css_api(binding);
-        return global ?? withQuid().global;
+        const binding = bound_document_css_for_tree(host) ?? documentBinding;
+        if (binding !== undefined) {
+          if (global === undefined && !binding.active) {
+            throw new Error("Document CSS continuation binding has been disposed.");
+          }
+          documentBinding = binding;
+          return global ??= bound_document_css_api(binding);
+        }
+        return global ??= api_for_host(host);
       }
       if (key === "snapshot") return snapshot;
       return Reflect.get(withQuid(), key);
     },
     ownKeys: () => Reflect.ownKeys(withQuid()),
-    getOwnPropertyDescriptor: (_target, key) => Reflect.getOwnPropertyDescriptor(withQuid(), key),
+    getOwnPropertyDescriptor(_target, key) {
+      if (key === "global") return { configurable: true, enumerable: true, get: () => host.css.global };
+      if (key === "snapshot") return { configurable: true, enumerable: true, value: snapshot };
+      return Reflect.getOwnPropertyDescriptor(withQuid(), key);
+    },
   });
 }
 

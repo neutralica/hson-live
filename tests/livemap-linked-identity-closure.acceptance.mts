@@ -112,7 +112,12 @@ check("existing registration suppresses observations", () => {
 check("first linked CSS demand acquires local identity", () => {
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
-  assert.ok(root.css);
+  const css = root.css;
+  assert.equal(root.node.$_meta?.quid, undefined);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
+  assert.equal(css.get.opacity(), undefined);
+  assert.equal(typeof root.node.$_meta?.quid, "string");
+  assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   assert.equal(map.rev, 0);
   assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
   close(binding);
@@ -152,7 +157,10 @@ check("linked TreeEvents registration remains realization-local", () => {
 check("QUID-scoped CSS remains the sole identity registration before TreeEvents access", () => {
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
-  void root.css;
+  const css = root.css;
+  assert.equal(root.node.$_meta?.quid, undefined);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
+  assert.equal(css.get.opacity(), undefined);
   const revisionAfterCss = map.rev;
   assert.equal(revisionAfterCss, 0);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);

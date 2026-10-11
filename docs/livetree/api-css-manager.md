@@ -1,7 +1,7 @@
 #### hson-live / hson.terminalgothic.com
 
 # LiveTree CSS APIs
-Updated: 2026-09-13
+Updated: 2026-10-11
 
 This document covers the current style and stylesheet APIs:
 
@@ -12,6 +12,31 @@ This document covers the current style and stylesheet APIs:
 - `LiveTree.css.snapshot()` - complete DOM-free managed CSS text for headless/SSR use.
 - Shared `StyleSetter`, style getters, CSS variables, selector blocks,
   at-rule facades, `@property`, keyframes, and animations.
+
+Reading `tree.css`, its cached `global` namespace, or `snapshot()` does not
+request a subject QUID. Subject-specific capabilities resolve the existing
+QUID authority lazily when accessed, then reuse that identity. Already issued
+identities remain intact. Ordinary standalone construction can already have
+issued identity; this routing does not remove it.
+
+Plain Mirror-linked global CSS remains runtime-owned and does not publish a
+Library revision or subject identity. Explicit document continuation binding
+retains selected-Library ownership and replacement semantics; hosted writes
+continue through `tree.async.css.global`. Standalone runtime stylesheet ingress
+retains append semantics. Snapshot text combines the currently bound document
+stylesheet, when present, with runtime CSS. Cached capabilities retain the
+existing operation-time disposal guards, including handles obtained before
+subject replacement. Native runtime hosting (`<hson-_style>`) and direct SSR
+managed styles are unchanged.
+Creating a new CSS façade after its Mirror binding has been disposed still
+rejects. Previously cached runtime-global capabilities retain their existing
+behavior while the subject itself remains active.
+
+A cached document-bound CSS façade retains its authority provenance even before
+first global access. Disposal revokes global writes rather than converting them
+to runtime-global writes. A new active binding may supply an unresolved façade;
+an already resolved, revoked global handle remains revoked. Post-disposal
+snapshots retain the runtime-only read contract and do not read retired document CSS.
 
 CssManager support elements are runtime-owned infrastructure, not canonical
 Hson and not browser SSR realization. Exact document continuation registers a

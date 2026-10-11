@@ -400,7 +400,32 @@ try {
   catch (cause) { hostedCssWriteFailed = /Hosted document CSS authoring/.test(cause.message); }
   check("hosted bound synchronous global CSS writes are fenced", hostedCssWriteFailed
     && librariesMap.rev === hostedCssRev && hostedGlobalCss.list().length === 0);
+  // Delayed global resolution must not turn a disposed hosted continuation
+  // into a runtime-global mutation capability. The button CSS was unresolved.
+  const delayedHostedCss = librariesButtonTree.css;
+  const staleRuntime = runtime_for_tree(librariesButtonTree);
+  const issuedBeforeDispose = [...staleRuntime.issuedQuids];
+  const runtimeBeforeDispose = staleRuntime.cssManager?.renderCss() ?? "";
+  const managedBeforeDispose = librariesMap.lib("page").css.snapshot();
+  const nativeBeforeDispose = [...librariesRoot.ownerDocument.querySelectorAll("hson-_style,style")].map(node => [node, node.textContent]);
+  const colorBeforeDispose = getComputedStyle(librariesButton).color;
+  const revisionBeforeDispose = librariesMap.rev;
+  let retainedClicks = 0;
+  librariesButton.addEventListener("click", () => { retainedClicks++; });
   librariesContinuation.dispose();
+  let staleHostedFailed = false;
+  try { delayedHostedCss.global.stylesheet("button{color:red!important}"); }
+  catch (cause) { staleHostedFailed = /disposed/.test(cause.message); }
+  check("delayed hosted global resolution rejects disposed authority", staleHostedFailed);
+  check("stale hosted rejection preserves revisions and both CSS owners", librariesMap.rev === revisionBeforeDispose
+    && librariesMap.lib("page").css.snapshot() === managedBeforeDispose
+    && (staleRuntime.cssManager?.renderCss() ?? "") === runtimeBeforeDispose);
+  check("stale hosted rejection preserves native CSS and computed color", getComputedStyle(librariesButton).color === colorBeforeDispose
+    && nativeBeforeDispose.every(([node, text]) => node.isConnected && node.textContent === text));
+  check("stale hosted rejection does not issue identity", JSON.stringify([...staleRuntime.issuedQuids]) === JSON.stringify(issuedBeforeDispose));
+  librariesButton.click();
+  check("stale hosted rejection retains native element and listener", librariesButtonTree.dom.el() === librariesButton && retainedClicks === 1);
+  check("disposed hosted snapshot retains runtime-only read", delayedHostedCss.snapshot() === runtimeBeforeDispose);
   librariesEcho.dispose();
   librariesTransport.dispose();
 

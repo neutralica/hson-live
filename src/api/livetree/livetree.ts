@@ -30,8 +30,7 @@ import { TreeEvents } from "../../types/events.types.js";
 import { make_tree_events } from "./managers/make-events.js";
 import { clone_branch_method } from "./methods/clone.js";
 import { type ContentManager, LiveTreeContentManager } from "./managers/content-manager.js";
-import { css_for_bound_tree, css_for_quids } from "./methods/livetree.css-quids.js";
-import { bound_document_css_for_tree } from "./managers/bound-document-css.js";
+import { css_for_tree } from "./methods/livetree.css-quids.js";
 import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
 import { make_svg_tree_create } from "./methods/create/create-svg.js";
@@ -520,10 +519,12 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   public get css(): CssTreeHandle {
     this.assertActive("access CSS");
     if (!this.cssApiInternal) {
+      const subject = active_subject_for_tree(this);
+      if (is_linked_projection_subject(subject) && document_binding_for_node(subject) === undefined) {
+        throw new LiveTreeLinkedIdentityRequiredError("CSS access on a stale linked binding");
+      }
       this.cssApiInternal = guard_api_surface(
-        bound_document_css_for_tree(this) === undefined
-          ? css_for_quids(this, [this.quid])
-          : css_for_bound_tree(this),
+        css_for_tree(this),
         () => this.assertActive("access CSS"),
         this,
       );

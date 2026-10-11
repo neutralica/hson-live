@@ -1,3 +1,4 @@
+import { CssRuntimeManager } from "../src/api/livetree/managers/css-manager.ts";
 import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -385,6 +386,75 @@ function socketPair(): Readonly<{
     assert.equal(runtime.issuedQuids.size, issued);assert.equal(tree.node.$_meta?.quid, undefined);
     assert.equal(continuation.mirror.status, "active");
   } finally { continuation.dispose();continuation.echo.dispose();detach();locus.dispose(); }
+}
+
+// Bound global capabilities retain hosted authority without subject identity demand.
+{
+  const authority = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <button/>/>/>' } });
+  const locus = hsonLiveMap.locus.create({
+    ...authority_groups_from_map_fixture(authority, test_application_catalog(authority)),
+    authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
+  });
+  const session = await locus.session.create({ libraries: ["page"] });
+  const pair = socketPair(), detach = bind_locus_websocket(locus, pair.server);
+  const root = new FakeElement("html"), head = new FakeElement("head"), body = new FakeElement("body"), button = new FakeElement("button");
+  root.appendChild(head); root.appendChild(body); body.appendChild(button);
+  const continuation = await continue_hosted_document({ now: session.now({ html: "page" }), credential: session.credential!,
+    transport: test_echo_transport(pair.client), root: root as unknown as Element });
+  try {
+    const tree = continuation.tree.find.must.byTag("button"), runtime = runtime_for_tree(tree);
+    const issued = [...runtime.issuedQuids], rev = locus.rev, frames = pair.delivered.length;
+    const css = tree.css, global = css.global, asyncGlobal = tree.async.css.global;
+    assert.equal(tree.css, css); assert.equal(tree.css.global, global);
+    assert.equal(css.snapshot(), "");
+    assert.throws(() => global.stylesheet("button{color:red}"), /async authority/);
+    await assert.rejects(asyncGlobal.stylesheet('@import url(forbidden.css);'), /@import/);
+    assert.equal(locus.rev, rev); assert.equal(pair.delivered.length, frames);
+    assert.equal(tree.node.$_meta?.quid, undefined); assert.deepEqual([...runtime.issuedQuids], issued);
+    const source = "button{color:red}";
+    const completed = await asyncGlobal.stylesheet(source);
+    assert.equal(completed.sync, tree);
+    assert.equal(locus.rev, rev + 1); assert.equal(continuation.map.rev, rev + 1);
+    assert.equal(css.snapshot(), continuation.map.css.snapshot());
+    assert.match(css.snapshot(), /button\{color:red;/);
+    const style = head.childNodes.find(node => node instanceof FakeElement && node.tagName === "style");
+    assert.ok(style instanceof FakeElement); assert.equal(Reflect.get(style, "textContent"), css.snapshot());
+    assert.equal(tree.dom.el(), button as unknown as Element);
+    assert.equal(tree.node.$_meta?.quid, undefined); assert.deepEqual([...runtime.issuedQuids], issued);
+    await asyncGlobal.stylesheet(source);
+    assert.equal(locus.rev, rev + 1);
+    await asyncGlobal.stylesheet("button{color:blue}");
+    assert.equal(locus.rev, rev + 2); assert.doesNotMatch(css.snapshot(), /color:red/);
+    assert.equal(head.childNodes.includes(style), true);
+    assert.deepEqual([...runtime.issuedQuids], issued);
+    // Root façade remains global-unresolved until after disposal. Its binding
+    // provenance must survive without borrowing the button's resolved handle.
+    const delayed = continuation.tree.css;
+    const rootBefore = continuation.tree.node;
+    const activeClaims = [...runtime.quidToNode.keys()], pendingClaims = [...runtime.pendingQuidClaims.keys()];
+    const pending = asyncGlobal.stylesheet("button{color:purple}");
+    continuation.dispose();
+    await pending;
+    assert.equal(locus.rev, rev + 3);
+    assert.deepEqual([...runtime.issuedQuids], issued);
+    const replicaRev = continuation.map.rev, delivered = pair.delivered.length;
+    const acceptedCss = continuation.map.css.snapshot();
+    assert.equal(delayed.snapshot(), ""); // Committed HEAD: runtime-only read.
+    assert.throws(() => delayed.global, /disposed/);
+    assert.throws(() => delayed.global.stylesheet("button{color:red}"), /disposed/);
+    assert.throws(() => delayed.global.sel("button").set.color("red"), /disposed/);
+    assert.equal(CssRuntimeManager.forRuntime(runtime).renderCss(), "");
+    assert.equal(continuation.map.css.snapshot(), acceptedCss);
+    assert.equal(continuation.map.rev, replicaRev); assert.equal(pair.delivered.length, delivered);
+    assert.deepEqual(continuation.tree.node, rootBefore);
+    assert.deepEqual([...runtime.quidToNode.keys()], activeClaims);
+    assert.deepEqual([...runtime.pendingQuidClaims.keys()], pendingClaims);
+    assert.equal(tree.dom.el(), button as unknown as Element);
+    assert.deepEqual([...runtime.issuedQuids], issued);
+    assert.throws(() => global.clearAll(), /disposed/);
+    await assert.rejects(asyncGlobal.stylesheet(source), /disposed|active bound/);
+    assert.equal(locus.rev, rev + 3);
+  } finally { continuation.dispose(); continuation.echo.dispose(); detach(); locus.dispose(); }
 }
 
 process.stdout.write("Hosted document continuation acceptance passed.\n");

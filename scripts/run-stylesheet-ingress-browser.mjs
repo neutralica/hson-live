@@ -46,8 +46,11 @@ const entry = `
   import { hsonLiveMap } from "./src/api/livemap/index.ts";
   import { hsonLiveTree } from "./src/api/livetree/index.ts";
   import { continue_document } from "./src/api/continuation/continue-document.ts";
-  import { runtime_for_tree } from "./src/api/livetree/runtime/livetree-runtime.ts";
+  import { runtime_for_tree, create_livetree_runtime, subject_for_tree, dispose_livetree_runtime } from "./src/api/livetree/runtime/livetree-runtime.ts";
+  import { reflect_document_in_runtime } from "./src/api/mirror/mirror.document.ts";
+  import { project_livetree } from "./src/api/livetree/creation/project-live-tree.ts";
   import { MANAGED_STYLESHEET_BROWSER_ORACLES } from "./tests/fixtures/managed-stylesheet-browser-oracles.mts";
+  void (async () => {
   globalThis.addEventListener("error",event=>document.body.dataset.error=encodeURIComponent(String(event.error?.stack??event.message)));
   const source = ${JSON.stringify(source)};
   const map = hsonLiveMap.fromLibraries({ page: { document: ${JSON.stringify(documentSource)} } });
@@ -123,6 +126,31 @@ const entry = `
     ownedTree.remove();
   }
   const continuation = [];
+  const lazyFrame = document.createElement("iframe"); document.body.append(lazyFrame);
+  const lazyDoc = lazyFrame.contentDocument, lazyRuntime = create_livetree_runtime();
+  const lazyMap = hsonLiveMap.fromLibraries({page:{document:'<main <button class=lazy "go"/>/>'}});
+  const lazyMirror = reflect_document_in_runtime(lazyMap.lib('page'), lazyRuntime);
+  lazyDoc.body.append(project_livetree(subject_for_tree(lazyMirror.tree), 'html', lazyRuntime, lazyDoc));
+  const lazyTree = lazyMirror.tree.find.must.byTag('button'), lazyElement = lazyTree.dom.el();
+  const lazyRev = lazyMap.rev, lazyRecord = JSON.stringify(lazyMap.capture());
+  let lazyCommits = 0, lazyClicks = 0; const stopLazy = lazyMap.commits.observe(()=>lazyCommits++);
+  lazyElement.addEventListener('click',()=>lazyClicks++);
+  const lazyCss = lazyTree.css, lazyGlobal = lazyCss.global;
+  const noDemand = () => lazyTree.node.$_meta?.quid===undefined && lazyRuntime.issuedQuids.size===0 && lazyRuntime.quidToNode.size===0 && lazyMap.rev===lazyRev && lazyCommits===0 && JSON.stringify(lazyMap.capture())===lazyRecord;
+  continuation.push({name:'plain mounted Mirror passive CSS/global/snapshot stays QUID-free',pass:lazyTree.css===lazyCss && lazyCss.global===lazyGlobal && lazyCss.snapshot()==='' && noDemand()});
+  let lazyRejected=false;try{lazyGlobal.stylesheet('@import url(forbidden.css);')}catch{lazyRejected=true;}
+  continuation.push({name:'rejected runtime global CSS does not issue or publish identity',pass:lazyRejected && noDemand()});
+  lazyGlobal.stylesheet('.lazy{color:red}'); lazyGlobal.stylesheet('.lazy{color:green}'); lazyRuntime.cssManager.syncNow();
+  const wrapper = lazyDoc.head.querySelector('hson-_style'), runtimeStyle = wrapper?.querySelector('style');
+  continuation.push({name:'plain Mirror runtime-global append computes correctly in retained wrapper',pass:noDemand() && lazyFrame.contentWindow.getComputedStyle(lazyElement).color==='rgb(0, 128, 0)' && lazyMap.lib('page').css.snapshot()==='' && wrapper?.parentNode===lazyDoc.head && runtimeStyle?.parentNode===wrapper});
+  lazyGlobal.sel('.lazy').set.opacity('.5'); await new Promise(resolve=>requestAnimationFrame(resolve)); lazyRuntime.cssManager.syncNow();
+  continuation.push({name:'runtime global update retains element/listener/style-host identity without QUID',pass:noDemand() && lazyTree.dom.el()===lazyElement && lazyDoc.head.querySelector('hson-_style')===wrapper && wrapper.querySelector('style')===runtimeStyle && lazyFrame.contentWindow.getComputedStyle(lazyElement).opacity==='0.5'});
+  lazyGlobal.clearAll(); await new Promise(resolve=>requestAnimationFrame(resolve)); lazyRuntime.cssManager.syncNow(); lazyElement.click();
+  continuation.push({name:'runtime global clear preserves sparse identity and listeners',pass:noDemand() && lazyClicks===1 && lazyCss.snapshot()===''});
+  lazyCss.set.color('blue'); lazyRuntime.cssManager.syncNow(); const demanded = lazyTree.node.$_meta?.quid;
+  lazyCss.set.opacity('.7'); lazyRuntime.cssManager.syncNow();
+  continuation.push({name:'subject CSS acquires and reuses genuine linked native identity',pass:typeof demanded==='string' && lazyTree.node.$_meta?.quid===demanded && lazyRuntime.issuedQuids.size===1 && lazyRuntime.quidToNode.get(demanded)===subject_for_tree(lazyTree) && lazyElement.getAttribute('hson:quid')===demanded && lazyFrame.contentWindow.getComputedStyle(lazyElement).color==='rgb(0, 0, 255)' && lazyFrame.contentWindow.getComputedStyle(lazyElement).opacity==='0.7' && lazyMap.rev===lazyRev && lazyCommits===0});
+  stopLazy(); lazyMirror.dispose(); lazyMirror.tree.remove(); dispose_livetree_runtime(lazyRuntime); lazyFrame.remove();
   const framed = document.createElement("iframe"); document.body.append(framed);
   const continuedMap = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <button class=x "go"/>/>/>'}});
   const page = continuedMap.lib("page");
@@ -132,6 +160,8 @@ const entry = `
   let clicks=0; button.addEventListener('click',()=>clicks++);
   const adopted=continue_document({map:continuedMap,document:page,root:doc.documentElement});
   const runtime=runtime_for_tree(adopted.tree), issued=runtime.issuedQuids.size;
+  const continuedCss = adopted.tree.css, continuedGlobal = continuedCss.global;
+  continuation.push({name:'continued global/snapshot façade remains cached and QUID-free',pass:adopted.tree.css===continuedCss && adopted.tree.css.global===continuedGlobal && continuedCss.snapshot()===page.css.snapshot() && adopted.tree.node.$_meta?.quid===undefined && runtime.issuedQuids.size===issued});
   continuation.push({name:'grouped continuation first paint and native adoption',pass:framed.contentWindow.getComputedStyle(button).color==='rgb(0, 0, 255)' && adopted.tree.dom.el()===doc.documentElement});
   const replacement='@layer { .x { color: blue !important; } .x { color: green !important; } }';
   adopted.tree.css.global.stylesheet(replacement);
@@ -162,6 +192,7 @@ const entry = `
     };
     document.body.setAttribute("data-result", encodeURIComponent(JSON.stringify(result)));
   });
+  })().catch(error => document.body.dataset.error=encodeURIComponent(String(error.stack ?? error)));
 `;
 const snapshot = process.argv.find(arg => arg.startsWith("--source-snapshot="))?.slice("--source-snapshot=".length);
 const plugins = snapshot ? [{name:"original-source", setup(b) { b.onLoad({filter:/\/src\/.*\.ts$/}, async ({path}) => ({contents:await readFile(join(snapshot,relative(resolve("."),path)),"utf8"),loader:"ts"})); }}] : [];
