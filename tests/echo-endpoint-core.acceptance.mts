@@ -2,7 +2,8 @@ import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixtur
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap } from "../src/index.ts";
+import { Hson } from "../src/index.ts";
+import * as hsonLiveMap from "../src/api/livemap/index.ts";
 
 
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
@@ -143,6 +144,42 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
     detach();
     locus.dispose();
   }
+});
+
+await check("public livemap endpoint admits exact data and rejects document payloads before submission", async () => {
+  const sent: LocusClientMessage[] = [];
+  const echo = hsonLiveMap.echo.create({ transport: {
+    operations: { async submit(message) {
+      sent.push(message);
+      if (message.type === "session-create") return { kind: "response" as const, outcome: {
+        type: "session-created" as const, id: message.id, sessionId: "s", credential: "c", epoch: 1,
+        logicalMapId: "m", incarnationId: "i",
+      } };
+      if (message.type === "action") return { kind: "response" as const, outcome: {
+        type: "ack" as const, id: message.id, requestId: message.requestId,
+        attemptId: message.attemptId, ok: true as const, seq: 1,
+      } };
+      throw new Error("Unexpected operation.");
+    } },
+    attachment: { observe(listener) { listener({ kind: "available" }); return () => {}; } },
+  } });
+  try {
+    echo.connect();
+    await echo.session.create();
+    const payload = Hson.data.fromHson('<tail [] zero -0 empty "">' as Parameters<typeof Hson.data.fromHson>[0]);
+    const act = (value: unknown): ReturnType<typeof echo.action> => Reflect.apply(echo.action, echo, ["probe", value]);
+    assert.equal((await bounded(act(payload))).type, "ack");
+    assert.equal(last(sent, "action").payload, payload);
+    const submitted = sent.length;
+    for (const invalid of ['<p style="broken"/>', '<p style="color:red"/>', '<p/>', '<p @000000001/>', '<a 1 a 2>', '1e999']) {
+      assert.throws(() => act(invalid), (error) => error instanceof TypeError
+        && /requires data-mode Hson/.test(error.message) && error.cause instanceof Error);
+      assert.equal(sent.length, submitted, "invalid data must not reach semantic transport");
+      assert.equal(echo.session.status, "attached");
+    }
+    assert.equal((await bounded(act('<zero -0>'))).type, "ack");
+    assert.equal(last(sent, "action").payload, '<zero -0>');
+  } finally { echo.dispose(); }
 });
 
 await check("endpoint-only Echo reattaches after attachment observation is interrupted", async () => {

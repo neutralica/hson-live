@@ -6,7 +6,6 @@ import {
 
 import { HsonAttrs, HsonNode, type CanonicalPublicAttrs } from "../../../core/types.js";
 import { AllowedStyleKey, CssMap, CssVarFacade } from "../../../types/css.types.js";
-import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { kebab_to_camel } from "../../transform/utils/primitive-utils/kebab-to-camel.util.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
@@ -14,6 +13,12 @@ import { make_css_var_facade, make_style_setter, StyleSetter } from "./style-set
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter } from "./style-getter.js";
 import { ensure_node_attrs, prune_empty_node_attrs } from "../../../core/node-storage.js";
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
+import { begin_mutation_publication } from "../lifecycle/mutation-publication.js";
+import { parse_style_string } from "../../transform/utils/attrs-utils/parse-style.js";
+import { serialize_style, inline_css_native_name } from "../../transform/utils/attrs-utils/serialize-style.js";
+import { assert_inline_css_order, assert_inline_css_value, assert_inline_css_trim_safe, InlineCssError } from "../../../internal/css/inline-css.js";
+import { canonical_public_attrs_equal, decode_public_attrs } from "../../../core/public-attrs.js";
+import { render_css_declaration_value, is_typed_css_value } from "../../../core/inline-style.js";
 
 /* ------------------------------ RUNTIME KEYS -------------------------------- */
 
@@ -55,46 +60,35 @@ const FALLBACK_KEYS: ReadonlyArray<AllowedStyleKey> = Object.freeze([
     "transform",
 ]);
 
-export const parse_style_attr = (raw: string | undefined): Map<string, string> => {
-    const out = new Map<string, string>();
-    if (!raw) return out;
+export const parse_style_attr = (raw: string | undefined): Map<string, string> =>
+    new Map(Object.entries(parse_style_string(raw ?? "")).map(([key, value]) =>
+        [inline_css_native_name(key), value]));
 
-    for (const part of raw.split(";")) {
-        const s = part.trim();
-        if (!s) continue;
-
-        const idx = s.indexOf(":");
-        if (idx < 0) continue;
-
-        const k = s.slice(0, idx).trim();
-        const v = s.slice(idx + 1).trim();
-        if (k) out.set(k, v);
+function assertInlineProjectionSafe(value: unknown): void {
+    if (typeof value === "string") assert_inline_css_trim_safe(value);
+    else if (is_typed_css_value(value)) {
+        if (typeof value.value === "string") assert_inline_css_trim_safe(value.value);
+        if ("unit" in value && typeof value.unit === "string" && value.unit !== "_") {
+            assert_inline_css_trim_safe(String(value.value) + value.unit);
+        }
     }
-    return out;
-};
+}
 
 
 function readStyleFromNode(node: HsonNode, propCanon: string): string | undefined {
     const attrs = node.$_attrs as HsonAttrs | undefined;
     const raw = attrs?.style;
 
-    const kebabKey = propCanon.startsWith("--")
-        ? propCanon
-        : camel_to_kebab(propCanon);
-
-    const internalKey = propCanon.startsWith("--")
-        ? propCanon
-        : kebab_to_camel(kebabKey);
+    const kebabKey = inline_css_native_name(propCanon);
 
     if (raw && typeof raw === "object") {
         const styleObj = raw as CssMap;
 
-        const direct = styleObj[internalKey as keyof CssMap];
+        const direct = styleObj[propCanon as keyof CssMap];
         if (typeof direct === "string") return direct;
-
-        // changed: tolerate legacy/object styles that still contain kebab keys.
-        const legacy = styleObj[kebabKey as keyof CssMap];
-        return typeof legacy === "string" ? legacy : undefined;
+        const alias = Object.keys(styleObj).find(key => inline_css_native_name(key) === kebabKey);
+        const value = alias === undefined ? undefined : styleObj[alias];
+        return typeof value === "string" ? value : undefined;
     }
 
     if (typeof raw === "string") {
@@ -130,67 +124,13 @@ function readCanonicalStyleFromNode(node: HsonNode): CssMap {
         const map = parse_style_attr(raw);
 
         for (const [key, value] of map.entries()) {
-            const storeKey = key.startsWith("--") ? key : kebab_to_camel(key);
+            const storeKey = key.startsWith("-") ? key : kebab_to_camel(key);
             out[storeKey] = value;
         }
         return out;
     }
 
     return {};
-}
-
-/**
- * Remove a single inline style declaration from a node and its DOM element.
- *
- * Behavior:
- * - Normalizes the internal key:
- *   - Custom properties (`--*`) are kept verbatim.
- *   - Normal properties are converted from kebab-case to camelCase to
- *     match the Hson style object shape.
- * - Updates the Hson model:
- *   - Deletes the property from `$_attrs.style`.
- *   - Removes `$_attrs.style` entirely if it becomes empty.
- * - Updates the DOM:
- *   - If an associated `HTMLElement` exists, calls
- *     `el.style.removeProperty(kebabName)`.
- *
- * @param node - The Hson node whose style should be updated.
- * @param kebabName - The CSS property name in kebab-case (or `--var` form).
- */
-function removeStyleFromNode(node: HsonNode, kebabName: string): void {
-    // 1) Normalize internal key (Hson uses camelCase for normal props, verbatim for custom)
-    const internalKey =
-        kebabName.startsWith("--")
-            ? kebabName
-            : kebab_to_camel(kebabName);
-
-    // 2) Update node model ($_attrs.style is CssObject now)
-    const attrs = node.$_attrs;
-    const styleObj = (attrs?.style as CssMap | undefined) ?? undefined;
-
-    if (styleObj) {
-        // drop from CssObject
-        delete (styleObj as unknown as Record<string, unknown>)[internalKey];
-
-        // if now empty, remove style entirely
-        if (!Object.keys(styleObj).length) {
-            if (attrs) {
-                delete attrs.style;
-                prune_empty_node_attrs(node);
-            }
-        } else {
-            if (attrs) {
-                attrs.style = styleObj;
-            }
-        }
-    }
-
-    // 3) Update DOM
-    const el = get_el_for_node(node) as (Element & { style?: CSSStyleDeclaration }) | undefined;
-    if (!el) return;
-
-    // Use DOM’s own removeProperty for the kebab name
-    el.style?.removeProperty(kebabName);
 }
 
 /**
@@ -222,112 +162,6 @@ function computeRuntimeKeys(): ReadonlyArray<AllowedStyleKey> {
     return Object.freeze(Array.from(new Set(typed)));
 }
 
-/* --------------------------------- HELPERS ---------------------------------- */
-
-/**
- * Normalize `node.$_attrs.style` to an object map of kebab keys to values.
- *
- * Behavior:
- * - If `a.style` is a string:
- *   - Parses it as CSS text (`"foo: bar; baz: qux"`).
- *   - Produces a `Record<string, string>` with trimmed keys and values.
- *   - Stores the object back into `a.style`.
- * - If `a.style` is already an object:
- *   - Returns it as `Record<string, string>`.
- * - If `a.style` is missing or falsy:
- *   - Creates a fresh object, assigns it to `a.style`, and returns it.
- *
- * This function provides a single normalization point so that the rest
- * of the style system can assume `$_attrs.style` is an object.
- *
- * @param a - Attribute bag (typically `node.$_attrs`) to normalize.
- * @returns A mutable style object with kebab property keys.
- */
-function ensureStyleObject(a: Record<string, unknown>): Record<string, unknown> {
-    // prefer object going forward; upgrade string-once if present.
-    const prev = a.style;
-    if (typeof prev === "string") {
-        const out: Record<string, string> = Object.create(null);
-        const text = prev.trim();
-        if (text) {
-            for (const seg of text.split(";")) {
-                const s = seg.trim();
-                if (!s) continue;
-                const idx = s.indexOf(":");
-                if (idx <= 0) continue;
-                const k = s.slice(0, idx).trim();
-                const v = s.slice(idx + 1).trim();
-                if (k) {
-                    const storeKey = k.startsWith("--") ? k : kebab_to_camel(k);
-                    out[storeKey] = v;
-                }
-            }
-        }
-        a.style = out;
-        return out;
-    }
-    if (prev && typeof prev === "object") {
-        const obj = prev as Record<string, unknown>;
-        // normalize any kebab keys to camelCase once on read
-        const needsNormalize = Object.keys(obj).some(k => k.includes("-"));
-        if (!needsNormalize) return obj;
-
-        const normalized: Record<string, unknown> = Object.create(null);
-        for (const [k, v] of Object.entries(obj)) {
-            const storeKey = k.startsWith("--") ? k : kebab_to_camel(k);
-            normalized[storeKey] = v;
-        }
-        a.style = normalized;
-        return normalized;
-    }
-    const fresh: Record<string, unknown> = Object.create(null);
-    a.style = fresh;
-    return fresh;
-}
-
-/**
- * Write a single style property to both DOM and Hson for a node.
- *
- * Behavior:
- * 1. DOM:
- *    - If an `HTMLElement` is mapped for the node:
- *      - `value === ""` → `el.style.removeProperty(kebabName)`.
- *      - Otherwise → `el.style.setProperty(kebabName, value)`.
- * 2. Hson:
- *    - Ensures `$_attrs` exists and normalizes `$_attrs.style` to an object
- *      via `ensureStyleObject`.
- *    - `value === ""`:
- *        - Deletes the key from the style object if present.
- *    - Otherwise:
- *        - Sets `styleObj[kebabName] = value`.
- *
- * This keeps the in-memory Hson representation and the live DOM
- * element in sync for the given property.
- *
- * @param node - The Hson node to update.
- * @param kebabName - CSS property name in kebab-case (or `--var` form).
- * @param value - The string value to assign; empty string removes the property.
- * @see ensureStyleObject
- */
-function applyStyleToNode(node: HsonNode, kebabName: string, value: string): void {
-    if (value === "") {
-        removeStyleFromNode(node, kebabName);
-        return;
-    }
-
-    const el = get_el_for_node(node) as (Element & { style?: CSSStyleDeclaration }) | undefined;
-
-    // allow SVGElement too (and any Element with a style decl)
-    el?.style?.setProperty(kebabName, value);
-
-    // 2) mirror into node.$_attrs.style (object form)
-    const attrs = ensure_node_attrs(node) as Record<string, unknown>;
-    const styleObj = ensureStyleObject(attrs);
-    const internalKey = kebabName.startsWith("--") ? kebabName : kebab_to_camel(kebabName);
-
-    styleObj[internalKey] = value;
-}
-
 /* --------------------------------- MANAGER ---------------------------------- */
 /**
  * Inline style manager bound to a single `LiveTree` node.
@@ -336,8 +170,7 @@ function applyStyleToNode(node: HsonNode, kebabName: string, value: string): voi
  * - Provides a typed, DX-friendly facade over inline styles via `set`
  *   and `setProperty`.
  * - Keeps Hson `$_attrs.style` and the DOM element's `style` attribute
- *   in sync through helpers such as `applyStyleToNode` and
- *   `removeStyleFromNode`.
+ *   in sync by preflighting and publishing one complete retained state.
  * - Exposes runtime-derived style keys (via `keys()`) that represent
  *   the actual properties supported in the current environment.
  *
@@ -377,9 +210,15 @@ export class StyleManager<TTree extends LiveTree> {
 
         this.setter = make_style_setter<TTree>(tree, {
             keys: this.runtimeKeys,
+            normalizeKey: key => key,
+            validateValue: assertInlineProjectionSafe,
 
             apply: (propCanon, value) => {
                 this.apply(propCanon, value);
+            },
+
+            applyMany: (values) => {
+                this.applyMany(values);
             },
 
             remove: (propCanon) => {
@@ -421,44 +260,105 @@ export class StyleManager<TTree extends LiveTree> {
      *   - `null` or `undefined` → treated as `""` and removes the declaration.
      *   - string/number → converted to string and applied as-is (units are
      *     the caller's responsibility).
-     * - Delegates to `applyStyleToNode`, which updates both the Hson node
-     *   and the corresponding DOM element.
+     * - Preflights one CSS value and its ordering before publishing the
+     *   complete style attribute and retained graph state.
      *
      * @param propertyName - CSS property name in camelCase or kebab-case.
      * @param value - New value for the property, or `null` to remove it.
      * @returns The underlying `LiveTree` instance, for chaining.
-     * @see applyStyleToNode
      */
     private apply(propertyName: string, value: string | number | null): LiveTree {
-        assert_mutation_publication_available(active_subject_for_tree(this.tree));
-        const kebab = propertyName.startsWith("--")
-            ? propertyName
-            : camel_to_kebab(propertyName);
+        const values: Record<string, string> = {};
+        Object.defineProperty(values, propertyName, { value: value == null ? "" : String(value), enumerable: true });
+        return this.applyMany(values);
+    }
 
-        const val = value == null ? "" : String(value);
-
-        const binding = document_binding_for_node(active_subject_for_tree(this.tree));
-        if (binding !== undefined) {
-            const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
-            binding.delegateAttrs({
-                kind: "transform",
-                apply: (attrs: CanonicalPublicAttrs) => {
-                    const current = attrs.style;
-                    const next = typeof current === "object" && current !== null && !Array.isArray(current)
-                        ? { ...current }
-                        : {};
-                    if (val === "") delete next[key];
-                    else next[key] = val;
-                    return Object.keys(next).length === 0
-                        ? { kind: "drop", name: "style" }
-                        : { kind: "set", name: "style", value: next };
-                },
-            });
-            return this.tree;
+    /** Preflight the complete batch, then publish one graph/native final state. */
+    private applyMany(values: Readonly<Record<string, string>>): LiveTree {
+        const subject = active_subject_for_tree(this.tree);
+        assert_mutation_publication_available(subject);
+        if (Object.keys(values).length === 0) return this.tree;
+        const stored = subject.$_attrs?.style;
+        if (stored !== undefined && (stored === null || typeof stored !== "object" && typeof stored !== "string")) {
+            throw new InlineCssError("INLINE_CSS_UNSUPPORTED", "Scalar style storage is not a declaration map; use attribute replacement or style.clear().");
         }
-
-        applyStyleToNode(active_subject_for_tree(this.tree), kebab, val);
+        const changes = new Map<string, string>();
+        for (const [name, value] of Object.entries(values)) {
+            const input = name.trim();
+            const property = /^(?:cssfloat|css-float)$/i.test(input) ? "float" : inline_css_native_name(input);
+            if (changes.has(property)) throw new InlineCssError("INLINE_CSS_UNSUPPORTED", "Inline CSS batch property names collide at the native property boundary.");
+            if (value !== "") {
+                assert_inline_css_value(property, value);
+            }
+            const key = property.startsWith("-") ? property : kebab_to_camel(property);
+            changes.set(property, value === "" ? "" : parse_style_string(`${property}:${value}`)[key]);
+        }
+        const plan = (current: CssMap): CssMap => {
+            const remaining = { ...current };
+            let changed = false;
+            const additions: string[] = [];
+            const writes: [string, string][] = [];
+            for (const [property, value] of changes) {
+                const aliases = Object.keys(current).filter(key => inline_css_native_name(key) === property);
+                if (aliases.length === 1 && current[aliases[0]] === value || aliases.length === 0 && value === "") continue;
+                changed = true;
+                for (const key of aliases) delete remaining[key];
+                if (value !== "") {
+                    additions.push(property);
+                    writes.push([aliases[0] ?? (property.startsWith("-") ? property : kebab_to_camel(property)), value]);
+                }
+            }
+            if (!changed) return remaining;
+            for (const value of Object.values(remaining)) assertInlineProjectionSafe(value);
+            const retained = Object.keys(remaining).filter(key => Boolean(render_css_declaration_value(remaining[key]))).map(inline_css_native_name).sort();
+            if (new Set([...retained, ...additions]).size !== retained.length + additions.length) {
+                throw new InlineCssError("INLINE_CSS_UNSUPPORTED", "Style property names collide during CSS projection.");
+            }
+            assert_inline_css_order([...retained, ...additions]);
+            for (const [key, value] of writes) {
+                Object.defineProperty(remaining, key, { value, enumerable: true, writable: true, configurable: true });
+            }
+            return remaining;
+        };
+        const binding = document_binding_for_node(subject);
+        if (binding !== undefined) {
+            binding.delegateAttrs({ kind: "transform", apply: (attrs: CanonicalPublicAttrs) => {
+                const raw = attrs.style;
+                const current = typeof raw === "string" ? parse_style_string(raw)
+                    : typeof raw === "object" && raw !== null ? raw : {};
+                const next = plan(current);
+                return Object.keys(next).length === 0
+                    ? { kind: "drop", name: "style" }
+                    : { kind: "set", name: "style", value: next };
+            } });
+        } else this.publishStyle(plan(readCanonicalStyleFromNode(subject)));
         return this.tree;
+    }
+
+    private publishStyle(style: CssMap): void {
+        const subject = active_subject_for_tree(this.tree);
+        const current = decode_public_attrs(subject.$_attrs ?? {});
+        const next = decode_public_attrs(Object.keys(style).length ? { ...subject.$_attrs, style }
+            : Object.fromEntries(Object.entries(subject.$_attrs ?? {}).filter(([key]) => key !== "style")));
+        if (current && next && canonical_public_attrs_equal(current, next)) return;
+        const css = serialize_style(style);
+        const element = get_el_for_node(subject);
+        const previous = element?.getAttribute("style") ?? null;
+        const finish = begin_mutation_publication([subject]);
+        try {
+            if (element) {
+                if (css) element.setAttribute("style", css);
+                else element.removeAttribute("style");
+            }
+            if (Object.keys(style).length) ensure_node_attrs(subject).style = style;
+            else if (subject.$_attrs) { delete subject.$_attrs.style; prune_empty_node_attrs(subject); }
+        } catch (error) {
+            if (element && element.getAttribute("style") !== previous) {
+                if (previous === null) element.removeAttribute("style");
+                else element.setAttribute("style", previous);
+            }
+            throw error;
+        } finally { finish(); }
     }
 
     /**
@@ -467,43 +367,16 @@ export class StyleManager<TTree extends LiveTree> {
     * Behavior:
     * - Normalizes the property name from camelCase to kebab-case (except
     *   for `--custom` variables).
-    * - Delegates to `removeStyleFromNode`, which clears the property from
-    *   the node's style object and the DOM `style` attribute.
+    * - Publishes the remaining complete style map to graph and DOM.
     *
     * This is equivalent to calling `setProperty(propertyName, null)` but
     * uses the dedicated removal pathway.
     *
     * @param propertyName - CSS property name in camelCase or kebab-case.
     * @returns The underlying `LiveTree` instance, for chaining.
-    * @see removeStyleFromNode
     */
     private remove(propertyName: string): LiveTree {
-        assert_mutation_publication_available(active_subject_for_tree(this.tree));
-        const kebab = propertyName.startsWith("--")
-            ? propertyName
-            : camel_to_kebab(propertyName);
-
-        const binding = document_binding_for_node(active_subject_for_tree(this.tree));
-        if (binding !== undefined) {
-            const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
-            binding.delegateAttrs({
-                kind: "transform",
-                apply: (attrs: CanonicalPublicAttrs) => {
-                    const current = attrs.style;
-                    const next = typeof current === "object" && current !== null && !Array.isArray(current)
-                        ? { ...current }
-                        : {};
-                    delete next[key];
-                    return Object.keys(next).length === 0
-                        ? { kind: "drop", name: "style" }
-                        : { kind: "set", name: "style", value: next };
-                },
-            });
-            return this.tree;
-        }
-
-        removeStyleFromNode(active_subject_for_tree(this.tree), kebab);
-        return this.tree;
+        return this.apply(propertyName, "");
     }
 
 
@@ -526,19 +399,9 @@ export class StyleManager<TTree extends LiveTree> {
      * is a no-op.
      */
     private clearAll(): void {
-        assert_mutation_publication_available(active_subject_for_tree(this.tree));
-        const node = active_subject_for_tree(this.tree);
-        if (document_binding_for_node(node) !== undefined) {
-            this.tree.attrs.drop("style");
-            return;
-        }
-        if (!node.$_attrs) return;
-
-        const attrs = node.$_attrs as HsonAttrs;
-        delete attrs.style;
-        prune_empty_node_attrs(node);
-
-        const el = get_el_for_node(node) as HTMLElement | undefined;
-        if (el) el.removeAttribute("style");
+        const subject = active_subject_for_tree(this.tree);
+        assert_mutation_publication_available(subject);
+        if (document_binding_for_node(subject) !== undefined) this.tree.attrs.drop("style");
+        else this.publishStyle({});
     }
 }

@@ -88,6 +88,88 @@ getter. Writable and configurable descriptor flags are not graph semantics.
 The three value states `unit` absent, own-present `undefined`, and own-present
 string remain distinct canonical states.
 
+Style storage and CSS text have distinct contracts. Canonical structured storage,
+Binary, tagged transport, captures and copies preserve lawful finite numbers
+(including `-0`), strings, booleans, null, empty/whitespace-bearing strings,
+property names and typed-unit field presence. CSS projection does not change
+that storage; it uses ordinary string coercion (`-0` projects as `0`), omits
+null/empty declarations, and applies the existing CSS property-name projection.
+Ordinary HTML style text does not promise an exact typed-style round trip.
+
+Readable `style="..."` authoring and HTML-to-structured-style parsing admit a
+complete CSS declaration list strictly. Malformed tokens, declarations or
+priorities reject the entire input. Unsupported values and sequences reject;
+there is no browser-like partial recovery. Unknown property names are allowed
+when their spelling is representable. Native browser interpretation of projected
+CSS remains a separate boundary.
+
+The flat map retains one value per property. Valid supported duplicates select
+important over normal and the last occurrence at equal priority. Differing
+duplicates collapse only for the established literal color, display, opacity
+and sizing cases in `collapse_safe_literal`; identical duplicates and custom
+properties also collapse. Other differing fallback duplicates (including
+unknown/vendor, variable-dependent and newer unsupported values) reject. Canonical
+projection sorts native property names: admission never reverses distinct names
+unless they are custom properties or the explicitly supported independent
+longhands listed in `src/internal/css/inline-css.ts`. Thus
+`margin:10px;margin-top:5px` admits, while the reversed sequence rejects.
+Escapes that cannot survive name projection or boundary trimming, and empty CSS
+values the projection would omit, also reject. This is a bounded supported CSS
+domain, not a promise to admit every browser-valid declaration list.
+Boundary checks use CSS token whitespace, including at the leading boundary;
+Unicode separators such as NBSP are significant content and reject if the
+existing projection would trim them. Inline setters check before coercion, and
+complete-state edits also preflight untouched leaves without narrowing storage.
+A leading declaration-list BOM also rejects; stylesheet BOM trivia is not an
+inline-style admission rule.
+`calc()` uses a bounded headless dimensional check: sums require compatible
+types, products require a proven numeric factor, and division requires a proven
+nonzero numeric divisor. Length/percentage combinations, numeric and time results
+admit only in the receiving-property domains listed in `math_domain`.
+Parentheses and nested literal `calc()` are supported. `var()` operands inside
+typed arithmetic reject: neither a fallback nor a present runtime custom
+property establishes a static dimensional proof. Ordinary non-arithmetic
+`var()` and custom-property component values remain supported. Other nested
+functions, unproven property domains and dimensional divisors reject.
+The math guard runs before the lexer variable exemption and inspects decoded
+function names, including raw variable fallbacks. Unsupported comparison,
+stepped, trigonometric, exponential and other unproved math functions reject;
+adding `var()` cannot bypass the literal grammar restriction on `min()`,
+`max()` or `clamp()`. Existing vendor `calc()` spellings receive the same
+bounded proof. Quoted text and custom-property component values remain separate.
+Grammar-library balanced-function shortcuts do not authorize malformed
+arithmetic. Native CSSOM support is not canonical admission authority.
+Negative literals also reject for the explicitly
+nonnegative sizing, padding, border-width, font-size, line-height, gap and flex
+factor properties. Custom values remain CSS component values.
+
+Inline LiveTree setters accept single supported CSS values, interpret priority,
+and preflight batches and write ordering before mutation. They realize the
+complete retained style map; rejected operations do not publish partial graph
+state. A shorthand write after a conflicting retained longhand may reject.
+Scalar runtime style attributes remain exact storage; declaration edits on them
+reject until the caller explicitly replaces or clears that attribute. Unchanged
+writes are no-ops. Hosted synchronous style authoring still requires
+the existing async attribute-authoring boundary; no async style API is added.
+Graph-owned structured attribute replacement remains
+an exact-storage operation with a deterministic browser projection.
+Public reads and edits resolve current camel/kebab spellings and `cssFloat`
+against their native property. Edits retain an existing key spelling, remove
+equivalent duplicates only for the edited property, and leave unrelated keys
+and leaves intact. Inline vendor JS names project with their leading native
+hyphen; authored CSS identifiers still have their separate receiving rules.
+Batch names colliding after full native resolution reject before publication.
+Accepted graph attribute effects use the existing exact graph codec in their
+attribute/style context, preserving retained typed-unit presence through local
+Mirror commits. Portable client authoring retains its stricter projected-value
+admission; this does not authorize generic undefined or portable QUID claims.
+
+`HsonDocument.fromNode()` still requires exact readable notation closure of the
+original graph. Rich typed styles that cannot close under current CSS-string
+notation reject there without narrowing generic storage. No structured-attribute
+syntax or generic undefined primitive is introduced.
+
+
 The optional `$_attrs` and `$_meta` fields, when present and populated, and every string-keyed
 entry within their record values are likewise enumerable own data properties.
 Accessor-backed, non-enumerable, or custom-prototype record state rejects before
@@ -198,7 +280,9 @@ success or hidden by normalizing an admitted graph:
   negative zero, projected name collisions, and raw/structured notation
   differences. Valid style storage is admitted unchanged, including empty maps
   and absent/undefined/string unit distinctions; Binary preserves it. Hson
-  style notation closure is unresolved. No style grammar/rendering was changed.
+  exact readable admission is limited to graphs that pass the closure check.
+  General structured style-attribute notation remains deferred; current
+  CSS-string admission is strict as specified above.
 - Later transport work: JSON sidecar/key collisions and metadata ambiguity;
   ordinary JavaScript `.value()` integer-key ordering differs from exact JSON
   text ordering. HTML casing, text boundaries, SVG ownership, void elements,

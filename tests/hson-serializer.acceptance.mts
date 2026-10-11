@@ -687,14 +687,14 @@ check("structured style serialization remains normalized and string-valued", () 
     $_tag: "_hson_elem",
     $_content: [{
       $_tag: "tag",
-      $_attrs: { style: { width: { value: 2, unit: "px" }, marginTop: 2, color: "red" } },
+      $_attrs: { style: { width: { value: 2, unit: "px" }, marginTop: { value: 2, unit: "px" }, color: "red" } },
       $_content: [],
     }],
   };
   const wire = readable(node);
-  assert.equal(wire, `<tag style="color: red; margin-top: 2; width: 2px"/>`);
+  assert.equal(wire, `<tag style="color: red; margin-top: 2px; width: 2px"/>`);
   const reparsedTag = parse(wire).$_content[0] as HsonNode;
-  assert.deepEqual(reparsedTag.$_attrs?.style, { color: "red", marginTop: "2", width: "2px" });
+  assert.deepEqual(reparsedTag.$_attrs?.style, { color: "red", marginTop: "2px", width: "2px" });
 });
 
 check("typed style admission preserves all ordinary own unit states", () => {

@@ -99,14 +99,14 @@ check("all tokenless authored document sources reject consistently", () => {
 
 check("attrs and structured style retain portable document closure", () => {
   const document = Hson.document.fromHson(
-    Hson.canonical`<main class="shell" hidden style="color: red; margin-top: 2" <span "ready"/>/>`,
+    Hson.canonical`<main class="shell" hidden style="color: red; margin-top: 2px" <span "ready"/>/>`,
   );
   const first = Hson.document.toNode(document).$_content[0];
   assert.ok(typeof first === "object" && first !== null);
   assert.deepEqual(first.$_attrs, {
     class: "shell",
     hidden: "hidden",
-    style: { color: "red", marginTop: "2" },
+    style: { color: "red", marginTop: "2px" },
   });
   assert.equal(first.$_meta?.quid, undefined);
   assert.doesNotMatch(document, /@000000001|@000000002/);

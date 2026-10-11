@@ -10,6 +10,7 @@ import { serialize_hson_owned_document_content } from "../transform/serializers/
 import type { HsonCanonical } from "../transform/transform.types.js";
 import { scan_ingested_hson_node_quids } from "../transform/utils/hson-utils/quid-ingress.js";
 import { assert_document_special_tags } from "../../core/document-special-tags.js";
+import { InlineCssError } from "../../internal/css/inline-css.js";
 
 let wrap_hson_document: (root: HsonNode) => ExactDocumentCarrier;
 const hson_document_roots = new WeakMap<object, HsonNode>();
@@ -208,9 +209,19 @@ function qualify_exact_document_root(root: HsonNode): void {
   assert_document_special_tags(root);
 
   const source = serialize_hson_owned_document_content(root);
-  const reparsed = normalize_owned_document_boundary(parse_hson(source, {
-    allowTopLevelDocumentText: true,
-  }));
+  let reparsed: HsonNode;
+  try {
+    reparsed = normalize_owned_document_boundary(parse_hson(source, {
+      allowTopLevelDocumentText: true,
+    }));
+  } catch (error) {
+    if (!(error instanceof InlineCssError)) throw error;
+    _throw_transform_err(
+      "ExactDocumentCarrier style projection is not closed under readable Hson notation",
+      "ExactDocumentCarrier.fromNode", undefined, error,
+      { code: "HSON_DOCUMENT_NOTATION_CLOSURE", stage: "canonical-document-admission", path: "$" },
+    );
+  }
   if (!canonical_hson_graph_equal(root, reparsed)) {
     _throw_transform_err(
       "ExactDocumentCarrier input is canonical document structure but is not exactly closed under Hson notation",

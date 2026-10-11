@@ -134,6 +134,38 @@ check("document Hson rejects the data-only boundary", () => {
   assert.throws(() => Hson.data.fromHson("<a 1b 2>" as Parameters<typeof Hson.data.fromHson>[0]), /data-mode Hson/);
 });
 
+check("data-only receiver retains grammar and rejects document attributes before decoding", () => {
+  const text = (source: string) => source as Parameters<typeof Hson.data.fromHson>[0];
+  const valid = [
+    ['""', ""], ['-0', -0], ['false', false], ['null', null],
+    ['<>', {}], ['[]', []], ['<empty "" zero -0 absent null>', { empty: "", zero: -0, absent: null }],
+    ['<z [1, <inner true>, []] a <> >', { z: [1, { inner: true }, []], a: {} }],
+    ['<style "width:min(var(--missing,2s),10px)">', { style: 'width:min(var(--missing,2s),10px)' }],
+  ] as const;
+  for (const [source, expected] of valid) {
+    const data = Hson.data.fromHson(text(source));
+    assert.equal(Hson.data.fromHson(data), data);
+    assert.deepEqual(Hson.data.materialize(data), expected);
+  }
+  const ordered = Hson.data.fromHson(text('<tail [] first "" zero -0>'));
+  assert.deepEqual(entries(ordered).map(([key]) => key), ["tail", "first", "zero"]);
+  assert.equal(Object.is(Hson.data.materialize(entries(ordered)[2]![1]), -0), true);
+  const invalid = [
+    '<p style="color:red"/>', '<p style="broken"/>', '<p style/>', '<p title="text"/>',
+    '<p/>', '<p "text"/>', '<_hson_elem/>', '<_hson_obj style="broken"/>',
+    '<p @000000001/>', '<_hson_root @000000001/>',
+    '<a 1 a 2>', '<a 1b 2>', '<a>', '<a 1', '[] []',
+    'undefined', 'NaN', 'Infinity', '1e999', '"unterminated', '',
+  ];
+  for (const source of invalid) assert.throws(() => Hson.data.fromHson(text(source)), (error) =>
+    error instanceof TypeError && /requires data-mode Hson/.test(error.message) && error.cause instanceof Error, source);
+  for (const source of ['<p style="broken"/>', '<p title="x"/>']) {
+    assert.throws(() => Hson.data.fromHson(text(source)), (error) =>
+      error instanceof TypeError && error.cause instanceof TypeError
+      && /cannot carry attributes/.test(error.cause.message));
+  }
+});
+
 check("named data library exact reads preserve source order and values", () => {
   const map = hson.liveMap.fromLibraries({ state: {
     data: '{"value":{"10":-0,"2":{"__proto__":true},"tail":[1,{"constructor":2,"prototype":3}]}}',

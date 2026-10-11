@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const scripts = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).scripts;
 const browser = new Set([
+  "test:inline-style-browser",
   "test:transform-trust-ingress-browser",
   "test:canonical-interactions-browser",
   "test:browser-realization-parser-closure",

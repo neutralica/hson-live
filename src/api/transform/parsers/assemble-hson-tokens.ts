@@ -1,0 +1,599 @@
+// Shared Hson token assembly; receiving-context attribute decoding is supplied by the caller.
+
+import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG, HSON_SYS_PREFIX, EVERY_VSN } from "../../../core/constants.js";
+import { CREATE_NODE } from "../../../core/factories.js";
+import { TOKEN_KIND, CLOSE_KIND, TokenEmptyObj } from "../token.types.js";
+import { HSON_META_INDEX } from "../../../core/constants.js";
+import { HsonNode, NodeContent } from "../../../core/types.js";
+import { Tokens, CloseKind, Position, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenKind, TokenText, TokenInterpolationSlot } from "../token.types.js";
+import { coerce } from "../utils/primitive-utils/coerce-string.utils.js";
+import { _snip } from "../utils/sys-utils/snip.utils.js";
+import type { HsonAttrs, HsonMeta } from "../../../core/types.js";
+import type { RawAttr } from "../token.types.js";
+
+/** Internal receiving-context boundary; structural assembly never imports CSS decoding. */
+export type HsonAttributeDecoder = (raw: RawAttr[]) => { attrs: HsonAttrs; meta: HsonMeta };
+import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
+import { is_string } from "../../../core/value-guards.js";
+import type { HsonSemanticPrimitive } from "../../../core/types.js";
+import { assign_ingested_hson_node_quid } from "../utils/hson-utils/quid-ingress.js";
+import type { HsonSourceProvenanceBuilder } from "../../../internal/hson-source-provenance/hson-source-provenance.js";
+
+export type ParseTokensOptions = Readonly<{
+    /** Internal document admission for top-level text and structural slots. */
+    allowTopLevelDocumentText?: boolean;
+    /** Private already-admitted tagged-template slot content. */
+    interpolation?: Readonly<{ mode: "canonical" | "document" | "data"; values: readonly (readonly HsonNode[])[] }>;
+}>;
+
+
+/**
+ * Create a canonical Hson leaf node from a primitive value.
+ *
+ * Rules:
+ * - `string`  → `<_hson_str>` node with `$_content: [value]`.
+ * - non-string primitive (`number | boolean | null`) → `<_hson_val>` node with `$_content: [value]`.
+ *
+ * Notes:
+ * - Empty optional containers are omitted from leaf nodes created here.
+ * - This is the preferred constructor for primitive payloads to keep string vs non-string
+ *   semantics explicit in the IR.
+ *
+ * @param v - Primitive value to wrap as a leaf node.
+ * @returns A new `HsonNode` using `_hson_str` or `_hson_val` depending on the runtime type of `v`.
+ */
+export const make_leaf = (v: HsonSemanticPrimitive): HsonNode =>
+(is_string(v)
+    ? CREATE_NODE({ $_tag: STR_TAG, $_content: [v] })
+    : CREATE_NODE({ $_tag: VAL_TAG, $_content: [v] }));
+
+
+/**
+ * Assemble a flat token stream into a hierarchical `HsonNode` tree.
+ *
+ * This is the second stage of the Hson parser: it consumes the output of
+ * `tokenize_hson` and builds the final IR, enforcing the Hson clustering
+ * and close-mode rules.
+ *
+ * High-level behavior:
+ * - Walks the token array once, maintaining an index (`ix`) into `$tokens`.
+ * - Uses `readTag` to assemble the scanner's lowered element and object-member
+ *   token sequences (`OPEN`…`CLOSE`) into nodes. Angle closer classification
+ *   and object-member grammar have already been resolved by the scanner.
+ * - Uses `readArray` to parse `ARR_OPEN`…`ARR_CLOSE` sequences into
+ *   `_hson_arr` nodes full of `_hson_ii` children, each tagged with `index`.
+ * - Handles empty objects (`EMPTY_OBJ`, i.e. `<>`) both at
+ *   top-level and inside arrays.
+ * - Converts `TEXT` tokens into primitive leaves:
+ *   - quoted text → `JSON.parse(raw)` to decode string literals
+ *   - unquoted text → `coerce(raw)` for primitive inference
+ *   then wraps the result with `make_leaf`.
+ * - Tracks the close kind for each top-level construct in `topCloseKinds`
+ *   so that implicit roots can be shaped correctly later.
+ *
+ * Root synthesis:
+ * - If the sole top-level node is already `<_hson_root>`, return it directly.
+ * - Otherwise, synthesize a `_hson_root` node according to the top-level shape:
+ *   - A single cluster node (`_hson_obj`, `_hson_arr`, `_hson_elem`) is wrapped as-is.
+ *   - A single standard element is wrapped in `_hson_elem` according to its
+ *     recorded close kind.
+ *   - A sole primitive leaf is attached directly beneath `_hson_root`.
+ *   - No tokens remain an internal fallback state; `parse_hson` rejects all
+ *     tokenless source before that fallback can become a source result.
+ *     Resolved document slots may produce an internal empty root, which public
+ *     serializable document qualification rejects.
+ *   - Multiple top-level elements form ordered document content. Multiple top-level
+ *     object values reject because one object angle pair owns the full member
+ *     collection; mixed structural modes also reject.
+ *
+ * Error handling:
+ * - Any unexpected token kind in a given context (inside tags, arrays,
+ *   or at the top level) results in a transform error.
+ * - Missing closing tokens, malformed `_hson_root` / VSN shapes, or invalid
+ *   payloads for special tags (e.g. `<_hson_val>`) also throw.
+ *
+ * @param tokens - Token array produced by `tokenize_hson`.
+ * @returns A `_hson_root`-wrapped `HsonNode` representing the parsed Hson tree.
+ * @see tokenize_hson
+ * @see make_leaf
+ */
+export function assemble_hson_tokens(
+    tokens: Tokens[],
+    decodeAttributes: HsonAttributeDecoder,
+    options: ParseTokensOptions = {},
+    provenance?: HsonSourceProvenanceBuilder,
+): HsonNode {
+    const nodes: HsonNode[] = [];
+    const topCloseKinds: CloseKind[] = [];
+    const topPositions: Position[] = [];
+
+    let ix = 0;
+    const N = tokens.length;
+    function slotNodes(token: TokenInterpolationSlot): readonly HsonNode[] {
+        const interpolation = options.interpolation;
+        if (interpolation === undefined || (interpolation.mode !== "canonical" && token.context !== (interpolation.mode === "document" ? "document-content" : "data-value"))) {
+            _throw_transform_err("interpolation is unavailable in this parser mode", "parse_tokens",
+                undefined, undefined, sourceDetails(token.pos, "HSON_INTERPOLATION_POSITION_INVALID", "template-admission"));
+        }
+        const content = interpolation.values[token.slot];
+        if (content === undefined || (token.context === "data-value" && content.length !== 1)) {
+            _throw_transform_err("invalid interpolation slot", "parse_tokens",
+                undefined, undefined, sourceDetails(token.pos, "HSON_INTERPOLATION_POSITION_INVALID", "template-admission"));
+        }
+        return content;
+    }
+    function sourceDetails(pos: Position, code: string, stage = "parsing") {
+        return {
+            code,
+            stage,
+            source: { index: pos.index, line: pos.line, column: pos.col },
+        } as const;
+    }
+    function _peek(): Tokens | undefined { return tokens[ix]; }
+    function _take(kind: typeof TOKEN_KIND.OPEN): TokenOpen;
+    function _take(kind: typeof TOKEN_KIND.CLOSE): TokenClose;
+    function _take(kind: typeof TOKEN_KIND.ARR_OPEN): TokenArrayOpen;
+    function _take(kind: typeof TOKEN_KIND.ARR_CLOSE): TokenArrayClose;
+    function _take(kind: typeof TOKEN_KIND.TEXT): TokenText;
+    function _take(kind: typeof TOKEN_KIND.EMPTY_OBJ): TokenEmptyObj;
+    function _take(): Tokens | null;
+
+    // runtime impl checks when an expected kind is passed
+    function _take(expected?: TokenKind): any {
+        const tok = tokens[ix++] as Tokens | undefined;
+        if (!tok) return null;
+        if (expected && tok.kind !== expected) {
+            _throw_transform_err(`expected ${expected}, got ${tok.kind}`, "parse_tokens");
+        }
+        return tok;
+    }
+
+
+    //  type guard helps in places without overloads
+    function isTokenOpen(t: Tokens | null | undefined): t is TokenOpen {
+        return !!t && t.kind === TOKEN_KIND.OPEN;
+    }
+
+    function isTokenClose(t: Tokens | null | undefined): t is TokenClose {
+        return !!t && t.kind === TOKEN_KIND.CLOSE;
+    }
+    function isTokenText(t: Tokens | null | undefined): t is TokenText {
+        return !!t && t.kind === TOKEN_KIND.TEXT;
+    }
+    function isTokenArrOpen(t: Tokens | null | undefined): t is TokenArrayOpen {
+        return !!t && t.kind === TOKEN_KIND.ARR_OPEN;
+    }
+    function parsedLeaf(token: TokenText): HsonNode {
+        const prim = token.directValue !== undefined ? token.directValue : token.quoted ? JSON.parse(token.raw) : coerce(token.raw);
+        const node = make_leaf(prim);
+        provenance?.bindScalar(node, token);
+        return node;
+    }
+    function readTag(): { node: HsonNode; closeKind: CloseKind; open: TokenOpen } {
+        // NOTE: _take() returning any is sketchy; narrow immediately.
+        const tok = _take();
+        if (!isTokenOpen(tok)) {
+            _throw_transform_err(`expected OPEN, got ${tok?.kind ?? "eof"}`, "parse_tokens");
+        }
+        const open = tok as TokenOpen;
+
+        const { attrs, meta } = decodeAttributes(open.rawAttrs);
+        const node = CREATE_NODE({ $_tag: open.tag, $_meta: meta });
+        provenance?.bindTagStart(node, open);
+        if (open.quid !== undefined) {
+            assign_ingested_hson_node_quid(node, open.quid.value, "parse_tokens");
+        }
+
+        // VSNs carry no $_attrs
+        const isVSN =
+            open.tag === STR_TAG || open.tag === VAL_TAG ||
+            open.tag === ARR_TAG || open.tag === OBJ_TAG ||
+            open.tag === ELEM_TAG || open.tag === ROOT_TAG ||
+            open.tag === II_TAG;
+
+        if (!isVSN && Object.keys(attrs).length) {
+            node.$_attrs = attrs;
+        }
+
+        let sawClose: TokenClose | null = null;
+        const kids: HsonNode[] = [];
+        const ordinaryChildClosers: Array<Readonly<{
+            tag: string;
+            closeKind: CloseKind;
+            open: TokenOpen;
+        }>> = [];
+        let sawNestedArray = false;
+        let sawEmptyObject: TokenEmptyObj | undefined;
+
+        // --- gather children
+        while (ix < N) {
+            const t = _peek(); if (!t) break;
+
+            //  end of this tag
+            if (isTokenClose(t)) {
+                sawClose = _take(TOKEN_KIND.CLOSE);
+                break;
+            }
+
+            //  empty object "<>"
+            if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
+                sawEmptyObject = _take(TOKEN_KIND.EMPTY_OBJ);
+                continue;
+            }
+
+            //  nested array
+            if (isTokenArrOpen(t)) {
+                kids.push(readArray());
+                sawNestedArray = true;
+                continue;
+            }
+
+            //  nested tag
+            if (isTokenOpen(t)) {
+                const child = readTag();
+                kids.push(child.node);
+                if (!EVERY_VSN.includes(child.node.$_tag)) {
+                    ordinaryChildClosers.push({
+                        tag: child.node.$_tag,
+                        closeKind: child.closeKind,
+                        open: child.open,
+                    });
+                }
+                continue;
+            }
+
+            //  nested text → primitive leaf
+            if (isTokenText(t)) {
+                const tt = _take(TOKEN_KIND.TEXT);
+                kids.push(parsedLeaf(tt));
+                continue;
+            }
+
+            if (t.kind === TOKEN_KIND.INTERPOLATION_SLOT) {
+                _take();
+                kids.push(...slotNodes(t));
+                continue;
+            }
+
+            _throw_transform_err(`unexpected token ${t.kind} inside <${open.tag}>`, "parse_tokens");
+        }
+
+        // strong narrow
+        if (sawClose === null) {
+            _throw_transform_err(`missing CLOSE for <${open.tag}>`, "parse_tokens");
+        }
+        const closeKind: CloseKind = sawClose.close;
+        provenance?.bindTagEnd(node, open, sawClose);
+
+        if (!isVSN) {
+            const incompatible = ordinaryChildClosers.find((child) => child.closeKind !== closeKind);
+            if (incompatible) {
+                _throw_transform_err(
+                    `structural mode crossing: <${open.tag}> closes as ${closeKind} but child <${incompatible.tag}> closes as ${incompatible.closeKind} at ${incompatible.open.pos.line}:${incompatible.open.pos.col}`,
+                    "parse_tokens.structural-mode",
+                    undefined,
+                    undefined,
+                    sourceDetails(incompatible.open.pos, "HSON_STRUCTURAL_MODE_CROSSING", "structural-mode-admission"),
+                );
+            }
+            if (closeKind === CLOSE_KIND.elem && (sawNestedArray || sawEmptyObject)) {
+                _throw_transform_err(
+                    `structural mode crossing: element branch <${open.tag}> cannot contain object/array structure at ${open.pos.line}:${open.pos.col}`,
+                    "parse_tokens.structural-mode",
+                    undefined,
+                    undefined,
+                    sourceDetails(open.pos, "HSON_STRUCTURAL_MODE_CROSSING", "structural-mode-admission"),
+                );
+            }
+        }
+
+        // ---------- <_hson_root>: choose cluster by its own closer; never mix modes ----------
+        if (open.tag === ROOT_TAG) {
+            //  explicit "<>" under root => single empty _hson_obj cluster
+            if (sawEmptyObject) {
+                const empty = CREATE_NODE({ $_tag: OBJ_TAG });
+                provenance?.bindEmptyObject(empty, sawEmptyObject);
+                node.$_content = [empty];
+                return { node, closeKind, open };
+            }
+
+            if (kids.length === 1 && kids[0].$_tag === ARR_TAG) {
+                node.$_content = kids; // passthrough array cluster
+            } else if (kids.length > 0) {
+                const clusterTag = (closeKind === CLOSE_KIND.elem) ? ELEM_TAG : OBJ_TAG;
+                const cluster = CREATE_NODE({ $_tag: clusterTag, $_content: kids });
+                provenance?.bindSynthetic(cluster, kids);
+                node.$_content = [cluster];
+            } else {
+                node.$_content = [];
+            }
+            return { node, closeKind, open };
+        }
+
+        // ---------- VSN passthroughs ----------
+        if (open.tag === OBJ_TAG || open.tag === ARR_TAG || open.tag === ELEM_TAG) {
+            node.$_content = kids as NodeContent;
+            return { node, closeKind, open };
+        }
+
+        if (open.tag === STR_TAG || open.tag === VAL_TAG || open.tag === II_TAG) {
+            node.$_content = kids as NodeContent;
+            return { node, closeKind, open };
+        }
+
+        // ---------- Normal tag: SINGLE-MODE shaping (no _hson_elem/_hson_obj mixing) ----------
+        if (closeKind === CLOSE_KIND.obj) {
+            // OBJECT semantics: ensure exactly one inner _hson_obj OR pass through a single _hson_arr/_hson_obj
+            if (kids.length === 1 && (kids[0].$_tag === OBJ_TAG || kids[0].$_tag === ARR_TAG)) {
+                node.$_content = [kids[0]]; // passthrough a single cluster
+            } else {
+                const cluster = CREATE_NODE({
+                    $_tag: OBJ_TAG,
+                    $_content: kids as NodeContent
+                });
+                provenance?.bindSynthetic(cluster, kids);
+                node.$_content = [cluster];
+            }
+
+            // Guardrail: object mode must yield a single _hson_obj/_hson_arr
+            const c = node.$_content as HsonNode[];
+            if (!(c.length === 1 && (c[0].$_tag === OBJ_TAG || c[0].$_tag === ARR_TAG))) {
+                _throw_transform_err("object semantics must yield a single _hson_obj/_hson_arr child", "parse_tokens.object");
+            }
+        } else {
+            // Empty ordinary elements retain the canonical $_content: [] form.
+            if (kids.length === 0) {
+                node.$_content = [];
+            } else if (kids.length === 1 && kids[0].$_tag === ELEM_TAG) {
+                node.$_content = kids as NodeContent; // already clustered
+            } else {
+                const cluster = CREATE_NODE({
+                    $_tag: ELEM_TAG,
+                    $_content: kids as NodeContent
+                });
+                provenance?.bindSynthetic(cluster, kids);
+                node.$_content = [cluster];
+            }
+
+            // Guardrail: element mode must yield a single _hson_elem
+            const c = node.$_content as HsonNode[];
+            if (!(c.length === 0 || (c.length === 1 && c[0].$_tag === ELEM_TAG))) {
+                _throw_transform_err("element semantics must yield a single _hson_elem child", "parse_tokens.element");
+            }
+        }
+
+        return { node, closeKind, open };
+    }
+
+
+
+    /* parse an array starting at ARRAY_OPEN */
+
+    function readArray(): HsonNode {
+        const arrOpen = _take();
+        if (!arrOpen || arrOpen.kind !== TOKEN_KIND.ARR_OPEN) {
+            _throw_transform_err(`expected ARR_OPEN, got ${arrOpen?.kind ?? "eof"}`, "parse_tokens");
+        }
+        const items: HsonNode[] = [];
+        let idx = 0;
+        let arrClose: TokenArrayClose | undefined;
+
+        while (ix < N) {
+            const t = _peek(); if (!t) break;
+            if (t.kind === TOKEN_KIND.ARR_CLOSE) {
+                arrClose = _take(TOKEN_KIND.ARR_CLOSE);
+                break;
+            }
+
+            let childNode: HsonNode;
+
+            if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
+
+                const empty = _take(TOKEN_KIND.EMPTY_OBJ);
+                // build an empty object *item*
+                childNode = CREATE_NODE({ $_tag: OBJ_TAG, $_content: [] });
+                provenance?.bindEmptyObject(childNode, empty);
+
+            } else if (t.kind === TOKEN_KIND.TEXT) {
+                // FIX: keep primitives inside the array (do NOT push to outer "nodes")
+                const tt = _take() as TokenText;
+                childNode = parsedLeaf(tt); // ← was: nodes.push(...); continue;
+
+            } else if (t.kind === TOKEN_KIND.OPEN) {
+                const child = readTag();
+                if (child.closeKind === CLOSE_KIND.elem) {
+                    _throw_transform_err(
+                        `_hson_arr cannot contain an element-mode value at ${child.open.pos.line}:${child.open.pos.col}; arrays cannot cross object/element structural modes`,
+                        "parse_tokens.structural-mode",
+                        undefined,
+                        undefined,
+                        sourceDetails(child.open.pos, "HSON_STRUCTURAL_MODE_CROSSING", "structural-mode-admission"),
+                    );
+                }
+                childNode = child.node;
+            } else if (t.kind === TOKEN_KIND.ARR_OPEN) {
+                childNode = readArray();
+            } else if (t.kind === TOKEN_KIND.INTERPOLATION_SLOT) {
+                _take();
+                const content = slotNodes(t);
+                if (content.length !== 1) {
+                    _throw_transform_err("array interpolation requires one data value", "parse_tokens");
+                }
+                childNode = content[0]!;
+            } else {
+                _throw_transform_err(`unexpected ${t.kind} in array`, "parse_tokens");
+            }
+
+            const item = CREATE_NODE({
+                $_tag: II_TAG,
+                $_meta: { [HSON_META_INDEX]: String(idx) },
+                $_content: [childNode],
+            });
+            provenance?.bindArrayItem(item, childNode);
+            items.push(item);
+            idx++;
+        }
+
+        const node = CREATE_NODE({ $_tag: ARR_TAG, $_content: items });
+        if (arrClose !== undefined) provenance?.bindArray(node, arrOpen, arrClose);
+        if (arrOpen.quid !== undefined) {
+            assign_ingested_hson_node_quid(node, arrOpen.quid.value, "parse_tokens");
+        }
+        return node;
+    }
+
+    /* drive the stream */
+    while (ix < N) {
+        const t = _peek(); if (!t) break;
+
+        if (t.kind === TOKEN_KIND.OPEN) {
+            // mark top-level so we record the closer
+            const { node, closeKind, open } = readTag();
+            nodes.push(node);
+            topCloseKinds.push(closeKind); // <-- record
+            topPositions.push(open.pos);
+            continue;
+        }
+        if (t.kind === TOKEN_KIND.ARR_OPEN) {
+            topPositions.push(t.pos);
+            nodes.push(readArray());
+            topCloseKinds.push("obj"); // arrays are object-closer at top
+            continue;
+        }
+        if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
+            const empty = _take(TOKEN_KIND.EMPTY_OBJ);
+            topPositions.push(empty.pos);
+            const node = CREATE_NODE({ $_tag: OBJ_TAG, $_content: [] });
+            provenance?.bindEmptyObject(node, empty);
+            nodes.push(node);
+            topCloseKinds.push("obj");
+            continue;
+        }
+        if (t.kind === TOKEN_KIND.TEXT) {
+            const tt = _take(TOKEN_KIND.TEXT);
+            nodes.push(parsedLeaf(tt));
+            topCloseKinds.push("elem");
+            topPositions.push(tt.pos);
+            continue;
+        }
+        if (t.kind === TOKEN_KIND.INTERPOLATION_SLOT) {
+            _take();
+            const content = slotNodes(t);
+            for (const child of content) {
+                nodes.push(child);
+                topCloseKinds.push(child.$_tag === OBJ_TAG || child.$_tag === ARR_TAG ? "obj" : "elem");
+                topPositions.push(t.pos);
+            }
+            continue;
+        }
+
+        _throw_transform_err(`unexpected top-level token ${t.kind}`, "parse_tokens");
+    }
+
+    if (nodes.length === 1 && nodes[0].$_tag === ROOT_TAG) {
+        return nodes[0];
+    }
+
+    /* implicit-root fallback (no explicit <_hson_root>) ----------------------------*/
+    {
+        const kids = nodes;
+
+        // 0) single <_hson_root> already (kept earlier) — nothing to do
+
+        // 1) one complete semantic cluster or primitive → keep as-is
+        if (kids.length === 1 && (
+            kids[0].$_tag === OBJ_TAG
+            || kids[0].$_tag === ARR_TAG
+            || kids[0].$_tag === ELEM_TAG
+            || (kids[0].$_tag === STR_TAG && !options.allowTopLevelDocumentText)
+            || kids[0].$_tag === VAL_TAG
+        )) {
+            const child = kids[0];
+            return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [child] });
+        }
+
+        // 2) single standard tag → wrap according to its closer
+        if (kids.length === 1 && typeof kids[0].$_tag === "string" && !kids[0].$_tag.startsWith(HSON_SYS_PREFIX)) {
+            const mode = topCloseKinds[0] === CLOSE_KIND.obj ? OBJ_TAG : ELEM_TAG; // CHANGED
+            const cluster = CREATE_NODE({ $_tag: mode, $_content: [kids[0]] });
+            provenance?.bindSynthetic(cluster, kids);
+            return CREATE_NODE({
+                $_tag: ROOT_TAG,
+                $_content: [cluster],
+            });
+        }
+
+        // 3) empty → empty object cluster
+        if (kids.length === 0) {
+            if (options.interpolation?.mode === "document") {
+                return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [] });
+            }
+            return CREATE_NODE({
+                $_tag: ROOT_TAG,
+                $_content: [CREATE_NODE({ $_tag: OBJ_TAG, $_content: [] })],
+            });
+        }
+
+        // A typed primitive must be the sole semantic value. String leaves
+        // may participate in ordered element/content-mode root structure.
+        const containsValueLeaf = kids.some((child) => child.$_tag === VAL_TAG);
+        if (containsValueLeaf) {
+            const second = topPositions[1] ?? topPositions[0];
+            const hasStructural = kids.some((child) => child.$_tag !== VAL_TAG && child.$_tag !== STR_TAG);
+            _throw_transform_err(
+                "a top-level primitive must be the sole semantic Hson value",
+                "parse_tokens.root-shaping",
+                undefined,
+                undefined,
+                sourceDetails(
+                    second ?? { index: 0, line: 1, col: 1 },
+                    hasStructural ? "HSON_ROOT_MIXED_MODES" : "HSON_ROOT_MULTIPLE_VALUES",
+                    "root-shaping",
+                ),
+            );
+        }
+
+        // 4) multiple top-level nodes require one unanimous structural mode.
+        const allObj = topCloseKinds.length > 0 && topCloseKinds.every(k => k === CLOSE_KIND.obj);
+        const allElem = topCloseKinds.length > 0 && topCloseKinds.every(k => k === CLOSE_KIND.elem);
+        if (!allObj && !allElem) {
+            const firstKind = topCloseKinds[0];
+            const conflictIndex = topCloseKinds.findIndex((kind) => kind !== firstKind);
+            const conflict = topPositions[conflictIndex];
+            _throw_transform_err(
+                `mixed top-level structural modes are invalid (${topCloseKinds.join(", ")})${conflict === undefined ? "" : ` at ${conflict.line}:${conflict.col} (index ${conflict.index})`}`,
+                "parse_tokens.structural-mode",
+                undefined,
+                undefined,
+                sourceDetails(
+                    conflict ?? topPositions[0] ?? { index: 0, line: 1, col: 1 },
+                    "HSON_ROOT_MIXED_MODES",
+                    "root-shaping",
+                ),
+            );
+        }
+        if (allObj) {
+            const second = topPositions[1] ?? topPositions[0];
+            const allObjectValues = kids.every((child) => child.$_tag !== ARR_TAG);
+            _throw_transform_err(
+                `multiple top-level object values are invalid; one object angle pair must contain every member${second === undefined ? "" : ` at ${second.line}:${second.col} (index ${second.index})`}`,
+                "parse_tokens.root-shaping",
+                undefined,
+                undefined,
+                sourceDetails(
+                    second ?? { index: 0, line: 1, col: 1 },
+                    allObjectValues ? "HSON_LEGACY_ADJACENT_OBJECT" : "HSON_ROOT_MULTIPLE_VALUES",
+                    "root-shaping",
+                ),
+            );
+        }
+
+        const cluster = CREATE_NODE({ $_tag: ELEM_TAG, $_content: kids });
+        provenance?.bindSynthetic(cluster, kids);
+        return CREATE_NODE({
+            $_tag: ROOT_TAG,
+            $_content: [cluster],
+        });
+    }
+
+}

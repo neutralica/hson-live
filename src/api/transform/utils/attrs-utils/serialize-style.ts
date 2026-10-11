@@ -12,6 +12,15 @@ interface StyleSerializeOptions {
   baseIndent?: string;
 }
 
+/** Inline storage/native projection, distinct from authored CSS identifiers. */
+export function inline_css_native_name(key: string): string {
+  if (key.startsWith("--")) return key;
+  if (key === "cssFloat") return "float";
+  const vendor = /^(Webkit|webkit|Moz|moz|ms|Ms|O|o)([A-Z].*)$/.exec(key);
+  if (vendor) return `-${vendor[1].toLowerCase()}-${camel_to_kebab(vendor[2])}`;
+  return camel_to_kebab(key);
+}
+
 
 
 /*******
@@ -35,7 +44,6 @@ interface StyleSerializeOptions {
  * - Skips null/undefined values.
  * - Trims stringified values.
  * - Skips empty values after trimming.
- * - Strips any trailing semicolons from values to avoid `;;` output.
  *
  * Nested rule maps are not inline declarations and are rejected.
  *
@@ -53,12 +61,7 @@ export function serialize_style(style: CssMap | undefined): string {
     if (rendered === undefined) throw new Error("Inline style contains an invalid declaration value.");
     let v = rendered;
     if (!v) continue;
-    if (v.endsWith(";")) v = v.replace(/;+$/g, "");
-    const isCustomProp = prop.startsWith("--");
-    const outKey =
-      isCustomProp ? prop :
-        prop === "cssFloat" ? "float" :
-          camel_to_kebab(prop);
+    const outKey = inline_css_native_name(prop);
 
     entries.push([outKey, v]);
   }

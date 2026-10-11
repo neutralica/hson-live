@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import { DocumentContinuationError, Hson, HsonData, add_interaction, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionLocalBehaviors, type LocusWebSocketLike } from "../src/index.ts";
 import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
+import { parse_style_string } from "../src/api/transform/utils/attrs-utils/parse-style.ts";
+import { runtime_for_tree } from "../src/api/livetree/runtime/livetree-runtime.ts";
 import { prepare_hosted_document_internal } from "../src/api/continuation/continue-hosted-document.ts";
 import { set_document_adoption_fault_hook_for_tests } from "../src/api/continuation/continuation.adopt.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -350,6 +352,39 @@ function socketPair(): Readonly<{
   staleWire.transport.dispose();
   staleWire.detach();
   locus.dispose();
+}
+
+// Strict inline authoring rejects before hosted dispatch. Accepted batches
+// project through the replica at one authority revision without CSS identity.
+{
+  const authority = hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' } });
+  const locus = hsonLiveMap.locus.create({
+    ...authority_groups_from_map_fixture(authority, test_application_catalog(authority)),
+    authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
+  });
+  const session = await locus.session.create({ libraries: ["page"] });
+  const pair = socketPair();const detach = bind_locus_websocket(locus, pair.server);
+  const root = new FakeElement("main"), button = new FakeElement("button");root.appendChild(button);
+  const continuation = await continue_hosted_document({ now: session.now(), credential: session.credential!,
+    transport: test_echo_transport(pair.client), root: root as unknown as Element });
+  try {
+    const tree = continuation.tree.find.must.byTag("button");
+    const runtime = runtime_for_tree(tree), issued = runtime.issuedQuids.size;
+    const rev = locus.rev, frames = pair.delivered.length;
+    assert.throws(() => tree.style.setMany({ color: "red", width: "bogus" }), /invalid|Unsupported/);
+    assert.equal(locus.rev, rev);assert.equal(pair.delivered.length, frames);
+    assert.equal(button.getAttribute("style"), null);assert.equal(runtime.issuedQuids.size, issued);
+    assert.throws(() => tree.style.set.color("red"), /tree.async/);
+    assert.equal(locus.rev, rev);assert.equal(pair.delivered.length, frames);
+    await tree.async.attrs.set("style", parse_style_string("color:red!important;width:2px"));
+    assert.equal(locus.rev, rev + 1);assert.equal(continuation.map.rev, rev + 1);
+    const acceptedStyle = tree.node.$_attrs?.style;
+    assert.ok(acceptedStyle !== null && typeof acceptedStyle === "object");
+    assert.equal(acceptedStyle.color, "red !important");
+    assert.equal(button.getAttribute("style"), "color: red !important; width: 2px");
+    assert.equal(runtime.issuedQuids.size, issued);assert.equal(tree.node.$_meta?.quid, undefined);
+    assert.equal(continuation.mirror.status, "active");
+  } finally { continuation.dispose();continuation.echo.dispose();detach();locus.dispose(); }
 }
 
 process.stdout.write("Hosted document continuation acceptance passed.\n");

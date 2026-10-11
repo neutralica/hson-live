@@ -160,6 +160,11 @@ export type StyleSetterAdapters = Readonly<{
    * `value` is already normalized/rendered when this is called.
    */
   apply: (propCanon: string, value: string) => void;
+  /** Inline-only batch publication; other stylesheet backends keep their rules. */
+  applyMany?: (values: Readonly<Record<string, string>>) => void;
+  /** Inline-specific input qualification before shared CSS value projection. */
+  normalizeKey?: (key: string) => string;
+  validateValue?: (value: CssValue) => void;
 
   /** Remove a single *canonical* property. */
   remove: (propCanon: string) => void;
@@ -242,7 +247,8 @@ export function make_style_setter<TReturn>(
 ): StyleSetter<TReturn> {
 
   const setProp = (prop: CssKey, v: CssValue): TReturn => {
-    const canon = normalize_css_key(prop);
+    const canon = adapters.normalizeKey?.(prop) ?? normalize_css_key(prop);
+    adapters.validateValue?.(v);
     const rendered = renderCssValue(v);
 
     // changed: invalid custom-property convenience input becomes a no-op.
@@ -280,6 +286,23 @@ export function make_style_setter<TReturn>(
 
         if (!isCssValue(v)) throw new Error("CSS declaration value is invalid.");
       }
+      if (adapters.applyMany) {
+        const values: Record<string, string> = {};
+        for (const [key, value] of Object.entries(map)) {
+          if (value === null || value === undefined) continue;
+          if (!isCssValue(value)) throw new Error("CSS declaration value is invalid.");
+          const property = adapters.normalizeKey?.(key) ?? normalize_css_key(key);
+          if (isInvalidCssVarName(property)) continue;
+          if (Object.hasOwn(values, property)) throw new Error("Inline CSS batch property names collide after normalization.");
+          adapters.validateValue?.(value);
+          const rendered = renderCssValue(value);
+          if (rendered !== null) Object.defineProperty(values, property, {
+            value: rendered, enumerable: true, configurable: true, writable: true,
+          });
+        }
+        adapters.applyMany(values);
+        return host;
+      }
       for (const [k, v] of Object.entries(map)) {
         // pseudo blocks routed to adapter hook (CssManager only)
         if (_PSEUDO_KEYS.has(k) && isPseudoDecls(v)) {
@@ -308,7 +331,7 @@ export function make_style_setter<TReturn>(
       return host;
     },
     remove(prop: CssKey): TReturn {
-      adapters.remove(normalize_css_key(prop));
+      adapters.remove(adapters.normalizeKey?.(prop) ?? normalize_css_key(prop));
       return host;
     },
 

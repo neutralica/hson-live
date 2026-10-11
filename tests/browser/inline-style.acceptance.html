@@ -1,0 +1,294 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body>
+<!-- SSR fixture is inserted by the source browser runner. -->
+<script type="module">
+import { Hson, hsonLiveTree, hsonLiveMap, hsonTransform, hsonMirror, continue_document } from '../../src/index.ts';
+import { canonical_hson_graph_equal } from '../../src/core/canonical-hson-equal.ts';
+import { InlineCssError } from '../../src/internal/css/inline-css.ts';
+import { install_libraries_snapshot } from '../../src/api/livemap/index.ts';
+import { project_livetree } from '../../src/api/livetree/creation/project-live-tree.ts';
+import { subject_for_tree, runtime_for_tree, dispose_livetree_runtime } from '../../src/api/livetree/runtime/livetree-runtime.ts';
+import { parse_style_string } from '../../src/api/transform/utils/attrs-utils/parse-style.ts';
+import { serialize_style } from '../../src/api/transform/utils/attrs-utils/serialize-style.ts';
+const results = [];
+const check = (name, pass) => results.push({ name, pass: Boolean(pass) });
+const rejects = run => { try { run();return false; } catch { return true; } };
+const read = p => { const s=p.ownerDocument.defaultView.getComputedStyle(p);return JSON.stringify([s.color,s.content,s.marginTop,s.display,s.opacity,s.fontFamily,s.width,s.getPropertyValue('--text').trim(),s.getPropertyValue('--x').trim()]); };
+const frame = async () => { const f=document.createElement('iframe');const ready=new Promise(resolve=>f.addEventListener('load',resolve,{once:true}));f.srcdoc='<!doctype html><html><head></head><body></body></html>';document.body.append(f);await ready;return f; };
+try {
+  for (const source of [
+    'content:"a\\\";b"; color:red', 'color:red!important; color:blue',
+    'color:red!important; color:blue!important', 'color:red; color:blue',
+    'margin:10px; margin-top:5px', '--text:"  a; b  "; --x:foo\\;bar',
+    'c\\6f lor:red', 'font-family:foo\\;', 'mystery-property:unrecognized;opacity:.5', 'width:calc(10px + 2px)',
+  ]) {
+    const original=document.createElement('p'), reconstructed=document.createElement('p');
+    document.body.append(original,reconstructed);original.setAttribute('style',source);
+    reconstructed.setAttribute('style',serialize_style(parse_style_string(source)));
+    check(`computed original oracle: ${source}`,read(original)===read(reconstructed));
+    const markup='<p style="'+source.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'"></p>';
+    const holder=document.createElement('div');holder.innerHTML=hsonTransform.fromTrustedHtml(markup).toHtml().serialize();document.body.append(holder);
+    check(`HTML structured admission: ${source}`,read(original)===read(holder.querySelector('p')));holder.remove();original.remove();reconstructed.remove();
+  }
+  for(const source of ['margin-top:5px;margin:10px','color:red;broken;display:grid','content:"unfinished','--x:foo\\ ', 'display:block;display:run-in', 'color:red;color:device-cmyk(0 0 0 0)', 'color:red;width:calc(nope)']) {
+    check(`whole input rejects: ${source}`,rejects(()=>parse_style_string(source)));
+    const markup='<p style="'+source.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'"></p>';
+    check(`HTML whole input rejects: ${source}`,rejects(()=>hsonTransform.fromTrustedHtml(markup).toNode()));
+  }
+  const fallback=document.createElement('p');document.body.append(fallback);
+  fallback.setAttribute('style','display:block;display:run-in;color:red;color:device-cmyk(0 0 0 0)');
+  check('native fallback control retains supported earlier declarations',getComputedStyle(fallback).display==='block' && getComputedStyle(fallback).color==='rgb(255, 0, 0)');fallback.remove();
+  const f=await frame(), d=f.contentDocument;
+  const tree=hsonLiveTree.fromHson('<button/>',{isolated:true}), runtime=runtime_for_tree(tree);
+  const el=project_livetree(subject_for_tree(tree),'html',runtime,d);d.body.append(el);
+  let clicks=0;const listener=tree.listen.onClick(()=>clicks++);
+  tree.style.set.color('blue');tree.style.set.color('red!important');
+  tree.style.set.cssFloat('left');
+  check('public cssFloat alias realizes native float',el.style.cssFloat==='left' && tree.node.$_attrs.style.float==='left' && tree.style.get.cssFloat()==='left');
+  check('public important setter realizes priority',d.defaultView.getComputedStyle(el).color==='rgb(255, 0, 0)' && el.style.getPropertyPriority('color')==='important');
+  const before=JSON.stringify(tree.node), attr=el.getAttribute('style');
+  check('invalid native value rejects batch',rejects(()=>tree.style.setMany({backgroundColor:'black',width:'bogus'})));
+  check('failed batch leaves graph/native intact',JSON.stringify(tree.node)===before && el.getAttribute('style')===attr);
+  check('invalid var reference rejects',rejects(()=>tree.style.set.color('var(x)')));
+  tree.style.set.marginTop('5px');
+  check('nonrepresentable shorthand write rejects',rejects(()=>tree.style.set.margin('10px')));
+  tree.style.remove('marginTop');tree.style.set.margin('10px');tree.style.set.marginTop('5px');
+  check('supported shorthand/longhand stays coherent',d.defaultView.getComputedStyle(el).marginTop==='5px');
+  const fresh=d.createElement('button');fresh.setAttribute('style',serialize_style(tree.node.$_attrs.style));d.body.append(fresh);
+  check('fresh graph realization matches retained native element',read(el)===read(fresh));
+  const observer=new MutationObserver(()=>{});observer.observe(el,{attributes:true});tree.style.set.margin('10px');
+  check('repeated valid setter is native no-op',observer.takeRecords().length===0);observer.disconnect();
+  el.click();check('element and listener identity remain intact',tree.dom.el()===el && clicks===1);listener.off();
+  const originalSet=el.setAttribute;el.setAttribute=function(name,value){originalSet.call(this,name,value);throw new Error('injected post-write failure');};
+  const failGraph=JSON.stringify(tree.node),failNative=el.getAttribute('style');
+  check('native failure rejects publication',rejects(()=>tree.style.set.color('green')));
+  check('native failure rolls back before graph publication',JSON.stringify(tree.node)===failGraph && el.getAttribute('style')===failNative);
+  el.setAttribute=originalSet;tree.style.set.color('green');check('valid retry after native failure',d.defaultView.getComputedStyle(el).color==='rgb(0, 128, 0)');
+  tree.remove();dispose_livetree_runtime(runtime);f.remove();
+
+  const local=hsonLiveMap.fromLibraries({page:{document:'<main <p/>/>'}}), mirror=hsonMirror(local.lib('page'));
+  const p=mirror.tree.find.must.byTag('p'), localRuntime=runtime_for_tree(p), issued=localRuntime.issuedQuids.size;
+  const localFrame=await frame();localFrame.contentDocument.body.append(project_livetree(subject_for_tree(mirror.tree),'html',localRuntime,localFrame.contentDocument));
+  const rev=local.rev;
+  check('Mirror rejected mutation is atomic',rejects(()=>p.style.setMany({color:'red',width:'bogus'})) && local.rev===rev);
+  p.style.set.color('red!important');
+  check('Mirror graph/native importance agrees',p.node.$_attrs.style.color==='red !important' && p.dom.el().ownerDocument.defaultView.getComputedStyle(p.dom.el()).color==='rgb(255, 0, 0)');
+  check('inline-only Mirror operations never mint QUID',localRuntime.issuedQuids.size===issued && p.node.$_meta?.quid===undefined);
+  mirror.dispose();localFrame.remove();
+
+  const group=(name,run)=>{try{run();}catch(error){check(`${name}: ${String(error)}`,false);}};
+  group('P1 boundary admission',()=>{
+    check('P1 declaration-list BOM is not discarded as stylesheet trivia',rejects(()=>parse_style_string('\ufeffcolor:red;opacity:.5')));
+    for(const separator of ['\u00a0','\u2003','\u202f','\ufeff']) for(const value of [separator+'red','red'+separator]) {
+      const css=`--x:${value};color:var(--x);opacity:.5`;
+      check(`P1 whole CSS rejects ${JSON.stringify(value)}`,rejects(()=>parse_style_string(css)));
+      const original=document.createElement('p'), rebuilt=document.createElement('p');original.setAttribute('style',css);document.body.append(original,rebuilt);
+      let rejected=false;try{rebuilt.setAttribute('style',serialize_style(parse_style_string(css)));}catch{rejected=true;}
+      check(`P1 independent native meaning is preserved or rejected ${JSON.stringify(value)}`,rejected||read(original)===read(rebuilt));original.remove();rebuilt.remove();
+    }
+    for(const css of ['--x: \tred\r\n ;color:var(--x)','--x:"\u00a0red\u2003";content:var(--x)','--x:\\ red;color:var(--x)','--x:\\a0 red;color:var(--x)']) {
+      const original=document.createElement('p'), rebuilt=document.createElement('p');document.body.append(original,rebuilt);original.setAttribute('style',css);rebuilt.setAttribute('style',serialize_style(parse_style_string(css)));
+      check(`P1 accepted native boundary oracle ${JSON.stringify(css)}`,read(original)===read(rebuilt));original.remove();rebuilt.remove();
+    }
+  });
+  const reviewFrame=await frame(), reviewDoc=reviewFrame.contentDocument;
+  const mountedMirror=style=>{
+    const map=hsonLiveMap.fromLibraries({page:{document:{$_tag:'_hson_root',$_content:[{$_tag:'p',$_content:[],...(style===undefined?{}:{$_attrs:{style}})}]}}});
+    const library=map.lib('page'),mirror=hsonMirror(library),tree=mirror.tree.find.must.byTag('p'),runtime=runtime_for_tree(tree);
+    reviewDoc.body.append(project_livetree(subject_for_tree(mirror.tree),'html',runtime,reviewDoc));
+    return {map,library,mirror,tree,runtime,el:tree.dom.el()};
+  };
+  group('P1 unrelated mutation',()=>{
+    const m=mountedMirror(undefined);let notifications=0;const stop=m.library.commits.observe(()=>notifications++);
+    try{
+      m.tree.attrs.set('style','--x:\u00a0red;color:var(--x)');notifications=0;
+      const native=m.el.getAttribute('style'),graph=JSON.stringify(m.tree.node),computed=reviewDoc.defaultView.getComputedStyle(m.el).color,rev=m.library.rev,issued=m.runtime.issuedQuids.size;
+      check('P1 opacity write rejects before custom-property meaning can change',rejects(()=>m.tree.style.set.opacity('.5')));
+      check('P1 rejected opacity preserves graph native revision notifications and identity',m.el.getAttribute('style')===native&&JSON.stringify(m.tree.node)===graph&&m.library.rev===rev&&notifications===0&&m.runtime.issuedQuids.size===issued&&reviewDoc.defaultView.getComputedStyle(m.el).color===computed);
+      check('P1 rejected new significant setter has no partial batch',rejects(()=>m.tree.style.setMany({'--x':'\u00a0red',opacity:'.5'}))&&m.el.getAttribute('style')===native&&m.library.rev===rev);
+      m.tree.attrs.set('style',{'--x':'\u00a0red',color:'var(--x)'});const storedRev=m.library.rev,storedGraph=JSON.stringify(m.tree.node),storedNative=m.el.getAttribute('style');notifications=0;
+      check('P1 retained lawful storage is not narrowed or trimmed during an unrelated edit',rejects(()=>m.tree.style.set.opacity('.8'))&&m.library.rev===storedRev&&notifications===0&&JSON.stringify(m.tree.node)===storedGraph&&m.el.getAttribute('style')===storedNative);
+      m.tree.attrs.set('style',{color:'red'});m.tree.style.set.opacity('.5');check('P1 later valid retry succeeds',reviewDoc.defaultView.getComputedStyle(m.el).opacity==='0.5');
+    }finally{stop();m.mirror.dispose();}
+  });
+  group('P2 existing aliases',()=>{
+    for(const [key,api,native,initial,changed] of [['cssFloat','cssFloat','float','left','right'],['float','cssFloat','float','left','right'],['margin-top','marginTop','margin-top','5px','7px'],['marginTop','marginTop','margin-top','5px','7px'],['-webkit-user-select','WebkitUserSelect','-webkit-user-select','none','text'],['WebkitUserSelect','WebkitUserSelect','-webkit-user-select','none','text']]) {
+      const m=mountedMirror({[key]:initial,'--keep':'retained'});let notifications=0;const stop=m.library.commits.observe(()=>notifications++);
+      try{
+        const rev=m.library.rev, issued=m.runtime.issuedQuids.size, element=m.el;
+        check(`P2 preexisting ${key} reads`,m.tree.style.get[native]()===initial);
+        const observer=new MutationObserver(()=>{});observer.observe(m.el,{attributes:true});m.tree.style.setMany({[api]:initial});
+        check(`P2 preexisting ${key} identical write is no-op`,m.library.rev===rev&&notifications===0&&observer.takeRecords().length===0);observer.disconnect();
+        m.tree.style.setMany({[api]:changed});
+        check(`P2 preexisting ${key} replaces only intended leaf`,m.tree.node.$_attrs.style[key]===changed&&Object.keys(m.tree.node.$_attrs.style).length===2&&m.tree.node.$_attrs.style['--keep']==='retained'&&m.el.style.getPropertyValue(native)===changed&&m.library.rev===rev+1&&notifications===1);
+        m.tree.style.remove(api);check(`P2 preexisting ${key} removes intended leaf`,m.tree.style.get[native]()===undefined&&m.el.style.getPropertyValue(native)===''&&m.library.rev===rev+2&&notifications===2);
+        check(`P2 ${key} preserves native and sparse identity`,m.tree.dom.el()===element&&m.runtime.issuedQuids.size===issued&&m.mirror.status==='active');
+      }finally{stop();m.mirror.dispose();}
+    }
+  });
+  group('P3 dimensional agreement',()=>{
+    const m=mountedMirror({color:'red'});let notifications=0;const stop=m.library.commits.observe(()=>notifications++);
+    try{
+      const graph=JSON.stringify(m.tree.node),native=m.el.getAttribute('style'),rev=m.library.rev,issued=m.runtime.issuedQuids.size;
+      for(const css of ['width:calc(1px + 2s)','padding:calc(1px * 2px)','opacity:calc(1px + 2px)','width:calc(2 + 3)','width:calc(1px / 0)','mystery:calc(1px + 2px)']) {
+        const colon=css.indexOf(':');check(`P3 canonical admission rejects ${css}`,rejects(()=>parse_style_string(css)));
+        check(`P3 mounted admission rejects ${css}`,rejects(()=>m.tree.style.setMany({[css.slice(0,colon)]:css.slice(colon+1)})));
+        check(`P3 rejection has no publication ${css}`,JSON.stringify(m.tree.node)===graph&&m.el.getAttribute('style')===native&&m.library.rev===rev&&notifications===0&&m.runtime.issuedQuids.size===issued);
+      }
+      for(const css of ['width:calc(1px + 2px)','padding:calc(1px * 2)','opacity:calc(.2 + .3)','width:calc((1px + 2px) / 3)','width:calc(1px + 2px * 3)','width:calc(100% - 2px)']) {
+        const source=reviewDoc.createElement('p'),rebuilt=reviewDoc.createElement('p');reviewDoc.body.append(source,rebuilt);source.setAttribute('style',css);rebuilt.setAttribute('style',serialize_style(parse_style_string(css)));
+        const property=css.slice(0,css.indexOf(':'));check(`P3 valid independent computed oracle ${css}`,reviewDoc.defaultView.getComputedStyle(source).getPropertyValue(property)===reviewDoc.defaultView.getComputedStyle(rebuilt).getPropertyValue(property));source.remove();rebuilt.remove();
+      }
+      // A browser-valid fallback does not prove the type of a present variable.
+      const variableSource=reviewDoc.createElement('p'),literalControl=reviewDoc.createElement('p');
+      reviewDoc.body.append(variableSource,literalControl);
+      variableSource.setAttribute('style','width:calc(100% - var(--gap, 2px))');literalControl.setAttribute('style','width:calc(100% - 2px)');
+      check('P3 valid independent computed oracle width:calc(100% - var(--gap, 2px))',reviewDoc.defaultView.getComputedStyle(variableSource).width===reviewDoc.defaultView.getComputedStyle(literalControl).width&&rejects(()=>parse_style_string('width:calc(100% - var(--gap, 2px))')));
+      variableSource.remove();literalControl.remove();
+      m.tree.style.set.width('calc(1px + 2px)');check('P3 mounted valid retry succeeds',reviewDoc.defaultView.getComputedStyle(m.el).width==='3px');
+    }finally{stop();m.mirror.dispose();}
+  });
+  group('P3 final variable arithmetic proof',()=>{
+    const m=mountedMirror({width:'37px','--present':'2s'});let notifications=0;const stop=m.library.commits.observe(()=>notifications++);
+    try{
+      const graph=structuredClone(m.tree.node), native=m.el.getAttribute('style'), rev=m.library.rev, issued=m.runtime.issuedQuids.size;
+      const invalid=['calc(var(--missing, 2s) + 1px)','calc(var(--missing, 1px +) + 1px)',
+        'calc(var(--present) + 1px)','calc(var(--present, 2px) + 1px)',
+        'calc(var(--missing, var(--present, 2px)) + 1px)',
+        'calc(calc(var(--present, 2px) + 1px) * 2)','calc(var(--present, 1px) * 2)',
+        'calc(1px / var(--present, 2))','calc(var(--present))'];
+      for(const value of invalid){
+        const source=reviewDoc.createElement('p'), auto=reviewDoc.createElement('p');reviewDoc.body.append(source,auto);
+        source.setAttribute('style',`width:37px;--present:2s;width:${value}`);auto.setAttribute('style','width:auto');
+        check(`P3 final native computed-value invalidity ${value}`,source.style.width.includes('calc(')&&reviewDoc.defaultView.getComputedStyle(source).width===reviewDoc.defaultView.getComputedStyle(auto).width&&reviewDoc.defaultView.getComputedStyle(source).width!=='37px');
+        const css=`color:red;width:${value};opacity:.5`;
+        check(`P3 final direct whole-input rejection ${value}`,rejects(()=>parse_style_string(css)));
+        check(`P3 final Hson whole-input rejection ${value}`,rejects(()=>hsonTransform.fromHson(`<p style=${JSON.stringify(css)}/>`).toNode()));
+        check(`P3 final HTML whole-input rejection ${value}`,rejects(()=>hsonTransform.fromTrustedHtml(`<p style="${css}"></p>`).toNode()));
+        let error;try{m.tree.style.setMany({width:value,opacity:'.5'});}catch(caught){error=caught;}
+        check(`P3 final mounted attributable rejection ${value}`,error instanceof InlineCssError&&error.code==='INLINE_CSS_UNSUPPORTED');
+        check(`P3 final rejected expression preserves all publication state ${value}`,canonical_hson_graph_equal(graph,structuredClone(m.tree.node))&&m.el.getAttribute('style')===native&&m.library.rev===rev&&notifications===0&&m.runtime.issuedQuids.size===issued&&reviewDoc.defaultView.getComputedStyle(m.el).width==='37px');
+        source.remove();auto.remove();
+      }
+      m.tree.style.set.width('calc((1px + 2px) * 2 / 3)');
+      check('P3 final literal retry computes requested length',reviewDoc.defaultView.getComputedStyle(m.el).width==='2px'&&m.library.rev===rev+1&&notifications===1);
+      m.tree.style.set.width('var(--missing, 37px)');
+      check('P3 final ordinary variable use remains supported',reviewDoc.defaultView.getComputedStyle(m.el).width==='37px'&&m.library.rev===rev+2&&notifications===2);
+      m.tree.style.setProp('--arithmetic','calc(var(--missing, 2s) + 1px)');
+      check('P3 final custom component values remain supported',m.tree.node.$_attrs.style['--arithmetic']==='calc(var(--missing, 2s) + 1px)');
+    }finally{stop();m.mirror.dispose();}
+  });
+  group('unsupported math lexer exemption',()=>{
+    const m=mountedMirror({width:'37px',color:'green','--present':'2s'});let notifications=0,clicks=0;
+    const stop=m.library.commits.observe(()=>notifications++),listener=m.tree.listen.onClick(()=>clicks++);
+    try{
+      const graph=structuredClone(m.tree.node),native=m.el.getAttribute('style'),rev=m.library.rev,issued=m.runtime.issuedQuids.size,element=m.el;
+      const invalid=['min(1px + var(--missing, 2s), 10px)','min(var(--missing, 2s), 10px)',
+        'max(1px + var(--missing, 2s), 10px)','max(var(--missing, 2s), 10px)',
+        'clamp(1px, var(--missing, 2s), 10px)','clamp(1px, 1px + var(--missing, 2s), 10px)',
+        'min(var(--present, 2px), 10px)','max(var(--missing, 1px +), 10px)',
+        'clamp(1px, var(--missing, var(--present, 2px)), 10px)',
+        'min((1px + var(--missing, 2s)), 10px)','max(min(var(--missing, 2s), 8px), 10px)',
+        'min(calc(1px + var(--missing, 2s)), 10px)','calc(min(var(--missing, 2s), 10px) + 1px)',
+        'MIN(var(--missing, 2s), 10px)','m\\69 n(var(--missing, 2s), 10px)',
+        'm\\61 x(var(--missing, 2s), 10px)','cl\\61 mp(1px, var(--missing, 2s), 10px)',
+        'c\\61 lc(var(--missing, 2s) + 1px)','-webkit-calc(var(--missing, 2s) + 1px)',
+        'var(--width, min(var(--missing, 2s), 10px))',
+        'var(--width, var(--nested, max(var(--present, 2px), 10px)))',
+        'var(--width, calc(var(--missing, 2s) + 1px))'];
+      for(const value of invalid){
+        const source=reviewDoc.createElement('p'),auto=reviewDoc.createElement('p');reviewDoc.body.append(source,auto);
+        source.setAttribute('style',`width:37px;color:green;--present:2s;width:${value}`);auto.setAttribute('style','width:auto');
+        check(`math bypass computed-value oracle ${value}`,source.style.width!==''&&reviewDoc.defaultView.getComputedStyle(source).width===reviewDoc.defaultView.getComputedStyle(auto).width&&reviewDoc.defaultView.getComputedStyle(source).width!=='37px');
+        const css=`color:red;width:${value}`;
+        check(`math bypass direct strict admission ${value}`,rejects(()=>parse_style_string(css)));
+        check(`math bypass Hson strict admission ${value}`,rejects(()=>hsonTransform.fromHson(`<p style=${JSON.stringify(css)}/>`).toNode()));
+        check(`math bypass document strict admission ${value}`,rejects(()=>Hson.document.fromHson(`<p style=${JSON.stringify(css)}/>`)));
+        check(`math bypass HTML strict admission ${value}`,rejects(()=>hsonTransform.fromTrustedHtml(`<p style="${css}"></p>`).toNode()));
+        let error;try{m.tree.style.setMany({color:'red',width:value});}catch(caught){error=caught;}
+        check(`math bypass attributable batch rejection ${value}`,error instanceof InlineCssError&&error.code==='INLINE_CSS_UNSUPPORTED'&&error.offset>=0);
+        check(`math bypass exact publication atomicity ${value}`,canonical_hson_graph_equal(graph,structuredClone(m.tree.node))&&element.getAttribute('style')===native&&m.library.rev===rev&&notifications===0&&m.runtime.issuedQuids.size===issued&&m.tree.dom.el()===element);
+        check(`math bypass computed state unchanged ${value}`,reviewDoc.defaultView.getComputedStyle(element).width==='37px'&&reviewDoc.defaultView.getComputedStyle(element).color==='rgb(0, 128, 0)');
+        source.remove();auto.remove();
+      }
+      for(const [css,property,expected] of [['width:calc((1px + 2px) * 2 / 3)','width','2px'],['opacity:calc(.2 + .3)','opacity','0.5'],
+        ['width:calc(25% + 2px)','width',undefined],['width:-webkit-calc(1px + 2px)','width','3px'],
+        ['width:var(--width, 37px)','width','37px'],['width:var(--width, calc(1px + 2px))','width','3px'],
+        ['color:rgb(var(--channels, 0 128 0))','color','rgb(0, 128, 0)'],
+        ['content:"min(var(--missing, 2s))"','content','"min(var(--missing, 2s))"'],
+        ['width:calc(1px /* min(var(--missing)) */ + 2px)','width','3px'],
+        ['--math:min(var(--missing, 2s),10px)','--math',undefined],['--literal:min(1px,10px)','--literal',undefined]]){
+        const source=reviewDoc.createElement('p'),rebuilt=reviewDoc.createElement('p');reviewDoc.body.append(source,rebuilt);source.setAttribute('style',css);rebuilt.setAttribute('style',serialize_style(parse_style_string(css)));
+        const original=reviewDoc.defaultView.getComputedStyle(source).getPropertyValue(property),received=reviewDoc.defaultView.getComputedStyle(rebuilt).getPropertyValue(property);
+        check(`math bypass valid independent native control ${css}`,original===received&&(expected===undefined||received===expected));source.remove();rebuilt.remove();
+      }
+      m.tree.style.setMany({color:'red',width:'calc(1px + 2px)'});element.click();
+      check('math bypass valid batch retry and ownership',reviewDoc.defaultView.getComputedStyle(element).width==='3px'&&reviewDoc.defaultView.getComputedStyle(element).color==='rgb(255, 0, 0)'&&m.library.rev===rev+1&&notifications===1&&clicks===1&&m.tree.dom.el()===element&&m.runtime.issuedQuids.size===issued&&m.mirror.status==='active');
+    }finally{listener.off();stop();m.mirror.dispose();}
+  });
+  group('local Mirror retained typed units',()=>{
+    for(const keep of [{value:-0,unit:undefined},{value:-0},{value:-0,unit:''},{value:-0,unit:'px'}]){
+      const label=Object.hasOwn(keep,'unit')?String(keep.unit):'absent', oracle=structuredClone(keep);
+      const m=mountedMirror({cssFloat:'left',opacity:'.2','--keep':keep,'--other':{value:'retained',unit:'_'}});
+      let notifications=0,clicks=0;const stop=m.library.commits.observe(()=>notifications++),listener=m.tree.listen.onClick(()=>clicks++);
+      const element=m.el,rev=m.library.rev,issued=m.runtime.issuedQuids.size;
+      const exact=()=>{const leaf=m.tree.node.$_attrs.style['--keep'];return Object.is(leaf.value,-0)&&Object.hasOwn(leaf,'unit')===Object.hasOwn(oracle,'unit')&&leaf.unit===oracle.unit&&m.tree.node.$_attrs.style['--other'].value==='retained';};
+      try{
+        check(`local typed ${label} cssFloat read`,m.tree.style.get.cssFloat()==='left');
+        const observer=new MutationObserver(()=>{});observer.observe(element,{attributes:true});m.tree.style.set.cssFloat('left');
+        check(`local typed ${label} exact no-op`,exact()&&m.library.rev===rev&&notifications===0&&observer.takeRecords().length===0);observer.disconnect();
+        m.tree.style.set.cssFloat('right');check(`local typed ${label} original changed-write regression`,exact()&&m.tree.node.$_attrs.style.cssFloat==='right'&&element.style.cssFloat==='right'&&m.library.rev===rev+1&&notifications===1);
+        m.tree.style.remove('cssFloat');check(`local typed ${label} removal`,exact()&&element.style.cssFloat===''&&m.library.rev===rev+2&&notifications===2);
+        m.tree.style.setMany({color:'red',opacity:'.5'});check(`local typed ${label} unrelated batch`,exact()&&reviewDoc.defaultView.getComputedStyle(element).color==='rgb(255, 0, 0)'&&element.style.opacity==='0.5'&&m.library.rev===rev+3&&notifications===3);
+        m.tree.style.remove('opacity');check(`local typed ${label} unrelated removal`,exact()&&element.style.opacity===''&&m.library.rev===rev+4&&notifications===4);
+        const before=structuredClone(m.tree.node),native=element.getAttribute('style');
+        check(`local typed ${label} invalid write is atomic`,rejects(()=>m.tree.style.set.width('calc(var(--missing, 2s) + 1px)'))&&canonical_hson_graph_equal(before,structuredClone(m.tree.node))&&native===element.getAttribute('style')&&m.library.rev===rev+4&&notifications===4&&exact());
+        m.tree.style.set.width('3px');element.click();
+        check(`local typed ${label} retry identity listener and sparse QUID`,exact()&&reviewDoc.defaultView.getComputedStyle(element).width==='3px'&&m.tree.dom.el()===element&&clicks===1&&m.library.rev===rev+5&&notifications===5&&m.runtime.issuedQuids.size===issued&&m.mirror.status==='active');
+        const rebuilt=reviewDoc.createElement('p');rebuilt.setAttribute('style',serialize_style(m.tree.node.$_attrs.style));reviewDoc.body.append(rebuilt);
+        check(`local typed ${label} native complete-state reconstruction`,read(element)===read(rebuilt)&&reviewDoc.defaultView.getComputedStyle(element).getPropertyValue('--keep').trim()===(keep.unit==='px'?'0px':'0'));rebuilt.remove();
+        m.tree.attrs.setMany({title:'retained title',hidden:true});
+        check(`local typed ${label} complete attribute effect retains qualified style`,exact()&&m.tree.node.$_attrs.title==='retained title'&&m.library.rev===rev+6&&notifications===6&&m.runtime.issuedQuids.size===issued);
+      }finally{listener.off();stop();m.mirror.dispose();}
+    }
+  });
+  group('P4 vendor meaning',()=>{
+    const m=mountedMirror({color:'red'});
+    try{
+      const original=reviewDoc.createElement('p');original.setAttribute('style','-webkit-user-select:none');reviewDoc.body.append(original);
+      for(const key of ['-webkit-user-select','WebkitUserSelect','webkitUserSelect']) {
+        m.tree.style.setProp(key,'none');check(`P4 native meaning ${key}`,reviewDoc.defaultView.getComputedStyle(m.el).getPropertyValue('-webkit-user-select')===reviewDoc.defaultView.getComputedStyle(original).getPropertyValue('-webkit-user-select')&&m.el.getAttribute('style').includes('-webkit-user-select: none'));
+        m.tree.style.remove(key);
+      }
+      const retainedElement=m.el;m.el.remove();m.tree.style.setProp('-webkit-user-select','none');
+      check('P4 detached style retains native spelling',m.el.getAttribute('style').includes('-webkit-user-select: none'));
+      reviewDoc.body.append(m.el);check('P4 attached style retains element identity and original computed meaning',m.tree.dom.el()===retainedElement&&reviewDoc.defaultView.getComputedStyle(m.el).getPropertyValue('-webkit-user-select')===reviewDoc.defaultView.getComputedStyle(original).getPropertyValue('-webkit-user-select'));
+      original.remove();m.tree.style.setMany({'--Tone':'red','--tone':'blue',backgroundColor:'black'});
+      check('P4 custom case and ordinary names remain distinct',m.el.style.getPropertyValue('--Tone')==='red'&&m.el.style.getPropertyValue('--tone')==='blue'&&reviewDoc.defaultView.getComputedStyle(m.el).backgroundColor==='rgb(0, 0, 0)');
+    }finally{m.mirror.dispose();}
+  });
+  group('P5 controlled collisions',()=>{
+    const m=mountedMirror({color:'green'});let notifications=0;const stop=m.library.commits.observe(()=>notifications++);
+    try{
+      const graph=JSON.stringify(m.tree.node),native=m.el.getAttribute('style'),rev=m.library.rev,issued=m.runtime.issuedQuids.size;
+      for(const values of [{COLOR:'red',color:'blue'},{backgroundColor:'red','background-color':'blue'},{cssFloat:'left',float:'right'},{WebkitUserSelect:'none','-webkit-user-select':'text'}]) {
+        let error;try{m.tree.style.setMany(values);}catch(caught){error=caught;}
+        check(`P5 attributable collision ${Object.keys(values)}`,error?.name==='InlineCssError'&&error.code==='INLINE_CSS_UNSUPPORTED'&&/collid/.test(error.message));
+        check(`P5 no publication ${Object.keys(values)}`,JSON.stringify(m.tree.node)===graph&&m.el.getAttribute('style')===native&&m.library.rev===rev&&notifications===0&&m.runtime.issuedQuids.size===issued);
+      }
+      m.tree.style.set.color('red');check('P5 valid retry succeeds',m.library.rev===rev+1&&notifications===1&&reviewDoc.defaultView.getComputedStyle(m.el).color==='rgb(255, 0, 0)');
+    }finally{stop();m.mirror.dispose();}
+  });
+  reviewFrame.remove();
+  const state=await fetch('/__state').then(response=>response.json());
+  const restored=install_libraries_snapshot(state.libs).map, root=document.querySelector('#ssr-root'), paragraph=root.querySelector('p');
+  check('SSR first render has correct importance and order',getComputedStyle(paragraph).color==='rgb(255, 0, 0)' && getComputedStyle(paragraph).marginTop==='5px');
+  const mutations=new MutationObserver(()=>{});mutations.observe(root,{subtree:true,attributes:true,childList:true});
+  const continued=continue_document({map:restored,document:restored.lib('page'),root});
+  check('continuation adopts native identity without writes',continued.tree.dom.el()===root && root.querySelector('p')===paragraph && mutations.takeRecords().length===0);
+  mutations.disconnect();const continuedP=continued.tree.find.must.byTag('p'), continuedRuntime=runtime_for_tree(continuedP), count=continuedRuntime.issuedQuids.size;
+  continuedP.style.set.color('green!important');
+  check('continued inline mutation realizes accepted graph',getComputedStyle(paragraph).color==='rgb(0, 128, 0)');
+  check('continued inline style keeps sparse identity',continuedRuntime.issuedQuids.size===count);continued.dispose();
+} catch(error) { results.push({name:String(error.stack??error),pass:false}); }
+document.body.dataset.result=encodeURIComponent(JSON.stringify(results));
+</script></body></html>

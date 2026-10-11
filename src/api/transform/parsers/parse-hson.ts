@@ -4,7 +4,8 @@
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { HsonNode } from "../../../core/types.js";
 import { parse_tokens, type ParseTokensOptions } from "./parse-tokens.js";
-import { tokenize_hson } from "./tokenize-hson.js";
+import { parse_hson_source, reject_portable_quid_tokens } from "./parse-hson-source.js";
+import { split_attrs_meta } from "../utils/hson-utils/split-attrs-meta.js";
 import type { Tokens } from "../token.types.js";
 import { scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
@@ -35,7 +36,7 @@ export function parse_hson(str: string, options: ParseTokensOptions = {}): HsonN
 
 /** @internal Temporary exact-runtime Hson ingress for hosted recovery only. */
 export function parse_hson_exact_runtime(str: string, options: ParseTokensOptions = {}): HsonNode {
-    return parse_hson_attached_internal(str, options, undefined, true);
+    return parse_hson_source(str, split_attrs_meta, options, undefined, true);
 }
 
 /** Private tagged-template path: slot content is resolved before validation. */
@@ -65,51 +66,5 @@ export function parse_hson_attached(
     options: ParseTokensOptions = {},
     provenance?: HsonSourceProvenanceBuilder,
 ): HsonNode {
-    return parse_hson_attached_internal(str, options, provenance, false);
-}
-
-function parse_hson_attached_internal(
-    str: string,
-    options: ParseTokensOptions,
-    provenance: HsonSourceProvenanceBuilder | undefined,
-    exactRuntimeIdentity: boolean,
-): HsonNode {
-    const newTokens = tokenize_hson(str, 0, provenance);
-    if (!exactRuntimeIdentity) reject_portable_quid_tokens(newTokens);
-    if (newTokens.length === 0) {
-        _throw_transform_err(
-            "empty, whitespace-only, or comment-only Hson source has no semantic value",
-            "parse_hson",
-            undefined,
-            undefined,
-            {
-                code: "HSON_SOURCE_EMPTY",
-                stage: "source-admission",
-                source: { index: 0, line: 1, column: 1 },
-            },
-        );
-    }
-    const newNode = parse_tokens(newTokens, options, provenance)
-    scan_ingested_hson_node_quids(newNode, "parse_hson");
-    assert_invariants(newNode, 'parse hson');
-    return newNode;
-}
-
-function reject_portable_quid_tokens(tokens: readonly Tokens[]): void {
-    for (const token of tokens) {
-        if ((token.kind === "OPEN" || token.kind === "ARR_OPEN") && token.quid !== undefined) {
-            const { start } = token.quid;
-            _throw_transform_err(
-                "generated runtime QUID metadata is invalid in portable Transform input",
-                "parse_hson",
-                undefined,
-                undefined,
-                {
-                    code: "PORTABLE_RUNTIME_QUID_FORBIDDEN",
-                    stage: "source-admission",
-                    source: { index: start.index, line: start.line, column: start.col },
-                },
-            );
-        }
-    }
+    return parse_hson_source(str, split_attrs_meta, options, provenance, false);
 }

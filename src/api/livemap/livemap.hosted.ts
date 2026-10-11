@@ -2,6 +2,7 @@ import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-sc
 import { sha256_sync } from "../../core/sha256-sync.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { decode_public_attrs } from "../../core/public-attrs.js";
 import { is_Node } from "../../core/node-guards.js";
 import {
   is_ordered_projected_object,
@@ -713,9 +714,9 @@ function encode_hosted_graph_operation(operation: LiveMapGraphOp | LiveMapProjec
     representation = { domain: "graph", op: operation.op, mode: operation.mode, root: encode_exact_hson_value(portable ? clone_hson_graph_without_quids(operation.root) : operation.root) };
   } else {
     const target = encode_target(operation.target, portable);
-    if (operation.op === "set-attr") representation = { domain: "graph", op: operation.op, target, name: operation.name, value: encode_projected_json(operation.value as JsonValue) };
+    if (operation.op === "set-attr") representation = { domain: "graph", op: operation.op, target, name: operation.name, value: portable ? encode_projected_json(operation.value as JsonValue) : encode_effect_attrs({ [operation.name]: operation.value }) };
     else if (operation.op === "remove-attr") representation = { domain: "graph", op: operation.op, target, name: operation.name };
-    else if (operation.op === "replace-attrs") representation = { domain: "graph", op: operation.op, target, attrs: encode_projected_json(operation.attrs as JsonValue) };
+    else if (operation.op === "replace-attrs") representation = { domain: "graph", op: operation.op, target, attrs: portable ? encode_projected_json(operation.attrs as JsonValue) : encode_effect_attrs(operation.attrs) };
     else if (operation.op === "ensure-quid") {
       if (portable) throw incompatible_graph();
       representation = { domain: "graph", op: operation.op, target, quid: operation.quid };
@@ -754,7 +755,7 @@ function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode, p
   if (record.op === "set-attr") {
     exact_keys(record, ["domain", "op", "target", "name", "value"], "Hosted graph operation");
     if (mode !== "document" || typeof record.name !== "string" || typeof record.value !== "string") throw incompatible_graph();
-    return Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, name: record.name, value: decode_attr_value(record.value) });
+    return Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, name: record.name, value: portable ? decode_attr_value(record.value) : decode_effect_attr_value(record.value, record.name) });
   }
   if (record.op === "remove-attr") {
     exact_keys(record, ["domain", "op", "target", "name"], "Hosted graph operation");
@@ -764,7 +765,7 @@ function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode, p
   if (record.op === "replace-attrs") {
     exact_keys(record, ["domain", "op", "target", "attrs"], "Hosted graph operation");
     if (mode !== "document" || typeof record.attrs !== "string") throw incompatible_graph();
-    return Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, attrs: decode_attrs(record.attrs) });
+    return Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, attrs: portable ? decode_attrs(record.attrs) : decode_effect_attrs(record.attrs) });
   }
   if (record.op === "ensure-quid") {
     if (portable) throw incompatible_graph();
@@ -827,6 +828,29 @@ function decode_target(input: unknown, mode: LiveMapRootMode, portable = false):
   exact_keys(witness, ["quid"], "Hosted document graph witness");
   if (typeof witness.quid !== "string") throw incompatible_graph();
   return Object.freeze({ kind: "path", path: must_document_path(path), witness: Object.freeze({ quid: witness.quid }) });
+}
+
+/** Accepted graph attribute effects require their actual style receiving context.
+ * Client-authored portable operations retain their stricter projected codec. */
+function encode_effect_attrs(attrs: LiveMapDocumentAttrs): string {
+  return encode_exact_hson_value(Object.keys(attrs).length === 0
+    ? { $_tag: "div", $_content: [] }
+    : { $_tag: "div", $_content: [], $_attrs: attrs });
+}
+
+function decode_effect_attrs(payload: string): LiveMapDocumentAttrs {
+  const carrier = decode_exact_hson_value(payload);
+  if (!is_Node(carrier) || carrier.$_tag !== "div" || carrier.$_content.length !== 0
+    || Object.keys(carrier).length !== (Object.hasOwn(carrier, "$_attrs") ? 3 : 2)) throw incompatible_graph();
+  const attrs = decode_public_attrs(carrier.$_attrs ?? {});
+  if (attrs === undefined) throw incompatible_graph();
+  return attrs;
+}
+
+function decode_effect_attr_value(payload: string, name: string): LiveMapDocumentAttributeValue {
+  const attrs = decode_effect_attrs(payload);
+  if (Object.keys(attrs).length !== 1 || !Object.hasOwn(attrs, name)) throw incompatible_graph();
+  return attrs[name];
 }
 
 function encode_projected_json(value: JsonValue): string {

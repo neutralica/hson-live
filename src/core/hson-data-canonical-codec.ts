@@ -1,5 +1,5 @@
 import { serialize_hson_content_string } from "./hson-content-string.js";
-import { parse_hson } from "../api/transform/parsers/parse-hson.js";
+import { parse_hson_source } from "../api/transform/parsers/parse-hson-source.js";
 import { assert_canonical_hson_data_value, projected_value_from_hson_node } from "./projected-value-graph.js";
 import { HSON_META_INDEX, II_TAG } from "./constants.js";
 import { is_Node } from "./node-guards.js";
@@ -51,7 +51,12 @@ function emit_canonical_hson_data(value: OrderedProjectedValue, depth: number, c
 
 /** Admit ordinary Hson syntax without materializing ordered members through JS objects. */
 export function parse_canonical_hson_data(source: string): OrderedProjectedValue {
-  const root = parse_hson(source);
+  const root = parse_hson_source(source, (raw) => {
+    // Attributes cannot belong to canonical data, regardless of their spelling or value.
+    // Reject before document-only decoding; generic data never imports the CSS receiver.
+    if (raw.length !== 0) throw new TypeError("Hson data cannot carry attributes or authored metadata.");
+    return { attrs: {}, meta: {} };
+  }, {}, undefined, false);
   const inspect = (node: HsonNode): void => {
     if (node.$_attrs !== undefined || node.$_meta !== undefined
       && (node.$_tag !== II_TAG || Object.keys(node.$_meta).some(key => key !== HSON_META_INDEX))) {

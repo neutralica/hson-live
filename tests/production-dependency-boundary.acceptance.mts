@@ -194,6 +194,9 @@ check("native /livemap namespace keeps LiveMap, Echo, and Locus browser graphs s
     noSibling(graph, "locus", label);
   }
   assert.ok(subsystem(echo, "echo").length > 0, "Echo endpoint implementation is missing");
+  assert.deepEqual(echo.inputs.filter((input) =>
+    /(?:internal\/css\/inline-css|node_modules\/css-tree\/|attrs-utils\/parse-style|hson-utils\/split-attrs-meta|parsers\/parse-hson\.)/.test(input)), [],
+    "endpoint data admission retained document/CSS attribute decoding");
   assert.ok(subsystem(echo, "livemap").length <= 8, "endpoint Echo retained full LiveMap construction");
   assert.ok(subsystem(echo, "locus").length <= 4, "endpoint Echo retained Locus authority/session/persistence");
   assert.deepEqual(subsystem(echo, "locus").filter((input) =>
