@@ -1,8 +1,9 @@
+import { trim_managed_css } from "./managed-css-lexical.js";
 import type { MediaQueryInput, SupportsQueryInput } from "../../types/css.types.js";
 
 export function mediaToAtRule(input: MediaQueryInput): string {
   if (typeof input === "string") {
-    const q = input.trim();
+    const q = trim_managed_css(input);
     if (!q) throw new Error("GlobalCss.media: empty query");
     return q.startsWith("@media ") ? q : `@media ${q}`;
   }
@@ -37,7 +38,7 @@ export function mediaToAtRule(input: MediaQueryInput): string {
  */
 export function convertSupportsToAt(input: SupportsQueryInput): string {
   if (typeof input === "string") {
-    const q = input.trim();
+    const q = trim_managed_css(input);
     if (!q) throw new Error("GlobalCss.supports: empty condition");
     return q.startsWith("@supports ") ? q : `@supports ${q}`;
   }

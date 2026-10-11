@@ -51,7 +51,7 @@ check("selector rules retain first-write order and re-add appends", () => {
   sheet = set_portable_document_declaration(sheet, "a", ".a", "background-color", "black");
   assert.deepEqual(sheet.rules.map((rule) => rule.ruleKey), ["a", "b"]);
   assert.deepEqual(encode_portable_document_stylesheet(sheet).rules[0]?.declarations,
-    [["backgroundColor", "black"], ["color", "red"]]);
+    [["background-color", "black"], ["color", "red"]]);
   assert.equal(render_portable_document_stylesheet(sheet), ".a{background-color:black;color:red;}\n\n.b{display:grid;}");
   const same = set_portable_document_declaration(sheet, "a", ".a", "color", "red");
   assert.equal(same, sheet, "semantic no-op returns the existing value");
@@ -82,8 +82,8 @@ check("scopes, variables and selector changes follow global rule semantics", () 
   sheet = set_portable_document_declaration(sheet, "button", ".button", "color", "white", ["@media (max-width: 600px)", "@supports (display: grid)"]);
   assert.equal(sheet.rules.length, 3);
   assert.deepEqual(sheet.rules[2]?.scopes, ["@media (max-width: 600px)", "@supports (display: grid)"]);
-  assert.match(render_portable_document_stylesheet(sheet), /@layer components \{\n  \.button\{color:var\(--accent\);\}\n\}/);
-  assert.match(render_portable_document_stylesheet(sheet), /@media \(max-width: 600px\) \{\n  @supports \(display: grid\) \{/);
+  assert.match(render_portable_document_stylesheet(sheet), /@layer components \{\n\.button\{color:var\(--accent\);\}\n\}/);
+  assert.match(render_portable_document_stylesheet(sheet), /@media \(max-width: 600px\) \{\n@supports \(display: grid\) \{/);
   const changedSelector = set_portable_document_declaration(sheet, "button", ".link", "color", "blue", ["@layer components"]);
   assert.equal(changedSelector.rules[1]?.selector, ".link");
   assert.deepEqual(changedSelector.rules[1]?.declarations, { color: "blue" });

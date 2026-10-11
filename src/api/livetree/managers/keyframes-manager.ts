@@ -1,3 +1,4 @@
+import { trim_managed_css } from "../../../internal/css/managed-css-lexical.js";
 import { canonical_keyframes_definition, render_keyframes_definition } from "../../../internal/css/keyframes-definition.js";
 import type { KeyframesInput, KeyframesDef, KeyframesName, KeyframesRegistry } from "../../../types/keyframes.types.js";
 export { canonical_keyframes_definition, render_keyframes_definition, normalize_decls } from "../../../internal/css/keyframes-definition.js";
@@ -131,7 +132,7 @@ export function manage_keyframes(args: {
 
     delete(name: KeyframesName): void {
       // delete with trim consistency.
-      const key = name.trim();
+      const key = trim_managed_css(name);
       const did = byName.delete(key);
       if (!did) return;
 
@@ -157,11 +158,11 @@ export function manage_keyframes(args: {
     },
 
     has(name: KeyframesName): boolean {
-      return byName.has(name.trim());
+      return byName.has(trim_managed_css(name));
     },
 
     get(name: KeyframesName): KeyframesDef | undefined {
-      return byName.get(name.trim());
+      return byName.get(trim_managed_css(name));
     },
 
     renderAll(): string {

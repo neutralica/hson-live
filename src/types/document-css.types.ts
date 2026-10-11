@@ -3,6 +3,14 @@ import type { KeyframesManager } from "./keyframes.types.js";
 import type { PropertyRegistration } from "./at-property.types.js";
 import type { KeyframeSelector } from "./keyframes.types.js";
 
+/** Structural wrapper occurrence; identity is its position, never a runtime identifier. */
+export type DocumentCssOrderEntry = Readonly<
+  | { kind: "rule"; ruleKey: string; scopes: readonly string[] }
+  | { kind: "property"; name: string }
+  | { kind: "keyframes"; name: string }
+  | { kind: "group"; header: string; entries: readonly DocumentCssOrderEntry[] }
+>;
+
 /** Structured, DOM-free capture and commit payload; ordinary authors use the facade. */
 export type DocumentCssRecord = Readonly<{
   rules: readonly Readonly<{
@@ -14,10 +22,7 @@ export type DocumentCssRecord = Readonly<{
     name: string;
     steps: readonly Readonly<{ at: KeyframeSelector; declarations: readonly (readonly [string, string])[] }>[];
   }>[];
-  order: readonly Readonly<
-    | { kind: "rule"; ruleKey: string; scopes: readonly string[] }
-    | { kind: "property" | "keyframes"; name: string }
-  >[];
+  order: readonly DocumentCssOrderEntry[];
 }>;
 
 /** Browser-independent value vocabulary used by document stylesheet authoring. */

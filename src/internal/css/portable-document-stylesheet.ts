@@ -1,4 +1,6 @@
-import { normalize_css_key } from "../../api/transform/utils/attrs-utils/normalize-css.js";
+import { enumerable_own_data_array_items } from "../../core/node-storage.js";
+import type { DocumentCssOrderEntry } from "../../types/document-css.types.js";
+import { managed_css_rule_key, managed_css_group_header, native_managed_property, structured_managed_property, trim_managed_css } from "./managed-css-lexical.js";
 import { canonical_keyframes_definition, render_keyframes_definition } from "./keyframes-definition.js";
 import { canonical_property_registration, render_property_registration } from "./property-registration.js";
 import type { CssValue } from "../../core/style.types.js";
@@ -19,11 +21,8 @@ export type PortableDocumentStylesheet = Readonly<{
   order: readonly PortableDocumentCssEntry[];
 }>;
 
-export type PortableDocumentCssEntry = Readonly<
-  | { kind: "rule"; ruleKey: string; scopes: readonly string[] }
-  | { kind: "property"; name: string }
-  | { kind: "keyframes"; name: string }
->;
+export type PortableDocumentCssEntry = DocumentCssOrderEntry;
+export type PortableDocumentCssLeaf = Exclude<PortableDocumentCssEntry, { kind: "group" }>;
 
 export type PortableDocumentRule = Readonly<{
   ruleKey: string;
@@ -51,13 +50,13 @@ export type PortableDocumentStylesheetRecord = Readonly<{
   order: readonly PortableDocumentCssEntry[];
 }>;
 
-export function css_entry_identity(entry: PortableDocumentCssEntry): string {
+export function css_entry_identity(entry: PortableDocumentCssLeaf): string {
   return entry.kind === "rule" ? JSON.stringify(["rule", entry.scopes, entry.ruleKey]) : JSON.stringify([entry.kind, entry.name]);
 }
 
 export function stylesheet_order_for(
   value: Pick<PortableDocumentStylesheet, "rules" | "properties" | "keyframes">,
-): PortableDocumentCssEntry[] {
+): PortableDocumentCssLeaf[] {
   return [
     ...value.properties.map((item) => ({ kind: "property" as const, name: item.name })),
     ...value.keyframes.map((item) => ({ kind: "keyframes" as const, name: item.name })),
@@ -71,9 +70,33 @@ export function reconcile_stylesheet_order(
 ): PortableDocumentCssEntry[] {
   const candidates = stylesheet_order_for(next);
   const available = new Set(candidates.map(css_entry_identity));
-  const kept = prior.filter((item) => available.has(css_entry_identity(item)));
-  const seen = new Set(kept.map(css_entry_identity));
+  const seen = new Set<string>();
+  const keep = (entries: readonly PortableDocumentCssEntry[]): PortableDocumentCssEntry[] => entries.flatMap((item): PortableDocumentCssEntry[] => {
+    // Removing a rule removes only that member. The structural wrapper remains until clear/replacement.
+    if (item.kind === "group") return [{ ...item, entries: keep(item.entries) }];
+    const identity = css_entry_identity(item);
+    if (!available.has(identity)) return [];
+    seen.add(identity);
+    return [item];
+  });
+  const kept = keep(prior);
   return [...kept, ...candidates.filter((item) => !seen.has(css_entry_identity(item)))];
+}
+
+/** Ordered leaves for validation and addressed operations; never used to reconstruct grouping. */
+export function stylesheet_order_leaves(entries: readonly PortableDocumentCssEntry[]): PortableDocumentCssLeaf[] {
+  return entries.flatMap(item => item.kind === "group" ? stylesheet_order_leaves(item.entries) : [item]);
+}
+
+/** Render blocks without indenting child text: physical lines can continue CSS strings. */
+export function render_stylesheet_order(
+  entries: readonly PortableDocumentCssEntry[],
+  leaf: (entry: PortableDocumentCssLeaf, parents: readonly string[]) => string,
+  parents: readonly string[] = [],
+): string {
+  return entries.map(entry => entry.kind === "group"
+    ? `${entry.header} {\n${render_stylesheet_order(entry.entries, leaf, [...parents, entry.header])}\n}`
+    : leaf(entry, parents)).filter(Boolean).join("\n\n");
 }
 
 const PROPERTY_SYNTAX: ReadonlySet<string> = new Set<PropertySyntax>([
@@ -101,17 +124,32 @@ function record(input: unknown, keys: readonly string[]): Record<string, unknown
   return input as Record<string, unknown>;
 }
 
+/** Inspect physical storage before traversal; never invoke source methods or indexed accessors. */
+export function css_array_items(input: unknown): readonly unknown[] {
+  if (!Array.isArray(input) || Object.getPrototypeOf(input) !== Array.prototype) throw new TypeError("Invalid stylesheet array storage.");
+  const length = Object.getOwnPropertyDescriptor(input, "length");
+  if (!length || !("value" in length) || !Number.isSafeInteger(length.value) || length.value < 0) throw new TypeError("Invalid stylesheet array length.");
+  const keys = Reflect.ownKeys(input);
+  if (keys.length !== length.value + 1 || keys.some(key => key !== "length"
+    && (typeof key !== "string" || !/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= length.value))) {
+    throw new TypeError("Stylesheet arrays must be dense and undecorated.");
+  }
+  const items = enumerable_own_data_array_items(input);
+  if (!items) throw new TypeError("Stylesheet array elements must be enumerable own data properties.");
+  return items;
+}
+
 function nonempty(input: unknown): string {
-  if (typeof input !== "string" || !input.trim()) throw new TypeError("Expected nonempty stylesheet text.");
-  return input.trim();
+  if (typeof input !== "string" || !trim_managed_css(input)) throw new TypeError("Expected nonempty stylesheet text.");
+  return trim_managed_css(input);
 }
 
 function declaration_pairs(input: unknown): Readonly<Record<string, string>> {
-  if (!Array.isArray(input)) throw new TypeError("Expected stylesheet declarations.");
   const values = new Map<string, string>();
-  for (const pair of input) {
-    if (!Array.isArray(pair) || pair.length !== 2) throw new TypeError("Invalid declaration pair.");
-    const property = normalize_css_key(nonempty(pair[0]));
+  for (const rawPair of css_array_items(input)) {
+    const pair = css_array_items(rawPair);
+    if (pair.length !== 2) throw new TypeError("Invalid declaration pair.");
+    const property = native_managed_property(nonempty(pair[0]));
     const value = nonempty(pair[1]);
     if (values.has(property)) throw new TypeError("Duplicate stylesheet declaration.");
     values.set(property, value);
@@ -143,10 +181,11 @@ function property_registration(input: unknown): PropertyRegistration {
 function keyframes_definition(input: unknown): KeyframesDef {
   const value = record(input, ["name", "steps"]);
   const name = nonempty(value.name);
-  if (!Array.isArray(value.steps) || value.steps.length === 0) throw new TypeError("Invalid keyframe steps.");
+  const stepItems = css_array_items(value.steps);
+  if (stepItems.length === 0) throw new TypeError("Invalid keyframe steps.");
   const steps: [KeyframeSelector, Readonly<Record<string, string>>][] = [];
   const seen = new Set<string>();
-  for (const item of value.steps) {
+  for (const item of stepItems) {
     const step = record(item, ["at", "declarations"]);
     const at = nonempty(step.at);
     if (!is_keyframe_selector(at)) throw new TypeError("Invalid keyframe selector.");
@@ -161,17 +200,13 @@ function keyframes_definition(input: unknown): KeyframesDef {
 /** Admit a detached, frozen canonical value from a structured portable record. */
 export function decode_portable_document_stylesheet(input: unknown): PortableDocumentStylesheet {
   const value = record(input, ["rules", "properties", "keyframes", "order"]);
-  if (!Array.isArray(value.rules) || !Array.isArray(value.properties) || !Array.isArray(value.keyframes) || !Array.isArray(value.order)) {
-    throw new TypeError("Invalid stylesheet collections.");
-  }
   const ruleKeys = new Set<string>();
-  const rules = value.rules.map((item: unknown): PortableDocumentRule => {
+  const rules = css_array_items(value.rules).map((item: unknown): PortableDocumentRule => {
     const rule = record(item, ["ruleKey", "selector", "scopes", "declarations"]);
     const ruleKey = nonempty(rule.ruleKey);
     const selector = nonempty(rule.selector);
-    if (!Array.isArray(rule.scopes)) throw new TypeError("Invalid rule scopes.");
     // GlobalCss.scope stores authored wrapper headers as trimmed text.
-    const scopes = Object.freeze(rule.scopes.map((scope: unknown) => nonempty(scope)));
+    const scopes = Object.freeze(css_array_items(rule.scopes).map((scope: unknown) => nonempty(scope)));
     const identity = JSON.stringify([scopes, ruleKey]);
     if (ruleKeys.has(identity)) throw new TypeError("Duplicate stylesheet rule.");
     ruleKeys.add(identity);
@@ -179,23 +214,38 @@ export function decode_portable_document_stylesheet(input: unknown): PortableDoc
     if (Object.keys(declarations).length === 0) throw new TypeError("Empty stylesheet rule.");
     return Object.freeze({ ruleKey, selector, scopes, declarations });
   });
-  const properties = value.properties.map(property_registration).sort((a, b) => compare_names(a.name, b.name));
+  const properties = css_array_items(value.properties).map(property_registration).sort((a, b) => compare_names(a.name, b.name));
   if (new Set(properties.map((item) => item.name)).size !== properties.length) throw new TypeError("Duplicate @property.");
-  const keyframes = value.keyframes.map(keyframes_definition).sort((a, b) => compare_names(a.name, b.name));
+  const keyframes = css_array_items(value.keyframes).map(keyframes_definition).sort((a, b) => compare_names(a.name, b.name));
   if (new Set(keyframes.map((item) => item.name)).size !== keyframes.length) throw new TypeError("Duplicate @keyframes.");
-  const order: PortableDocumentCssEntry[] = value.order.map((item: unknown) => {
+  const active = new WeakSet<object>();
+  const decode_order = (items: unknown, parents: readonly string[] = []): PortableDocumentCssEntry[] => css_array_items(items).map((item: unknown) => {
     if (item === null || typeof item !== "object") throw new TypeError("Invalid stylesheet order entry.");
+    if (active.has(item) || parents.length >= 128) throw new TypeError("Cyclic or excessive stylesheet grouping.");
+    if (Object.hasOwn(item, "header")) {
+      const entry = record(item, ["kind", "header", "entries"]);
+      if (entry.kind !== "group") throw new TypeError("Invalid stylesheet group.");
+      const header = managed_css_group_header(nonempty(entry.header));
+      active.add(item);
+      const entries = Object.freeze(decode_order(entry.entries, [...parents, header]));
+      active.delete(item);
+      return Object.freeze({ kind: "group", header, entries });
+    }
     if (Object.hasOwn(item, "ruleKey")) {
       const entry = record(item, ["kind", "ruleKey", "scopes"]);
-      if (entry.kind !== "rule" || !Array.isArray(entry.scopes)) throw new TypeError("Invalid stylesheet rule order entry.");
-      return Object.freeze({ kind: "rule", ruleKey: nonempty(entry.ruleKey), scopes: Object.freeze(entry.scopes.map(nonempty)) });
+      if (entry.kind !== "rule") throw new TypeError("Invalid stylesheet rule order entry.");
+      const scopes = Object.freeze(css_array_items(entry.scopes).map(nonempty));
+      if (parents.some((parent, index) => scopes[index] !== parent)) throw new TypeError("Rule scopes disagree with group membership.");
+      return Object.freeze({ kind: "rule", ruleKey: nonempty(entry.ruleKey), scopes });
     }
+    if (parents.length) throw new TypeError("Scoped stylesheet registries are unsupported.");
     const entry = record(item, ["kind", "name"]);
     if (entry.kind !== "property" && entry.kind !== "keyframes") throw new TypeError("Invalid stylesheet order kind.");
     return Object.freeze({ kind: entry.kind, name: nonempty(entry.name) });
   });
-  const expected = stylesheet_order_for({ rules, properties, keyframes }).map(css_entry_identity);
-  const actual = order.map(css_entry_identity);
+  const order = decode_order(value.order);
+  const expected = stylesheet_order_leaves(stylesheet_order_for({ rules, properties, keyframes })).map(css_entry_identity);
+  const actual = stylesheet_order_leaves(order).map(css_entry_identity);
   if (actual.length !== expected.length || new Set(actual).size !== actual.length || actual.some((item) => !expected.includes(item))) {
     throw new TypeError("Stylesheet order disagrees with entries.");
   }
@@ -232,12 +282,12 @@ export function portable_document_stylesheet_equal(a: PortableDocumentStylesheet
 
 export function render_portable_document_stylesheet(value: PortableDocumentStylesheet): string {
   const canonical = decode_portable_document_stylesheet(encode_portable_document_stylesheet(value));
-  return canonical.order.map((entry) => {
+  return render_stylesheet_order(canonical.order, (entry, parents) => {
     if (entry.kind === "property") return render_property_registration(canonical.properties.find((item) => item.name === entry.name)!);
     if (entry.kind === "keyframes") return render_keyframes_definition(canonical.keyframes.find((item) => item.name === entry.name)!, entry.name, true);
     const rule = canonical.rules.find((item) => item.ruleKey === entry.ruleKey && JSON.stringify(item.scopes) === JSON.stringify(entry.scopes))!;
-    return render_scoped_global_css_rule(rule.selector, rule.declarations, rule.scopes, true);
-  }).join("\n\n");
+    return render_scoped_global_css_rule(rule.selector, rule.declarations, rule.scopes.slice(parents.length), true);
+  });
 }
 
 /** Set one declaration; existing rule position survives updates, removal/re-add appends. */
@@ -251,7 +301,7 @@ export function set_portable_document_declaration(
 ): PortableDocumentStylesheet {
   const ruleKey = nonempty(ruleKeyRaw);
   const selector = nonempty(selectorRaw);
-  const property = normalize_css_key(nonempty(propertyRaw));
+  const property = structured_managed_property(nonempty(propertyRaw));
   const scopes = scopesRaw.map(nonempty);
   const rendered = render_global_css_value(rawValue);
   const identity = JSON.stringify([scopes, ruleKey]);
@@ -274,7 +324,7 @@ export function set_portable_document_declaration(
 }
 
 export function drop_portable_document_rule(value: PortableDocumentStylesheet, ruleKey: string, scopes: readonly string[] = []): PortableDocumentStylesheet {
-  const identity = JSON.stringify([scopes, ruleKey.trim()]);
+  const identity = JSON.stringify([scopes, managed_css_rule_key(ruleKey)]);
   const rules = value.rules.filter((rule) => JSON.stringify([rule.scopes, rule.ruleKey]) !== identity);
   if (rules.length === value.rules.length) return value;
   return decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), rules: rules.map((rule) => ({ ...rule, declarations: pairs(rule.declarations) })), order: reconcile_stylesheet_order(value.order, { ...value, rules }) });
@@ -289,7 +339,7 @@ export function set_portable_document_property(value: PortableDocumentStylesheet
 }
 
 export function drop_portable_document_property(value: PortableDocumentStylesheet, name: string): PortableDocumentStylesheet {
-  const properties = value.properties.filter((item) => item.name !== name.trim());
+  const properties = value.properties.filter((item) => item.name !== trim_managed_css(name));
   return properties.length === value.properties.length ? value
     : decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), properties, order: reconcile_stylesheet_order(value.order, { ...value, properties }) });
 }
@@ -298,13 +348,13 @@ export function set_portable_document_keyframes(value: PortableDocumentStyleshee
   const normalized = canonical_keyframes_definition(input);
   const keyframes = value.keyframes.filter((item) => item.name !== normalized.name)
     .map((definition) => ({ name: definition.name, steps: definition.steps.map((step) => ({ at: step.at, declarations: pairs(step.decls) })) }));
-  keyframes.push({ name: normalized.name, steps: normalized.steps.map((step) => ({ at: step.at, declarations: sorted_pairs(step.decls) })) });
+  keyframes.push({ name: normalized.name, steps: normalized.steps.map((step) => ({ at: step.at, declarations: sorted_pairs(Object.fromEntries(Object.entries(step.decls).map(([key, value]) => [structured_managed_property(key), value]))) })) });
   const result = decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), keyframes, order: reconcile_stylesheet_order(value.order, { ...value, keyframes: keyframes.map(keyframes_definition) }) });
   return portable_document_stylesheet_equal(value, result) ? value : result;
 }
 
 export function drop_portable_document_keyframes(value: PortableDocumentStylesheet, name: string): PortableDocumentStylesheet {
-  const keyframes = encode_portable_document_stylesheet(value).keyframes.filter((item) => item.name !== name.trim());
+  const keyframes = encode_portable_document_stylesheet(value).keyframes.filter((item) => item.name !== trim_managed_css(name));
   return keyframes.length === value.keyframes.length ? value
-    : decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), keyframes, order: reconcile_stylesheet_order(value.order, { ...value, keyframes: value.keyframes.filter((item) => item.name !== name.trim()) }) });
+    : decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), keyframes, order: reconcile_stylesheet_order(value.order, { ...value, keyframes: value.keyframes.filter((item) => item.name !== trim_managed_css(name)) }) });
 }

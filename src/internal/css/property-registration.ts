@@ -1,5 +1,6 @@
 // Pure @property normalization and rendering shared by LiveTree and LiveMap
 
+import { trim_managed_css } from "./managed-css-lexical.js";
 import { CssCustomPropName, PropertyInput, PropertyInputTuple, PropertyRegistration, PropertyRegistry, PropertySyntax } from "../../types/at-property.types.js";
 
 /**
@@ -48,7 +49,7 @@ export function canonical_property_registration(input: PropertyInput): PropertyR
     // tuple:
     if (isPropTuple(input)) {
         const [name, syn, initOrUndefined, inhOrUndefined] = input;
-        const init: string | undefined = initOrUndefined?.trim();
+        const init: string | undefined = initOrUndefined === undefined ? undefined : trim_managed_css(initOrUndefined);
         const inh: boolean = inhOrUndefined ?? false;
 
         //  enforce init unless "*"
@@ -63,7 +64,7 @@ export function canonical_property_registration(input: PropertyInput): PropertyR
     const name = input.name;
     const syn = input.syn;
     const inh = input.inh ?? false;
-    const init = input.init?.trim();
+    const init = input.init === undefined ? undefined : trim_managed_css(input.init);
 
     if (syn !== "*" && (!init || init === "")) {
         throw new Error(`@property ${name}: init is required when syntax is not "*".`);

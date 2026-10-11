@@ -1,5 +1,7 @@
+import { trim_managed_css } from "./managed-css-lexical.js";
 import type { LiveMapCssOp, LiveMapCssUnitOp } from "../../types/livemap.types.js";
 import {
+  css_array_items,
   decode_portable_document_stylesheet,
   encode_portable_document_stylesheet,
   reconcile_stylesheet_order,
@@ -62,7 +64,7 @@ function canonical_unit(input: unknown): LiveMapCssUnitOp {
   }
   if (header.kind === "keyframes") {
     const value = fields(input, ["domain", "kind", "name"], ["definition"]);
-    if (typeof value.name !== "string" || !value.name.trim() || value.name !== value.name.trim()) {
+    if (typeof value.name !== "string" || !trim_managed_css(value.name) || value.name !== trim_managed_css(value.name)) {
       throw new TypeError("Invalid document CSS keyframes name.");
     }
     if (!Object.hasOwn(value, "definition")) return { domain: "css", kind: "keyframes", name: value.name };
@@ -87,10 +89,12 @@ export function canonical_portable_document_css_op(input: unknown): LiveMapCssOp
     result = { domain: "css", kind: header.kind, stylesheet };
   } else if (header.kind === "batch") {
     const value = fields(input, ["domain", "kind", "operations"]);
-    if (value.domain !== "css" || !Array.isArray(value.operations) || value.operations.length === 0) {
+    if (value.domain !== "css" || !Array.isArray(value.operations)) {
       throw new TypeError("CSS batch must contain operations.");
     }
-    result = { domain: "css", kind: "batch", operations: value.operations.map(canonical_unit) };
+    const operations = css_array_items(value.operations);
+    if (operations.length === 0) throw new TypeError("CSS batch must contain operations.");
+    result = { domain: "css", kind: "batch", operations: operations.map(canonical_unit) };
   } else result = canonical_unit(input);
   freeze_nested(result);
   return result;

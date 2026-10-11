@@ -39,7 +39,20 @@ const map = hsonLiveMap.fromLibraries({
 });
 const page = map.lib("page"), privatePage = map.lib("privatePage"), ungranted = map.lib("ungrantedPage");
 if (page.mode !== "document" || privatePage.mode !== "document" || ungranted.mode !== "document") throw new Error("Expected documents.");
-page.css.stylesheet("p { color: rgb(1, 2, 3) !important; }");
+const fidelitySource = String.raw`p { color: rgb(1, 2, 3) !important; }
+  @layer { .layer { CoLoR: red !important; } .layer { c\6f lor: blue !important; } }
+  @media screen { @layer { #t\ { font-family: foo\ ; } } }
+  @layer { @media screen { .escaped-newline { --x:"review\
+word"; font-family:var(--x); } } }
+  @keyframes fidelity { 0% { opacity: .2; } from { opacity: .8; } }`;
+page.css.stylesheet(fidelitySource);
+const fidelityRecord = map.capture().libraries.find(entry => entry.name === "page")?.css;
+assert.ok(fidelityRecord);
+assert.deepEqual(fidelityRecord.order[1], {kind:"group", header:"@layer", entries:[
+  {kind:"rule",ruleKey:"stylesheet:2",scopes:["@layer"]},
+  {kind:"rule",ruleKey:"stylesheet:3",scopes:["@layer"]},
+]});
+assert.deepEqual(fidelityRecord.keyframes[0]?.steps.map(step => step.at), ["0%", "from"]);
 privatePage.css.stylesheet(`.PRIVATE_CSS_SENTINEL { color: red; --blob: ${"x".repeat(25_000)}; }`);
 ungranted.css.stylesheet(".UNGRANTED_CSS_SENTINEL { color: blue; }");
 const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [
@@ -60,6 +73,11 @@ const clientPage = client.lib("page"), localPage = client.lib("localPage");
 if (clientPage.mode !== "document" || localPage.mode !== "document") throw new Error("Expected client documents.");
 const initial = clientPage.css.snapshot();
 assert.match(initial, /rgb\(1,2,3\)/);
+assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, fidelityRecord);
+const noopRev = locus.rev;
+await locus.stage(draft => { const selected=draft.lib("page"); if ("graph" in selected) selected.css({domain:"css",kind:"replace",stylesheet:parse_document_stylesheet(fidelitySource, [])}); });
+assert.equal(locus.rev, noopRev);
+assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, fidelityRecord);
 assert.throws(() => clientPage.css.clearAll(), /hosted|managed|projection|authority/i);
 assert.equal("clearAll" in managedPage.css, false);
 localPage.css.stylesheet("body { color: green; }");
@@ -77,11 +95,37 @@ for (const raw of [...wire.sent, JSON.stringify(cut)]) {
   assert.equal(raw.includes("UNGRANTED_CSS_SENTINEL"), false);
 }
 assert.ok(wire.sent.every((raw) => raw.length < 10_000), "Private CSS must not inflate the projected bootstrap.");
+const rejectedBefore=locus.rev, rejectedRecord=client.capture();
+let rejectedCodeInvocations=0;
+for (const entries of [Array(1), Object.defineProperty([], "0", {get(){rejectedCodeInvocations++;throw Error("must not execute");},enumerable:true}), Object.assign([], {map(){rejectedCodeInvocations++;throw Error("must not execute map");}})]) {
+  const malformed={rules:[],properties:[],keyframes:[],order:[{kind:"group",header:"@layer",entries}]};
+  await assert.rejects(()=>locus.stage(draft=>{const selected=draft.lib("page");if("graph" in selected) selected.css({domain:"css",kind:"replace",stylesheet:malformed as unknown as NonNullable<typeof fidelityRecord>});}));
+  assert.equal(locus.rev,rejectedBefore);
+  assert.deepEqual(client.capture(),rejectedRecord);
+}
+const rejectedWireCount=wire.sent.length;
+for(const operations of [Array(1),[, {domain:"css",kind:"clear-all"}], Object.defineProperty([],"0",{get(){rejectedCodeInvocations++;throw Error("executed batch getter")},enumerable:true}), Object.assign([{domain:"css",kind:"clear-all"}],{map(){rejectedCodeInvocations++;return []}})]) {
+  await assert.rejects(()=>locus.stage(draft=>{const selected=draft.lib("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations} as never);}));
+  assert.equal(locus.rev,rejectedBefore);assert.deepEqual(client.capture(),rejectedRecord);assert.equal(wire.sent.length,rejectedWireCount);
+}
+const retainedRule=fidelityRecord.rules[0]!;
+await locus.stage(draft=>{const selected=draft.lib("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations:[{domain:"css",kind:"rule",ruleKey:retainedRule.ruleKey,scopes:retainedRule.scopes,rule:retainedRule}]});});
+assert.equal(locus.rev,rejectedBefore);assert.deepEqual(client.capture(),rejectedRecord);assert.equal(wire.sent.length,rejectedWireCount);
+const batchRule=(color:string)=>({domain:"css" as const,kind:"rule" as const,ruleKey:"batch-proof",scopes:[],rule:{ruleKey:"batch-proof",selector:".batch-proof",scopes:[],declarations:[["color",color] as const]}});
+await locus.stage(draft=>{const selected=draft.lib("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations:[batchRule("red"),batchRule("blue")]});});
+assert.equal(locus.rev,rejectedBefore+1);assert.equal(client.rev,localRev+1);
+assert.equal(wire.sent.length,rejectedWireCount+1);
+assert.match(wire.sent.at(-1) ?? "",/hson-document-css-op/);
+for(const snapshot of [locus.session.get(sessionId)!.now({html:"page"}).libs,client.capture()]) {
+  assert.deepEqual(snapshot.libraries.find(entry=>entry.name==="page")?.css?.rules.find(rule=>rule.ruleKey==="batch-proof")?.declarations,[["color","blue"]]);
+}
+assert.equal(rejectedCodeInvocations,0);
 const append = (css: string, existing: readonly string[] = []) => ({ domain: "css" as const, kind: "append" as const,
   stylesheet: parse_document_stylesheet(css, existing) });
 await locus.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@media screen { p { background: navy; } }", page.css.list())); });
 assert.match(clientPage.css.snapshot(), /background:navy/);
-assert.equal(client.rev, localRev + 1);
+assert.equal(client.rev, localRev + 2);
+assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, locus.session.get(sessionId)!.now({html:"page"}).libs.libraries.find(entry => entry.name === "page")?.css);
 const live = wire.sent.at(-1) ?? "";
 assert.match(live, /hson-document-css-op/);
 assert.equal(live.includes("PRIVATE_CSS_SENTINEL"), false);
@@ -147,9 +191,14 @@ const adapter = new MemoryCheckpointAdapter();
 const durable = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
 const persistent = await create_persistent_locus_hosted_aggregate_internal({ map: durable, persistence: adapter,
   logicalMapId: "hosted-css-phase-c" });
-await persistent.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { color: purple; }")); });
+await persistent.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append(String.raw`body { color: purple; } @layer { @media screen { .escaped-newline { --x:"review\
+word"; font-family:var(--x); } } } @layer { .x { color: red !important; } .x { color: blue !important; } } @keyframes durable { 0% { opacity: .2; } from { opacity: .8; } }`)); });
 await persistent.checkpoint();
-await persistent.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { background: teal; }", ["stylesheet:1"])); });
+await persistent.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { background: teal; }", persistent.map.lib("page").css.list())); });
+const durableRecord = persistent.map.capture().libraries.find(entry => entry.name === "page")?.css;
+assert.ok(durableRecord);
+assert.equal(durableRecord.rules.find(rule=>rule.selector===".escaped-newline")?.declarations[0]?.[1], '"review\\\nword"');
+assert.equal(durableRecord.order[1]?.kind, "group");
 const state = adapter.state("hosted-css-phase-c");
 if (state === undefined) throw new Error("Missing durable state.");
 const restored = await restore_persistent_locus_hosted_aggregate_internal("hosted-css-phase-c", state, { persistence: adapter });
@@ -158,6 +207,7 @@ const restoredPage = restored.map.lib("page");
 if (restoredPage.mode !== "document") throw new Error("Expected restored document.");
 assert.match(restoredPage.css.snapshot(), /color:purple/);
 assert.match(restoredPage.css.snapshot(), /background:teal/);
+assert.deepEqual(restored.map.capture().libraries.find(entry => entry.name === "page")?.css, durableRecord);
 const durableCss = restoredPage.css.snapshot();
 const beforeFailureRev = restored.rev;
 adapter.failAppend = new Error("CSS append rejected");
@@ -174,6 +224,7 @@ assert.ok(restoredAtS2);
 const checkpointPage = restoredAtS2.map.lib("page");
 if (checkpointPage.mode !== "document") throw new Error("Expected checkpoint stylesheet document.");
 assert.equal(checkpointPage.css.snapshot(), durableCss);
+assert.deepEqual(restoredAtS2.map.capture().libraries.find(entry => entry.name === "page")?.css, durableRecord);
 
 const fallbackMap = hsonLiveMap.fromLibraries({
   page: { document: '<html <head/> <body/>/>' },
@@ -227,7 +278,7 @@ const restartOptions = {
 const firstAuthority = await hsonLiveMap.locus.resume(authority_definition_from_fixture_options({ map: restartMap, ...restartOptions }));
 const managedRestartPage = firstAuthority.lib("page");
 if (managedRestartPage.mode !== "document") throw new Error("Expected managed restart document.");
-await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { color: maroon; }")); });
+await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { color: maroon; } @layer { .x { color: red !important; } .x { color: blue !important; } }")); });
 await hsonLiveMap.locus.checkpoint(firstAuthority);
 const restartWire = pair();
 let stopRestart = bind_locus_websocket(firstAuthority, restartWire.server);
@@ -244,6 +295,8 @@ const beforeRejectedCssRev = firstAuthority.rev;
 const beforeRejectedClientCss = restartClient.lib("page");
 if (beforeRejectedClientCss.mode !== "document") throw new Error("Expected projected CSS before failure.");
 const beforeRejectedCss = beforeRejectedClientCss.css.snapshot();
+const restartGroupRecord = restartClient.capture().libraries.find(entry => entry.name === "page")?.css;
+assert.equal(restartGroupRecord?.order[1]?.kind, "group");
 const beforeRejectedWire = restartWire.sent.length;
 restartAdapter.failAppend = new Error("CSS durable acceptance rejected");
 await assert.rejects(() => firstAuthority.stage((draft) => { draft.lib("page").css(append("body { margin: 11px; }", managedRestartPage.css.list())); }),
@@ -262,10 +315,26 @@ stopRestart = bind_locus_websocket(restarted, restartWire.server);
 const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), map: restartClient,
   logicalMapId: restarted.logicalMapId });
 assert.equal((await resumedEcho.connect()).outcome, "reconcile");
+assert.deepEqual(restartClient.capture().libraries.find(entry => entry.name === "page")?.css?.order[1], restartGroupRecord?.order[1]);
 const restartedProjected = restartClient.lib("page");
 if (restartedProjected.mode !== "document") throw new Error("Expected restarted projected document.");
 assert.match(restartedProjected.css.snapshot(), /color:maroon/);
 assert.match(restartedProjected.css.snapshot(), /background:silver/);
 assert.equal(restartLocal.css.snapshot(), restartLocalCss);
 resumedEcho.dispose(); stopRestart(); restarted.dispose();
-process.stdout.write("Hosted document CSS Phase C acceptance passed.\n");
+
+// Construction and client-local initializers use the same occurrence-bearing record.
+const initialGroups = hsonLiveMap.locus.create({
+  shared: [{name:"page", definition:{document:'<html <head/> <body/>/>'}, css:fidelitySource}],
+  local: [{name:"local", initializer:{document:'<html <head/> <body/>/>'}, css:fidelitySource}],
+  defaultProjection:{libraries:["page","local"]},
+  authorizeProjection:()=>({libraries:["page","local"]}),
+});
+const initialSession=await initialGroups.session.create({libraries:["page","local"]});
+const initialCut=initialSession.now({html:"page"});
+assert.deepEqual(initialCut.libs.libraries.find(entry=>entry.name==="page")?.css, fidelityRecord);
+assert.deepEqual(initialCut.local.find(entry=>entry.name==="local")?.css, fidelityRecord);
+assert.equal(initialGroups.rev, 0);
+initialGroups.dispose();
+
+console.log("Hosted document CSS Phase C acceptance passed.");

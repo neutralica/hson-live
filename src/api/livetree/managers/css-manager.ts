@@ -297,7 +297,9 @@ export class CssRuntimeManager {
     try {
       for (const entry of parsed.order) {
         const order = this.nextRuleOrder++;
-        if (entry.kind === "rule") {
+        if (entry.kind === "group") {
+          this.globalCss.appendParsedGroup(entry, parsed.rules, order);
+        } else if (entry.kind === "rule") {
           const rule = byRuleKey.get(entry.ruleKey)!;
           this.globalCss.appendParsedRule(rule, order);
         } else if (entry.kind === "property") {

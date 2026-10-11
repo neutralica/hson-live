@@ -1,3 +1,4 @@
+import { managed_css_rule_key, structured_managed_property, trim_managed_css } from "../../internal/css/managed-css-lexical.js";
 import type { CssPseudoKey } from "../../types/css.types.js";
 import type { DocumentCssHandle, DocumentCssMap, DocumentCssRuleFacade, DocumentCssRuleHandle, DocumentCssValue } from "../../types/document-css.types.js";
 import type { LiveMapCssOp, LiveMapCssUnitOp } from "../../types/livemap.types.js";
@@ -50,8 +51,8 @@ export function make_livemap_document_css(
     else if (units.length > 1) commit({ domain: "css", kind: "batch", operations: units });
   };
   const rule = (rawKey: string, rawSelector: string, scopes: readonly string[]): DocumentCssRuleHandle => {
-    const ruleKey = rawKey.trim();
-    const selector = rawSelector.trim();
+    const ruleKey = managed_css_rule_key(rawKey);
+    const selector = trim_managed_css(rawSelector);
     if (!ruleKey || !selector) throw new TypeError("Document CSS rule key and selector must be nonempty.");
     if (ruleKey.startsWith("stylesheet:")) throw new TypeError("The stylesheet: rule key prefix is reserved for parsed CSS rules.");
     const write = (property: string, value: DocumentCssValue): void => {
@@ -120,12 +121,12 @@ export function make_livemap_document_css(
   };
   const scoped = (scopes: readonly string[]): DocumentCssRuleFacade => ({
     rule: (key, selector) => rule(key, selector, scopes),
-    sel: (selector) => rule(`sel:${selector.trim()}`, selector, scopes),
+    sel: (selector) => rule(`sel:${trim_managed_css(selector)}`, selector, scopes),
     var: vars,
-    scope: (_name, atRule) => scoped([...scopes, atRule.trim()]),
+    scope: (_name, atRule) => scoped([...scopes, trim_managed_css(atRule)]),
     media: (query) => scoped([...scopes, mediaToAtRule(query)]),
     supports: (condition) => scoped([...scopes, convertSupportsToAtRule(condition)]),
-    layer: (name) => scoped([...scopes, `@layer ${name.trim()}`]),
+    layer: (name) => scoped([...scopes, `@layer ${trim_managed_css(name)}`]),
   });
   const root = scoped([]);
   const atProperty: DocumentCssHandle["atProperty"] = {
@@ -146,39 +147,39 @@ export function make_livemap_document_css(
     set: (input: KeyframesInput) => {
       const definition = canonical_keyframes_definition(input);
       const encoded = { name: definition.name, steps: definition.steps.map((step) => ({ at: step.at,
-        declarations: Object.entries(step.decls).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]): readonly [string, string] => [key, value]) })) };
+        declarations: Object.entries(step.decls).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]): readonly [string, string] => [structured_managed_property(key), value]) })) };
       commit({ domain: "css", kind: "keyframes", name: definition.name, definition: encoded });
     },
     setMany: (inputs: readonly KeyframesInput[]) => {
       const definitions = inputs.map(canonical_keyframes_definition);
       if (definitions.length) commit({ domain: "css", kind: "batch", operations: definitions.map((definition) => {
         const encoded = { name: definition.name, steps: definition.steps.map((step) => ({ at: step.at,
-          declarations: Object.entries(step.decls).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]): readonly [string, string] => [key, value]) })) };
+          declarations: Object.entries(step.decls).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]): readonly [string, string] => [structured_managed_property(key), value]) })) };
         return { domain: "css", kind: "keyframes", name: definition.name, definition: encoded };
       }) });
     },
-    delete: (name: string) => { commit({ domain: "css", kind: "keyframes", name: name.trim() }); },
-    has: (name: string) => read().keyframes.some((item) => item.name === name.trim()),
-    get: (name: string): KeyframesDef | undefined => read().keyframes.find((item) => item.name === name.trim()),
+    delete: (name: string) => { commit({ domain: "css", kind: "keyframes", name: trim_managed_css(name) }); },
+    has: (name: string) => read().keyframes.some((item) => item.name === trim_managed_css(name)),
+    get: (name: string): KeyframesDef | undefined => read().keyframes.find((item) => item.name === trim_managed_css(name)),
   };
   return Object.freeze({ ...root, var: vars, atProperty, keyframes,
     stylesheet: (cssText: string): void => {
       commit({ domain: "css", kind: "replace", stylesheet: parse_document_stylesheet(cssText, []) });
     },
     drop: (ruleKey: string) => {
-      const units = read().rules.filter((item) => item.ruleKey === ruleKey.trim()).map((item): LiveMapCssUnitOp =>
+      const units = read().rules.filter((item) => item.ruleKey === managed_css_rule_key(ruleKey)).map((item): LiveMapCssUnitOp =>
         ({ domain: "css", kind: "rule", ruleKey: item.ruleKey, scopes: item.scopes }));
       if (units.length === 1) commit(units[0]!);
       else if (units.length > 1) commit({ domain: "css", kind: "batch", operations: units });
     },
     clearAll: () => { commit({ domain: "css", kind: "clear-all" }); },
-    has: (ruleKey: string) => read().rules.some((item) => item.ruleKey === ruleKey.trim()),
+    has: (ruleKey: string) => read().rules.some((item) => item.ruleKey === managed_css_rule_key(ruleKey)),
     list: () => [...new Set(read().rules.map((item) => item.ruleKey))].sort(),
     get: (ruleKey: string) => {
       const rules = read().rules;
-      const item = rules.find((rule) => rule.ruleKey === ruleKey.trim() && rule.scopes.length === 0)
-        ?? rules.find((rule) => rule.ruleKey === ruleKey.trim());
-      return item === undefined ? undefined : render_scoped_global_css_rule(item.selector, item.declarations, item.scopes);
+      const item = rules.find((rule) => rule.ruleKey === managed_css_rule_key(ruleKey) && rule.scopes.length === 0)
+        ?? rules.find((rule) => rule.ruleKey === managed_css_rule_key(ruleKey));
+      return item === undefined ? undefined : render_scoped_global_css_rule(item.selector, item.declarations, item.scopes, true);
     },
     snapshot: () => render_portable_document_stylesheet(read()),
   });

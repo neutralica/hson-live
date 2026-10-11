@@ -1,5 +1,6 @@
 // Pure keyframes normalization and rendering shared by LiveTree and LiveMap
 
+import { trim_managed_css } from "./managed-css-lexical.js";
 import { canon_to_css_prop } from "../../api/transform/utils/attrs-utils/normalize-css.js";
 import { KeyframesInput, KeyframesInputTuple, KeyframeSelector, CssDeclMap, KeyframeStep, KeyframesDef, KeyframesName, KeyframesRegistry } from "../../types/keyframes.types.js";
 
@@ -94,14 +95,14 @@ export function normalize_decls(decls: CssDeclMap): CssDeclMap {
   // normalize entries.
   for (const [k, v] of Object.entries(decls)) {
     // skip empty keys.
-    if (!k || k.trim() === "") continue;
+    if (!k || trim_managed_css(k) === "") continue;
 
     // keep value trimming conservative.
-    const vv = String(v).trim();
+    const vv = trim_managed_css(String(v));
     if (vv === "") continue;
 
     // store.
-    out[k.trim()] = vv;
+    out[trim_managed_css(k)] = vv;
   }
 
   // freeze-ish via Readonly return type.
@@ -112,39 +113,17 @@ export function normalize_decls(decls: CssDeclMap): CssDeclMap {
  * Sort keyframe steps into a deterministic order.
  *
  * Ordering rules:
- * - `"from"` comes first.
- * - `"to"` comes last.
- * - Percentage selectors are ordered by their numeric value ascending.
- *
- * Deterministic ordering matters because:
- * - it stabilizes `renderAll()` output for snapshot/diff testing
- * - it prevents incidental input ordering from affecting serialized CSS
- *
- * @param steps
- *   A list of keyframe steps to sort. The input is not mutated.
- *
- * @returns
- *   A new array containing the same steps in canonical order.
+ * Sort by numeric position: from equals 0%, and to equals 100%.
+ * Stable ties preserve authored precedence among equivalent positions.
+ * Original offset spellings and declaration maps remain distinct.
  */
 function sortSteps(steps: readonly KeyframeStep[]): KeyframeStep[] {
   // copy so we don’t mutate caller data.
   const copy = [...steps];
 
-  // ordering function.
-  copy.sort((a, b) => {
-    // from is smallest.
-    if (a.at === "from" && b.at !== "from") return -1;
-    if (b.at === "from" && a.at !== "from") return 1;
-
-    // to is largest.
-    if (a.at === "to" && b.at !== "to") return 1;
-    if (b.at === "to" && a.at !== "to") return -1;
-
-    // both are percentages; compare numeric.
-    const na = Number(a.at.slice(0, -1));
-    const nb = Number(b.at.slice(0, -1));
-    return na - nb;
-  });
+  // Stable sorting preserves authored precedence at numerically equivalent offsets.
+  const offset = (at: KeyframeSelector): number => at === "from" ? 0 : at === "to" ? 100 : Number(at.slice(0, -1));
+  copy.sort((a, b) => offset(a.at) - offset(b.at));
 
   // return sorted copy.
   return copy;
@@ -181,7 +160,7 @@ function sortSteps(steps: readonly KeyframeStep[]): KeyframeStep[] {
  */
 export function canonical_keyframes_definition(input: KeyframesInput): KeyframesDef {
   // normalize name (trim only).
-  const name: KeyframesName = input.name.trim();
+  const name: KeyframesName = trim_managed_css(input.name);
 
   // basic name guard.
   if (name === "") {
@@ -245,7 +224,7 @@ function renderDecls(decls: CssDeclMap, sourceOrder = false): string[] {
 
   return keys.map((k) => {
     // CHANGE: canonical -> emitted css prop (camel->kebab, keep --vars, etc.)
-    const prop = canon_to_css_prop(k);
+    const prop = sourceOrder ? k : canon_to_css_prop(k);
 
     // CHANGE: index safely; avoid "possibly undefined" by falling back to ""
     const val = decls[k] ?? "";

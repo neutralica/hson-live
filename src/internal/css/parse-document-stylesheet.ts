@@ -4,6 +4,7 @@ import type { Atrule, Block, CssNode, Declaration, Rule, StyleSheet } from "css-
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, render_portable_document_stylesheet, type PortableDocumentStylesheetRecord } from "./portable-document-stylesheet.js";
 import { assert_browser_rawtext_text } from "../browser-realization/browser-realization-plan.js";
 import type { KeyframeSelector } from "../../types/keyframes.types.js";
+import { native_managed_property, trim_managed_css } from "./managed-css-lexical.js";
 import type { PropertySyntax } from "../../types/at-property.types.js";
 
 export class DocumentStylesheetError extends SyntaxError {
@@ -44,18 +45,8 @@ export function parse_document_stylesheet(source: string, existingRuleKeys: read
     const position = node?.loc?.start;
     throw new DocumentStylesheetError(code, message, position?.line ?? 1, position?.column ?? 1, source, construct);
   };
-  const withoutComments = (value: string): string => {
-    let result = "";
-    let after = 0;
-    tokenize(value, (type, start, end) => {
-      if (type !== tokenTypes.Comment) return;
-      result += value.slice(after, start) + " ";
-      after = end;
-    });
-    return (result + value.slice(after)).trim();
-  };
   const text = (node: CssNode | null | undefined): string => node === null || node === undefined
-    ? "" : withoutComments(generate(node));
+    ? "" : trim_managed_css(generate(node));
   const parseErrors: { message: string; line: number; column: number }[] = [];
   const lineColumn = (offset: number): Readonly<{ line: number; column: number }> => {
     const rows = source.slice(0, offset).split("\n");
@@ -111,7 +102,7 @@ export function parse_document_stylesheet(source: string, existingRuleKeys: read
     const seen = new Set<string>();
     block.children.forEach((child) => {
       const declaration = is_declaration(child) ? child : fail("CSS_UNSUPPORTED", `Nested ${child.type} is unsupported inside ${context}.`, child, child.type);
-      const property = declaration.property.trim();
+      const property = native_managed_property(declaration.property);
       if (!allowImportant && declaration.important) fail("CSS_ADMISSION", `!important is invalid in ${context}.`, child, property);
       const value = text(declaration.value) + (declaration.important ? " !important" : "");
       if (!property || !value) fail("CSS_SYNTAX", `Invalid declaration in ${context}.`, child, property);
@@ -121,7 +112,7 @@ export function parse_document_stylesheet(source: string, existingRuleKeys: read
     });
     return result;
   };
-  const visit = (block: Block | StyleSheet, scopes: readonly string[]): void => {
+  const visit = (block: Block | StyleSheet, scopes: readonly string[], entries = order): void => {
     block.children.forEach((node) => {
       if (is_rule(node)) {
         const selector = text(node.prelude);
@@ -132,7 +123,7 @@ export function parse_document_stylesheet(source: string, existingRuleKeys: read
         do { ruleKey = `stylesheet:${++number}`; } while (usedRuleKeys.has(ruleKey));
         usedRuleKeys.add(ruleKey);
         rules.push({ ruleKey, selector, scopes: [...scopes], declarations: pairs });
-        order.push({ kind: "rule", ruleKey, scopes: [...scopes] });
+        entries.push({ kind: "rule", ruleKey, scopes: [...scopes] });
         return;
       }
       const at = is_at_rule(node) ? node : fail("CSS_SYNTAX", `Unexpected ${node.type} at stylesheet level.`, node, node.type);
@@ -141,9 +132,10 @@ export function parse_document_stylesheet(source: string, existingRuleKeys: read
       if (name === "media" || name === "supports" || name === "layer" || name === "container" || name === "scope" || name === "starting-style") {
         const scopeBlock = at.block ?? fail("CSS_UNSUPPORTED", `@${name} statement cannot be represented.`, node, `@${name}`);
         if (!params && name !== "layer" && name !== "starting-style") fail("CSS_SYNTAX", `@${name} requires a condition or name.`, node, `@${name}`);
-        const before = order.length;
-        visit(scopeBlock, [...scopes, `@${name}${params ? ` ${params}` : ""}`]);
-        if (name === "layer" && order.length === before) fail("CSS_UNSUPPORTED", "Empty @layer affects layer order and cannot be represented.", node, "@layer");
+        const header = `@${name}${params ? ` ${params}` : ""}`;
+        const children: PortableDocumentStylesheetRecord["order"][number][] = [];
+        visit(scopeBlock, [...scopes, header], children);
+        if (children.length || name === "layer") entries.push({ kind: "group", header, entries: children });
         return;
       }
       if (name === "property") {
@@ -162,7 +154,7 @@ export function parse_document_stylesheet(source: string, existingRuleKeys: read
         const init = fields.get("initial-value");
         if (syn !== "*" && !init) fail("CSS_ADMISSION", "@property initial-value is required for this syntax.", node, "@property");
         properties.push({ name: checkedName, syn: checkedSyntax, inh: inh === "true", ...(init === undefined ? {} : { init }) });
-        order.push({ kind: "property", name: checkedName });
+        entries.push({ kind: "property", name: checkedName });
         return;
       }
       if (name === "keyframes") {
@@ -177,7 +169,7 @@ export function parse_document_stylesheet(source: string, existingRuleKeys: read
         });
         if (!params || steps.length === 0) fail("CSS_ADMISSION", "@keyframes requires a name and steps.", node, "@keyframes");
         keyframes.push({ name: params, steps });
-        order.push({ kind: "keyframes", name: params });
+        entries.push({ kind: "keyframes", name: params });
         return;
       }
       fail("CSS_UNSUPPORTED", `Unsupported CSS at-rule @${at.name}.`, node, `@${at.name}`);

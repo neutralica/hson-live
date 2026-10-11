@@ -412,6 +412,10 @@ try {
   const hostedTarget = hostedCssRoot.querySelector("#hosted-css-target");
   check("hosted CSS cut styles a browser without JavaScript", hostedStyle !== null
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(1, 2, 3)");
+  const hostedLayer=hostedCssRoot.querySelector("#hosted-layer-target");
+  check("hosted anonymous-group source first paint", cssFrame.contentWindow.getComputedStyle(hostedLayer).color === "rgb(0, 0, 255)");
+  const groupRecord=state.cssCut.libs.libraries.find(entry => entry.name === "page").css.order[0];
+  check("hosted cut contains one explicit anonymous occurrence with two members", groupRecord.kind === "group" && groupRecord.header === "@layer" && groupRecord.entries.length === 2);
   const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut));
   const cssTransport = hsonLiveMap.echo.transport.websocket({ url: state.cssSocketUrl });
   const cssContinued = await continue_hosted_document({ now: { ...state.cssCut, ...cssBootstrap.bootstrap },
@@ -420,11 +424,15 @@ try {
   const cssClientMap = cssEcho;
   check("hosted CSS replay updates adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(4, 5, 6)");
+  check("hosted grouping survives stale-cut Echo reconciliation", cssFrame.contentWindow.getComputedStyle(hostedLayer).color === "rgb(0, 0, 255)"
+    && hostedStyle.textContent === cssEcho.lib("page").css.snapshot());
   const authoredCssRev = cssClientMap.rev;
   await cssContinued.tree.async.css.global.sel("#hosted-css-target").setProp("color", "rgb(10, 11, 12)");
   check("hosted async CSS authoring converges through Echo", cssClientMap.rev === authoredCssRev + 1
     && hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(10, 11, 12)");
+  check("hosted unrelated accepted rule update preserves group and native target", cssFrame.contentWindow.getComputedStyle(hostedLayer).color === "rgb(0, 0, 255)"
+    && hostedCssRoot.querySelector("#hosted-layer-target") === hostedLayer);
   const cssTargetTree = cssContinued.tree.find.must.byTag("p");
   cssTargetTree.css.set.opacity(0.7);
   check("hosted snapshot composes document CSS and QUID CSS", cssContinued.tree.css.snapshot().includes("rgb(10, 11, 12)")

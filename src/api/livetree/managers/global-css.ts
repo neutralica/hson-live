@@ -7,6 +7,8 @@ export { mediaToAtRule, convertSupportsToAt } from "../../../internal/css/global
 import { make_style_setter } from "./style-setter.js";
 import { normalize_css_var_name } from "./style-getter.js";
 import { render_global_css_rule, render_global_css_value, render_scoped_global_css_rule } from "../../../internal/css/global-css-text.js";
+import { render_stylesheet_order, stylesheet_order_leaves, type PortableDocumentCssEntry } from "../../../internal/css/portable-document-stylesheet.js";
+import { managed_css_rule_key, trim_managed_css } from "../../../internal/css/managed-css-lexical.js";
 import type { PortableDocumentStylesheetRecord } from "../../../internal/css/portable-document-stylesheet.js";
 
 const GLOBAL_VARS_RULE_KEY = "global-vars::root";
@@ -61,6 +63,7 @@ export class GlobalCss {
 
   private readonly rules = new Map<string, StoredGlobalRule>();
   private fallbackOrder = 0;
+  private readonly parsedGroups: { entry: Extract<PortableDocumentCssEntry, { kind: "group" }>; order: number }[] = [];
   private readonly allocateOrder: () => number;
   private readonly rendered = new Map<string, string>();
   private readonly listeners = new Set<() => void>();
@@ -138,7 +141,7 @@ export class GlobalCss {
       var: g().varsFacade(),
 
       scope: (scopeName: string, atRule: string) =>
-        g().facade([...scopes, atRule.trim()]),
+        g().facade([...scopes, trim_managed_css(atRule)]),
 
       media: (query: MediaQueryInput) =>
         g().facade([...scopes, mediaToAtRule(query)]),
@@ -147,7 +150,7 @@ export class GlobalCss {
         g().facade([...scopes, convertSupportsToAt(cond)]),
 
       layer: (layerName: string) =>
-        g().facade([...scopes, `@layer ${layerName.trim()}`]),
+        g().facade([...scopes, `@layer ${trim_managed_css(layerName)}`]),
     } as const;
   }
 
@@ -169,8 +172,8 @@ export class GlobalCss {
     selStr: string,
     scopes: readonly string[] = [],
   ): GlobalRuleHandle {
-    const ruleKey = keyStr.trim();
-    const selector = selStr.trim();
+    const ruleKey = managed_css_rule_key(keyStr);
+    const selector = trim_managed_css(selStr);
     if (!ruleKey) throw new Error("GlobalCss.rule: empty source");
     if (ruleKey.startsWith("stylesheet:")) throw new TypeError("The stylesheet: rule key prefix is reserved for parsed CSS rules.");
     if (!selector) throw new Error("GlobalCss.rule: empty selector");
@@ -183,7 +186,7 @@ export class GlobalCss {
       return current?.selector === selector ? { ...current.decls } : {};
     };
     const commit = (decls: Record<string, string>): void => {
-      const cssText = render_rule(selector, decls).trim();
+      const cssText = trim_managed_css(render_rule(selector, decls));
       const prior = this.rules.get(identity);
       if (!cssText) {
         if (this.rules.delete(identity)) {
@@ -302,7 +305,7 @@ export class GlobalCss {
         return;
       }
 
-      const cssText = render_rule(GLOBAL_VARS_SELECTOR, decls).trim();
+      const cssText = trim_managed_css(render_rule(GLOBAL_VARS_SELECTOR, decls));
       const prev = this.rendered.get(this.identity(GLOBAL_VARS_RULE_KEY, []));
       if (prev === cssText) return;
 
@@ -385,7 +388,7 @@ export class GlobalCss {
    * @returns Stable `sel:<selector>` key.
    */
   private static id_for_selector(selStr: string): string {
-    return `sel:${selStr.trim()}`;
+    return `sel:${trim_managed_css(selStr)}`;
   }
 
   private identity(ruleKey: string, scopes: readonly string[]): string {
@@ -402,9 +405,30 @@ export class GlobalCss {
     this.notifyChanged();
   }
 
+  /** One source wrapper occurrence owns an ordered block of existing runtime rules. */
+  public appendParsedGroup(entry: Extract<PortableDocumentCssEntry, { kind: "group" }>, rules: PortableDocumentStylesheetRecord["rules"], order: number): void {
+    for (const leaf of stylesheet_order_leaves([entry])) {
+      if (leaf.kind !== "rule") throw new TypeError("Scoped runtime registries are unsupported.");
+      const rule = rules.find(rule => rule.ruleKey === leaf.ruleKey && JSON.stringify(rule.scopes) === JSON.stringify(leaf.scopes));
+      if (!rule) throw new TypeError("Missing grouped runtime rule.");
+      this.appendParsedRule(rule, order);
+    }
+    this.parsedGroups.push({ entry, order });
+    this.notifyChanged();
+  }
+
+  /** Drop membership now: a later source admission may legitimately reuse a removed rule key. */
+  private pruneParsedGroups(): void {
+    const prune = (entries: readonly PortableDocumentCssEntry[]): PortableDocumentCssEntry[] => entries.flatMap((entry): PortableDocumentCssEntry[] => {
+      if (entry.kind === "group") return [{ ...entry, entries: prune(entry.entries) }];
+      return entry.kind === "rule" && this.rules.has(this.identity(entry.ruleKey, entry.scopes)) ? [entry] : [];
+    });
+    for (const group of this.parsedGroups) group.entry = { ...group.entry, entries: prune(group.entry.entries) };
+  }
+
   /** Public drop addresses every scope bearing the supplied explicit key. */
   private remove(keyStr: string): void {
-    const source = keyStr.trim();
+    const source = managed_css_rule_key(keyStr);
     if (!source) return;
     let changed = false;
     for (const [identity, rule] of this.rules) {
@@ -413,11 +437,11 @@ export class GlobalCss {
       this.rendered.delete(identity);
       changed = true;
     }
-    if (changed) this.notifyChanged();
+    if (changed) { this.pruneParsedGroups(); this.notifyChanged(); }
   }
 
   private removeByPrefix(prefixRaw: string): void {
-    const prefix = prefixRaw.trim();
+    const prefix = managed_css_rule_key(prefixRaw);
     if (!prefix) return;
     let changed = false;
     for (const [identity, rule] of this.rules) {
@@ -426,11 +450,11 @@ export class GlobalCss {
       this.rendered.delete(identity);
       changed = true;
     }
-    if (changed) this.notifyChanged();
+    if (changed) { this.pruneParsedGroups(); this.notifyChanged(); }
   }
 
   private removeBySelectorFragment(fragmentRaw: string): void {
-    const fragment = fragmentRaw.trim();
+    const fragment = trim_managed_css(fragmentRaw);
     if (!fragment) return;
     let changed = false;
     for (const [identity, rule] of this.rules) {
@@ -439,14 +463,15 @@ export class GlobalCss {
       this.rendered.delete(identity);
       changed = true;
     }
-    if (changed) this.notifyChanged();
+    if (changed) { this.pruneParsedGroups(); this.notifyChanged(); }
   }
 
   /**
    * Remove all global rules.
    */
   private clear(): void {
-    if (this.rules.size === 0 && this.rendered.size === 0) return;
+    if (this.rules.size === 0 && this.rendered.size === 0 && this.parsedGroups.length === 0) return;
+    this.parsedGroups.length = 0;
     this.rules.clear();
     this.rendered.clear();
     this.notifyChanged();
@@ -465,7 +490,7 @@ export class GlobalCss {
 
   /** Prefer the base scope when one key names several scoped rules. */
   private get(sourceRaw: string): string | undefined {
-    const source = sourceRaw.trim();
+    const source = managed_css_rule_key(sourceRaw);
     if (!source) return undefined;
     const base = this.rendered.get(this.identity(source, []));
     if (base !== undefined) return base;
@@ -477,12 +502,18 @@ export class GlobalCss {
 
   /** DOM-free authored-order entries for the complete stylesheet renderer. */
   public renderEntries(): readonly ManagedCssRule[] {
-    return [...this.rules.values()]
+    const grouped = new Set(this.parsedGroups.flatMap(group => stylesheet_order_leaves([group.entry]).filter(leaf => leaf.kind === "rule").map(leaf => this.identity(leaf.ruleKey, leaf.scopes))));
+    const entries = [...this.rules.values()].filter(rule => !grouped.has(this.identity(rule.ruleKey, rule.scopes)))
       .sort((a, b) => a.order - b.order)
       .map((rule) => ({
         order: rule.order,
         text: render_scoped_global_css_rule(rule.selector, rule.decls, rule.scopes, rule.sourceOrder),
       }));
+    return [...entries, ...this.parsedGroups.map(group => ({ order: group.order, text: render_stylesheet_order([group.entry], (leaf, parents) => {
+      if (leaf.kind !== "rule") return "";
+      const rule = this.rules.get(this.identity(leaf.ruleKey, leaf.scopes));
+      return rule === undefined ? "" : render_scoped_global_css_rule(rule.selector, rule.decls, rule.scopes.slice(parents.length), true);
+    }) }))].sort((a, b) => a.order - b.order);
   }
 
   private renderAll(): string {

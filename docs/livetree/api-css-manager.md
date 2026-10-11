@@ -397,6 +397,10 @@ keyframes to its runtime-global CSS state. Duplicate selectors remain separate,
 addressable rules with stable `stylesheet:1`, `stylesheet:2`, and later keys
 there. Unsupported constructs such as `@import` fail before runtime mutation.
 `tree.css` itself has no `stylesheet()`.
+Managed text uses native CSS property names, including case folding and CSS escapes; structured setters keep their JS camelCase convenience. Significant escape whitespace and token boundaries are preserved. Keyframe offsets sort numerically with stable authored order at equivalent positions (`from`/`0%`, `to`/`100%`). Raw repeated exact offsets and comma-separated offsets remain unsupported; structured tuple duplicate-selector behavior is unchanged.
+
+Wrapper rendering leaves child token contents unchanged, including escaped-newline strings. Selector-generated keys preserve significant CSS characters through creation, lookup and deletion. Each parsed wrapper occurrence has ordered structural membership. One anonymous layer containing several rules renders once; distinct anonymous occurrences remain separate, including nested media/supports wrappers. Dropping a member keeps its wrapper occurrence, even when empty, until clear or replacement. No QUID identifies these groups. Standalone stylesheet calls append occurrences; document-bound calls replace the document owner's state. These are semantic records and native CSS projections, not archives of source formatting or exact typed inline graph storage.
+
 The existing LiveTree `clearAll()` clears global selector rules; use
 `atProperty.unregister()` and `keyframes.delete()` for those registries.
 

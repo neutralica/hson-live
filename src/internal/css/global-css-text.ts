@@ -1,3 +1,4 @@
+import { managed_css_priority, trim_managed_css } from "./managed-css-lexical.js";
 import { canon_to_css_prop, normalize_css_value } from "../../api/transform/utils/attrs-utils/normalize-css.js";
 
 /** Order is assigned on first rule write by the owning stylesheet. */
@@ -6,30 +7,29 @@ export type ManagedCssRule = Readonly<{ order: number; text: string }>;
 /** DOM-free value coercion shared by runtime global rules and portable document CSS. */
 export function render_global_css_value(value: unknown): string | null {
   if (value == null) return null;
-  if (typeof value === "string") return value.trim();
+  if (typeof value === "string") return trim_managed_css(value);
   if (typeof value === "number") return String(value);
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "object" && "value" in value) {
     const obj = value as Readonly<{ value?: unknown; unit?: unknown }>;
     const unit = typeof obj.unit === "string" ? obj.unit : "";
     const raw = obj.value;
-    const text = typeof raw === "string" ? raw.trim() : raw == null ? "" : String(raw);
-    return `${text}${unit}`.trim();
+    const text = typeof raw === "string" ? trim_managed_css(raw) : raw == null ? "" : String(raw);
+    return trim_managed_css(`${text}${unit}`);
   }
-  return String(value).trim();
+  return trim_managed_css(String(value));
 }
 
 /** Existing global-rule spelling; parsed rules retain declaration order. */
 export function render_global_css_rule(selector: string, decls: Readonly<Record<string, string>>, sourceOrder = false): string {
-  const keys = Object.keys(decls).map((key) => key.trim()).filter(Boolean);
+  const keys = Object.keys(decls).filter(Boolean);
   if (!sourceOrder) keys.sort();
   const body = keys
     .map((key) => {
-      const value = decls[key]?.trim();
+      const value = decls[key] === undefined ? undefined : trim_managed_css(decls[key]);
       if (!value) return "";
-      const property = canon_to_css_prop(key);
-      const important = /\s*!important$/i.test(value);
-      const plain = important ? value.replace(/\s*!important$/i, "").trim() : value;
+      const property = sourceOrder ? key : canon_to_css_prop(key);
+      const { important, value: plain } = managed_css_priority(value);
       return `${property}:${sourceOrder ? plain : normalize_css_value(property, plain)}${important ? " !important" : ""};`;
     }).join("");
   return body ? `${selector}{${body}}` : "";
@@ -42,10 +42,10 @@ export function render_scoped_global_css_rule(
   scopes: readonly string[],
   sourceOrder = false,
 ): string {
-  let text = render_global_css_rule(selector, decls, sourceOrder).trim();
+  let text = trim_managed_css(render_global_css_rule(selector, decls, sourceOrder));
   if (!text) return "";
   for (let index = scopes.length - 1; index >= 0; index -= 1) {
-    text = `${scopes[index]} {\n${text.split("\n").map((line) => `  ${line}`).join("\n")}\n}`;
+    text = `${scopes[index]} {\n${text}\n}`;
   }
   return text;
 }
@@ -56,8 +56,8 @@ export function render_complete_css(
   keyframesCss: string,
   rules: readonly ManagedCssRule[],
 ): string {
-  const parts = [propertyCss.trim(), keyframesCss.trim()];
+  const parts = [trim_managed_css(propertyCss), trim_managed_css(keyframesCss)];
   const ordered = [...rules].sort((a, b) => a.order - b.order);
-  parts.push(...ordered.map((rule) => rule.text.trim()));
+  parts.push(...ordered.map((rule) => trim_managed_css(rule.text)));
   return parts.filter(Boolean).join("\n\n");
 }

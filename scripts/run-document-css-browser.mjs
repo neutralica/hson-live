@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
-import { hsonLiveMap } from "../dist/index.js";
+import { hsonLiveMap } from "../src/index.ts";
 
 const candidates = [process.env.HSON_CHROME_BIN,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -17,15 +17,24 @@ const chromeBinary = candidates.find((candidate) => (!candidate.includes("/") ||
 if (chromeBinary === undefined) throw new Error("Document CSS browser check requires Chrome or Chromium.");
 
 const map = hsonLiveMap.fromLibraries({ page: {
-  document: '<html <head <title "CSS"/> <style "#home-screen{color:red;}"/>/> <body <main id=home-screen "Styled"/>/>/>',
+  document: '<html <head <title "CSS"/> <style "#home-screen{color:red;}"/>/> <body <main id=home-screen "Styled"/> <p id=layer-first-paint/> <p id="t " class=x/> <p id=animation-first-paint/> <p id=escaped-newline/>/>/>',
 } });
-map.lib("page").css.stylesheet("#home-screen { color: rgb(0, 0, 255); display: grid; }");
+map.lib("page").css.stylesheet(String.raw`#home-screen { color: rgb(0, 0, 255); display: grid; }
+  @layer { #layer-first-paint { color: red !important; } #layer-first-paint { color: blue !important; } }
+  #t\ { CoLoR:red; font-family:foo\ ; }
+  @layer { @media screen { #escaped-newline { --x:"review\
+word"; font-family:var(--x); } } }
+  @keyframes first { 0% { opacity:.2; } from { opacity:.8; } to { opacity:1; } }
+  #animation-first-paint { animation: first 100s linear both paused; }
+`);
+map.lib("page").css.scope("escaped", "@layer").media("screen").sel("#escaped-newline").setProp("--x", '"review\\\nword"');
+map.lib("page").css.scope("escaped", "@layer").media("screen").sel("#escaped-newline").setProp("font-family", "var(--x)");
 const html = map.lib("page").render();
 assert.equal((html.match(/data-hson-managed-document-css/g) ?? []).length, 1);
 
 const server = createServer((_request, response) => {
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  response.end(html);
+  response.end(html + '<script>document.documentElement.dataset.scriptRan="yes"</script>');
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const address = server.address();
@@ -75,6 +84,10 @@ try {
     pending.set(id, { resolve, reject });
     socket.send(JSON.stringify({ id, method, params }));
   });
+  await send("Page.enable");
+  await send("Emulation.setScriptExecutionDisabled", { value: true });
+  const loaded = new Promise(resolve => { const listener = raw => { if (JSON.parse(raw.toString()).method === "Page.loadEventFired") { socket.off("message", listener); resolve(); } }; socket.on("message", listener); });
+  await send("Page.reload"); await loaded;
   await send("DOM.enable");
   await send("CSS.enable");
   const { root } = await send("DOM.getDocument");
@@ -93,6 +106,15 @@ try {
     nodeId: root.nodeId, selector: "style[data-hson-managed-document-css='managed']",
   });
   assert.equal(managed.length, 1);
+  const { nodeId: htmlNode } = await send("DOM.querySelector", { nodeId: root.nodeId, selector: "html" });
+  const { attributes } = await send("DOM.getAttributes", { nodeId: htmlNode });
+  assert.equal(attributes.includes("data-script-ran"), false, "script execution is explicitly disabled");
+  for (const [selector, values] of [["#layer-first-paint", {color:"rgb(0, 0, 255)"}], [".x", {color:"rgb(255, 0, 0)", "font-family":'"foo "'}], ["#animation-first-paint", {opacity:"0.8"}], ["#escaped-newline", {"font-family":"reviewword"}]]) {
+    const {nodeId} = await send("DOM.querySelector", {nodeId:root.nodeId, selector});
+    assert.ok(nodeId);
+    const {computedStyle} = await send("CSS.getComputedStyleForNode", {nodeId});
+    for (const [name, value] of Object.entries(values)) assert.equal(computedStyle.find(item => item.name === name)?.value, value, selector + " SSR " + name);
+  }
   console.log("Document CSS native Chrome/no-JavaScript acceptance passed.");
 } finally {
   socket?.close();
