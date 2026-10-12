@@ -1,3 +1,5 @@
+import { own_document_quads } from "../livemap/livemap.document.quad.js";
+import { decode_document_quads } from "../livemap/livemap.document.quad.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.internal.types.js";
@@ -134,7 +136,7 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       const candidateMode = typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "mode")
         ? Reflect.get(candidate, "mode") : undefined;
       const entry = record(candidate, candidateMode === "document"
-        ? ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", "css"]
+        ? ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", "css", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "quads") ? ["quads"] : [])]
         : ["name", "mode", "schema", "schemaDigest", "rootCodec", "root"]);
       const name = string(entry.name);
       if (names.has(name)) return fail();
@@ -145,8 +147,13 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       const schema = HsonSchema.fromHson(suppliedSchema);
       const schemaSource: HsonSchemaData = schema.toHson();
       if (entry.schemaDigest !== hson_schema_digest(schema) || entry.rootCodec !== "hson-exact-value") return fail();
+      if (Object.hasOwn(entry, "quads") && own_document_quads(entry) === undefined) return fail();
+      const qualifiedRoot = root(entry.root, schema, mode);
+      const quads = own_document_quads(entry) === undefined ? undefined
+        : decode_document_quads(own_document_quads(entry), decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode);
       return Object.freeze({ name, mode, schema: schemaSource, schemaDigest: hson_schema_digest(schema), rootCodec: "hson-exact-value",
-        root: root(entry.root, schema, mode),
+        root: qualifiedRoot,
+        ...(quads === undefined ? {} : { quads }),
         ...(mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
     });
     if (libraries.some((entry, index) => index > 0 && libraries[index - 1]!.name.localeCompare(entry.name) >= 0)) return fail();
@@ -170,7 +177,7 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       if (encode_hosted_root(projected, HOSTED_MAX_SNAPSHOT_BYTES).payload !== validatedRoot.payload) return fail();
       system = Object.freeze({ interactions: validatedRoot });
     } else if (value.system !== null) return fail();
-    const contract = libraries.map(({ root: _root, css: _css, ...entry }) => entry);
+    const contract = libraries.map(({ root: _root, css: _css, ...entry }) => { delete entry.quads; return entry; });
     if (locus_projection_contract_digest(authority, contract, systemFeatures, writableDocuments) !== digest) return fail();
     const snapshot: AuthorityProjectionSnapshot = Object.freeze({ format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
       authority, revision, projectionDigest: digest, libraries: Object.freeze(libraries),
@@ -189,6 +196,7 @@ export function authority_projection_state_fingerprint_internal(input: Authority
     libraries: snapshot.libraries.map((entry) => ({
       name: entry.name,
       root: entry.root.payload,
+      ...(own_document_quads(entry) === undefined ? {} : { quads: own_document_quads(entry) }),
       ...(entry.mode === "document" ? { css: entry.css } : {}),
     })),
     system: snapshot.system,
@@ -226,6 +234,7 @@ export function project_authority_snapshot(
         || current.mode !== contract.mode || hson_schema_source_digest(current.schema) !== hson_schema_source_digest(contract.schema) || current.schemaDigest !== contract.schemaDigest
         || current.rootCodec !== contract.rootCodec) return fail();
       return Object.freeze({ ...contract, root: captured.root,
+        ...(own_document_quads(captured) === undefined ? {} : { quads: own_document_quads(captured) }),
         ...(contract.mode === "document" ? { css: captured.css } : {}) });
     });
     const includedDocuments = new Set(libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name));
@@ -257,6 +266,7 @@ export function capture_selected_authority_projection_snapshot(
       const captured = selected.libraries[index];
       if (captured?.name !== contract.name) return fail();
       return Object.freeze({ ...contract, root: captured.root,
+        ...(own_document_quads(captured) === undefined ? {} : { quads: own_document_quads(captured) }),
         ...(contract.mode === "document" ? { css: captured.css } : {}) });
     });
     const includedDocuments = new Set(libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name));
@@ -289,7 +299,7 @@ export function authority_projection_as_client_composition_internal(input: Autho
   const snapshot = admit_authority_projection_snapshot(input);
   // Reuse LiveMap's authority-neutral subset registry builder. Admission has
   // already validated these canonical contracts; no Schema resolver is needed.
-  const entries: HostedRegistryEntry[] = snapshot.libraries.map(({ root: _root, css: _css, ...entry }) => entry);
+  const entries: HostedRegistryEntry[] = snapshot.libraries.map(({ root: _root, css: _css, ...entry }) => { delete entry.quads; return entry; });
   const systemSchema = interaction_schema_internal();
   if (snapshot.system !== null) entries.push(Object.freeze({
     name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, scope: "hson-internal", mode: "data-object", schema: systemSchema.toHson(),
@@ -298,6 +308,7 @@ export function authority_projection_as_client_composition_internal(input: Autho
   const registry = registry_from_entries(entries);
   const libraries = snapshot.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest, root: entry.root,
+    ...(own_document_quads(entry) === undefined ? {} : { quads: own_document_quads(entry) }),
     ...(entry.mode === "document" ? { css: entry.css } : {}),
   }));
   if (snapshot.system !== null) libraries.push(Object.freeze({

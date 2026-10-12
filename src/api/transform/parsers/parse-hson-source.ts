@@ -1,8 +1,8 @@
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import type { HsonNode } from "../../../core/types.js";
 import { assemble_hson_tokens, type ParseTokensOptions, type HsonAttributeDecoder } from "./assemble-hson-tokens.js";
-import { tokenize_hson } from "./tokenize-hson.js";
-import type { Tokens } from "../token.types.js";
+import { tokenize_hson, tokenize_authored_document_library } from "./tokenize-hson.js";
+import type { Tokens, AuthoredQuadDeclaration } from "../token.types.js";
 import { scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import type { HsonSourceProvenanceBuilder } from "../../../internal/hson-source-provenance/hson-source-provenance.js";
@@ -14,8 +14,9 @@ export function parse_hson_source(
     options: ParseTokensOptions,
     provenance: HsonSourceProvenanceBuilder | undefined,
     exactRuntimeIdentity: boolean,
+    onQuad?: (node: HsonNode, declaration: AuthoredQuadDeclaration) => void,
 ): HsonNode {
-    const newTokens = tokenize_hson(str, 0, provenance);
+    const newTokens = onQuad === undefined ? tokenize_hson(str, 0, provenance) : tokenize_authored_document_library(str, provenance);
     if (!exactRuntimeIdentity) reject_portable_quid_tokens(newTokens);
     if (newTokens.length === 0) {
         _throw_transform_err(
@@ -30,7 +31,7 @@ export function parse_hson_source(
             },
         );
     }
-    const newNode = assemble_hson_tokens(newTokens, decodeAttributes, options, provenance)
+    const newNode = assemble_hson_tokens(newTokens, decodeAttributes, options, provenance, onQuad)
     scan_ingested_hson_node_quids(newNode, "parse_hson");
     assert_invariants(newNode, 'parse hson');
     return newNode;

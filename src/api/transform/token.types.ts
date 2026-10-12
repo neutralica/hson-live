@@ -13,6 +13,9 @@
  *******/
 export type Position = { line: number; col: number; index: number };
 
+/** Transient internal parser evidence, never canonical node metadata or a public addressing API. */
+export type AuthoredQuadDeclaration = Readonly<{ value: string; start: Position; end: Position }>;
+
 /*******
  * Raw attribute token as captured by the tokenizer.
  *
@@ -94,6 +97,8 @@ export type TokenOpen = {
   rawAttrs: RawAttr[];
   /** Header-only persisted identity declaration, normalized by the parser. */
   quid?: { value: string; start: Position; end: Position };
+  /** Only the private authored document-Library scanner can populate this. @internal */
+  quad?: AuthoredQuadDeclaration;
   pos: Position;
 };
 

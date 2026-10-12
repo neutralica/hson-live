@@ -32,7 +32,12 @@ export type LiveMapSemanticCheckpoint = Readonly<{
   authority: HostedAuthorityFence;
   revision: number;
   registry: HostedRegistry;
-  libraries: readonly Readonly<{ name: string; root: HsonNode; css?: import("../../types/document-css.types.js").DocumentCssRecord }>[];
+  libraries: readonly Readonly<{
+    name: string;
+    root: HsonNode;
+    quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
+    css?: import("../../types/document-css.types.js").DocumentCssRecord;
+  }>[];
 }>;
 
 type InternalLiveMapOwner = Readonly<{
@@ -80,6 +85,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => LiveMapAggregateCommit;
   /** Admit authorized client-local initializers through the private composition path. @internal */
@@ -88,16 +94,22 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => LiveMapAggregateCommit;
   /** Enforce the public mutation fence before decoding a public topology request. @internal */
   assertPublicMutationAllowed: () => void;
+  /** Private initial receiver installation after owner-proven sparse acquisition. @internal */
+  installInitialDocumentQuads: (library: LiveMapLibraryIdentity, entries: readonly Readonly<{ name: string; quid: string }>[]) => void;
+  /** Current Library-local authored correspondence; no graph capture. @internal */
+  documentQuad: (library: LiveMapLibraryIdentity, name: string | undefined, quid: string | undefined) => import("./livemap.document.quad.js").DocumentQuadSubject | undefined;
   /** Stage one topology batch under Locus management without installing it. @internal */
   prepareAddLibrariesManaged: (owner: object, definitions: readonly Readonly<{
     name: string;
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[]) => Readonly<{
     transition: PreparedLiveMapAuthorityTransition;
@@ -120,7 +132,12 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   captureSelectedHosted: (names: readonly string[], includeSystem: boolean) => Readonly<{
     authority: import("./livemap.hosted.js").HostedAuthorityFence;
     revision: number;
-    libraries: readonly Readonly<{ name: string; root: Readonly<{ format: "hson-exact-value"; payload: string }>; css?: import("../../types/document-css.types.js").DocumentCssRecord }>[];
+    libraries: readonly Readonly<{
+      name: string;
+      root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+      quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
+      css?: import("../../types/document-css.types.js").DocumentCssRecord;
+    }>[];
     system: Readonly<{ format: "hson-exact-value"; payload: string }> | null;
   }>;
   /** Bind a fixed authority-projected subset of this client map. @internal */

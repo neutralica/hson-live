@@ -61,6 +61,8 @@ export type LiveMapSnapshot = Readonly<{
     schema: import("../api/transform/transform.types.js").HsonSchemaData;
     schemaDigest: string;
     root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+    /** Authored occurrences in this captured document; omitted when unaddressed. */
+    quads?: PortableDocumentQuads;
     /** Present exactly for document Libraries; absent for data Libraries. */
     css?: import("./document-css.types.js").DocumentCssRecord;
   }>[];
@@ -344,6 +346,12 @@ declare const LIVEMAP_DOCUMENT_PATH_BRAND: unique symbol;
 export type LiveMapDocumentPath = readonly number[] & Readonly<{
   [LIVEMAP_DOCUMENT_PATH_BRAND]: true;
 }>;
+
+/** Authored names and reconstruction coordinates within one captured document Library. */
+export type PortableDocumentQuads = readonly Readonly<{
+  name: string;
+  path: LiveMapDocumentPath;
+}>[];
 
 /** Untrusted caller representation accepted at the live request boundary. */
 export type LiveMapDocumentPathInput = readonly number[];
@@ -1181,6 +1189,7 @@ export type LiveMapLibraryAddOperation = Readonly<{
       mode: LiveMapRootMode;
       schema: import("../api/transform/transform.types.js").HsonSchemaData;
       root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+      quads?: PortableDocumentQuads;
       css?: import("./document-css.types.js").DocumentCssRecord;
     }>[];
   }>;

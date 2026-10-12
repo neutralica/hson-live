@@ -12,6 +12,7 @@ import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 import { admit_owned_livemap_root } from "./livemap.node-admission.js";
 import { capture_exact_hson_graph } from "../../internal/exact-node-qualification.js";
+import { assert_quad_free_document_capture } from "./livemap.document.quad.js";
 
 /** Detached document state; only an owner-proven same-epoch capability retains identity. */
 export type LiveMapDocumentCapture<
@@ -71,6 +72,7 @@ export function capture_livemap_document<TMode extends LiveMapDocumentMode>(
   options?: LiveMapDocumentCaptureOptions,
   continuity?: () => object | undefined,
 ): LiveMapDocumentCapture<TMode> {
+  assert_quad_free_document_capture(root);
   const category = capture_category(options);
   const qualified = admit_owned_livemap_root(root, "document", "LiveMap.document.capture");
   const captureRoot = clone_hson_graph_without_quids(qualified);

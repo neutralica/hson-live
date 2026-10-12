@@ -9,7 +9,7 @@ import { Tokens, CloseKind, Position, TokenOpen, TokenClose, TokenArrayOpen, Tok
 import { coerce } from "../utils/primitive-utils/coerce-string.utils.js";
 import { _snip } from "../utils/sys-utils/snip.utils.js";
 import type { HsonAttrs, HsonMeta } from "../../../core/types.js";
-import type { RawAttr } from "../token.types.js";
+import type { RawAttr, AuthoredQuadDeclaration } from "../token.types.js";
 
 /** Internal receiving-context boundary; structural assembly never imports CSS decoding. */
 export type HsonAttributeDecoder = (raw: RawAttr[]) => { attrs: HsonAttrs; meta: HsonMeta };
@@ -102,6 +102,7 @@ export function assemble_hson_tokens(
     decodeAttributes: HsonAttributeDecoder,
     options: ParseTokensOptions = {},
     provenance?: HsonSourceProvenanceBuilder,
+    onQuad?: (node: HsonNode, declaration: AuthoredQuadDeclaration) => void,
 ): HsonNode {
     const nodes: HsonNode[] = [];
     const topCloseKinds: CloseKind[] = [];
@@ -179,6 +180,11 @@ export function assemble_hson_tokens(
 
         const { attrs, meta } = decodeAttributes(open.rawAttrs);
         const node = CREATE_NODE({ $_tag: open.tag, $_meta: meta });
+        if (Object.hasOwn(open, "quad") && open.quad !== undefined) {
+            if (onQuad === undefined) _throw_transform_err("QUAD declarations require authored document-Library admission", "parse_tokens",
+                undefined, undefined, sourceDetails(open.quad.start, "HSON_LIBRARY_QUAD_CONTEXT_REQUIRED", "source-admission"));
+            onQuad(node, open.quad);
+        }
         provenance?.bindTagStart(node, open);
         if (open.quid !== undefined) {
             assign_ingested_hson_node_quid(node, open.quid.value, "parse_tokens");

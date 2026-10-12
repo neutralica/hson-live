@@ -137,6 +137,8 @@ export type LiveMapLibraryState = {
   readonly mode: LiveMapRootMode;
   root: HsonNode;
   documentOverlay?: LiveMapDocumentIdentityOverlay;
+  /** Library-local authored names bound only to legitimate runtime subjects. */
+  documentQuads?: import("./livemap.document.quad.js").DocumentQuadBindings;
   projectedOverlay?: LiveMapProjectedIdentityOverlay;
   projectedValue?: OrderedProjectedValue;
   hsonSchema?: HsonSchema;

@@ -99,6 +99,10 @@ import type { PreparedLiveMapAuthorityTransition } from "./livemap.authority.js"
 import { deliver_livemap_observers } from "./livemap.observer-delivery.js";
 import { is_staged_thenable, make_livemap_staged_writer } from "./livemap.staged.js";
 import type { LiveMapAggregateWrite } from "./livemap.library.js";
+import { expand_document_composition, document_composition_options, type DocumentCompositionOptions } from "./livemap.document.composition.js";
+import { parse_authored_document_library, register_document_quad_lookup, type DocumentQuadAdmission, decode_document_quads, own_document_quads } from "./livemap.document.quad.js";
+import type { PortableDocumentQuads } from "../../types/livemap.types.js";
+import { ensure_livemap_document_canonical_identity } from "./livemap.document.registration.js";
 
 type NamedLibrary = Readonly<{
   name: string;
@@ -113,6 +117,7 @@ export type CanonicalLibraryDefinition = Readonly<{
   family: "data" | "document";
   schema: HsonSchemaHandle;
   root: HsonNode;
+  quads?: PortableDocumentQuads;
 }>;
 
 function public_library_definitions(inputs: LiveMapDefinitions): readonly CanonicalLibraryDefinition[] {
@@ -125,7 +130,9 @@ function public_library_definitions(inputs: LiveMapDefinitions): readonly Canoni
 
 function capture_library_definitions(definitions: readonly CanonicalLibraryDefinition[]): readonly CanonicalLibraryDefinition[] {
   const names = new Set<string>();
-  return definitions.map(({ name, family, schema, root }) => {
+  return definitions.map((definition) => {
+    const { name, family, schema, root } = definition;
+    const quads = own_document_quads(definition);
     if (typeof name !== "string" || name === INTERACTION_RESERVED_LIBRARY_KEY || names.has(name)) {
       throw new Error("Canonical Library name is invalid or duplicated.");
     }
@@ -133,13 +140,27 @@ function capture_library_definitions(definitions: readonly CanonicalLibraryDefin
       throw new TypeError("Canonical Library family or Schema is invalid.");
     }
     names.add(name);
-    return Object.freeze({ name, family, schema,
-      root: admit_public_livemap_root(root, family, `LiveMap.reconstruct(${name})`) });
+    const admitted = admit_public_livemap_root(root, family, `LiveMap.reconstruct(${name})`);
+    const associations = decode_document_quads(quads, admitted, family);
+    return Object.freeze({ name, family, schema, root: admitted,
+      ...(associations === undefined ? {} : { quads: associations }) });
   });
 }
 
 const EXACT_LIBRARY_ADMISSION = new WeakMap<object,
   (definitions: readonly CanonicalLibraryDefinition[]) => LiveMapCommit>();
+
+const DOCUMENT_COMPOSITION = new WeakMap<object,
+  (source: string, name: string, options?: DocumentCompositionOptions) => LiveMapDocumentLibrary>();
+
+/** One-time local construction through ordinary registered Library admission. @internal */
+export function compose_livemap_document_internal(
+  map: LiveMap, source: string, name: string, options?: DocumentCompositionOptions,
+): LiveMapDocumentLibrary {
+  const compose = DOCUMENT_COMPOSITION.get(map);
+  if (compose === undefined) throw new Error("Document composition requires a named LiveMap registry.");
+  return compose(source, name, options);
+}
 
 /** Add portable canonical roots without manufacturing public value definitions. @internal */
 export function add_livemap_canonical_libraries_internal(
@@ -184,7 +205,11 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): readonly C
   }
   const definitions: CanonicalLibraryDefinition[] = [];
   const names = new Set<string>();
+  exact_transport_fields(operation, ["library", "operation"]);
+  exact_transport_fields(operation.operation, ["kind", "libraries"]);
   for (const entry of operation.operation.libraries) {
+    exact_transport_fields(entry, ["name", "mode", "schema", "root", ...(Object.hasOwn(entry, "css") ? ["css"] : []), ...(Object.hasOwn(entry, "quads") ? ["quads"] : [])]);
+    if (Object.hasOwn(entry, "quads") && own_document_quads(entry) === undefined) throw new Error("Undefined QUAD associations.");
     if (names.has(entry.name)) throw new Error("LiveMap topology replay contains a duplicate Library.");
     names.add(entry.name);
     const schema = HsonSchemaHandle.fromHson(entry.schema);
@@ -194,7 +219,8 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): readonly C
       || JSON.stringify(encode_hosted_root(root)) !== JSON.stringify(entry.root)) {
       throw new Error("LiveMap topology replay root mode or encoding is inconsistent.");
     }
-    definitions.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root, schema });
+    definitions.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root, schema,
+      ...(own_document_quads(entry) === undefined ? {} : { quads: decode_document_quads(own_document_quads(entry), root, entry.mode) }) });
   }
   return capture_library_definitions(definitions);
 }
@@ -365,17 +391,43 @@ export function make_livemap_from_canonical_libraries_internal(
   return make_livemap_library_receiver(capture_library_definitions(definitions), systems, clientSnapshot, initialCss);
 }
 
+/**
+ * Private initial authored admission. Portable Library-add admission carries explicit
+ * captured associations; the public authored-source grammar remains unchanged.
+ * The ordinary map stays unreachable until qualification and all sparse binding finish.
+ * @internal
+ */
+export function make_livemap_from_authored_libraries_internal(inputs: LiveMapDefinitions): LiveMap {
+  const addresses = new Map<string, readonly DocumentQuadAdmission[]>();
+  const definitions = Object.entries(inputs).map(([name, value]): CanonicalLibraryDefinition => {
+    const input = must_library_input(name, value);
+    if ("document" in input && typeof input.document === "string") {
+      const authored = parse_authored_document_library(input.document);
+      if (authored.declarations.length) addresses.set(name, authored.declarations);
+      return { name, family: "document", schema: input.schema, root: authored.root };
+    }
+    return { name, family: "data" in input ? "data" : "document", schema: input.schema, root: library_root(input) };
+  });
+  return make_livemap_library_receiver(capture_library_definitions(definitions), [], undefined, {}, addresses);
+}
+
 function make_livemap_library_receiver(
   definitions: readonly CanonicalLibraryDefinition[], systems: readonly InitialSystemState[],
   clientSnapshot: PortableAggregateSnapshot | undefined,
   initialCss: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
+  authoredQuads: ReadonlyMap<string, readonly DocumentQuadAdmission[]> = new Map(),
 ): LiveMap {
-  const built = make_livemap_registry_authority(definitions.map(({ name, root, schema, family }) => ({
-    root,
-    hsonSchema: schema,
-    family,
-    ...(Object.hasOwn(initialCss, name) ? { css: decode_portable_document_stylesheet(initialCss[name]) } : {}),
-  })), systems);
+  const built = make_livemap_registry_authority(definitions.map((definition) => {
+    const { name, root, schema, family } = definition;
+    const quads = own_document_quads(definition);
+    return {
+      root,
+      hsonSchema: schema,
+      family,
+      ...(quads === undefined ? {} : { quads }),
+      ...(Object.hasOwn(initialCss, name) ? { css: decode_portable_document_stylesheet(initialCss[name]) } : {}),
+    };
+  }), systems);
   const aggregate = built.aggregate;
   const namesByIdentity = new Map<LiveMapLibraryIdentity, string>();
   const named = new Map<string, NamedLibrary>();
@@ -446,7 +498,7 @@ function make_livemap_library_receiver(
       const entry = registry.libraries[index];
       if (entry === undefined) throw new Error("Cut Library metadata is unavailable.");
       return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest,
-        root: library.root, ...(library.css === undefined ? {} : { css: library.css }) });
+        root: library.root, ...(own_document_quads(library) === undefined ? {} : { quads: own_document_quads(library) }), ...(library.css === undefined ? {} : { css: library.css }) });
     });
     if (system !== undefined) {
       const entry = registry.libraries[registry.libraries.length - 1];
@@ -518,11 +570,16 @@ function make_livemap_library_receiver(
     for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
     }
-    const definitions = additions.map(({ name, root, schema, family }) => Object.freeze({
-      name, root, family,
-      hsonSchema: schema,
-      ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
-    }));
+    const definitions = additions.map((definition) => {
+      const { name, root, schema, family } = definition;
+      const quads = own_document_quads(definition);
+      return Object.freeze({
+        name, root, family,
+        ...(quads === undefined ? {} : { quads }),
+        hsonSchema: schema,
+        ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
+      });
+    });
     const admit = clientLocal ? aggregate.addClientLocalLibraries : aggregate.addLibraries;
     const commit = admit(definitions, (identities) => {
       for (let index = 0; index < additions.length; index += 1) {
@@ -614,6 +671,35 @@ function make_livemap_library_receiver(
   });
   register_internal_livemap_aggregate_owner(libraries, aggregate);
   EXACT_LIBRARY_ADMISSION.set(libraries, (definitions) => addLibrariesInternal(definitions));
+  DOCUMENT_COMPOSITION.set(libraries, (source, name, options) => {
+    // Preserve existing batch/client/hosted authority fences before inspecting sources.
+    aggregate.assertPublicMutationAllowed();
+    if (typeof source !== "string" || typeof name !== "string") {
+      throw new TypeError("Document composition requires source and result Library names.");
+    }
+    const configuration = document_composition_options(options);
+    const position = aggregate.hostedPosition();
+    const root = expand_document_composition(source, (sourceName) => {
+      const entry = named.get(sourceName);
+      if (entry === undefined) throw new Error(`Unknown composition source Library ${JSON.stringify(sourceName)}.`);
+      if (entry.family !== "document") throw new TypeError(`Composition source Library ${JSON.stringify(sourceName)} is not a document.`);
+      const css = aggregate.stylesheet(entry.identity);
+      if (css.rules.length || css.properties.length || css.keyframes.length || css.order.length) {
+        throw new Error(`Composition source Library ${JSON.stringify(sourceName)} has a managed stylesheet; transfer is not supported.`);
+      }
+      // Trusted owner storage is read synchronously, without callbacks or whole-root inspection copies.
+      return aggregate.root(entry.identity);
+    }, configuration);
+    const after = aggregate.hostedPosition();
+    if (position.revision !== after.revision || position.authority !== after.authority
+      || position.registryDigest !== after.registryDigest) {
+      throw new Error("LiveMap state changed during document composition.");
+    }
+    addLibrariesInternal(capture_library_definitions([{ name, family: "document", schema: configuration.schema, root }]));
+    const result = selected(name);
+    if (result.mode !== "document") throw new Error("Document composition lost its admitted document Library.");
+    return result;
+  });
   if (clientSnapshot !== undefined) CLIENT_LOCAL_LIBRARY_ADMISSION.set(libraries,
     (definitions) => addLibrariesInternal(definitions, {}, true));
   register_echo_map_capability_internal(libraries, Object.freeze({
@@ -641,17 +727,32 @@ function make_livemap_library_receiver(
       }
     },
   }));
+  // No application callback or public handle escapes this provisional receiver.
+  // Failure discards the entire fresh owner, including its private issuance ledger.
+  for (const [name, declarations] of authoredQuads) {
+    const entry = named.get(name), document = selected(name);
+    if (entry === undefined || document.mode !== "document") throw new Error("Authored QUAD admission lost its document Library.");
+    const bindings = declarations.map(({ name, path }) => ({ name,
+      quid: ensure_livemap_document_canonical_identity(document.document, { kind: "path", path }),
+    }));
+    aggregate.installInitialDocumentQuads(entry.identity, bindings);
+  }
   PUBLIC_MULTI_LIBRARY_MAPS.add(libraries);
   HOSTED_LIBRARY_ADMISSION.set(libraries, (owner, additions, css) => {
     if (additions.length === 0) throw new Error("Hosted Library admission batch is empty.");
     for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
     }
-    const prepared = aggregate.prepareAddLibrariesManaged(owner, additions.map(({ name, root, schema, family }) => Object.freeze({
-      name, root, family,
-      hsonSchema: schema,
-      ...(css !== undefined && Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
-    })));
+    const prepared = aggregate.prepareAddLibrariesManaged(owner, additions.map((definition) => {
+      const { name, root, schema, family } = definition;
+      const quads = own_document_quads(definition);
+      return Object.freeze({
+        name, root, family,
+        ...(quads === undefined ? {} : { quads }),
+        hsonSchema: schema,
+        ...(css !== undefined && Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
+      });
+    }));
     return Object.freeze({
       transition: prepared.transition,
       afterInstall: () => {
@@ -756,7 +857,8 @@ export function portable_aggregate_inputs_internal(
     if (entry.scope === "hson-internal") {
       systems.push(Object.freeze({ key: entry.name, transportName: entry.name, root, hsonSchema: schema }));
     } else {
-      inputs.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root, schema });
+      inputs.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root, schema,
+        ...(own_document_quads(encoded) === undefined ? {} : { quads: decode_document_quads(own_document_quads(encoded), root, entry.mode) }) });
     }
   }
   return Object.freeze({ inputs: Object.freeze(inputs), systems: Object.freeze(systems) });
@@ -1266,6 +1368,9 @@ function make_document_library(
   };
   register_livemap_document_identity_overlay(facade, controller.overlay);
   register_livemap_identity_epoch_owner(facade, controller.identityEpoch);
+  const quadLookup = (name: string | undefined, quid: string | undefined) => aggregate.documentQuad(library.identity, name, quid);
+  register_document_quad_lookup(facade, quadLookup);
+  register_document_quad_lookup(documentApi, quadLookup);
   const selected = Object.freeze(facade);
   DOCUMENT_CSS_STATE.set(selected, () => aggregate.stylesheet(library.identity));
   DOCUMENT_CSS_COMMIT.set(selected, (operation) => { aggregate.commitStylesheet(library.identity, operation); });
@@ -1283,6 +1388,7 @@ function must_library_input(name: string, value: unknown): LiveMapLibraryInput &
   if (Object.hasOwn(value, "css")) {
     throw new TypeError("Initial Library CSS input is not supported; author through the document Library css handle.");
   }
+  own_document_quads(value);
   // Configuration getters are supported. Select their values once before
   // classification, then retain only this stable envelope downstream.
   const hasData = Object.hasOwn(value, "data");
@@ -1319,4 +1425,13 @@ function library_root(input: LiveMapLibraryInput): HsonNode {
   return typeof input.document === "string"
     ? parse_hson(input.document, { allowTopLevelDocumentText: true })
     : input.document;
+}
+
+function exact_transport_fields(input: object, fields: readonly string[]): void {
+  const keys = Reflect.ownKeys(input);
+  if (keys.length !== fields.length || keys.some(key => typeof key !== "string" || !fields.includes(key))) throw new Error("Library transport has unknown or missing fields.");
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(input, key);
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, "value")) throw new Error("Library transport requires own data fields.");
+  }
 }

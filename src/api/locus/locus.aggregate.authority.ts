@@ -1,3 +1,4 @@
+import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import { ExactDataCarrier, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
 import type {
@@ -186,7 +187,8 @@ function projection_change_topology(
   const additions = added.map((entry) => {
     const captured = snapshot.libraries.find((candidate) => candidate.name === entry.name);
     if (captured === undefined) throw new LocusProjectionUnavailableError();
-    return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, root: captured.root });
+    return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, root: captured.root,
+      ...(own_document_quads(captured) === undefined ? {} : { quads: own_document_quads(captured) }) });
   });
   const first = additions[0];
   return first === undefined ? undefined : Object.freeze({ library: first.name,

@@ -1,7 +1,7 @@
 import { admit_hson_number } from "../../../core/hson-number.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../../core/hson-content-string.js";
-import { HSON_MAX_NESTING, OBJ_TAG } from "../../../core/constants.js";
+import { HSON_MAX_NESTING, HSON_SYS_PREFIX, OBJ_TAG } from "../../../core/constants.js";
 import {
   CREATE_ARR_CLOSE_TOKEN,
   CREATE_ARR_OPEN_TOKEN,
@@ -11,7 +11,7 @@ import {
   CREATE_TEXT_TOKEN,
 } from "../token-factories.js";
 import { ARR_SYMBOL, CLOSE_KIND } from "../token.types.js";
-import type { ArraySymbol, CloseKind, Position, RawAttr, Tokens } from "../token.types.js";
+import type { ArraySymbol, CloseKind, Position, RawAttr, Tokens, AuthoredQuadDeclaration } from "../token.types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { read_transform_error_details } from "../../../core/errors.js";
 import { is_persisted_quid } from "../../../core/hson-node-quid.js";
@@ -117,6 +117,11 @@ export function tokenize_hson(
   return new HsonScanner(hson, depth, collector, templateSlots, interpolationMode, substitutions, editorMode).scan();
 }
 
+/** Explicit authored document-Library context; ordinary scanners retain their grammar. @internal */
+export function tokenize_authored_document_library(hson: string, collector?: HsonSourceLexicalCollector): Tokens[] {
+  return new HsonScanner(hson, 0, collector, [], undefined, [], undefined, undefined, undefined, undefined, undefined, true).scan();
+}
+
 class HsonScanner {
   private readonly tokens: Tokens[] = [];
   private index = 0;
@@ -136,6 +141,7 @@ class HsonScanner {
     private readonly editorCheckpoint?: (checkpoint: HsonGrammarCheckpoint) => void,
     private readonly editorSlot?: (index: number, role: HsonInterpolationRole) => void,
     private readonly editorRejectedSlot?: (index: number) => void,
+    private readonly authoredQuads = false,
   ) {}
   private readonly editorPath: (string | number)[] = [];
   private readonly editorContainers: ("object" | "array" | "element")[] = [];
@@ -607,12 +613,14 @@ class HsonScanner {
     const attrDeclarations = new Map<string, Position>();
     let quid: { value: string; start: Position; end: Position } | undefined;
     let openEmitted = false;
+    let quad: AuthoredQuadDeclaration | undefined;
     let contentStarted = false;
     let separatedBeforeSlot = false;
 
     const emitOpen = (): void => {
       if (openEmitted) return;
       const token = this.emit(CREATE_OPEN_TOKEN(tag, attrs, openPos, quid));
+      if (quad !== undefined) token.quad = quad;
       if (this.collector !== undefined) this.recordToken(token, {
         roles: {
           name: { start: tagPos.index, end: tagEnd },
@@ -662,6 +670,19 @@ class HsonScanner {
           );
         }
         this.consumeExpected("@");
+        if (this.authoredQuads && this.peek() === ":") {
+          this.consumeExpected(":");
+          const value = this.scanBareToken();
+          if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) || value.length > 128) {
+            this.fail("invalid authored QUAD name", quidPos, "HSON_LIBRARY_QUAD_INVALID");
+          }
+          if (tag.startsWith(HSON_SYS_PREFIX)) this.fail("QUAD subject must be an ordinary document element", quidPos, "HSON_LIBRARY_QUAD_INELIGIBLE");
+          if (quad !== undefined) this.fail("duplicate authored QUAD declaration on one subject", quidPos,
+            "HSON_LIBRARY_QUAD_DUPLICATE", [{ role: "first-declaration", pos: quad.start }]);
+          quad = { value, start: quidPos, end: this.previousPosition() };
+          separatedBeforeSlot = false;
+          continue;
+        }
         if (this.atEnd() || isHsonTrivia(this.peek()) || this.startsWith("/>") || this.peek() === ">") {
           this.fail(`missing persisted QUID value after "@"`, quidPos, "HSON_ELEMENT_QUID_INVALID");
         }

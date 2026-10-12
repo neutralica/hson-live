@@ -99,8 +99,8 @@ function primitive_data_mode(node: HsonNode): DataLiveMapMode {
   throw new Error("LiveMap primitive data root is malformed.");
 }
 
-/** Convert parser/detached element carriers into the one retained document root shape. */
-function normalize_document_root(root: HsonNode): HsonNode {
+/** Convert parser/detached element carriers into the one retained document root shape. @internal */
+export function normalize_document_root(root: HsonNode): HsonNode {
   const first = root.$_content[0];
   const carrier = root.$_tag === ELEM_TAG ? root
     : root.$_tag === ROOT_TAG && root.$_content.length === 1 && is_Node(first) && first.$_tag === ELEM_TAG ? first

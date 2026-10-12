@@ -1,3 +1,9 @@
+import { own_document_quads } from "../livemap/livemap.document.quad.js";
+import { decode_document_quads } from "../livemap/livemap.document.quad.js";
+import { decode_hosted_root } from "../livemap/livemap.hosted.js";
+import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { admit_public_livemap_root } from "../livemap/livemap.node-admission.js";
+import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { LocusActionPayloads, LocusClientMessage } from "../../types/locus.types.js";
 import { encode_locus_client_message } from "../locus/locus.protocol.js";
@@ -227,15 +233,21 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
     const additions = operation.libraries.map((candidate: unknown) => {
       const entry = exact_record(candidate, "Hosted projection topology Library");
       const root = exact_record(entry.root, "Hosted projection topology root");
-      if (!has_fields(entry, ["name", "mode", "schema", "root"]) || !has_fields(root, ["format", "payload"])
+      if (!has_fields(entry, ["name", "mode", "schema", "root", ...(Object.hasOwn(entry, "css") ? ["css"] : []), ...(Object.hasOwn(entry, "quads") ? ["quads"] : [])]) || !has_fields(root, ["format", "payload"])
         || typeof entry.name !== "string" || !is_root_mode(entry.mode) || typeof entry.schema !== "string"
         || root.format !== "hson-exact-value" || typeof root.payload !== "string") {
         throw new Error("Hosted projection topology Library is malformed.");
       }
       const schema = HsonSchema.fromHson(entry.schema).toHson();
+      const graph = admit_public_livemap_root(decode_hosted_root(root), entry.mode === "document" ? "document" : "data", "Echo topology");
+      validate_hson_schema_graph(HsonSchema.fromHson(schema), graph);
+      if (Object.hasOwn(entry, "quads") && own_document_quads(entry) === undefined) throw new Error("Undefined QUAD associations.");
+      const quads = decode_document_quads(own_document_quads(entry), graph, String(entry.mode));
       const format: "hson-exact-value" = "hson-exact-value";
       return Object.freeze({ name: entry.name, mode: entry.mode, schema,
-        root: Object.freeze({ format, payload: root.payload }) });
+        root: Object.freeze({ format, payload: root.payload }),
+        ...(quads === undefined ? {} : { quads }),
+        ...(entry.css === undefined ? {} : { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) }) });
     });
     if (additions.length === 0 || raw.library !== additions[0]?.name) {
       throw new Error("Hosted projection topology batch is malformed.");
@@ -259,7 +271,7 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
       || reconciliation.authority.incarnationId !== incarnationId
       || reconciliation.revision !== authorityRev || reconciliation.projectionDigest !== projectionDigest
       || composition.registryDigest !== registryDigest
-      || JSON.stringify(reconciliation.libraries.map(({ root: _root, css: _css, schema: _schema, ...entry }) => entry))
+      || JSON.stringify(reconciliation.libraries.map(({ root: _root, css: _css, schema: _schema, ...entry }) => { delete entry.quads; return entry; }))
         !== JSON.stringify(libraries.map(({ schema: _schema, ...entry }) => entry))
       || JSON.stringify(reconciliation.systemFeatures) !== JSON.stringify(systemFeatures)
       || JSON.stringify(reconciliation.writableDocuments) !== JSON.stringify(writableDocuments)) {

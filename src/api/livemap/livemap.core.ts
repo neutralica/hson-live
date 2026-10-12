@@ -1,4 +1,16 @@
+import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { registry_from_entries } from "./livemap.hosted.js";
+import {
+  make_document_quad_bindings,
+  retain_document_quad_bindings,
+  mark_quad_document_root,
+  resolve_document_quad,
+  capture_document_quads,
+  decode_document_quads,
+  own_document_quads,
+  type DocumentQuadBindings,
+} from "./livemap.document.quad.js";
+import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 // Registry LiveMap transition and aggregate authority.
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
@@ -188,6 +200,7 @@ export type RegistryRoot = Readonly<{
   root: HsonNode;
   hsonSchema?: HsonSchema;
   family: "data" | "document";
+  quads?: PortableDocumentQuads;
   css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
 }>;
 
@@ -206,14 +219,16 @@ export function make_livemap_registry_authority(
   aggregate: InternalLiveMapAggregateAuthority;
   identities: readonly LiveMapLibraryIdentity[];
 }> {
-  const prepared = roots.map(({ root, hsonSchema, family, css }) => {
+  const prepared = roots.map((definition) => {
+    const { root, hsonSchema, family, css } = definition;
+    const quads = own_document_quads(definition);
     const graph = prepare_livemap_root(root, family);
     if (hsonSchema !== undefined) {
       must_hson_schema_family(hsonSchema, family);
       must_hson_schema_root(hsonSchema, graph.root);
     }
     if (css !== undefined && family !== "document") throw new TypeError("Initial CSS requires a document Library.");
-    return { graph, hsonSchema, css };
+    return { graph, hsonSchema, css, quads: decode_document_quads(quads, graph.root, graph.mode) };
   });
   const aggregate = make_livemap_registry_engine(prepared, systems);
   return Object.freeze({ aggregate, identities: aggregate.libraries() });
@@ -226,6 +241,7 @@ function make_livemap_registry_engine(
   registry: readonly Readonly<{
     graph: ReturnType<typeof prepare_livemap_root>;
     hsonSchema?: HsonSchema;
+    quads?: PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[],
   systems: readonly InitialSystemState[] = [],
@@ -435,6 +451,63 @@ function make_livemap_registry_engine(
 
   function require_library(identity: LiveMapLibraryIdentity): LiveMapLibraryState {
     return libraryRegistry.require(identity);
+  }
+
+  function install_initial_document_quads(identity: LiveMapLibraryIdentity, entries: readonly Readonly<{ name: string; quid: string }>[]): void {
+    transitionController.assertPublicMutationAllowed();
+    transitionController.assertLocalIdentityAllowed();
+    if (mapRevision !== 0 || transitionController.managedExecutionOwner() !== undefined) throw new Error("Authored QUAD admission requires private initial construction.");
+    const state = require_library(identity);
+    if (state.mode !== "document" || state.documentQuads !== undefined) throw new Error("Initial QUAD admission requires an unbound document Library.");
+    const bindings = make_document_quad_bindings(entries);
+    const overlay = require_document_overlay(state.documentOverlay);
+    for (const { name, quid } of entries) {
+      if (!mapIdentityEpoch.issued().has(quid) || resolve_document_quad(state.root, overlay, bindings, name, quid) === undefined) {
+        throw new Error("Authored QUAD binding requires an active owner-issued subject QUID.");
+      }
+    }
+    transitionController.invalidate();
+    identityGeneration += 1;
+    state.documentQuads = bindings;
+    mark_quad_document_root(state.root, bindings);
+  }
+
+  function portable_quads(state: LiveMapLibraryState, issued: LiveMapIssuedQuidLedger = mapIdentityEpoch.issued()): Readonly<{ quads?: PortableDocumentQuads }> {
+    if (state.mode !== "document") return {};
+    const quads = capture_document_quads(state.root, require_document_overlay(state.documentOverlay), state.documentQuads, issued);
+    return quads === undefined ? {} : { quads };
+  }
+
+  /** Only unpublished candidate overlays receive fresh identities; the ledger is installed atomically later. */
+  function reconstruct_quads(prepared: ReturnType<typeof prepare_livemap_root>, input: unknown, reserved: Set<string>,
+    exactOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay): Readonly<{
+      documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
+      documentQuads?: DocumentQuadBindings;
+    }> {
+    const entries = decode_document_quads(input, prepared.root, prepared.mode);
+    let overlay = exactOverlay ?? prepared.documentOverlay;
+    if (entries === undefined) return { documentOverlay: overlay, documentQuads: undefined };
+    if (overlay === undefined) throw new Error("Portable QUAD requires a document overlay.");
+    const bindings: { name: string; quid: string }[] = [];
+    for (const { name, path } of entries) {
+      const quid: string | undefined = exactOverlay === undefined ? allocate_livemap_quid(mapIdentityEpoch.owner,
+        candidate => reserved.has(candidate) || mapIdentityEpoch.issued().has(candidate),
+        candidate => ({ claimed: true, value: candidate })) : overlay.quidAtPath(path);
+      if (quid === undefined) throw new Error("No available document QUID for portable QUAD reconstruction.");
+      reserved.add(quid);
+      overlay = register_livemap_document_identity_at_path(overlay, quid, path).overlay;
+      bindings.push({ name, quid });
+    }
+    return { documentOverlay: overlay, documentQuads: make_document_quad_bindings(bindings) };
+  }
+
+  function capture_fence(): () => void {
+    const revision = mapRevision, generation = identityGeneration, registry = hostedRegistry, authority = hostedFence;
+    if (localIdentityTransactionActive) throw new Error("Capture cannot observe an incomplete identity transaction.");
+    return () => {
+      if (localIdentityTransactionActive || revision !== mapRevision || generation !== identityGeneration
+        || registry !== hostedRegistry || authority !== hostedFence) throw new Error("LiveMap identity or authority changed during capture.");
+    };
   }
 
   function require_projected_library(library: LiveMapLibraryState): LiveMapProjectedIdentityOverlay {
@@ -1122,6 +1195,8 @@ function make_livemap_registry_engine(
       };
     });
     const afterActive = aggregate_quid_locations(afterStates);
+    const nextQuadBindings = new Map([...candidates.values()].flatMap(candidate => is_aggregate_document_candidate(candidate)
+      ? [[candidate.library.identity, retain_document_quad_bindings(candidate.library.documentQuads, candidate.overlay)] as const] : []));
     for (const [quid, beforeTarget] of beforeActive) {
       const afterTarget = afterActive.get(quid);
       if (afterTarget !== undefined && afterTarget.library !== beforeTarget.library) {
@@ -1212,9 +1287,11 @@ function make_livemap_registry_engine(
             Object.assign(candidate.library, {
               root: candidate.root,
               documentOverlay: candidate.overlay,
+              documentQuads: nextQuadBindings.get(candidate.library.identity),
               projectedOverlay: undefined,
               projectedValue: undefined,
             });
+            mark_quad_document_root(candidate.root, candidate.library.documentQuads);
           } else {
             overwrite_hson_node(candidate.library.root, candidate.nextRoot);
             Object.assign(candidate.library, {
@@ -1443,6 +1520,7 @@ function make_livemap_registry_engine(
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    quads?: PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>;
 
@@ -1456,12 +1534,17 @@ function make_livemap_registry_engine(
     const prevRev = mapRevision;
     if (definitions.length === 0) throw new Error("LiveMap topology batch is empty.");
     const hosted = require_hosted_state();
-    const prepared = definitions.map(({ name, root, hsonSchema, family, css }) => {
+    const generation = identityGeneration;
+    const reserved = new Set<string>();
+    const prepared = definitions.map((definition) => {
+      const { name, root, hsonSchema, family, css } = definition;
+      const quads = own_document_quads(definition);
       const admitted = admit_public_livemap_root(root, family, `LiveMap Library ${JSON.stringify(name)}`);
       const graph = prepare_livemap_root(admitted, family);
       must_hson_schema_family(hsonSchema, family);
       must_hson_schema_root(hsonSchema, graph.root);
       const state = make_livemap_library(graph, hsonSchema);
+      Object.assign(state, reconstruct_quads(graph, quads, reserved));
       if (css !== undefined) {
         if (family !== "document") throw new TypeError("Initial CSS requires a document Library.");
         state.stylesheet = css;
@@ -1503,6 +1586,7 @@ function make_livemap_registry_engine(
           mode: state.mode,
           schema: hsonSchema.toHson(),
           root: encode_hosted_root(clone_hson_graph_without_quids(state.root)),
+          ...portable_quads(state, nextLedger),
           ...(css === undefined ? {} : { css: encode_portable_document_stylesheet(css) }),
         }))),
       }),
@@ -1515,10 +1599,11 @@ function make_livemap_registry_engine(
     const transition = transitionController.prepareAuthority({
       commit,
       libraryModes: Object.freeze(prepared.map(({ state }) => state.mode)),
-      baseStillCurrent: () => mapRevision === prevRev && hostedRegistry === hosted.registry,
+      baseStillCurrent: () => mapRevision === prevRev && hostedRegistry === hosted.registry && identityGeneration === generation,
       install: () => {
         mapIdentityEpoch.install(nextLedger);
-        libraryRegistry.add(prepared.map(({ state }) => state));
+        identityGeneration += 1;
+        libraryRegistry.add(prepared.map(({ state }) => { mark_quad_document_root(state.root, state.documentQuads); return state; }));
         hostedRegistry = nextRegistry;
         hostedBindingsByIdentity = nextByIdentity;
         hostedBindingsByName = nextByName;
@@ -1675,6 +1760,7 @@ function make_livemap_registry_engine(
   }
 
   function capture_libraries_aggregate(): LiveMapSnapshot {
+    const checkCapture = capture_fence();
     const hosted = require_hosted_state();
     const libraries = hosted.registry.libraries.map((entry) => {
       const binding = hosted.byName.get(entry.name);
@@ -1693,6 +1779,7 @@ function make_livemap_registry_engine(
         schema: entry.schema,
         schemaDigest: entry.schemaDigest,
         root: encode_hosted_root(clone_hson_graph_without_quids(state.root)),
+        ...(binding.scope === "hson-internal" ? {} : portable_quads(require_library(binding.identity as LiveMapLibraryIdentity))),
         ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(stylesheet(state.identity)) } : {}),
       });
     });
@@ -1704,10 +1791,12 @@ function make_livemap_registry_engine(
       libraries: Object.freeze(libraries),
     });
     assert_libraries_snapshot_bound(snapshot);
+    checkCapture();
     return snapshot;
   }
 
   function capture_selected_hosted(names: readonly string[], includeSystem: boolean) {
+    const checkCapture = capture_fence();
     const hosted = require_hosted_state();
     const revision = mapRevision;
     const authority = hosted.fence;
@@ -1719,6 +1808,7 @@ function make_livemap_registry_engine(
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
       return Object.freeze({ name, root: encode_hosted_root(
         clone_hson_graph_without_quids(state.root), HOSTED_MAX_SNAPSHOT_BYTES),
+        ...portable_quads(state),
         ...(state.mode === "document" ? { css: encode_portable_document_stylesheet(stylesheet(state.identity)) } : {}) });
     });
     const system = includeSystem ? (() => {
@@ -1729,10 +1819,12 @@ function make_livemap_registry_engine(
     if (mapRevision !== revision || hostedFence !== authority) {
       throw new Error("Selected hosted authority changed during capture.");
     }
+    checkCapture();
     return Object.freeze({ authority, revision, libraries: Object.freeze(libraries), system });
   }
 
   function capture_hosted_aggregate(): HostedLiveMapSnapshot {
+    const checkCapture = capture_fence();
     const hosted = require_hosted_state();
     const portable = capture_libraries_aggregate();
     const issuedQuids = enumerate_livemap_issued_quids(mapIdentityEpoch.issued());
@@ -1768,16 +1860,19 @@ function make_livemap_registry_engine(
         ...(state.projectedOverlay === undefined ? {} : { projected: state.projectedOverlay }),
       }));
     }
+    const bytes = JSON.stringify(snapshot);
+    checkCapture();
     hostedSnapshotProvenance.set(snapshot, Object.freeze({
       owner: mapIdentityEpoch.owner,
       epoch: mapIdentityEpoch.current(),
-      bytes: JSON.stringify(snapshot),
+      bytes,
       overlays,
     }));
     return snapshot;
   }
 
   function capture_semantic_checkpoint(): LiveMapSemanticCheckpoint {
+    const checkCapture = capture_fence();
     const hosted = require_hosted_state();
     const revision = mapRevision;
     const authority = hosted.fence;
@@ -1788,15 +1883,18 @@ function make_livemap_registry_engine(
         ? systemState : require_library(binding.identity as LiveMapLibraryIdentity);
       if (state === undefined) throw new Error("Checkpoint system state is unavailable.");
       return Object.freeze({ name: entry.name, root: clone_hson_graph_without_quids(state.root),
+        ...(binding.scope === "hson-internal" ? {} : portable_quads(require_library(binding.identity as LiveMapLibraryIdentity))),
         ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(stylesheet(state.identity as LiveMapLibraryIdentity)) } : {}) });
     });
     if (mapRevision !== revision || hostedFence !== authority) {
       throw new Error("Authority changed during checkpoint capture.");
     }
+    checkCapture();
     return Object.freeze({ authority, revision, registry: hosted.registry, libraries: Object.freeze(libraries) });
   }
 
   function install_semantic_checkpoint(checkpoint: LiveMapSemanticCheckpoint): void {
+    const checkRestore = capture_fence();
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
     if (!Number.isSafeInteger(checkpoint.revision) || checkpoint.revision < 0
@@ -1808,12 +1906,19 @@ function make_livemap_registry_engine(
       || typeof checkpoint.authority.incarnationId !== "string" || !checkpoint.authority.incarnationId) {
       throw new Error("Semantic checkpoint is incompatible with this authority.");
     }
+    const reserved = new Set<string>();
     const candidates = checkpoint.libraries.map((item, index) => {
       const entry = hosted.registry.libraries[index];
       if (entry === undefined || item.name !== entry.name) throw new Error("Checkpoint Library order is invalid.");
       const binding = hosted.byName.get(entry.name);
       if (binding === undefined) throw new Error("Checkpoint Library binding is unavailable.");
+      const expectedFields = ["name", "root", ...(entry.mode === "document" ? ["css"] : []), ...(Object.hasOwn(item, "quads") ? ["quads"] : [])];
+      const fields = Reflect.ownKeys(item);
+      if (fields.length !== expectedFields.length || fields.some(key => typeof key !== "string" || !expectedFields.includes(key)
+        || !Object.getOwnPropertyDescriptor(item, key)?.enumerable || !Object.hasOwn(Object.getOwnPropertyDescriptor(item, key)!, "value"))
+        || (Object.hasOwn(item, "quads") && own_document_quads(item) === undefined)) throw new Error("Invalid checkpoint Library fields.");
       admit_portable_hson_node(item.root, "Semantic checkpoint root");
+      decode_document_quads(own_document_quads(item), item.root, entry.mode);
       const prepared = prepare_livemap_root(item.root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("Checkpoint root mode disagrees with registry.");
       must_hson_schema_root(binding.schema, prepared.root);
@@ -1825,7 +1930,8 @@ function make_livemap_registry_engine(
           projectedValue: must_projected_root_value(prepared.root) });
       }
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
-      return Object.freeze({ kind: "application" as const, state, prepared,
+      const addressState = reconstruct_quads(prepared, own_document_quads(item), reserved);
+      return Object.freeze({ kind: "application" as const, state, prepared, addressState,
         css: prepared.mode === "document" ? decode_portable_document_stylesheet(item.css) : undefined,
         changed: !canonical_graph_equal(state.root, prepared.root)
           || (prepared.mode === "document" && !portable_document_stylesheet_equal(stylesheet(state.identity),
@@ -1838,6 +1944,7 @@ function make_livemap_registry_engine(
     }
     const changedLibraries = candidates.flatMap((candidate) =>
       candidate.kind === "application" && candidate.changed ? [candidate.state.identity] : []);
+    checkRestore();
     for (const candidate of candidates) {
       if (candidate.kind === "system") {
         candidate.state.root = candidate.prepared.root;
@@ -1845,7 +1952,7 @@ function make_livemap_registry_engine(
       } else {
         Object.assign(candidate.state, {
           root: candidate.prepared.root,
-          documentOverlay: candidate.prepared.documentOverlay,
+          ...candidate.addressState,
           projectedOverlay: candidate.prepared.projectedOverlay,
           projectedValue: candidate.projectedValue,
           ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
@@ -1853,9 +1960,11 @@ function make_livemap_registry_engine(
       }
     }
     const previousRevision = mapRevision;
-    mapIdentityEpoch.replace([]);
+    mapIdentityEpoch.replace(reserved);
+    identityGeneration += 1;
     mapRevision = checkpoint.revision;
     hostedFence = Object.freeze({ ...checkpoint.authority });
+    for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
     transitionController.invalidate();
     const event = Object.freeze({
       previousRevision,
@@ -1874,6 +1983,7 @@ function make_livemap_registry_engine(
     snapshot: LiveMapSnapshot,
     afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
   ): void {
+    const checkRestore = capture_fence();
     if (clientComposition !== undefined) {
       throw new Error("Client projection topology requires hosted synchronization.");
     }
@@ -1886,12 +1996,14 @@ function make_livemap_registry_engine(
     const candidates: Array<Readonly<{
       state: LiveMapLibraryState;
       prepared: ReturnType<typeof prepare_livemap_root>;
+      addressState: ReturnType<typeof reconstruct_quads>;
       css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
       projectedValue?: OrderedProjectedValue;
       newlyInstalled: boolean;
       schema: HsonSchema;
       name: string;
     }>> = [];
+    const reserved = new Set<string>();
     let systemRoot: HsonNode | undefined;
     let systemValue: OrderedProjectedValue | undefined;
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
@@ -1924,6 +2036,7 @@ function make_livemap_registry_engine(
           ? require_library(old.identity as LiveMapLibraryIdentity)
           : make_livemap_library(prepared, schema);
         candidates.push(Object.freeze({ name: entry.name, state, prepared, schema, newlyInstalled: !compatible,
+          addressState: reconstruct_quads(prepared, own_document_quads(encoded), reserved),
           ...(entry.mode === "document" ? { css: decode_portable_document_stylesheet(encoded.css) } : {}),
           projectedValue: prepared.mode === "document" ? undefined : must_projected_root_value(prepared.root) }));
       }
@@ -1958,11 +2071,13 @@ function make_livemap_registry_engine(
       .map(({ state }) => state.identity));
     // Portable restoration starts a fresh identity epoch. Existing shared
     // records remain live; removed/replaced identities disappear from lookup.
-    mapIdentityEpoch.replace([]);
-    for (const { state, prepared, projectedValue, css } of candidates) {
+    checkRestore();
+    mapIdentityEpoch.replace(reserved);
+    identityGeneration += 1;
+    for (const { state, prepared, projectedValue, css, addressState } of candidates) {
       Object.assign(state, {
         root: prepared.root,
-        documentOverlay: prepared.documentOverlay,
+        ...addressState,
         projectedOverlay: prepared.projectedOverlay,
         projectedValue,
         ...(css === undefined ? {} : { stylesheet: css }),
@@ -1977,6 +2092,7 @@ function make_livemap_registry_engine(
     hostedBindingsByIdentity = new Map(bindings.map((binding) => [binding.identity, binding]));
     hostedBindingsByName = new Map(bindings.map((binding) => [binding.name, binding]));
     mapRevision = snapshot.revision;
+    for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
     transitionController.invalidate();
     const restored = Object.freeze(candidates.map(({ state }) => state.identity));
     afterTopologyInstall?.(restored);
@@ -1993,6 +2109,7 @@ function make_livemap_registry_engine(
     authority?: HostedAuthorityFence,
     afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
   ): void {
+    const checkRestore = capture_fence();
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
     const identity = "identity" in snapshot ? snapshot.identity : undefined;
@@ -2033,10 +2150,12 @@ function make_livemap_registry_engine(
       root: HsonNode;
       mode: LiveMapLibraryState["mode"];
       css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
+      documentQuads?: DocumentQuadBindings;
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       projectedOverlay?: LiveMapProjectedIdentityOverlay;
       projectedValue?: OrderedProjectedValue;
     }>> = [];
+    const reserved = new Set<string>();
     let systemCandidate: Readonly<{
       state: LiveMapSystemState;
       root: HsonNode;
@@ -2075,8 +2194,7 @@ function make_livemap_registry_engine(
         root: prepared.root,
         mode: prepared.mode,
         ...(prepared.mode === "document" ? { css: decode_portable_document_stylesheet(encoded.css) } : {}),
-        ...((proof?.overlays.get(entry.name)?.document ?? prepared.documentOverlay) === undefined
-          ? {} : { documentOverlay: proof?.overlays.get(entry.name)?.document ?? prepared.documentOverlay }),
+        ...reconstruct_quads(prepared, own_document_quads(encoded), reserved, proof?.overlays.get(entry.name)?.document),
         ...((proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay) === undefined ? {} : {
           projectedOverlay: proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay,
           projectedValue: must_projected_root_value(prepared.root),
@@ -2088,6 +2206,7 @@ function make_livemap_registry_engine(
       root: candidate.root,
       mode: candidate.mode,
       documentOverlay: candidate.documentOverlay,
+      documentQuads: candidate.documentQuads,
       projectedOverlay: candidate.projectedOverlay,
       projectedValue: candidate.projectedValue,
       ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
@@ -2099,7 +2218,7 @@ function make_livemap_registry_engine(
     }
     const active = aggregate_quid_locations(candidateStates);
     for (const quid of active.keys()) {
-      if (issuedLedger === undefined || !issuedLedger.has(quid)) {
+      if (identity === undefined ? !reserved.has(quid) : issuedLedger === undefined || !issuedLedger.has(quid)) {
         throw new Error("Hosted aggregate snapshot active QUID is absent from its issued ledger.");
       }
     }
@@ -2121,10 +2240,12 @@ function make_livemap_registry_engine(
     if (systemState !== undefined && systemCandidate === undefined) {
       throw new Error("Hosted aggregate snapshot omitted configured transactional system state.");
     }
+    checkRestore();
     for (const candidate of candidates) {
       Object.assign(candidate.library, {
         root: candidate.root,
         documentOverlay: candidate.documentOverlay,
+        documentQuads: candidate.documentQuads,
         projectedOverlay: candidate.projectedOverlay,
         projectedValue: candidate.projectedValue,
         ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
@@ -2134,14 +2255,16 @@ function make_livemap_registry_engine(
       systemCandidate.state.root = systemCandidate.root;
       systemCandidate.state.projectedValue = systemCandidate.projectedValue;
     }
-    if (identity === undefined) mapIdentityEpoch.replace([]);
+    if (identity === undefined) mapIdentityEpoch.replace(reserved);
     else if (issuedLedger !== undefined) mapIdentityEpoch.install(make_livemap_issued_quid_ledger([
       ...enumerate_livemap_issued_quids(mapIdentityEpoch.issued()),
       ...enumerate_livemap_issued_quids(issuedLedger),
     ]));
+    identityGeneration += 1;
     mapRevision = snapshot.revision;
     if (authority !== undefined) hostedFence = Object.freeze({ ...authority });
     transitionController.invalidate();
+    for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
     // A hosted recovery snapshot is an atomic replacement boundary, not a
     // fabricated operation commit.  Selected document libraries use this to
     // deliver their normal in-place snapshot observation to Mirror while
@@ -2193,6 +2316,7 @@ function make_livemap_registry_engine(
     afterTopologyInstall?: (projected: readonly Readonly<{ name: string; identity: LiveMapLibraryIdentity }>[],
       retired: readonly LiveMapLibraryIdentity[]) => void,
   ): void {
+    const checkRestore = capture_fence();
     const composition = clientComposition;
     if (composition === undefined) throw new Error("Client projection is not configured.");
     if (clientManagementOwner === undefined
@@ -2214,6 +2338,7 @@ function make_livemap_registry_engine(
       name: string;
       state: LiveMapLibraryState;
       root: HsonNode;
+      documentQuads?: DocumentQuadBindings;
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       projectedOverlay?: LiveMapProjectedIdentityOverlay;
       projectedValue?: OrderedProjectedValue;
@@ -2223,6 +2348,7 @@ function make_livemap_registry_engine(
       changed: boolean;
       binding: HostedRegistryBinding;
     }>> = [];
+    const reserved = new Set<string>();
     let nextSystem: LiveMapSystemState | undefined;
     let systemBinding: HostedRegistryBinding | undefined;
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
@@ -2258,7 +2384,8 @@ function make_livemap_registry_engine(
         const css = entry.mode === "document" ? decode_portable_document_stylesheet(encoded.css)
           : undefined;
         const state = previous ?? make_livemap_library(prepared, schema);
-        const graphChanged = previous === undefined || !canonical_graph_equal(previous.root, prepared.root);
+        const graphChanged = previous === undefined || !canonical_graph_equal(previous.root, prepared.root)
+          || own_document_quads(encoded) !== undefined || (previous.documentQuads?.byName.size ?? 0) > 0;
         const changed = graphChanged
           || (css !== undefined && !portable_document_stylesheet_equal(stylesheet(state.identity), css));
         const binding: HostedRegistryBinding = Object.freeze({ name: entry.name, identity: state.identity,
@@ -2266,7 +2393,8 @@ function make_livemap_registry_engine(
         candidates.push(Object.freeze({
           name: entry.name, state, binding, retained, graphChanged, changed,
           root: graphChanged ? prepared.root : state.root,
-          documentOverlay: graphChanged ? prepared.documentOverlay : state.documentOverlay,
+          ...(graphChanged ? reconstruct_quads(prepared, own_document_quads(encoded), reserved)
+            : { documentOverlay: state.documentOverlay, documentQuads: state.documentQuads }),
           projectedOverlay: graphChanged ? prepared.projectedOverlay : state.projectedOverlay,
           projectedValue: entry.mode === "document" ? undefined
             : graphChanged ? must_projected_root_value(prepared.root) : state.projectedValue,
@@ -2331,10 +2459,12 @@ function make_livemap_registry_engine(
       || (systemState !== undefined && composedSystem !== undefined
         && !canonical_graph_equal(systemState.root, composedSystem.root));
     // The complete candidate is validated before this single installation.
+    checkRestore();
     mapIdentityEpoch.install(ledger);
+    identityGeneration += 1;
     for (const candidate of candidates) {
       if (candidate.changed) Object.assign(candidate.state, {
-        root: candidate.root, documentOverlay: candidate.documentOverlay,
+        root: candidate.root, documentOverlay: candidate.documentOverlay, documentQuads: candidate.documentQuads,
         projectedOverlay: candidate.projectedOverlay, projectedValue: candidate.projectedValue,
         ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
       });
@@ -2353,6 +2483,7 @@ function make_livemap_registry_engine(
       bindings: new Map([...projectedBindings, ...(systemBinding === undefined ? [] : [systemBinding])]
         .map((binding) => [binding.name, binding])) });
     transitionController.invalidate();
+    for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
     afterTopologyInstall?.(Object.freeze(candidates.map((candidate) => Object.freeze({
       name: candidate.name, identity: candidate.state.identity,
     }))), Object.freeze(retired));
@@ -2531,6 +2662,18 @@ function make_livemap_registry_engine(
     return transitionController.acceptAuthority(transition).commit;
   }
 
+  const initialReserved = new Set<string>();
+  registry.forEach((entry, index) => {
+    const state = states[index];
+    if (state === undefined) throw new Error("Incomplete initial Library registry.");
+    Object.assign(state, reconstruct_quads(entry.graph, entry.quads, initialReserved));
+    mark_quad_document_root(state.root, state.documentQuads);
+  });
+  if (initialReserved.size) {
+    mapIdentityEpoch.install(stage_livemap_identity_epoch(mapIdentityEpoch.issued(), [], initialReserved));
+    identityGeneration += 1;
+  }
+
   const aggregateAuthority: InternalLiveMapAggregateAuthority = Object.freeze({
     libraries: () => Object.freeze(libraryRegistry.all().map((library) => library.identity)),
     configureSystemState: (key, transportName, root, hsonSchema) => {
@@ -2586,6 +2729,11 @@ function make_livemap_registry_engine(
     addLibraries: add_libraries,
     addClientLocalLibraries: add_client_local_libraries,
     assertPublicMutationAllowed: transitionController.assertPublicMutationAllowed,
+    installInitialDocumentQuads: install_initial_document_quads,
+    documentQuad: (identity: LiveMapLibraryIdentity, name: string | undefined, quid: string | undefined) => {
+      const state = require_library(identity);
+      return resolve_document_quad(state.root, require_document_overlay(state.documentOverlay), state.documentQuads, name, quid);
+    },
     prepareAddLibrariesManaged: (owner, definitions) => transitionController.runManaged(
       owner,
       () => prepare_add_libraries(definitions),
@@ -2602,6 +2750,7 @@ function make_livemap_registry_engine(
       return Object.freeze({ authority: hosted.fence, revision: mapRevision, registryDigest: hosted.registry.digest });
     },
     setInitialHostedAuthority: (authority) => {
+
       transitionController.assertPublicMutationAllowed();
       const hosted = require_hosted_state();
       if (mapRevision !== 0 || typeof authority.logicalMapId !== "string" || !authority.logicalMapId
@@ -2783,6 +2932,7 @@ function make_livemap_registry_engine(
     reserve: transitionController.reserveAuthority,
     discard: transitionController.discardAuthority,
     claimManagement: (owner) => {
+
       transitionController.claimManagement(owner, () => Promise.reject(new LiveMapTransitionError(
         "LIVEMAP_MANAGED_MUTATION_REJECTED",
         "Aggregate LiveMap mutation is controlled by an exclusive Locus authority.",

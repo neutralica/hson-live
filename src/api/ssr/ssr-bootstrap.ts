@@ -1,6 +1,8 @@
+import { decode_document_quads, own_document_quads } from "../livemap/livemap.document.quad.js";
 import type {
   LiveMapSnapshot,
   LiveMapRootMode,
+  PortableDocumentQuads,
 } from "../../types/livemap.types.js";
 import type { LocusSessionNow } from "../../types/locus.core.types.js";
 import { admit_locus_session_now } from "../locus/locus.local-initializer.js";
@@ -39,6 +41,7 @@ type WireRegistryEntry = Readonly<{
   rootCodec: "hson-exact-value";
 }>;
 type WireLibrary = Readonly<{
+  quads?: PortableDocumentQuads;
   name: string;
   mode: LiveMapRootMode;
   schema: string;
@@ -203,6 +206,7 @@ function libraries_payload(snapshot: LiveMapSnapshot): LibrariesPayload {
       schemaDigest: require_string(entry.schemaDigest),
       rootFormat: require_root_format(entry.root.format),
       rootPayload: require_string(entry.root.payload),
+      ...(own_document_quads(entry) === undefined ? {} : { quads: decode_document_quads(own_document_quads(entry), decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES), entry.mode) }),
       ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}),
     })),
   };
@@ -256,12 +260,13 @@ function decode_registry_entry(input: unknown): LiveMapSnapshot["registry"]["lib
 
 function decode_library_entry(input: unknown): LiveMapSnapshot["libraries"][number] {
   const entry = record(input); exact_keys(entry, entry.mode === "document"
-    ? ["name", "mode", "schema", "schemaDigest", "rootFormat", "rootPayload", "css"]
+    ? ["name", "mode", "schema", "schemaDigest", "rootFormat", "rootPayload", "css", ...(Object.hasOwn(entry, "quads") ? ["quads"] : [])]
     : ["name", "mode", "schema", "schemaDigest", "rootFormat", "rootPayload"]);
   if (typeof entry.name !== "string" || !is_mode(entry.mode) || typeof entry.schema !== "string"
     || typeof entry.schemaDigest !== "string" || entry.rootFormat !== "hson-exact-value" || typeof entry.rootPayload !== "string") throw new TypeError("Library entry is malformed.");
   return Object.freeze({ name: entry.name, mode: entry.mode, schema: normalized_schema(entry.schema, entry.schemaDigest), schemaDigest: entry.schemaDigest,
     root: Object.freeze({ format: entry.rootFormat, payload: entry.rootPayload }),
+    ...(own_document_quads(entry) === undefined ? {} : { quads: decode_document_quads(own_document_quads(entry), decode_hosted_root({ format: entry.rootFormat, payload: entry.rootPayload }, HOSTED_MAX_SNAPSHOT_BYTES), entry.mode) }),
     ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
 }
 

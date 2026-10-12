@@ -1,5 +1,5 @@
 import type { LocusConnectionContext } from "./locus.protocol.types.js";
-import type { LiveMapRootMode } from "./livemap.types.js";
+import type { LiveMapRootMode, PortableDocumentQuads } from "./livemap.types.js";
 
 /** Internal deployment/runtime ownership for one application library. Never part of Hson or a Schema. */
 export type LocusLibraryOwnership = "private" | "shared" | "local";
@@ -50,6 +50,7 @@ export type AuthorityProjectionSnapshot = Readonly<{
     schemaDigest: string;
     rootCodec: "hson-exact-value";
     root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+    quads?: PortableDocumentQuads;
     css?: import("./document-css.types.js").DocumentCssRecord;
   }>[];
   systemFeatures: readonly LocusProjectionSystemFeature[];

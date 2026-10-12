@@ -1,3 +1,4 @@
+import { decode_document_quads } from "./livemap.document.quad.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
@@ -624,8 +625,12 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
   for (const entry of record.libraries) {
     const item = exact_record(entry, "Hosted snapshot Library");
     exact_keys(item, entry.mode === "document"
-      ? ["name", "mode", "schema", "schemaDigest", "root", "css"]
+      ? ["name", "mode", "schema", "schemaDigest", "root", "css", ...(Object.hasOwn(item, "quads") ? ["quads"] : [])]
       : ["name", "mode", "schema", "schemaDigest", "root"], "Hosted snapshot Library");
+    if (Object.hasOwn(item, "quads")) {
+      if (item.quads === undefined) throw new HostedAggregateRepresentationError("Portable QUAD association cannot be undefined.");
+      decode_document_quads(item.quads, decode_hosted_root(item.root, HOSTED_MAX_SNAPSHOT_BYTES), String(entry.mode));
+    }
     if (entry.mode === "document") decode_portable_document_stylesheet(item.css);
   }
 }
@@ -921,6 +926,12 @@ function exact_record(value: unknown, label: string, operationIndex?: number): R
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     throw new HostedAggregateRepresentationError(`${label} has an unsupported prototype.`, operationIndex);
+  }
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (typeof key !== "string" || !descriptor?.enumerable || !Object.hasOwn(descriptor, "value")) {
+      throw new HostedAggregateRepresentationError(`${label} requires exact own data fields.`, operationIndex);
+    }
   }
   return value as Record<string, unknown>;
 }

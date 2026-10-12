@@ -1,3 +1,6 @@
+import { own_document_quads } from "../livemap/livemap.document.quad.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
+import { decode_document_quads } from "../livemap/livemap.document.quad.js";
 import { registry_from_entries } from "../livemap/livemap.hosted.js";
 import { hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { HsonNode } from "../../core/types.js";
@@ -180,7 +183,8 @@ function checkpoint_libraries_equal(
     const other = right[index];
     if (other === undefined || library.name !== other.name
       || !canonical_hson_graph_equal(library.root, other.root)
-      || Object.hasOwn(library, "css") !== Object.hasOwn(other, "css")) return false;
+      || Object.hasOwn(library, "css") !== Object.hasOwn(other, "css")
+      || JSON.stringify(own_document_quads(library)) !== JSON.stringify(own_document_quads(other))) return false;
     if (library.css === undefined || other.css === undefined) return library.css === other.css;
     return portable_document_stylesheet_equal(
       decode_portable_document_stylesheet(library.css), decode_portable_document_stylesheet(other.css),
@@ -221,9 +225,14 @@ export async function write_semantic_checkpoint(
     if (entry === undefined || library === undefined || entry.name !== library.name) throw invalid_state();
     const { schema, ...fixed } = entry;
     metadata.push(fixed);
-    const parts: readonly (readonly ["schema" | "root" | "css", unknown])[] = entry.mode === "document"
+    const parts: Array<readonly [CheckpointChunkDescriptor["part"], unknown]> = entry.mode === "document"
       ? [["schema", schema], ["root", library.root], ["css", library.css]]
       : [["schema", schema], ["root", library.root]];
+    if (Object.hasOwn(library, "quads")) {
+      if (own_document_quads(library) === undefined) throw invalid_state();
+      admit_portable_hson_node(library.root, "Checkpoint QUAD root");
+      parts.push(["quads", decode_document_quads(own_document_quads(library), library.root, entry.mode)]);
+    }
     for (const [part, value] of parts) {
       for (const { chunk, descriptor } of encode_checkpoint_chunks(id, checkpoint.revision, entry.name, part, value)) {
         if (descriptors.length >= CHECKPOINT_MAX_CHUNKS) throw new Error("Checkpoint chunk count exceeds its supported bound.");
@@ -304,7 +313,7 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
   let position = 0;
   const ids = new Set<string>();
   for (const entry of registry.libraries as readonly Record<string, unknown>[]) {
-    const parts: readonly ("schema" | "root" | "css")[] = entry.mode === "document"
+    const parts: CheckpointChunkDescriptor["part"][] = entry.mode === "document"
       ? ["schema", "root", "css"] : ["schema", "root"];
     for (const part of parts) {
       let index = 0;
@@ -323,6 +332,8 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
         index += 1;
       }
       if (index === 0) throw invalid_state();
+      const next = record(value.chunks[position]);
+      if (part === "css" && next !== undefined && next.owner === entry.name && next.part === "quads") parts.push("quads");
     }
   }
   if (position !== value.chunks.length) throw invalid_state();
@@ -334,12 +345,12 @@ async function restore_manifest(
   manifest: LocusHostedAggregatePersistedManifest,
   adapter: LocusHostedAggregatePersistenceAdapter,
 ): Promise<LiveMap> {
-  const libraries: Array<Readonly<{ name: string; root: HsonNode; css?: import("../../types/document-css.types.js").DocumentCssRecord }>> = [];
+  const libraries: Array<LiveMapSemanticCheckpoint["libraries"][number]> = [];
   const registryEntries: HostedRegistryEntry[] = [];
   let position = 0;
   for (const fixed of manifest.registry.libraries) {
     const values: unknown[] = [];
-    const parts: readonly ("schema" | "root" | "css")[] = fixed.mode === "document"
+    const parts: CheckpointChunkDescriptor["part"][] = fixed.mode === "document"
       ? ["schema", "root", "css"] : ["schema", "root"];
     for (const part of parts) {
       const decoder = new CheckpointTokenDecoder();
@@ -351,8 +362,10 @@ async function restore_manifest(
         position += 1;
       }
       values.push(decoder.finish());
+      const next = manifest.chunks[position];
+      if (part === "css" && next?.owner === fixed.name && next.part === "quads") parts.push("quads");
     }
-    const [schema, root, css] = values;
+    const [schema, root, css, quads] = values;
     if (typeof schema !== "string" || hson_schema_source_digest(schema) !== fixed.schemaDigest
       || typeof root !== "object" || root === null || Array.isArray(root)) throw invalid_state();
     registryEntries.push(Object.freeze({
@@ -364,6 +377,7 @@ async function restore_manifest(
       rootCodec: fixed.rootCodec,
     }));
     libraries.push(Object.freeze({ name: fixed.name, root: root as HsonNode,
+      ...(quads === undefined ? {} : { quads: decode_document_quads(quads, root as HsonNode, fixed.mode) }),
       ...(fixed.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(css)) } : {}) }));
   }
   const registry: HostedRegistry = Object.freeze({ format: "hson-hosted-registry",
