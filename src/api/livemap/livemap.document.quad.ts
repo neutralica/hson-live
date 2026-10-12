@@ -27,6 +27,11 @@ const NAME = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}(?![\s\S])/;
 const addressedRoots = new WeakSet<HsonNode>();
 const lookups = new WeakMap<object, (name: string | undefined, quid: string | undefined) => DocumentQuadSubject | undefined>();
 
+/** Shared authored-address vocabulary for admission and connector controls. @internal */
+export function is_document_quad_name(value: unknown): value is string {
+  return typeof value === "string" && NAME.test(value);
+}
+
 /** Private authored source admission, preserving scanner diagnostics and occurrence evidence. @internal */
 export function parse_authored_document_library(source: string): Readonly<{ root: HsonNode; declarations: readonly DocumentQuadAdmission[] }> {
   const names = new Map<string, AuthoredQuadDeclaration>();
@@ -66,7 +71,7 @@ export function parse_authored_document_library(source: string): Readonly<{ root
 export function make_document_quad_bindings(entries: readonly Readonly<{ name: string; quid: string }>[]): DocumentQuadBindings {
   const byName = new Map<string, string>(), byQuid = new Map<string, string>();
   for (const { name, quid } of entries) {
-    if (typeof name !== "string" || !NAME.test(name) || !is_persisted_quid(quid)
+    if (!is_document_quad_name(name) || !is_persisted_quid(quid)
       || byName.has(name) || byQuid.has(quid)) throw new Error("Invalid or duplicate local QUAD binding.");
     byName.set(name, quid); byQuid.set(quid, name);
   }
@@ -148,7 +153,7 @@ export function decode_document_quads(input: unknown, root: HsonNode, mode: stri
     if (keys.length !== 2 || !keys.every(key => key === "name" || key === "path")) throw new Error("Invalid portable QUAD binding fields.");
     const name = Object.getOwnPropertyDescriptor(item, "name"), coordinate = Object.getOwnPropertyDescriptor(item, "path");
     if (!name?.enumerable || !Object.hasOwn(name, "value") || !coordinate?.enumerable || !Object.hasOwn(coordinate, "value")
-      || typeof name.value !== "string" || !NAME.test(name.value) || names.has(name.value)
+      || !is_document_quad_name(name.value) || names.has(name.value)
       || (previous !== undefined && previous >= name.value) || !Array.isArray(coordinate.value)) throw new Error("Invalid portable QUAD name or order.");
     const segments = exact_array(coordinate.value);
     // Negative zero has a second spelling but no distinct structural meaning.

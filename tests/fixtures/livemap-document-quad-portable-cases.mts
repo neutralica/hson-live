@@ -423,7 +423,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     } finally { clientOwner.releaseManagement(management); seedOwner.releaseManagement(serverManager); }
   });
   await check("selected cuts and authorized projections preserve private source separation and Echo registry restoration", async () => {
-    const map = authored({ hidden: { document: '<aside @:PRIVATE_ADDRESS/>' }, layout: { document: '<main <hson-template lib="hidden"/>/>' },
+    const map = authored({ hidden: { document: '<aside @:PRIVATE_ADDRESS/>' }, layout: { document: '<main <hson-template lib="hidden" quad="PRIVATE_ADDRESS"/>/>' },
       public: { document: '<button @:shared/>' } });
     compose(map, "layout", "composed");
     const effective = await projection(map, ["hidden", "composed", "public"], ["hidden", "layout"]);

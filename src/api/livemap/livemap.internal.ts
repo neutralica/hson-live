@@ -87,7 +87,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     family: "data" | "document";
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
-  }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => LiveMapAggregateCommit;
+  }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
+    beforeInstall?: () => void) => LiveMapAggregateCommit;
   /** Admit authorized client-local initializers through the private composition path. @internal */
   addClientLocalLibraries: (definitions: readonly Readonly<{
     name: string;
@@ -99,6 +100,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => LiveMapAggregateCommit;
   /** Enforce the public mutation fence before decoding a public topology request. @internal */
   assertPublicMutationAllowed: () => void;
+  /** Existing aggregate capture fence, also covering non-revisioned identity state. @internal */
+  captureFence: () => () => void;
   /** Private initial receiver installation after owner-proven sparse acquisition. @internal */
   installInitialDocumentQuads: (library: LiveMapLibraryIdentity, entries: readonly Readonly<{ name: string; quid: string }>[]) => void;
   /** Current Library-local authored correspondence; no graph capture. @internal */

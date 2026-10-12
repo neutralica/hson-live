@@ -1619,12 +1619,17 @@ function make_livemap_registry_engine(
     return Object.freeze({ transition, identities: Object.freeze(prepared.map(({ state }) => state.identity)) });
   }
 
-  function add_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void): LiveMapAggregateCommit {
+  function add_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
+    beforeInstall?: () => void): LiveMapAggregateCommit {
     transitionController.assertPublicMutationAllowed();
     if (definitions.length === 0) return Object.freeze({
       kind: "aggregate", changed: false, prevRev: mapRevision, rev: mapRevision, operations: Object.freeze([]),
     });
     const prepared = prepare_add_libraries(definitions);
+    // A source-derived candidate retains its original capture fence through all admission validation.
+    beforeInstall?.();
+    // Serialization may acquire exclusive management after the initial admission permission check.
+    transitionController.assertPublicMutationAllowed();
     return transitionController.acceptAuthority(prepared.transition, "isolate", () =>
       afterInstall?.(prepared.identities)).commit;
   }
@@ -2729,6 +2734,7 @@ function make_livemap_registry_engine(
     addLibraries: add_libraries,
     addClientLocalLibraries: add_client_local_libraries,
     assertPublicMutationAllowed: transitionController.assertPublicMutationAllowed,
+    captureFence: capture_fence,
     installInitialDocumentQuads: install_initial_document_quads,
     documentQuad: (identity: LiveMapLibraryIdentity, name: string | undefined, quid: string | undefined) => {
       const state = require_library(identity);

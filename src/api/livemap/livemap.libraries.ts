@@ -565,7 +565,7 @@ function make_livemap_library_receiver(
 
   const addLibrariesInternal = (additions: readonly CanonicalLibraryDefinition[],
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
-    clientLocal = false): LiveMapCommit => {
+    clientLocal = false, beforeInstall?: () => void): LiveMapCommit => {
     if (!clientLocal) aggregate.assertPublicMutationAllowed();
     for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
@@ -580,15 +580,16 @@ function make_livemap_library_receiver(
         ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
       });
     });
-    const admit = clientLocal ? aggregate.addClientLocalLibraries : aggregate.addLibraries;
-    const commit = admit(definitions, (identities) => {
+    const afterInstall = (identities: readonly LiveMapLibraryIdentity[]): void => {
       for (let index = 0; index < additions.length; index += 1) {
         const definition = additions[index];
         const identity = identities[index];
         if (definition === undefined || identity === undefined) throw new Error("LiveMap admission lost a Library identity.");
         add(definition, identity);
       }
-    });
+    };
+    const commit = clientLocal ? aggregate.addClientLocalLibraries(definitions, afterInstall)
+      : aggregate.addLibraries(definitions, afterInstall, beforeInstall);
     return public_commit(commit);
   };
   const addLibraries = (inputs: LiveMapDefinitions): LiveMapCommit => {
@@ -678,7 +679,7 @@ function make_livemap_library_receiver(
       throw new TypeError("Document composition requires source and result Library names.");
     }
     const configuration = document_composition_options(options);
-    const position = aggregate.hostedPosition();
+    const checkCapture = aggregate.captureFence();
     const root = expand_document_composition(source, (sourceName) => {
       const entry = named.get(sourceName);
       if (entry === undefined) throw new Error(`Unknown composition source Library ${JSON.stringify(sourceName)}.`);
@@ -689,13 +690,18 @@ function make_livemap_library_receiver(
       }
       // Trusted owner storage is read synchronously, without callbacks or whole-root inspection copies.
       return aggregate.root(entry.identity);
-    }, configuration);
-    const after = aggregate.hostedPosition();
-    if (position.revision !== after.revision || position.authority !== after.authority
-      || position.registryDigest !== after.registryDigest) {
-      throw new Error("LiveMap state changed during document composition.");
-    }
-    addLibrariesInternal(capture_library_definitions([{ name, family: "document", schema: configuration.schema, root }]));
+    }, configuration, (sourceName, quad, sourceRoot) => {
+      const entry = named.get(sourceName);
+      if (entry === undefined) throw new Error("Composition source Library is unavailable.");
+      const address = aggregate.documentQuad(entry.identity, quad, undefined);
+      if (address === undefined) throw new Error(`Unknown or retired composition QUAD ${JSON.stringify(quad)} in Library ${JSON.stringify(sourceName)}.`);
+      const node = resolve_document_path(sourceRoot, "document", address.path);
+      if (!is_ordinary_element_node(node)) throw new Error("Composition QUAD subject is not an ordinary document element.");
+      return { node, quid: address.quid };
+    });
+    const definitions = capture_library_definitions([{ name, family: "document", schema: configuration.schema, root }]);
+    checkCapture();
+    addLibrariesInternal(definitions, {}, false, checkCapture);
     const result = selected(name);
     if (result.mode !== "document") throw new Error("Document composition lost its admitted document Library.");
     return result;
