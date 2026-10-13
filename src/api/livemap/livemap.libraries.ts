@@ -680,7 +680,7 @@ function make_livemap_library_receiver(
     }
     const checkCapture = aggregate.captureFence();
     const configuration = document_composition_options(options);
-    const root = expand_document_composition(source, (sourceName) => {
+    const candidate = expand_document_composition(source, (sourceName) => {
       const entry = named.get(sourceName);
       if (entry === undefined) throw new Error(`Unknown composition source Library ${JSON.stringify(sourceName)}.`);
       if (entry.family !== "document") throw new TypeError(`Composition source Library ${JSON.stringify(sourceName)} is not a document.`);
@@ -699,7 +699,7 @@ function make_livemap_library_receiver(
       if (!is_ordinary_element_node(node)) throw new Error("Composition QUAD subject is not an ordinary document element.");
       return { node, quid: address.quid, path: address.path };
     });
-    const definitions = capture_library_definitions([{ name, family: "document", schema: configuration.schema, root }]);
+    const definitions = capture_library_definitions([{ name, family: "document", schema: configuration.schema, ...candidate }]);
     checkCapture();
     addLibrariesInternal(definitions, {}, false, checkCapture);
     const result = selected(name);

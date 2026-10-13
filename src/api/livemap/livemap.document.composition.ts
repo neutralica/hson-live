@@ -6,16 +6,21 @@ import type { HsonNode, NodeContent, Primitive } from "../../core/types.js";
 import { ANY_DOCUMENT, HsonSchema } from "../schema/hson-schema.js";
 import { materialize_owned_occurrences } from "../livetree/runtime/materialize-occurrences.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
-import { is_document_quad_name } from "./livemap.document.quad.js";
+import { is_document_quad_name, type DocumentQuadAdmission } from "./livemap.document.quad.js";
+import { validate_document_path } from "./livemap.document.path.js";
+import type { PortableDocumentQuads } from "../../types/livemap.types.js";
+import type { HsonData } from "../transform/transform.types.js";
+import { admit_hson_data_input } from "../data/hson-data.js";
 
 /** Private construction bounds; callers may lower, but cannot disable, the caps. @internal */
 export type DocumentCompositionOptions = Readonly<{
   schema?: HsonSchema;
-  /** Private own-data record: attrs?: string record, text?: string,
-   * use?: { quad: string, lib?: string }, at?: QUAD-to-configuration record.
+  /** Native HsonData or a private own-data record: attrs?: string record, text?: string,
+   * use?: { quad: string, lib?: string }, at?: QUAD-to-configuration record,
+   * as?: explicit receiving QUAD name (private spelling).
    * use applies only to connectors; omitted lib retains the authored Library.
    */
-  configuration?: unknown;
+  configuration?: HsonData | Readonly<Record<string, unknown>>;
   maxDepth?: number;
   maxNodes?: number;
   maxCharacters?: number;
@@ -54,7 +59,12 @@ export function document_composition_options(input: DocumentCompositionOptions |
   };
   const schema = values.schema === undefined ? ANY_DOCUMENT : values.schema;
   if (!(schema instanceof HsonSchema)) throw new TypeError("Document composition requires a HsonSchema.");
-  const configuration = Object.hasOwn(values, "configuration") ? normalize_configuration(values.configuration) : undefined;
+  // The static HsonData brand is erased. Strings must pass the established
+  // strict data-only receiver; JS records retain their descriptor-only checks.
+  // The caller's capture fence already encloses this admission and projection.
+  const configuration = Object.hasOwn(values, "configuration") ? normalize_configuration(
+    typeof values.configuration === "string" ? admit_hson_data_input(values.configuration).materialize() : values.configuration,
+  ) : undefined;
   return Object.freeze({ configuration, schema, maxDepth: limit("maxDepth"), maxNodes: limit("maxNodes"), maxCharacters: limit("maxCharacters") });
 }
 
@@ -62,6 +72,7 @@ export function document_composition_options(input: DocumentCompositionOptions |
 type Configuration = Readonly<{
   attrs: readonly (readonly [string, string])[];
   text?: string;
+  as?: string;
   use?: Readonly<{ lib?: string; quad: string }>;
   at: readonly (readonly [string, Configuration])[];
 }>;
@@ -100,7 +111,7 @@ function normalize_configuration(input: unknown): Configuration {
     if (typeof value !== "object" || value === null) throw new TypeError("Invalid configuration.");
     if (active.has(value)) throw new TypeError("Cyclic composition configuration.");
     active.add(value);
-    for (const key of data.keys()) if (!["attrs", "text", "use", "at"].includes(key)) {
+    for (const key of data.keys()) if (!["attrs", "text", "use", "at", "as"].includes(key)) {
       throw new TypeError(`Unknown composition configuration field ${JSON.stringify(key)}.`);
     }
     const attrs: (readonly [string, string])[] = [];
@@ -112,6 +123,10 @@ function normalize_configuration(input: unknown): Configuration {
     }
     const text = data.get("text");
     if (data.has("text") && typeof text !== "string") throw new TypeError("Composition configuration text requires a string.");
+    const receiving = data.get("as");
+    if (data.has("as") && !is_document_quad_name(receiving)) {
+      throw new TypeError("Composition configuration as requires an explicit authored QUAD string.");
+    }
     let use: Configuration["use"];
     if (data.has("use")) {
       const reference = record(data.get("use")), lib = reference.get("lib"), quad = reference.get("quad");
@@ -132,6 +147,7 @@ function normalize_configuration(input: unknown): Configuration {
     const result: Configuration = Object.assign(Object.create(null), {
       attrs: Object.freeze(attrs), at: Object.freeze(at),
       ...(use === undefined ? {} : { use }), ...(typeof text === "string" ? { text } : {}),
+      ...(typeof receiving === "string" ? { as: receiving } : {}),
     });
     return Object.freeze(result);
   };
@@ -149,7 +165,9 @@ type RootCustomization = Readonly<{ attrs: readonly (readonly [string, string])[
 type Frame = {
   source: readonly (HsonNode | Primitive)[];
   output: NodeContent;
+  outputPath: readonly number[];
   index: number;
+  receiving?: Readonly<{ name: string; start: number }>;
   selection?: Selection;
   customization?: RootCustomization;
   occurrence: Occurrence;
@@ -180,7 +198,7 @@ export function expand_document_composition(
   read: (name: string) => HsonNode,
   limits: Readonly<{ maxDepth: number; maxNodes: number; maxCharacters: number; configuration?: Configuration }>,
   selectQuad?: (name: string, quad: string, root: HsonNode) => Readonly<{ node: HsonNode; quid: string; path: readonly number[] }>,
-): HsonNode {
+): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads }> {
   const sources = new Map<string, HsonNode>();
   const source = (name: string): HsonNode => {
     let root = sources.get(name);
@@ -214,6 +232,14 @@ export function expand_document_composition(
     }
   };
   const root: HsonNode = { $_tag: ROOT_TAG, $_content: [] };
+  const associations: DocumentQuadAdmission[] = [];
+  const receive = (name: string, content: NodeContent, start: number, outputPath: readonly number[]): void => {
+    if (content.length !== start + 1 || !is_ordinary_element_node(content[start])
+      || content[start].$_tag.toLowerCase() === "hson-template") {
+      throw new TypeError("Composition receiving QUAD requires exactly one ordinary resulting element.");
+    }
+    associations.push(Object.freeze({ name, path: validate_document_path([...outputPath, start]) }));
+  };
   chargeHeader(root);
   // Undefined selects the whole Library; addressed expansion uses its genuine local subject QUID.
   const active = new Map<string, Set<string | undefined>>([[sourceName, new Set([undefined])]]);
@@ -244,7 +270,8 @@ export function expand_document_composition(
     }
   };
   singleRoot(initialRoot.$_content, limits.configuration);
-  const frames: Frame[] = [{ source: initialRoot.$_content, output: root.$_content, index: 0,
+  const frames: Frame[] = [{ source: initialRoot.$_content, output: root.$_content, outputPath: [], index: 0,
+    ...(limits.configuration?.as === undefined ? {} : { receiving: { name: limits.configuration.as, start: 0 } }),
     selection: { library: sourceName }, owner: root, scope: initialScope,
     occurrence: { ...initial, scopes: [initialScope] },
     customization: limits.configuration,
@@ -258,6 +285,7 @@ export function expand_document_composition(
     const frame = frames[frames.length - 1]!;
     if (frame.index === frame.source.length) {
       if (frame.scope?.size) throw new Error("Composition configuration has inaccessible QUAD targets.");
+      if (frame.receiving !== undefined) receive(frame.receiving.name, frame.output, frame.receiving.start, frame.outputPath);
       frames.pop();
       if (frame.selection !== undefined) {
         const selections = active.get(frame.selection.library)!;
@@ -339,7 +367,8 @@ export function expand_document_composition(
       const childCustomization: RootCustomization = { attrs: [...overrides, ...customization.attrs],
         text: customization.text ?? text };
       singleRoot(content, childCustomization);
-      push({ source: content, output: frame.output, index: 0, selection, owner: frame.owner,
+      push({ source: content, output: frame.output, outputPath: frame.outputPath, index: 0, selection, owner: frame.owner,
+        ...(configuration?.as === undefined ? {} : { receiving: { name: configuration.as, start: frame.output.length } }),
         customization: childCustomization, scope: childScope,
         occurrence: { ...childOccurrence, scopes: [childScope] },
       });
@@ -380,13 +409,23 @@ export function expand_document_composition(
       }
     }
     chargeHeader(copy);
+    // Output is append-only. Connector frames share the actual receiver; child
+    // frames extend its final path, never the selected source's coordinates.
+    const outputPath = [...frame.outputPath, frame.output.length];
     frame.output.push(copy);
+    if (configuration?.as !== undefined) receive(configuration.as, frame.output, frame.output.length - 1, frame.outputPath);
     if (content.length) push({
-      source: content, output: copy.$_content, index: 0, owner: copy, occurrence, scope: nestedScope,
+      source: content, output: copy.$_content, outputPath, index: 0, owner: copy, occurrence, scope: nestedScope,
       ...(item.$_tag === ELEM_TAG ? { emptyClusterParent: frame.owner } : {}),
     });
     else if (nestedScope?.size) throw new Error("Composition configuration has inaccessible QUAD targets.");
   }
   // Temporary copied identity data never crosses admission; strip using the existing facility.
-  return clone_hson_graph_without_quids(root);
+  // Empty ELEM cleanup can only remove an unoccupied carrier. Every addressed
+  // element therefore keeps these exact final receiving coordinates. Admission
+  // validates the complete qualified graph and the registry bijection before
+  // ordinary sparse reconstruction allocates any receiving identities.
+  associations.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  return Object.freeze({ root: clone_hson_graph_without_quids(root),
+    ...(associations.length === 0 ? {} : { quads: Object.freeze(associations) }) });
 }
