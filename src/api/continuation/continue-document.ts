@@ -1,3 +1,6 @@
+import type { PortableDocumentHandoff } from "../livemap/livemap.internal.js";
+import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { prepare_portable_native_handoff } from "./continuation.portable.js";
 import type {
   InteractionActionDispatcher,
   InteractionFailure,
@@ -50,6 +53,22 @@ export function continue_document(options: Readonly<{
   document?: LiveMapDocumentLibrary;
   interactions?: LocalInteractions;
 }>): DocumentContinuation {
+  return continue_document_impl(options);
+}
+
+/** Bounded local portable SSR handoff. No package export or public option. @internal */
+export function continue_portable_document_internal(options: Readonly<{
+  map: LiveMap; root: Element; document: LiveMapDocumentLibrary; interactions?: LocalInteractions;
+}>, handoff: PortableDocumentHandoff): DocumentContinuation {
+  const owner = internal_livemap_aggregate_authority(options.map);
+  owner.assertPortableDocumentHandoff(handoff);
+  if (options.map.lib(handoff.libraryName) !== options.document) throw new Error("Portable handoff selects a different Library.");
+  return continue_document_impl(options, handoff);
+}
+
+function continue_document_impl(options: Readonly<{
+  map: LiveMap; root: Element; document?: LiveMapDocumentLibrary; interactions?: LocalInteractions;
+}>, handoff?: PortableDocumentHandoff): DocumentContinuation {
   if (typeof options !== "object" || options === null) {
     throw new TypeError("Document continuation options must be an object.");
   }
@@ -60,17 +79,27 @@ export function continue_document(options: Readonly<{
   let reflect: ReturnType<typeof reflect_existing_document_in_runtime> | undefined;
   let disposeInteractions: (() => void) | undefined;
   let disposeCssBinding: (() => void) | undefined;
+  let nativeHandoff: ReturnType<typeof prepare_portable_native_handoff> | undefined;
   try {
     const resolved = resolve_continuation_document(options.map, options.document);
-    const revision = resolved.selected.rev;
+    let revision = resolved.selected.rev;
+    handoff?.assertCurrent();
     const canonicalRoot = capture_continuation_document_root(resolved.selected);
     try {
-      adoption = adopt_exact_existing_document(canonicalRoot, options.root, resolved.selected.css.snapshot());
+      adoption = adopt_exact_existing_document(canonicalRoot, options.root,
+        handoff?.portableCss ?? resolved.selected.css.snapshot(),
+        handoff === undefined ? undefined : { quads: handoff.quads });
+      handoff?.assertCurrent();
       if (resolved.selected.rev !== revision) {
         throw new Error("Canonical document revision changed during exact DOM adoption.");
       }
     } catch (cause) {
       throw new DocumentContinuationError("adopt", cause);
+    }
+    if (handoff !== undefined) {
+      nativeHandoff = prepare_portable_native_handoff(adoption, handoff);
+      nativeHandoff.apply();
+      revision = resolved.selected.rev;
     }
     try {
       reflect = reflect_existing_document_in_runtime(
@@ -111,6 +140,7 @@ export function continue_document(options: Readonly<{
       throw new DocumentContinuationError("adopt", cause);
     }
     adoption.commit(() => reflect!.tree);
+    nativeHandoff?.finish();
     let disposed = false;
     const result: DocumentContinuation = Object.freeze({
       map: resolved.selected,
@@ -134,8 +164,12 @@ export function continue_document(options: Readonly<{
     try { disposeInteractions?.(); } catch { /* Preserve construction failure. */ }
     try { disposeCssBinding?.(); } catch { /* Preserve construction failure. */ }
     try { reflect?.dispose(); } catch { /* Preserve construction failure. */ }
-    try { adoption?.abort(reflect?.tree); } catch { /* Preserve construction failure. */ }
+    let rollbackFailure: unknown;
+    try { nativeHandoff?.rollback(); } catch (failure) { rollbackFailure = failure; }
+    try { adoption?.abort(reflect?.tree); } catch (failure) { rollbackFailure ??= failure; }
+    nativeHandoff?.finish();
     releaseRoot();
+    if (rollbackFailure !== undefined) throw new AggregateError([cause, rollbackFailure], "Document continuation rollback failed.");
     throw cause;
   }
 }

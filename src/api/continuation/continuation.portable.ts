@@ -1,0 +1,81 @@
+import type { ExactDocumentAdoption } from "./continuation.adopt.js";
+import type { PortableDocumentHandoff } from "../livemap/livemap.internal.js";
+import { active_subject_for_tree } from "../livetree/runtime/livetree-runtime.js";
+import { begin_mutation_publication } from "../livetree/lifecycle/mutation-publication.js";
+import { plan_browser_realization } from "../../internal/browser-realization/browser-realization-plan.js";
+import { plan_managed_document_css } from "../../internal/browser-realization/managed-document-css.js";
+import { assert_browser_realization_mappings, browser_parent_namespace_for_target, match_browser_realization_root } from "../../internal/browser-realization/browser-realization-dom.js";
+
+/** Native realization of an already validated, owner-prepared handoff. @internal */
+export function prepare_portable_native_handoff(adoption: ExactDocumentAdoption, handoff: PortableDocumentHandoff): Readonly<{
+  apply: () => void;
+  rollback: () => void;
+  finish: () => void;
+}> {
+  const subjects = adoption.portableSubjects;
+  const style = adoption.managedStyle;
+  if (handoff.receivingCss && style === undefined) throw new Error("Portable CSS handoff lost its exact managed style.");
+  const root = adoption.tree.dom.el(), subject = active_subject_for_tree(adoption.tree);
+  if (root === undefined) throw new Error("Portable handoff lost its admitted root.");
+  // Prepare final realization before accepting authority or invalidating the
+  // portable match. Initial publication requires exact runtime metadata too;
+  // Mirror's borrowed matcher tolerates already-owned runtime attributes.
+  const receivingPlan = plan_managed_document_css(plan_browser_realization(subject, {
+    capability: "dom", parentNamespace: browser_parent_namespace_for_target(root, subject.$_tag),
+  }), handoff.receivingCss);
+  let started = false;
+  let endPublication = () => {};
+  return Object.freeze({
+    apply: () => {
+      handoff.assertCurrent();
+      endPublication = begin_mutation_publication([subject], style === undefined ? [] : [style]);
+      handoff.acceptCss();
+      started = true;
+      // No await, scheduling, or style read occurs here. Even a synchronous
+      // native callback that flushes style still has a matching selector: QUAD
+      // until the style switch, QUID from the switch through carrier removal.
+      for (const { element, quid } of subjects) {
+        element.setAttribute("hson:quid", quid);
+        if (element.getAttribute("hson:quid") !== quid) throw new Error("Receiving identity metadata write did not realize its subject.");
+        handoff.assertCurrent();
+      }
+      if (style !== undefined && style.textContent !== handoff.receivingCss) style.textContent = handoff.receivingCss;
+      if (style !== undefined && style.textContent !== handoff.receivingCss) throw new Error("Receiving stylesheet write did not realize Library CSS.");
+      handoff.assertCurrent();
+      for (const { element } of subjects) {
+        element.removeAttribute("hson:quad");
+        handoff.assertCurrent();
+      }
+      assert_browser_realization_mappings(match_browser_realization_root(receivingPlan, root));
+      handoff.assertCurrent();
+    },
+    rollback: () => {
+      if (!started) return;
+      const failures: unknown[] = [];
+      // Reestablish the portable selector targets before restoring their CSS.
+      // Record every subject up front: setters can throw after making a write.
+      for (const { element, name } of subjects) {
+        try {
+          if (element.getAttribute("hson:quad") !== name) element.setAttribute("hson:quad", name);
+          if (element.getAttribute("hson:quad") !== name) throw new Error("Portable carrier rollback did not realize its subject.");
+        }
+        catch (cause) { failures.push(cause); }
+      }
+      try {
+        if (style !== undefined && style.textContent !== handoff.portableCss) style.textContent = handoff.portableCss;
+        if (style !== undefined && style.textContent !== handoff.portableCss) throw new Error("Portable stylesheet rollback did not realize its CSS.");
+      }
+      catch (cause) { failures.push(cause); }
+      for (const { element } of subjects) {
+        try {
+          if (element.hasAttribute("hson:quid")) element.removeAttribute("hson:quid");
+          if (element.hasAttribute("hson:quid")) throw new Error("Receiving identity metadata survived rollback.");
+        }
+        catch (cause) { failures.push(cause); }
+      }
+      if (failures.length) throw new AggregateError(failures, "Portable native handoff rollback failed.");
+      started = false;
+    },
+    finish: () => { endPublication(); endPublication = () => {}; },
+  });
+}

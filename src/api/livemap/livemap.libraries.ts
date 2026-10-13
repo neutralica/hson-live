@@ -943,6 +943,13 @@ export function make_livemap_mirror_from_semantic_checkpoint_internal(
 export function make_livemap_mirror_from_snapshot_internal(
   snapshot: LiveMapSnapshot,
 ): LiveMap {
+  return restore_portable_document_receiver_internal(snapshot).map;
+}
+
+/** Fresh final-only receiver retaining this installation's bounded correspondence. @internal */
+export function restore_portable_document_receiver_internal(snapshot: LiveMapSnapshot): Readonly<{
+  map: LiveMap; correspondence: import("./livemap.internal.js").PortableQuadRestoration;
+}> {
   assert_libraries_snapshot_shape(snapshot);
   assert_libraries_snapshot_bound(snapshot);
   if (snapshot.registryDigest !== snapshot.registry.digest
@@ -980,8 +987,8 @@ export function make_livemap_mirror_from_snapshot_internal(
 
   const mirror = make_livemap_from_canonical_libraries_internal(inputs, systems);
   const aggregate = internal_livemap_aggregate_authority(mirror);
-  aggregate.restorePortableLibraries(snapshot);
-  return mirror;
+  const correspondence = aggregate.restorePortableLibrariesWithCorrespondence(snapshot);
+  return Object.freeze({ map: mirror, correspondence });
 }
 
 function make_data_library(

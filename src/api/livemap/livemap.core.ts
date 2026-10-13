@@ -13,7 +13,7 @@ import {
   type DocumentQuadBindings,
   type DocumentQuadCorrespondence,
 } from "./livemap.document.quad.js";
-import type { PortableQuadRestoration } from "./livemap.internal.js";
+import type { PortableQuadRestoration, PortableDocumentHandoff } from "./livemap.internal.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 // Registry LiveMap transition and aggregate authority.
@@ -51,7 +51,7 @@ import { validate_hson_schema_graph } from "../../internal/schema-hson-validatio
 import { ANY_DATA, ANY_DOCUMENT, HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
 import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
 import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
-import { decode_portable_document_stylesheet, empty_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
+import { decode_portable_document_stylesheet, empty_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal, render_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import { document_css_mentions_subject_identity, translate_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
@@ -72,7 +72,7 @@ import {
   prepare_document_graph_operation,
   type PreparedDocumentMutation
 } from "./livemap.document.mutation.js";
-import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
+import { document_path_equal, resolve_document_path, validate_document_path } from "./livemap.document.path.js";
 import { register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
 import {
   clone_live_root,
@@ -268,6 +268,8 @@ function make_livemap_registry_engine(
   // to their selected application Libraries.
   const mapIdentityEpoch = make_livemap_identity_epoch(aggregate_quid_locations(states).keys());
   let identityGeneration = 0;
+  const portableRestorations = new WeakSet<PortableQuadRestoration>();
+  const portableHandoffs = new WeakSet<PortableDocumentHandoff>();
   let localIdentityTransactionActive = false;
   /** Revision zero represents the initial graph before any changed commit. */
   const transitionController = make_livemap_transition_controller(() => mapRevision);
@@ -2115,6 +2117,7 @@ function make_livemap_registry_engine(
     transitionController.invalidate();
     const restored = Object.freeze(candidates.map(({ state }) => state.identity));
     const correspondence = Object.freeze({ associations: Object.freeze(associations), assertCurrent: capture_fence() });
+    portableRestorations.add(correspondence);
     afterTopologyInstall?.(restored);
     const event = Object.freeze({ previousRevision, revision: mapRevision, libraries: restored,
       changedLibraries, continuity: "new-epoch" as const });
@@ -2297,6 +2300,7 @@ function make_livemap_registry_engine(
     // stable library records above.
     const restored = Object.freeze(libraryRegistry.all().map((library) => library.identity));
     const correspondence = Object.freeze({ associations: Object.freeze(associations), assertCurrent: capture_fence() });
+    portableRestorations.add(correspondence);
     const event = Object.freeze({
       previousRevision,
       revision: snapshot.revision,
@@ -2915,6 +2919,69 @@ function make_livemap_registry_engine(
       assert_libraries_snapshot_shape(snapshot);
       check();
       return restore_libraries_aggregate(snapshot);
+    },
+    assertPortableDocumentHandoff: (candidate) => {
+      if (!portableHandoffs.has(candidate)) throw new Error("Portable handoff candidate belongs to another Library authority.");
+      candidate.assertCurrent();
+    },
+    preparePortableDocumentHandoff: (identity, restoration) => {
+      // The installation capability proves completeness, including disposable
+      // subjects that deliberately have no retained authored QUAD registration.
+      if (!portableRestorations.has(restoration)) throw new Error("Portable correspondence belongs to another restoring authority.");
+      restoration.assertCurrent();
+      transitionController.assertPublicMutationAllowed();
+      if (clientComposition !== undefined) throw new Error("Portable document handoff requires an ordinary local Library.");
+      const state = require_library(identity), binding = require_hosted_state().byIdentity.get(identity);
+      if (state.mode !== "document" || binding === undefined || binding.scope !== undefined) throw new Error("Portable handoff requires the selected document Library.");
+      const overlay = require_document_overlay(state.documentOverlay);
+      const associations = restoration.associations.filter(entry => entry.library === identity);
+      const entries = associations.map((entry): PortableDocumentQuads[number] => {
+        const currentPath = overlay.pathForQuid(entry.quid);
+        if (entry.libraryName !== binding.name || overlay.quidAtPath(entry.path) !== entry.quid
+          || currentPath === undefined || !document_path_equal(currentPath, entry.path)
+          || !mapIdentityEpoch.issued().has(entry.quid)
+          || !is_ordinary_element_node(resolve_document_path(state.root, "document", entry.path))) {
+          throw new Error("Portable handoff subject does not match its owning Library and exact path.");
+        }
+        const authored = resolve_document_quad(state.root, overlay, state.documentQuads, entry.name, undefined);
+        if (entry.disposition === "authored" ? authored?.quid !== entry.quid
+          : entry.disposition !== "disposable" || authored !== undefined || state.documentQuads?.byQuid.has(entry.quid)) {
+          throw new Error("Portable handoff disposition conflicts with authored Library associations.");
+        }
+        return entry.disposition === "disposable"
+          ? { name: entry.name, path: entry.path, disposition: "disposable" }
+          : { name: entry.name, path: entry.path };
+      });
+      const quads = entries.length === 0 ? undefined : decode_document_quads(entries, state.root, "document");
+      const portable = encode_portable_document_stylesheet(stylesheet(identity));
+      const translated = document_css_mentions_subject_identity(portable)
+        ? translate_document_css_identities(portable, "inbound", { associations, assertCurrent: restoration.assertCurrent })
+        : portable;
+      const portableCss = render_portable_document_stylesheet(decode_portable_document_stylesheet(portable));
+      const receivingCss = render_portable_document_stylesheet(decode_portable_document_stylesheet(translated));
+      restoration.assertCurrent();
+      let check = capture_fence(), accepted = false;
+      const root = state.root;
+      const candidate: PortableDocumentHandoff = Object.freeze({ owner: aggregateAuthority, library: identity, libraryName: binding.name,
+        quads, portableCss, receivingCss, assertCurrent: () => check(),
+        acceptCss: () => {
+          check();
+          if (accepted) return;
+          const before = mapRevision, generation = identityGeneration, authority = hostedFence, registry = hostedRegistry;
+          const commit = commit_stylesheet(identity, { domain: "css", kind: "replace", stylesheet: translated });
+          // Publication can reenter. Only this exact accepted CSS transition
+          // earns a new fence; any other graph/identity/authority change rejects.
+          if (mapRevision !== commit.rev || commit.prevRev !== before || identityGeneration !== generation
+            || hostedFence !== authority || hostedRegistry !== registry || state.root !== root || state.documentOverlay !== overlay
+            || !portable_document_stylesheet_equal(stylesheet(identity), decode_portable_document_stylesheet(translated))) {
+            throw new Error("Receiving authority changed during portable CSS acceptance.");
+          }
+          accepted = true;
+          check = capture_fence();
+        },
+      });
+      portableHandoffs.add(candidate);
+      return candidate;
     },
     restoreHosted: restore_hosted_aggregate,
     restoreClientHosted: restore_client_hosted_aggregate,

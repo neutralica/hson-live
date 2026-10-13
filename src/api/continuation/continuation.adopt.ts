@@ -39,10 +39,13 @@ import {
 } from "../../internal/browser-realization/browser-realization-dom.js";
 import { plan_browser_realization } from "../../internal/browser-realization/browser-realization-plan.js";
 import { plan_managed_document_css, MANAGED_DOCUMENT_CSS_MARKER } from "../../internal/browser-realization/managed-document-css.js";
+import { plan_portable_document_subjects } from "../../internal/browser-realization/portable-document-subjects.js";
+import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 
 export type ExactDocumentAdoption = Readonly<{
   tree: LiveTree;
   managedStyle: HTMLStyleElement | undefined;
+  portableSubjects: readonly Readonly<{ element: Element; name: string; quid: string }>[];
   commit: (currentTree?: () => LiveTree) => void;
   abort: (currentTree?: LiveTree) => void;
   activateRuntimeManagers: () => void;
@@ -188,14 +191,16 @@ export function adopt_exact_existing_document(
   canonicalDocumentRoot: HsonNode,
   target: Element,
   css = "",
+  portable?: Readonly<{ quads: PortableDocumentQuads | undefined }>,
 ): ExactDocumentAdoption {
   const managedStyle = exact_managed_style(target, css);
-  const priorTree = reusable_cached_tree(target, canonicalDocumentRoot, css, managedStyle);
+  const priorTree = portable === undefined ? reusable_cached_tree(target, canonicalDocumentRoot, css, managedStyle) : undefined;
   if (priorTree !== undefined) {
     let finished = false;
     return Object.freeze({
       tree: priorTree,
       managedStyle,
+      portableSubjects: Object.freeze([]),
       commit(currentTree = () => priorTree): void {
         if (finished) return;
         commit_adopted_root(target, currentTree);
@@ -216,10 +221,22 @@ export function adopt_exact_existing_document(
 
   const canonicalOrdinaryRoot = canonicalDocumentRoot.$_content[0];
   const projectedRoot = clone_node(canonicalOrdinaryRoot);
-  const realization = plan_managed_document_css(plan_browser_realization(projectedRoot, {
+  const browser = plan_browser_realization(projectedRoot, {
     parentNamespace: browser_parent_namespace_for_target(target, projectedRoot.$_tag),
-  }), css);
+  });
+  const addressed = portable === undefined ? browser : plan_portable_document_subjects(browser,
+    { $_tag: ROOT_TAG, $_content: [projectedRoot] }, portable.quads);
+  const realization = plan_managed_document_css(addressed, css);
   const match = match_browser_realization_root(realization, target);
+  const portableSubjects: Array<Readonly<{ element: Element; name: string; quid: string }>> = [];
+  if (portable !== undefined) for (const link of match.links) {
+    if (link.domNode.nodeType !== 1) continue;
+    const element = link.domNode as Element, name = element.getAttribute("hson:quad");
+    if (name === null) continue;
+    const quid = link.canonicalNode.$_meta?.quid;
+    if (quid === undefined) throw new Error("Portable carrier has no receiving owner-issued identity.");
+    portableSubjects.push(Object.freeze({ element, name, quid }));
+  }
 
   const runtime = continuation_runtime_for_document(target.ownerDocument);
   const claim = claim_runtime_document_silently(runtime, target.ownerDocument);
@@ -261,6 +278,7 @@ export function adopt_exact_existing_document(
   return Object.freeze({
     tree: adoptedTree,
     managedStyle,
+    portableSubjects: Object.freeze(portableSubjects),
     commit(currentTree = () => adoptedTree): void {
       if (finished) return;
       commit_adopted_root(target, currentTree);

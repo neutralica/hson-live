@@ -209,7 +209,7 @@
     "test:browser-realization-parser-closure": "npm run build && node scripts/run-browser-realization-parser-closure.mjs",
     "test:hosted-document-continuation": "node --import=tsx tests/hosted-document-continuation.acceptance.mts",
     "test:hosted-document-css-phase-c": "node --import=tsx tests/hosted-document-css-phase-c.acceptance.mts",
-    "test:document-ssr": "node --import=tsx tests/document-ssr.acceptance.mts && node --import=tsx tests/document-ssr-subjects.acceptance.mts",
+    "test:document-ssr": "node --import=tsx tests/document-ssr.acceptance.mts && node --import=tsx tests/document-ssr-subjects.acceptance.mts && node --import=tsx tests/document-portable-graft.acceptance.mts",
     "test:document-ssr-subjects-browser": "node --import=tsx scripts/run-document-ssr-subjects-browser.mjs",
     "test:ssr-bootstrap-codec": "node --import=tsx tests/ssr-bootstrap-codec.acceptance.mts",
     "test:ssr-bootstrap-codec-memory": "node --import=tsx tests/ssr-bootstrap-codec-memory.acceptance.mts",

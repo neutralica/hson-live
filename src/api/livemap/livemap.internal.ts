@@ -63,6 +63,19 @@ export type PortableQuadRestoration = Readonly<{
   assertCurrent: () => void;
 }>;
 
+/** Local, single-document handoff prepared by the restoring Library owner. @internal */
+export type PortableDocumentHandoff = Readonly<{
+  owner: InternalLiveMapAggregateAuthority;
+  library: LiveMapLibraryIdentity;
+  libraryName: string;
+  quads: import("../../types/livemap.types.js").PortableDocumentQuads | undefined;
+  portableCss: string;
+  receivingCss: string;
+  assertCurrent: () => void;
+  /** Accept Library CSS once; refresh the fence only for this owned transition. */
+  acceptCss: () => void;
+}>;
+
 const INTERNAL_OWNERS = new WeakMap<object, InternalLiveMapOwner>();
 
 const INTERNAL_AUTHORITY_POSITION_OBSERVERS = new WeakMap<object, (listener: (revision: number) => void) => () => void>();
@@ -131,6 +144,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   projectDocumentCorrespondence: (library: LiveMapLibraryIdentity, quids: readonly string[]) => import("../../types/livemap.types.js").PortableDocumentQuads | undefined;
   /** Fresh portable restoration with disposable operation-local associations for a future consumer. */
   restorePortableLibrariesWithCorrespondence: (snapshot: LiveMapSnapshot) => PortableQuadRestoration;
+  assertPortableDocumentHandoff: (candidate: PortableDocumentHandoff) => void;
+  preparePortableDocumentHandoff: (library: LiveMapLibraryIdentity, restoration: PortableQuadRestoration) => PortableDocumentHandoff;
   /** Stage one topology batch under Locus management without installing it. @internal */
   prepareAddLibrariesManaged: (owner: object, definitions: readonly Readonly<{
     name: string;

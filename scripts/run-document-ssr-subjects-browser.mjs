@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { build } from "esbuild";
+import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,12 +10,26 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
 import { ssr_subject_fixture } from "../tests/fixtures/document-ssr-subjects-cases.mts";
-import { cut_document_ssr_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { compose_livemap_document_internal, make_livemap_from_authored_libraries_internal, cut_document_ssr_internal } from "../src/api/livemap/livemap.libraries.ts";
 
 // Source-only Chrome acceptance: no build and no writes to tracked distribution.
 const fixture = ssr_subject_fixture();
 const cut = cut_document_ssr_internal(fixture.map, { html: "page" }, fixture.demanded);
 assert.doesNotMatch(cut.html, /hson:quid|hson\\:quid/);
+const components = make_livemap_from_authored_libraries_internal({
+  layout: {document:'<html <head/> <body <hson-template lib="component"/> <hson-template lib="component"/>/>/>'},
+  component: {document:'<button @:source/>'},
+});
+const final = compose_livemap_document_internal(components, "layout", "final");
+const componentOwner = internal_livemap_aggregate_authority(components), finalIdentity = componentOwner.libraries().at(-1);
+const componentDemand = ["345678901", "456789012"];
+componentOwner.acquireLocalDocumentIdentity(finalIdentity, validate_document_path([0,0,1,0,0]), componentDemand[0]);
+componentOwner.acquireLocalDocumentIdentity(finalIdentity, validate_document_path([0,0,1,0,1]), componentDemand[1]);
+final.css.stylesheet('[hson\\:quid="345678901"]{color:red}[hson\\:quid="456789012"]{color:blue}');
+const componentCut = cut_document_ssr_internal(components, {html:"final", documents:["final"], data:[]}, componentDemand);
+const bundle = await build({ entryPoints: ["tests/browser/document-portable-graft.entry.mjs"], bundle: true,
+  write: false, platform: "browser", format: "iife", logLevel: "silent" });
+const browserSource = bundle.outputFiles[0].text;
 const profile = await mkdtemp(join(tmpdir(), "hson-ssr-subjects-chrome-"));
 let chrome, socket, server;
 let stderr = "";
@@ -24,8 +41,9 @@ function assert_ordinary_rule_order(css) {
   assert.ok(prior < winning, "Ordinary rules are out of cascade order.");
 }
 try {
-  server = createServer((_request, response) => {
+  server = createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    if (request.url === "/graft") { response.end("<!doctype html><html><head></head><body></body></html>"); return; }
     // A negative probe: this script must never execute in the client.
     response.end(cut.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>'));
   });
@@ -104,6 +122,21 @@ try {
   assert.throws(() => assert_ordinary_rule_order(managedCss.replace(".ordinary{color:rgb(130,140,150);}", "")), /Missing winning ordinary rule/);
   assert.throws(() => assert_ordinary_rule_order(".ordinary{color:rgb(130,140,150);}.ordinary{color:red;}"), /out of cascade order/);
   console.log(`Chrome JavaScript-disabled first paint passed: ${JSON.stringify(evidence)}`);
+  await command("Emulation.setScriptExecutionDisabled", {value:false});
+  await command("Page.navigate", {url: new URL("/graft", url).href});
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (await evaluate('document.readyState === "complete" && location.pathname === "/graft"')) break;
+    await delay(50);
+  }
+  await evaluate(browserSource);
+  const payload = { html: cut.html, libs: cut.libs, composed: componentCut,
+    sourceQuids: fixture.aggregate.captureDocumentSsr(fixture.library, fixture.demanded).correspondence.map(entry => entry.quid) };
+  const graftResult = await command("Runtime.evaluate", { expression: `runPortableGraftAcceptance(${JSON.stringify(payload)})`,
+    awaitPromise:true, returnByValue:true });
+  assert.equal(graftResult.exceptionDetails, undefined, JSON.stringify(graftResult.exceptionDetails));
+  assert.equal(graftResult.result.value.passed, 20);
+  console.log(`Chrome JavaScript-enabled portable graft passed: ${JSON.stringify(graftResult.result.value)}`);
+
 } finally {
   if (socket) { socket.terminate(); }
   if (chrome && chrome.exitCode === null) {
