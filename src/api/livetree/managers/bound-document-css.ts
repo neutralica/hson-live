@@ -37,6 +37,7 @@ export function bind_document_css_tree(
   document: LiveMapDocumentLibrary,
   style: HTMLStyleElement | undefined,
   hosted: boolean,
+  currentTree: () => LiveTree = () => tree,
 ): () => void {
   const owner = document_binding_for_node(active_subject_for_tree(tree))?.owner;
   if (owner === undefined) throw new Error("Document CSS binding requires active Mirror correspondence.");
@@ -58,20 +59,21 @@ export function bind_document_css_tree(
       }
       return;
     }
-    if (style === undefined) {
-      const root = tree.dom.el();
+    {
+      const root = currentTree().dom.el();
       const head = Array.from(root?.childNodes ?? []).find((node): node is Element =>
         node.nodeType === 1 && (node as Element).localName === "head");
       if (head === undefined) throw new Error("Document CSS realization lost its explicit head.");
-      style = head.ownerDocument.createElement("style");
-      style.setAttribute(MANAGED_DOCUMENT_CSS_MARKER, "managed");
-      style.textContent = next;
-      const runtimeHost = Array.from(head.childNodes).find(is_runtime_infrastructure);
-      head.insertBefore(style, runtimeHost ?? null);
+      const needsPlacement = style === undefined || style.parentNode !== head;
+      style ??= head.ownerDocument.createElement("style");
+      if (style.getAttribute(MANAGED_DOCUMENT_CSS_MARKER) !== "managed") style.setAttribute(MANAGED_DOCUMENT_CSS_MARKER, "managed");
+      if (style.textContent !== next) style.textContent = next;
+      if (needsPlacement) {
+        const runtimeHost = Array.from(head.childNodes).find(is_runtime_infrastructure);
+        head.insertBefore(style, runtimeHost ?? null);
+      }
       mark_runtime_infrastructure(style);
-      return;
     }
-    if (style.textContent !== next) style.textContent = next;
   };
   const stop = document.commits.observe(sync);
   const offRetirement = hosted ? observe_client_library_retirement_internal(document, () => {

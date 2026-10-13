@@ -71,7 +71,7 @@ function detach_node_runtime(node: HsonNode, runtime: LiveTreeRuntime): void {
   // canonical identity used by scoped CSS.
   disposables_off_for_subject(node, runtime);
   const quid = get_quid(node, runtime);
-  if (typeof quid === "string" && quid.length) {
+  if (typeof quid === "string" && quid.length && runtime.cssManager !== undefined) {
     CssRuntimeManager.forRuntime(runtime).releaseOwnedCssForQuid(quid);
   }
   // 3) finally drop the map entry

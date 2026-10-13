@@ -67,7 +67,7 @@ import {
   prepare_document_graph_operation,
   type PreparedDocumentMutation
 } from "./livemap.document.mutation.js";
-import { resolve_document_path } from "./livemap.document.path.js";
+import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
 import { register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
 import {
   clone_live_root,
@@ -348,6 +348,7 @@ function make_livemap_registry_engine(
     libraries: readonly LiveMapLibraryIdentity[];
     changedLibraries: readonly LiveMapLibraryIdentity[];
     continuity: "same-epoch" | "new-epoch";
+    documentRootRebases?: readonly Readonly<{ library: LiveMapLibraryIdentity; from: string | undefined; to: string | undefined }>[];
   }>) => void> = [];
   const aggregateWatches: AggregateWatch[] = [];
   const aggregateFeeds: AggregateFeed[] = [];
@@ -2459,6 +2460,12 @@ function make_livemap_registry_engine(
     const changedLibraries = Object.freeze(candidates
       .filter((candidate) => candidate.graphChanged)
       .map((candidate) => candidate.state.identity));
+    const documentRootRebases = Object.freeze(candidates.flatMap(candidate => {
+      if (!candidate.retained || !candidate.graphChanged || candidate.state.mode !== "document") return [];
+      const path = validate_document_path([0]);
+      const from = candidate.state.documentOverlay?.quidAtPath(path), to = candidate.documentOverlay?.quidAtPath(path);
+      return from === to ? [] : [Object.freeze({ library: candidate.state.identity, from, to })];
+    }));
     const semanticChanged = retired.length > 0 || candidates.some((candidate) => candidate.changed)
       || (systemState === undefined) !== (composedSystem === undefined)
       || (systemState !== undefined && composedSystem !== undefined
@@ -2499,6 +2506,7 @@ function make_livemap_registry_engine(
         .map((candidate) => candidate.state.identity)),
       changedLibraries,
       continuity: "same-epoch" as const,
+      documentRootRebases,
     });
     enqueuePublication(() => {
       deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");

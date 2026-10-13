@@ -4,6 +4,7 @@ import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
 import type {
   LiveMapDocumentMode,
+  LiveMapDocumentLibrary,
   LiveMapCommitObservation,
 } from "../../types/livemap.types.js";
 import { clone_live_root } from "./livemap.editor.js";
@@ -60,6 +61,8 @@ export type LiveMapDocumentObservationEvidence = Readonly<{
   revision: number;
   root: HsonNode;
   continuity: "same-epoch" | "new-epoch";
+  /** Owner-proven receiving identity reset from an authorized retained-Library snapshot. */
+  rootRebase?: Readonly<{ library: LiveMapDocumentLibrary; from: string | undefined; to: string | undefined }>;
 }>;
 
 /** Capture portable state, with optional owner-proven same-epoch identity. */

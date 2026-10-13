@@ -1,3 +1,4 @@
+import { activate_document_interactions_internal } from "../src/api/interactions/interactions.ts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
@@ -590,6 +591,32 @@ await check("activation snapshots every caller-owned runtime option and cannot i
   assert.equal(failureB, 0);
   assert.equal(alternateTarget.registrations.length, 0);
   dispose(); reflection.dispose(); alternateReflection.dispose();
+});
+
+await check("document current-tree provider fails safely without changing capability snapshots", () => {
+  const map = map_fixture();
+  add_interaction(map, local("current-provider", "run"));
+  const reflection = hsonMirror(map.lib("page"));
+  const target = new Target();
+  link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
+  let available = true, calls = 0, failures = 0;
+  const localTable = { run: () => { calls++; } };
+  const dispose = activate_document_interactions_internal({ map, tree: reflection.tree, local: localTable,
+    onFailure: () => { failures++; } }, () => {
+    if (!available) throw new Error("current document tree unavailable");
+    return reflection.tree;
+  });
+  target.fire(new Event("click")); assert.equal(calls, 1);
+  localTable.run = () => { calls += 100; };
+  available = false;
+  target.fire(new Event("click")); assert.equal(calls, 1); assert.ok(failures > 0);
+  map.lib("state").at(["count"]).set(1);
+  target.fire(new Event("click")); assert.equal(calls, 1);
+  available = true;
+  map.lib("state").at(["count"]).set(2);
+  target.fire(new Event("click")); assert.equal(calls, 2);
+  dispose(); target.fire(new Event("click")); assert.equal(calls, 2);
+  reflection.dispose();
 });
 
 await check("local capability snapshot is own-data-property-only and validates before side effects", () => {

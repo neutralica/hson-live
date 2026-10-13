@@ -1179,6 +1179,7 @@ function reflect_document_binding_in_runtime(
     canonicalMaterial: DocumentRootMaterial,
     observedMaterial: DocumentRootMaterial,
     targetRevision: number,
+    rootRebase?: Readonly<{ from: string | undefined; to: string | undefined }>,
   ): void => {
     for (const registration of registrations) validate_bound_registration(registration);
     const priorRootQuid = byPath.get(path_key([]))?.persistedQuid;
@@ -1197,16 +1198,22 @@ function reflect_document_binding_in_runtime(
         return registration?.owner === owner ? registration.persistedQuid : undefined;
       },
       borrowed,
+      rootRebase,
     );
     currentStatus = "replacing";
     const restoreCorrespondence = capture_correspondence();
+    const priorTree = tree;
     try {
       apply_document_structural_transaction(convergence.structural, () => {
         prune_removed_registrations(convergence.structural.finalNodes);
         rebuild_correspondence();
+        if (convergence.structural.borrowedRootRebase !== undefined) {
+          tree = create_linked_livetree_in_runtime(convergence.structural.borrowedRootRebase.to, runtime);
+        }
         for (const registration of registrations) validate_bound_registration(registration);
       });
     } catch (cause) {
+      tree = priorTree;
       restoreCorrespondence();
       throw new DocumentMirrorError(
         DOCUMENT_MIRROR_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
@@ -1247,11 +1254,19 @@ function reflect_document_binding_in_runtime(
       if (evidence.continuity === "new-epoch") {
         reconstruct_new_epoch(evidence, observation.revision);
       } else {
-        if (borrowed) assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree));
+        if (borrowed && evidence.rootRebase === undefined) assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree),
+          livemap_document_identity_overlay_for(map.document).quidAtPath(validate_document_path([0])));
+        const rootRebase = borrowed ? evidence.rootRebase : undefined;
+        if (rootRebase !== undefined
+          && (rootRebase.library !== map || rootRebase.from !== byPath.get(path_key([0]))?.persistedQuid
+            || rootRebase.to !== livemap_document_identity_overlay_for(map.document).quidAtPath(validate_document_path([0])))) {
+          throw new DocumentMirrorError(DOCUMENT_MIRROR_QUID_MISMATCH_ERROR_CODE, "Authorized root rebase does not match the binding and owning overlay.");
+        }
         converge_compatible_root(
           evidence,
           evidence,
           observation.revision,
+          rootRebase,
         );
       }
       return;
@@ -1276,7 +1291,8 @@ function reflect_document_binding_in_runtime(
       currentRevision = commit.rev;
       return;
     }
-    if (borrowed) assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree));
+    if (borrowed) assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree),
+      livemap_document_identity_overlay_for(map.document).quidAtPath(validate_document_path([0])));
     consume_identity_effects(commit);
     const hasIdentityRegistration = commit.ops.some((operation) => operation.op === "ensure-quid");
     const identityReservation = livemap_document_identity_reservation_for(commit);
@@ -1605,13 +1621,18 @@ function canonical_quids_differ(left: HsonNode, right: HsonNode): boolean {
   return false;
 }
 
-function assert_borrowed_root_continuity(canonicalRoot: HsonNode, borrowedRoot: HsonNode): void {
+function assert_borrowed_root_continuity(canonicalRoot: HsonNode, borrowedRoot: HsonNode,
+  canonicalRootQuid: string | undefined): void {
   const nextRoot = canonicalRoot.$_tag === ROOT_TAG && canonicalRoot.$_content.length === 1
     ? canonicalRoot.$_content[0]
     : undefined;
   if (!is_ordinary_element_node(nextRoot)
     || nextRoot.$_tag !== borrowedRoot.$_tag
-    || nextRoot.$_meta?.[HSON_META_QUID] !== borrowedRoot.$_meta?.[HSON_META_QUID]) {
+    // Accepted graph evidence can be QUID-free; its owning overlay supplies
+    // the legitimate local root identity, just as it does at initial grafting.
+    || (nextRoot.$_meta?.[HSON_META_QUID] !== undefined
+      && nextRoot.$_meta[HSON_META_QUID] !== canonicalRootQuid)
+    || canonicalRootQuid !== borrowedRoot.$_meta?.[HSON_META_QUID]) {
     throw new DocumentMirrorError(
       DOCUMENT_MIRROR_UNSUPPORTED_OPERATION_ERROR_CODE,
       "Canonical root replacement cannot retire or replace a borrowed document root.",

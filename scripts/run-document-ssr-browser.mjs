@@ -6,11 +6,17 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import { parse_document_stylesheet } from "../dist/internal/css/parse-document-stylesheet.js";
-import { Hson, encode_ssr_bootstrap, hson } from "../dist/index.js";
+import { Hson, encode_ssr_bootstrap, hson, enable_interactions, add_interaction } from "../dist/index.js";
 import { hsonLiveMap } from "hson-live/livemap";
 import { bind_node_locus_websocket } from "../dist/api/locus/node/index.js";
 import { parse_hson_exact_runtime } from "../dist/internal/exact-runtime-hson-codec.js";
 import { admit_exact_runtime_livemap_libraries } from "../dist/internal/exact-runtime-node-admission.js";
+import { make_livemap_from_authored_libraries_internal } from "../dist/api/livemap/livemap.libraries.js";
+import { lookup_document_quad_internal } from "../dist/api/livemap/livemap.document.quad.js";
+import { create_locus_hosted_aggregate_authority_internal } from "../dist/api/locus/locus.aggregate.authority.js";
+import { capture_selected_authority_projection_snapshot } from "../dist/api/locus/locus.authority-projection-snapshot.js";
+import { locus_local_initializer_digest } from "../dist/api/locus/locus.local-initializer.js";
+import { cut_hosted_projection } from "../dist/internal/document-cut.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const temporaryRoot = join(repositoryRoot, "tmp");
@@ -37,6 +43,8 @@ let librariesSocketServer;
 let librariesLocus;
 let cssSocketServer;
 let cssLocus;
+let quadSocketServer;
+let quadLocus;
 let chrome;
 let timeoutId;
 let moduleSource = "";
@@ -65,6 +73,15 @@ try {
   const FullPageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content <sequence [<tag "title" content "string">]>>, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
   const fullMap = hson.liveMap.fromLibraries({ page: { document: `<html <head <title "SSR"/>/> <body <main "whole"/>/>/>`, schema: FullPageSchema } });
   const full = fullMap.cut({ html: "page" });
+  const quadCuts = [false, true].map(multiple => {
+    const map = make_livemap_from_authored_libraries_internal({ page: { document:
+      `<html ${multiple ? '@:root ' : ''}<head/> <body <main <button @:confirm id="quad-button"/> <aside ${multiple ? '@:other ' : ''}id="quad-other"/> <span id="quad-anonymous"/>/>/>/>` } });
+    map.lib("page").css.stylesheet('#quad-button{color:rgb(11,22,33)}');
+    const cut = map.cut({ html: "page" });
+    const serverQuids = (cut.libs.libraries[0].quads ?? []).map(({ name }) => lookup_document_quad_internal(map.lib("page"), name).quid);
+    assert.doesNotMatch(cut.html, /hson:quid/);
+    return { multiple, cut, serverQuids };
+  });
   const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;
   const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
   const localSelectionMap = admit_exact_runtime_livemap_libraries({
@@ -157,6 +174,30 @@ try {
   if (cssSocketAddress === null || typeof cssSocketAddress === "string") throw new Error("Styled browser socket server has no TCP address.");
   const cssSocketUrl = `ws://127.0.0.1:${cssSocketAddress.port}`;
 
+  const quadMap = make_livemap_from_authored_libraries_internal({ page: { document:
+    '<html @:root <head/> <body <button @:target id="hosted-quad"/>/>/>' }, secret: { data: { sentinel: "PRIVATE_ROOT_RECOVERY" } }, side: { document: "<aside/>" } });
+  enable_interactions(quadMap);
+  add_interaction(quadMap, { ...browserInteraction, id: "quad-root-click", subject: { library: "page", path: [0] }, key: "rootClick" });
+  quadMap.lib("page").css.stylesheet('#hosted-quad{color:rgb(11,22,33)}');
+  quadLocus = create_locus_hosted_aggregate_authority_internal({ map: quadMap,
+    libraries: [{ name: "page", ownership: "shared" }, { name: "secret", ownership: "private" }, { name: "side", ownership: "shared" }], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
+    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures, writableDocuments: ["page"] }) });
+  const quadSessionId = await quadLocus.create_session({ libraries: ["page"], systemFeatures: ["interactions"] });
+  const quadHostedCut = { ...cut_hosted_projection(capture_selected_authority_projection_snapshot(quadMap,
+    quadLocus.sessions.projection(quadSessionId)), "page"), format: "hson-locus-session-now",
+    sessionBinding: quadLocus.sessions.binding(quadSessionId), local: [], initializerDigest: locus_local_initializer_digest([]) };
+  const quadServerQuids = ["root", "target"].map(name => lookup_document_quad_internal(quadMap.lib("page"), name).quid);
+  // Ordinary retained history is available. Recovery must still reconcile this
+  // now-stale, valid SSR cut without replacing its borrowed root Element.
+  await quadLocus.stage(draft => { draft.lib("page").attrs.set({ kind: "path", path: [0] }, "data-stale-recovered", "yes"); });
+  quadSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolveListen, rejectListen) => { quadSocketServer.once("listening", resolveListen); quadSocketServer.once("error", rejectListen); });
+  quadSocketServer.on("connection", socket => bind_node_locus_websocket(quadLocus, socket));
+  const quadSocketAddress = quadSocketServer.address();
+  if (quadSocketAddress === null || typeof quadSocketAddress === "string") throw new Error("QUAD browser socket server has no TCP address.");
+  const quadSocketUrl = `ws://127.0.0.1:${quadSocketAddress.port}`;
+
+  let quadRecoveryRound = 0;
   let reportResult;
   const browserResult = new Promise((resolveResult) => { reportResult = resolveResult; });
   server = createServer(async (request, response) => {
@@ -169,7 +210,31 @@ try {
     if (url.pathname === "/__state") {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ local, localSelection, full, libraries, librariesSocketUrl, credential: retained.credential,
-        cssCut, cssSocketUrl, cssCredential: cssSession.credential, encoded }));
+        cssCut, cssSocketUrl, cssCredential: cssSession.credential, quadCuts, quadHostedCut, quadSocketUrl,
+        quadCredential: quadLocus.sessions.credential(quadSessionId), quadServerQuids, encoded }));
+      return;
+    }
+    if (url.pathname === "/__quad-mutate") {
+      await quadLocus.stage(draft => { draft.lib("page").attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "title", "live"); });
+      response.writeHead(204).end();
+      return;
+    }
+    if (url.pathname === "/__quad-reconcile") {
+      quadRecoveryRound++;
+      await quadLocus.stage(draft => { draft.lib("page").attrs.set({ kind: "path", path: [0] }, "data-recovery-round", String(quadRecoveryRound)); });
+      await quadLocus.sessions.updateProjection(quadSessionId, { libraries: quadRecoveryRound % 2 ? ["page", "side"] : ["page"], systemFeatures: ["interactions"] });
+      response.writeHead(204).end();
+      return;
+    }
+    if (url.pathname === "/__quad-current") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ...quadHostedCut, ...cut_hosted_projection(capture_selected_authority_projection_snapshot(quadMap,
+        quadLocus.sessions.projection(quadSessionId)), "page") }));
+      return;
+    }
+    if (url.pathname === "/__quad-incompatible") {
+      await quadLocus.stage(draft => { draft.lib("page").content.replace({ kind: "path", path: [] }, 0, { $_tag: "aside", $_content: [] }); });
+      response.writeHead(204).end();
       return;
     }
     if (url.pathname === "/__css-mutate") {
@@ -265,8 +330,10 @@ try {
   }
   await new Promise((resolveClose) => librariesSocketServer?.close(resolveClose) ?? resolveClose());
   await new Promise((resolveClose) => cssSocketServer?.close(resolveClose) ?? resolveClose());
+  await new Promise((resolveClose) => quadSocketServer?.close(resolveClose) ?? resolveClose());
   await new Promise((resolveClose) => server?.close(resolveClose) ?? resolveClose());
   librariesLocus?.dispose();
   cssLocus?.dispose();
+  quadLocus?.dispose();
   await rm(fixtureRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

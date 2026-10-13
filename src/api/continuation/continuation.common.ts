@@ -1,4 +1,6 @@
 import { inspect_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
+import type { HsonNode } from "../../core/types.js";
+import { clone_livemap_document_exact_view, livemap_document_identity_overlay_for } from "../livemap/livemap.document.identity.js";
 import type {
   LiveMapDocumentLibrary,
   LiveMap,
@@ -18,6 +20,13 @@ export type ResolvedContinuationDocument = Readonly<{
   selected: LiveMapDocumentLibrary;
   aggregate: LiveMap;
 }>;
+
+/** Capture the receiving Library's sparse local identities for exact grafting.
+ * The SSR realization plan still omits QUID markup when matching the DOM. */
+export function capture_continuation_document_root(document: LiveMapDocumentLibrary): HsonNode {
+  return clone_livemap_document_exact_view(document.root(), "document",
+    livemap_document_identity_overlay_for(document.document));
+}
 
 /** Select the public registry name of the exact continuation document. */
 export function continuation_document_library_name(

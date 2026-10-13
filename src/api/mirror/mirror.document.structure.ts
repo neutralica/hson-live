@@ -1,6 +1,6 @@
 import { begin_mutation_publication } from "../livetree/lifecycle/mutation-publication.js";
 import { content_target_for_owner, capture_dom_placement, restore_dom_children, restore_dom_attrs, prepare_terminal_dom } from "../livetree/lifecycle/mutation-dom.js";
-import { get_dom_for_node, unlinkNode } from "../livetree/utils/node-map-helpers.js";
+import { get_dom_for_node, get_node_for_el, link_node_to_el, unlinkNode } from "../livetree/utils/node-map-helpers.js";
 import { parent_for_node, claim_node_parent, release_node_parent } from "../livetree/lifecycle/graph-ownership.js";
 import { release_nodes_runtime } from "../livetree/runtime/livetree-runtime.js";
 import { materialize_owned_occurrences } from "../livetree/runtime/materialize-occurrences.js";
@@ -80,6 +80,7 @@ export type DocumentStructuralPlan = Readonly<{
   affectedOwners: readonly HsonNode[];
   runtime: LiveTreeRuntime;
   lineageTransfers: readonly PlannedQuidLineageTransfer[];
+  borrowedRootRebase?: Readonly<{ from: HsonNode; to: HsonNode; element: Element }>;
 }>;
 
 type PersistedQuidLookup = (node: HsonNode) => string | undefined;
@@ -205,6 +206,7 @@ export function plan_document_root_structural_transaction(
   canonicalFinalRoot: HsonNode,
   persistedQuidForExisting: PersistedQuidLookup,
   preserveUnquiddedRootChild = false,
+  rootRebase?: Readonly<{ from: string | undefined; to: string | undefined }>,
 ): DocumentStructuralPlan {
   const root = shadow_existing(projectedRoot, persistedQuidForExisting);
   const runtime = runtime_for_node(projectedRoot) ?? default_livetree_runtime();
@@ -216,6 +218,27 @@ export function plan_document_root_structural_transaction(
   root.content = materialize_owned_occurrences(canonicalFinalRoot.$_content).map((item, index) =>
     plan_continuous_content(root, root.content[index], item, continuity,
       preserveUnquiddedRootChild && index === 0));
+
+  let borrowedRootRebase: DocumentStructuralPlan["borrowedRootRebase"];
+  if (rootRebase !== undefined) {
+    const prior = projectedRoot.$_content[0], next = canonicalFinalRoot.$_content[0], shadow = root.content[0];
+    const element = is_Node(prior) ? get_el_for_node(prior) : undefined;
+    if (projectedRoot.$_tag !== ROOT_TAG || canonicalFinalRoot.$_tag !== ROOT_TAG
+      || projectedRoot.$_content.length !== 1 || canonicalFinalRoot.$_content.length !== 1
+      || !is_ordinary_element_node(prior) || !is_ordinary_element_node(next) || prior.$_tag !== next.$_tag
+      || persistedQuidForExisting(prior) !== rootRebase.from || next.$_meta?.[HSON_META_QUID] !== rootRebase.to
+      || rootRebase.from === rootRebase.to || element === undefined || get_node_for_el(element) !== prior
+      || !is_shadow_node(shadow) || !shadow.fresh) {
+      throw new DocumentMirrorError(DOCUMENT_MIRROR_REUSE_INCOMPATIBLE_ERROR_CODE,
+        "Borrowed root identity rebase requires exact owner-proven subjects and a compatible existing Element.");
+    }
+    const priorShadow = shadow_existing(prior, persistedQuidForExisting);
+    // Retain only the already-supported unquidded positional correspondence.
+    // Addressed descendants still reconstruct as new lifetimes.
+    shadow.content = shadow.node.$_content.map((item, index) =>
+      plan_continuous_content(shadow, priorShadow.content[index], item, continuity, true));
+    borrowedRootRebase = Object.freeze({ from: prior, to: shadow.node, element });
+  }
 
   validate_shadow_against_canonical(root, canonicalFinalRoot);
   const oldNodes = new Set(collect_subtree_nodes(projectedRoot, "pre"));
@@ -229,6 +252,7 @@ export function plan_document_root_structural_transaction(
       mountedOwners.push(shadow.node);
     }
   });
+  if (borrowedRootRebase !== undefined) mountedOwners.push(borrowedRootRebase.to);
   const affectedOwners = Object.freeze(mountedOwners);
   return Object.freeze({
     root,
@@ -237,6 +261,7 @@ export function plan_document_root_structural_transaction(
     affectedOwners,
     runtime,
     lineageTransfers: Object.freeze([...continuity.transfers]),
+    borrowedRootRebase,
   });
 }
 
@@ -272,6 +297,13 @@ export function apply_document_structural_transaction(
   const endPublication = begin_mutation_publication(all, [...restorePlacement.containers, ...dom.map(entry => entry.contentTarget)]);
   try {
     try {
+      if (plan.borrowedRootRebase !== undefined) {
+        const { from, to, element } = plan.borrowedRootRebase;
+        unlinkNode(from);
+        link_node_to_el(to, element);
+        if (from.$_attrs === undefined) delete to.$_attrs;
+        else to.$_attrs = clone_node(from.$_attrs);
+      }
       apply_shadow_node(plan.root);
       // This validated plan is the complete final placement. Ordinary indexing
       // intentionally does not steal an already-owned child from another parent.
@@ -282,6 +314,11 @@ export function apply_document_structural_transaction(
       bind_graph_runtime(plan.root.node, plan.runtime);
       for (const transfer of transfers) transfer.apply();
       admit_livetree_quid_graph_preserving_absence(plan.root.node, plan.runtime);
+      if (plan.borrowedRootRebase !== undefined) {
+        const { to, element } = plan.borrowedRootRebase, quid = to.$_meta?.[HSON_META_QUID];
+        if (quid === undefined) element.removeAttribute("hson:quid");
+        else element.setAttribute("hson:quid", quid);
+      }
       for (const owner of plan.affectedOwners) reconcile_owner_dom(owner, plan.runtime);
       // Retained descendants have already moved to their final native positions.
       // Prune before staging terminal cleanup, so continuity subjects are excluded.
@@ -290,6 +327,10 @@ export function apply_document_structural_transaction(
       publishCorrespondence?.();
     } catch (cause) {
       restoreRemoved?.();
+      if (plan.borrowedRootRebase !== undefined) {
+        unlinkNode(plan.borrowedRootRebase.to);
+        link_node_to_el(plan.borrowedRootRebase.from, plan.borrowedRootRebase.element);
+      }
       for (const shell of shells) {
         shell.node.$_content = shell.content;
         if (shell.attrs === undefined) delete shell.node.$_attrs; else shell.node.$_attrs = shell.attrs;
@@ -687,7 +728,9 @@ function find_removed_roots(root: HsonNode, finalNodes: ReadonlySet<HsonNode>): 
   const walk = (node: HsonNode, parentRemoved: boolean): void => {
     const isRemoved = !finalNodes.has(node);
     if (isRemoved && !parentRemoved) removed.push(node);
-    for (const child of node.$_content) if (is_Node(child)) walk(child, parentRemoved || isRemoved);
+    // A retained intermediary is pruned from a removed ancestor; its outgoing
+    // descendants therefore need their own terminal cleanup roots.
+    for (const child of node.$_content) if (is_Node(child)) walk(child, isRemoved);
   };
   for (const child of root.$_content) if (is_Node(child)) walk(child, false);
   return removed;

@@ -1168,6 +1168,10 @@ function make_document_library(
           revision: event.revision,
           root: root(),
           continuity: event.continuity,
+          rootRebase: (() => {
+            const rebase = event.documentRootRebases?.find(entry => entry.library === library.identity);
+            return rebase === undefined ? undefined : Object.freeze({ ...rebase, library: facade });
+          })(),
         }));
         listener(observation);
       });

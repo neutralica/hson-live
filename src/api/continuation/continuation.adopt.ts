@@ -17,6 +17,8 @@ import {
   type LiveTreeRuntime,
   type SilentRuntimeDocumentClaim,
   active_subject_for_tree,
+  subject_for_tree,
+  observe_livetree_realizations_internal,
 } from "../livetree/runtime/livetree-runtime.js";
 import { collect_subtree_nodes } from "../livetree/utils/subtree-traversal.js";
 import {
@@ -41,8 +43,8 @@ import { plan_managed_document_css, MANAGED_DOCUMENT_CSS_MARKER } from "../../in
 export type ExactDocumentAdoption = Readonly<{
   tree: LiveTree;
   managedStyle: HTMLStyleElement | undefined;
-  commit: () => void;
-  abort: () => void;
+  commit: (currentTree?: () => LiveTree) => void;
+  abort: (currentTree?: LiveTree) => void;
   activateRuntimeManagers: () => void;
 }>;
 
@@ -59,6 +61,7 @@ export function set_document_adoption_fault_hook_for_tests(
 type AdoptedRootEntry = {
   readonly tree: LiveTree;
   stopTerminalObservation: () => void;
+  stopRealizations: () => void;
 };
 
 const ADOPTED_ROOTS = new WeakMap<Element, AdoptedRootEntry>();
@@ -92,6 +95,35 @@ function evict_adopted_root(target: Element, entry: AdoptedRootEntry): void {
   if (ADOPTED_ROOTS.get(target) !== entry) return;
   ADOPTED_ROOTS.delete(target);
   entry.stopTerminalObservation();
+  entry.stopRealizations();
+}
+
+function commit_adopted_root(target: Element, currentTree: () => LiveTree): void {
+  const tree = currentTree(), subject = active_subject_for_tree(tree);
+  if (get_el_for_node(subject) !== target || get_node_for_el(target) !== subject) {
+    throw new Error("Committed adoption provider does not own the exact current root Element.");
+  }
+  const prior = ADOPTED_ROOTS.get(target);
+  const entry: AdoptedRootEntry = {
+    get tree() { return currentTree(); },
+    stopTerminalObservation: () => {},
+    stopRealizations: () => {},
+  };
+  let observed = subject;
+  const refresh = (): void => {
+    if (ADOPTED_ROOTS.get(target) !== entry) return;
+    const subject = subject_for_tree(entry.tree);
+    if (is_livetree_node_disposed(subject)) { evict_adopted_root(target, entry); return; }
+    if (subject === observed) return;
+    entry.stopTerminalObservation();
+    observed = subject;
+    entry.stopTerminalObservation = observe_livetree_node_terminal(subject, refresh);
+  };
+  entry.stopTerminalObservation = observe_livetree_node_terminal(subject, refresh);
+  entry.stopRealizations = observe_livetree_realizations_internal(tree, refresh);
+  ADOPTED_ROOTS.set(target, entry);
+  prior?.stopTerminalObservation();
+  prior?.stopRealizations();
 }
 
 function reusable_cached_tree(target: Element, canonicalRoot: HsonNode, css: string,
@@ -111,23 +143,24 @@ function reusable_cached_tree(target: Element, canonicalRoot: HsonNode, css: str
     });
     const match = match_browser_realization_root(plan, target, { allowRuntimeInfrastructure: true });
     assert_browser_realization_mappings(match);
-    const canonicalOrdinaryRoot = canonicalRoot.$_tag === ROOT_TAG
-      && canonicalRoot.$_content.length === 1
-      && is_ordinary_element_node(canonicalRoot.$_content[0])
-      ? canonicalRoot.$_content[0]
-      : undefined;
-    if (canonicalOrdinaryRoot === undefined) throw new Error("Cached continuation input has no ordinary canonical root.");
-    const canonicalPlan = plan_managed_document_css(plan_browser_realization(canonicalRoot, {
-      parentNamespace: browser_parent_namespace_for_target(target, canonicalOrdinaryRoot.$_tag),
-    }), css);
-    match_browser_realization_root(canonicalPlan, target, {
-      allowRuntimeInfrastructure: true, retainRuntimeInfrastructure: managedStyle,
-    });
-    return tree;
   } catch {
     evict_adopted_root(target, entry);
     return undefined;
   }
+  // A mismatched candidate must not evict an otherwise valid cached owner.
+  const canonicalOrdinaryRoot = canonicalRoot.$_tag === ROOT_TAG
+    && canonicalRoot.$_content.length === 1
+    && is_ordinary_element_node(canonicalRoot.$_content[0])
+    ? canonicalRoot.$_content[0]
+    : undefined;
+  if (canonicalOrdinaryRoot === undefined) throw new Error("Cached continuation input has no ordinary canonical root.");
+  const canonicalPlan = plan_managed_document_css(plan_browser_realization(canonicalRoot, {
+    parentNamespace: browser_parent_namespace_for_target(target, canonicalOrdinaryRoot.$_tag),
+  }), css);
+  match_browser_realization_root(canonicalPlan, target, {
+    allowRuntimeInfrastructure: true, retainRuntimeInfrastructure: managedStyle,
+  });
+  return tree;
 }
 
 function cleanup_new_adoption(
@@ -159,11 +192,16 @@ export function adopt_exact_existing_document(
   const managedStyle = exact_managed_style(target, css);
   const priorTree = reusable_cached_tree(target, canonicalDocumentRoot, css, managedStyle);
   if (priorTree !== undefined) {
+    let finished = false;
     return Object.freeze({
       tree: priorTree,
       managedStyle,
-      commit: () => {},
-      abort: () => {},
+      commit(currentTree = () => priorTree): void {
+        if (finished) return;
+        commit_adopted_root(target, currentTree);
+        finished = true;
+      },
+      abort: () => { finished = true; },
       activateRuntimeManagers: () => {},
     });
   }
@@ -223,23 +261,22 @@ export function adopt_exact_existing_document(
   return Object.freeze({
     tree: adoptedTree,
     managedStyle,
-    commit(): void {
+    commit(currentTree = () => adoptedTree): void {
       if (finished) return;
-      const entry: AdoptedRootEntry = {
-        tree: adoptedTree,
-        stopTerminalObservation: () => {},
-      };
-      entry.stopTerminalObservation = observe_livetree_node_terminal(active_subject_for_tree(adoptedTree), () => {
-        evict_adopted_root(target, entry);
-      });
-      ADOPTED_ROOTS.set(target, entry);
+      commit_adopted_root(target, currentTree);
       finished = true;
     },
-    abort(): void {
+    abort(currentTree = adoptedTree): void {
       if (finished) return;
       finished = true;
       if (managedStyle !== undefined) unmark_runtime_infrastructure(managedStyle);
-      cleanup_new_adoption(projectedRoot, linkedNodes, runtime, claim);
+      const currentRoot = subject_for_tree(currentTree);
+      const currentNodes = collect_subtree_nodes(currentRoot, "post");
+      for (const node of currentNodes) {
+        const element = get_el_for_node(node), quid = runtime.nodeToQuid.get(node);
+        if (quid !== undefined && element?.getAttribute("hson:quid") === quid) element.removeAttribute("hson:quid");
+      }
+      cleanup_new_adoption(currentRoot, [...linkedNodes, ...currentNodes], runtime, claim);
     },
     activateRuntimeManagers(): void {
       claim.activate();

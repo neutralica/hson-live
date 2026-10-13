@@ -22,6 +22,12 @@ import {
   hson,
   hsonLiveMap,
   install_libraries_snapshot,
+  lookup_document_quad_internal,
+  set_document_adoption_fault_hook_for_tests,
+  get_node_for_el,
+  continuation_runtime_for_document,
+  echo_map_internal,
+  create_linked_livetree_in_runtime, set_interaction_activation_initialization_materialization_hook_for_tests,
 } from "/bundle.js";
 
 const results = [];
@@ -50,6 +56,279 @@ try {
   const broadDocument = Hson.document`<main <p "browser"/>/>`;
   check("browser document family top certifies nested content", ANY_DOCUMENT.certify(broadDocument) === broadDocument);
   const state = await fetch("/__state").then((response) => response.json());
+  // Genuine authored addresses survive source-free restoration and exact grafting.
+  for (const fixture of state.quadCuts) {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    await new Promise(resolve => { frame.onload = resolve; frame.srcdoc = fixture.cut.html; });
+    const root = frame.contentDocument.documentElement;
+    const button = root.querySelector("#quad-button"), other = root.querySelector("#quad-other");
+    const style = root.querySelector('style[data-hson-managed-document-css="managed"]');
+    const map = install_libraries_snapshot(fixture.cut.libs).map, page = map.lib("page");
+    const before = JSON.stringify(map.capture());
+    const observer = new MutationObserver(() => {});
+    observer.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
+    const grafted = continue_document({ map, document: page, root });
+    check(`QUAD graft preserves exact DOM without writes (${fixture.multiple})`, observer.takeRecords().length === 0
+      && grafted.tree.dom.el() === root && root.querySelector("#quad-button") === button
+      && root.querySelector("#quad-other") === other && root.querySelector('style[data-hson-managed-document-css="managed"]') === style);
+    observer.disconnect();
+    const runtime = runtime_for_tree(grafted.tree);
+    for (const { name } of fixture.cut.libs.libraries[0].quads) {
+      const address = lookup_document_quad_internal(page, name), tree = grafted.tree.find.byQuid(address.quid);
+      const element = name === "root" ? root : name === "confirm" ? button : other;
+      check(`QUAD ${name} uses the receiving subject (${fixture.multiple})`, tree.dom.el() === element
+        && tree.quid === address.quid && tree.node.$_meta.quid === address.quid
+        && runtime.quidToNode.get(address.quid) === subject_for_tree(tree)
+        && runtime.nodeToQuid.get(subject_for_tree(tree)) === address.quid
+        && !fixture.serverQuids.includes(address.quid));
+    }
+    check(`QUAD graft stays sparse (${fixture.multiple})`, runtime.issuedQuids.size === fixture.cut.libs.libraries[0].quads.length
+      && grafted.tree.find.must.byTag("span").node.$_meta?.quid === undefined
+      && JSON.stringify(map.capture()) === before && root.querySelector('[hson\\:quid]') === null);
+    check(`QUAD graft retains managed CSS (${fixture.multiple})`, frame.contentWindow.getComputedStyle(button).color === "rgb(11, 22, 33)");
+    const address = lookup_document_quad_internal(page, "confirm"), parent = address.path.slice(0, -1);
+    page.document.content.move({ kind: "path", path: parent }, 0, 1);
+    check(`QUAD movement retains Element and address (${fixture.multiple})`, grafted.mirror.status === "active"
+      && button.parentNode.children[1] === button && lookup_document_quad_internal(page, "confirm").path.at(-1) === 1);
+    page.document.content.replace({ kind: "path", path: parent }, 1,
+      { $_tag: "button", $_attrs: { id: "quad-button", title: "lineage" }, $_content: [] }, [{ source: [], destination: [] }]);
+    check(`QUAD replacement lineage retains identity (${fixture.multiple})`, grafted.mirror.status === "active"
+      && lookup_document_quad_internal(page, "confirm").quid === address.quid
+      && grafted.tree.find.byQuid(address.quid).dom.el() === button && button.title === "lineage");
+    page.css.sel("#quad-button").setProp("color", "rgb(44, 55, 66)");
+    check(`QUAD graft live managed CSS updates (${fixture.multiple})`, frame.contentWindow.getComputedStyle(button).color === "rgb(44, 55, 66)"
+      && root.querySelector('style[data-hson-managed-document-css="managed"]') === style);
+    grafted.dispose(); frame.remove();
+  }
+  for (const failure of ["malformed-quid", "wrong-content", "after-runtime", "after-tree", "after-tree-dom"]) {
+    const fixture = state.quadCuts[1], map = install_libraries_snapshot(fixture.cut.libs).map, page = map.lib("page");
+    const frame = document.createElement("iframe"); document.body.append(frame);
+    await new Promise(resolve => { frame.onload = resolve; frame.srcdoc = fixture.cut.html; });
+    const root = frame.contentDocument.documentElement, button = root.querySelector("#quad-button");
+    const runtime = continuation_runtime_for_document(frame.contentDocument), before = JSON.stringify(map.capture());
+    if (failure === "malformed-quid") button.setAttribute("hson:quid", "malformed");
+    if (failure === "wrong-content") button.append("unexpected");
+    set_document_adoption_fault_hook_for_tests(point => {
+      if (point === failure) throw new Error("QUAD graft fault");
+      if (point === "after-tree" && failure === "after-tree-dom") button.title = "changed after matching";
+    });
+    let rejected = false;
+    try { continue_document({ map, document: page, root }); }
+    catch (error) { rejected = error.phase === (failure === "after-tree-dom" ? "mirror" : "adopt"); }
+    finally { set_document_adoption_fault_hook_for_tests(undefined); }
+    check(`QUAD failed graft rolls back ${failure}`, rejected && get_node_for_el(root) === undefined
+      && get_node_for_el(button) === undefined && runtime.quidToNode.size === 0 && runtime.issuedQuids.size === 0
+      && JSON.stringify(map.capture()) === before);
+    button.removeAttribute("hson:quid"); button.removeAttribute("title"); button.replaceChildren();
+    const retry = continue_document({ map, document: page, root });
+    check(`QUAD failed graft permits retry ${failure}`, retry.tree.find.byQuid(lookup_document_quad_internal(page, "confirm").quid).dom.el() === button);
+    retry.dispose(); frame.remove();
+  }
+  const quadFrame = document.createElement("iframe"); document.body.append(quadFrame);
+  await new Promise(resolve => { quadFrame.onload = resolve; quadFrame.srcdoc = state.quadHostedCut.html; });
+  const quadRoot = quadFrame.contentDocument.documentElement;
+  let quadButton = quadRoot.querySelector("#hosted-quad");
+  const initialQuadButton = quadButton;
+  const quadStyle = quadRoot.querySelector('style[data-hson-managed-document-css="managed"]');
+  const failedQuadRuntime = continuation_runtime_for_document(quadFrame.contentDocument);
+  quadButton.setAttribute("unexpected", "reject");
+  const rejectedTransport = hsonLiveMap.echo.transport.websocket({ url: state.quadSocketUrl });
+  let hostedQuadRejected = false;
+  try { await continue_hosted_document({ now: state.quadHostedCut, credential: state.quadCredential,
+    transport: rejectedTransport, document: "page", root: quadRoot }); }
+  catch (error) { hostedQuadRejected = error.phase === "adopt"; }
+  rejectedTransport.dispose(); quadButton.removeAttribute("unexpected");
+  check("hosted QUAD mismatch releases adoption ownership", hostedQuadRejected && get_node_for_el(quadRoot) === undefined
+    && get_node_for_el(quadButton) === undefined && failedQuadRuntime.quidToNode.size === 0 && failedQuadRuntime.issuedQuids.size === 0);
+  const failingTransport = hsonLiveMap.echo.transport.websocket({ url: state.quadSocketUrl });
+  const nativeSetAttribute = quadRoot.setAttribute;
+  quadRoot.setAttribute = function(name, value) {
+    if (name === "hson:quid") throw new Error("root identity native fault");
+    return nativeSetAttribute.call(this, name, value);
+  };
+  let recoveryRejected = false;
+  try { await continue_hosted_document({ now: state.quadHostedCut, credential: state.quadCredential,
+    transport: failingTransport, document: "page", root: quadRoot }); }
+  catch (error) { recoveryRejected = error.phase === "mirror" || error.phase === "recover"; }
+  delete quadRoot.setAttribute; failingTransport.dispose();
+  check("failed root rebase rolls back native state and bindings", recoveryRejected
+    && quadRoot.getAttribute("data-stale-recovered") === null && quadRoot.getAttribute("hson:quid") === null
+    && quadRoot.querySelector("#hosted-quad") === initialQuadButton && get_node_for_el(quadRoot) === undefined);
+  const quadTransport = hsonLiveMap.echo.transport.websocket({ url: state.quadSocketUrl });
+  let obsoleteRoot;
+  set_document_adoption_fault_hook_for_tests(point => {
+    if (point === "after-tree") obsoleteRoot = create_linked_livetree_in_runtime(get_node_for_el(quadRoot), continuation_runtime_for_document(quadFrame.contentDocument));
+  });
+  let rootClicks = 0, lastClickSubject, interactionFailures = [];
+  const rootInteractions = { local: { rootClick: (_event, subject) => { rootClicks++; lastClickSubject = subject; } },
+    onFailure: failure => interactionFailures.push(failure) };
+  const quadGrafted = await continue_hosted_document({ now: state.quadHostedCut, credential: state.quadCredential,
+    transport: quadTransport, document: "page", root: quadRoot, interactions: rootInteractions });
+  set_document_adoption_fault_hook_for_tests(undefined);
+  const quadPage = echo_map_internal(quadGrafted.echo).lib("page");
+  let privateRejected = false;
+  try { quadGrafted.echo.lib("secret"); } catch { privateRejected = true; }
+  check("root reconciliation respects the authorized Library projection", privateRejected
+    && !JSON.stringify(state.quadHostedCut).includes("PRIVATE_ROOT_RECOVERY"));
+  const quadRuntime = runtime_for_tree(quadGrafted.tree);
+  quadButton = quadRoot.querySelector("#hosted-quad");
+  check("addressed descendants reconstruct under existing snapshot semantics", quadButton !== initialQuadButton
+    && get_node_for_el(initialQuadButton) === undefined);
+  for (const [name, element] of [["root", quadRoot], ["target", quadButton]]) {
+    const address = lookup_document_quad_internal(quadPage, name), tree = quadGrafted.tree.find.byQuid(address.quid);
+    check(`hosted QUAD ${name} adopts its existing Element`, tree.dom.el() === element
+      && tree.node.$_meta.quid === address.quid && quadRuntime.quidToNode.get(address.quid) === subject_for_tree(tree)
+      && !state.quadServerQuids.includes(address.quid));
+  }
+  const activeRootQuid = lookup_document_quad_internal(quadPage, "root").quid;
+  check("stale hosted root identity resets while its Element remains", quadGrafted.tree !== obsoleteRoot && obsoleteRoot.isDisposed
+    && quadGrafted.tree.dom.el() === quadRoot && quadRoot.getAttribute("data-stale-recovered") === "yes"
+    && quadRoot.getAttribute("hson:quid") === activeRootQuid && quadRuntime.quidToNode.size === 2);
+  let obsoleteRejected = false;
+  try { obsoleteRoot.quid; } catch { obsoleteRejected = true; }
+  check("obsolete root handles cannot alias the receiving lifetime", obsoleteRejected
+    && quadRuntime.quidToNode.get(activeRootQuid) === subject_for_tree(quadGrafted.tree)
+    && quadRoot.parentNode.querySelectorAll("html").length === 1);
+  check("hosted QUAD graft preserves managed CSS and sparse identity", quadRuntime.quidToNode.size === 2
+    && quadRoot.querySelector('style[data-hson-managed-document-css="managed"]') === quadStyle
+    && quadFrame.contentWindow.getComputedStyle(quadButton).color === "rgb(11, 22, 33)");
+  await fetch("/__quad-mutate");
+  for (let attempt = 0; attempt < 50 && quadButton.title !== "live"; attempt++) await new Promise(resolve => setTimeout(resolve, 20));
+  check("hosted QUAD live edit preserves subject correspondence", quadGrafted.mirror.status === "active"
+    && quadRoot.querySelector("#hosted-quad") === quadButton && quadButton.title === "live"
+    && quadGrafted.tree.find.byQuid(lookup_document_quad_internal(quadPage, "target").quid).dom.el() === quadButton);
+  const clientQuadMap = echo_map_internal(quadGrafted.echo);
+  let currentBinding = quadGrafted;
+  for (let bindingRound = 0; bindingRound < 3; bindingRound++) {
+    const beforeClicks = rootClicks;
+    quadRoot.click();
+    check(`binding ${bindingRound} root interaction dispatches once`, rootClicks === beforeClicks + 1
+      && lastClickSubject.dom.el() === quadRoot);
+    if (bindingRound < 2) {
+      for (let recovery = 0; recovery < 2; recovery++) {
+        const previousTree = currentBinding.tree;
+        await fetch("/__quad-reconcile");
+        for (let attempt = 0; attempt < 100 && currentBinding.tree === previousTree; attempt++) await new Promise(resolve => setTimeout(resolve, 10));
+        check(`binding ${bindingRound} recovery ${recovery} retires old handle and keeps Element`, currentBinding.mirror.status === "active"
+          && previousTree.isDisposed && currentBinding.tree !== previousTree && currentBinding.tree.dom.el() === quadRoot
+          && get_node_for_el(quadRoot) === subject_for_tree(currentBinding.tree)
+          && quadGrafted.echo.sync.status === "caught_up");
+        const before = rootClicks;
+        quadRoot.click();
+        check(`binding ${bindingRound} recovery ${recovery} interaction follows current subject once`, rootClicks === before + 1
+          && subject_for_tree(lastClickSubject) === subject_for_tree(currentBinding.tree)
+          && !lastClickSubject.isDisposed && interactionFailures.length === 0);
+        check(`binding ${bindingRound} recovery ${recovery} CSS and QUAD stay coherent`, quadRoot.querySelectorAll("style[data-hson-managed-document-css]").length === 1
+          && lookup_document_quad_internal(quadPage, "root").quid === currentBinding.tree.quid
+          && quadFrame.contentWindow.getComputedStyle(quadRoot.querySelector("#hosted-quad")).color === "rgb(11, 22, 33)");
+      }
+    }
+    const disposedTree = currentBinding.tree;
+    currentBinding.dispose();
+    const beforeDisposedClick = rootClicks;
+    quadRoot.click();
+    check(`binding ${bindingRound} disposal deactivates interactions`, rootClicks === beforeDisposedClick);
+    if (bindingRound === 2) break;
+    // Failed reused preparation must keep the previous valid cache relationship.
+    set_interaction_activation_initialization_materialization_hook_for_tests(() => { throw new Error("reused binding activation fault"); });
+    let reusedRejected = false;
+    try { continue_document({ map: clientQuadMap, document: quadPage, root: quadRoot, interactions: rootInteractions }); }
+    catch (error) { reusedRejected = error.phase === "interactions"; }
+    finally { set_interaction_activation_initialization_materialization_hook_for_tests(undefined); }
+    quadRoot.click();
+    check(`binding ${bindingRound} failed reuse rolls back without dispatch or duplicate ownership`, reusedRejected
+      && rootClicks === beforeDisposedClick && get_node_for_el(quadRoot) === subject_for_tree(disposedTree));
+    currentBinding = continue_document({ map: clientQuadMap, document: quadPage, root: quadRoot, interactions: rootInteractions });
+    check(`binding ${bindingRound + 1} reuses latest cached root`, currentBinding.tree === disposedTree
+      && currentBinding.tree.dom.el() === quadRoot && quadFrame.contentDocument.querySelectorAll("html").length === 1);
+  }
+  quadGrafted.echo.dispose(); quadTransport.dispose(); quadFrame.remove();
+
+  const currentQuadFrame = document.createElement("iframe"); document.body.append(currentQuadFrame);
+  const currentQuadCut = await fetch("/__quad-current").then(response => response.json());
+  await new Promise(resolve => { currentQuadFrame.onload = resolve; currentQuadFrame.srcdoc = currentQuadCut.html; });
+  const currentQuadRoot = currentQuadFrame.contentDocument.documentElement;
+  const currentQuadTransport = hsonLiveMap.echo.transport.websocket({ url: state.quadSocketUrl });
+  const currentQuadGraft = await continue_hosted_document({ now: currentQuadCut, credential: state.quadCredential,
+    transport: currentQuadTransport, document: "page", root: currentQuadRoot });
+  check("current authorized root-QUAD cut retains its browser Element", currentQuadGraft.tree.dom.el() === currentQuadRoot
+    && currentQuadGraft.mirror.status === "active" && currentQuadRoot.getAttribute("data-stale-recovered") === "yes"
+    && runtime_for_tree(currentQuadGraft.tree).issuedQuids.size === 2);
+  currentQuadGraft.dispose(); currentQuadGraft.echo.dispose(); currentQuadTransport.dispose(); currentQuadFrame.remove();
+
+  // A rolled-back tree is diagnostic state, not a dispatch capability.
+  for (const provider of ["hosted", "local"]) {
+    const failureFrame = document.createElement("iframe"); document.body.append(failureFrame);
+    const failureCut = await fetch("/__quad-current").then(response => response.json());
+    await new Promise(resolve => { failureFrame.onload = resolve; failureFrame.srcdoc = failureCut.html; });
+    const failureRoot = failureFrame.contentDocument.documentElement;
+    const failureStyle = failureRoot.querySelector("style[data-hson-managed-document-css]");
+    const failureTransport = hsonLiveMap.echo.transport.websocket({ url: state.quadSocketUrl });
+    let calls = 0;
+    const interactions = { local: { rootClick: () => { calls++; } } };
+    const hosted = await continue_hosted_document({ now: failureCut, credential: state.quadCredential,
+      transport: failureTransport, document: "page", root: failureRoot, interactions });
+    const client = echo_map_internal(hosted.echo), page = client.lib("page");
+    let binding = hosted;
+    if (provider === "local") {
+      hosted.dispose();
+      binding = continue_document({ map: client, document: page, root: failureRoot, interactions });
+    }
+    const failureButton = failureRoot.querySelector("#hosted-quad");
+    failureRoot.click();
+    check(`${provider} provider dispatches before native root-transfer failure`, calls === 1);
+    const retainedTree = binding.tree, oldQuid = lookup_document_quad_internal(page, "root").quid;
+    const runtime = runtime_for_tree(retainedTree), claims = new Map(runtime.quidToNode);
+    let attemptedQuid, rollbackMetadata;
+    const nativeSet = failureRoot.setAttribute;
+    failureRoot.setAttribute = function(name, value) {
+      if (name === "hson:quid" && value !== oldQuid) {
+        attemptedQuid = value;
+        rollbackMetadata = this.getAttribute(name);
+        throw new Error("active interaction root-transfer fault");
+      }
+      return nativeSet.call(this, name, value);
+    };
+    try {
+      await fetch("/__quad-reconcile");
+      for (let attempt = 0; attempt < 100 && binding.mirror.status !== "failed"; attempt++) await new Promise(resolve => setTimeout(resolve, 10));
+    } finally { delete failureRoot.setAttribute; }
+    const acceptedQuid = lookup_document_quad_internal(page, "root").quid;
+    check(`${provider} authority accepts snapshot despite Mirror failure`, binding.mirror.status === "failed"
+      && acceptedQuid !== oldQuid && attemptedQuid === acceptedQuid && page.document.byQuid(oldQuid) === undefined
+      && page.document.attrs.get({ kind: "path", path: [0] }, "data-recovery-round") === failureRoot.getAttribute("data-recovery-round"));
+    check(`${provider} failed transfer retains the old tree and root Element`, binding.tree === retainedTree
+      && !retainedTree.isDisposed && failureFrame.contentDocument.documentElement === failureRoot
+      && get_node_for_el(failureRoot) === subject_for_tree(retainedTree));
+    check(`${provider} failed transfer retains descendants and root metadata`, failureRoot.querySelector("#hosted-quad") === failureButton
+      && failureRoot.getAttribute("hson:quid") === rollbackMetadata);
+    check(`${provider} failed transfer rolls back runtime claims`, runtime.quidToNode.size === claims.size
+      && [...claims].every(([quid, node]) => runtime.quidToNode.get(quid) === node) && !runtime.quidToNode.has(acceptedQuid));
+    failureRoot.click(); failureRoot.click();
+    check(`${provider} failed Mirror cannot authorize retained-tree dispatch`, calls === 1);
+    check(`${provider} failure preserves current managed CSS`, failureRoot.querySelector("style[data-hson-managed-document-css]") === failureStyle
+      && failureFrame.contentWindow.getComputedStyle(failureButton).color === "rgb(11, 22, 33)");
+    binding.dispose(); binding.dispose();
+    failureRoot.click();
+    check(`${provider} failed binding disposes safely without dispatch`, calls === 1 && binding.mirror.status === "disposed");
+    hosted.echo.dispose(); failureTransport.dispose(); failureFrame.remove();
+  }
+
+  const incompatibleFrame = document.createElement("iframe"); document.body.append(incompatibleFrame);
+  await new Promise(resolve => { incompatibleFrame.onload = resolve; incompatibleFrame.srcdoc = currentQuadCut.html; });
+  const incompatibleRoot = incompatibleFrame.contentDocument.documentElement;
+  await fetch("/__quad-incompatible");
+  const incompatibleTransport = hsonLiveMap.echo.transport.websocket({ url: state.quadSocketUrl });
+  let incompatibleRejected = false;
+  try { await continue_hosted_document({ now: currentQuadCut, credential: state.quadCredential,
+    transport: incompatibleTransport, document: "page", root: incompatibleRoot }); }
+  catch (error) { incompatibleRejected = error.phase === "mirror" || error.phase === "recover"; }
+  check("incompatible authoritative root still rejects without native replacement", incompatibleRejected
+    && incompatibleFrame.contentDocument.documentElement === incompatibleRoot && incompatibleRoot.localName === "html"
+    && get_node_for_el(incompatibleRoot) === undefined && incompatibleRoot.getAttribute("hson:quid") === null);
+  incompatibleTransport.dispose(); incompatibleFrame.remove();
+
   const decodedLocalBootstrap = decode_ssr_bootstrap(state.encoded.local);
   check("browser local encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalBootstrap.bootstrap) === state.encoded.local);
   const localRoot = document.querySelector("#local-ssr");

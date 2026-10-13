@@ -4,7 +4,7 @@ import { prepare_echo_replica_internal } from "../echo/echo.replica-preparation.
 import { echo_document_authority_for } from "../echo/echo.document-authority.js";
 import { admit_authority_projection_snapshot, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { activate_interactions } from "../interactions/interactions.js";
+import { activate_document_interactions_internal } from "../interactions/interactions.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
 import { bind_document_css_tree } from "../livetree/managers/bound-document-css.js";
 import { reflect_existing_document_in_runtime } from "../mirror/mirror.document.js";
@@ -17,6 +17,7 @@ import {
   validate_interaction_shape,
   schedule_continuation_runtime_activation,
   continuation_document_library_name,
+  capture_continuation_document_root,
 } from "./continuation.common.js";
 import { DocumentContinuationError } from "./continuation.error.js";
 import type { HostedDocumentContinuation } from "./continuation.types.js";
@@ -77,7 +78,7 @@ export function prepare_hosted_document_internal(options: HostedContinuationOpti
       throw new Error("Selected document is not governed by the supplied Echo replica.");
     }
     const revision = resolved.selected.rev;
-    const canonicalRoot = resolved.selected.root();
+    const canonicalRoot = capture_continuation_document_root(resolved.selected);
     const root = options.root;
     const interactions = options.interactions;
     let state: "prepared" | "starting" | "started" | "failed" | "disposed" = "prepared";
@@ -177,25 +178,29 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
           }
           throw error;
         };
-        disposeInteractions = activate_interactions({
+        disposeInteractions = activate_document_interactions_internal({
           map: resolved.aggregate,
-          tree: adoption.tree,
+          tree: reflect.tree,
           document: continuation_document_library_name(resolved.aggregate, resolved.selected),
           local: interactions.local,
           dispatch,
           ...(interactions.onFailure === undefined ? {} : { onFailure: interactions.onFailure }),
+        }, () => {
+          // A retained rollback tree does not authorize live interaction work.
+          if (reflect!.status !== "active") throw new Error("Document interaction binding is not active.");
+          return reflect!.tree;
         });
       } catch (cause) {
         throw new DocumentContinuationError("interactions", cause);
       }
     }
     try {
-      disposeCssBinding = bind_document_css_tree(adoption.tree, resolved.selected,
-        adoption.managedStyle, true);
+      disposeCssBinding = bind_document_css_tree(reflect.tree, resolved.selected,
+        adoption.managedStyle, true, () => reflect!.tree);
     } catch (cause) {
       throw new DocumentContinuationError("adopt", cause);
     }
-    adoption.commit();
+    adoption.commit(() => reflect!.tree);
     let disposed = false;
     const selected = echo.lib(continuation_document_library_name(resolved.aggregate, resolved.selected));
     if (selected.mode !== "document" || selected.source !== "authority-projected") {
@@ -204,7 +209,7 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
     const result: HostedDocumentContinuation = Object.freeze({
       echo,
       map: selected,
-      tree: adoption.tree,
+      get tree() { return reflect!.tree; },
       mirror: reflect,
       dispose(): void {
         if (disposed) return;
@@ -224,7 +229,7 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
     try { disposeInteractions?.(); } catch { /* Preserve construction failure. */ }
     try { disposeCssBinding?.(); } catch { /* Preserve construction failure. */ }
     try { reflect?.dispose(); } catch { /* Preserve construction failure. */ }
-    try { adoption?.abort(); } catch { /* Preserve construction failure. */ }
+    try { adoption?.abort(reflect?.tree); } catch { /* Preserve construction failure. */ }
     releaseRoot();
     try { await prepared.detach(); } catch { /* Preserve construction failure. */ }
     echo.dispose();

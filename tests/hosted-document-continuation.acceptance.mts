@@ -5,11 +5,11 @@ import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 // @hson-live-external-test
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
-import { DocumentContinuationError, Hson, HsonData, add_interaction, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionLocalBehaviors, type LocusWebSocketLike } from "../src/index.ts";
+import { DocumentContinuationError, Hson, HsonData, add_interaction, continue_document, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionLocalBehaviors, type LocusWebSocketLike } from "../src/index.ts";
 import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { parse_style_string } from "../src/api/transform/utils/attrs-utils/parse-style.ts";
-import { runtime_for_tree } from "../src/api/livetree/runtime/livetree-runtime.ts";
+import { runtime_for_tree, subject_for_tree } from "../src/api/livetree/runtime/livetree-runtime.ts";
 import { prepare_hosted_document_internal } from "../src/api/continuation/continue-hosted-document.ts";
 import { set_document_adoption_fault_hook_for_tests } from "../src/api/continuation/continuation.adopt.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -18,10 +18,263 @@ import { make_locus_hosted_projection_policy, normalize_locus_effective_projecti
 import { FakeElement, install_fake_document } from "./helpers/fake-document.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
+import { make_livemap_from_authored_libraries_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { lookup_document_quad_internal } from "../src/api/livemap/livemap.document.quad.ts";
+import type { DocumentQuadSubject } from "../src/api/livemap/livemap.document.quad.ts";
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
+import { capture_selected_authority_projection_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
+import { cut_hosted_projection } from "../src/internal/document-cut.ts";
+import { locus_local_initializer_digest } from "../src/api/locus/locus.local-initializer.ts";
+import { echo_map_internal } from "../src/internal/governor-maps.ts";
+import { validate_document_path, resolve_document_path } from "../src/api/livemap/livemap.document.path.ts";
+import { create_linked_livetree_in_runtime } from "../src/api/livetree/creation/create-livetree.ts";
+import { continuation_runtime_for_document } from "../src/api/livetree/runtime/livetree-runtime.ts";
+import type { LiveTree } from "../src/api/livetree/livetree.ts";
+import { client_projection_map } from "./helpers/client-projection.mts";
+import { reconcile_client_projection_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
+import type { LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
+import { livemap_document_observation_evidence, register_livemap_document_observation_evidence, type LiveMapDocumentObservationEvidence } from "../src/api/livemap/livemap.document.capture.ts";
+import { adopt_exact_existing_document } from "../src/api/continuation/continuation.adopt.ts";
+import { capture_continuation_document_root } from "../src/api/continuation/continuation.common.ts";
+import { reflect_existing_document_in_runtime } from "../src/api/mirror/mirror.document.ts";
+import { authority_projection_as_client_composition_internal } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 
 install_fake_document();
 
+// Receiving QUAD identities are issued by the projected LiveMap before grafting.
+for (const addressedRoot of [false, true]) {
+  const map = make_livemap_from_authored_libraries_internal({ page: { document: `<main ${addressedRoot ? '@:root ' : ''}<button @:confirm/>/>` } });
+  const locus = create_locus_hosted_aggregate_authority_internal({ map,
+    libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
+    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ["page"] }) });
+  const sessionId = await locus.create_session({ libraries: ["page"] });
+  const effective = locus.sessions.projection(sessionId)!;
+  const now = Object.freeze({ ...cut_hosted_projection(capture_selected_authority_projection_snapshot(map, effective), "page"),
+    format: "hson-locus-session-now", sessionBinding: locus.sessions.binding(sessionId)!,
+    local: [], initializerDigest: locus_local_initializer_digest([]) });
+  assert.doesNotMatch(now.html, /hson:quid/);
+  await locus.stage(draft => { const page = draft.lib("page"); if (page.mode !== "document") throw Error("Document");
+    page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "recovered"); });
+  const pair = socketPair(), detach = bind_locus_websocket(locus, pair.server), transport = test_echo_transport(pair.client);
+  const root = new FakeElement("main"), button = new FakeElement("button"); root.appendChild(button);
+  let obsolete: LiveTree | undefined, obsoleteQuid: string | undefined;
+  set_document_adoption_fault_hook_for_tests(point => {
+    if (point === "after-tree") {
+      const node = get_node_for_el(root as unknown as Element)!;
+      obsoleteQuid = node.$_meta?.quid;
+      obsolete = create_linked_livetree_in_runtime(node, continuation_runtime_for_document(root.ownerDocument as unknown as Document));
+    }
+  });
+  try {
+    const continuation = await continue_hosted_document({ now, credential: locus.sessions.credential(sessionId)!,
+      transport, document: "page", root: root as unknown as Element });
+    const page = echo_map_internal(continuation.echo).lib("page"), runtime = runtime_for_tree(continuation.tree);
+    set_document_adoption_fault_hook_for_tests(undefined);
+    assert.equal(root.getAttribute("title"), "recovered");
+    assert.equal(continuation.tree.dom.el(), root as unknown as Element);
+    if (addressedRoot) {
+      assert.ok(obsolete?.isDisposed);
+      assert.throws(() => obsolete!.quid, /disposed/i);
+      assert.equal(runtime.quidToNode.has(obsoleteQuid!), false);
+      assert.equal(page.mode === "document" ? page.document.byQuid(obsoleteQuid!) : undefined, undefined);
+    }
+    for (const name of addressedRoot ? ["root", "confirm"] : ["confirm"]) {
+      const address = lookup_document_quad_internal(page, name)!;
+      assert.notEqual(address.quid, lookup_document_quad_internal(map.lib("page"), name)!.quid);
+      if (name === "root") assert.equal(continuation.tree.find.byQuid(address.quid)!.dom.el(), root as unknown as Element);
+      assert.ok(runtime.quidToNode.has(address.quid));
+    }
+    await locus.stage(draft => {
+      const page = draft.lib("page"); if (page.mode !== "document") throw new Error("Expected document.");
+      page.attrs.set({ kind: "path", path: validate_document_path([0, 0, 0]) }, "title", "hosted");
+    });
+    assert.equal(continuation.mirror.status, "active");
+    const liveButton = root.childNodes[0];
+    assert.ok(liveButton instanceof FakeElement);
+    assert.equal(liveButton.getAttribute("title"), "hosted");
+    continuation.dispose(); continuation.echo.dispose();
+  } finally { set_document_adoption_fault_hook_for_tests(undefined); transport.dispose(); detach(); locus.dispose(); }
+}
+
 const ButtonSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+
+// Isolate repeated owner-proven recovery and transaction failure from transport.
+for (const failure of ["none", "native", "incompatible"] as const) {
+  const source = make_livemap_from_authored_libraries_internal({ page: { document: '<main @:root <button @:child/>/>' } });
+  const locus = create_locus_hosted_aggregate_authority_internal({ map: source,
+    libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
+    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+  const sessionId = await locus.create_session({ libraries: ["page"] }), projection = locus.sessions.projection(sessionId)!;
+  const capture = () => capture_selected_authority_projection_snapshot(source, projection);
+  const client = client_projection_map({ authority: capture(), local: {} }), page = client.lib("page");
+  if (page.mode !== "document") throw Error("Document");
+  const root = new FakeElement("main"), child = new FakeElement("button"); root.appendChild(child);
+  let grafted = continue_document({ map: client, document: page, root: root as unknown as Element });
+  const owner = internal_livemap_aggregate_authority(client), manager = {};
+  owner.claimManagement(manager);
+  try {
+    for (let round = 0; round < (failure === "none" ? 2 : 1); round++) {
+      const oldTree = grafted.tree;
+      const oldQuid: string = lookup_document_quad_internal(page, "root")!.quid;
+      await locus.stage(draft => {
+        const document = draft.lib("page"); if (document.mode !== "document") throw Error("Document");
+        if (failure === "incompatible") document.content.replace({ kind: "path", path: validate_document_path([]) }, 0, { $_tag: "aside", $_content: [] });
+        else document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", `round-${round}`);
+      });
+      const nativeSet = root.setAttribute;
+      if (failure === "native") root.setAttribute = function(name, value) {
+        if (name === "hson:quid") throw Error("native root rebase failure");
+        nativeSet.call(this, name, value);
+      };
+      try { reconcile_client_projection_snapshot_internal(client, manager, authority_projection_as_client_composition_internal(capture())); }
+      finally { root.setAttribute = nativeSet; }
+      if (failure === "none") {
+        assert.equal(grafted.mirror.status, "active");
+        assert.equal(grafted.tree.dom.el(), root as unknown as Element);
+        assert.ok(oldTree.isDisposed); assert.throws(() => oldTree.quid, /disposed/i);
+        const address: DocumentQuadSubject = lookup_document_quad_internal(page, "root")!;
+        assert.notEqual(address.quid, oldQuid);
+        assert.equal(root.getAttribute("hson:quid"), address.quid);
+        assert.equal(root.getAttribute("title"), `round-${round}`);
+        assert.equal(page.document.byQuid(oldQuid), undefined);
+        assert.equal(runtime_for_tree(grafted.tree).quidToNode.has(oldQuid), false);
+        const current = grafted.tree;
+        grafted.dispose();
+        const candidate = capture_continuation_document_root(page);
+        const candidateRoot = resolve_document_path(candidate, "document", validate_document_path([0]));
+        if (typeof candidateRoot !== "object" || candidateRoot === null) throw Error("Root");
+        candidateRoot.$_tag = "aside";
+        assert.throws(() => adopt_exact_existing_document(candidate, root as unknown as Element));
+        const reused = adopt_exact_existing_document(capture_continuation_document_root(page), root as unknown as Element);
+        assert.throws(() => reused.commit(() => oldTree), /disposed/i);
+        reused.abort();
+        grafted = continue_document({ map: client, document: page, root: root as unknown as Element });
+        assert.equal(grafted.tree, current);
+        assert.equal(grafted.tree.dom.el(), root as unknown as Element);
+      } else {
+        assert.equal(grafted.mirror.status, "failed");
+        assert.equal(root.getAttribute("title"), null); assert.equal(root.getAttribute("hson:quid"), null);
+        assert.equal(root.childNodes[0], child);
+        assert.equal(get_node_for_el(root as unknown as Element), subject_for_tree(oldTree));
+        assert.equal(page.document.byQuid(oldQuid), undefined);
+        // The accepted authority state is not undone by failed DOM realization.
+        assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), failure === "native" ? "round-0" : undefined);
+        assert.throws(() => oldTree.attrs.set("wrong-owner", "reject"));
+      }
+    }
+  } finally { owner.releaseManagement(manager); grafted.dispose(); locus.dispose(); }
+}
+// Inject invalid private evidence at the existing document-observation boundary.
+// The authoritative snapshot remains accepted; Mirror must reject before native work.
+for (const invalid of ["old", "new", "library", "replay"] as const) {
+  const source = make_livemap_from_authored_libraries_internal({ page: { document: '<main @:root <button/>/>' } });
+  const locus = create_locus_hosted_aggregate_authority_internal({ map: source,
+    libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
+    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+  const session = await locus.create_session({ libraries: ["page"] }), projection = locus.sessions.projection(session)!;
+  const capture = () => capture_selected_authority_projection_snapshot(source, projection);
+  const client = client_projection_map({ authority: capture(), local: {} }), page = client.lib("page");
+  if (page.mode !== "document") throw Error("Document");
+  let saved: LiveMapDocumentObservationEvidence["rootRebase"];
+  let round = 0;
+  const watchedPage: LiveMapDocumentLibrary = {
+    ...page, get rev() { return page.rev; },
+    commits: { observe: listener => page.commits.observe(observation => {
+      const evidence = livemap_document_observation_evidence(observation);
+      if (observation.kind === "snapshot" && evidence?.rootRebase !== undefined) {
+        const current = { ...evidence.rootRebase, library: watchedPage };
+        let rootRebase = current;
+        if (invalid === "old") rootRebase = { ...current, from: current.to };
+        if (invalid === "new") rootRebase = { ...current, to: current.from };
+        if (invalid === "library") rootRebase = { ...current, library: page };
+        if (invalid === "replay" && round === 1) rootRebase = saved!;
+        saved = current;
+        register_livemap_document_observation_evidence(observation, { ...evidence, rootRebase });
+      }
+      listener(observation);
+    }) },
+  };
+  const root = new FakeElement("main"), button = new FakeElement("button"); root.appendChild(button);
+  const adoption = adopt_exact_existing_document(capture_continuation_document_root(page), root as unknown as Element);
+  const mirror = reflect_existing_document_in_runtime(watchedPage, adoption.tree, runtime_for_tree(adoption.tree));
+  adoption.commit(() => mirror.tree);
+  const owner = internal_livemap_aggregate_authority(client), manager = {};
+  owner.claimManagement(manager);
+  try {
+    for (; round < (invalid === "replay" ? 2 : 1); round++) {
+      const prior = mirror.tree, runtime = runtime_for_tree(prior), claims = new Map(runtime.quidToNode);
+      const priorAttrs = root.getAttributeNames().map(name => [name, root.getAttribute(name)]);
+      await locus.stage(draft => {
+        const document = draft.lib("page"); if (document.mode !== "document") throw Error("Document");
+        document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", `invalid-${invalid}-${round}`);
+      });
+      reconcile_client_projection_snapshot_internal(client, manager, authority_projection_as_client_composition_internal(capture()));
+      if (invalid === "replay" && round === 0) {
+        assert.equal(mirror.status, "active"); assert.ok(prior.isDisposed); continue;
+      }
+      assert.equal(mirror.status, "failed");
+      assert.match(mirror.failure!.message, /rebase|overlay|correspondence/i);
+      assert.equal(mirror.tree, prior); assert.equal(prior.isDisposed, false);
+      assert.equal(get_node_for_el(root as unknown as Element), subject_for_tree(prior));
+      assert.deepEqual(runtime.quidToNode, claims);
+      assert.deepEqual(root.getAttributeNames().map(name => [name, root.getAttribute(name)]), priorAttrs);
+      assert.equal(root.childNodes[0], button);
+      assert.equal(runtime.quidToNode.has(lookup_document_quad_internal(page, "root")!.quid), false);
+      assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), `invalid-${invalid}-${round}`);
+    }
+  } finally { owner.releaseManagement(manager); mirror.dispose(); locus.dispose(); }
+}
+// Local continuation must also fail closed when its authority accepted a snapshot
+// but Mirror retained the former tree after rolling back a native root transfer.
+{
+  const source = make_livemap_from_authored_libraries_internal({ page: { document: '<main @:root <button/>/>' } });
+  enable_interactions(source);
+  add_interaction(source, { id: "failed-root-click", subject: { library: "page", path: [0] }, kind: "browser", key: "run", args: null,
+    listener: { event: "click", target: "element", capture: false, once: false, passive: false,
+      missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false } });
+  const locus = create_locus_hosted_aggregate_authority_internal({ map: source,
+    libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
+    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }) });
+  const session = await locus.create_session({ libraries: ["page"], systemFeatures: ["interactions"] }), projection = locus.sessions.projection(session)!;
+  const capture = () => capture_selected_authority_projection_snapshot(source, projection);
+  const client = client_projection_map({ authority: capture(), local: {} }), page = client.lib("page");
+  if (page.mode !== "document") throw Error("Document");
+  const root = new FakeElement("main"), button = new FakeElement("button"); root.appendChild(button);
+  let calls = 0;
+  const grafted = continue_document({ map: client, document: page, root: root as unknown as Element,
+    interactions: { local: { run: () => { calls++; } } } });
+  const prior = grafted.tree, oldQuid = lookup_document_quad_internal(page, "root")!.quid;
+  const runtime = runtime_for_tree(prior), claims = new Map(runtime.quidToNode);
+  const owner = internal_livemap_aggregate_authority(client), manager = {};
+  owner.claimManagement(manager);
+  try {
+    root.dispatchEvent(new Event("click")); assert.equal(calls, 1);
+    await locus.stage(draft => {
+      const document = draft.lib("page"); if (document.mode !== "document") throw Error("Document");
+      document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "accepted");
+    });
+    const nativeSet = root.setAttribute;
+    root.setAttribute = function(name, value) {
+      if (name === "hson:quid") throw Error("active interaction root-transfer fault");
+      nativeSet.call(this, name, value);
+    };
+    try { reconcile_client_projection_snapshot_internal(client, manager, authority_projection_as_client_composition_internal(capture())); }
+    finally { root.setAttribute = nativeSet; }
+    assert.equal(grafted.mirror.status, "failed");
+    assert.equal(grafted.tree, prior); assert.equal(prior.isDisposed, false);
+    assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), "accepted");
+    const newQuid = lookup_document_quad_internal(page, "root")!.quid;
+    assert.notEqual(newQuid, oldQuid); assert.equal(page.document.byQuid(oldQuid), undefined);
+    assert.equal(runtime.quidToNode.has(newQuid), false); assert.deepEqual(runtime.quidToNode, claims);
+    assert.equal(root.getAttribute("hson:quid"), null); assert.equal(root.getAttribute("title"), null);
+    assert.equal(get_node_for_el(root as unknown as Element), subject_for_tree(prior));
+    assert.equal(root.childNodes[0], button);
+    root.dispatchEvent(new Event("click")); assert.equal(calls, 1);
+    assert.throws(() => prior.attrs.set("stale-authority", "reject"));
+    grafted.dispose(); grafted.dispose();
+    root.dispatchEvent(new Event("click")); assert.equal(calls, 1);
+  } finally { owner.releaseManagement(manager); grafted.dispose(); locus.dispose(); }
+}
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 
 function socketPair(): Readonly<{

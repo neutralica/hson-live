@@ -42,6 +42,7 @@ import {
 import {
   observe_livetree_realizations_internal,
   active_subject_for_tree,
+  runtime_for_tree,
 } from "../livetree/runtime/livetree-runtime.js";
 
 import { interaction_schema_internal } from "./interactions.projection.js";
@@ -156,7 +157,18 @@ export function remove_interaction(target: object, descriptorId: string): void {
 
 /** Materialize current canonical interaction intent against one fixed active LiveTree. */
 export function activate_interactions(options: InteractionActivationOptions): () => void {
-  const activation = snapshot_activation(options);
+  return activate_with_tree_provider(options);
+}
+
+/** Document lifecycle owns this provider; public activation retains fixed-tree semantics. @internal */
+export function activate_document_interactions_internal(
+  options: InteractionActivationOptions, currentTree: () => LiveTree,
+): () => void {
+  return activate_with_tree_provider(options, currentTree);
+}
+
+function activate_with_tree_provider(options: InteractionActivationOptions, currentTree?: () => LiveTree): () => void {
+  const activation = snapshot_activation(options, currentTree);
   const aggregate = internal_livemap_aggregate_authority(activation.map);
   if (aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) === undefined) {
     throw new Error("Canonical interactions are not enabled for this LiveMap.");
@@ -254,6 +266,21 @@ export function activate_interactions(options: InteractionActivationOptions): ()
           let materialized = false;
           try {
             const handler = (event: Event): void => {
+              if (disposed) return;
+              if (currentTree !== undefined) {
+                // Resolve current canonical intent, including maintained paths after
+                // movement. A transition must never fall back to an obsolete handle.
+                try {
+                  const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+                  const currentDescriptor = system === undefined ? undefined : read_descriptors(require_member(
+                    require_object(projected_value_from_hson_node(aggregate.systemRoot(system))), "descriptors"))
+                    .find(candidate => candidate.id === descriptor.id);
+                  const current = currentDescriptor === undefined
+                    || descriptor_fingerprint(currentDescriptor) !== descriptor_fingerprint(descriptor)
+                    ? undefined : resolve_local_subject(activation, currentDescriptor);
+                  if (current === undefined || active_subject_for_tree(current) !== active_subject_for_tree(subject)) return;
+                } catch (cause) { report(descriptor, "subject-resolution", cause); return; }
+              }
               if (descriptor.listener.once) state.consumed = true;
               if (descriptor.kind === "browser") {
                 const behavior = activation.local.get(descriptor.key);
@@ -327,7 +354,7 @@ export function activate_interactions(options: InteractionActivationOptions): ()
   return dispose;
 }
 
-function snapshot_activation(options: InteractionActivationOptions): ActivationSnapshot {
+function snapshot_activation(options: InteractionActivationOptions, currentTree?: () => LiveTree): ActivationSnapshot {
   const map = options.map;
   const tree = options.tree;
   const documentNames = map.capture().libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name);
@@ -344,19 +371,23 @@ function snapshot_activation(options: InteractionActivationOptions): ActivationS
   if (onFailure !== undefined && typeof onFailure !== "function") {
     throw new TypeError("Canonical interaction failure observer must be a function.");
   }
-  return Object.freeze({ map, tree, document, local, dispatch, onFailure });
+  const runtime = runtime_for_tree(tree);
+  return Object.freeze({ map, get tree() {
+    const current = currentTree === undefined ? tree : currentTree();
+    if (runtime_for_tree(current) !== runtime) throw new Error("Document interaction provider changed its owning runtime.");
+    return current;
+  }, document, local, dispatch, onFailure });
 }
 
 function resolve_local_subject(activation: ActivationSnapshot, descriptor: InteractionDescriptor): LiveTree | undefined {
   if (descriptor.subject.library !== activation.document) return undefined;
   const path = validate_document_path(descriptor.subject.path);
   let node;
-  const root = active_subject_for_tree(activation.tree).$_tag === ROOT_TAG
-    ? active_subject_for_tree(activation.tree)
-    : { $_tag: ROOT_TAG, $_content: [active_subject_for_tree(activation.tree)] };
+  const tree = activation.tree, subject = active_subject_for_tree(tree);
+  const root = subject.$_tag === ROOT_TAG ? subject : { $_tag: ROOT_TAG, $_content: [subject] };
   try { node = resolve_document_path(root, "document", path); }
   catch { return undefined; }
-  return is_Node(node) ? wrap_in_tree(activation.tree, node) : undefined;
+  return is_Node(node) ? wrap_in_tree(tree, node) : undefined;
 }
 
 function snapshot_local_behaviors(
