@@ -6,11 +6,15 @@ import { plan_managed_document_css } from "./browser-realization/managed-documen
 import { decode_portable_document_stylesheet, render_portable_document_stylesheet } from "./css/portable-document-stylesheet.js";
 import { serialize_browser_realization } from "./browser-realization/browser-realization-serialize.js";
 import { DocumentSsrError } from "./document-cut.error.js";
+import type { PortableDocumentQuads } from "../types/livemap.types.js";
+import { plan_portable_document_subjects } from "./browser-realization/portable-document-subjects.js";
 import { decode_hosted_root, HOSTED_MAX_SNAPSHOT_BYTES } from "../api/livemap/livemap.hosted.js";
 
-export function realize_document(root: HsonNode, css = ""): BrowserRealizationHtml {
+export function realize_document(root: HsonNode, css = "", subjects?: Readonly<{ quads?: PortableDocumentQuads }>): BrowserRealizationHtml {
   try {
-    const plan = plan_managed_document_css(plan_browser_realization(root), css);
+    const browser = plan_browser_realization(root);
+    const addressed = subjects === undefined ? browser : plan_portable_document_subjects(browser, root, subjects.quads);
+    const plan = plan_managed_document_css(addressed, css);
     if (plan.roots.length !== 1 || plan.roots[0]?.kind !== "element") {
       throw new Error("Document SSR requires exactly one ordinary canonical document root.");
     }

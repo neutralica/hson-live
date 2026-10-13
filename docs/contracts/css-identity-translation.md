@@ -3,7 +3,8 @@
 `translate_document_css_identities(record, direction, correspondence)` lives in
 `src/internal/css/css-identity-translation.ts`. It consumes and returns the
 existing `PortableDocumentStylesheetRecord`. It has no public export and is not
-wired into runtime CSS ownership, capture, rendering, SSR, or continuation.
+wired into runtime CSS ownership or continuation. Cut 8D adds an explicitly
+opt-in internal SSR consumer; see [portable subject SSR](document-ssr-subjects.md).
 
 The caller selects exactly one Library and supplies its validated associations
 as `{ name, quid, disposition }` records plus `assertCurrent()`. The CSS layer
@@ -22,7 +23,7 @@ happens to be `xxxxxxxxx`. Inbound translation always uses the supplied local
 mapping entries, including identical entries, reject. Repeated selector references
 to one valid mapping are allowed.
 
-## Provisional selector representation
+## Selector representation
 
 Runtime selectors use the existing exact attribute spelling:
 
@@ -30,15 +31,16 @@ Runtime selectors use the existing exact attribute spelling:
 [hson\:quid="abcde1234"]
 ```
 
-This translator alone uses a provisional portable selector spelling:
+The portable selector spelling is:
 
 ```css
 [hson\:quad="_abcde1234"]
 ```
 
-The latter is ordinary CSS data referencing explicit correspondence. It does not
-establish an HTML carrier, SSR markup contract, canonical document marker,
-permanent QUAD namespace, or another identity authority.
+The latter is ordinary CSS data referencing explicit correspondence. Cut 8D
+realizes that address as derived `hson:quad` HTML metadata in its opt-in SSR mode.
+It is not canonical document metadata, a permanent QUAD namespace, or another
+identity authority.
 
 ## Syntax and preservation
 

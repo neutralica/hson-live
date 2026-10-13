@@ -44,6 +44,15 @@ type InternalLiveMapOwner = Readonly<{
   root: () => HsonNode;
 }>;
 
+/** One detached SSR candidate, captured and translated under one aggregate fence. @internal */
+export type DocumentSsrCandidate = Readonly<{
+  revision: number;
+  root: HsonNode;
+  css: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheetRecord;
+  quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
+  correspondence: readonly import("./livemap.document.quad.js").DocumentQuadCorrespondence[];
+}>;
+
 /** One installation's correspondence. Consumers must check its fence before use. @internal */
 export type PortableQuadRestoration = Readonly<{
   associations: readonly (import("./livemap.document.quad.js").DocumentQuadCorrespondence & Readonly<{
@@ -112,6 +121,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   assertPublicMutationAllowed: () => void;
   /** Existing aggregate capture fence, also covering non-revisioned identity state. @internal */
   captureFence: () => () => void;
+  /** Explicit bounded SSR subject demand; never reads LiveTree CSS or acquires identity. */
+  captureDocumentSsr: (library: LiveMapLibraryIdentity, demanded: readonly string[]) => DocumentSsrCandidate;
   /** Private initial receiver installation after owner-proven sparse acquisition. @internal */
   installInitialDocumentQuads: (library: LiveMapLibraryIdentity, entries: readonly Readonly<{ name: string; quid: string }>[]) => void;
   /** Current Library-local authored correspondence; no graph capture. @internal */

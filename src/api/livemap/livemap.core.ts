@@ -52,6 +52,7 @@ import { ANY_DATA, ANY_DOCUMENT, HsonSchema as HsonSchemaHandle, compiled_hson_s
 import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
 import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { decode_portable_document_stylesheet, empty_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
+import { document_css_mentions_subject_identity, translate_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import {
@@ -2763,6 +2764,26 @@ function make_livemap_registry_engine(
     addClientLocalLibraries: add_client_local_libraries,
     assertPublicMutationAllowed: transitionController.assertPublicMutationAllowed,
     captureFence: capture_fence,
+    captureDocumentSsr: (identity, demanded) => {
+      const assertCurrent = capture_fence(), state = require_library(identity);
+      if (state.mode !== "document") throw new Error("SSR subject capture requires a document Library.");
+      const overlay = require_document_overlay(state.documentOverlay);
+      const quads = project_document_correspondence(state.root, overlay, state.documentQuads,
+        mapIdentityEpoch.issued(), demanded);
+      const correspondence: DocumentQuadCorrespondence[] = (quads ?? []).map(entry => {
+        const quid = overlay.quidAtPath(entry.path);
+        if (quid === undefined || !mapIdentityEpoch.issued().has(quid)) throw new Error("SSR subject requires active owner issuance.");
+        return Object.freeze({ name: entry.name, path: entry.path, quid, disposition: document_quad_disposition(entry) });
+      });
+      const root = clone_hson_graph_without_quids(state.root);
+      const authoredCss = encode_portable_document_stylesheet(stylesheet(identity));
+      const css = document_css_mentions_subject_identity(authoredCss)
+        ? translate_document_css_identities(authoredCss, "outbound", { associations: correspondence, assertCurrent })
+        : authoredCss;
+      assertCurrent();
+      return Object.freeze({ revision: mapRevision, root, css,
+        ...(quads === undefined ? {} : { quads }), correspondence: Object.freeze(correspondence) });
+    },
     installInitialDocumentQuads: install_initial_document_quads,
     documentQuad: (identity: LiveMapLibraryIdentity, name: string | undefined, quid: string | undefined) => {
       const state = require_library(identity);

@@ -4,7 +4,7 @@ import type { CssNode } from "css-tree";
 import { HSON_META_QUID } from "../../core/constants.js";
 import { HSON_METADATA_REGISTRY } from "../../core/hson-metadata.js";
 import { is_persisted_quid } from "../../core/hson-node-quid.js";
-import { is_document_quad_name } from "../document-quad-name.js";
+import { is_document_quad_name, PORTABLE_DOCUMENT_QUAD_ATTRIBUTE } from "../document-quad-name.js";
 import { managed_css_group_header } from "./managed-css-lexical.js";
 import {
   css_array_items,
@@ -21,9 +21,30 @@ export type CssIdentityCorrespondence = Readonly<{
   assertCurrent: () => void;
 }>;
 
-/** Provisional CSS-only carrier; no HTML/SSR marker or realization contract. */
-const PORTABLE_ATTRIBUTE = "hson:quad";
+/** The SSR carrier and translator share the exact portable attribute spelling. */
+const PORTABLE_ATTRIBUTE = PORTABLE_DOCUMENT_QUAD_ATTRIBUTE;
 const RUNTIME_ATTRIBUTE = HSON_METADATA_REGISTRY[HSON_META_QUID].markupName;
+
+/** Conservative lexical gate for SSR: preserve identity-free selectors even when
+ * their future syntax is opaque to CSSTree. This never rewrites or resolves CSS;
+ * a reserved identity identifier sends the entire record through exact translation.
+ * Quoted lookalikes and escaped literal pipes remain ordinary token data. @internal
+ */
+export function document_css_mentions_subject_identity(input: PortableDocumentStylesheetRecord): boolean {
+  const mentions = (source: string): boolean => {
+    let found = false;
+    tokenize(source, (type, start, end) => {
+      if (type !== tokenTypes.Ident) return;
+      const name = ident.decode(source.slice(start, end)).toLowerCase();
+      if (name === RUNTIME_ATTRIBUTE || name === PORTABLE_ATTRIBUTE) found = true;
+    });
+    return found;
+  };
+  const groups = (entries: readonly PortableDocumentCssEntry[]): boolean => entries.some(entry =>
+    entry.kind === "group" ? mentions(entry.header) || groups(entry.entries)
+      : entry.kind === "rule" && entry.scopes.some(mentions));
+  return input.rules.some(rule => mentions(rule.selector) || rule.scopes.some(mentions)) || groups(input.order);
+}
 
 /** CSSTree retains a qualified attribute name as raw Identifier spelling.
  * Only a Delim token is a namespace separator; escaped pipes belong to Ident.

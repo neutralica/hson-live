@@ -175,6 +175,28 @@ const PUBLIC_MULTI_LIBRARY_MAPS = new WeakSet<object>();
 const CLIENT_LIBRARY_SOURCES = new WeakMap<object, "authority-projected" | "client-local">();
 const DOCUMENT_CSS_STATE = new WeakMap<object, () => import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet>();
 const DOCUMENT_CSS_COMMIT = new WeakMap<object, (operation: import("../../types/livemap.types.js").LiveMapCssOp) => void>();
+const DOCUMENT_SSR_CAPTURE = new WeakMap<object, (demanded: readonly string[]) => import("./livemap.internal.js").DocumentSsrCandidate>();
+const DOCUMENT_SSR_CUT = new WeakMap<object, (options: LiveMapCutOptions, demanded: readonly string[]) => LiveMapHtmlCut>();
+
+/** Explicit SSR-only projection of Library-owned CSS and subjects. No continuation capability. @internal */
+export function capture_document_ssr_internal(document: object, demanded: readonly string[]): import("./livemap.internal.js").DocumentSsrCandidate {
+  const capture = DOCUMENT_SSR_CAPTURE.get(document);
+  if (capture === undefined) throw new Error("Document SSR capture is unavailable.");
+  return capture(demanded);
+}
+
+/** Opt-in render using one detached graph/CSS/correspondence candidate. @internal */
+export function render_document_ssr_internal(document: object, demanded: readonly string[]) {
+  const candidate = capture_document_ssr_internal(document, demanded);
+  return realize_document(candidate.root, render_portable_document_stylesheet(decode_portable_document_stylesheet(candidate.css)), { quads: candidate.quads });
+}
+
+/** Opt-in local SSR cut; its portable siblings share the selected candidate. @internal */
+export function cut_document_ssr_internal(map: object, options: LiveMapCutOptions, demanded: readonly string[]): LiveMapHtmlCut {
+  const cut = DOCUMENT_SSR_CUT.get(map);
+  if (cut === undefined) throw new Error("Document SSR cut is unavailable.");
+  return cut(options, demanded);
+}
 
 /** @internal Current semantic stylesheet for a selected document Library. */
 export function document_css_state_internal(document: LiveMapDocumentLibrary): import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet {
@@ -462,7 +484,8 @@ function make_livemap_library_receiver(
   }));
   if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot);
 
-  function cut(options: LiveMapCutOptions = {}): LiveMapCut | LiveMapHtmlCut {
+  function cut(options: LiveMapCutOptions = {}, demanded?: readonly string[]): LiveMapCut | LiveMapHtmlCut {
+    const checkCapture = aggregate.captureFence();
     if (!is_record(options) || Object.keys(options).some(key => key !== "data" && key !== "documents" && key !== "html")) {
       throw new TypeError("LiveMap cut options must contain only data, documents, and html selections.");
     }
@@ -491,6 +514,10 @@ function make_livemap_library_receiver(
     // Source registry order makes equivalent selections deterministic.
     const entries = applications.filter(entry => included.has(entry.name));
     const captured = aggregate.captureSelectedHosted(entries.map(entry => entry.name), false);
+    const selectedEntry = html === undefined ? undefined : named.get(html);
+    if (demanded !== undefined && selectedEntry === undefined) throw new Error("SSR subject cut requires a selected HTML Library.");
+    const ssr = demanded === undefined || selectedEntry === undefined ? undefined
+      : aggregate.captureDocumentSsr(selectedEntry.identity, demanded);
     const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
     const registry = registry_from_entries(source.libraries.filter(entry =>
       included.has(entry.name) || (system !== undefined && entry.scope === "hson-internal")));
@@ -498,7 +525,10 @@ function make_livemap_library_receiver(
       const entry = registry.libraries[index];
       if (entry === undefined) throw new Error("Cut Library metadata is unavailable.");
       return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest,
-        root: library.root, ...(own_document_quads(library) === undefined ? {} : { quads: own_document_quads(library) }), ...(library.css === undefined ? {} : { css: library.css }) });
+        ...(ssr !== undefined && library.name === html
+          ? { root: encode_hosted_root(ssr.root, HOSTED_MAX_SNAPSHOT_BYTES),
+            ...(ssr.quads === undefined ? {} : { quads: ssr.quads }), css: ssr.css }
+          : { root: library.root, ...(own_document_quads(library) === undefined ? {} : { quads: own_document_quads(library) }), ...(library.css === undefined ? {} : { css: library.css }) }) });
     });
     if (system !== undefined) {
       const entry = registry.libraries[registry.libraries.length - 1];
@@ -512,10 +542,13 @@ function make_livemap_library_receiver(
     }
     const libs: LiveMapSnapshot = Object.freeze({ format: "hson-livemap-libraries-snapshot", revision: captured.revision,
       registry, registryDigest: registry.digest, libraries: Object.freeze(libraryRoots) });
+    checkCapture();
     assert_libraries_snapshot_bound(libs);
     if (html === undefined) return Object.freeze({ libs });
     const document = captured.libraries.find(library => library.name === html);
     if (document?.css === undefined) throw new Error("Cut document stylesheet is unavailable.");
+    if (ssr !== undefined) return Object.freeze({ libs, document: html,
+      html: realize_document(ssr.root, render_portable_document_stylesheet(decode_portable_document_stylesheet(ssr.css)), { quads: ssr.quads }) });
     return Object.freeze({ libs, document: html,
       html: realize_document(decode_hosted_root(document.root, HOSTED_MAX_SNAPSHOT_BYTES),
         render_portable_document_stylesheet(decode_portable_document_stylesheet(document.css))) });
@@ -664,13 +697,20 @@ function make_livemap_library_receiver(
       }
       aggregate.restoreLibraries(snapshot);
     },
-    cut,
+    // Surplus JavaScript callback arguments have no public cut semantics.
+    cut: (options: LiveMapCutOptions = {}) => cut(options),
     commits: Object.freeze({
       observe: (listener: (commit: LiveMapCommit) => void) =>
         aggregate.observe((commit) => listener(public_commit(commit))),
     }),
   });
   register_internal_livemap_aggregate_owner(libraries, aggregate);
+  DOCUMENT_SSR_CUT.set(libraries, (options, demanded) => {
+    if (!Array.isArray(demanded)) throw new Error("SSR subject cut requires an exact demand array.");
+    const result = cut(options, demanded);
+    if (!("html" in result)) throw new Error("SSR subject cut requires HTML selection.");
+    return result;
+  });
   EXACT_LIBRARY_ADMISSION.set(libraries, (definitions) => addLibrariesInternal(definitions));
   DOCUMENT_COMPOSITION.set(libraries, (source, name, options) => {
     // Preserve existing batch/client/hosted authority fences before inspecting sources.
@@ -1382,6 +1422,7 @@ function make_document_library(
   register_document_quad_lookup(facade, quadLookup);
   register_document_quad_lookup(documentApi, quadLookup);
   const selected = Object.freeze(facade);
+  DOCUMENT_SSR_CAPTURE.set(selected, demanded => aggregate.captureDocumentSsr(library.identity, demanded));
   DOCUMENT_CSS_STATE.set(selected, () => aggregate.stylesheet(library.identity));
   DOCUMENT_CSS_COMMIT.set(selected, (operation) => { aggregate.commitStylesheet(library.identity, operation); });
   register_internal_authority_position_observer(selected, aggregate.observeAuthorityPosition);
