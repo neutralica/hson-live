@@ -1,5 +1,7 @@
-import { ELEM_TAG, ROOT_TAG } from "../../core/constants.js";
-import { is_Node } from "../../core/node-guards.js";
+import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
+import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
+import { decode_public_attrs, is_public_attr_name } from "../../core/public-attrs.js";
+import { plan_public_attr_set } from "../../core/public-attr-transitions.js";
 import type { HsonNode, NodeContent, Primitive } from "../../core/types.js";
 import { ANY_DOCUMENT, HsonSchema } from "../schema/hson-schema.js";
 import { materialize_owned_occurrences } from "../livetree/runtime/materialize-occurrences.js";
@@ -50,14 +52,27 @@ export function document_composition_options(input: DocumentCompositionOptions |
 }
 
 type Selection = Readonly<{ library: string; quid?: string; quad?: string }>;
+type RootCustomization = Readonly<{ attrs: readonly (readonly [string, string])[]; text?: string }>;
 type Frame = {
   source: readonly (HsonNode | Primitive)[];
   output: NodeContent;
   index: number;
   selection?: Selection;
+  customization?: RootCustomization;
   owner: HsonNode;
   emptyClusterParent?: HsonNode;
 };
+
+/** Exact immediate logical string shape; undefined includes absence, never an empty string. */
+function sole_immediate_string(node: HsonNode): string | undefined {
+  if (node.$_content.length !== 1) return undefined;
+  const relationship = node.$_content[0];
+  if (!is_Node(relationship) || relationship.$_tag !== ELEM_TAG || relationship.$_content.length !== 1) return undefined;
+  const leaf = relationship.$_content[0];
+  if (!is_Node(leaf) || leaf.$_tag !== STR_TAG || leaf.$_content.length !== 1) return undefined;
+  const value = leaf.$_content[0];
+  return typeof value === "string" ? value : undefined;
+}
 
 /**
  * Expand already owned document roots into private occurrences. The receiver
@@ -138,19 +153,35 @@ export function expand_document_composition(
     if (++nodes > limits.maxNodes) throw new Error("Document composition node limit exceeded.");
     if (item.$_tag.toLowerCase() === "hson-template") {
       const attrs = item.$_attrs ?? {};
-      if (Object.keys(attrs).some(key => key !== "lib" && key !== "quad")) throw new TypeError("Unsupported hson-template attribute; only lib and quad are supported.");
+      const overrideNames = Object.keys(attrs).filter(key => key !== "lib" && key !== "quad");
       const lib = Object.getOwnPropertyDescriptor(attrs, "lib")?.value;
       if (typeof lib !== "string" || lib.length === 0) throw new TypeError("hson-template requires a nonempty lib attribute.");
       const quadField = Object.getOwnPropertyDescriptor(attrs, "quad");
       const quad: unknown = quadField?.value;
       if (quadField !== undefined && !is_document_quad_name(quad)) throw new TypeError("hson-template requires a valid nonempty QUAD name.");
-      if (item.$_content.length !== 0) throw new TypeError("hson-template content is not supported.");
+      const customized = overrideNames.length !== 0 || item.$_content.length !== 0;
+      if (customized && quadField === undefined) throw new TypeError("hson-template customization requires explicit QUAD selection.");
+      const overrides: [string, string][] = [];
+      for (const name of overrideNames) {
+        const value: unknown = Object.getOwnPropertyDescriptor(attrs, name)?.value;
+        if (!is_public_attr_name(name) || typeof value !== "string") {
+          throw new TypeError("hson-template overrides require ordinary public attributes with string values.");
+        }
+        overrides.push([name, value]);
+      }
+      const text = sole_immediate_string(item);
+      if (item.$_content.length !== 0 && text === undefined) {
+        throw new TypeError("hson-template content requires exactly one immediate logical string.");
+      }
       const selectedRoot = source(lib);
       let content: readonly (HsonNode | Primitive)[] = selectedRoot.$_content;
       let selection: Selection = { library: lib };
       if (is_document_quad_name(quad)) {
         if (selectQuad === undefined) throw new Error("Document composition QUAD lookup is unavailable.");
         const selected = selectQuad(lib, quad, selectedRoot);
+        if (customized && (!is_ordinary_element_node(selected.node) || selected.node.$_tag.toLowerCase() === "hson-template")) {
+          throw new TypeError("hson-template customization requires an ordinary nonconnector selected element.");
+        }
         content = [selected.node]; // Include the addressed element, not only its relationship content.
         selection = { library: lib, quad, quid: selected.quid };
       }
@@ -158,7 +189,9 @@ export function expand_document_composition(
         const chain = frames.flatMap(current => current.selection === undefined ? [] : [label(current.selection)]);
         throw new Error(`Recursive document composition cycle: ${[...chain, label(selection)].join(" -> ")}.`);
       }
-      push({ source: content, output: frame.output, index: 0, selection, owner: frame.owner });
+      push({ source: content, output: frame.output, index: 0, selection, owner: frame.owner,
+        ...(customized ? { customization: { attrs: overrides, text } } : {}),
+      });
       const selections = active.get(lib) ?? new Set<string | undefined>();
       selections.add(selection.quid);
       active.set(lib, selections);
@@ -167,11 +200,32 @@ export function expand_document_composition(
     const header: HsonNode = { $_tag: item.$_tag, $_content: [] };
     if (item.$_attrs !== undefined) header.$_attrs = item.$_attrs;
     if (item.$_meta !== undefined) header.$_meta = item.$_meta;
-    chargeHeader(header);
     const copy = materialize_owned_occurrences(header);
+    let content = item.$_content;
+    if (frame.customization !== undefined) {
+      if (frame.customization.attrs.length) {
+        let attrs = decode_public_attrs(copy.$_attrs ?? {});
+        if (attrs === undefined) throw new TypeError("Selected root attributes are not canonical.");
+        for (const [name, value] of frame.customization.attrs) {
+          if (!Object.hasOwn(attrs, name) || typeof attrs[name] !== "string") {
+            throw new TypeError(`hson-template override ${JSON.stringify(name)} requires an existing string-valued root attribute.`);
+          }
+          attrs = plan_public_attr_set(attrs, name, value);
+        }
+        copy.$_attrs = attrs;
+      }
+      if (frame.customization.text !== undefined) {
+        if (sole_immediate_string(item) === undefined) {
+          throw new TypeError("hson-template text replacement requires an existing sole immediate logical string.");
+        }
+        // Traverse only the replacement, charging its ELEM, STR and payload through the ordinary budgets.
+        content = [{ $_tag: ELEM_TAG, $_content: [{ $_tag: STR_TAG, $_content: [frame.customization.text] }] }];
+      }
+    }
+    chargeHeader(copy);
     frame.output.push(copy);
-    if (item.$_content.length) push({
-      source: item.$_content, output: copy.$_content, index: 0, owner: copy,
+    if (content.length) push({
+      source: content, output: copy.$_content, index: 0, owner: copy,
       ...(item.$_tag === ELEM_TAG ? { emptyClusterParent: frame.owner } : {}),
     });
   }

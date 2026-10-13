@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap } from "../../src/index.ts";
+import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { install_libraries_snapshot, validate_document_path, type LiveMapCommit } from "../../src/api/livemap/index.ts";
 import { compose_livemap_document_internal, make_livemap_from_authored_libraries_internal as authored,
   prepare_hosted_livemap_library_add_internal } from "../../src/api/livemap/livemap.libraries.ts";
@@ -20,6 +20,8 @@ import { mint_hson_node_quid } from "../../src/core/hson-node-quid.ts";
 const empty = (): HsonNode => ({ $_tag: ROOT_TAG, $_content: [] });
 const node = (value: unknown): HsonNode => { if (!is_Node(value)) throw Error("Expected a node"); return value; };
 const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
+const selection_controls = (selection: "whole" | "selected" | "customized"): string => selection === "whole" ? ""
+  : selection === "selected" ? ' quad="button"' : ' quad="button" title="Customized" "Custom text"';
 const doc = (map: LiveMap, name: string): LiveMapDocumentLibrary => {
   const library = map.lib(name);
   if (library.mode !== "document") throw Error("Expected a document Library");
@@ -237,16 +239,16 @@ export function document_composition_cases(check: (name: string, run: () => void
     atomic(map, () => compose_livemap_document_internal(map, "data", "page"), /not a document/);
     atomic(map, () => compose_livemap_document_internal(map, "wrong", "page"), /not a document/);
   });
-  check("unsupported connector arguments and attributes reject instead of disappearing", () => {
+  check("whole Library override attributes reject instead of disappearing", () => {
     for (const attr of ['href="/about"', 'label="About"', 'id="marker"', 'style="color:red"']) {
       const map = hsonLiveMap.fromLibraries({ layout: { document: `<hson-template lib="component" ${attr}/>` }, component: { document: '<a/>' } });
-      atomic(map, () => compose_livemap_document_internal(map, "layout", "page"), /Unsupported.*attribute/);
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "page"), /requires explicit QUAD/);
     }
   });
-  check("connectors require a nonempty string lib and empty content", () => {
+  check("whole Library connectors require a nonempty string lib and absent content", () => {
     for (const document of ['<hson-template/>', '<hson-template lib=""/>', '<hson-template lib="component" "description"/>', '<hson-template lib="component" <span/>/>']) {
       const map = hsonLiveMap.fromLibraries({ layout: { document }, component: { document: '<a/>' } });
-      atomic(map, () => compose_livemap_document_internal(map, "layout", "page"), /requires.*lib|content is not supported/);
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "page"), /requires.*lib|requires explicit QUAD/);
     }
   });
   check("inherited lib getters cannot resolve connectors or reenter source reads", () => {
@@ -529,7 +531,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     }
     for (const document of ['<hson-template quad="button"/>', '<hson-template lib="" quad="button"/>', '<hson-template lib="parts" quad="button" "text"/>', '<hson-template lib="parts" quad="button" <b/>/>']) {
       const map = authored({ layout: { document }, parts: { document: '<button @:button/>' } });
-      atomic(map, () => compose_livemap_document_internal(map, "layout", "result"), /requires.*lib|content is not supported/);
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "result"), /requires.*lib|requires.*logical string/);
     }
     for (const value of [true, false, null, 4]) for (const control of ["lib", "quad"]) {
       const attrs = control === "lib" ? { lib: value } : { lib: "parts", quad: value };
@@ -581,9 +583,268 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.equal(result.css.snapshot(), ""); assert.match(result.render(), /color.*blue/);
     assert.equal(doc(map, "unrelated").css.snapshot(), 'aside{color:red;}');
   });
-  check("whole and selected composition reject incomplete identity preflight and realization atomically", () => {
-    for (const selected of [false, true]) for (const phase of ["preflight", "realize"]) {
-      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selected ? ' quad="button"' : ''}/> <aside/>/>` }, parts: { document: '<button @:button/>' } });
+  check("root customization replaces existing attributes and sole text while omissions preserve defaults", () => {
+    for (const entry of [
+      { args: '', expected: '<a href="/" title="Default" class="link" "Default label"/>' },
+      { args: 'href="/documentation"', expected: '<a href="/documentation" title="Default" class="link" "Default label"/>' },
+      { args: '"Read the docs"', expected: '<a href="/" title="Default" class="link" "Read the docs"/>' },
+      { args: 'href="/documentation" "Read the docs"', expected: '<a href="/documentation" title="Default" class="link" "Read the docs"/>' },
+      { args: 'href="/docs" title="Docs" class="primary" "Read"', expected: '<a href="/docs" title="Docs" class="primary" "Read"/>' },
+      { args: 'href="" ""', expected: '<a href="" title="Default" class="link" ""/>' },
+      { args: '" \t "', expected: '<a href="/" title="Default" class="link" " \t "/>' },
+      { args: ' \t\n ', expected: '<a href="/" title="Default" class="link" "Default label"/>' },
+    ]) {
+      const map = authored({ layout: { document: `<hson-template lib="parts" quad="link" ${entry.args}/>` },
+        parts: { document: '<a @:link href="/" title="Default" class="link" "Default label"/>' } });
+      const before = map.capture(), address = lookup(doc(map, "parts"), "link");
+      const result = compose_livemap_document_internal(map, "layout", "result");
+      assert.deepEqual(result.root(), JSON.parse(JSON.stringify(parse_authored_document_library(entry.expected).root)));
+      assert.deepEqual(map.capture().libraries.slice(0, 2), before.libraries);
+      assert.deepEqual(lookup(doc(map, "parts"), "link"), address);
+    }
+    for (const args of ['', '""', '"Filled"']) {
+      const map = authored({ layout: { document: `<hson-template lib="parts" quad="link" ${args}/>` }, parts: { document: '<a @:link ""/>' } });
+      assert.deepEqual(tokens(compose_livemap_document_internal(map, "layout", "result").root()), ["a", args === '"Filled"' ? "Filled" : ""]);
+    }
+    const absent = authored({ layout: { document: '<hson-template lib="parts" quad="link"/>' }, parts: { document: '<a @:link/>' } });
+    assert.deepEqual(tokens(compose_livemap_document_internal(absent, "layout", "result").root()), ["a"]);
+    const controls = authored({ layout: { document: '<hson-template lib="parts" quad="link" title="Custom"/>' },
+      parts: { document: '<a @:link lib="default-lib" quad="default-quad" title="Default"/>' } });
+    const selected = node(compose_livemap_document_internal(controls, "layout", "result").root().$_content[0]);
+    assert.deepEqual(selected.$_attrs, { lib: "default-lib", quad: "default-quad", title: "Custom" });
+  });
+  check("text replacement requires an exact existing immediate sole string and exact caller content", () => {
+    for (const content of ['', '"one" "two"', '"before" <b/>', '<b "nested"/>', '<hson-template lib="text"/>']) {
+      const map = authored({ layout: { document: '<hson-template lib="parts" quad="link" "Replace"/>' },
+        parts: { document: `<a @:link ${content}/>` }, text: { document: '"Nested"' } });
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "result"), /existing sole immediate logical string/);
+    }
+    for (const content of ['"one" "two"', '<b/>', '"before" <b/>', '<hson-template lib="text"/>']) {
+      const map = authored({ layout: { document: `<hson-template lib="parts" quad="link" ${content}/>` },
+        parts: { document: '<a @:link "Default"/>' }, text: { document: '"Nested"' } });
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "result"), /exactly one immediate logical string/);
+    }
+    const emptyRequest = authored({ layout: { document: '<hson-template lib="parts" quad="link" ""/>' }, parts: { document: '<a @:link/>' } });
+    atomic(emptyRequest, () => compose_livemap_document_internal(emptyRequest, "layout", "result"), /existing sole/);
+  });
+  check("ordinary string flags retain their admitted representation without boolean coercion", () => {
+    for (const entry of [{ args: 'disabled', value: "disabled", flag: true },
+      { args: 'disabled="false"', value: "false", flag: false }, { args: 'disabled=""', value: "", flag: false }]) {
+      const map = authored({ layout: { document: `<hson-template lib="parts" quad="link" ${entry.args}/>` },
+        parts: { document: '<a @:link disabled "Default"/>' } });
+      const result = compose_livemap_document_internal(map, "layout", "result");
+      assert.equal(result.document.attrs.get(target(0), "disabled"), entry.value);
+      assert.equal(result.document.flags.has(target(0), "disabled"), entry.flag);
+    }
+  });
+  check("overrides reject unknown names nonstring values structured style and case guesses atomically", () => {
+    for (const attr of ['missing="new"', 'HREF="/new"', 'viewbox="new"', 'style="color:red"']) {
+      const map = authored({ layout: { document: `<hson-template lib="parts" quad="link" ${attr}/>` },
+        parts: { document: '<svg @:link href="/" viewBox="0 0 10 10" style="color:blue"/>' } });
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "result"), /existing string-valued|attributes with string values/);
+    }
+    for (const value of [true, false, null, 4]) {
+      const layout = parse_authored_document_library('<hson-template lib="parts" quad="link" href="/new"/>').root;
+      node(layout.$_content[0]).$_attrs!.href = value;
+      const map = authored({ layout: { document: layout }, parts: { document: '<a @:link href="/"/>' } });
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "result"), /attributes with string values/);
+      const targetMap = authored({ layout: { document: '<hson-template lib="parts" quad="link" href="/new"/>' }, parts: { document: '<a @:link href="/"/>' } });
+      doc(targetMap, "parts").document.attrs.set(target(0), "href", value);
+      atomic(targetMap, () => compose_livemap_document_internal(targetMap, "layout", "result"), /existing string-valued/);
+    }
+    const exact = authored({ layout: { document: '<hson-template lib="parts" quad="link" viewBox="0 0 20 20"/>' },
+      parts: { document: '<svg @:link viewBox="0 0 10 10"/>' } });
+    assert.equal(compose_livemap_document_internal(exact, "layout", "result").document.attrs.get(target(0), "viewBox"), "0 0 20 20");
+  });
+  check("protected metadata private transit and invalid names remain rejected at ordinary admission", () => {
+    const map = authored({ parts: { document: '<a @:link href="/"/>' } });
+    for (const name of ["hson:quid", "hson:index", "_hson_meta_attr_71756964", "_hson_attr_transit_68726566", "bad name"]) {
+      const root: HsonNode = { $_tag: ROOT_TAG, $_content: [{ $_tag: "hson-template", $_attrs: { lib: "parts", quad: "link", [name]: "new" }, $_content: [] }] };
+      atomic(map, () => map.addLibraries({ layout: { document: root } }), /attribute|metadata|reserved/i);
+    }
+  });
+  check("whole Library and selected connector customizations reject while no-argument expansion remains", () => {
+    for (const args of ['href="/new"', '"New"', '""']) {
+      const whole = authored({ layout: { document: `<hson-template lib="parts" ${args}/>` }, parts: { document: '<a @:link href="/" "Default"/>' } });
+      atomic(whole, () => compose_livemap_document_internal(whole, "layout", "result"), /requires explicit QUAD/);
+      const selected = authored({ layout: { document: `<hson-template lib="parts" quad="alias" ${args}/>` },
+        parts: { document: '<hson-template @:alias lib="leaf" quad="link"/>' }, leaf: { document: '<a @:link href="/" "Default"/>' } });
+      atomic(selected, () => compose_livemap_document_internal(selected, "layout", "result"), /nonconnector selected element/);
+    }
+    const map = authored({ layout: { document: '<hson-template lib="parts"/> <hson-template lib="parts" quad="alias"/>' },
+      parts: { document: '<hson-template @:alias lib="leaf" quad="link"/>' }, leaf: { document: '<a @:link href="/" "Default"/>' } });
+    assert.deepEqual(tokens(compose_livemap_document_internal(map, "layout", "result").root()), ["a", "Default", "a", "Default"]);
+  });
+  check("recursive root attributes precede nested expansion without replacing descendants", () => {
+    const map = authored({ layout: { document: '<hson-template lib="parts" quad="panel" title="Custom"/>' },
+      parts: { document: '<section @:panel title="Default" <hson-template lib="parts" quad="link" href="/nested" "Nested"/>/> <a @:link href="/" "Default"/>' } });
+    const result = compose_livemap_document_internal(map, "layout", "result");
+    assert.deepEqual(tokens(result.root()), ["section", "a", "Nested"]);
+    assert.equal(result.document.attrs.get(target(0), "title"), "Custom");
+    assert.equal(result.document.attrs.get(target(0, 0, 0), "href"), "/nested");
+    const invalid = authored({ layout: { document: '<hson-template lib="parts" quad="panel" "Custom"/>' },
+      parts: { document: '<section @:panel title="Default" <hson-template lib="leaf"/>/>' }, leaf: { document: '"Default"' } });
+    atomic(invalid, () => compose_livemap_document_internal(invalid, "layout", "result"), /existing sole/);
+    for (const indirect of [false, true]) {
+      const cyclic = authored({ layout: { document: '<hson-template lib="a" quad="panel" title="Custom"/>' },
+        a: { document: `<section @:panel title="Default" <hson-template lib="${indirect ? "b" : "a"}" quad="panel" title="Again"/>/>` },
+        b: { document: '<section @:panel title="Default" <hson-template lib="a" quad="panel"/>/>' } });
+      atomic(cyclic, () => compose_livemap_document_internal(cyclic, "layout", "result"), /composition cycle/);
+    }
+  });
+  check("customized repeated occurrences preserve source identity and independent sibling storage", () => {
+    const map = authored({ layout: { document: '<main <hson-template lib="parts" quad="link" href="/one" "One"/> <hson-template lib="parts" quad="link" href="/two" "Two"/> <hson-template lib="parts" quad="link"/>/>' },
+      parts: { document: '<a @:link href="/" style="color:blue" "Default"/>' } });
+    const aggregate = internal_livemap_aggregate_authority(map), sourceId = aggregate.libraries()[1]!;
+    const source = aggregate.root(sourceId), overlay = aggregate.documentOverlay(sourceId);
+    const epoch = aggregate.identityEpoch(), ledger = epoch.issued();
+    const issued = enumerate_livemap_issued_quids(ledger), before = map.capture(), address = lookup(doc(map, "parts"), "link")!;
+    const commits: LiveMapCommit[] = [], stop = map.commits.observe(commit => {
+      assert.deepEqual(tokens(doc(map, "result").root()), ["main", "a", "One", "a", "Two", "a", "Default"]);
+      commits.push(commit);
+    });
+    const result = compose_livemap_document_internal(map, "layout", "result"); stop();
+    assert.equal(commits.length, 1); assert.equal(map.rev, 1);
+    assert.equal(Reflect.get(commits[0]!.operations[0]!.operation, "kind"), "library-add");
+    assert.equal(aggregate.root(sourceId), source); assert.equal(aggregate.documentOverlay(sourceId), overlay);
+    assert.equal(aggregate.identityEpoch(), epoch);
+    assert.deepEqual(enumerate_livemap_issued_quids(epoch.issued()), issued);
+    assert.deepEqual(map.capture().libraries.slice(0, 2), before.libraries);
+    assert.deepEqual(lookup(doc(map, "parts"), "link"), address); assert.equal(lookup(result, "link"), undefined);
+    assert.equal(aggregate.documentOverlay(aggregate.libraries()[2]!).size, 0);
+    const children = node(node(aggregate.root(aggregate.libraries()[2]!).$_content[0]).$_content[0]).$_content;
+    assert.notEqual(node(children[0]).$_attrs, node(children[1]).$_attrs);
+    assert.notEqual(node(children[0]).$_attrs?.style, node(children[1]).$_attrs?.style);
+    const first = acquire_document_identity(result.document, target(0, 0, 0)), second = acquire_document_identity(result.document, target(0, 0, 1));
+    assert.notEqual(first.snap()?.$_meta?.quid, second.snap()?.$_meta?.quid); assert.notEqual(first.snap()?.$_meta?.quid, address.quid);
+    result.document.attrs.set(target(0, 0, 0), "href", "/edited");
+    result.document.content.replace(target(0, 0, 0, 0), 0, { $_tag: STR_TAG, $_content: ["Edited"] });
+    assert.equal(result.document.attrs.get(target(0, 0, 1), "href"), "/two");
+    assert.deepEqual(tokens(result.root()), ["main", "a", "Edited", "a", "Two", "a", "Default"]);
+    assert.deepEqual(map.capture().libraries.slice(0, 2), before.libraries);
+    const later = compose_livemap_document_internal(map, "layout", "later");
+    assert.deepEqual(tokens(later.root()), ["main", "a", "One", "a", "Two", "a", "Default"]);
+    const restored = install_libraries_snapshot(map.capture()).map;
+    assert.deepEqual(restored.capture(), map.capture()); assert.deepEqual(doc(restored, "result").root(), result.root());
+    assert.equal(lookup(doc(restored, "result"), "link"), undefined);
+    doc(restored, "result").document.attrs.set(target(0, 0, 1), "href", "/restored");
+  });
+  check("customization follows moved and portably restored source addresses and ordinary creation replay", () => {
+    const original = authored({ layout: { document: '<hson-template lib="parts" quad="link" href="/custom" "Custom"/>' },
+      parts: { document: '<main <a @:link href="/" "Default"/> <aside/>/>' } });
+    doc(original, "parts").at([]).asElement()!.move(0, 1);
+    const map = install_libraries_snapshot(original.capture()).map;
+    assert.deepEqual(lookup(doc(map, "parts"), "link")?.path, [0, 0, 1]);
+    assert.notEqual(lookup(doc(map, "parts"), "link")?.quid, lookup(doc(original, "parts"), "link")?.quid);
+    const replica = install_libraries_snapshot(map.capture()).map, commits: LiveMapCommit[] = [];
+    const stop = map.commits.observe(commit => commits.push(commit));
+    const result = compose_livemap_document_internal(map, "layout", "result"); stop();
+    assert.deepEqual(tokens(result.root()), ["a", "Custom"]); assert.equal(result.document.attrs.get(target(0), "href"), "/custom");
+    assert.equal(commits.length, 1); replica.replay(commits[0]!); assert.deepEqual(replica.capture(), map.capture());
+  });
+  check("effective replacement values use ordinary node depth and character budgets", () => {
+    const map = authored({ layout: { document: '<hson-template lib="parts" quad="link" href="/" "x"/>' },
+      parts: { document: `<a @:link href="${"d".repeat(1000)}" "${"d".repeat(1000)}"/>` } });
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "result", { maxNodes: 4 }), /node limit/);
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "result", { maxDepth: 4 }), /depth limit/);
+    const result = compose_livemap_document_internal(map, "layout", "result", { maxNodes: 5, maxDepth: 5, maxCharacters: 80 });
+    assert.deepEqual(tokens(result.root()), ["a", "x"]);
+    for (const args of [`"${"x".repeat(1000)}"`, `href="${"x".repeat(1000)}"`]) {
+      const large = authored({ layout: { document: `<hson-template lib="parts" quad="link" ${args}/>` }, parts: { document: '<a @:link href="/" "Default"/>' } });
+      atomic(large, () => compose_livemap_document_internal(large, "layout", "result", { maxCharacters: 80 }), /character limit/);
+    }
+    const oversized = authored({ layout: { document: `<hson-template lib="parts" quad="link" "${"x".repeat(4_000_001)}"/>` }, parts: { document: '<a @:link "Default"/>' } });
+    atomic(oversized, () => compose_livemap_document_internal(oversized, "layout", "result"), /character limit/);
+  });
+  check("customized results retain receiving Schema special-tag and final browser realization boundaries", () => {
+    const map = authored({ layout: { document: '<hson-template lib="parts" quad="link" href="/docs" "Docs"/>' }, parts: { document: '<a @:link href="/" "Default"/>' } });
+    const schema = Hson.schema`<type "document" tag "a" attrs <props <href <exact "/docs">>> content "string">`;
+    const bad = Hson.schema`<type "document" tag "a" attrs <props <href <exact "/">>> content "string">`;
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "invalid", { schema: bad }), /schema/i);
+    const result = compose_livemap_document_internal(map, "layout", "result", { schema }); assert.equal(result.schema.get(), schema);
+    atomic(map, () => result.document.attrs.set(target(0), "href", "/other"), /schema/i);
+    atomic(map, () => map.batch(() => compose_livemap_document_internal(map, "layout", "batched")), /batch/i);
+    const aggregate = internal_livemap_aggregate_authority(map), manager = {};
+    aggregate.claimManagement(manager);
+    try { atomic(map, () => compose_livemap_document_internal(map, "layout", "managed"), /controlled|authority/i); }
+    finally { aggregate.releaseManagement(manager); }
+    const managedCss = authored({ layout: { document: '<hson-template lib="parts" quad="link" href="/docs" "Docs"/>' }, parts: { document: '<a @:link href="/" "Default"/>' } });
+    doc(managedCss, "parts").css.stylesheet('a{color:red}');
+    atomic(managedCss, () => compose_livemap_document_internal(managedCss, "layout", "result"), /managed stylesheet.*not supported/);
+    for (const replacement of ['""', '"b{color:blue}"', '"a{} </style> body{}"']) {
+      const style = authored({ layout: { document: `<hson-template lib="parts" quad="sheet" ${replacement}/>` }, parts: { document: '<style @:sheet "a{color:red}"/>' } });
+      if (replacement === '""') atomic(style, () => compose_livemap_document_internal(style, "layout", "result"), /Document <style>/);
+      else {
+        const sheet = compose_livemap_document_internal(style, "layout", "result");
+        if (replacement.includes("</style>")) assert.throws(() => sheet.render(), /browser|style|close/i);
+        else assert.match(sheet.render(), /b\{color:blue\}/);
+      }
+    }
+    const script = authored({ layout: { document: '<hson-template lib="parts" quad="script" src="/next.js"/>' }, parts: { document: '<script @:script src="/app.js"/>' } });
+    assert.match(compose_livemap_document_internal(script, "layout", "result").render(), /next.js/);
+  });
+  check("a late invalid customization publishes no earlier successful occurrence", () => {
+    for (const args of ['unknown="bad"', '"one" "two"']) {
+      const map = authored({ layout: { document: `<main <hson-template lib="parts" quad="link" href="/good" "Good"/> <hson-template lib="parts" quad="link" ${args}/>/>` },
+        parts: { document: '<a @:link href="/" "Default"/>' } });
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "result"), /string/);
+      assert.throws(() => map.lib("result"));
+    }
+  });
+  check("trusted HTML and Hson customization agree on equivalent admitted values and retain parser differences", () => {
+    const compose = (document: string | HsonNode) => {
+      const map = authored({ layout: { document }, parts: { document: '<a @:link href="/" title="Default" "Default"/>' } });
+      return compose_livemap_document_internal(map, "layout", "result");
+    };
+    const hson = compose('<hson-template lib="parts" quad="link" href="/docs" title="Docs" "Read"/>');
+    const html = compose(hsonTransform.fromTrustedHtml('<hson-template lib="parts" quad="link" href="/docs" title="Docs">Read</hson-template>').toNode());
+    assert.deepEqual(html.root(), hson.root()); assert.equal(html.render(), hson.render());
+    for (const body of ['', ' \t\n ']) {
+      const ordinary = compose(hsonTransform.fromTrustedHtml(`<hson-template lib="parts" quad="link">${body}</hson-template>`).toNode());
+      assert.deepEqual(tokens(ordinary.root()), ["a", "Default"]);
+    }
+    for (const value of ["", " \t "]) {
+      const source = `<hson-template lib="parts" quad="link" ${JSON.stringify(value)}/>`;
+      const transport = hsonTransform.fromHson(source).toHtml().serialize();
+      assert.deepEqual(compose(hsonTransform.fromTrustedHtml(transport).toNode()).root(), compose(source).root());
+    }
+    assert.equal(compose('<hson-template lib="parts" quad="link" title=""/>').document.attrs.get(target(0), "title"), "");
+    assert.equal(compose(hsonTransform.fromTrustedHtml('<hson-template lib="parts" quad="link" title=""/>').toNode()).document.attrs.get(target(0), "title"), "title");
+    assert.equal(compose(hsonTransform.fromTrustedHtml('<hson-template lib="parts" quad="link" TITLE="New"/>').toNode()).document.attrs.get(target(0), "title"), "New");
+    assert.throws(() => compose('<hson-template lib="parts" quad="link" TITLE="New"/>'), /existing string-valued/);
+    assert.equal(compose('<hson-template lib="parts" quad="link" title="  spaced   value  "/>').document.attrs.get(target(0), "title"), "  spaced   value  ");
+    assert.equal(compose(hsonTransform.fromTrustedHtml('<hson-template lib="parts" quad="link" title="  spaced   value  "/>').toNode()).document.attrs.get(target(0), "title"), "spaced value");
+    assert.equal(compose(hsonTransform.fromTrustedHtml('<hson-template lib="parts" quad="link" href="/first" href="/last"/>').toNode()).document.attrs.get(target(0), "href"), "/last");
+    assert.throws(() => compose('<hson-template lib="parts" quad="link" href="/first" href="/last"/>'), /duplicate Hson attribute/);
+    const svg = authored({ layout: { document: hsonTransform.fromTrustedHtml('<hson-template lib="parts" quad="image" viewBox="0 0 20 20"/>').toNode() }, parts: { document: '<svg @:image viewBox="0 0 10 10"/>' } });
+    atomic(svg, () => compose_livemap_document_internal(svg, "layout", "result"), /existing string-valued/);
+    const svgScoped = authored({ layout: { document: hsonTransform.fromTrustedHtml('<svg><hson-template lib="parts" quad="image" viewBox="0 0 20 20"></hson-template></svg>').toNode() }, parts: { document: '<svg @:image viewBox="0 0 10 10"/>' } });
+    assert.equal(compose_livemap_document_internal(svgScoped, "layout", "result").document.attrs.get(target(0, 0, 0), "viewBox"), "0 0 20 20");
+  });
+  check("ordinary HTML source admission and existing exact text transport govern sole-string eligibility", () => {
+    for (const body of ['Default', '', ' \t\n ']) {
+      const original = authored({ layout: { document: '<hson-template lib="parts" quad="link" href="/docs" "Read"/>' },
+        parts: { document: '<a @:link href="/" "Default"/>' } });
+      const htmlSource = hsonLiveMap.fromLibraries({ parts: { document: hsonTransform.fromTrustedHtml(`<a href="/">${body}</a>`).toNode() } });
+      const snapshot = original.capture(), htmlRoot = htmlSource.capture().libraries[0]!.root;
+      // Restore the existing portable declaration against ordinarily admitted source values.
+      const map = install_libraries_snapshot({ ...snapshot, libraries: snapshot.libraries.map(entry => entry.name === "parts" ? { ...entry, root: htmlRoot } : entry) }).map;
+      if (body === 'Default') {
+        assert.deepEqual(compose_livemap_document_internal(map, "layout", "result").root(), compose_livemap_document_internal(original, "layout", "result").root());
+      } else atomic(map, () => compose_livemap_document_internal(map, "layout", "result"), /existing sole/);
+    }
+    for (const value of ["", " \t "]) {
+      const original = authored({ layout: { document: '<hson-template lib="parts" quad="link" "Read"/>' }, parts: { document: `<a @:link ${JSON.stringify(value)}/>` } });
+      const transport = hsonTransform.fromHson(`<a ${JSON.stringify(value)}/>`).toHtml().serialize();
+      const source = hsonLiveMap.fromLibraries({ parts: { document: hsonTransform.fromTrustedHtml(transport).toNode() } });
+      const snapshot = original.capture(), htmlRoot = source.capture().libraries[0]!.root;
+      const map = install_libraries_snapshot({ ...snapshot, libraries: snapshot.libraries.map(entry => entry.name === "parts" ? { ...entry, root: htmlRoot } : entry) }).map;
+      assert.deepEqual(compose_livemap_document_internal(map, "layout", "result").root(), compose_livemap_document_internal(original, "layout", "result").root());
+    }
+  });
+  check("whole selected and customized composition reject incomplete identity preflight and realization atomically", () => {
+    for (const selection of ["whole", "selected", "customized"] as const) for (const phase of ["preflight", "realize"]) {
+      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selection_controls(selection)}/> <aside/>/>` }, parts: { document: '<button @:button title="Default" "Default"/>' } });
       const aggregate = internal_livemap_aggregate_authority(map), id = aggregate.libraries()[0]!;
       let attempted = false;
       const compose = () => { attempted = true; compose_livemap_document_internal(map, "layout", "result"); };
@@ -595,10 +856,10 @@ export function document_composition_cases(check: (name: string, run: () => void
       assert.ok(lookup(doc(map, "parts"), "button"));
     }
   });
-  for (const operation of ["ordinary addition", "whole composition", "selected composition"]) {
+  for (const operation of ["ordinary addition", "whole", "selected", "customized"] as const) {
     check(`exclusive management acquired during ${operation} preparation prevents admission`, () => {
-      const map = authored({ layout: { document: `<main <hson-template lib="parts"${operation === "selected composition" ? ' quad="button"' : ''}/>/>` },
-        parts: { document: '<section @:panel <button @:button/>/>' } });
+      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selection_controls(operation === "ordinary addition" ? "whole" : operation)}/>/>` },
+        parts: { document: '<section @:panel <button @:button title="Default" "Default"/>/>' } });
       const aggregate = internal_livemap_aggregate_authority(map), manager = {};
       const addresses = [lookup(doc(map, "parts"), "panel"), lookup(doc(map, "parts"), "button")];
       const descriptor = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON");
@@ -655,8 +916,8 @@ export function document_composition_cases(check: (name: string, run: () => void
     } finally { stop(); aggregate.releaseManagement(manager); }
   });
   check("identity and equal-valued authority reentrancy during final admission invalidate source captures", () => {
-    for (const selected of [false, true]) for (const change of ["identity", "authority"]) {
-      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selected ? ' quad="button"' : ''}/> <aside/>/>` }, parts: { document: '<button @:button/>' } });
+    for (const selection of ["whole", "selected", "customized"] as const) for (const change of ["identity", "authority"]) {
+      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selection_controls(selection)}/> <aside/>/>` }, parts: { document: '<button @:button title="Default" "Default"/>' } });
       const aggregate = internal_livemap_aggregate_authority(map), registry = aggregate.hostedRegistry();
       const before = map.capture(), address = lookup(doc(map, "parts"), "button"), issued = aggregate.identityEpoch().issued().size;
       const position = aggregate.hostedPosition();
@@ -688,9 +949,9 @@ export function document_composition_cases(check: (name: string, run: () => void
     }
   });
   check("reentrant changes while copying sources invalidate captures without overwriting completed changes", () => {
-    for (const selected of [false, true]) for (const change of ["identity", "topology", "authority"]) {
-      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selected ? ' quad="button"' : ''}/> <aside/>/>` },
-        parts: { document: '<button @:button title="capture"/>' } });
+    for (const selection of ["whole", "selected", "customized"] as const) for (const change of ["identity", "topology", "authority"]) {
+      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selection_controls(selection)}/> <aside/>/>` },
+        parts: { document: '<button @:button title="capture" "Default"/>' } });
       const aggregate = internal_livemap_aggregate_authority(map), id = aggregate.libraries()[1]!;
       const attrs = node(aggregate.root(id).$_content[0]).$_attrs;
       const descriptor = Object.getOwnPropertyDescriptor(Object, "getOwnPropertyDescriptors")!;
