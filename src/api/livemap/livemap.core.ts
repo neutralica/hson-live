@@ -6,10 +6,14 @@ import {
   mark_quad_document_root,
   resolve_document_quad,
   capture_document_quads,
+  project_document_correspondence,
   decode_document_quads,
+  document_quad_disposition,
   own_document_quads,
   type DocumentQuadBindings,
+  type DocumentQuadCorrespondence,
 } from "./livemap.document.quad.js";
+import type { PortableQuadRestoration } from "./livemap.internal.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 // Registry LiveMap transition and aggregate authority.
@@ -481,7 +485,8 @@ function make_livemap_registry_engine(
 
   /** Only unpublished candidate overlays receive fresh identities; the ledger is installed atomically later. */
   function reconstruct_quads(prepared: ReturnType<typeof prepare_livemap_root>, input: unknown, reserved: Set<string>,
-    exactOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay): Readonly<{
+    exactOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
+    correspondence?: DocumentQuadCorrespondence[]): Readonly<{
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       documentQuads?: DocumentQuadBindings;
     }> {
@@ -490,14 +495,17 @@ function make_livemap_registry_engine(
     if (entries === undefined) return { documentOverlay: overlay, documentQuads: undefined };
     if (overlay === undefined) throw new Error("Portable QUAD requires a document overlay.");
     const bindings: { name: string; quid: string }[] = [];
-    for (const { name, path } of entries) {
+    const sourcePayloads = new Set(entries.filter(entry => document_quad_disposition(entry) === "disposable").map(entry => entry.name.slice(1)));
+    for (const entry of entries) {
+      const { name, path } = entry, disposition = document_quad_disposition(entry);
       const quid: string | undefined = exactOverlay === undefined ? allocate_livemap_quid(mapIdentityEpoch.owner,
-        candidate => reserved.has(candidate) || mapIdentityEpoch.issued().has(candidate),
+        candidate => reserved.has(candidate) || mapIdentityEpoch.issued().has(candidate) || sourcePayloads.has(candidate),
         candidate => ({ claimed: true, value: candidate })) : overlay.quidAtPath(path);
       if (quid === undefined) throw new Error("No available document QUID for portable QUAD reconstruction.");
       reserved.add(quid);
       overlay = register_livemap_document_identity_at_path(overlay, quid, path).overlay;
-      bindings.push({ name, quid });
+      if (disposition === "authored") bindings.push({ name, quid });
+      correspondence?.push(Object.freeze({ name, quid, path, disposition }));
     }
     return { documentOverlay: overlay, documentQuads: make_document_quad_bindings(bindings) };
   }
@@ -1988,7 +1996,7 @@ function make_livemap_registry_engine(
   function restore_local_topology(
     snapshot: LiveMapSnapshot,
     afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
-  ): void {
+  ): PortableQuadRestoration {
     const checkRestore = capture_fence();
     if (clientComposition !== undefined) {
       throw new Error("Client projection topology requires hosted synchronization.");
@@ -2010,6 +2018,7 @@ function make_livemap_registry_engine(
       name: string;
     }>> = [];
     const reserved = new Set<string>();
+    const associations: PortableQuadRestoration["associations"][number][] = [];
     let systemRoot: HsonNode | undefined;
     let systemValue: OrderedProjectedValue | undefined;
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
@@ -2041,8 +2050,11 @@ function make_livemap_registry_engine(
         const state = compatible
           ? require_library(old.identity as LiveMapLibraryIdentity)
           : make_livemap_library(prepared, schema);
+        const correspondence: DocumentQuadCorrespondence[] = [];
+        const addressState = reconstruct_quads(prepared, own_document_quads(encoded), reserved, undefined, correspondence);
+        associations.push(...correspondence.map(subject => Object.freeze({ ...subject, library: state.identity, libraryName: entry.name })));
         candidates.push(Object.freeze({ name: entry.name, state, prepared, schema, newlyInstalled: !compatible,
-          addressState: reconstruct_quads(prepared, own_document_quads(encoded), reserved),
+          addressState,
           ...(entry.mode === "document" ? { css: decode_portable_document_stylesheet(encoded.css) } : {}),
           projectedValue: prepared.mode === "document" ? undefined : must_projected_root_value(prepared.root) }));
       }
@@ -2101,6 +2113,7 @@ function make_livemap_registry_engine(
     for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
     transitionController.invalidate();
     const restored = Object.freeze(candidates.map(({ state }) => state.identity));
+    const correspondence = Object.freeze({ associations: Object.freeze(associations), assertCurrent: capture_fence() });
     afterTopologyInstall?.(restored);
     const event = Object.freeze({ previousRevision, revision: mapRevision, libraries: restored,
       changedLibraries, continuity: "new-epoch" as const });
@@ -2108,13 +2121,14 @@ function make_livemap_registry_engine(
       deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
       publishAuthorityPosition();
     });
+    return correspondence;
   }
 
   function restore_libraries_aggregate(
     snapshot: LiveMapSnapshot | HostedLiveMapSnapshot,
     authority?: HostedAuthorityFence,
     afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
-  ): void {
+  ): PortableQuadRestoration {
     const checkRestore = capture_fence();
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
@@ -2129,8 +2143,7 @@ function make_livemap_registry_engine(
     assert_libraries_snapshot_bound(snapshot);
     if (identity === undefined && authority === undefined
       && snapshot.registry.digest !== hosted.registry.digest) {
-      restore_local_topology(snapshot, afterTopologyInstall);
-      return;
+      return restore_local_topology(snapshot, afterTopologyInstall);
     }
     if (snapshot.format !== LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT
       || snapshot.registryDigest !== hosted.registry.digest
@@ -2162,6 +2175,7 @@ function make_livemap_registry_engine(
       projectedValue?: OrderedProjectedValue;
     }>> = [];
     const reserved = new Set<string>();
+    const associations: PortableQuadRestoration["associations"][number][] = [];
     let systemCandidate: Readonly<{
       state: LiveMapSystemState;
       root: HsonNode;
@@ -2195,12 +2209,16 @@ function make_livemap_registry_engine(
         });
         continue;
       }
+      const library = require_library(binding.identity as LiveMapLibraryIdentity);
+      const correspondence: DocumentQuadCorrespondence[] = [];
+      const addressState = reconstruct_quads(prepared, own_document_quads(encoded), reserved, proof?.overlays.get(entry.name)?.document, correspondence);
+      associations.push(...correspondence.map(subject => Object.freeze({ ...subject, library: library.identity, libraryName: entry.name })));
       candidates.push(Object.freeze({
-        library: require_library(binding.identity as LiveMapLibraryIdentity),
+        library,
         root: prepared.root,
         mode: prepared.mode,
         ...(prepared.mode === "document" ? { css: decode_portable_document_stylesheet(encoded.css) } : {}),
-        ...reconstruct_quads(prepared, own_document_quads(encoded), reserved, proof?.overlays.get(entry.name)?.document),
+        ...addressState,
         ...((proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay) === undefined ? {} : {
           projectedOverlay: proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay,
           projectedValue: must_projected_root_value(prepared.root),
@@ -2277,6 +2295,7 @@ function make_livemap_registry_engine(
     // retained data/document handles continue to resolve through the same
     // stable library records above.
     const restored = Object.freeze(libraryRegistry.all().map((library) => library.identity));
+    const correspondence = Object.freeze({ associations: Object.freeze(associations), assertCurrent: capture_fence() });
     const event = Object.freeze({
       previousRevision,
       revision: snapshot.revision,
@@ -2288,6 +2307,7 @@ function make_livemap_registry_engine(
       deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
       publishAuthorityPosition();
     });
+    return correspondence;
   }
 
   function restore_hosted_aggregate(snapshot: HostedLiveMapSnapshot, authorityOverride?: HostedAuthorityFence): void {
@@ -2748,6 +2768,14 @@ function make_livemap_registry_engine(
       const state = require_library(identity);
       return resolve_document_quad(state.root, require_document_overlay(state.documentOverlay), state.documentQuads, name, quid);
     },
+    projectDocumentCorrespondence: (identity, quids) => {
+      const check = capture_fence(), state = require_library(identity);
+      if (state.mode !== "document") throw new Error("Correspondence requires a document Library.");
+      const result = project_document_correspondence(state.root, require_document_overlay(state.documentOverlay),
+        state.documentQuads, mapIdentityEpoch.issued(), quids);
+      check();
+      return result;
+    },
     prepareAddLibrariesManaged: (owner, definitions) => transitionController.runManaged(
       owner,
       () => prepare_add_libraries(definitions),
@@ -2860,6 +2888,13 @@ function make_livemap_registry_engine(
     installSemanticCheckpoint: install_semantic_checkpoint,
     restoreLibraries: (snapshot, afterTopologyInstall) => restore_libraries_aggregate(snapshot, undefined, afterTopologyInstall),
     restorePortableLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
+    restorePortableLibrariesWithCorrespondence: (snapshot) => {
+      const check = capture_fence();
+      transitionController.assertPublicMutationAllowed();
+      assert_libraries_snapshot_shape(snapshot);
+      check();
+      return restore_libraries_aggregate(snapshot);
+    },
     restoreHosted: restore_hosted_aggregate,
     restoreClientHosted: restore_client_hosted_aggregate,
     restoreClientHostedManaged: (owner, snapshot, afterTopologyInstall) => transitionController.runManaged(

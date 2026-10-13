@@ -347,10 +347,12 @@ export type LiveMapDocumentPath = readonly number[] & Readonly<{
   [LIVEMAP_DOCUMENT_PATH_BRAND]: true;
 }>;
 
-/** Authored names and reconstruction coordinates within one captured document Library. */
+/** Subject names and reconstruction coordinates within one captured document Library. */
 export type PortableDocumentQuads = readonly Readonly<{
   name: string;
   path: LiveMapDocumentPath;
+  /** Absence means authored. Disposable names convey correspondence, never QUID authority. */
+  disposition?: "disposable";
 }>[];
 
 /** Untrusted caller representation accepted at the live request boundary. */

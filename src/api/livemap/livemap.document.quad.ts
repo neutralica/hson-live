@@ -22,6 +22,13 @@ export type DocumentQuadBindings = Readonly<{
 export type DocumentQuadAdmission = Readonly<{ name: string; path: LiveMapDocumentPath }>;
 /** Current correspondence, resolved through the existing subject overlay. @internal */
 export type DocumentQuadSubject = Readonly<{ name: string; quid: string; path: LiveMapDocumentPath }>;
+/** Detached admission result for one operation; never installed in the authored registry. @internal */
+export type DocumentQuadCorrespondence = DocumentQuadSubject & Readonly<{ disposition: "authored" | "disposable" }>;
+
+/** Read validated own disposition evidence without inheriting prototype fields. @internal */
+export function document_quad_disposition(entry: PortableDocumentQuads[number]): "authored" | "disposable" {
+  return Object.getOwnPropertyDescriptor(entry, "disposition") === undefined ? "authored" : "disposable";
+}
 
 const NAME = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}(?![\s\S])/;
 const addressedRoots = new WeakSet<HsonNode>();
@@ -145,16 +152,23 @@ export function decode_document_quads(input: unknown, root: HsonNode, mode: stri
   const candidates = exact_array(input);
   const names = new Set<string>(), paths = new Set<string>(), subjects = new Set<HsonNode>();
   let previous: string | undefined;
-  const entries = candidates.map((item: unknown): DocumentQuadAdmission => {
+  const entries = candidates.map((item: unknown): PortableDocumentQuads[number] => {
     if (typeof item !== "object" || item === null || Array.isArray(item)) throw new Error("Invalid portable QUAD binding.");
     const prototype = Object.getPrototypeOf(item);
     if (prototype !== Object.prototype && prototype !== null) throw new Error("Invalid portable QUAD binding prototype.");
     const keys = Reflect.ownKeys(item);
-    if (keys.length !== 2 || !keys.every(key => key === "name" || key === "path")) throw new Error("Invalid portable QUAD binding fields.");
+    const disposition = Object.getOwnPropertyDescriptor(item, "disposition");
+    if (keys.length !== (disposition === undefined ? 2 : 3)
+      || !keys.every(key => key === "name" || key === "path" || key === "disposition")
+      || (disposition !== undefined && (!disposition.enumerable || !Object.hasOwn(disposition, "value")
+        || disposition.value !== "disposable"))) throw new Error("Invalid portable QUAD binding fields or disposition.");
     const name = Object.getOwnPropertyDescriptor(item, "name"), coordinate = Object.getOwnPropertyDescriptor(item, "path");
     if (!name?.enumerable || !Object.hasOwn(name, "value") || !coordinate?.enumerable || !Object.hasOwn(coordinate, "value")
       || !is_document_quad_name(name.value) || names.has(name.value)
       || (previous !== undefined && previous >= name.value) || !Array.isArray(coordinate.value)) throw new Error("Invalid portable QUAD name or order.");
+    if (disposition !== undefined && (name.value[0] !== "_" || !is_persisted_quid(name.value.slice(1)))) {
+      throw new Error("Disposable QUAD requires the exact underscore-prefixed QUID payload.");
+    }
     const segments = exact_array(coordinate.value);
     // Negative zero has a second spelling but no distinct structural meaning.
     if (segments.some((part: unknown) => Object.is(part, -0))) throw new Error("Noncanonical portable QUAD path.");
@@ -162,9 +176,38 @@ export function decode_document_quads(input: unknown, root: HsonNode, mode: stri
     const key = JSON.stringify(path), subject = resolve_document_path(root, "document", path);
     if (!is_ordinary_element_node(subject) || paths.has(key) || subjects.has(subject)) throw new Error("Invalid or duplicate portable QUAD subject.");
     names.add(name.value); paths.add(key); subjects.add(subject); previous = name.value;
-    return Object.freeze({ name: name.value, path });
+    const admission: PortableDocumentQuads[number] = disposition === undefined
+      ? { name: name.value, path } : { name: name.value, path, disposition: "disposable" };
+    return Object.freeze(admission);
   });
   return Object.freeze(entries);
+}
+
+/** Project only already-issued active subjects, alongside all existing authored bindings. @internal */
+export function project_document_correspondence(root: HsonNode, overlay: LiveMapDocumentIdentityOverlay,
+  bindings: DocumentQuadBindings | undefined, issued: Readonly<{ has: (quid: string) => boolean }>,
+  requested: readonly string[]): PortableDocumentQuads | undefined {
+  if (!Array.isArray(requested)) throw new Error("Correspondence requires an exact subject array.");
+  const entries: PortableDocumentQuads[number][] = [...(capture_document_quads(root, overlay, bindings, issued) ?? [])];
+  const seen = new Set<string>();
+  for (const quid of exact_array(requested)) {
+    if (!is_persisted_quid(quid) || !issued.has(quid)) throw new Error("Correspondence requires an owner-issued QUID.");
+    if (seen.has(quid)) continue;
+    seen.add(quid);
+    const path = overlay.pathForQuid(quid);
+    if (path === undefined || overlay.quidAtPath(path) !== quid) throw new Error("Correspondence requires an active subject.");
+    const subject = resolve_document_path(root, "document", path);
+    if (!is_ordinary_element_node(subject)) throw new Error("Correspondence requires an ordinary element.");
+    const metadata = read_hson_node_quid(subject);
+    if (metadata !== undefined && metadata !== quid) throw new Error("Incoherent correspondence subject identity.");
+    const authored = bindings?.byQuid.get(quid);
+    if (authored !== undefined) {
+      if (resolve_document_quad(root, overlay, bindings, authored, quid) === undefined) throw new Error("Incoherent authored correspondence.");
+    } else entries.push(Object.freeze({ name: `_${quid}`, path: validate_document_path(path), disposition: "disposable" }));
+  }
+  // Authored/disposable collisions are errors, including authored names outside the requested set.
+  entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  return entries.length === 0 ? undefined : decode_document_quads(entries, root, "document");
 }
 
 function exact_array(input: readonly unknown[]): readonly unknown[] {

@@ -17,7 +17,7 @@ import { encode_hosted_root, decode_hosted_root, make_portable_aggregate_snapsho
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.ts";
 import { set_livemap_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.quid-allocation.ts";
-import { mint_hson_node_quid } from "../../src/core/hson-node-quid.ts";
+import { mint_hson_node_quid, PERSISTED_QUID_ALPHABET } from "../../src/core/hson-node-quid.ts";
 import { capture_selected_authority_projection_snapshot, project_authority_snapshot, admit_authority_projection_snapshot,
   authority_projection_as_client_composition_internal, authority_projection_state_fingerprint_internal } from "../../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../../src/api/locus/locus.projection.ts";
@@ -75,6 +75,241 @@ async function projection(map: LiveMap, names: readonly string[], privateNames: 
 }
 
 export async function portable_quad_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
+  await check("disposable projection preserves the exact QUID alphabet and sparse observational behavior", () => {
+    for (const char of PERSISTED_QUID_ALPHABET) {
+      const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } });
+      const aggregate = owner(map), id = aggregate.libraries()[0]!, quid = char.repeat(9);
+      aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 0]), quid);
+      const overlay = aggregate.documentOverlay(id), ledger = aggregate.identityEpoch().issued(), root = aggregate.root(id);
+      let commits = 0; const stop = map.commits.observe(() => commits++);
+      try {
+        assert.deepEqual(aggregate.projectDocumentCorrespondence(id, [quid, quid]),
+          [{ name: `_${quid}`, path: [0, 0, 0], disposition: "disposable" }]);
+        assert.equal(aggregate.projectDocumentCorrespondence(id, []), undefined);
+        map.capture(); map.cut(); doc(map).render(); doc(map).document.byQuid(quid);
+        assert.equal(map.capture().libraries[0]?.quads, undefined);
+        assert.equal(lookup(doc(map), `_${quid}`), undefined);
+        assert.equal(aggregate.documentOverlay(id), overlay); assert.equal(overlay.size, 1);
+        assert.equal(aggregate.identityEpoch().issued(), ledger); assert.equal(ledger.size, 1);
+        assert.equal(aggregate.root(id), root); assert.equal(JSON.stringify(root).includes('"quid"'), false);
+        assert.equal(map.rev, 0); assert.equal(commits, 0);
+        atomic(map, () => aggregate.projectDocumentCorrespondence(id, ["00000000i"]));
+        const absent = quid === "zzzzzzzzz" ? "yyyyyyyyy" : "zzzzzzzzz";
+        atomic(map, () => aggregate.projectDocumentCorrespondence(id, [absent]));
+      } finally { stop(); }
+    }
+  });
+  await check("authored precedence includes underscore payload names and projection collisions fail atomically", () => {
+    const map = authored({ page: { document: '<main @:root <button @:_123456789/> <aside/>/>' } });
+    const aggregate = owner(map), id = aggregate.libraries()[0]!, addressed = subject(map, "_123456789");
+    const ordinary = map.capture().libraries[0]!.quads;
+    assert.deepEqual(aggregate.projectDocumentCorrespondence(id, [addressed.quid]), ordinary);
+    aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 1]), "123456789");
+    atomic(map, () => aggregate.projectDocumentCorrespondence(id, ["123456789"]));
+    assert.deepEqual(map.capture().libraries[0]!.quads, ordinary);
+    const restored = install_libraries_snapshot(map.capture()).map;
+    assert.ok(lookup(doc(restored), "_123456789"));
+    assert.equal(restored.capture().libraries[0]?.quads?.find(entry => entry.name === "_123456789")?.disposition, undefined);
+  });
+  await check("portable receiving correspondence is fresh operation-local and reprojects current payloads", () => {
+    const source = fixture(), sourceOwner = owner(source), sourceId = sourceOwner.libraries()[0]!;
+    sourceOwner.acquireLocalDocumentIdentity(sourceId, validate_document_path([0, 0, 1]), "123456789");
+    const projected = sourceOwner.projectDocumentCorrespondence(sourceId, [subject(source).quid, "123456789"])!;
+    const snapshot = bindingSnapshot(source.capture(), projected);
+    const received = fixture(), aggregate = owner(received);
+    let calls = 0;
+    const candidates = ["123456789", "aaaaaaaaa", "bbbbbbbbb", "ccccccccc"];
+    set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => candidates[calls++] ?? "ddddddddd");
+    let result;
+    try { result = aggregate.restorePortableLibrariesWithCorrespondence(snapshot); }
+    finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
+    result.assertCurrent(); assert.equal(calls, 4);
+    const anonymous = result.associations.find(entry => entry.disposition === "disposable")!;
+    assert.equal(anonymous.libraryName, "page"); assert.equal(anonymous.library, aggregate.libraries()[0]);
+    assert.equal(anonymous.name, "_123456789"); assert.equal(anonymous.quid, "aaaaaaaaa");
+    assert.deepEqual(anonymous.path, [0, 0, 1]);
+    assert.equal(aggregate.documentOverlay(anonymous.library).quidAtPath(anonymous.path), anonymous.quid);
+    assert.equal(aggregate.identityEpoch().issued().has("123456789"), false);
+    assert.equal(lookup(doc(received), anonymous.name), undefined);
+    assert.equal(aggregate.documentQuad(anonymous.library, undefined, anonymous.quid), undefined);
+    assert.equal(received.capture().libraries[0]?.quads?.some(entry => entry.disposition === "disposable"), false);
+    assert.ok(lookup(doc(received), "root")); assert.ok(lookup(doc(received), "confirm"));
+    for (const name of ["root", "confirm"]) assert.notEqual(subject(received, name).quid, subject(source, name).quid);
+    const again = aggregate.projectDocumentCorrespondence(anonymous.library, [anonymous.quid])!;
+    assert.deepEqual(again.find(entry => entry.disposition === "disposable"),
+      { name: "_aaaaaaaaa", path: [0, 0, 1], disposition: "disposable" });
+    assert.equal(again.some(entry => entry.name === "_123456789"), false);
+    const finalMap = hsonLiveMap.create(), finalOwner = owner(finalMap);
+    const final = finalOwner.restorePortableLibrariesWithCorrespondence(bindingSnapshot(received.capture(), again));
+    final.assertCurrent();
+    const last = final.associations.find(entry => entry.disposition === "disposable")!;
+    assert.notEqual(last.quid, anonymous.quid);
+    assert.equal(finalOwner.projectDocumentCorrespondence(last.library, [last.quid])?.find(entry => entry.disposition === "disposable")?.name, `_${last.quid}`);
+    assert.equal(finalOwner.documentOverlay(last.library).size, 3);
+    const exact = aggregate.captureHosted();
+    doc(received).document.attrs.set(target(...anonymous.path), "title", "temporary");
+    aggregate.restoreHosted(exact);
+    assert.equal(aggregate.documentOverlay(anonymous.library).quidAtPath(anonymous.path), anonymous.quid);
+    assert.equal(lookup(doc(received), anonymous.name), undefined);
+    assert.deepEqual(aggregate.projectDocumentCorrespondence(anonymous.library, [anonymous.quid]), again);
+    aggregate.restorePortableLibrariesWithCorrespondence(snapshot);
+    assert.throws(result.assertCurrent, /changed during capture/);
+  });
+  await check("disposable lifecycle follows moves explicit replacement lineage and terminal retirement", () => {
+    const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } });
+    const aggregate = owner(map), id = aggregate.libraries()[0]!;
+    aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 0]), "9abcdefgh");
+    const snapshot = bindingSnapshot(map.capture(), aggregate.projectDocumentCorrespondence(id, ["9abcdefgh"]));
+    const result = aggregate.restorePortableLibrariesWithCorrespondence(snapshot), subject = result.associations[0]!;
+    const page = doc(map), project = () => aggregate.projectDocumentCorrespondence(id, [subject.quid]);
+    page.document.content.move(target(0, 0), 0, 1);
+    assert.throws(result.assertCurrent, /changed during capture/);
+    assert.deepEqual(project()?.[0]?.path, [0, 0, 1]);
+    page.document.content.replace(target(0, 0), 1, { $_tag: "button", $_content: [] },
+      [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
+    assert.equal(project()?.[0]?.name, `_${subject.quid}`);
+    page.document.content.remove(target(0, 0), 1);
+    atomic(map, project);
+    assert.ok(aggregate.identityEpoch().issued().has(subject.quid));
+    page.document.content.insert(target(0, 0), 1, { $_tag: "button", $_content: [] });
+    atomic(map, project);
+    const replacement = acquire_document_identity(page.document, target(0, 0, 1));
+    const replacementQuid = aggregate.documentOverlay(id).quidAtPath(validate_document_path([0, 0, 1]))!;
+    assert.notEqual(replacementQuid, subject.quid);
+    page.document.content.replace(target(0, 0), 1, { $_tag: "button", $_content: [] });
+    assert.equal(replacement.active, false);
+    atomic(map, () => aggregate.projectDocumentCorrespondence(id, [replacementQuid]));
+    assert.equal(aggregate.projectDocumentCorrespondence(id, []), undefined);
+  });
+  await check("independent composed occurrences use receiving identities and final-only restoration", () => {
+    const source = authored({ layout: { document: '<main <hson-template lib="component"/> <hson-template lib="component"/>/>' },
+      component: { document: '<button @:source/>' } });
+    const sourceQuid = subject(source, "source", "component").quid;
+    compose(source, "layout", "final");
+    const finalMap = install_libraries_snapshot(source.cut({ documents: ["final"], data: [] }).libs).map;
+    const aggregate = owner(finalMap), id = aggregate.libraries()[0]!;
+    assert.equal(aggregate.documentOverlay(id).size, 0);
+    for (const path of [[0, 0, 0], [0, 0, 1]]) acquire_document_identity(doc(finalMap, "final").document, target(...path));
+    const quids = [[0, 0, 0], [0, 0, 1]].map(path => aggregate.documentOverlay(id).quidAtPath(validate_document_path(path))!);
+    assert.notEqual(quids[0], quids[1]); for (const quid of quids) assert.notEqual(quid, sourceQuid);
+    const snapshot = bindingSnapshot(finalMap.capture(), aggregate.projectDocumentCorrespondence(id, quids));
+    const restored = install_libraries_snapshot(snapshot).map, restoredOwner = owner(restored);
+    assert.equal(doc(restored, "final").render(), doc(finalMap, "final").render());
+    assert.equal(restoredOwner.identityEpoch().issued().has(sourceQuid), false);
+    const result = restoredOwner.restorePortableLibrariesWithCorrespondence(snapshot);
+    result.assertCurrent(); assert.equal(result.associations.length, 2);
+    assert.equal(new Set(result.associations.map(entry => entry.quid)).size, 2);
+    for (const entry of result.associations) {
+      assert.equal(entry.libraryName, "final"); assert.equal(entry.disposition, "disposable");
+      assert.notEqual(entry.quid, sourceQuid); assert.equal(quids.includes(entry.quid), false);
+    }
+    assert.deepEqual(encode_hosted_root(restoredOwner.root(result.associations[0]!.library)), encode_hosted_root(doc(finalMap, "final").root()));
+    assert.equal(restored.capture().libraries[0]?.quads, undefined);
+    assert.throws(() => restored.lib("component")); assert.throws(() => restored.lib("layout"));
+  });
+  await check("disposable exact admission rejects malformed disposition records paths and one-to-one collisions", () => {
+    const map = fixture(), snapshot = map.capture();
+    const good = { name: "_012345678", path: [0, 0, 0], disposition: "disposable" };
+    let dispositionReads = 0;
+    const getter = Object.defineProperty({ name: good.name, path: good.path }, "disposition", { enumerable: true, get() { dispositionReads++; return "disposable"; } });
+    const sparse = [0, , 0], decorated = Object.assign([0, 0, 0], { extra: true });
+    for (const records of [
+      [{ ...good, disposition: "authored" }], [{ ...good, disposition: undefined }], [{ ...good, disposition: null }],
+      [{ ...good, disposition: false }], [getter], [{ ...good, extra: true }],
+      ...["_01234567", "_0123456789", "_01234567i", "_01234567l", "_01234567o", "_01234567u", "_ABCDEFGHJ", "012345678", "__012345678"].map(name => [{ ...good, name }]),
+      ...[[], [0, 0], [99], [0, 0, 0, 0], [-0], [-1], [0.5], [NaN], [Infinity], ["0"], sparse, decorated].map(path => [{ ...good, path }]),
+      [good, { ...good, path: [0, 0, 1] }], [good, { ...good, name: "_123456789" }],
+      [good, { name: good.name, path: [0, 0, 1] }],
+      [{ name: "_012345678", path: [0, 0, 0] }, { ...good, name: "_123456789" }],
+    ]) {
+      atomic(map, () => owner(map).restorePortableLibrariesWithCorrespondence(bindingSnapshot(snapshot, records)));
+      assert.throws(() => install_libraries_snapshot(bindingSnapshot(snapshot, records)));
+    }
+    assert.equal(dispositionReads, 0);
+    const inherited = Object.getOwnPropertyDescriptor(Object.prototype, "disposition");
+    let reads = 0;
+    Object.defineProperty(Object.prototype, "disposition", { configurable: true, get() { reads++; return "disposable"; } });
+    try {
+      const plain = decode_document_quads([{ name: "_012345678", path: [0, 0, 0] }], owner(map).root(owner(map).libraries()[0]!), "document")!;
+      assert.equal(Object.hasOwn(plain[0]!, "disposition"), false);
+      const received = install_libraries_snapshot(bindingSnapshot(snapshot, plain)).map;
+      assert.ok(lookup(doc(received), "_012345678"));
+      assert.equal(reads, 0);
+    } finally {
+      if (inherited) Object.defineProperty(Object.prototype, "disposition", inherited); else Reflect.deleteProperty(Object.prototype, "disposition");
+    }
+  });
+  await check("Library-qualified equal disposable names reconstruct independently without cross-Library authority", () => {
+    const source = hsonLiveMap.fromLibraries({ one: { document: '<button/>' }, two: { document: '<button/>' } });
+    const snapshot = source.capture(), records = [{ name: "_012345678", path: validate_document_path([0]), disposition: "disposable" as const }];
+    const candidate = { ...snapshot, libraries: snapshot.libraries.map(entry => ({ ...entry, quads: records })) };
+    const map = hsonLiveMap.create(), aggregate = owner(map), result = aggregate.restorePortableLibrariesWithCorrespondence(candidate);
+    result.assertCurrent(); assert.equal(result.associations.length, 2);
+    assert.notEqual(result.associations[0]!.library, result.associations[1]!.library);
+    assert.notEqual(result.associations[0]!.quid, result.associations[1]!.quid);
+    assert.deepEqual(result.associations.map(entry => entry.libraryName), ["one", "two"]);
+    for (const entry of result.associations) assert.equal(aggregate.projectDocumentCorrespondence(entry.library, [entry.quid])?.[0]?.name, `_${entry.quid}`);
+  });
+  await check("disposable correspondence never escapes stale capture or publication reentrancy", () => {
+    const map = fixture(), aggregate = owner(map), id = aggregate.libraries()[0]!;
+    let exposed: unknown, changed = false;
+    const requested = new Proxy([subject(map).quid], {
+      ownKeys(array) {
+        if (!changed) { changed = true; acquire_document_identity(doc(map).document, target(0, 0, 1)); }
+        return Reflect.ownKeys(array);
+      },
+    });
+    const before = map.capture();
+    assert.throws(() => { exposed = aggregate.projectDocumentCorrespondence(id, requested); }, /changed during capture/);
+    assert.equal(exposed, undefined); assert.deepEqual(map.capture(), before);
+    const snapshot = bindingSnapshot(map.capture(), [{ name: "_123456789", path: [0, 0, 1], disposition: "disposable" }]);
+    const stop = aggregate.observeRestore(() => doc(map).document.attrs.set(target(0, 0, 1), "title", "after installation"));
+    try {
+      const result = aggregate.restorePortableLibrariesWithCorrespondence(snapshot);
+      assert.throws(result.assertCurrent, /changed during capture/);
+      assert.equal(aggregate.documentQuad(id, result.associations[0]!.name, undefined), undefined);
+    } finally { stop(); }
+    const foreign = owner(fixture()).libraries()[0]!;
+    atomic(map, () => aggregate.projectDocumentCorrespondence(foreign, ["123456789"]));
+  });
+  await check("disposable reconstruction preserves management exhaustion reentrant and rollback fences", () => {
+    const map = fixture(), aggregate = owner(map), id = aggregate.libraries()[0]!;
+    const candidate = bindingSnapshot(map.capture(), [{ name: "_123456789", path: [0, 0, 1], disposition: "disposable" }]);
+    const manager = {}; aggregate.claimManagement(manager);
+    try {
+      atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(candidate));
+      assert.deepEqual(aggregate.projectDocumentCorrespondence(id, [subject(map).quid]), map.capture().libraries[0]?.quads);
+    } finally { aggregate.releaseManagement(manager); }
+    atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(aggregate.captureHosted()));
+    set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => "123456789");
+    try { atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(candidate)); }
+    finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
+    const several = bindingSnapshot(map.capture(), [
+      { name: "_123456789", path: [0, 0, 0], disposition: "disposable" },
+      { name: "_23456789a", path: [0, 0, 1], disposition: "disposable" },
+    ]);
+    set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => "aaaaaaaaa");
+    try { atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(several)); }
+    finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
+    const before = map.capture(), beforeEpoch = aggregate.identityEpoch().current(), beforeSubject = subject(map);
+    let first = true, exposed: unknown;
+    set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => {
+      if (first) { first = false; acquire_document_identity(doc(map).document, target(0, 0, 1)); }
+      return mint_hson_node_quid();
+    });
+    try { assert.throws(() => { exposed = aggregate.restorePortableLibrariesWithCorrespondence(candidate); }, /changed during capture/); }
+    finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
+    assert.equal(exposed, undefined); assert.deepEqual(map.capture(), before); assert.deepEqual(subject(map), beforeSubject);
+    assert.equal(aggregate.identityEpoch().current(), beforeEpoch);
+    const plain = hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' } }), plainOwner = owner(plain), plainId = plainOwner.libraries()[0]!;
+    atomic(plain, () => plainOwner.acquireLocalDocumentIdentity(plainId, validate_document_path([0, 0, 0]), "abcdefghj", {
+      preflight() { assert.throws(() => plainOwner.projectDocumentCorrespondence(plainId, ["abcdefghj"]), /incomplete identity transaction/);
+        return { apply() {}, rollback() {}, release() {} }; },
+      realize() { assert.throws(() => plainOwner.projectDocumentCorrespondence(plainId, ["abcdefghj"]), /incomplete identity transaction/); throw Error("rollback"); },
+      rollbackRealization() {},
+    }));
+    assert.equal(plainOwner.projectDocumentCorrespondence(plainId, []), undefined);
+  });
   await check("raw SSR bootstrap retains portable addresses and rejects malformed or runtime authority", () => {
     const map = fixture(), snapshot = map.cut().libs;
     const encoded = encode_ssr_bootstrap(snapshot), decoded = decode_ssr_bootstrap(encoded);

@@ -44,6 +44,16 @@ type InternalLiveMapOwner = Readonly<{
   root: () => HsonNode;
 }>;
 
+/** One installation's correspondence. Consumers must check its fence before use. @internal */
+export type PortableQuadRestoration = Readonly<{
+  associations: readonly (import("./livemap.document.quad.js").DocumentQuadCorrespondence & Readonly<{
+    library: LiveMapLibraryIdentity;
+    libraryName: string;
+  }>)[];
+  /** Invalid after any identity, graph, registry or authority change, including publication reentrancy. */
+  assertCurrent: () => void;
+}>;
+
 const INTERNAL_OWNERS = new WeakMap<object, InternalLiveMapOwner>();
 
 const INTERNAL_AUTHORITY_POSITION_OBSERVERS = new WeakMap<object, (listener: (revision: number) => void) => () => void>();
@@ -106,6 +116,10 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   installInitialDocumentQuads: (library: LiveMapLibraryIdentity, entries: readonly Readonly<{ name: string; quid: string }>[]) => void;
   /** Current Library-local authored correspondence; no graph capture. @internal */
   documentQuad: (library: LiveMapLibraryIdentity, name: string | undefined, quid: string | undefined) => import("./livemap.document.quad.js").DocumentQuadSubject | undefined;
+  /** Observational projection using the current owning overlay; includes unchanged authored bindings. */
+  projectDocumentCorrespondence: (library: LiveMapLibraryIdentity, quids: readonly string[]) => import("../../types/livemap.types.js").PortableDocumentQuads | undefined;
+  /** Fresh portable restoration with disposable operation-local associations for a future consumer. */
+  restorePortableLibrariesWithCorrespondence: (snapshot: LiveMapSnapshot) => PortableQuadRestoration;
   /** Stage one topology batch under Locus management without installing it. @internal */
   prepareAddLibrariesManaged: (owner: object, definitions: readonly Readonly<{
     name: string;

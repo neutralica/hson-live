@@ -83,6 +83,54 @@ but ordinary portable capture and Transform output do not establish identity.
 Portable capture and authority persistence transfer application state without
 generated identity. Explicit same-epoch capture alone can restore local exact
 identity after owner and epoch provenance is verified.
+
+### Disposable portable subject correspondence
+
+The existing document Library `quads` envelope carries sorted, one-to-one
+subject associations. An authored association remains exactly `{ name, path }`.
+An explicitly disposable association is `{ name, path, disposition:
+"disposable" }`, where `name` is one underscore followed by the exact existing
+nine-character runtime QUID payload. The own disposition field is the evidence;
+an authored `_123456789` name remains authored. No Hson grammar or canonical
+document field changes.
+
+The internal aggregate `projectDocumentCorrespondence(library, quids)` operation
+resolves requested identities through the current Library-owned overlay. It
+keeps all ordinary authored exports and prefers an existing authored name for a
+requested subject. Anonymous subjects receive disposable records without
+issuance, graph mutation, or registry installation. Complete candidate
+validation rejects collisions with authored names, including unrequested
+subjects, rather than renaming a payload. Inactive, retired, foreign, and
+incoherent subject claims fail. Movement and explicit surviving replacement
+lineage are resolved from the current overlay, not captured old coordinates.
+When pairing projected records with a graph capture, an enclosing aggregate
+capture fence must cover both operations.
+
+Portable admission validates all associations against eligible ordinary
+elements, then stages fresh identities through the receiving owner's existing
+allocator and installation fences. Incoming disposable payloads are excluded
+from reconstruction issuance within their Library; their spelling conveys no
+runtime identity authority. Only authored names enter the receiving QUAD
+registry. Ordinary capture exports those authored bindings unchanged and drops
+disposable names. A subsequent requested projection uses current receiving
+QUIDs, so it cannot resurrect a prior runtime's disposable name.
+
+The internal `restorePortableLibrariesWithCorrespondence(snapshot)` operation
+returns a frozen association list qualified by Library identity and Library
+name, with incoming name, explicit disposition, receiving QUID, and admitted
+path. This detached result is not installed in Library state. Its
+`assertCurrent()` fence must pass before an operation-local consumer uses it;
+graph, identity, registry, authority changes and publication reentrancy invalidate
+it. Standard public restoration also reconstructs fresh subjects but does not
+retain or expose disposable addresses. Same-runtime exact capture continues to
+use its existing private overlay provenance.
+
+This synchronous correspondence does not cover asynchronous hosted CSS
+messages. That boundary will need an explicitly scoped transport correspondence
+lifetime tied to the accepted projection/installation, with ordering and
+invalidation across recovery, replacement, contraction, retirement and new
+incarnations. No such transport lifetime or CSS consumer is introduced here.
+
 Legacy history and snapshots may contain `ensure-quid`, `$_meta.quid`, identity
 epochs, issued ledgers, and QUID witnesses. Replay validates those exact
 claims internally, but an ordinary new runtime identity demand produces no
