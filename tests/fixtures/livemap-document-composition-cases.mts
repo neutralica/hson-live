@@ -20,8 +20,10 @@ import { mint_hson_node_quid } from "../../src/core/hson-node-quid.ts";
 const empty = (): HsonNode => ({ $_tag: ROOT_TAG, $_content: [] });
 const node = (value: unknown): HsonNode => { if (!is_Node(value)) throw Error("Expected a node"); return value; };
 const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
-const selection_controls = (selection: "whole" | "selected" | "customized"): string => selection === "whole" ? ""
-  : selection === "selected" ? ' quad="button"' : ' quad="button" title="Customized" "Custom text"';
+const selection_controls = (selection: "whole" | "selected" | "customized" | "configured"): string => selection === "whole" ? ""
+  : selection === "selected" || selection === "configured" ? ' quad="button"' : ' quad="button" title="Customized" "Custom text"';
+const selection_options = (selection: string) => selection === "configured"
+  ? { configuration: { at: { slot: { attrs: { title: "Configured" }, text: "Configured text" } } } } : undefined;
 const doc = (map: LiveMap, name: string): LiveMapDocumentLibrary => {
   const library = map.lib(name);
   if (library.mode !== "document") throw Error("Expected a document Library");
@@ -842,12 +844,257 @@ export function document_composition_cases(check: (name: string, run: () => void
       assert.deepEqual(compose_livemap_document_internal(map, "layout", "result").root(), compose_livemap_document_internal(original, "layout", "result").root());
     }
   });
+  check("call-time root configuration matches Cut 5 and distinguishes absent and empty text", () => {
+    const map = authored({ plain: { document: '<a href="/" title="Default" "Default"/>' },
+      layout: { document: '<hson-template lib="parts" quad="link" href="/docs" "Read"/>' },
+      parts: { document: '<a @:link href="/" title="Default" "Default"/>' } });
+    const configured = compose_livemap_document_internal(map, "plain", "configured", { configuration: { attrs: { href: "/docs" }, text: "Read" } });
+    assert.deepEqual(configured.root(), compose_livemap_document_internal(map, "layout", "authored").root());
+    assert.deepEqual(tokens(compose_livemap_document_internal(map, "plain", "absent", { configuration: {} }).root()), ["a", "Default"]);
+    assert.deepEqual(tokens(compose_livemap_document_internal(map, "plain", "empty", { configuration: { text: "" } }).root()), ["a", ""]);
+    assert.equal(configured.document.attrs.get(target(0), "title"), "Default");
+  });
+  const recursiveFixture = () => authored({
+    layout: { document: '<main title="Page" <hson-template @:first lib="cards" quad="card"/> <hson-template @:second lib="cards" quad="card"/>/>' },
+    cards: { document: '<section @:card title="Card" <h2 @:heading "Heading"/> <hson-template @:action lib="buttons" quad="primary" title="Authored" "Authored text"/>/> <aside @:outside "Outside"/>' },
+    buttons: { document: '<button @:primary title="Primary" style="color:blue" "Default"/> <a @:secondary title="Secondary" href="/" "Link"/>' },
+    other: { document: '<em @:secondary title="Other" "Other text"/>' },
+  });
+  check("recursive occurrence configuration supports reusable subrecords and one-shot equivalence", () => {
+    const map = recursiveFixture();
+    const action = { attrs: { title: "Call time" }, text: "Run" };
+    const shared = { at: { heading: { text: "Shared heading" }, action } };
+    const configuration = { attrs: { title: "Configured page" }, at: { first: shared, second: shared } };
+    const before = JSON.stringify(configuration);
+    const composed = compose_livemap_document_internal(map, "layout", "composed", { configuration });
+    const oneShot = compose_livemap_document_internal(map, "layout", "oneShot", { configuration: JSON.parse(before) });
+    assert.deepEqual(composed.root(), oneShot.root());
+    assert.equal(JSON.stringify(configuration), before);
+    assert.deepEqual(tokens(composed.root()), ["main", "section", "h2", "Shared heading", "button", "Run", "section", "h2", "Shared heading", "button", "Run"]);
+    assert.equal(composed.document.attrs.get(target(0), "title"), "Configured page");
+    assert.equal(composed.document.attrs.get(target(0, 0, 0, 0, 1), "title"), "Call time");
+    action.text = "Later";
+    assert.ok(!tokens(composed.root()).includes("Later"));
+  });
+  check("different configurations of repeated components and nested choices stay occurrence-local", () => {
+    const map = recursiveFixture();
+    const result = compose_livemap_document_internal(map, "layout", "result", { configuration: { at: {
+      first: { attrs: { title: "First" }, at: { heading: { text: "One" }, action: { use: { quad: "secondary" }, text: "" } } },
+      second: { at: { action: { use: { lib: "other", quad: "secondary" }, attrs: { title: "Chosen" } } } },
+    } } });
+    assert.deepEqual(tokens(result.root()), ["main", "section", "h2", "One", "a", "", "section", "h2", "Heading", "em", "Authored text"]);
+    assert.equal(result.document.attrs.get(target(0, 0, 0, 0, 1), "title"), "Authored");
+    assert.equal(result.document.attrs.get(target(0, 0, 1, 0, 1), "title"), "Chosen");
+    assert.equal(result.document.attrs.get(target(0, 0, 1), "title"), "Card");
+  });
+  check("multi-level ordinary and connector scopes address actual descendants", () => {
+    const map = authored({ layout: { document: '<hson-template @:slot lib="outer" quad="panel"/>' },
+      outer: { document: '<section @:panel <div @:body title="Body" <hson-template @:slot lib="inner" quad="panel"/>/>/>' },
+      inner: { document: '<article @:panel <span @:label "Default"/>/>' } });
+    const result = compose_livemap_document_internal(map, "layout", "result", { configuration: { at: {
+      slot: { at: { body: { attrs: { title: "Changed" }, at: { slot: { at: { label: { text: "Deep" } } } } } } },
+    } } });
+    assert.deepEqual(tokens(result.root()), ["section", "div", "article", "span", "Deep"]);
+    assert.equal(result.document.attrs.get(target(0, 0, 0), "title"), "Changed");
+  });
+  check("configured connector chains reach the eventual ordinary root", () => {
+    const map = authored({ layout: { document: '<hson-template @:slot lib="parts" quad="alias"/>' },
+      parts: { document: '<hson-template @:alias lib="parts" quad="button"/> <button @:button title="Default" "Default"/>' } });
+    assert.deepEqual(tokens(compose_livemap_document_internal(map, "layout", "result", { configuration: {
+      at: { slot: { attrs: { title: "Changed" }, text: "Final" } },
+    } }).root()), ["button", "Final"]);
+  });
+  check("configuration QUAD scope rejects unknown outside retired inaccessible and ambiguous targets", () => {
+    const map = recursiveFixture();
+    for (const configuration of [
+      { at: { missing: {} } }, { at: { first: { at: { outside: {} } } } },
+      { at: { first: { at: { primary: {} } } } },
+      { at: { first: { at: { heading: { at: { action: {} } } } } } },
+      { at: { first: { at: { card: { at: { heading: {} } }, heading: {} } } } },
+      { at: { first: { at: { card: { at: { card: {} } } } } } },
+    ]) atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration }), /QUAD|subtree|Ambiguous/);
+    // This target exists in source storage, but connector expansion replaces its authored body.
+    const hidden = authored({ layout: { document: '<hson-template @:slot lib="parts" quad="button" <i @:hidden/>/>' }, parts: { document: '<button @:button/>' } });
+    atomic(hidden, () => compose_livemap_document_internal(hidden, "layout", "bad", { configuration: { at: { hidden: {} } } }));
+    doc(map, "cards").document.content.replace(target(0, 0), 0, { $_tag: "h2", $_content: [] });
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration: { at: { first: { at: { heading: { text: "Retired" } } } } } }), /Unknown or retired/);
+  });
+  check("configuration follows moved overlay subjects and exact authored names", () => {
+    const map = recursiveFixture();
+    doc(map, "cards").document.content.move(target(0, 0), 0, 1);
+    assert.deepEqual(lookup(doc(map, "cards"), "heading")?.path, [0, 0, 1]);
+    const result = compose_livemap_document_internal(map, "layout", "result", { configuration: { at: { first: { at: { heading: { text: "Moved" } } } } } });
+    assert.deepEqual(tokens(result.root()), ["main", "section", "button", "Authored text", "h2", "Moved", "section", "button", "Authored text", "h2", "Heading"]);
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration: { at: { First: {} } } }), /Unknown or retired/);
+  });
+  check("configuration validates attrs and text against the ultimately selected ordinary target", () => {
+    const map = recursiveFixture();
+    for (const configuration of [
+      { attrs: { missing: "new" } }, { attrs: { Title: "wrong case" } }, { text: "mixed" },
+      { at: { first: { at: { action: { attrs: { style: "color:red" } } } } } },
+      { at: { first: { at: { action: { use: { lib: "other", quad: "secondary" }, attrs: { href: "/new" } } } } } },
+    ]) atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration }), /existing string-valued|existing sole/);
+    for (const document of ['<div/>', '<div <span "Child"/>/>', '<div "one" <b/> "two"/>', '<a/> <b/>']) {
+      const roots = authored({ layout: { document } });
+      atomic(roots, () => compose_livemap_document_internal(roots, "layout", "bad", { configuration: { text: "" } }), /sole|one ordinary/);
+    }
+    const valid = authored({ layout: { document: '<svg viewBox="0 0 1 1"/>' } });
+    assert.equal(compose_livemap_document_internal(valid, "layout", "result", { configuration: { attrs: { viewBox: "0 0 2 2" } } }).document.attrs.get(target(0), "viewBox"), "0 0 2 2");
+  });
+  check("configuration input is exact own JSON data without getters executable values or cycles", () => {
+    const map = recursiveFixture();
+    let reads = 0;
+    const accessor = Object.defineProperty({}, "text", { enumerable: true, get() { reads++; return "Bad"; } });
+    const cyclic: { at?: unknown } = {}; cyclic.at = { first: cyclic };
+    const malformed: unknown[] = [undefined, null, [], "text", () => ({}), { text: undefined }, { text: null }, { text: 1 },
+      { attrs: undefined }, { attrs: [] }, { attrs: { title: false } }, { attrs: { title() {} } }, { attrs: { quid: "fake" } },
+      { at: undefined }, { at: { first: undefined } }, { at: { "first.path": {} } }, { unknown: {} },
+      Object.create({ text: "Inherited" }), accessor, { attrs: accessor }, { use: accessor }, { at: accessor },
+      Object.defineProperty({}, "text", { value: "Hidden" }), { [Symbol("text")]: "Bad" }, cyclic,
+      { at: { first: { use: { lib: "buttons" } } } }, { at: { first: { use: { quad: "" } } } },
+      { at: { first: { use: { quad: "primary", lib: undefined } } } },
+      { at: { first: { use: { lib: "buttons", quad: "primary", other: "conflict" } } } },
+    ];
+    for (const configuration of malformed) atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration }));
+    assert.equal(reads, 0);
+    const proto = Object.getOwnPropertyDescriptor(Object.prototype, "text");
+    try {
+      Object.defineProperty(Object.prototype, "text", { configurable: true, get() { reads++; return "Inherited"; } });
+      const normalized = document_composition_options({ configuration: {} });
+      assert.ok(normalized.configuration);
+    } finally { if (proto) Object.defineProperty(Object.prototype, "text", proto); else Reflect.deleteProperty(Object.prototype, "text"); }
+    assert.equal(reads, 0);
+    const nullRecord = Object.create(null); Object.defineProperty(nullRecord, "text", { value: "Allowed", enumerable: true });
+    const simple = authored({ layout: { document: '<p "Default"/>' } });
+    assert.deepEqual(tokens(compose_livemap_document_internal(simple, "layout", "result", { configuration: nullRecord }).root()), ["p", "Allowed"]);
+  });
+  check("structural references reject missing Libraries wrong families unknown QUADs and ordinary replacements", () => {
+    const map = recursiveFixture(); map.addLibraries({ data: { data: {} } });
+    for (const use of [{ lib: "missing", quad: "primary" }, { lib: "data", quad: "primary" }, { quad: "missing" }]) {
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration: { at: { first: { at: { action: { use } } } } } }), /Library|QUAD/);
+    }
+    for (const configuration of [{ use: { quad: "first" } }, { at: { first: { at: { heading: { use: { quad: "action" } } } } } }]) {
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration }), /requires a connector/);
+    }
+  });
+  check("late nested failure publishes no result identity topology or positions", () => {
+    const map = recursiveFixture();
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "result", { configuration: { at: {
+      first: { at: { action: { text: "Valid first occurrence" } } },
+      second: { at: { action: { attrs: { missing: "Late failure" } } } },
+    } } }), /existing string-valued/);
+  });
+  check("configured results publish once preserve every source and restore as independent ordinary documents", () => {
+    const map = recursiveFixture(), aggregate = internal_livemap_aggregate_authority(map);
+    const ids = aggregate.libraries(), roots = ids.map(id => aggregate.root(id)), overlays = ids.map(id => aggregate.documentOverlay(id));
+    const before = map.capture(), ledger = enumerate_livemap_issued_quids(aggregate.identityEpoch().issued());
+    const addresses = [lookup(doc(map, "layout"), "first"), lookup(doc(map, "cards"), "card"), lookup(doc(map, "buttons"), "primary")];
+    const shared = { at: { action: { text: "Same" } } }, configuration = { at: { first: shared, second: shared } };
+    const commits: LiveMapCommit[] = [], stop = map.commits.observe(commit => commits.push(commit));
+    const result = compose_livemap_document_internal(map, "layout", "result", { configuration }); stop();
+    assert.equal(commits.length, 1); assert.equal(commits[0]!.operations.length, 1);
+    assert.equal(Reflect.get(commits[0]!.operations[0]!.operation, "kind"), "library-add");
+    assert.equal(aggregate.libraries().length, ids.length + 1);
+    ids.forEach((id, index) => { assert.equal(aggregate.root(id), roots[index]); assert.equal(aggregate.documentOverlay(id), overlays[index]); });
+    assert.deepEqual(map.capture().libraries.slice(0, ids.length), before.libraries);
+    assert.deepEqual(enumerate_livemap_issued_quids(aggregate.identityEpoch().issued()), ledger);
+    assert.deepEqual([lookup(doc(map, "layout"), "first"), lookup(doc(map, "cards"), "card"), lookup(doc(map, "buttons"), "primary")], addresses);
+    assert.equal(lookup(result, "first"), undefined); assert.equal(lookup(result, "card"), undefined);
+    const first = acquire_document_identity(result.document, target(0, 0, 0, 0, 1));
+    const second = acquire_document_identity(result.document, target(0, 0, 1, 0, 1));
+    assert.notEqual(first.snap()?.$_meta?.quid, second.snap()?.$_meta?.quid);
+    assert.notEqual(first.snap()?.$_meta?.quid, addresses[2]?.quid);
+    result.document.attrs.set(target(0, 0, 0, 0, 1), "title", "Edited");
+    assert.equal(result.document.attrs.get(target(0, 0, 1, 0, 1), "title"), "Authored");
+    assert.deepEqual(map.capture().libraries.slice(0, ids.length), before.libraries);
+    const snapshot = map.capture(), restored = install_libraries_snapshot(snapshot).map;
+    assert.deepEqual(restored.capture(), snapshot); assert.deepEqual(doc(restored, "result").root(), result.root());
+    const fresh = acquire_document_identity(doc(restored, "result").document, target(0, 0, 0, 0, 1));
+    assert.notEqual(fresh.snap()?.$_meta?.quid, first.snap()?.$_meta?.quid);
+    assert.equal(lookup(doc(restored, "result"), "first"), undefined);
+    shared.at.action.text = "Changed configuration";
+    doc(map, "buttons").document.attrs.set(target(0), "title", "Changed source");
+    assert.equal(result.document.attrs.get(target(0, 0, 1, 0, 1), "title"), "Authored");
+    assert.ok(!tokens(result.root()).includes("Changed configuration"));
+  });
+  check("equivalent JS HsonData Transform and governed data projections configure the same result", () => {
+    const configuration = { at: { first: { at: { action: { attrs: { title: "Data" }, text: "" } } } } };
+    const dataText = hsonTransform.fromJson(configuration).toHson().serialize();
+    const projected = hsonTransform.fromHson(dataText).toJson().value();
+    assert.deepEqual(projected, configuration);
+    const map = recursiveFixture(); map.addLibraries({ config: { data: projected } });
+    const data = map.lib("config"); if (data.mode === "document") throw Error("Expected data");
+    const direct = compose_livemap_document_internal(map, "layout", "direct", { configuration });
+    for (const [name, value] of [["transform", projected], ["governed", data.snap()], ["nodeProjection", hsonTransform.fromNode(hsonTransform.fromHson(dataText).toNode()).toJson().value()]] as const) {
+      assert.deepEqual(compose_livemap_document_internal(map, "layout", name, { configuration: value }).root(), direct.root());
+    }
+  });
+  check("configuration choices retain active cycles output limits and normalization bounds", () => {
+    const map = recursiveFixture();
+    const cyclic = authored({ layout: { document: '<hson-template @:slot lib="parts" quad="safe"/>' },
+      parts: { document: '<p @:safe/> <hson-template @:loop lib="parts" quad="loop"/>' } });
+    atomic(cyclic, () => compose_livemap_document_internal(cyclic, "layout", "bad", { configuration: { at: { slot: { use: { quad: "loop" } } } } }), /cycle/);
+    const configuration = { at: { first: { at: { action: { text: "x".repeat(100) } } } } };
+    for (const options of [{ maxNodes: 4 }, { maxDepth: 4 }, { maxCharacters: 100 }]) {
+      atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { ...options, configuration }), /limit exceeded/);
+    }
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration: { text: "x".repeat(4_000_001) } }), /resource limit/);
+    let deep: unknown = {}; for (let index = 0; index < 130; index++) deep = { at: { first: deep } };
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration: deep }), /depth limit/);
+  });
+  check("configured results retain final Schema qualification and selected stylesheet rejection", () => {
+    const map = authored({ layout: { document: '<a href="/" "Default"/>' } });
+    const schema = Hson.schema`<type "document" tag "a" attrs <props <href <exact "/docs">>> content "string">`;
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration: {}, schema }), /schema/i);
+    const result = compose_livemap_document_internal(map, "layout", "result", { configuration: { attrs: { href: "/docs" } }, schema });
+    assert.equal(result.schema.get(), schema);
+    const style = authored({ layout: { document: '<style "a { color: red; }"/>' } });
+    atomic(style, () => compose_livemap_document_internal(style, "layout", "bad", { configuration: { text: "" } }), /Document <style>/);
+    const css = recursiveFixture(); doc(css, "other").css.stylesheet("em { color: red; }");
+    atomic(css, () => compose_livemap_document_internal(css, "layout", "bad", { configuration: { at: { first: { at: { action: { use: { lib: "other", quad: "secondary" } } } } } } }), /managed stylesheet/);
+  });
+  check("selected alternatives receive nested configuration in their own subtree", () => {
+    const map = authored({ layout: { document: '<hson-template @:slot lib="parts" quad="one"/>' },
+      parts: { document: '<section @:one <p @:old "Old"/>/> <article @:two title="Two" <p @:label "Two"/>/>' },
+      other: { document: '<aside @:two title="Other" <p @:label "Other"/>/>' } });
+    for (const [name, use, tag] of [["same", { quad: "two" }, "article"], ["different", { lib: "other", quad: "two" }, "aside"]] as const) {
+      const configuration = { at: { slot: { use, attrs: { title: "Selected" }, at: { label: { text: "Nested" } } } } };
+      const result = compose_livemap_document_internal(map, "layout", name, { configuration });
+      assert.deepEqual(tokens(result.root()), [tag, "p", "Nested"]);
+      assert.equal(result.document.attrs.get(target(0), "title"), "Selected");
+    }
+    atomic(map, () => compose_livemap_document_internal(map, "layout", "bad", { configuration: { at: { slot: { use: { quad: "two" }, at: { old: {} } } } } }), /outside the selected subtree/);
+  });
+  check("QUAD spellings that coincide with JavaScript properties still resolve authored registry subjects", () => {
+    const map = authored({ layout: { document: '<main <p @:constructor "First"/> <p @:__proto__ "Second"/>/>' } });
+    const configuration: unknown = JSON.parse('{"at":{"constructor":{"text":"One"},"__proto__":{"text":"Two"}}}');
+    assert.deepEqual(tokens(compose_livemap_document_internal(map, "layout", "result", { configuration }).root()), ["main", "p", "One", "p", "Two"]);
+  });
+  check("input reflection reentrancy is inside the composition capture fence", () => {
+    for (const change of ["identity", "authority"]) {
+      const map = recursiveFixture(), aggregate = internal_livemap_aggregate_authority(map);
+      const before = map.capture(); let attempted = false, publications = 0;
+      const stop = map.commits.observe(() => publications++);
+      const configuration = new Proxy({}, { ownKeys() {
+        if (!attempted) {
+          attempted = true;
+          if (change === "identity") acquire_document_identity(doc(map, "layout").document, target(0));
+          else aggregate.setInitialHostedAuthority({ ...aggregate.hostedPosition().authority });
+        }
+        return [];
+      } });
+      try { assert.throws(() => compose_livemap_document_internal(map, "layout", "result", { configuration }), /changed during capture/); }
+      finally { stop(); }
+      assert.ok(attempted); assert.equal(publications, 0); assert.equal(map.rev, 0);
+      assert.deepEqual(map.capture(), before); assert.throws(() => map.lib("result"));
+    }
+  });
   check("whole selected and customized composition reject incomplete identity preflight and realization atomically", () => {
-    for (const selection of ["whole", "selected", "customized"] as const) for (const phase of ["preflight", "realize"]) {
-      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selection_controls(selection)}/> <aside/>/>` }, parts: { document: '<button @:button title="Default" "Default"/>' } });
+    for (const selection of ["whole", "selected", "customized", "configured"] as const) for (const phase of ["preflight", "realize"]) {
+      const map = authored({ layout: { document: `<main <hson-template @:slot lib="parts"${selection_controls(selection)}/> <aside/>/>` }, parts: { document: '<button @:button title="Default" "Default"/>' } });
       const aggregate = internal_livemap_aggregate_authority(map), id = aggregate.libraries()[0]!;
       let attempted = false;
-      const compose = () => { attempted = true; compose_livemap_document_internal(map, "layout", "result"); };
+      const compose = () => { attempted = true; compose_livemap_document_internal(map, "layout", "result", selection_options(selection)); };
       atomic(map, () => aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 1]), mint_hson_node_quid(), {
         preflight() { if (phase === "preflight") compose(); return { apply() {}, rollback() {}, release() {} }; },
         realize() { if (phase === "realize") compose(); }, rollbackRealization() {},
@@ -856,9 +1103,9 @@ export function document_composition_cases(check: (name: string, run: () => void
       assert.ok(lookup(doc(map, "parts"), "button"));
     }
   });
-  for (const operation of ["ordinary addition", "whole", "selected", "customized"] as const) {
+  for (const operation of ["ordinary addition", "whole", "selected", "customized", "configured"] as const) {
     check(`exclusive management acquired during ${operation} preparation prevents admission`, () => {
-      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selection_controls(operation === "ordinary addition" ? "whole" : operation)}/>/>` },
+      const map = authored({ layout: { document: `<main <hson-template @:slot lib="parts"${selection_controls(operation === "ordinary addition" ? "whole" : operation)}/>/>` },
         parts: { document: '<section @:panel <button @:button title="Default" "Default"/>/>' } });
       const aggregate = internal_livemap_aggregate_authority(map), manager = {};
       const addresses = [lookup(doc(map, "parts"), "panel"), lookup(doc(map, "parts"), "button")];
@@ -878,7 +1125,7 @@ export function document_composition_cases(check: (name: string, run: () => void
           } });
           try {
             if (operation === "ordinary addition") map.addLibraries({ result: { document: '<footer/>' }, extra: { data: { value: 1 } } });
-            else compose_livemap_document_internal(map, "layout", "result");
+            else compose_livemap_document_internal(map, "layout", "result", selection_options(operation));
           } finally {
             if (descriptor === undefined) Reflect.deleteProperty(Object.prototype, "toJSON");
             else Object.defineProperty(Object.prototype, "toJSON", descriptor);
@@ -916,8 +1163,8 @@ export function document_composition_cases(check: (name: string, run: () => void
     } finally { stop(); aggregate.releaseManagement(manager); }
   });
   check("identity and equal-valued authority reentrancy during final admission invalidate source captures", () => {
-    for (const selection of ["whole", "selected", "customized"] as const) for (const change of ["identity", "authority"]) {
-      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selection_controls(selection)}/> <aside/>/>` }, parts: { document: '<button @:button title="Default" "Default"/>' } });
+    for (const selection of ["whole", "selected", "customized", "configured"] as const) for (const change of ["identity", "authority"]) {
+      const map = authored({ layout: { document: `<main <hson-template @:slot lib="parts"${selection_controls(selection)}/> <aside/>/>` }, parts: { document: '<button @:button title="Default" "Default"/>' } });
       const aggregate = internal_livemap_aggregate_authority(map), registry = aggregate.hostedRegistry();
       const before = map.capture(), address = lookup(doc(map, "parts"), "button"), issued = aggregate.identityEpoch().issued().size;
       const position = aggregate.hostedPosition();
@@ -933,7 +1180,7 @@ export function document_composition_cases(check: (name: string, run: () => void
         }
         return this;
       } });
-      try { assert.throws(() => compose_livemap_document_internal(map, "layout", "result"), /changed during capture/); }
+      try { assert.throws(() => compose_livemap_document_internal(map, "layout", "result", selection_options(selection)), /changed during capture/); }
       finally {
         if (descriptor === undefined) Reflect.deleteProperty(Object.prototype, "toJSON");
         else Object.defineProperty(Object.prototype, "toJSON", descriptor);
@@ -949,8 +1196,8 @@ export function document_composition_cases(check: (name: string, run: () => void
     }
   });
   check("reentrant changes while copying sources invalidate captures without overwriting completed changes", () => {
-    for (const selection of ["whole", "selected", "customized"] as const) for (const change of ["identity", "topology", "authority"]) {
-      const map = authored({ layout: { document: `<main <hson-template lib="parts"${selection_controls(selection)}/> <aside/>/>` },
+    for (const selection of ["whole", "selected", "customized", "configured"] as const) for (const change of ["identity", "topology", "authority"]) {
+      const map = authored({ layout: { document: `<main <hson-template @:slot lib="parts"${selection_controls(selection)}/> <aside/>/>` },
         parts: { document: '<button @:button title="capture" "Default"/>' } });
       const aggregate = internal_livemap_aggregate_authority(map), id = aggregate.libraries()[1]!;
       const attrs = node(aggregate.root(id).$_content[0]).$_attrs;
@@ -973,7 +1220,7 @@ export function document_composition_cases(check: (name: string, run: () => void
         }
         return original(input);
       } });
-      try { assert.throws(() => compose_livemap_document_internal(map, "layout", "result"), /changed during capture/); }
+      try { assert.throws(() => compose_livemap_document_internal(map, "layout", "result", selection_options(selection)), /changed during capture/); }
       finally { Object.defineProperty(Object, "getOwnPropertyDescriptors", descriptor); stop(); }
       assert.equal(attempted, true); assert.deepEqual(map.capture(), after);
       assert.equal(aggregate.hostedRegistry(), registry); assert.equal(aggregate.identityEpoch().issued(), ledger);

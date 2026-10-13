@@ -678,8 +678,8 @@ function make_livemap_library_receiver(
     if (typeof source !== "string" || typeof name !== "string") {
       throw new TypeError("Document composition requires source and result Library names.");
     }
-    const configuration = document_composition_options(options);
     const checkCapture = aggregate.captureFence();
+    const configuration = document_composition_options(options);
     const root = expand_document_composition(source, (sourceName) => {
       const entry = named.get(sourceName);
       if (entry === undefined) throw new Error(`Unknown composition source Library ${JSON.stringify(sourceName)}.`);
@@ -697,7 +697,7 @@ function make_livemap_library_receiver(
       if (address === undefined) throw new Error(`Unknown or retired composition QUAD ${JSON.stringify(quad)} in Library ${JSON.stringify(sourceName)}.`);
       const node = resolve_document_path(sourceRoot, "document", address.path);
       if (!is_ordinary_element_node(node)) throw new Error("Composition QUAD subject is not an ordinary document element.");
-      return { node, quid: address.quid };
+      return { node, quid: address.quid, path: address.path };
     });
     const definitions = capture_library_definitions([{ name, family: "document", schema: configuration.schema, root }]);
     checkCapture();
