@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import ts from "typescript";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -113,6 +114,40 @@ function check(name: string, run: () => void | Promise<void>): Promise<void> {
     },
   );
 }
+
+await check("internal CSS identity declarations emit and consume without private re-export leaks", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "hson-css-identity-declarations-"));
+  const diagnosticsText = (diagnostics: readonly ts.Diagnostic[]) => ts.formatDiagnostics(diagnostics, {
+    getCanonicalFileName: path => path, getCurrentDirectory: () => repositoryRoot, getNewLine: () => "\n",
+  });
+  try {
+    const config = ts.readConfigFile(join(repositoryRoot, "tsconfig.json"), ts.sys.readFile);
+    assert.equal(config.error, undefined);
+    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, repositoryRoot);
+    assert.deepEqual(parsed.errors, []); assert.equal(parsed.options.stripInternal, true);
+    assert.equal(parsed.options.skipLibCheck, false);
+    const modules = ["api/livemap/livemap.document.quad", "internal/document-quad-name", "internal/css/css-identity-translation"];
+    const producer = ts.createProgram(modules.map(module => join(repositoryRoot, "src", `${module}.ts`)), {
+      ...parsed.options, noEmit: false, emitDeclarationOnly: true, declarationMap: false, sourceMap: false,
+      outDir: temporary, incremental: false,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(producer);
+    assert.equal(diagnostics.length, 0, diagnosticsText(diagnostics));
+    const emitted = producer.emit();
+    assert.equal(emitted.emitSkipped, false); assert.equal(emitted.diagnostics.length, 0, diagnosticsText(emitted.diagnostics));
+    const consumerPath = join(temporary, "consumer.mts");
+    writeFileSync(consumerPath, modules.map((module, index) => `import * as module${index} from "./${module}.js";\nexport type Module${index} = typeof module${index};\n`).join(""));
+    const consumer = ts.createProgram([consumerPath], {
+      ...parsed.options, rootDir: temporary, outDir: temporary, noEmit: true, types: [],
+    });
+    const consumerDiagnostics = ts.getPreEmitDiagnostics(consumer);
+    assert.equal(consumerDiagnostics.length, 0, diagnosticsText(consumerDiagnostics));
+    for (const module of modules) {
+      const declaration = readFileSync(join(temporary, `${module}.d.ts`), "utf8");
+      assert.doesNotMatch(declaration, /\bis_document_quad_name\b|\btranslate_document_css_identities\b/);
+    }
+  } finally { rmSync(temporary, { recursive: true, force: true }); }
+});
 
 await check("root declaration exports match the reviewed allowlist", () => {
   assert.deepEqual(declaration_exports("dist/index.d.ts"), ROOT_EXPORTS);

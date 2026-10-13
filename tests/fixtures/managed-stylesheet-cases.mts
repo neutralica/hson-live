@@ -1,3 +1,4 @@
+import { css_identity_translation_cases } from "./css-identity-translation-cases.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonLiveTree } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
@@ -6,6 +7,7 @@ import { parse_document_stylesheet, DocumentStylesheetError } from "../../src/in
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, render_portable_document_stylesheet, empty_portable_document_stylesheet, drop_portable_document_rule, set_portable_document_declaration, set_portable_document_keyframes } from "../../src/internal/css/portable-document-stylesheet.ts";
 
 export function managed_stylesheet_cases(check: (name: string, run: () => void) => void): void {
+  css_identity_translation_cases(check);
   check("significant escape boundaries remain CSS tokens", () => {
     const unicode = parse_document_stylesheet('\u00a0.x{color:red}', []);
     assert.equal(render_portable_document_stylesheet(decode_portable_document_stylesheet(unicode)), '\u00a0.x{color:red;}');

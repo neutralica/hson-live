@@ -12,6 +12,9 @@ import { resolve_document_path, validate_document_path } from "./livemap.documen
 import type { LiveMapDocumentPath, PortableDocumentQuads } from "../../types/livemap.types.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 import { read_hson_node_quid, is_persisted_quid } from "../../core/hson-node-quid.js";
+import { is_document_quad_name } from "../../internal/document-quad-name.js";
+/** @internal */
+export { is_document_quad_name } from "../../internal/document-quad-name.js";
 
 /** Only names and legitimate local subject identities survive admission. @internal */
 export type DocumentQuadBindings = Readonly<{
@@ -30,14 +33,8 @@ export function document_quad_disposition(entry: PortableDocumentQuads[number]):
   return Object.getOwnPropertyDescriptor(entry, "disposition") === undefined ? "authored" : "disposable";
 }
 
-const NAME = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}(?![\s\S])/;
 const addressedRoots = new WeakSet<HsonNode>();
 const lookups = new WeakMap<object, (name: string | undefined, quid: string | undefined) => DocumentQuadSubject | undefined>();
-
-/** Shared authored-address vocabulary for admission and connector controls. @internal */
-export function is_document_quad_name(value: unknown): value is string {
-  return typeof value === "string" && NAME.test(value);
-}
 
 /** Private authored source admission, preserving scanner diagnostics and occurrence evidence. @internal */
 export function parse_authored_document_library(source: string): Readonly<{ root: HsonNode; declarations: readonly DocumentQuadAdmission[] }> {
