@@ -120,6 +120,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     validation?: import("./livemap.parts.js").DataLibraryValidation;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
+    compositionStyles?: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[];
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
     beforeInstall?: () => void) => LiveMapAggregateCommit;
   /** Admit authorized client-local initializers through the private composition path. @internal */

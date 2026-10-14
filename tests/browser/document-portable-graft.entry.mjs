@@ -158,17 +158,60 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     assert(oneAnonymous !== twoAnonymous && oneAnonymous.getAttribute('hson:quid') !== twoAnonymous.getAttribute('hson:quid'), 'separate anonymous subjects');
     first.dispose(); second.dispose(); one.frame.remove(); two.frame.remove();
   });
-  await check('final-only repeated Parts graft with independent disposable correspondence', async () => {
-    const f = await page(composed.html, composed.libs), buttons = [...f.doc.querySelectorAll('button')];
-    const colors = () => buttons.map(button => f.doc.defaultView.getComputedStyle(button).color);
-    equal(colors(), ['rgb(255, 0, 0)', 'rgb(0, 0, 255)'], 'component SSR styles before JavaScript');
+  await check('final-only styled Parts graft synchronously and recur after live edits', async () => {
+    const f = await page(composed.html, composed.libs), sections = [...f.doc.querySelectorAll('section')];
+    const visual = doc => [...doc.querySelectorAll('section'),doc.getElementById('unrelated')].map(element => {
+      const css=doc.defaultView.getComputedStyle(element),label=doc.defaultView.getComputedStyle(element.querySelector('span'));
+      return [css.borderTopWidth,label.color,label.paddingLeft];
+    });
+    const before = visual(f.doc), elements = [f.root,...f.root.querySelectorAll('*')], style=f.doc.querySelector(marker);
+    equal(before, [...Array(3).fill(['3px','rgb(10, 20, 30)','7px']),['0px','rgb(0, 0, 0)','0px']], 'Part-owned CSS before graft');
     rejects(() => f.map.lib('parts'), 'no source Part collection'); rejects(() => f.map.lib('layout'), 'no source layout Library');
-    const continued = f.run();
-    buttons.forEach((button, index) => assert(f.doc.querySelectorAll('button')[index] === button, 'component Element retained'));
-    assert(buttons[0].getAttribute('hson:quid') !== buttons[1].getAttribute('hson:quid'), 'independent component receiving identities');
-    f.correspondence.associations.forEach(entry => { assert(entry.disposition === 'disposable', 'composed addresses disposable'); assert(!lookup(f.selected, entry.name), 'no authored registration'); });
-    equal(colors(), ['rgb(255, 0, 0)', 'rgb(0, 0, 255)'], 'component receiving CSS');
-    continued.dispose(); f.frame.remove();
+    const text=Object.getOwnPropertyDescriptor(Node.prototype,'textContent'),prototype=f.doc.defaultView.Element.prototype,remove=prototype.removeAttribute;
+    let switches=0,removals=0;
+    Object.defineProperty(style,'textContent',{configurable:true,get(){return text.get.call(this);},set(value){
+      if(value===f.handoff.receivingCss){
+        switches++;
+        assert(f.doc.querySelectorAll('[hson\\:quad]').length===6,'all portable carriers remain at switch');
+        assert(f.correspondence.associations.every(entry=>f.doc.querySelector(`[hson\\:quid="${entry.quid}"]`)),'receiving QUIDs written before switch');
+        equal(visual(f.doc),before,'synchronous pre-switch computed styles');
+      }
+      text.set.call(this,value);
+      if(value===f.handoff.receivingCss) equal(visual(f.doc),before,'synchronous post-switch computed styles');
+    }});
+    prototype.removeAttribute=function(name){remove.call(this,name);if(name==='hson:quad'){removals++;equal(visual(f.doc),before,'synchronous carrier removal style flush');}};
+    let continued;
+    try {continued=f.run();} finally {prototype.removeAttribute=remove;delete style.textContent;}
+    assert(switches===1&&removals===6,'one synchronous CSS handoff consumes all six carriers');
+    elements.forEach((element,index)=>assert([f.root,...f.root.querySelectorAll('*')][index]===element,'all original Elements retained'));
+    assert(f.doc.querySelector(marker)===style&&f.doc.querySelectorAll(marker).length===1,'one original managed style retained');
+    const ids=new Set(f.correspondence.associations.map(entry=>entry.quid));assert(ids.size===6,'six distinct sparse receiving subjects');
+    f.correspondence.associations.forEach(entry=>{
+      assert(!composed.sourceQuids.includes(entry.quid),'source QUID has no authority');
+      assert(f.aggregate.documentOverlay(f.library).quidAtPath(entry.path)===entry.quid,'exact destination ownership');
+      if(entry.disposition==='disposable') assert(!lookup(f.selected,entry.name),'disposable remains anonymous');
+      else assert(lookup(f.selected,entry.name)?.quid===entry.quid,'receiving authored QUAD retained');
+    });
+    assert(!lookup(f.selected,'root')&&!lookup(f.selected,'label'),'Part-local names never promoted');
+    assert(lookup(f.selected,'slot0')&&lookup(f.selected,'slot1')&&lookup(f.selected,'caption'),'shell and explicit as promotions retained');
+    const rootEntry=f.correspondence.associations.find(entry=>entry.name==='slot0'),label=sections[0].querySelector('span'),labelId=label.getAttribute('hson:quid');
+    f.selected.document.attrs.set({kind:'path',path:rootEntry.path},'title','Edited');
+    assert(sections[0].getAttribute('title')==='Edited','live local attribute edit');
+    f.selected.document.content.move({kind:'path',path:[...rootEntry.path,0]},0,1);
+    assert(sections[0].children[1]===label,'live move retains original label Element');
+    equal(visual(f.doc),before,'subject styling survives move');
+    assert(label.getAttribute('hson:quid')===labelId,'move retains subject identity');
+    f.selected.css.sel(`[hson\\:quid="${rootEntry.quid}"]`).setProp('--tone','rgb(42, 43, 44)');
+    assert(f.doc.defaultView.getComputedStyle(label).color==='rgb(42, 43, 44)','live CSS binding updates synchronously');
+    rejects(()=>f.selected.document.content.remove({kind:'path',path:[...rootEntry.path,0]},1),'subject CSS strict retirement');
+    const recut=f.map.cut({data:[],documents:['page'],html:'page'}),after=visual(f.doc),again=await page(recut.html,recut.libs);
+    equal(visual(again.doc),after,'final-only portable restore first paint after edits');
+    assert(again.correspondence.associations.every(entry=>!ids.has(entry.quid)),'recurring restoration issues fresh identities');
+    const retained=[again.root,...again.root.querySelectorAll('*')],regraft=again.run();
+    retained.forEach((element,index)=>assert([again.root,...again.root.querySelectorAll('*')][index]===element,'restored original Elements retained'));
+    equal(visual(again.doc),after,'restored graft after edits preserves styling');
+    assert(again.doc.querySelectorAll(marker).length===1,'restored graft has one managed style');
+    regraft.dispose();again.frame.remove();continued.dispose();f.frame.remove();
   });
   await check('ordinary carrier-free SSR uses the unchanged exact continuation path', async () => {
     const receiver = restore(structuredClone(libs)), selected = receiver.map.lib('page'); selected.css.clearAll();

@@ -1,5 +1,7 @@
 import { own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
+import type { DocumentCompositionStyle } from "./livemap.document.composition.js";
+import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import { registry_from_entries } from "./livemap.hosted.js";
 import {
   make_document_quad_bindings,
@@ -1599,6 +1601,7 @@ function make_livemap_registry_engine(
     validation?: DataLibraryValidation;
     quads?: PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
+    compositionStyles?: readonly DocumentCompositionStyle[];
   }>;
 
   function prepare_add_libraries(definitions: readonly LibraryAddition[], clientLocal = false): Readonly<{
@@ -1615,7 +1618,8 @@ function make_livemap_registry_engine(
     const reserved = new Set<string>();
     const foreignPayloads = disposable_document_quad_payloads(definitions.map(definition => own_document_quads(definition)));
     const prepared = definitions.map((definition) => {
-      const { name, root, hsonSchema, family, css } = definition;
+      const { name, root, hsonSchema, family, compositionStyles } = definition;
+      let css = definition.css;
       const quads = own_document_quads(definition);
       const validation = own_data_library_validation(definition);
       const admitted = admit_public_livemap_root(root, family, `LiveMap Library ${JSON.stringify(name)}`);
@@ -1623,12 +1627,68 @@ function make_livemap_registry_engine(
       must_hson_schema_family(hsonSchema, family);
       must_hson_schema_root(hsonSchema, graph.root);
       validate_data_library(graph.root, graph.mode, validation);
+      if (compositionStyles !== undefined) {
+        if (family !== "document" || css !== undefined) throw new Error("Part styles require an otherwise unstyled document candidate.");
+        const sourceText = compositionStyles.map(occurrence => {
+          const demanded = new Set(document_css_subject_identities(occurrence.css, "inbound"));
+          const names = new Set<string>(), paths = new Set<string>();
+          for (const subject of occurrence.subjects) {
+            const coordinate = validate_document_path(subject.path), key = JSON.stringify(coordinate);
+            if (!demanded.has(subject.name) || names.has(subject.name) || paths.has(key)
+              || !is_ordinary_element_node(resolve_document_path(graph.root, "document", coordinate))) {
+              throw new Error("Part CSS requires exact bijective destination subject demand.");
+            }
+            names.add(subject.name); paths.add(key);
+          }
+          if (names.size !== demanded.size) throw new Error("Unresolved Part CSS destination subject.");
+          return render_portable_document_stylesheet(decode_portable_document_stylesheet(occurrence.css));
+        });
+        // Check global/order admission before allocating even unpublished identities.
+        parse_document_stylesheet(sourceText.join("\n\n"), []);
+        if (transitionController.managedExecutionOwner() !== undefined && compositionStyles.some(occurrence => occurrence.subjects.length)) {
+          throw new Error("Hosted incremental subject-owned CSS topology is unsupported without correspondence ordering.");
+        }
+      }
       const state = make_livemap_library(graph, hsonSchema, validation);
       Object.assign(state, reconstruct_document(graph, quads, css === undefined ? undefined : encode_portable_document_stylesheet(css), reserved, undefined, [], foreignPayloads));
+      if (compositionStyles !== undefined) {
+        const assertCurrent = capture_fence();
+        let overlay = require_document_overlay(state.documentOverlay);
+        const translated = compositionStyles.map(occurrence => {
+          const associations = occurrence.subjects.map(({ name: localName, path }) => {
+            const coordinate = validate_document_path(path);
+            if (!is_ordinary_element_node(resolve_document_path(graph.root, "document", coordinate))) {
+              throw new Error("Part CSS requires an exact ordinary destination subject.");
+            }
+            let quid = overlay.quidAtPath(coordinate);
+            if (quid === undefined) {
+              quid = allocate_livemap_quid(mapIdentityEpoch.owner,
+                candidate => reserved.has(candidate) || mapIdentityEpoch.issued().has(candidate) || foreignPayloads.has(candidate),
+                candidate => ({ claimed: true, value: candidate }));
+              if (quid === undefined) throw new Error("No available destination QUID for Part CSS subject.");
+              reserved.add(quid);
+              overlay = register_livemap_document_identity_at_path(overlay, quid, coordinate).overlay;
+            }
+            // Names are meaningful only within this occurrence, never installed in the receiving QUAD registry.
+            return { name: localName, quid, disposition: "authored" as const };
+          });
+          const record = document_css_mentions_subject_identity(occurrence.css)
+            ? translate_document_css_identities(occurrence.css, "inbound", { associations, assertCurrent }, true) : occurrence.css;
+          return render_portable_document_stylesheet(decode_portable_document_stylesheet(record));
+        });
+        // Raw Part CSS has parser-generated local rule keys. Reparse the complete
+        // ordered stylesheet through the same ordinary allocator, retaining every
+        // rule occurrence and rejecting duplicate global definitions. No selector,
+        // animation name, declaration or structural group is reconciled by guess.
+        css = decode_portable_document_stylesheet(parse_document_stylesheet(translated.join("\n\n"), []));
+        assertCurrent();
+        state.documentOverlay = overlay;
+        state.stylesheet = css;
+      }
       if (css !== undefined) {
         if (family !== "document") throw new TypeError("Initial CSS requires a document Library.");
         if (transitionController.managedExecutionOwner() !== undefined
-          && document_css_subject_identities(encode_portable_document_stylesheet(css), "inbound").length > 0) {
+          && document_css_subject_identities(encode_portable_document_stylesheet(css), compositionStyles === undefined ? "inbound" : "outbound").length > 0) {
           throw new Error("Hosted incremental subject-owned CSS topology is unsupported without correspondence ordering.");
         }
       }

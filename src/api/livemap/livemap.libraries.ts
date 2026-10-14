@@ -638,7 +638,8 @@ function make_livemap_library_receiver(
 
   const addLibrariesInternal = (additions: readonly CanonicalLibraryDefinition[],
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
-    clientLocal = false, beforeInstall?: () => void, installed?: () => void): LiveMapCommit => {
+    clientLocal = false, beforeInstall?: () => void, installed?: () => void,
+    compositionStyles?: Readonly<{ name: string; styles: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[] }>): LiveMapCommit => {
     if (!clientLocal) aggregate.assertPublicMutationAllowed();
     for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
@@ -652,6 +653,7 @@ function make_livemap_library_receiver(
         hsonSchema: schema,
         ...(definition.validation === undefined ? {} : { validation: definition.validation }),
         ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
+        ...(compositionStyles?.name === name ? { compositionStyles: compositionStyles.styles } : {}),
       });
     });
     const afterInstall = (identities: readonly LiveMapLibraryIdentity[]): void => {
@@ -796,19 +798,13 @@ function make_livemap_library_receiver(
       const root = clone_hson_graph_without_quids(aggregate.root(entry.identity));
       const quads = aggregate.projectDocumentCorrespondence(entry.identity, []);
       return { root, ...(quads === undefined ? {} : { quads }) };
-    }, configuration, (collection, member) => {
-      const part = readPart(collection, member);
-      const css = part.css === undefined ? undefined : decode_portable_document_stylesheet(part.css);
-      if (css !== undefined && (css.rules.length || css.properties.length || css.keyframes.length || css.order.length)) {
-        throw new Error(`Composition Part ${JSON.stringify([collection, member])} has a managed stylesheet; transfer is not supported.`);
-      }
-      return part;
-    });
+    }, configuration, readPart);
     const definitions = capture_library_definitions([{ name, family: "document", schema: configuration.schema, ...candidate }]);
     // Source coherence ends at this exact detached candidate. Ordinary admission
     // retains its own revision, identity and management fences thereafter.
     checkCapture();
-    addLibrariesInternal(definitions);
+    addLibrariesInternal(definitions, {}, false, undefined, undefined,
+      candidate.styles.length ? { name, styles: candidate.styles } : undefined);
     const result = selected(name);
     if (result.mode !== "document") throw new Error("Document composition lost its admitted document Library.");
     return result;

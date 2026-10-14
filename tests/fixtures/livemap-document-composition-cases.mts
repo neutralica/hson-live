@@ -19,6 +19,7 @@ import { overwrite_hson_node } from "../../src/api/livemap/livemap.editor.ts";
 import { admit_exact_runtime_livemap_libraries } from "../../src/internal/exact-runtime-node-admission.ts";
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
 import { encode_hosted_root } from "../../src/api/livemap/livemap.hosted.ts";
+import { styled_composition_cases } from "./livemap-styled-composition-cases.mts";
 
 const part = (document: string, css?: string): DocumentPart => ({ kind: "document", document, ...(css === undefined ? {} : { css }) });
 const sourceRoot = (source: string): HsonNode => source === "" ? { $_tag: ROOT_TAG, $_content: [] } : parse_authored_document_library(source).root;
@@ -78,6 +79,7 @@ const configured = { at: {
 } };
 
 export function document_composition_cases(check: (name: string, run: () => void) => void): void {
+  styled_composition_cases(check);
   check("one collection supplies multiple members and one ordinary result addition publishes once", () => {
     const map = fixture(), aggregate = owner(map), before = map.capture(), commits: LiveMapCommit[] = [];
     const ledger = aggregate.identityEpoch().issued();
@@ -241,12 +243,15 @@ export function document_composition_cases(check: (name: string, run: () => void
     const exact = hsonLiveMap.fromLibraries({ layout: { document: '<hson-template lib="parts" at="One"/>' }, parts: collection({ one: part('<p/>') }) });
     atomic(exact, () => compose(exact, "layout", "bad"), /Unknown Part member/);
   });
-  check("selected managed CSS fails for rules registrations keyframes and ordering-only state", () => {
+  check("selected managed CSS admits rules registrations keyframes and ordering-only state", () => {
     for (const css of ['p{color:red}', '@property --tone{syntax:"<color>";inherits:false;initial-value:red}', '@keyframes k{from{opacity:0}to{opacity:1}}', '@layer first{}@layer second{}']) {
       const map = authored({ layout: { document: '<hson-template @:slot lib="parts" at="plain"/>' },
         parts: collection({ plain: part('<p/>'), styled: part('<i/>', css), nested: part('<section <hson-template at="styled"/>/>') }) });
       assert.deepEqual(tokens(compose(map, "layout", "plain").root()), ["p"]);
-      for (const at of ["styled", "nested"]) atomic(map, () => compose(map, "layout", "bad", { configuration: { at: { slot: { use: { at } } } } }), /managed stylesheet/);
+      for (const at of ["styled", "nested"]) {
+        const selected = compose(map, "layout", at, { configuration: { at: { slot: { use: { at } } } } });
+        assert.ok(selected.css.snapshot());
+      }
     }
   });
   check("absent and empty Part CSS compose; unvisited valid styled members do not contaminate selection", () => {
@@ -266,7 +271,8 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.deepEqual(tokens(page.root()), ["i"]); assert.ok(lookup(page, "slot"));
     const nested = compose(map, "layout", "nested", { configuration: { at: { slot: { use: { at: "outer" }, at: { choice: { use: { at: "plain" } } } } } } });
     assert.deepEqual(tokens(nested.root()), ["section", "i"]); assert.equal(lookup(nested, "choice"), undefined);
-    atomic(map, () => compose(map, "layout", "bad", { configuration: { at: { slot: { use: { at: "outer" } } } } }), /managed stylesheet/);
+    const styled = compose(map, "layout", "styled", { configuration: { at: { slot: { use: { at: "outer" } } } } });
+    assert.match(styled.css.snapshot(), /@layer order/);
   });
   check("inline style storage remains independent and authored style nodes retain admission policy", () => {
     const map = fixture(), page = compose(map, "layout", "page"), root = owner(map).root(owner(map).libraries().at(-1)!);

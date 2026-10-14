@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,24 +9,20 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
 import { ssr_subject_fixture } from "../tests/fixtures/document-ssr-subjects-cases.mts";
-import { compose_livemap_document_internal, make_livemap_from_authored_libraries_internal, cut_document_ssr_internal } from "../src/api/livemap/livemap.libraries.ts";
-import { part_collection_definition_internal } from "../src/api/livemap/livemap.parts.ts";
+import { compose_livemap_document_internal, cut_document_ssr_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { styled_fixture } from "../tests/fixtures/livemap-styled-composition-cases.mts";
+import { document_css_subject_identities } from "../src/internal/css/css-identity-translation.ts";
+import { encode_portable_document_stylesheet } from "../src/internal/css/portable-document-stylesheet.ts";
 
 // Source-only Chrome acceptance: no build and no writes to tracked distribution.
 const fixture = ssr_subject_fixture();
 const cut = cut_document_ssr_internal(fixture.map, { html: "page" }, fixture.demanded);
 assert.doesNotMatch(cut.html, /hson:quid|hson\\:quid/);
-const components = make_livemap_from_authored_libraries_internal({
-  layout: {document:'<html <head/> <body <hson-template lib="parts" at="button"/> <hson-template lib="parts" at="button"/>/>/>'},
-  parts: part_collection_definition_internal({button:{kind:"document",document:'<button @:source/>'}}),
-});
-const final = compose_livemap_document_internal(components, "layout", "final");
+const components = styled_fixture();
+compose_livemap_document_internal(components, "layout", "page", {configuration:{at:{slot0:{at:{label:{as:"caption"}}}}}});
 const componentOwner = internal_livemap_aggregate_authority(components), finalIdentity = componentOwner.libraries().at(-1);
-const componentDemand = ["345678901", "456789012"];
-componentOwner.acquireLocalDocumentIdentity(finalIdentity, validate_document_path([0,0,1,0,0]), componentDemand[0]);
-componentOwner.acquireLocalDocumentIdentity(finalIdentity, validate_document_path([0,0,1,0,1]), componentDemand[1]);
-final.css.stylesheet('[hson\\:quid="345678901"]{color:red}[hson\\:quid="456789012"]{color:blue}');
-const componentCut = cut_document_ssr_internal(components, {html:"final", documents:["final"], data:[]}, componentDemand);
+const componentDemand = document_css_subject_identities(encode_portable_document_stylesheet(componentOwner.stylesheet(finalIdentity)), "outbound");
+const componentCut = components.cut({html:"page", documents:["page"], data:[]});
 const bundle = await build({ entryPoints: ["tests/browser/document-portable-graft.entry.mjs"], bundle: true,
   write: false, platform: "browser", format: "iife", logLevel: "silent" });
 const browserSource = bundle.outputFiles[0].text;
@@ -45,6 +40,7 @@ try {
   server = createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     if (request.url === "/graft") { response.end("<!doctype html><html><head></head><body></body></html>"); return; }
+    if (request.url === "/composed") { response.end(componentCut.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
     // A negative probe: this script must never execute in the client.
     response.end(cut.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>'));
   });
@@ -123,6 +119,21 @@ try {
   assert.throws(() => assert_ordinary_rule_order(managedCss.replace(".ordinary{color:rgb(130,140,150);}", "")), /Missing winning ordinary rule/);
   assert.throws(() => assert_ordinary_rule_order(".ordinary{color:rgb(130,140,150);}.ordinary{color:red;}"), /out of cascade order/);
   console.log(`Chrome JavaScript-disabled first paint passed: ${JSON.stringify(evidence)}`);
+  await command("Page.navigate", {url: new URL("/composed", url).href});
+  let composedReady = false;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    composedReady = await evaluate('document.readyState === "complete" && !!document.getElementById("instance2")');
+    if (composedReady) break; await delay(50);
+  }
+  assert.equal(composedReady, true);
+  const composedEvidence = await evaluate(`(() => {
+    const visual = element => {const css=getComputedStyle(element),label=getComputedStyle(element.querySelector('span'));return [css.borderTopWidth,label.color,label.paddingLeft];};
+    return {instances:[...document.querySelectorAll('section')].map(visual),control:visual(document.getElementById('unrelated')),
+      carriers:document.querySelectorAll('[hson\\\\:quad]').length,foreign:document.querySelectorAll('[hson\\\\:quid]').length,
+      styles:document.querySelectorAll('[data-hson-managed-document-css]').length,executed:document.documentElement.dataset.executed??null};
+  })()`);
+  assert.deepEqual(composedEvidence, {instances:Array(3).fill(['3px','rgb(10, 20, 30)','7px']),control:['0px','rgb(0, 0, 0)','0px'],carriers:6,foreign:0,styles:1,executed:null});
+  console.log(`Chrome styled composition JavaScript-disabled first paint passed: ${JSON.stringify(composedEvidence)}`);
   await command("Emulation.setScriptExecutionDisabled", {value:false});
   await command("Page.navigate", {url: new URL("/graft", url).href});
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -130,7 +141,7 @@ try {
     await delay(50);
   }
   await evaluate(browserSource);
-  const payload = { html: cut.html, libs: cut.libs, composed: componentCut,
+  const payload = { html: cut.html, libs: cut.libs, composed: {...componentCut, sourceQuids:componentDemand},
     sourceQuids: fixture.aggregate.captureDocumentSsr(fixture.library, fixture.demanded).correspondence.map(entry => entry.quid) };
   const graftResult = await command("Runtime.evaluate", { expression: `runPortableGraftAcceptance(${JSON.stringify(payload)})`,
     awaitPromise:true, returnByValue:true });

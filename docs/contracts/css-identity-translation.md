@@ -152,6 +152,7 @@ Local initializer envelopes carry no subject correspondence: graph/CSS admission
 rejects their subject references before installation. Identity-free initializer CSS
 is installed with its graph and checked seed contract before the first notification.
 Asynchronous
-hosted CSS ordering/replay remains unsupported. Styled Part composition remains
-rejected. Shared Node/Worker transport tests do not establish browser first paint
+hosted CSS ordering/replay remains unsupported. Local styled Part composition uses
+the bounded [Cut 9B occurrence contract](styled-part-composition.md).
+Shared Node/Worker transport tests do not establish browser first paint
 or flash-free grafting.

@@ -11,6 +11,8 @@ import { resolve_document_path, validate_document_path } from "./livemap.documen
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
 import { admit_hson_data_input } from "../data/hson-data.js";
+import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
+import type { DocumentCssRecord } from "../../types/document-css.types.js";
 
 /** Private construction bounds; callers may lower, but cannot disable, the caps. @internal */
 export type DocumentCompositionOptions = Readonly<{
@@ -160,13 +162,19 @@ type ConfiguredTarget = Readonly<{ configuration: Configuration; path: readonly 
 // proves every requested target was actually visited without a second graph walk.
 type ConfigurationScope = Map<HsonNode, ConfiguredTarget>;
 /** Detached shell or validated Part coordinates; never a source identity overlay. @internal */
-export type DocumentCompositionSource = Readonly<{ root: HsonNode; quads?: PortableDocumentQuads }>;
+export type DocumentCompositionSource = Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; css?: DocumentCssRecord }>;
+/** Detached occurrence coordinates, consumed only by ordinary destination preparation. @internal */
+export type DocumentCompositionStyle = Readonly<{
+  css: DocumentCssRecord;
+  subjects: readonly Readonly<{ name: string; path: readonly number[] }>[];
+}>;
 type Landmark = Readonly<{ node: HsonNode; path: readonly number[] }>;
 type Occurrence = Readonly<{
   landmarks: ReadonlyMap<string, Landmark>;
   shellNames: ReadonlyMap<HsonNode, string>;
   collection?: string;
   scopes: readonly ConfigurationScope[];
+  style?: { css: DocumentCssRecord; demanded: ReadonlyMap<HsonNode, string>; subjects: Map<string, readonly number[]> };
 }>;
 type Selection = Readonly<{ collection: string; member: string }>;
 type RootCustomization = Readonly<{ attrs: readonly (readonly [string, string])[]; text?: string }>;
@@ -182,6 +190,7 @@ type Frame = {
   scope?: ConfigurationScope;
   owner: HsonNode;
   emptyClusterParent?: HsonNode;
+  styledConnector?: Readonly<{ name: string; style: NonNullable<Occurrence["style"]>; start: number }>;
 };
 
 /** Exact immediate logical string shape; undefined includes absence, never an empty string. */
@@ -206,7 +215,7 @@ export function expand_document_composition(
   readShell: (name: string) => DocumentCompositionSource,
   limits: Readonly<{ maxDepth: number; maxNodes: number; maxCharacters: number; configuration?: Configuration }>,
   readPart: (collection: string, member: string) => DocumentCompositionSource,
-): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads }> {
+): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; styles: readonly DocumentCompositionStyle[] }> {
   const sources = new Map<string, Map<string, DocumentCompositionSource>>();
   const part = (collection: string, member: string): DocumentCompositionSource => {
     const members = sources.get(collection) ?? new Map<string, DocumentCompositionSource>();
@@ -262,6 +271,8 @@ export function expand_document_composition(
   };
   chargeHeader(root);
   const active = new Map<string, Set<string>>();
+  // Preorder selection is the actual expansion order, independent of completion order.
+  const styles: NonNullable<Occurrence["style"]>[] = [];
   const label = (selection: Selection): string => JSON.stringify([selection.collection, selection.member]);
   const occurrence = (source: DocumentCompositionSource, collection?: string): Occurrence => {
     const landmarks = new Map<string, Landmark>(), shellNames = new Map<HsonNode, string>();
@@ -271,7 +282,19 @@ export function expand_document_composition(
       landmarks.set(quad.name, { node, path: quad.path });
       if (collection === undefined) shellNames.set(node, quad.name);
     }
-    return { landmarks, shellNames, ...(collection === undefined ? {} : { collection }), scopes: [] };
+    let style: Occurrence["style"];
+    if (collection !== undefined && source.css !== undefined) {
+      charge(JSON.stringify(source.css));
+      const demanded = new Map<HsonNode, string>();
+      for (const name of document_css_subject_identities(source.css, "inbound")) {
+        const landmark = landmarks.get(name);
+        if (landmark === undefined) throw new Error(`Part CSS subject ${JSON.stringify(name)} requires an exact Part-local authored QUAD; anonymous source identity is unsupported.`);
+        demanded.set(landmark.node, name);
+      }
+      style = { css: source.css, demanded, subjects: new Map() };
+      styles.push(style);
+    }
+    return { landmarks, shellNames, ...(collection === undefined ? {} : { collection }), scopes: [], ...(style === undefined ? {} : { style }) };
   };
   const scope = (occurrence: Occurrence, path: readonly number[], configuration?: Configuration): ConfigurationScope => {
     const targets: ConfigurationScope = new Map();
@@ -317,6 +340,13 @@ export function expand_document_composition(
       if (frame.receiving !== undefined) for (const name of frame.receiving.names) {
         receive(name, frame.output, frame.receiving.start, frame.outputPath);
       }
+      if (frame.styledConnector !== undefined) {
+        const { name, style, start } = frame.styledConnector;
+        if (frame.output.length !== start + 1 || !is_ordinary_element_node(frame.output[start])) {
+          throw new Error("Part CSS connector subject requires one ordinary resulting element.");
+        }
+        style.subjects.set(name, validate_document_path([...frame.outputPath, start]));
+      }
       frames.pop();
       if (frame.selection !== undefined) {
         const selections = active.get(frame.selection.collection)!;
@@ -349,6 +379,7 @@ export function expand_document_composition(
       text: configuration?.text ?? frame.customization?.text,
     };
     const shellName = frame.occurrence.shellNames.get(item);
+    const style = frame.occurrence.style, styledName = style?.demanded.get(item);
     const receiving = [...(shellName === undefined ? [] : [shellName]), ...(configuration?.as === undefined ? [] : [configuration.as])];
     if (item.$_tag.toLowerCase() === "hson-template") {
       const attrs = item.$_attrs ?? {};
@@ -389,6 +420,7 @@ export function expand_document_composition(
         text: customization.text ?? text };
       singleRoot(content, childCustomization);
       push({ source: content, output: frame.output, outputPath: frame.outputPath, index: 0, selection, owner: frame.owner,
+        ...(style === undefined || styledName === undefined ? {} : { styledConnector: { name: styledName, style, start: frame.output.length } }),
         ...(receiving.length === 0 ? {} : { receiving: { names: receiving, start: frame.output.length } }),
         customization: childCustomization, scope: childScope,
         occurrence: { ...childOccurrence, scopes: [childScope] },
@@ -434,6 +466,7 @@ export function expand_document_composition(
     // frames extend its final path, never the selected source's coordinates.
     const outputPath = [...frame.outputPath, frame.output.length];
     frame.output.push(copy);
+    if (style !== undefined && styledName !== undefined) style.subjects.set(styledName, validate_document_path(outputPath));
     for (const name of receiving) receive(name, frame.output, frame.output.length - 1, frame.outputPath);
     if (content.length) push({
       source: content, output: copy.$_content, outputPath, index: 0, owner: copy, occurrence: nestedOccurrence, scope: nestedScope,
@@ -447,6 +480,11 @@ export function expand_document_composition(
   // validates the complete qualified graph and the registry bijection before
   // ordinary sparse reconstruction allocates any receiving identities.
   associations.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  const occurrenceStyles = styles.map(({ css, demanded, subjects }): DocumentCompositionStyle => {
+    if (subjects.size !== demanded.size) throw new Error("Part CSS subject was lost during composition.");
+    return Object.freeze({ css, subjects: Object.freeze([...subjects].map(([name, path]) => Object.freeze({ name, path }))) });
+  });
   return Object.freeze({ root: clone_hson_graph_without_quids(root),
+    styles: Object.freeze(occurrenceStyles),
     ...(associations.length === 0 ? {} : { quads: Object.freeze(associations) }) });
 }
