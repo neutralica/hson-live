@@ -678,7 +678,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.throws(() => receiving.lib("collection")); assert.throws(() => receiving.lib("source"));
     assert.deepEqual(receiving.capture(), cut.libs);
   });
-  await check("Part materialization is detached and does not adapt the existing composer or enable styled composition", () => {
+  await check("Part materialization is detached and collection values cannot become initial document shells", () => {
     const map = fixture(), materialized = read(map, "collection", "first/β"), initial = read(map, "collection", "first/β");
     data(map).at(["first/β", "document"]).set('<section/>'); assert.deepEqual(materialized, initial);
     assert.equal(owner(map).identityEpoch().issued().size, 0); atomic(map, () => compose(map, "collection", "page"));

@@ -1,3 +1,4 @@
+import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import assert from "node:assert/strict";
 import type { LiveMapSnapshot } from "../../src/types/livemap.types.ts";
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
@@ -94,7 +95,7 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
     candidate.acceptCss(); assert.equal(one.document.css.snapshot().includes('hson\\:quad'), true);
   });
   check("final-only composed receiver binds two independently owned component subjects", () => {
-    const map = make_livemap_from_authored_libraries_internal({ layout: { document:'<html <head/> <body <hson-template lib="component"/> <hson-template lib="component"/>/>/>' }, component:{ document:'<button @:source/>' } });
+    const map = make_livemap_from_authored_libraries_internal({ layout: { document:'<html <head/> <body <hson-template lib="components" at="button"/> <hson-template lib="components" at="button"/>/>/>' }, components:collection({button:{kind:"document",document:'<button @:source/>'}}) });
     const page = compose_livemap_document_internal(map, "layout", "final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;
     const demanded = ["345678901", "456789012"];
     aggregate.acquireLocalDocumentIdentity(library, validate_document_path([0,0,1,0,0]), demanded[0]!);
@@ -103,7 +104,7 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
     const cut = cut_document_ssr_internal(map, {html:"final",documents:["final"],data:[]}, demanded);
     const receiver = restore_portable_document_receiver_internal(cut.libs), owning = owner(receiver.map);
     assert.equal(receiver.correspondence.associations.length, 2);
-    assert.throws(() => receiver.map.lib("component")); assert.throws(() => receiver.map.lib("layout"));
+    assert.throws(() => receiver.map.lib("components")); assert.throws(() => receiver.map.lib("layout"));
     const candidate = owning.preparePortableDocumentHandoff(owning.libraries()[0]!, receiver.correspondence);
     candidate.acceptCss();
     assert.notEqual(receiver.correspondence.associations[0]!.quid, receiver.correspondence.associations[1]!.quid);

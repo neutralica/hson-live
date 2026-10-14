@@ -7,7 +7,7 @@ import { ANY_DOCUMENT, HsonSchema } from "../schema/hson-schema.js";
 import { materialize_owned_occurrences } from "../livetree/runtime/materialize-occurrences.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { is_document_quad_name, type DocumentQuadAdmission } from "./livemap.document.quad.js";
-import { validate_document_path } from "./livemap.document.path.js";
+import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
 import { admit_hson_data_input } from "../data/hson-data.js";
@@ -16,9 +16,9 @@ import { admit_hson_data_input } from "../data/hson-data.js";
 export type DocumentCompositionOptions = Readonly<{
   schema?: HsonSchema;
   /** Native HsonData or a private own-data record: attrs?: string record, text?: string,
-   * use?: { quad: string, lib?: string }, at?: QUAD-to-configuration record,
+   * use?: { at: string, lib?: string }, at?: QUAD-to-configuration record,
    * as?: explicit receiving QUAD name (private spelling).
-   * use applies only to connectors; omitted lib retains the authored Library.
+   * use applies only to connectors; omitted lib retains the selected collection.
    */
   configuration?: HsonData | Readonly<Record<string, unknown>>;
   maxDepth?: number;
@@ -73,7 +73,7 @@ type Configuration = Readonly<{
   attrs: readonly (readonly [string, string])[];
   text?: string;
   as?: string;
-  use?: Readonly<{ lib?: string; quad: string }>;
+  use?: Readonly<{ lib?: string; at: string }>;
   at: readonly (readonly [string, Configuration])[];
 }>;
 
@@ -129,13 +129,13 @@ function normalize_configuration(input: unknown): Configuration {
     }
     let use: Configuration["use"];
     if (data.has("use")) {
-      const reference = record(data.get("use")), lib = reference.get("lib"), quad = reference.get("quad");
-      if ([...reference.keys()].some(key => key !== "lib" && key !== "quad") || !is_document_quad_name(quad)
+      const reference = record(data.get("use")), lib = reference.get("lib"), member = reference.get("at");
+      if ([...reference.keys()].some(key => key !== "lib" && key !== "at") || typeof member !== "string"
         || (reference.has("lib") && (typeof lib !== "string" || lib.length === 0))) {
-        throw new TypeError("Composition configuration use requires a QUAD and optional nonempty lib.");
+        throw new TypeError("Composition configuration use requires a Part member at and optional nonempty lib.");
       }
       use = Object.freeze(Object.assign(Object.create(null), {
-        quad, ...(typeof lib === "string" ? { lib } : {}),
+        at: member, ...(typeof lib === "string" ? { lib } : {}),
       }));
     }
     const at: (readonly [string, Configuration])[] = [];
@@ -159,15 +159,23 @@ type ConfiguredTarget = Readonly<{ configuration: Configuration; path: readonly 
 // only within that occurrence; nested connectors start fresh maps. Frame completion
 // proves every requested target was actually visited without a second graph walk.
 type ConfigurationScope = Map<HsonNode, ConfiguredTarget>;
-type Occurrence = Readonly<{ library: string; root: HsonNode; scopes: readonly ConfigurationScope[] }>;
-type Selection = Readonly<{ library: string; quid?: string; quad?: string }>;
+/** Detached shell or validated Part coordinates; never a source identity overlay. @internal */
+export type DocumentCompositionSource = Readonly<{ root: HsonNode; quads?: PortableDocumentQuads }>;
+type Landmark = Readonly<{ node: HsonNode; path: readonly number[] }>;
+type Occurrence = Readonly<{
+  landmarks: ReadonlyMap<string, Landmark>;
+  shellNames: ReadonlyMap<HsonNode, string>;
+  collection?: string;
+  scopes: readonly ConfigurationScope[];
+}>;
+type Selection = Readonly<{ collection: string; member: string }>;
 type RootCustomization = Readonly<{ attrs: readonly (readonly [string, string])[]; text?: string }>;
 type Frame = {
   source: readonly (HsonNode | Primitive)[];
   output: NodeContent;
   outputPath: readonly number[];
   index: number;
-  receiving?: Readonly<{ name: string; start: number }>;
+  receiving?: Readonly<{ names: readonly string[]; start: number }>;
   selection?: Selection;
   customization?: RootCustomization;
   occurrence: Occurrence;
@@ -195,19 +203,25 @@ function sole_immediate_string(node: HsonNode): string | undefined {
  */
 export function expand_document_composition(
   sourceName: string,
-  read: (name: string) => HsonNode,
+  readShell: (name: string) => DocumentCompositionSource,
   limits: Readonly<{ maxDepth: number; maxNodes: number; maxCharacters: number; configuration?: Configuration }>,
-  selectQuad?: (name: string, quad: string, root: HsonNode) => Readonly<{ node: HsonNode; quid: string; path: readonly number[] }>,
+  readPart: (collection: string, member: string) => DocumentCompositionSource,
 ): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads }> {
-  const sources = new Map<string, HsonNode>();
-  const source = (name: string): HsonNode => {
-    let root = sources.get(name);
-    if (root === undefined) {
-      root = read(name);
-      if (root.$_tag !== ROOT_TAG) throw new TypeError("Composition source must have an owned document ROOT.");
-      sources.set(name, root);
+  const sources = new Map<string, Map<string, DocumentCompositionSource>>();
+  const part = (collection: string, member: string): DocumentCompositionSource => {
+    const members = sources.get(collection) ?? new Map<string, DocumentCompositionSource>();
+    let selected = members.get(member);
+    if (selected === undefined) {
+      selected = readPart(collection, member);
+      if (selected.root.$_tag !== ROOT_TAG || selected.root.$_content.length !== 1
+        || !is_ordinary_element_node(selected.root.$_content[0])
+        || selected.root.$_content[0].$_tag.toLowerCase() === "hson-template") {
+        throw new TypeError("Composition Part requires exactly one ordinary element root.");
+      }
+      members.set(member, selected);
+      sources.set(collection, members);
     }
-    return root;
+    return selected;
   };
   let nodes = 1; // Receiving ROOT; visited connectors also consume work, even when they insert nothing.
   let characters = 0;
@@ -233,23 +247,37 @@ export function expand_document_composition(
   };
   const root: HsonNode = { $_tag: ROOT_TAG, $_content: [] };
   const associations: DocumentQuadAdmission[] = [];
+  const names = new Map<string, string>(), subjects = new Map<string, string>();
   const receive = (name: string, content: NodeContent, start: number, outputPath: readonly number[]): void => {
     if (content.length !== start + 1 || !is_ordinary_element_node(content[start])
       || content[start].$_tag.toLowerCase() === "hson-template") {
       throw new TypeError("Composition receiving QUAD requires exactly one ordinary resulting element.");
     }
-    associations.push(Object.freeze({ name, path: validate_document_path([...outputPath, start]) }));
+    const path = validate_document_path([...outputPath, start]), key = JSON.stringify(path);
+    if ((names.has(name) && names.get(name) !== key) || (subjects.has(key) && subjects.get(key) !== name)) {
+      throw new TypeError("Composition receiving QUADs require one name per subject and one subject per name.");
+    }
+    if (!names.has(name)) associations.push(Object.freeze({ name, path }));
+    names.set(name, key); subjects.set(key, name);
   };
   chargeHeader(root);
-  // Undefined selects the whole Library; addressed expansion uses its genuine local subject QUID.
-  const active = new Map<string, Set<string | undefined>>([[sourceName, new Set([undefined])]]);
-  const label = (selection: Selection): string => selection.quad === undefined
-    ? selection.library : `${selection.library}[${selection.quad}]`;
+  const active = new Map<string, Set<string>>();
+  const label = (selection: Selection): string => JSON.stringify([selection.collection, selection.member]);
+  const occurrence = (source: DocumentCompositionSource, collection?: string): Occurrence => {
+    const landmarks = new Map<string, Landmark>(), shellNames = new Map<HsonNode, string>();
+    for (const quad of source.quads ?? []) {
+      const node = resolve_document_path(source.root, "document", quad.path);
+      if (!is_ordinary_element_node(node) || landmarks.has(quad.name)) throw new Error("Invalid composition landmark.");
+      landmarks.set(quad.name, { node, path: quad.path });
+      if (collection === undefined) shellNames.set(node, quad.name);
+    }
+    return { landmarks, shellNames, ...(collection === undefined ? {} : { collection }), scopes: [] };
+  };
   const scope = (occurrence: Occurrence, path: readonly number[], configuration?: Configuration): ConfigurationScope => {
     const targets: ConfigurationScope = new Map();
     for (const [quad, child] of configuration?.at ?? []) {
-      if (selectQuad === undefined) throw new Error("Document composition QUAD lookup is unavailable.");
-      const target = selectQuad(occurrence.library, quad, occurrence.root);
+      const target = occurrence.landmarks.get(quad);
+      if (target === undefined) throw new Error(`Unknown composition QUAD ${JSON.stringify(quad)} in this occurrence.`);
       if (path.length > target.path.length || path.some((part, index) => part !== target.path[index])) {
         throw new Error(`Composition configuration QUAD ${JSON.stringify(quad)} is outside the selected subtree.`);
       }
@@ -258,8 +286,9 @@ export function expand_document_composition(
     }
     return targets;
   };
-  const initialRoot = source(sourceName);
-  const initial: Occurrence = { library: sourceName, root: initialRoot, scopes: [] };
+  const shell = readShell(sourceName), initialRoot = shell.root;
+  if (initialRoot.$_tag !== ROOT_TAG) throw new TypeError("Composition shell requires an owned document ROOT.");
+  const initial = occurrence(shell);
   if (limits.configuration?.use !== undefined) throw new TypeError("Composition configuration use requires a connector.");
   const initialScope = scope(initial, [], limits.configuration);
   const hasOverrides = (configuration?: RootCustomization): boolean => configuration !== undefined
@@ -271,8 +300,8 @@ export function expand_document_composition(
   };
   singleRoot(initialRoot.$_content, limits.configuration);
   const frames: Frame[] = [{ source: initialRoot.$_content, output: root.$_content, outputPath: [], index: 0,
-    ...(limits.configuration?.as === undefined ? {} : { receiving: { name: limits.configuration.as, start: 0 } }),
-    selection: { library: sourceName }, owner: root, scope: initialScope,
+    ...(limits.configuration?.as === undefined ? {} : { receiving: { names: [limits.configuration.as], start: 0 } }),
+    owner: root, scope: initialScope,
     occurrence: { ...initial, scopes: [initialScope] },
     customization: limits.configuration,
   }];
@@ -285,12 +314,14 @@ export function expand_document_composition(
     const frame = frames[frames.length - 1]!;
     if (frame.index === frame.source.length) {
       if (frame.scope?.size) throw new Error("Composition configuration has inaccessible QUAD targets.");
-      if (frame.receiving !== undefined) receive(frame.receiving.name, frame.output, frame.receiving.start, frame.outputPath);
+      if (frame.receiving !== undefined) for (const name of frame.receiving.names) {
+        receive(name, frame.output, frame.receiving.start, frame.outputPath);
+      }
       frames.pop();
       if (frame.selection !== undefined) {
-        const selections = active.get(frame.selection.library)!;
-        selections.delete(frame.selection.quid);
-        if (selections.size === 0) active.delete(frame.selection.library);
+        const selections = active.get(frame.selection.collection)!;
+        selections.delete(frame.selection.member);
+        if (selections.size === 0) active.delete(frame.selection.collection);
       }
       // Canonical empty elements have no ELEM carrier, including after an empty insertion.
       if (frame.emptyClusterParent !== undefined && frame.output.length === 0) frame.emptyClusterParent.$_content = [];
@@ -317,16 +348,17 @@ export function expand_document_composition(
       attrs: [...(frame.customization?.attrs ?? []), ...(configuration?.attrs ?? [])],
       text: configuration?.text ?? frame.customization?.text,
     };
+    const shellName = frame.occurrence.shellNames.get(item);
+    const receiving = [...(shellName === undefined ? [] : [shellName]), ...(configuration?.as === undefined ? [] : [configuration.as])];
     if (item.$_tag.toLowerCase() === "hson-template") {
       const attrs = item.$_attrs ?? {};
-      const overrideNames = Object.keys(attrs).filter(key => key !== "lib" && key !== "quad");
-      let lib = Object.getOwnPropertyDescriptor(attrs, "lib")?.value;
-      if (typeof lib !== "string" || lib.length === 0) throw new TypeError("hson-template requires a nonempty lib attribute.");
-      const quadField = Object.getOwnPropertyDescriptor(attrs, "quad");
-      let quad: unknown = quadField?.value;
-      if (quadField !== undefined && !is_document_quad_name(quad)) throw new TypeError("hson-template requires a valid nonempty QUAD name.");
-      const customized = overrideNames.length !== 0 || item.$_content.length !== 0;
-      if (customized && quadField === undefined) throw new TypeError("hson-template customization requires explicit QUAD selection.");
+      if (Object.hasOwn(attrs, "quad")) throw new TypeError("hson-template quad selection is unsupported; select a Part with lib and at.");
+      const overrideNames = Object.keys(attrs).filter(key => key !== "lib" && key !== "at");
+      const libField = Object.getOwnPropertyDescriptor(attrs, "lib");
+      let lib: unknown = libField === undefined ? frame.occurrence.collection : libField.value;
+      if (typeof lib !== "string" || lib.length === 0) throw new TypeError("hson-template requires an unambiguous nonempty collection lib.");
+      let member: unknown = Object.getOwnPropertyDescriptor(attrs, "at")?.value;
+      if (typeof member !== "string") throw new TypeError("hson-template requires an exact Part member at.");
       const overrides: [string, string][] = [];
       for (const name of overrideNames) {
         const value: unknown = Object.getOwnPropertyDescriptor(attrs, name)?.value;
@@ -341,45 +373,34 @@ export function expand_document_composition(
       }
       if (configuration?.use !== undefined) {
         lib = configuration.use.lib ?? lib;
-        quad = configuration.use.quad;
+        member = configuration.use.at;
       }
-      const selectedRoot = source(lib);
-      let content: readonly (HsonNode | Primitive)[] = selectedRoot.$_content;
-      let selection: Selection = { library: lib };
-      let selectedPath: readonly number[] = [];
-      if (is_document_quad_name(quad)) {
-        if (selectQuad === undefined) throw new Error("Document composition QUAD lookup is unavailable.");
-        const selected = selectQuad(lib, quad, selectedRoot);
-        if (customized && (!is_ordinary_element_node(selected.node) || selected.node.$_tag.toLowerCase() === "hson-template")) {
-          throw new TypeError("hson-template customization requires an ordinary nonconnector selected element.");
-        }
-        content = [selected.node]; // Include the addressed element, not only its relationship content.
-        selection = { library: lib, quad, quid: selected.quid };
-        selectedPath = selected.path;
-      }
-      if (active.get(lib)?.has(selection.quid)) {
+      if (typeof lib !== "string" || typeof member !== "string") throw new TypeError("Composition Part coordinates must be strings.");
+      const selected = part(lib, member), content = selected.root.$_content;
+      const selection: Selection = { collection: lib, member };
+      if (active.get(lib)?.has(member)) {
         const chain = frames.flatMap(current => current.selection === undefined ? [] : [label(current.selection)]);
         throw new Error(`Recursive document composition cycle: ${[...chain, label(selection)].join(" -> ")}.`);
       }
-      const childOccurrence: Occurrence = { library: lib, root: selectedRoot, scopes: [] };
+      const childOccurrence = occurrence(selected, lib);
       // A connector's at belongs to the newly selected component, never its source siblings.
-      const childScope = scope(childOccurrence, selectedPath, configuration);
+      const childScope = scope(childOccurrence, [], configuration);
       const childCustomization: RootCustomization = { attrs: [...overrides, ...customization.attrs],
         text: customization.text ?? text };
       singleRoot(content, childCustomization);
       push({ source: content, output: frame.output, outputPath: frame.outputPath, index: 0, selection, owner: frame.owner,
-        ...(configuration?.as === undefined ? {} : { receiving: { name: configuration.as, start: frame.output.length } }),
+        ...(receiving.length === 0 ? {} : { receiving: { names: receiving, start: frame.output.length } }),
         customization: childCustomization, scope: childScope,
         occurrence: { ...childOccurrence, scopes: [childScope] },
       });
-      const selections = active.get(lib) ?? new Set<string | undefined>();
-      selections.add(selection.quid);
+      const selections = active.get(lib) ?? new Set<string>();
+      selections.add(member);
       active.set(lib, selections);
       continue;
     }
     if (configuration?.use !== undefined) throw new TypeError("Composition configuration use requires a connector.");
     const nestedScope = configuredPath === undefined ? undefined : scope(frame.occurrence, configuredPath, configuration);
-    const occurrence: Occurrence = nestedScope === undefined ? frame.occurrence
+    const nestedOccurrence: Occurrence = nestedScope === undefined ? frame.occurrence
       : { ...frame.occurrence, scopes: [...frame.occurrence.scopes, nestedScope] };
     // at may name the addressed element itself; two routes to one target are ambiguous.
     if (nestedScope?.has(item)) throw new Error("Ambiguous composition configuration target.");
@@ -413,9 +434,9 @@ export function expand_document_composition(
     // frames extend its final path, never the selected source's coordinates.
     const outputPath = [...frame.outputPath, frame.output.length];
     frame.output.push(copy);
-    if (configuration?.as !== undefined) receive(configuration.as, frame.output, frame.output.length - 1, frame.outputPath);
+    for (const name of receiving) receive(name, frame.output, frame.output.length - 1, frame.outputPath);
     if (content.length) push({
-      source: content, output: copy.$_content, outputPath, index: 0, owner: copy, occurrence, scope: nestedScope,
+      source: content, output: copy.$_content, outputPath, index: 0, owner: copy, occurrence: nestedOccurrence, scope: nestedScope,
       ...(item.$_tag === ELEM_TAG ? { emptyClusterParent: frame.owner } : {}),
     });
     else if (nestedScope?.size) throw new Error("Composition configuration has inaccessible QUAD targets.");

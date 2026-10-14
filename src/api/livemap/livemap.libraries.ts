@@ -754,7 +754,7 @@ function make_livemap_library_receiver(
     checkCapture();
     return addLibrariesInternal(additions, {}, false, checkCapture);
   });
-  PART_READ.set(libraries, (collection, member) => {
+  const readPart = (collection: string, member: string): ValidatedPart => {
     const checkCapture = aggregate.captureFence();
     if (typeof member !== "string") throw new TypeError("Part member key must be a string.");
     const entry = named.get(collection);
@@ -767,7 +767,8 @@ function make_livemap_library_receiver(
     if (part === undefined) throw new Error("Unknown Part member.");
     checkCapture();
     return part;
-  });
+  };
+  PART_READ.set(libraries, readPart);
   DOCUMENT_COMPOSITION.set(libraries, (source, name, options) => {
     // Preserve existing batch/client/hosted authority fences before inspecting sources.
     aggregate.assertPublicMutationAllowed();
@@ -784,20 +785,22 @@ function make_livemap_library_receiver(
       if (css.rules.length || css.properties.length || css.keyframes.length || css.order.length) {
         throw new Error(`Composition source Library ${JSON.stringify(sourceName)} has a managed stylesheet; transfer is not supported.`);
       }
-      // Trusted owner storage is read synchronously, without callbacks or whole-root inspection copies.
-      return aggregate.root(entry.identity);
-    }, configuration, (sourceName, quad, sourceRoot) => {
-      const entry = named.get(sourceName);
-      if (entry === undefined) throw new Error("Composition source Library is unavailable.");
-      const address = aggregate.documentQuad(entry.identity, quad, undefined);
-      if (address === undefined) throw new Error(`Unknown or retired composition QUAD ${JSON.stringify(quad)} in Library ${JSON.stringify(sourceName)}.`);
-      const node = resolve_document_path(sourceRoot, "document", address.path);
-      if (!is_ordinary_element_node(node)) throw new Error("Composition QUAD subject is not an ordinary document element.");
-      return { node, quid: address.quid, path: address.path };
+      const root = clone_hson_graph_without_quids(aggregate.root(entry.identity));
+      const quads = aggregate.projectDocumentCorrespondence(entry.identity, []);
+      return { root, ...(quads === undefined ? {} : { quads }) };
+    }, configuration, (collection, member) => {
+      const part = readPart(collection, member);
+      const css = part.css === undefined ? undefined : decode_portable_document_stylesheet(part.css);
+      if (css !== undefined && (css.rules.length || css.properties.length || css.keyframes.length || css.order.length)) {
+        throw new Error(`Composition Part ${JSON.stringify([collection, member])} has a managed stylesheet; transfer is not supported.`);
+      }
+      return part;
     });
     const definitions = capture_library_definitions([{ name, family: "document", schema: configuration.schema, ...candidate }]);
+    // Source coherence ends at this exact detached candidate. Ordinary admission
+    // retains its own revision, identity and management fences thereafter.
     checkCapture();
-    addLibrariesInternal(definitions, {}, false, checkCapture);
+    addLibrariesInternal(definitions);
     const result = selected(name);
     if (result.mode !== "document") throw new Error("Document composition lost its admitted document Library.");
     return result;

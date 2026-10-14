@@ -1,3 +1,4 @@
+import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { encode_ssr_bootstrap, decode_ssr_bootstrap } from "../../src/api/ssr/ssr-bootstrap.ts";
 import { create_echo_aggregate_client_internal } from "../../src/api/echo/echo.aggregate-replica.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../../src/api/locus/locus.aggregate.authority.ts";
@@ -182,9 +183,10 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.equal(aggregate.projectDocumentCorrespondence(id, []), undefined);
   });
   await check("independent composed occurrences use receiving identities and final-only restoration", () => {
-    const source = authored({ layout: { document: '<main <hson-template lib="component"/> <hson-template lib="component"/>/>' },
-      component: { document: '<button @:source/>' } });
-    const sourceQuid = subject(source, "source", "component").quid;
+    const source = authored({ layout: { document: '<main <hson-template lib="components" at="button"/> <hson-template lib="components" at="button"/>/>' },
+      components: collection({ button: { kind: "document", document: '<button @:source/>' } }) });
+    const sourceQuid = mint_hson_node_quid();
+    assert.equal(owner(source).identityEpoch().issued().has(sourceQuid), false);
     compose(source, "layout", "final");
     const finalMap = install_libraries_snapshot(source.cut({ documents: ["final"], data: [] }).libs).map;
     const aggregate = owner(finalMap), id = aggregate.libraries()[0]!;
@@ -205,7 +207,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     }
     assert.deepEqual(encode_hosted_root(restoredOwner.root(result.associations[0]!.library)), encode_hosted_root(doc(finalMap, "final").root()));
     assert.equal(restored.capture().libraries[0]?.quads, undefined);
-    assert.throws(() => restored.lib("component")); assert.throws(() => restored.lib("layout"));
+    assert.throws(() => restored.lib("components")); assert.throws(() => restored.lib("layout"));
   });
   await check("disposable exact admission rejects malformed disposition records paths and one-to-one collisions", () => {
     const map = fixture(), snapshot = map.capture();
@@ -658,7 +660,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     } finally { clientOwner.releaseManagement(management); seedOwner.releaseManagement(serverManager); }
   });
   await check("selected cuts and authorized projections preserve private source separation and Echo registry restoration", async () => {
-    const map = authored({ hidden: { document: '<aside @:PRIVATE_ADDRESS/>' }, layout: { document: '<main <hson-template lib="hidden" quad="PRIVATE_ADDRESS"/>/>' },
+    const map = authored({ hidden: collection({ private: { kind: "document", document: '<aside @:PRIVATE_ADDRESS/>' } }), layout: { document: '<main <hson-template lib="hidden" at="private"/>/>' },
       public: { document: '<button @:shared/>' } });
     compose(map, "layout", "composed");
     const effective = await projection(map, ["hidden", "composed", "public"], ["hidden", "layout"]);
@@ -670,9 +672,9 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const client = client_projection_map({ authority: projected, local: { ui: { document: '<main/>' } } });
     assert.ok(lookup(doc(client, "public"), "shared")); assert.throws(() => client.lib("hidden"));
     assert.equal(JSON.stringify(client.capture()).includes("PRIVATE_ADDRESS"), false);
-    const raw = map.cut({ documents: ["hidden"], data: [], html: "hidden" });
-    assert.ok(JSON.stringify(raw.libs).includes("PRIVATE_ADDRESS")); assert.equal(raw.html, "<aside></aside>");
-    assert.ok(lookup(doc(install_libraries_snapshot(raw.libs).map, "hidden"), "PRIVATE_ADDRESS"));
+    const raw = map.cut({ documents: [], data: ["hidden"] });
+    assert.ok(JSON.stringify(raw.libs).includes("PRIVATE_ADDRESS"));
+    assert.equal(install_libraries_snapshot(raw.libs).map.capture().registry.libraries[0]?.validation, "hson-part-collection-v1");
     const before = lookup(doc(client, "public"), "shared")!, manager = {}; owner(client).claimManagement(manager);
     try {
       reconcile_client_projection_snapshot_internal(client, manager, authority_projection_as_client_composition_internal(projected));
@@ -690,15 +692,16 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       ? { ...entry, quads: [{ name: "renamed", path: validate_document_path([0]) }] } : entry) };
     assert.notEqual(authority_projection_state_fingerprint_internal(projected), authority_projection_state_fingerprint_internal(changedAddress));
   });
-  await check("restored source supports independent recursive composition without inherited addresses", () => {
-    const original = authored({ layout: { document: '<main @:layout <hson-template lib="header"/> <hson-template lib="header"/>/>' },
-      header: { document: '<header @:header <hson-template lib="button"/>/>' }, button: { document: '<button @:button "Go"/>' } });
+  await check("restored Parts compose independently with preserved shell and local Part addresses", () => {
+    const original = authored({ layout: { document: '<main @:layout <hson-template lib="parts" at="header"/> <hson-template lib="parts" at="header"/>/>' },
+      parts: collection({ header: { kind: "document", document: '<header @:header <hson-template at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } }) });
     const received = install_libraries_snapshot(original.capture()).map;
     const result = compose(received, "layout", "result");
-    assert.equal(lookup(result, "button"), undefined); assert.equal(lookup(result, "layout"), undefined);
+    assert.equal(lookup(result, "button"), undefined); assert.ok(lookup(result, "layout"));
     assert.equal(JSON.stringify(result.root()).includes("hson-template"), false);
     assert.equal(JSON.stringify(result.root()).includes("quid"), false);
-    assert.ok(lookup(doc(original, "header"), "header")); assert.ok(lookup(doc(received, "header"), "header"));
+    assert.ok(lookup(doc(original, "layout"), "layout")); assert.ok(lookup(doc(received, "layout"), "layout"));
+    assert.equal(owner(received).projectedOverlay(owner(received).libraries()[1]!).size, 0);
     const final = install_libraries_snapshot(received.cut({ documents: ["result"], data: [] }).libs).map;
     assert.deepEqual(doc(final, "result").root(), result.root());
   });

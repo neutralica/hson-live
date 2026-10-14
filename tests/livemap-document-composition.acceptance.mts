@@ -4,7 +4,7 @@ import { repository_typescript_worker } from "./helpers/repository-typescript-wo
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "livemap.document-composition", title: "Private registered document composition",
+  id: "livemap.document-composition", title: "Private governed Part composition",
   category: "LiveMap", runtime: "node",
   tags: Object.freeze(["livemap", "document", "composition", "worker", "identity", "atomicity"]),
 });
@@ -24,7 +24,7 @@ try {
     worker.once("message", resolve); worker.once("error", reject);
     worker.once("exit", code => reject(new Error(`Composition Worker exited ${code}`)));
   });
-  assert.deepEqual(result, { cases });
+  assert.deepEqual(result, { cases, worker: true, hasDocument: false });
 } finally { await worker.terminate(); }
 events.terminal("pass");
-console.log(`Document composition passed (${cases} Node and ${cases} Worker groups).`);
+console.log(`Document composition passed (${cases} Node and ${cases} actual Worker groups).`);

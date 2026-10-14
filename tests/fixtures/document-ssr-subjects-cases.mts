@@ -1,3 +1,4 @@
+import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { make_livemap_from_authored_libraries_internal as authored,
@@ -302,9 +303,10 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     assert.match(cut(map,{html:"page"},["012345678"]).html,/hson:quad="_012345678"/);
   });
   check("final-only composed page projects receiving subjects without source component Libraries", () => {
-    const map = authored({layout:{document:'<html <head/> <body <hson-template lib="component"/> <hson-template lib="component"/>/>/>'},
-      component:{document:'<button @:source/>'}});
-    const sourceQuid = lookup(map.lib("component"),"source")!.quid;
+    const map = authored({layout:{document:'<html <head/> <body <hson-template lib="components" at="button"/> <hson-template lib="components" at="button"/>/>/>'},
+      components:collection({button:{kind:"document",document:'<button @:source/>'}})});
+    const sourceQuid = "012345678";
+    assert.equal(owner(map).identityEpoch().issued().has(sourceQuid),false);
     const page = compose(map,"layout","final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;
     const demanded = ["345678901","456789012"];
     aggregate.acquireLocalDocumentIdentity(library,path([0,0,1,0,0]),demanded[0]!);
@@ -319,7 +321,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     }
     assert.equal(result.html.includes(sourceQuid),false); assert.deepEqual(map.capture(),before);
     const receiving = install_libraries_snapshot(result.libs).map;
-    assert.throws(() => receiving.lib("component")); assert.throws(() => receiving.lib("layout"));
+    assert.throws(() => receiving.lib("components")); assert.throws(() => receiving.lib("layout"));
     assert.equal(owner(receiving).identityEpoch().issued().has(sourceQuid),false);
     assert.equal(receiving.capture().libraries.length,1);
     // Portable state admission is tested here; projected-marker graft/CSS rebinding is outside this cut.

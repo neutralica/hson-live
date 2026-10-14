@@ -1,3 +1,4 @@
+import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { make_livemap_from_authored_libraries_internal as authored, compose_livemap_document_internal } from "../../src/api/livemap/livemap.libraries.ts";
@@ -282,18 +283,18 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     assert.ok(lookup(doc(map), "confirm"));
     internal_livemap_aggregate_authority(fixture()).setInitialHostedAuthority({ logicalMapId: "map", incarnationId: "run" });
   });
-  check("recursive composition copies content and inherits neither source QUIDs nor QUADs", () => {
-    const map = authored({ layout: { document: '<main @:page <hson-template lib="header"/> <hson-template lib="header"/>/>' },
-      header: { document: '<header @:header <hson-template lib="button"/>/>' }, button: { document: '<button @:button "Go"/>' } });
-    const source = subject(doc(map, "button"), "button"), original = doc(map, "button").root();
+  check("recursive Part composition preserves shell QUADs and leaves Part addresses local", () => {
+    const map = authored({ layout: { document: '<main @:page <hson-template lib="parts" at="header"/> <hson-template lib="parts" at="header"/>/>' },
+      parts: collection({ header: { kind: "document", document: '<header @:header <hson-template at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } }) });
+    const source = subject(doc(map, "layout"), "page"), original = map.lib("parts").root();
     const ledger = enumerate_livemap_issued_quids(internal_livemap_aggregate_authority(map).identityEpoch().issued());
     const page = compose_livemap_document_internal(map, "layout", "result");
     assert.equal(JSON.stringify(page.root()).includes("quid"), false);
     assert.equal(JSON.stringify(page.root()).includes("hson-template"), false);
-    assert.equal(lookup(page, "page"), undefined); assert.equal(lookup(page, "button"), undefined);
+    assert.ok(lookup(page, "page")); assert.equal(lookup(page, "button"), undefined);
     assert.equal(reverse(page, source.quid), undefined);
-    assert.deepEqual(doc(map, "button").root(), original);
-    assert.deepEqual(enumerate_livemap_issued_quids(internal_livemap_aggregate_authority(map).identityEpoch().issued()), ledger);
+    assert.deepEqual(map.lib("parts").root(), original);
+    assert.equal(internal_livemap_aggregate_authority(map).identityEpoch().issued().size, ledger.length + 1);
     const first = acquire_document_identity(page.document, target(0, 0, 0, 0, 0));
     const second = acquire_document_identity(page.document, target(0, 0, 1, 0, 0));
     assert.notEqual(first.snap()?.$_meta?.quid, source.quid);
@@ -302,7 +303,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     const received = install_libraries_snapshot(cut.libs).map;
     assert.deepEqual(doc(received, "result").root(), page.root());
     assert.equal(lookup(doc(received, "result"), "button"), undefined);
-    assert.equal(map.capture().libraries.filter(entry => entry.quads !== undefined).length, 3);
+    assert.equal(map.capture().libraries.filter(entry => entry.quads !== undefined).length, 2);
   });
   check("after all addressed subjects retire QUAD-free capture behaves normally", () => {
     const map = authored({ page: { document: '<main <button @:only/>/> ' } }), page = doc(map);

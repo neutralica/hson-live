@@ -11,14 +11,15 @@ import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
 import { ssr_subject_fixture } from "../tests/fixtures/document-ssr-subjects-cases.mts";
 import { compose_livemap_document_internal, make_livemap_from_authored_libraries_internal, cut_document_ssr_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { part_collection_definition_internal } from "../src/api/livemap/livemap.parts.ts";
 
 // Source-only Chrome acceptance: no build and no writes to tracked distribution.
 const fixture = ssr_subject_fixture();
 const cut = cut_document_ssr_internal(fixture.map, { html: "page" }, fixture.demanded);
 assert.doesNotMatch(cut.html, /hson:quid|hson\\:quid/);
 const components = make_livemap_from_authored_libraries_internal({
-  layout: {document:'<html <head/> <body <hson-template lib="component"/> <hson-template lib="component"/>/>/>'},
-  component: {document:'<button @:source/>'},
+  layout: {document:'<html <head/> <body <hson-template lib="parts" at="button"/> <hson-template lib="parts" at="button"/>/>/>'},
+  parts: part_collection_definition_internal({button:{kind:"document",document:'<button @:source/>'}}),
 });
 const final = compose_livemap_document_internal(components, "layout", "final");
 const componentOwner = internal_livemap_aggregate_authority(components), finalIdentity = componentOwner.libraries().at(-1);

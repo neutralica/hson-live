@@ -152,11 +152,11 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     assert(oneAnonymous !== twoAnonymous && oneAnonymous.getAttribute('hson:quid') !== twoAnonymous.getAttribute('hson:quid'), 'separate anonymous subjects');
     first.dispose(); second.dispose(); one.frame.remove(); two.frame.remove();
   });
-  await check('final-only repeated components graft with independent disposable correspondence', async () => {
+  await check('final-only repeated Parts graft with independent disposable correspondence', async () => {
     const f = await page(composed.html, composed.libs), buttons = [...f.doc.querySelectorAll('button')];
     const colors = () => buttons.map(button => f.doc.defaultView.getComputedStyle(button).color);
     equal(colors(), ['rgb(255, 0, 0)', 'rgb(0, 0, 255)'], 'component SSR styles before JavaScript');
-    rejects(() => f.map.lib('component'), 'no source component Library'); rejects(() => f.map.lib('layout'), 'no source layout Library');
+    rejects(() => f.map.lib('parts'), 'no source Part collection'); rejects(() => f.map.lib('layout'), 'no source layout Library');
     const continued = f.run();
     buttons.forEach((button, index) => assert(f.doc.querySelectorAll('button')[index] === button, 'component Element retained'));
     assert(buttons[0].getAttribute('hson:quid') !== buttons[1].getAttribute('hson:quid'), 'independent component receiving identities');
