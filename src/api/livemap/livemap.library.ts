@@ -142,6 +142,7 @@ export type LiveMapLibraryState = {
   projectedOverlay?: LiveMapProjectedIdentityOverlay;
   projectedValue?: OrderedProjectedValue;
   hsonSchema?: HsonSchema;
+  readonly validation?: import("./livemap.parts.js").DataLibraryValidation;
   stylesheet?: PortableDocumentStylesheet;
 };
 
@@ -166,6 +167,7 @@ export type LiveMapLibraryRegistry = Readonly<{
 export function make_livemap_library(
   prepared: PreparedLiveMapRoot,
   hsonSchema?: HsonSchema,
+  validation?: import("./livemap.parts.js").DataLibraryValidation,
 ): LiveMapLibraryState {
   return {
     identity: Object.freeze(Object.create(null)),
@@ -175,6 +177,7 @@ export function make_livemap_library(
     ...(prepared.documentOverlay === undefined ? {} : { documentOverlay: prepared.documentOverlay }),
     ...(prepared.projectedOverlay === undefined ? {} : { projectedOverlay: prepared.projectedOverlay }),
     ...(hsonSchema === undefined ? {} : { hsonSchema }),
+    ...(validation === undefined ? {} : { validation }),
   };
 }
 

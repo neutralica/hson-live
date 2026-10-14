@@ -103,6 +103,8 @@ import { expand_document_composition, document_composition_options, type Documen
 import { parse_authored_document_library, register_document_quad_lookup, type DocumentQuadAdmission, decode_document_quads, own_document_quads } from "./livemap.document.quad.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import { ensure_livemap_document_canonical_identity } from "./livemap.document.registration.js";
+import { PART_COLLECTION_VALIDATION, part_collection_definition_internal, own_data_library_validation,
+  validate_data_library, type DataLibraryValidation, type ValidatedPart } from "./livemap.parts.js";
 
 type NamedLibrary = Readonly<{
   name: string;
@@ -118,13 +120,15 @@ export type CanonicalLibraryDefinition = Readonly<{
   schema: HsonSchemaHandle;
   root: HsonNode;
   quads?: PortableDocumentQuads;
+  validation?: DataLibraryValidation;
 }>;
 
 function public_library_definitions(inputs: LiveMapDefinitions): readonly CanonicalLibraryDefinition[] {
   return Object.entries(inputs).map(([name, value]) => {
     const input = must_library_input(name, value);
     return Object.freeze({ name, root: library_root(input), schema: input.schema,
-      family: "data" in input ? "data" as const : "document" as const });
+      family: "data" in input ? "data" as const : "document" as const,
+      ...(input.validation === undefined ? {} : { validation: input.validation }) });
   });
 }
 
@@ -133,6 +137,7 @@ function capture_library_definitions(definitions: readonly CanonicalLibraryDefin
   return definitions.map((definition) => {
     const { name, family, schema, root } = definition;
     const quads = own_document_quads(definition);
+    const validation = own_data_library_validation(definition);
     if (typeof name !== "string" || name === INTERACTION_RESERVED_LIBRARY_KEY || names.has(name)) {
       throw new Error("Canonical Library name is invalid or duplicated.");
     }
@@ -141,8 +146,10 @@ function capture_library_definitions(definitions: readonly CanonicalLibraryDefin
     }
     names.add(name);
     const admitted = admit_public_livemap_root(root, family, `LiveMap.reconstruct(${name})`);
+    validate_data_library(admitted, classify_live_root_mode(admitted, family), validation);
     const associations = decode_document_quads(quads, admitted, family);
     return Object.freeze({ name, family, schema, root: admitted,
+      ...(validation === undefined ? {} : { validation }),
       ...(associations === undefined ? {} : { quads: associations }) });
   });
 }
@@ -152,6 +159,23 @@ const EXACT_LIBRARY_ADMISSION = new WeakMap<object,
 
 const DOCUMENT_COMPOSITION = new WeakMap<object,
   (source: string, name: string, options?: DocumentCompositionOptions) => LiveMapDocumentLibrary>();
+
+const PART_COLLECTION_ADMISSION = new WeakMap<object, (name: string, parts: unknown) => LiveMapCommit>();
+const PART_READ = new WeakMap<object, (collection: string, member: string) => ValidatedPart>();
+
+/** One ordinary data Library; uses the existing aggregate topology transition. @internal */
+export function add_livemap_part_collection_internal(map: LiveMap, name: string, parts: unknown): LiveMapCommit {
+  const admit = PART_COLLECTION_ADMISSION.get(map);
+  if (admit === undefined) throw new Error("Part collection requires a named LiveMap registry.");
+  return admit(name, parts);
+}
+
+/** Complete collection validation before detached materialization for a consumer. @internal */
+export function read_livemap_part_internal(map: LiveMap, collection: string, member: string): ValidatedPart {
+  const read = PART_READ.get(map);
+  if (read === undefined) throw new Error("Part read requires a named LiveMap registry.");
+  return read(collection, member);
+}
 
 /** One-time local construction through ordinary registered Library admission. @internal */
 export function compose_livemap_document_internal(
@@ -230,7 +254,7 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): readonly C
   exact_transport_fields(operation, ["library", "operation"]);
   exact_transport_fields(operation.operation, ["kind", "libraries"]);
   for (const entry of operation.operation.libraries) {
-    exact_transport_fields(entry, ["name", "mode", "schema", "root", ...(Object.hasOwn(entry, "css") ? ["css"] : []), ...(Object.hasOwn(entry, "quads") ? ["quads"] : [])]);
+    exact_transport_fields(entry, ["name", "mode", "schema", "root", ...(Object.hasOwn(entry, "validation") ? ["validation"] : []), ...(Object.hasOwn(entry, "css") ? ["css"] : []), ...(Object.hasOwn(entry, "quads") ? ["quads"] : [])]);
     if (Object.hasOwn(entry, "quads") && own_document_quads(entry) === undefined) throw new Error("Undefined QUAD associations.");
     if (names.has(entry.name)) throw new Error("LiveMap topology replay contains a duplicate Library.");
     names.add(entry.name);
@@ -242,6 +266,7 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): readonly C
       throw new Error("LiveMap topology replay root mode or encoding is inconsistent.");
     }
     definitions.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root, schema,
+      ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
       ...(own_document_quads(entry) === undefined ? {} : { quads: decode_document_quads(own_document_quads(entry), root, entry.mode) }) });
   }
   return capture_library_definitions(definitions);
@@ -294,9 +319,11 @@ export function install_client_projected_topology_internal(
   const definitions = topology_definitions(operation);
   const newBindings = operation.operation.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: HsonSchemaHandle.fromHson(entry.schema), identity: Object.freeze({}),
+    ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
   }));
   const existing = current.registry.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: HsonSchemaHandle.fromHson(entry.schema), identity: Object.freeze({}),
+    ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
     ...(entry.scope === undefined ? {} : { scope: entry.scope }),
   }));
   const application = [...existing.filter((entry) => entry.scope === undefined), ...newBindings]
@@ -428,7 +455,8 @@ export function make_livemap_from_authored_libraries_internal(inputs: LiveMapDef
       if (authored.declarations.length) addresses.set(name, authored.declarations);
       return { name, family: "document", schema: input.schema, root: authored.root };
     }
-    return { name, family: "data" in input ? "data" : "document", schema: input.schema, root: library_root(input) };
+    return { name, family: "data" in input ? "data" : "document", schema: input.schema, root: library_root(input),
+      ...(input.validation === undefined ? {} : { validation: input.validation }) };
   });
   return make_livemap_library_receiver(capture_library_definitions(definitions), [], undefined, {}, addresses);
 }
@@ -446,6 +474,7 @@ function make_livemap_library_receiver(
       root,
       hsonSchema: schema,
       family,
+      ...(definition.validation === undefined ? {} : { validation: definition.validation }),
       ...(quads === undefined ? {} : { quads }),
       ...(Object.hasOwn(initialCss, name) ? { css: decode_portable_document_stylesheet(initialCss[name]) } : {}),
     };
@@ -475,11 +504,13 @@ function make_livemap_library_receiver(
   aggregate.configureHostedRegistry([...named.values()].map((entry) => {
     const inspected = inspectedByIdentity.get(entry.identity);
     if (inspected === undefined) throw new Error("Hosted LiveMap Library inspection is unavailable.");
+    const validation = definitions.find(definition => definition.name === entry.name)?.validation;
     return Object.freeze({
       name: entry.name,
       identity: entry.identity,
       mode: inspected.mode,
       schema: entry.schema,
+      ...(validation === undefined ? {} : { validation }),
     });
   }));
   if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot);
@@ -542,16 +573,18 @@ function make_livemap_library_receiver(
     }
     const libs: LiveMapSnapshot = Object.freeze({ format: "hson-livemap-libraries-snapshot", revision: captured.revision,
       registry, registryDigest: registry.digest, libraries: Object.freeze(libraryRoots) });
+    // Complete source capture before detached bound checks and realization,
+    // which may reenter without changing the captured siblings.
     checkCapture();
     assert_libraries_snapshot_bound(libs);
     if (html === undefined) return Object.freeze({ libs });
     const document = captured.libraries.find(library => library.name === html);
     if (document?.css === undefined) throw new Error("Cut document stylesheet is unavailable.");
-    if (ssr !== undefined) return Object.freeze({ libs, document: html,
-      html: realize_document(ssr.root, render_portable_document_stylesheet(decode_portable_document_stylesheet(ssr.css)), { quads: ssr.quads }) });
-    return Object.freeze({ libs, document: html,
-      html: realize_document(decode_hosted_root(document.root, HOSTED_MAX_SNAPSHOT_BYTES),
-        render_portable_document_stylesheet(decode_portable_document_stylesheet(document.css))) });
+    const realization = ssr !== undefined
+      ? realize_document(ssr.root, render_portable_document_stylesheet(decode_portable_document_stylesheet(ssr.css)), { quads: ssr.quads })
+      : realize_document(decode_hosted_root(document.root, HOSTED_MAX_SNAPSHOT_BYTES),
+        render_portable_document_stylesheet(decode_portable_document_stylesheet(document.css)));
+    return Object.freeze({ libs, document: html, html: realization });
   }
 
   const public_commit = (commit: LiveMapAggregateCommit): LiveMapCommit => Object.freeze({
@@ -610,6 +643,7 @@ function make_livemap_library_receiver(
         name, root, family,
         ...(quads === undefined ? {} : { quads }),
         hsonSchema: schema,
+        ...(definition.validation === undefined ? {} : { validation: definition.validation }),
         ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
       });
     });
@@ -712,6 +746,28 @@ function make_livemap_library_receiver(
     return result;
   });
   EXACT_LIBRARY_ADMISSION.set(libraries, (definitions) => addLibrariesInternal(definitions));
+  PART_COLLECTION_ADMISSION.set(libraries, (name, parts) => {
+    aggregate.assertPublicMutationAllowed();
+    const checkCapture = aggregate.captureFence();
+    const definition = part_collection_definition_internal(parts);
+    const additions = public_library_definitions({ [name]: definition });
+    checkCapture();
+    return addLibrariesInternal(additions, {}, false, checkCapture);
+  });
+  PART_READ.set(libraries, (collection, member) => {
+    const checkCapture = aggregate.captureFence();
+    if (typeof member !== "string") throw new TypeError("Part member key must be a string.");
+    const entry = named.get(collection);
+    const contract = aggregate.hostedRegistry().libraries.find(candidate => candidate.name === collection);
+    if (entry === undefined || entry.family !== "data" || contract?.validation !== PART_COLLECTION_VALIDATION) {
+      throw new Error("Unknown Part collection.");
+    }
+    const parts = validate_data_library(aggregate.root(entry.identity), contract.mode, contract.validation);
+    const part = parts?.find(candidate => candidate.key === member);
+    if (part === undefined) throw new Error("Unknown Part member.");
+    checkCapture();
+    return part;
+  });
   DOCUMENT_COMPOSITION.set(libraries, (source, name, options) => {
     // Preserve existing batch/client/hosted authority fences before inspecting sources.
     aggregate.assertPublicMutationAllowed();
@@ -796,6 +852,7 @@ function make_livemap_library_receiver(
         name, root, family,
         ...(quads === undefined ? {} : { quads }),
         hsonSchema: schema,
+        ...(definition.validation === undefined ? {} : { validation: definition.validation }),
         ...(css !== undefined && Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
       });
     }));
@@ -904,6 +961,7 @@ export function portable_aggregate_inputs_internal(
       systems.push(Object.freeze({ key: entry.name, transportName: entry.name, root, hsonSchema: schema }));
     } else {
       inputs.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root, schema,
+        ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
         ...(own_document_quads(encoded) === undefined ? {} : { quads: decode_document_quads(own_document_quads(encoded), root, entry.mode) }) });
     }
   }
@@ -931,7 +989,8 @@ export function make_livemap_mirror_from_semantic_checkpoint_internal(
       systems.push(Object.freeze({ key: entry.name, transportName: entry.name,
         root: library.root, hsonSchema: schema }));
     } else {
-      inputs.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root: library.root, schema });
+      inputs.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root: library.root, schema,
+        ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }) });
     }
   }
   const map = make_livemap_from_canonical_libraries_internal(inputs, systems);
@@ -982,7 +1041,8 @@ export function restore_portable_document_receiver_internal(snapshot: LiveMapSna
       continue;
     }
     inputs.push({ name: registry.name, family: registry.mode === "document" ? "document" : "data", root,
-      schema: HsonSchemaHandle.fromHson(registry.schema) });
+      schema: HsonSchemaHandle.fromHson(registry.schema),
+      ...(own_data_library_validation(registry) === undefined ? {} : { validation: own_data_library_validation(registry) }) });
   }
 
   const mirror = make_livemap_from_canonical_libraries_internal(inputs, systems);
@@ -1436,7 +1496,7 @@ function make_document_library(
   return selected;
 }
 
-function must_library_input(name: string, value: unknown): LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }> {
+function must_library_input(name: string, value: unknown): LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle; validation?: DataLibraryValidation }> {
   if (name === INTERACTION_RESERVED_LIBRARY_KEY) {
     throw new Error(`LiveMap Library name ${JSON.stringify(name)} is reserved for system state.`);
   }
@@ -1447,11 +1507,13 @@ function must_library_input(name: string, value: unknown): LiveMapLibraryInput &
     throw new TypeError("Initial Library CSS input is not supported; author through the document Library css handle.");
   }
   own_document_quads(value);
+  const validation = own_data_library_validation(value);
   // Configuration getters are supported. Select their values once before
   // classification, then retain only this stable envelope downstream.
   const hasData = Object.hasOwn(value, "data");
   const hasDocument = Object.hasOwn(value, "document");
   const selected: Record<string, unknown> = Object.assign(Object.create(null), value);
+  if (own_data_library_validation(selected) !== validation) throw new TypeError("Library validation contract changed during input capture.");
   const schemaValue = Object.hasOwn(selected, "schema") ? selected.schema : value.schema;
 
   const schema = schemaValue === undefined ? (hasData ? ANY_DATA : ANY_DOCUMENT) : schemaValue;
@@ -1464,6 +1526,7 @@ function must_library_input(name: string, value: unknown): LiveMapLibraryInput &
       `LiveMap Library ${JSON.stringify(name)} must specify exactly one of data or document.`,
     );
   }
+  if (validation !== undefined && !hasData) throw new TypeError("Part validation requires a data Library.");
   if (hasData) return Object.freeze(Object.assign(Object.create(null), selected, { schema })) as LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
   // Node fields are inspected only by exact admission, never by a getter-reading guard.
   if (typeof selected.document === "string" || typeof selected.document === "object" && selected.document !== null) return Object.freeze(Object.assign(Object.create(null), selected, { schema })) as LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;

@@ -1,3 +1,4 @@
+import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { decode_document_quads } from "../livemap/livemap.document.quad.js";
 import { decode_hosted_root } from "../livemap/livemap.hosted.js";
@@ -188,7 +189,7 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
   }
   const libraries: LocusProjectedLibraryContract[] = value.libraries.map((raw: unknown) => {
     const entry = exact_record(raw, "Hosted projection Library contract");
-    if (!has_fields(entry, ["name", "mode", "schema", "schemaDigest", "rootCodec"])) {
+    if (!has_fields(entry, ["name", "mode", "schema", "schemaDigest", "rootCodec", ...(Object.hasOwn(entry, "validation") ? ["validation"] : [])])) {
       throw new Error("Hosted projection Library contract fields are malformed.");
     }
     const name = required_string(entry.name);
@@ -199,7 +200,10 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
       throw new Error("Hosted projection Library contract is malformed.");
     }
     const canonicalSchema = HsonSchema.fromHson(schema).toHson();
-    return Object.freeze({ name, mode: entry.mode, schema: canonicalSchema, schemaDigest, rootCodec: "hson-exact-value" });
+    const validation = own_data_library_validation(entry);
+    assert_data_library_validation(validation, entry.mode);
+    return Object.freeze({ name, mode: entry.mode, schema: canonicalSchema, schemaDigest, rootCodec: "hson-exact-value",
+      ...(validation === undefined ? {} : { validation }) });
   });
   if (libraries.some((entry, index) => index > 0 && libraries[index - 1]!.name.localeCompare(entry.name) >= 0)) {
     throw new Error("Hosted projection Library order is malformed.");
@@ -233,7 +237,7 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
     const additions = operation.libraries.map((candidate: unknown) => {
       const entry = exact_record(candidate, "Hosted projection topology Library");
       const root = exact_record(entry.root, "Hosted projection topology root");
-      if (!has_fields(entry, ["name", "mode", "schema", "root", ...(Object.hasOwn(entry, "css") ? ["css"] : []), ...(Object.hasOwn(entry, "quads") ? ["quads"] : [])]) || !has_fields(root, ["format", "payload"])
+      if (!has_fields(entry, ["name", "mode", "schema", "root", ...(Object.hasOwn(entry, "validation") ? ["validation"] : []), ...(Object.hasOwn(entry, "css") ? ["css"] : []), ...(Object.hasOwn(entry, "quads") ? ["quads"] : [])]) || !has_fields(root, ["format", "payload"])
         || typeof entry.name !== "string" || !is_root_mode(entry.mode) || typeof entry.schema !== "string"
         || root.format !== "hson-exact-value" || typeof root.payload !== "string") {
         throw new Error("Hosted projection topology Library is malformed.");
@@ -241,10 +245,13 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
       const schema = HsonSchema.fromHson(entry.schema).toHson();
       const graph = admit_public_livemap_root(decode_hosted_root(root), entry.mode === "document" ? "document" : "data", "Echo topology");
       validate_hson_schema_graph(HsonSchema.fromHson(schema), graph);
+      const validation = own_data_library_validation(entry);
+      validate_data_library(graph, String(entry.mode), validation);
       if (Object.hasOwn(entry, "quads") && own_document_quads(entry) === undefined) throw new Error("Undefined QUAD associations.");
       const quads = decode_document_quads(own_document_quads(entry), graph, String(entry.mode));
       const format: "hson-exact-value" = "hson-exact-value";
       return Object.freeze({ name: entry.name, mode: entry.mode, schema,
+        ...(validation === undefined ? {} : { validation }),
         root: Object.freeze({ format, payload: root.payload }),
         ...(quads === undefined ? {} : { quads }),
         ...(entry.css === undefined ? {} : { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) }) });

@@ -51,6 +51,8 @@ export type LiveMapSnapshot = Readonly<{
       schema: import("../api/transform/transform.types.js").HsonSchemaData;
       schemaDigest: string;
       rootCodec: "hson-exact-value";
+      /** Portable internal data-Library validation contract. @internal */
+      validation?: "hson-part-collection-v1";
     }>[];
     digest: string;
   }>;
@@ -1189,6 +1191,8 @@ export type LiveMapLibraryAddOperation = Readonly<{
     libraries: readonly Readonly<{
       name: string;
       mode: LiveMapRootMode;
+      /** Portable internal data-Library validation contract. @internal */
+      validation?: "hson-part-collection-v1";
       schema: import("../api/transform/transform.types.js").HsonSchemaData;
       root: Readonly<{ format: "hson-exact-value"; payload: string }>;
       quads?: PortableDocumentQuads;

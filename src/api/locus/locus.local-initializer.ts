@@ -1,3 +1,4 @@
+import { own_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
 import { hson_schema_digest } from "../schema/hson-schema.js";
 import type {
@@ -37,7 +38,7 @@ export type LocusApplicationCatalog = Readonly<{
   local: Map<string, LocusLocalInitializer>;
 }>;
 
-type LocalSeedContract = Readonly<Pick<LocusLocalInitializer, "mode" | "schemaDigest">>;
+type LocalSeedContract = Readonly<Pick<LocusLocalInitializer, "mode" | "schemaDigest" | "validation">>;
 const clientLocalSeedContracts = new WeakMap<LiveMap, Map<string, LocalSeedContract>>();
 
 function freeze_portable_value<T extends object>(value: T): Readonly<T> {
@@ -105,6 +106,7 @@ function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "
     mode: registry.mode,
     schema: registry.schema,
     schemaDigest: registry.schemaDigest,
+    ...(registry.validation === undefined ? {} : { validation: registry.validation }),
     rootCodec: "hson-exact-value" as const,
     root: encode_hosted_root(decoded),
     ...(css === undefined ? {} : { css }),
@@ -167,7 +169,7 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
   const names = new Set<string>();
   const admitted = input.map((candidate) => {
     const hasCss = typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "css");
-    const value = exact_record(candidate, ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", ...(hasCss ? ["css"] : []), "fingerprint"]);
+    const value = exact_record(candidate, ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", ...(hasCss ? ["css"] : []), ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : []), "fingerprint"]);
     if (typeof value.name !== "string" || value.name.length === 0 || names.has(value.name)
       || typeof value.schema !== "string" || typeof value.schemaDigest !== "string"
       || typeof value.fingerprint !== "string" || value.rootCodec !== "hson-exact-value") {
@@ -184,6 +186,8 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
     const mode = classify_live_root_mode(root, value.mode === "document" ? "document" : "data");
     if (mode !== value.mode) throw new Error("Local initializer root mode is inconsistent.");
     validate_hson_schema_graph(schema, root);
+    const validation = own_data_library_validation(value);
+    validate_data_library(root, mode, validation);
     const css = mode === "document"
       ? canonical_local_css(value.css)
       : undefined;
@@ -193,6 +197,7 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
       mode,
       schema: schemaSource,
       schemaDigest: value.schemaDigest,
+      ...(validation === undefined ? {} : { validation }),
       rootCodec: "hson-exact-value" as const,
       root: encode_hosted_root(root),
       ...(css === undefined ? {} : { css }),
@@ -208,10 +213,10 @@ export function retain_client_local_seed_contracts_internal(map: LiveMap, initia
   const contracts = clientLocalSeedContracts.get(map) ?? new Map<string, LocalSeedContract>();
   for (const initializer of initializers) {
     const prior = contracts.get(initializer.name);
-    if (prior !== undefined && (prior.mode !== initializer.mode || prior.schemaDigest !== initializer.schemaDigest)) {
+    if (prior !== undefined && (prior.mode !== initializer.mode || prior.schemaDigest !== initializer.schemaDigest || prior.validation !== initializer.validation)) {
       throw new Error(`Local Library ${JSON.stringify(initializer.name)} already has a different seed contract.`);
     }
-    contracts.set(initializer.name, Object.freeze({ mode: initializer.mode, schemaDigest: initializer.schemaDigest }));
+    contracts.set(initializer.name, Object.freeze({ mode: initializer.mode, schemaDigest: initializer.schemaDigest, ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) }));
   }
   clientLocalSeedContracts.set(map, contracts);
 }
@@ -236,7 +241,8 @@ export function install_client_local_initializers_internal(
     if (projected.has(initializer.name)) throw new Error(`Local initializer ${JSON.stringify(initializer.name)} collides with shared state.`);
     const seed = seedContracts?.get(initializer.name);
     if (seed === undefined || existing.mode !== initializer.mode
-      || seed.mode !== initializer.mode || seed.schemaDigest !== initializer.schemaDigest) {
+      || seed.mode !== initializer.mode || seed.schemaDigest !== initializer.schemaDigest
+      || existing.validation !== initializer.validation || seed.validation !== initializer.validation) {
       throw new Error(`Existing local Library ${JSON.stringify(initializer.name)} is incompatible with its authorized initializer.`);
     }
   }
@@ -245,7 +251,7 @@ export function install_client_local_initializers_internal(
   for (const initializer of missing) {
     const root = decode_hosted_root(initializer.root, HOSTED_MAX_SNAPSHOT_BYTES);
     const schema = HsonSchema.fromHson(initializer.schema);
-    definitions.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema });
+    definitions.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
   }
   add_client_local_libraries_internal(map, Object.freeze(definitions));
   apply_client_local_initializer_css_internal(map, missing);

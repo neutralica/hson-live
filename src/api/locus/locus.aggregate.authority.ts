@@ -188,6 +188,7 @@ function projection_change_topology(
     const captured = snapshot.libraries.find((candidate) => candidate.name === entry.name);
     if (captured === undefined) throw new LocusProjectionUnavailableError();
     return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, root: captured.root,
+      ...(entry.validation === undefined ? {} : { validation: entry.validation }),
       ...(own_document_quads(captured) === undefined ? {} : { quads: own_document_quads(captured) }) });
   });
   const first = additions[0];

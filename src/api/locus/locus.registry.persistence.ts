@@ -212,7 +212,7 @@ export async function resume_registry_locus<
         "Restored topology root order is invalid.");
       const schema = HsonSchema.fromHson(entry.schema);
       definitions.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data",
-        root: root.root, schema });
+        root: root.root, schema, ...(entry.validation === undefined ? {} : { validation: entry.validation }) });
     }
     add_livemap_canonical_libraries_internal(options.map, definitions);
   }

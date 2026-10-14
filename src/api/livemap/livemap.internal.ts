@@ -117,6 +117,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    validation?: import("./livemap.parts.js").DataLibraryValidation;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
@@ -127,6 +128,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    validation?: import("./livemap.parts.js").DataLibraryValidation;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => LiveMapAggregateCommit;
@@ -152,6 +154,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
+    validation?: import("./livemap.parts.js").DataLibraryValidation;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[]) => Readonly<{

@@ -44,7 +44,7 @@ export function compose_client_portable_aggregate_internal(
     const root = decode_hosted_root(initializer.root, HOSTED_MAX_SNAPSHOT_BYTES);
     const schema = HsonSchema.fromHson(initializer.schema);
     names.add(initializer.name);
-    inputs.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema });
+    inputs.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
   }
   if (inputs.length === 0) {
     throw new Error("An action-only client session has no LiveMap; use endpoint-only Echo.");

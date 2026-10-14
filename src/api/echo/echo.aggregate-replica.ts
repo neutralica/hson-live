@@ -568,7 +568,7 @@ function create_registry_echo_semantic_client_internal<
     for (const old of oldEntries) {
       const next = message.libraries.find((entry) => entry.name === old.name);
       if (next === undefined || next.mode !== old.mode || hson_schema_source_digest(next.schema) !== hson_schema_source_digest(old.schema)
-        || next.schemaDigest !== old.schemaDigest || next.rootCodec !== old.rootCodec) {
+        || next.schemaDigest !== old.schemaDigest || next.rootCodec !== old.rootCodec || next.validation !== old.validation) {
         throw new Error("Hosted projection change cannot replace an existing Library contract.");
       }
     }
@@ -585,7 +585,7 @@ function create_registry_echo_semantic_client_internal<
         || topology.operation.libraries.length !== added.length
         || topology.operation.libraries.some((entry, index) => {
           const contract = added[index];
-          return contract === undefined || entry.name !== contract.name || entry.mode !== contract.mode
+          return contract === undefined || entry.name !== contract.name || entry.mode !== contract.mode || entry.validation !== contract.validation
             || hson_schema_source_digest(entry.schema) !== hson_schema_source_digest(contract.schema);
         })) throw new Error("Hosted projection change lacks its exact Library addition.");
       if (added.some((entry) => entry.mode === "document") && projectionFeatures.includes("interactions")

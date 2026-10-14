@@ -1,3 +1,5 @@
+import { admit_public_livemap_root } from "../livemap/livemap.node-admission.js";
+import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { decode_document_quads } from "../livemap/livemap.document.quad.js";
@@ -198,6 +200,31 @@ export async function write_semantic_checkpoint(
   adapter: LocusHostedAggregatePersistenceAdapter,
   runtimeOwnership: readonly LocusDurableOwnershipEntry[] = [],
 ): Promise<void> {
+  // Own the complete exact export candidate before the first adapter callback.
+  // Storage awaits must never re-read caller-owned graphs or contract records.
+  if (checkpoint.registry.format !== "hson-hosted-registry") throw invalid_state();
+  const registry = registry_from_entries(checkpoint.registry.libraries);
+  if (registry.digest !== checkpoint.registry.digest || checkpoint.libraries.length !== registry.libraries.length) throw invalid_state();
+  checkpoint = Object.freeze({
+    authority: Object.freeze({ ...checkpoint.authority }), revision: checkpoint.revision, registry,
+    libraries: Object.freeze(checkpoint.libraries.map((library, index) => {
+      const entry = registry.libraries[index];
+      if (entry === undefined || library.name !== entry.name) throw invalid_state();
+      const root = admit_public_livemap_root(library.root, entry.mode === "document" ? "document" : "data", "Checkpoint export");
+      const quads = decode_document_quads(own_document_quads(library), root, entry.mode);
+      return Object.freeze({ name: library.name, root,
+        ...(quads === undefined ? {} : { quads }),
+        ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(library.css)) } : {}) });
+    })),
+  });
+  for (let index = 0; index < checkpoint.registry.libraries.length; index++) {
+    const entry = checkpoint.registry.libraries[index];
+    const library = checkpoint.libraries[index];
+    if (entry === undefined || library?.name !== entry.name) throw invalid_state();
+    const validation = own_data_library_validation(entry);
+    assert_data_library_validation(validation, entry.mode, entry.scope);
+    validate_data_library(library.root, entry.mode, validation);
+  }
   const ownership = ownership_entries(runtimeOwnership);
   const present = new Set(checkpoint.registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name));
   if (ownership.some((entry) => !present.has(entry.name))) throw invalid_state();
@@ -296,14 +323,15 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
   const names = new Set<string>();
   for (const raw of registry.libraries) {
     const entry = record(raw);
-    if (entry === undefined || !(exact_keys(entry, ["name", "scope", "mode", "schemaDigest", "rootCodec"])
-      || exact_keys(entry, ["name", "mode", "schemaDigest", "rootCodec"]))
+    if (entry === undefined || !(exact_keys(entry, ["name", "scope", "mode", "schemaDigest", "rootCodec", ...(Object.hasOwn(entry, "validation") ? ["validation"] : [])])
+      || exact_keys(entry, ["name", "mode", "schemaDigest", "rootCodec", ...(Object.hasOwn(entry, "validation") ? ["validation"] : [])]))
       || typeof entry.name !== "string" || !entry.name || entry.name.length > 1_024 || names.has(entry.name)
       || (entry.scope !== undefined && entry.scope !== "hson-internal")
       || (entry.mode !== "data-object" && entry.mode !== "data-array" && entry.mode !== "data-string"
         && entry.mode !== "data-number" && entry.mode !== "data-boolean" && entry.mode !== "data-null"
         && entry.mode !== "document")
       || !valid_digest(entry.schemaDigest) || entry.rootCodec !== "hson-exact-value") throw invalid_state();
+    assert_data_library_validation(own_data_library_validation(entry), entry.mode, typeof entry.scope === "string" ? entry.scope : undefined);
     names.add(entry.name);
   }
   const locus = record(value.locus);
@@ -375,6 +403,7 @@ async function restore_manifest(
       schema: HsonSchema.fromHson(schema).toHson(),
       schemaDigest: fixed.schemaDigest,
       rootCodec: fixed.rootCodec,
+      ...(own_data_library_validation(fixed) === undefined ? {} : { validation: own_data_library_validation(fixed) }),
     }));
     libraries.push(Object.freeze({ name: fixed.name, root: root as HsonNode,
       ...(quads === undefined ? {} : { quads: decode_document_quads(quads, root as HsonNode, fixed.mode) }),

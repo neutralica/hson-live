@@ -1,3 +1,4 @@
+import { own_data_library_validation } from "../livemap/livemap.parts.js";
 import { decode_document_quads, own_document_quads } from "../livemap/livemap.document.quad.js";
 import type {
   LiveMapSnapshot,
@@ -175,6 +176,12 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
     }
     const local = bootstrap as LiveMapSnapshot;
     assert_libraries_snapshot_shape(local);
+    // Temporarily unsupported at this local bootstrap boundary: its existing
+    // payload cannot carry the Part validator. Inspect only the selected transfer;
+    // source-free document cuts that exclude definition Libraries remain supported.
+    if (local.registry.libraries.some(entry => own_data_library_validation(entry) !== undefined)) {
+      throw new TypeError("Local SSR bootstrap transfer of Part collections is temporarily unsupported.");
+    }
     assert_local_libraries_roots_portable(local);
     assert_libraries_snapshot_bound(local);
     return { kind: "libraries", payload: libraries_payload(local) };

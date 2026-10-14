@@ -109,6 +109,7 @@ export function project_locus_live_revision_internal(
 export function projected_registry_digest(effective: LocusEffectiveProjection): string {
   const bindings: HostedRegistryBinding[] = effective.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: HsonSchema.fromHson(entry.schema), identity: Object.freeze({}),
+    ...(entry.validation === undefined ? {} : { validation: entry.validation }),
   }));
   if (effective.hasSystemFeature("interactions")) bindings.push(Object.freeze({
     name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, scope: "hson-internal", mode: "data-object",

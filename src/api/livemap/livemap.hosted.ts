@@ -1,3 +1,5 @@
+import { clone_node } from "../../core/clone-node.js";
+import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "./livemap.parts.js";
 import { decode_document_quads } from "./livemap.document.quad.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
@@ -7,6 +9,7 @@ import { decode_public_attrs } from "../../core/public-attrs.js";
 import { is_Node } from "../../core/node-guards.js";
 import {
   is_ordered_projected_object,
+  ordered_projected_value_equal,
   ordered_projected_array,
   type OrderedProjectedObject,
   type OrderedProjectedValue,
@@ -82,6 +85,8 @@ export type HostedRegistryEntry = Readonly<{
   mode: LiveMapRootMode;
   schema: HsonSchemaData;
   schemaDigest: string;
+  /** Portable internal data-Library contract. @internal */
+  validation?: "hson-part-collection-v1";
   rootCodec: typeof HOSTED_ROOT_FORMAT;
 }>;
 
@@ -97,6 +102,8 @@ export type HostedRegistryBinding = Readonly<{
   identity: LiveMapLibraryIdentity | LiveMapSystemIdentity;
   mode: LiveMapRootMode;
   schema: HsonSchema;
+  /** Portable internal data-Library contract. @internal */
+  validation?: "hson-part-collection-v1";
 }>;
 
 export type HostedSemanticOperation = Readonly<{
@@ -180,7 +187,10 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
     throw new HostedAggregateRepresentationError("Hosted registry library count is outside its supported bound.");
   }
   const names = new Set<string>();
-  const libraries = bindings.map(({ name, scope, mode, schema }): HostedRegistryEntry => {
+  const libraries = bindings.map((binding): HostedRegistryEntry => {
+    const { name, scope, mode, schema } = binding;
+    const validation = own_data_library_validation(binding);
+    assert_data_library_validation(validation, mode, scope);
     must_library_name(name);
     if (names.has(name)) throw new HostedAggregateRepresentationError(`Hosted Library name ${JSON.stringify(name)} is duplicated.`);
     names.add(name);
@@ -198,6 +208,7 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
       mode,
       schema: source,
       schemaDigest: hson_schema_digest(schema),
+      ...(validation === undefined ? {} : { validation }),
       rootCodec: HOSTED_ROOT_FORMAT,
     });
   });
@@ -207,11 +218,15 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
 /** Build a detached registry from validated semantic contract entries, defensively checking attached source. @internal */
 export function registry_from_entries(entries: readonly HostedRegistryEntry[]): HostedRegistry {
   for (const entry of entries) {
+    assert_data_library_validation(own_data_library_validation(entry), entry.mode, entry.scope);
     if (hson_schema_source_digest(entry.schema) !== entry.schemaDigest) {
       throw new HostedAggregateRepresentationError("Hosted registry Schema identity disagrees with its validated definition.");
     }
   }
-  const libraries = Object.freeze([...entries]);
+  const libraries = Object.freeze(entries.map(entry => {
+    const validation = own_data_library_validation(entry);
+    return Object.freeze({ ...entry, ...(validation === undefined ? {} : { validation }) });
+  }));
   return Object.freeze({
     format: HOSTED_REGISTRY_FORMAT,
     libraries,
@@ -280,6 +295,28 @@ export function make_hosted_commit(
   return commit;
 }
 
+/** Own portable topology before serialization can reenter through caller callbacks. */
+function capture_part_topology(topology: LiveMapLibraryAddOperation): LiveMapLibraryAddOperation {
+  // Preserve the exact descriptor capture, including its own contract evidence.
+  // The established clone also supports runtimes without structuredClone.
+  const captured = admit_projected_value(topology);
+  const detached = clone_node(topology);
+  if (!ordered_projected_value_equal(captured, admit_projected_value(detached))) {
+    throw new HostedAggregateRepresentationError("Topology changed during exact capture.");
+  }
+  const freeze = (value: unknown): void => {
+    if (typeof value !== "object" || value === null) return;
+    for (const child of Object.values(value)) freeze(child);
+    Object.freeze(value);
+  };
+  freeze(detached);
+  for (const entry of detached.operation.libraries) {
+    const validation = own_data_library_validation(entry);
+    if (validation !== undefined) validate_data_library(decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES), entry.mode, validation);
+  }
+  return detached;
+}
+
 /** Wrap the ordinary LiveMap library-add semantic operation in hosted revision fences. */
 export function make_hosted_topology_commit(
   fence: HostedAuthorityFence,
@@ -293,6 +330,7 @@ export function make_hosted_topology_commit(
     || !valid_revision(prevRev)) {
     throw new HostedAggregateRepresentationError("Hosted topology transition is malformed.");
   }
+  topology = capture_part_topology(topology);
   const commit: HostedAggregateCommit = Object.freeze({
     format: HOSTED_COMMIT_FORMAT,
     authority: fence,
@@ -385,6 +423,7 @@ export function decode_hosted_commit(
 /** Derive QUID-free semantic effects from a living authority transition. */
 export function make_portable_aggregate_commit(authority: HostedAggregateCommit): PortableAggregateCommit | undefined {
   if (authority.topology !== undefined) {
+    const topology = capture_part_topology(authority.topology);
     if (authority.previousRegistryDigest === undefined || authority.operations.length !== 0
       || authority.replay.operations.length !== 0 || !authority.changed
       || authority.rev !== authority.prevRev + 1) {
@@ -395,7 +434,7 @@ export function make_portable_aggregate_commit(authority: HostedAggregateCommit)
       authority: authority.authority,
       previousRegistryDigest: authority.previousRegistryDigest,
       registryDigest: authority.registryDigest,
-      topology: authority.topology,
+      topology,
       prevRev: authority.prevRev,
       rev: authority.rev,
       operations: Object.freeze([]),
@@ -614,9 +653,11 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
   }
   for (const entry of registry.libraries) {
     const item = exact_record(entry, "Hosted registry entry");
-    exact_keys(item, entry.scope === undefined
-      ? ["name", "mode", "schema", "schemaDigest", "rootCodec"]
-      : ["name", "scope", "mode", "schema", "schemaDigest", "rootCodec"], "Hosted registry entry");
+    exact_keys(item, ["name", "mode", "schema", "schemaDigest", "rootCodec",
+      ...(Object.hasOwn(item, "scope") ? ["scope"] : []), ...(Object.hasOwn(item, "validation") ? ["validation"] : [])], "Hosted registry entry");
+    const scope = Object.getOwnPropertyDescriptor(item, "scope");
+    if (scope !== undefined && scope.value !== "hson-internal") throw new HostedAggregateRepresentationError("Hosted registry Library scope is malformed.");
+    assert_data_library_validation(own_data_library_validation(item), String(item.mode), scope?.value);
     if (entry.rootCodec !== HOSTED_ROOT_FORMAT
       || (entry.scope !== undefined && entry.scope !== "hson-internal")) {
       throw new HostedAggregateRepresentationError("Hosted registry Library scope is malformed.");
@@ -633,6 +674,15 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
     }
     if (entry.mode === "document") decode_portable_document_stylesheet(item.css);
   }
+  for (let index = 0; index < registry.libraries.length; index++) {
+    const entry = exact_record(registry.libraries[index], "Hosted registry entry");
+    const validation = own_data_library_validation(entry);
+    if (validation === undefined) continue;
+    const item = exact_record(record.libraries[index], "Part collection snapshot");
+    if (item.name !== entry.name || item.mode !== entry.mode) throw new HostedAggregateRepresentationError("Part collection snapshot contract disagrees.");
+    validate_data_library(decode_hosted_root(item.root, HOSTED_MAX_SNAPSHOT_BYTES), String(entry.mode), validation);
+  }
+
 }
 
 export function assert_hosted_libraries_snapshot_shape(snapshot: HostedLiveMapSnapshot): void {
@@ -898,6 +948,7 @@ function registry_canonical_text(entries: readonly HostedRegistryEntry[]): strin
       ...(entry.scope === undefined ? {} : { scope: entry.scope }),
       mode: entry.mode,
       schemaDigest: entry.schemaDigest,
+      ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
       rootCodec: entry.rootCodec,
     })),
   });

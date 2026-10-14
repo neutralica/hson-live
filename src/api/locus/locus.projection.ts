@@ -25,7 +25,10 @@ export class LocusProjectionUnavailableError extends Error {
   }
 }
 
-export type LocusProjectedLibraryContract = Readonly<Pick<HostedRegistryEntry, "name" | "mode" | "schema" | "schemaDigest" | "rootCodec">>;
+export type LocusProjectedLibraryContract = Readonly<Pick<HostedRegistryEntry, "name" | "mode" | "schema" | "schemaDigest" | "rootCodec"> & {
+  /** Portable internal data-Library contract. @internal */
+  validation?: "hson-part-collection-v1";
+}>;
 
 /** This object contains only included client contract data; it never carries policy or hidden names. */
 export type LocusEffectiveProjection = Readonly<{
@@ -203,6 +206,7 @@ function materialize_effective_projection(
       }
       return Object.freeze({
         name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec,
+        ...(entry.validation === undefined ? {} : { validation: entry.validation }),
       });
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -236,7 +240,8 @@ export function locus_projection_contract_digest(
   writableDocuments: readonly string[],
 ): string {
   return sha256_sync(JSON.stringify({ format: "locus-effective-projection", authority,
-    libraries: libraries.map((entry) => ({ name: entry.name, mode: entry.mode, schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec })),
+    libraries: libraries.map((entry) => ({ name: entry.name, mode: entry.mode, schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec,
+      ...(entry.validation === undefined ? {} : { validation: entry.validation }) })),
     systemFeatures, writableDocuments,
   }));
 }

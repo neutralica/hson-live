@@ -30,6 +30,8 @@ export type LocusLocalInitializer = Readonly<{
   schema: import("../api/transform/transform.types.js").HsonSchemaData;
   schemaDigest: string;
   rootCodec: "hson-exact-value";
+  /** Portable internal data-Library validation contract. @internal */
+  validation?: "hson-part-collection-v1";
   root: Readonly<{ format: "hson-exact-value"; payload: string }>;
   css?: import("./document-css.types.js").DocumentCssRecord;
   fingerprint: string;
@@ -49,6 +51,8 @@ export type AuthorityProjectionSnapshot = Readonly<{
     schema: import("../api/transform/transform.types.js").HsonSchemaData;
     schemaDigest: string;
     rootCodec: "hson-exact-value";
+    /** Portable internal data-Library validation contract. @internal */
+    validation?: "hson-part-collection-v1";
     root: Readonly<{ format: "hson-exact-value"; payload: string }>;
     quads?: PortableDocumentQuads;
     css?: import("./document-css.types.js").DocumentCssRecord;

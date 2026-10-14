@@ -1,3 +1,4 @@
+import { own_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { decode_document_quads } from "../livemap/livemap.document.quad.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
@@ -121,7 +122,11 @@ function root(value: unknown, schema: HsonSchema, mode: import("../../types/live
 export function admit_authority_projection_snapshot(input: unknown): AuthorityProjectionSnapshot {
   if (typeof input === "object" && input !== null) {
     const admitted = admittedSnapshots.get(input);
-    if (admitted !== undefined) return admitted;
+    if (admitted !== undefined) {
+      for (const entry of admitted.libraries) if (entry.validation !== undefined) validate_data_library(
+        decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES), entry.mode, entry.validation);
+      return admitted;
+    }
   }
   try {
     const value = record(input, ["format", "authority", "revision", "projectionDigest", "libraries", "systemFeatures", "writableDocuments", "system"]);
@@ -136,8 +141,8 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       const candidateMode = typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "mode")
         ? Reflect.get(candidate, "mode") : undefined;
       const entry = record(candidate, candidateMode === "document"
-        ? ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", "css", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "quads") ? ["quads"] : [])]
-        : ["name", "mode", "schema", "schemaDigest", "rootCodec", "root"]);
+        ? ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", "css", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : []), ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "quads") ? ["quads"] : [])]
+        : ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : [])]);
       const name = string(entry.name);
       if (names.has(name)) return fail();
       names.add(name);
@@ -149,10 +154,13 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       if (entry.schemaDigest !== hson_schema_digest(schema) || entry.rootCodec !== "hson-exact-value") return fail();
       if (Object.hasOwn(entry, "quads") && own_document_quads(entry) === undefined) return fail();
       const qualifiedRoot = root(entry.root, schema, mode);
+      const validation = own_data_library_validation(entry);
+      validate_data_library(decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode, validation);
       const quads = own_document_quads(entry) === undefined ? undefined
         : decode_document_quads(own_document_quads(entry), decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode);
       return Object.freeze({ name, mode, schema: schemaSource, schemaDigest: hson_schema_digest(schema), rootCodec: "hson-exact-value",
         root: qualifiedRoot,
+        ...(validation === undefined ? {} : { validation }),
         ...(quads === undefined ? {} : { quads }),
         ...(mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
     });
@@ -232,7 +240,7 @@ export function project_authority_snapshot(
       const current = byContract.get(contract.name);
       if (captured === undefined || current === undefined || current.scope !== undefined
         || current.mode !== contract.mode || hson_schema_source_digest(current.schema) !== hson_schema_source_digest(contract.schema) || current.schemaDigest !== contract.schemaDigest
-        || current.rootCodec !== contract.rootCodec) return fail();
+        || current.rootCodec !== contract.rootCodec || current.validation !== contract.validation) return fail();
       return Object.freeze({ ...contract, root: captured.root,
         ...(own_document_quads(captured) === undefined ? {} : { quads: own_document_quads(captured) }),
         ...(contract.mode === "document" ? { css: captured.css } : {}) });
