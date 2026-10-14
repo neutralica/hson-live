@@ -6,11 +6,12 @@ import {
   retain_document_quad_bindings,
   mark_quad_document_root,
   resolve_document_quad,
-  capture_document_quads,
   project_document_correspondence,
   decode_document_quads,
   document_quad_disposition,
+  disposable_document_quad_payloads,
   own_document_quads,
+  assert_portable_document_css_correspondence,
   type DocumentQuadBindings,
   type DocumentQuadCorrespondence,
 } from "./livemap.document.quad.js";
@@ -53,7 +54,7 @@ import { ANY_DATA, ANY_DOCUMENT, HsonSchema as HsonSchemaHandle, compiled_hson_s
 import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
 import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { decode_portable_document_stylesheet, empty_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal, render_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
-import { document_css_mentions_subject_identity, translate_document_css_identities } from "../../internal/css/css-identity-translation.js";
+import { document_css_mentions_subject_identity, document_css_subject_identities, translate_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import {
@@ -274,7 +275,8 @@ function make_livemap_registry_engine(
   // to their selected application Libraries.
   const mapIdentityEpoch = make_livemap_identity_epoch(aggregate_quid_locations(states).keys());
   let identityGeneration = 0;
-  const portableRestorations = new WeakSet<PortableQuadRestoration>();
+  const portableRestorations = new WeakMap<PortableQuadRestoration, ReadonlyMap<LiveMapLibraryIdentity,
+    import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheetRecord>>();
   const portableHandoffs = new WeakSet<PortableDocumentHandoff>();
   let localIdentityTransactionActive = false;
   /** Revision zero represents the initial graph before any changed commit. */
@@ -486,16 +488,31 @@ function make_livemap_registry_engine(
     mark_quad_document_root(state.root, bindings);
   }
 
-  function portable_quads(state: LiveMapLibraryState, issued: LiveMapIssuedQuidLedger = mapIdentityEpoch.issued()): Readonly<{ quads?: PortableDocumentQuads }> {
+  function portable_quads(state: LiveMapLibraryState, issued: LiveMapIssuedQuidLedger = mapIdentityEpoch.issued(), includeCss = true): Readonly<{
+    quads?: PortableDocumentQuads;
+    css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheetRecord;
+  }> {
     if (state.mode !== "document") return {};
-    const quads = capture_document_quads(state.root, require_document_overlay(state.documentOverlay), state.documentQuads, issued);
-    return quads === undefined ? {} : { quads };
+    const assertCurrent = capture_fence();
+    const css = encode_portable_document_stylesheet(state.stylesheet ?? empty_portable_document_stylesheet());
+    const overlay = require_document_overlay(state.documentOverlay);
+    const quads = project_document_correspondence(state.root, overlay, state.documentQuads, issued,
+      document_css_subject_identities(css, "outbound"));
+    const associations = (quads ?? []).map(entry => {
+      const quid = overlay.quidAtPath(entry.path);
+      if (quid === undefined) throw new Error("CSS correspondence requires a current Library subject.");
+      return { ...entry, quid, disposition: document_quad_disposition(entry) };
+    });
+    const translated = document_css_mentions_subject_identity(css)
+      ? translate_document_css_identities(css, "outbound", { associations, assertCurrent }, true) : css;
+    assertCurrent();
+    return { ...(quads === undefined ? {} : { quads }), ...(includeCss ? { css: translated } : {}) };
   }
 
   /** Only unpublished candidate overlays receive fresh identities; the ledger is installed atomically later. */
   function reconstruct_quads(prepared: ReturnType<typeof prepare_livemap_root>, input: unknown, reserved: Set<string>,
     exactOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
-    correspondence?: DocumentQuadCorrespondence[]): Readonly<{
+    correspondence?: DocumentQuadCorrespondence[], foreignPayloads: ReadonlySet<string> = new Set()): Readonly<{
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       documentQuads?: DocumentQuadBindings;
     }> {
@@ -508,7 +525,7 @@ function make_livemap_registry_engine(
     for (const entry of entries) {
       const { name, path } = entry, disposition = document_quad_disposition(entry);
       const quid: string | undefined = exactOverlay === undefined ? allocate_livemap_quid(mapIdentityEpoch.owner,
-        candidate => reserved.has(candidate) || mapIdentityEpoch.issued().has(candidate) || sourcePayloads.has(candidate),
+        candidate => reserved.has(candidate) || mapIdentityEpoch.issued().has(candidate) || sourcePayloads.has(candidate) || foreignPayloads.has(candidate),
         candidate => ({ claimed: true, value: candidate })) : overlay.quidAtPath(path);
       if (quid === undefined) throw new Error("No available document QUID for portable QUAD reconstruction.");
       reserved.add(quid);
@@ -517,6 +534,22 @@ function make_livemap_registry_engine(
       correspondence?.push(Object.freeze({ name, quid, path, disposition }));
     }
     return { documentOverlay: overlay, documentQuads: make_document_quad_bindings(bindings) };
+  }
+
+  /** Reconstruction and CSS rebinding share one unpublished candidate and source fence. */
+  function reconstruct_document(prepared: ReturnType<typeof prepare_livemap_root>, input: unknown,
+    css: unknown, reserved: Set<string>, exactOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
+    correspondence: DocumentQuadCorrespondence[] = [], foreignPayloads: ReadonlySet<string> = new Set()) {
+    const assertCurrent = capture_fence();
+    const portable = prepared.mode === "document" ? encode_portable_document_stylesheet(
+      css === undefined ? empty_portable_document_stylesheet() : decode_portable_document_stylesheet(css)) : undefined;
+    if (portable !== undefined) assert_portable_document_css_correspondence(prepared.root, prepared.mode, input, portable);
+    const addressState = reconstruct_quads(prepared, input, reserved, exactOverlay, correspondence, foreignPayloads);
+    const translated = portable !== undefined && document_css_mentions_subject_identity(portable)
+      ? translate_document_css_identities(portable, "inbound", { associations: correspondence, assertCurrent }, true, exactOverlay !== undefined) : portable;
+    const state = { ...addressState, ...(translated === undefined ? {} : { stylesheet: decode_portable_document_stylesheet(translated) }) };
+    assertCurrent();
+    return state;
   }
 
   function capture_fence(): () => void {
@@ -787,6 +820,7 @@ function make_livemap_registry_engine(
       sourceCandidate?: PreparedDocumentMutation;
       continuity?: "same-epoch" | "new-epoch";
     }>[] = [],
+    hostedIncremental = false,
   ): import("./livemap.authority.js").PreparedLiveMapAuthorityTransition {
     if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     else {
@@ -1213,12 +1247,14 @@ function make_livemap_registry_engine(
     const beforeActive = initialActiveQuids;
     const afterStates = libraryRegistry.all().map((library) => {
       const candidate = candidates.get(library.identity);
-      if (candidate === undefined) return library;
       return {
         ...library,
-        ...(is_aggregate_document_candidate(candidate)
-          ? { root: candidate.root, documentOverlay: candidate.overlay, projectedOverlay: undefined, projectedValue: undefined }
+        ...(candidate === undefined ? {} : is_aggregate_document_candidate(candidate)
+          ? { root: candidate.root, documentOverlay: candidate.overlay,
+            documentQuads: retain_document_quad_bindings(library.documentQuads, candidate.overlay),
+            projectedOverlay: undefined, projectedValue: undefined }
           : { root: candidate.nextRoot, documentOverlay: undefined, projectedOverlay: candidate.overlay, projectedValue: candidate.value }),
+        ...(cssCandidates.has(library.identity) ? { stylesheet: cssCandidates.get(library.identity)!.after } : {}),
       };
     });
     // Validate every governed collection against the complete final aggregate,
@@ -1258,6 +1294,18 @@ function make_livemap_registry_engine(
     const nextLedger = validatedLedger === undefined
       ? undefined
       : merge_issued_ledgers(validatedLedger, stagedIssuedLedger);
+    const finalLedger = nextLedger ?? make_livemap_issued_quid_ledger(afterActive.keys());
+    for (const state of afterStates) {
+      if (candidates.has(state.identity) || cssCandidates.has(state.identity)) portable_quads(state, finalLedger);
+      // Portable replay has no managed execution owner, but shares the live
+      // hosted support boundary. Full snapshot/checkpoint reconstruction is separate.
+      if ((hostedIncremental || transitionController.managedExecutionOwner() !== undefined) && state.mode === "document"
+        && (candidates.has(state.identity) || cssCandidates.has(state.identity))
+        && [state.stylesheet, require_library(state.identity).stylesheet].some(css => css !== undefined
+          && document_css_subject_identities(encode_portable_document_stylesheet(css), "outbound").length > 0)) {
+        throw new Error("Hosted incremental subject-owned CSS requires correspondence ordering and is unsupported.");
+      }
+    }
     const changed = operations.length > 0;
     const rev = changed ? prevRev + 1 : prevRev;
     const commit: LiveMapAggregateCommit = Object.freeze({
@@ -1486,7 +1534,6 @@ function make_livemap_registry_engine(
     const hosted = require_hosted_state();
     const projected = new Set<LiveMapLibraryIdentity>();
     const bindings = new Map<string, HostedRegistryBinding>();
-    const initialCss: Array<readonly [LiveMapLibraryIdentity, import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet]> = [];
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
       const entry = snapshot.registry.libraries[index];
       const root = snapshot.libraries[index];
@@ -1509,12 +1556,11 @@ function make_livemap_registry_engine(
       bindings.set(entry.name, binding);
       if (binding.scope !== "hson-internal") {
         const identity = binding.identity as LiveMapLibraryIdentity;
-        if (entry.mode === "document") initialCss.push([identity, decode_portable_document_stylesheet(root.css)]);
+        // The initial registry admitted graph, associations and CSS together.
         projected.add(identity);
         projectedCaptureContinuity.set(identity, Object.freeze({}));
       }
     }
-    for (const [identity, css] of initialCss) require_library(identity).stylesheet = css;
     clientComposition = Object.freeze({
       authority: Object.freeze({ ...snapshot.authority }),
       registry: snapshot.registry,
@@ -1567,6 +1613,7 @@ function make_livemap_registry_engine(
     const hosted = require_hosted_state();
     const generation = identityGeneration;
     const reserved = new Set<string>();
+    const foreignPayloads = disposable_document_quad_payloads(definitions.map(definition => own_document_quads(definition)));
     const prepared = definitions.map((definition) => {
       const { name, root, hsonSchema, family, css } = definition;
       const quads = own_document_quads(definition);
@@ -1577,10 +1624,13 @@ function make_livemap_registry_engine(
       must_hson_schema_root(hsonSchema, graph.root);
       validate_data_library(graph.root, graph.mode, validation);
       const state = make_livemap_library(graph, hsonSchema, validation);
-      Object.assign(state, reconstruct_quads(graph, quads, reserved));
+      Object.assign(state, reconstruct_document(graph, quads, css === undefined ? undefined : encode_portable_document_stylesheet(css), reserved, undefined, [], foreignPayloads));
       if (css !== undefined) {
         if (family !== "document") throw new TypeError("Initial CSS requires a document Library.");
-        state.stylesheet = css;
+        if (transitionController.managedExecutionOwner() !== undefined
+          && document_css_subject_identities(encode_portable_document_stylesheet(css), "inbound").length > 0) {
+          throw new Error("Hosted incremental subject-owned CSS topology is unsupported without correspondence ordering.");
+        }
       }
       if (state.mode !== "document") state.projectedValue = must_projected_root_value(state.root);
       return Object.freeze({ name, state, hsonSchema, css });
@@ -1621,8 +1671,7 @@ function make_livemap_registry_engine(
           schema: hsonSchema.toHson(),
           ...(state.validation === undefined ? {} : { validation: state.validation }),
           root: encode_hosted_root(clone_hson_graph_without_quids(validated_library_root(state))),
-          ...portable_quads(state, nextLedger),
-          ...(css === undefined ? {} : { css: encode_portable_document_stylesheet(css) }),
+          ...portable_quads(state, nextLedger, css !== undefined),
         }))),
       }),
     });
@@ -1778,6 +1827,7 @@ function make_livemap_registry_engine(
       throw new TypeError("Document CSS operation exceeds the snapshot bound.");
     }
     const next = apply_portable_document_css_op(current, normalizedOp);
+    portable_quads({ ...state, stylesheet: next });
     const prevRev = mapRevision;
     if (portable_document_stylesheet_equal(current, next)) {
       return Object.freeze({ kind: "aggregate", changed: false, prevRev, rev: prevRev,
@@ -1821,7 +1871,6 @@ function make_livemap_registry_engine(
         schemaDigest: entry.schemaDigest,
         root: encode_hosted_root(clone_hson_graph_without_quids("mode" in state ? validated_library_root(state) : state.root)),
         ...(binding.scope === "hson-internal" ? {} : portable_quads(require_library(binding.identity as LiveMapLibraryIdentity))),
-        ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(stylesheet(state.identity)) } : {}),
       });
     });
     const snapshot: LiveMapSnapshot = Object.freeze({
@@ -1831,8 +1880,8 @@ function make_livemap_registry_engine(
       registryDigest: hosted.registry.digest,
       libraries: Object.freeze(libraries),
     });
-    assert_libraries_snapshot_bound(snapshot);
     checkCapture();
+    assert_libraries_snapshot_bound(snapshot);
     return snapshot;
   }
 
@@ -1849,8 +1898,7 @@ function make_livemap_registry_engine(
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
       return Object.freeze({ name, root: encode_hosted_root(
         clone_hson_graph_without_quids(validated_library_root(state)), HOSTED_MAX_SNAPSHOT_BYTES),
-        ...portable_quads(state),
-        ...(state.mode === "document" ? { css: encode_portable_document_stylesheet(stylesheet(state.identity)) } : {}) });
+        ...portable_quads(state) });
     });
     const system = includeSystem ? (() => {
       if (systemState === undefined) throw new Error("Selected hosted system state is unavailable.");
@@ -1924,8 +1972,7 @@ function make_livemap_registry_engine(
         ? systemState : require_library(binding.identity as LiveMapLibraryIdentity);
       if (state === undefined) throw new Error("Checkpoint system state is unavailable.");
       return Object.freeze({ name: entry.name, root: clone_hson_graph_without_quids("mode" in state ? validated_library_root(state) : state.root),
-        ...(binding.scope === "hson-internal" ? {} : portable_quads(require_library(binding.identity as LiveMapLibraryIdentity))),
-        ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(stylesheet(state.identity as LiveMapLibraryIdentity)) } : {}) });
+        ...(binding.scope === "hson-internal" ? {} : portable_quads(require_library(binding.identity as LiveMapLibraryIdentity))) });
     });
     if (mapRevision !== revision || hostedFence !== authority) {
       throw new Error("Authority changed during checkpoint capture.");
@@ -1948,6 +1995,7 @@ function make_livemap_registry_engine(
       throw new Error("Semantic checkpoint is incompatible with this authority.");
     }
     const reserved = new Set<string>();
+    const foreignPayloads = disposable_document_quad_payloads(checkpoint.libraries.map(item => own_document_quads(item)));
     const candidates = checkpoint.libraries.map((item, index) => {
       const entry = hosted.registry.libraries[index];
       if (entry === undefined || item.name !== entry.name) throw new Error("Checkpoint Library order is invalid.");
@@ -1972,12 +2020,12 @@ function make_livemap_registry_engine(
           projectedValue: must_projected_root_value(prepared.root) });
       }
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
-      const addressState = reconstruct_quads(prepared, own_document_quads(item), reserved);
+      const addressState = reconstruct_document(prepared, own_document_quads(item), item.css, reserved, undefined, [], foreignPayloads);
       return Object.freeze({ kind: "application" as const, state, prepared, addressState,
-        css: prepared.mode === "document" ? decode_portable_document_stylesheet(item.css) : undefined,
+        css: addressState.stylesheet,
         changed: !canonical_graph_equal(state.root, prepared.root)
           || (prepared.mode === "document" && !portable_document_stylesheet_equal(stylesheet(state.identity),
-            decode_portable_document_stylesheet(item.css))),
+            addressState.stylesheet!)),
         projectedValue: prepared.projectedOverlay === undefined
           ? undefined : must_projected_root_value(prepared.root) });
     });
@@ -2046,7 +2094,9 @@ function make_livemap_registry_engine(
       name: string;
     }>> = [];
     const reserved = new Set<string>();
+    const foreignPayloads = disposable_document_quad_payloads(snapshot.libraries.map(entry => own_document_quads(entry)));
     const associations: PortableQuadRestoration["associations"][number][] = [];
+    const portableStylesheets = new Map<LiveMapLibraryIdentity, import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheetRecord>();
     let systemRoot: HsonNode | undefined;
     let systemValue: OrderedProjectedValue | undefined;
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
@@ -2083,11 +2133,13 @@ function make_livemap_registry_engine(
           ? require_library(old.identity as LiveMapLibraryIdentity)
           : make_livemap_library(prepared, schema, own_data_library_validation(entry));
         const correspondence: DocumentQuadCorrespondence[] = [];
-        const addressState = reconstruct_quads(prepared, own_document_quads(encoded), reserved, undefined, correspondence);
+        const portableCss = prepared.mode === "document" ? encode_portable_document_stylesheet(decode_portable_document_stylesheet(encoded.css)) : undefined;
+        const addressState = reconstruct_document(prepared, own_document_quads(encoded), portableCss, reserved, undefined, correspondence, foreignPayloads);
+        if (portableCss !== undefined) portableStylesheets.set(state.identity, portableCss);
         associations.push(...correspondence.map(subject => Object.freeze({ ...subject, library: state.identity, libraryName: entry.name })));
         candidates.push(Object.freeze({ name: entry.name, state, prepared, schema, newlyInstalled: !compatible,
           addressState,
-          ...(entry.mode === "document" ? { css: decode_portable_document_stylesheet(encoded.css) } : {}),
+          ...(entry.mode === "document" ? { css: addressState.stylesheet } : {}),
           projectedValue: prepared.mode === "document" ? undefined : must_projected_root_value(prepared.root) }));
       }
     }
@@ -2147,7 +2199,7 @@ function make_livemap_registry_engine(
     transitionController.invalidate();
     const restored = Object.freeze(candidates.map(({ state }) => state.identity));
     const correspondence = Object.freeze({ associations: Object.freeze(associations), assertCurrent: capture_fence() });
-    portableRestorations.add(correspondence);
+    portableRestorations.set(correspondence, portableStylesheets);
     afterTopologyInstall?.(restored);
     const event = Object.freeze({ previousRevision, revision: mapRevision, libraries: restored,
       changedLibraries, continuity: "new-epoch" as const });
@@ -2209,7 +2261,9 @@ function make_livemap_registry_engine(
       projectedValue?: OrderedProjectedValue;
     }>> = [];
     const reserved = new Set<string>();
+    const foreignPayloads = disposable_document_quad_payloads(snapshot.libraries.map(entry => own_document_quads(entry)));
     const associations: PortableQuadRestoration["associations"][number][] = [];
+    const portableStylesheets = new Map<LiveMapLibraryIdentity, import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheetRecord>();
     let systemCandidate: Readonly<{
       state: LiveMapSystemState;
       root: HsonNode;
@@ -2246,13 +2300,15 @@ function make_livemap_registry_engine(
       }
       const library = require_library(binding.identity as LiveMapLibraryIdentity);
       const correspondence: DocumentQuadCorrespondence[] = [];
-      const addressState = reconstruct_quads(prepared, own_document_quads(encoded), reserved, proof?.overlays.get(entry.name)?.document, correspondence);
+      const portableCss = prepared.mode === "document" ? encode_portable_document_stylesheet(decode_portable_document_stylesheet(encoded.css)) : undefined;
+      const addressState = reconstruct_document(prepared, own_document_quads(encoded), portableCss, reserved, proof?.overlays.get(entry.name)?.document, correspondence, foreignPayloads);
+      if (portableCss !== undefined) portableStylesheets.set(library.identity, portableCss);
       associations.push(...correspondence.map(subject => Object.freeze({ ...subject, library: library.identity, libraryName: entry.name })));
       candidates.push(Object.freeze({
         library,
         root: prepared.root,
         mode: prepared.mode,
-        ...(prepared.mode === "document" ? { css: decode_portable_document_stylesheet(encoded.css) } : {}),
+        ...(prepared.mode === "document" ? { css: addressState.stylesheet } : {}),
         ...addressState,
         ...((proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay) === undefined ? {} : {
           projectedOverlay: proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay,
@@ -2331,7 +2387,7 @@ function make_livemap_registry_engine(
     // stable library records above.
     const restored = Object.freeze(libraryRegistry.all().map((library) => library.identity));
     const correspondence = Object.freeze({ associations: Object.freeze(associations), assertCurrent: capture_fence() });
-    portableRestorations.add(correspondence);
+    portableRestorations.set(correspondence, portableStylesheets);
     const event = Object.freeze({
       previousRevision,
       revision: snapshot.revision,
@@ -2411,6 +2467,7 @@ function make_livemap_registry_engine(
       binding: HostedRegistryBinding;
     }>> = [];
     const reserved = new Set<string>();
+    const foreignPayloads = disposable_document_quad_payloads(snapshot.libraries.map(entry => own_document_quads(entry)));
     let nextSystem: LiveMapSystemState | undefined;
     let systemBinding: HostedRegistryBinding | undefined;
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
@@ -2448,11 +2505,13 @@ function make_livemap_registry_engine(
         const retained = oldBinding !== undefined && oldBinding.scope === undefined
           && oldBinding.mode === entry.mode && oldBinding.validation === own_data_library_validation(entry) && hson_schema_digest(oldBinding.schema) === hson_schema_source_digest(entry.schema);
         const previous = retained ? require_library(oldBinding.identity as LiveMapLibraryIdentity) : undefined;
-        const css = entry.mode === "document" ? decode_portable_document_stylesheet(encoded.css)
-          : undefined;
         const state = previous ?? make_livemap_library(prepared, schema, own_data_library_validation(entry));
         const graphChanged = previous === undefined || !canonical_graph_equal(previous.root, prepared.root)
           || own_document_quads(encoded) !== undefined || (previous.documentQuads?.byName.size ?? 0) > 0;
+        const addressState = graphChanged ? reconstruct_document(prepared, own_document_quads(encoded), encoded.css, reserved, undefined, [], foreignPayloads)
+          : { documentOverlay: state.documentOverlay, documentQuads: state.documentQuads, stylesheet: state.stylesheet };
+        const css = graphChanged ? addressState.stylesheet : entry.mode === "document"
+          ? decode_portable_document_stylesheet(encoded.css) : undefined;
         const changed = graphChanged
           || (css !== undefined && !portable_document_stylesheet_equal(stylesheet(state.identity), css));
         const binding: HostedRegistryBinding = Object.freeze({ name: entry.name, identity: state.identity,
@@ -2460,8 +2519,7 @@ function make_livemap_registry_engine(
         candidates.push(Object.freeze({
           name: entry.name, state, binding, retained, graphChanged, changed,
           root: graphChanged ? prepared.root : state.root,
-          ...(graphChanged ? reconstruct_quads(prepared, own_document_quads(encoded), reserved)
-            : { documentOverlay: state.documentOverlay, documentQuads: state.documentQuads }),
+          documentOverlay: addressState.documentOverlay, documentQuads: addressState.documentQuads,
           projectedOverlay: graphChanged ? prepared.projectedOverlay : state.projectedOverlay,
           projectedValue: entry.mode === "document" ? undefined
             : graphChanged ? must_projected_root_value(prepared.root) : state.projectedValue,
@@ -2639,7 +2697,7 @@ function make_livemap_registry_engine(
       }
       return Object.freeze({ target, kind: "graph", operation: entry.graph });
     });
-    const transition = prepare_authority_transition(writes);
+    const transition = prepare_authority_transition(writes, [], true);
     if (composition !== undefined) return transitionController.acceptAuthority(transition, "isolate", () => {
       clientComposition = Object.freeze({ ...composition, revision: input.rev });
     }).commit;
@@ -2737,10 +2795,11 @@ function make_livemap_registry_engine(
   }
 
   const initialReserved = new Set<string>();
+  const initialPayloads = disposable_document_quad_payloads(registry.map(entry => entry.quads));
   registry.forEach((entry, index) => {
     const state = states[index];
     if (state === undefined) throw new Error("Incomplete initial Library registry.");
-    Object.assign(state, reconstruct_quads(entry.graph, entry.quads, initialReserved));
+    Object.assign(state, reconstruct_document(entry.graph, entry.quads, entry.css === undefined ? undefined : encode_portable_document_stylesheet(entry.css), initialReserved, undefined, [], initialPayloads));
     mark_quad_document_root(state.root, state.documentQuads);
   });
   if (initialReserved.size) {
@@ -2989,10 +3048,14 @@ function make_livemap_registry_engine(
           : { name: entry.name, path: entry.path };
       });
       const quads = entries.length === 0 ? undefined : decode_document_quads(entries, state.root, "document");
-      const portable = encode_portable_document_stylesheet(stylesheet(identity));
+      const portable = portableRestorations.get(restoration)?.get(identity);
+      if (portable === undefined) throw new Error("Portable restoration stylesheet evidence is unavailable.");
       const translated = document_css_mentions_subject_identity(portable)
-        ? translate_document_css_identities(portable, "inbound", { associations, assertCurrent: restoration.assertCurrent })
+        ? translate_document_css_identities(portable, "inbound", { associations, assertCurrent: restoration.assertCurrent }, true)
         : portable;
+      if (!portable_document_stylesheet_equal(stylesheet(identity), decode_portable_document_stylesheet(translated))) {
+        throw new Error("Portable restoration CSS evidence disagrees with the current receiving Library.");
+      }
       const portableCss = render_portable_document_stylesheet(decode_portable_document_stylesheet(portable));
       const receivingCss = render_portable_document_stylesheet(decode_portable_document_stylesheet(translated));
       restoration.assertCurrent();

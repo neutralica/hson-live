@@ -1,8 +1,9 @@
 import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
-import { decode_document_quads } from "../livemap/livemap.document.quad.js";
+import { assert_portable_document_css_correspondence, decode_document_quads } from "../livemap/livemap.document.quad.js";
 import { decode_hosted_root } from "../livemap/livemap.hosted.js";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { assert_subject_free_portable_css_operation } from "../../internal/css/portable-document-operations.js";
 import { admit_public_livemap_root } from "../livemap/livemap.node-admission.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { hson_schema_source_digest } from "../schema/hson-schema.js";
@@ -249,6 +250,10 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
       validate_data_library(graph, String(entry.mode), validation);
       if (Object.hasOwn(entry, "quads") && own_document_quads(entry) === undefined) throw new Error("Undefined QUAD associations.");
       const quads = decode_document_quads(own_document_quads(entry), graph, String(entry.mode));
+      if (entry.css !== undefined) assert_portable_document_css_correspondence(graph, String(entry.mode), quads,
+        encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)));
+      if (entry.css !== undefined) assert_subject_free_portable_css_operation({ domain: "css", kind: "replace",
+        stylesheet: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) });
       const format: "hson-exact-value" = "hson-exact-value";
       return Object.freeze({ name: entry.name, mode: entry.mode, schema,
         ...(validation === undefined ? {} : { validation }),

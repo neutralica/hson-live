@@ -85,7 +85,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     assert.doesNotMatch(JSON.stringify(candidate.root), /"quid"|hson:quad/);
     assert.equal(aggregate.documentOverlay(library), overlay); assert.equal(aggregate.identityEpoch().issued(), ledger);
     assert.deepEqual(map.capture(), before);
-    assert.doesNotMatch(page.render(), /hson:quad/, "Ordinary continuation mode remains separate from opt-in SSR.");
+    assert.equal(page.render(), result.html, "Ordinary CSS demand uses the same portable realization.");
   });
   check("public cut ignores callback indices and surplus arguments while private demand stays functional", () => {
     const { map, demanded } = ssr_subject_fixture();
@@ -94,7 +94,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     const callbacks: unknown[] = Array.prototype.map.call([options, options], map.cut);
     assert.equal(callbacks.length, 2);
     for (const result of callbacks) assert.deepEqual(result, ordinary);
-    assert.doesNotMatch(ordinary.html, /hson:quad/);
+    assert.equal((ordinary.html.match(/ hson:quad=/g) ?? []).length, 7);
     // An explicitly typed JS-call adapter, without adding a public overload.
     const withExtras: (options: LiveMapCutOptions, ...extras: unknown[]) => unknown =
       (options, ...extras) => Reflect.apply(map.cut, undefined, [options, ...extras]);
@@ -188,10 +188,8 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
       {selector:'[hson\\:quid="999999999"]',name:"TypeError",message:/^Unresolved CSS identity selector reference\.$/},
       {selector:'[hson\\:quad="first"]',name:"SyntaxError",message:/^Unsupported or mixed CSS identity attribute selector\.$/},
     ]) {
-      page.css.stylesheet(`${selector}{color:red}`);
       const before = map.capture(), ledger = aggregate.identityEpoch().issued(), overlay = aggregate.documentOverlay(library);
-      let output: unknown;
-      assert.throws(() => { output = cut(map,{html:"page"},demanded); }, {name,message}); assert.equal(output,undefined);
+      assert.throws(() => page.css.stylesheet(`${selector}{color:red}`), selector.includes("999999999") ? /owner-issued QUID/ : {name,message});
       assert.deepEqual(map.capture(),before); assert.equal(aggregate.identityEpoch().issued(),ledger); assert.equal(aggregate.documentOverlay(library),overlay);
     }
     assert.throws(() => capture(page,["999999999"]), /^Error: Correspondence requires an owner-issued QUID\.$/);
@@ -209,8 +207,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
   });
   check("opaque identity selector rejects at the translator opaque-syntax guard", () => {
     const { map, page, demanded } = ssr_subject_fixture();
-    page.css.stylesheet(':future([hson\\:quid="012345678"]){color:red}');
-    assert.throws(() => cut(map,{html:"page"},demanded),
+    assert.throws(() => page.css.stylesheet(':future([hson\\:quid="012345678"]){color:red}'),
       {name:"SyntaxError",message:/^Opaque CSS selector or group prelude cannot be identity-translated\.$/});
   });
   check("lowercase portable carrier rejects at exact Library node admission", () => {

@@ -13,6 +13,8 @@ import type { LiveMapDocumentPath, PortableDocumentQuads } from "../../types/liv
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 import { read_hson_node_quid, is_persisted_quid } from "../../core/hson-node-quid.js";
 import { is_document_quad_name } from "../../internal/document-quad-name.js";
+import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
+import type { PortableDocumentStylesheetRecord } from "../../internal/css/portable-document-stylesheet.js";
 /** @internal */
 export { is_document_quad_name } from "../../internal/document-quad-name.js";
 
@@ -31,6 +33,26 @@ export type DocumentQuadCorrespondence = DocumentQuadSubject & Readonly<{ dispos
 /** Read validated own disposition evidence without inheriting prototype fields. @internal */
 export function document_quad_disposition(entry: PortableDocumentQuads[number]): "authored" | "disposable" {
   return Object.getOwnPropertyDescriptor(entry, "disposition") === undefined ? "authored" : "disposable";
+}
+
+/** Operation-local exclusions use own data evidence; full admission remains graph-qualified. @internal */
+export function disposable_document_quad_payloads(inputs: readonly (PortableDocumentQuads | undefined)[]): ReadonlySet<string> {
+  const payloads = new Set<string>();
+  for (const entries of inputs) {
+    if (entries === undefined) continue;
+    if (!Array.isArray(entries)) throw new Error("Invalid portable QUAD exclusion array.");
+    for (const entry of exact_array(entries)) {
+      if (typeof entry !== "object" || entry === null) throw new Error("Invalid portable QUAD exclusion evidence.");
+      const disposition = Object.getOwnPropertyDescriptor(entry, "disposition");
+      if (disposition === undefined) continue;
+      const name = Object.getOwnPropertyDescriptor(entry, "name");
+      if (!disposition.enumerable || !Object.hasOwn(disposition, "value") || disposition.value !== "disposable"
+        || !name?.enumerable || !Object.hasOwn(name, "value") || typeof name.value !== "string"
+        || name.value[0] !== "_" || !is_persisted_quid(name.value.slice(1))) throw new Error("Invalid disposable QUAD exclusion evidence.");
+      payloads.add(name.value.slice(1));
+    }
+  }
+  return payloads;
 }
 
 const addressedRoots = new WeakSet<HsonNode>();
@@ -178,6 +200,16 @@ export function decode_document_quads(input: unknown, root: HsonNode, mode: stri
     return Object.freeze(admission);
   });
   return Object.freeze(entries);
+}
+
+/** Portable CSS references are valid only with this complete graph's exact associations. @internal */
+export function assert_portable_document_css_correspondence(root: HsonNode, mode: string, input: unknown,
+  css: PortableDocumentStylesheetRecord): void {
+  const entries = decode_document_quads(input, root, mode);
+  const names = new Set(entries?.map(entry => entry.name));
+  for (const name of document_css_subject_identities(css, "inbound")) {
+    if (!names.has(name)) throw new Error("Portable CSS requires a corresponding ordinary Library subject.");
+  }
 }
 
 /** Project only already-issued active subjects, alongside all existing authored bindings. @internal */

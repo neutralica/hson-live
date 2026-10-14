@@ -6,6 +6,7 @@ import { bind_locus_websocket } from "../../src/api/locus/locus.websocket.ts";
 import { test_echo_transport } from "../helpers/echo-websocket-transport.mts";
 import type { LocusWebSocketLike } from "../../src/index.ts";
 import assert from "node:assert/strict";
+import { document_css_subject_cases } from "./livemap-document-css-subject-cases.mts";
 import { Hson, hsonLiveMap } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
@@ -76,6 +77,7 @@ async function projection(map: LiveMap, names: readonly string[], privateNames: 
 }
 
 export async function portable_quad_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
+  await document_css_subject_cases(check);
   await check("disposable projection preserves the exact QUID alphabet and sparse observational behavior", () => {
     for (const char of PERSISTED_QUID_ALPHABET) {
       const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } });

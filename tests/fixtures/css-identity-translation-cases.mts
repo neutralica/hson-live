@@ -7,7 +7,7 @@ import { document_quad_disposition } from "../../src/api/livemap/livemap.documen
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import { set_livemap_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.quid-allocation.ts";
 import { selector_for_quid } from "../../src/api/livetree/managers/css-render.ts";
-import { translate_document_css_identities as translate, type CssIdentityCorrespondence } from "../../src/internal/css/css-identity-translation.ts";
+import { document_css_subject_identities, document_css_mentions_subject_identity, translate_document_css_identities as translate, type CssIdentityCorrespondence } from "../../src/internal/css/css-identity-translation.ts";
 import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, render_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
 
@@ -228,13 +228,37 @@ export function css_identity_translation_cases(check: (name: string, run: () => 
       for (const flag of ["i", "s", "I", "future"]) assert.throws(() => translate(sheet(`[${attribute}="${quid}" ${flag}]{color:red}`), "outbound", correspondence()));
       assert.throws(() => translate(sheet(`[${attribute}]{color:red}`), "outbound", correspondence()));
     }
-    for (const selector of [`[HSON\\:quid="${quid}"]`, `[*|hson\\:quid="${quid}"]`, quad, `${runtime}:future(${runtime})`, ':future("literal")']) {
+    for (const selector of [`[HSON\\:quid="${quid}"]`, `[*|hson\\:quid="${quid}"]`, quad, `${runtime}:future(${runtime})`]) {
       const admitted = sheet(`${selector}{color:red}`);
       assert.throws(() => translate(admitted, "outbound", correspondence()), /Unsupported|Opaque/);
     }
     assert.throws(() => translate(sheet(`${runtime}{color:red}`), "inbound", correspondence([{ ...association, quid: receiving }])), /mixed/);
     // These constructs are excluded by existing managed CSS grammar before translation.
     for (const source of ['@import "file.css";', '.x{.nested{color:red}}', '@layer first,second;', '@font-face{font-family:x;src:url(x)}']) assert.throws(() => sheet(source));
+  });
+  check("CSS identity lookalikes stay ordinary even beside exact references and opaque future syntax", () => {
+    const harmless = ['::part(hson\\:quid)', '.hson\\:quid', ':future(foo)', ':future(hson\\:quad)', ':future("[hson:quid=literal]")',
+      '[data-name=hson\\:quid]', '[hson\\:quid|ordinary="value"]', '[hson\\:quid\\|ordinary="value"]'];
+    for (const selector of harmless) {
+      const input = sheet(`${selector}{color:red}`);
+      assert.equal(document_css_mentions_subject_identity(input), false);
+      assert.deepEqual(document_css_subject_identities(input, "outbound"), []);
+      assert.deepEqual(translate(input, "outbound", correspondence([])), input);
+      const mixed = sheet(`${runtime}${selector}{color:red}:future(foo){color:blue}`);
+      assert.deepEqual(document_css_subject_identities(mixed, "outbound"), [quid]);
+      const output = translate(mixed, "outbound", correspondence());
+      assert.deepEqual(document_css_subject_identities(output, "inbound"), [`_${quid}`]);
+      assert.deepEqual(translate(output, "inbound", correspondence([{ ...association, quid: receiving }])),
+        sheet(`${selector_for_quid(receiving)}${selector}{color:red}:future(foo){color:blue}`));
+    }
+    const grouped = sheet(`@supports selector(::part(hson\\:quid)){@scope (:future(foo)){${runtime}::part(hson\\:quad){color:red}}}`);
+    assert.deepEqual(document_css_subject_identities(grouped, "outbound"), [quid]);
+    assert.deepEqual(document_css_subject_identities(translate(grouped, "outbound", correspondence(), true), "inbound"), [`_${quid}`]);
+    for (const selector of [`:future(${runtime})`, `:future([ns|hson\\:quid="${quid}"])`, `${runtime}:future([hson\\:quid^="${quid}"])`]) {
+      const input = sheet(`${selector}{color:red}`);
+      assert.throws(() => document_css_subject_identities(input, "outbound"), /Opaque CSS selector/);
+      assert.throws(() => translate(input, "outbound", correspondence()), /Opaque CSS selector/);
+    }
   });
   check("CSS identity-free data is independent deterministic and retains empty anonymous layer occurrences", () => {
     const input = sheet('@layer before{}@layer{.a:is(.x,.y){color:red}}@layer{.b{color:blue}}'), before = structuredClone(input);

@@ -1,4 +1,6 @@
 import type { LiveMapLibraryAddOperation } from "../src/types/livemap.types.ts";
+import { local_initializer_css_cases } from "./fixtures/local-initializer-css-cases.mts";
+import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonNode } from "../src/core/types.ts";
@@ -412,4 +414,14 @@ for (const fixture of orderedRootReconstructionFixtures) {
   replica.dispose();
 }
 
-process.stdout.write("ok - client library composition 6A.5\n");
+let cssCases = 0;
+local_initializer_css_cases((_name, run) => { run(); cssCases++; });
+const cssWorker = repository_typescript_worker(new URL("./fixtures/local-initializer-css.worker.mts", import.meta.url));
+try {
+  const result = await new Promise((resolve, reject) => {
+    cssWorker.once("message", resolve); cssWorker.once("error", reject);
+    cssWorker.once("exit", code => reject(new Error(`Local initializer CSS Worker exited ${code}`)));
+  });
+  assert.deepEqual(result, { cases: cssCases });
+} finally { await cssWorker.terminate(); }
+process.stdout.write(`ok - client library composition 6A.5 (${cssCases} focused CSS Node and ${cssCases} Worker groups)\n`);

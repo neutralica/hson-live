@@ -2,9 +2,10 @@
 
 `translate_document_css_identities(record, direction, correspondence)` lives in
 `src/internal/css/css-identity-translation.ts`. It consumes and returns the
-existing `PortableDocumentStylesheetRecord`. It has no public export and is not
-wired into runtime CSS ownership or continuation. Cut 8D adds an explicitly
-opt-in internal SSR consumer; see [portable subject SSR](document-ssr-subjects.md).
+existing `PortableDocumentStylesheetRecord`. It has no public export. Cut 9B-0
+connects it to ordinary document Library admission, capture, restoration and
+final-candidate validation. Cut 8D's explicit internal SSR consumer remains;
+see [portable subject SSR](document-ssr-subjects.md).
 
 The caller selects exactly one Library and supplies its validated associations
 as `{ name, quid, disposition }` records plus `assertCurrent()`. The CSS layer
@@ -81,9 +82,13 @@ every flag (including `s`), different casing and namespace-qualified identity
 attributes are unsupported and reject rather than survive as stale addresses.
 Other ordinary attribute names remain ordinary selectors.
 
-Any CSSTree `Raw` outside a declaration is conservatively rejected, even if it
-appears identity-free: opaque pseudo arguments and selector-bearing group
-preludes cannot prove complete translation. Syntax rejected by existing managed
+CSSTree `Raw` outside a declaration rejects when its CSS tokens contain a
+potential identity attribute reference: opaque pseudo arguments and selector-bearing
+group preludes cannot prove that reference's interpretation. The lexical gate
+recognizes attribute-name positions, including namespaces, before decoding names;
+classes, pseudo-element arguments, strings and namespace-prefix lookalikes remain
+ordinary CSS. Harmless opaque arguments can coexist with exact translated selectors.
+Syntax rejected by existing managed
 source admission, such as imports, layer-order statements or nested style rules,
 remains unsupported; this cut does not broaden that grammar. If rewritten scopes
 cause existing compound `(scopes, ruleKey)` identities to collide, final admission
@@ -97,8 +102,56 @@ cannot yield current CSS. Outbound callers use the existing aggregate capture
 fence around projection and consumption. The translator proves no long-lived
 hosted session authority from this synchronous check.
 
-SSR carriers, realization, graft-time stylesheet handoff, managed subject CSS
-demand and ownership transfer, component CSS composition, and Locus/Echo
-transport correspondence lifetimes remain separate seams. Shared Node/Worker
-tests establish selector and portable-data behavior, not browser first paint or
-flash-free grafting. Styled source-Library composition remains rejected.
+## Ordinary Library subject demand (Cut 9B-0)
+
+`document_css_subject_identities` uses the same AST traversal and equality
+recognition. It extracts references from the current canonical stylesheet without
+allocating identity. Structured `@supports selector(...)` feature tests ask about
+syntax, not subject membership: ordinary demand mode validates their exact
+attribute forms but leaves those tests unchanged. Opaque arguments containing
+potential identity attributes still reject. `@scope` roots and limits, negative selectors, lists and functional
+selectors remain subject demands. The explicit Cut 8C translator's default mode
+continues to translate feature tests as before.
+
+The aggregate owner projects demands through the current Library overlay and
+issued ledger using Cut 8B. Existing authored bindings take precedence; anonymous
+subjects use explicit disposable `_` plus QUID associations in the existing
+`quads` envelope. CSS and associations are captured under one source fence.
+Detached bounds and realization run after that coherent source phase closes.
+There is no retained disposable binding or second subject ledger.
+
+Portable admission validates graph, CSS and associations together. Unpublished
+receiving overlays exclude all disposable payloads in the incoming transition,
+mint fresh local QUIDs, and rebind CSS before installation or publication. Only
+authored bindings remain registered. Same-runtime exact restoration can reuse a
+payload only after the existing snapshot provenance proves its living owner and
+epoch; ordinary portable admission never enables that internal translator mode.
+The original portable stylesheet retained for Cut 8E is operation-local evidence
+behind the restoration fence, never current CSS authority.
+
+Every affected final graph/CSS candidate must project coherently before
+acceptance. Movement and valid lineage may retain identities. Retirement with any
+remaining subject reference rejects the whole transition. Public synchronous
+`map.batch` can combine graph changes and stylesheet replacement in either order;
+only the complete candidate is judged. No selectors or rules are deleted or
+retargeted implicitly.
+
+Full Library snapshots, selected Locus/Echo snapshots and semantic checkpoints
+carry the same associations. Checkpoint equivalence compares disposable references
+through their explicit subject paths, allowing fresh-runtime recapture without
+persisting a runtime ledger. Incremental hosted changes to a Library with subject
+CSS, subject-CSS topology messages, and subject identity CSS operations on portable
+incremental codecs reject before publication or durable recording. Portable client
+and durable tail replay enforce that same affected-Library boundary even without
+a live managed execution owner. An attribute edit may be semantically safe locally
+yet unsupported as a hosted incremental operation; its complete final snapshot or
+checkpoint remains supported. Unrelated identity-free Library tails remain supported.
+Loading rejects unsupported uncovered tails without returning a partially recovered
+map or discarding history; checkpoint writing also refuses to overwrite that history.
+Local initializer envelopes carry no subject correspondence: graph/CSS admission
+rejects their subject references before installation. Identity-free initializer CSS
+is installed with its graph and checked seed contract before the first notification.
+Asynchronous
+hosted CSS ordering/replay remains unsupported. Styled Part composition remains
+rejected. Shared Node/Worker transport tests do not establish browser first paint
+or flash-free grafting.

@@ -2,8 +2,10 @@
 
 Cut 8D is an opt-in, internal SSR realization mode. It connects Cut 8B's portable
 subject projection to Cut 8C's exact CSS identity translator. It adds no public
-Q or CSS API. Ordinary public rendering, local continuation, hosted session cuts,
-and incremental CSS correspondence retain their existing contracts.
+Q or CSS API. Cut 9B-0 also derives ordinary Library capture and local rendering
+correspondence from current managed CSS demand, using the same owner, envelope
+and carrier planner. No public demand argument is added. Incremental hosted CSS
+correspondence remains unsupported behind explicit admission and codec guards.
 
 ## Candidate and opt-in input
 

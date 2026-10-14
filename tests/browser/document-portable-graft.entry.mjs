@@ -89,10 +89,16 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     assert(anonymous.getAttribute('title') === 'updated', 'document update retains correspondence');
     const firstId = lookup(f.selected, 'first').quid;
     f.selected.document.content.replace({ kind: 'path', path: [0,0,1,0] }, 0,
-      hsonTransform.fromHson('<section id="first" <p id="replacement"/>/>').toNode().$_content[0], [{ source:[], destination:[] }]);
+      hsonTransform.fromHson('<section id="first" <p id="anonymous-one"/> <p id="first-child"/>/>').toNode().$_content[0],
+      [{ source:[], destination:[] }, { source:[0,0], destination:[0,0] }, { source:[0,1], destination:[0,1] }]);
     assert(lookup(f.selected, 'first')?.quid === firstId, 'legitimate replacement lineage retains authored identity');
     assert(f.doc.getElementById('first').getAttribute('hson:quid') === firstId, 'replacement metadata agrees');
-    f.selected.at([1, 1]).delete();
+    rejects(() => f.selected.at([1, 1]).delete(), 'remaining identity CSS rejects retirement');
+    f.map.batch(draft => {
+      const selected = draft.lib(libs.libraries[0].name);
+      selected.content.remove({ kind:'path', path:[0,0,1,0] }, 1);
+      selected.css.stylesheet('.ordinary{color:rgb(21,22,23)}');
+    });
     assert(!f.doc.getElementById('second') && !lookup(f.selected, 'second'), 'removal retires correspondence');
     assert(continued.mirror.status === 'active', 'Mirror remains active through lifecycle');
     continued.dispose(); assert(continued.mirror.status === 'disposed', 'Mirror disposed');
@@ -119,9 +125,8 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     rejects(() => graft({map: f.map, document: other.selected, root: f.root}, f.handoff), 'wrong selected Library');
     unchanged(f, before, elements);
     const broken = structuredClone(libs); broken.libraries[0].css.rules[0].selector = '[hson\\:quad="absent"]';
-    const restored = restore(broken), aggregate = owner(restored.map), state = JSON.stringify(restored.map.capture());
-    rejects(() => aggregate.preparePortableDocumentHandoff(aggregate.libraries()[0], restored.correspondence), 'unresolved CSS');
-    equal(JSON.stringify(restored.map.capture()), state, 'CSS failure did not publish'); unchanged(f, before, elements);
+    rejects(() => restore(broken), 'unresolved CSS rejects before receiving publication');
+    unchanged(f, before, elements);
     f.frame.remove(); other.frame.remove();
   });
   for (const kind of ['metadata', 'wrong-metadata', 'style', 'silent-style', 'carrier-removal', 'silent-removal', 'adoption', 'late-interaction']) await check(`${kind} native failure rolls back and permits safe retry`, async () => {
@@ -139,7 +144,8 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     try { rejects(kind === 'late-interaction' ? () => graft({map:f.map,document:f.selected,root:f.root,interactions:{local:{}}}, f.handoff) : f.run, 'injected fault must reject'); }
     finally { delete element.setAttribute; delete element.removeAttribute; delete style.textContent; fault(undefined); }
     unchanged(f, before, elements); equal(visual(f.doc), computed, 'rollback preserves usable styling');
-    if (kind !== 'adoption') { equal(f.selected.css.snapshot(), f.handoff.receivingCss, 'accepted CSS authority retained'); rejects(f.correspondence.assertCurrent, 'old restoration fence remains stale'); }
+    equal(f.selected.css.snapshot(), f.handoff.receivingCss, 'accepted CSS authority retained');
+    f.correspondence.assertCurrent();
     f.handoff.assertCurrent(); const retry = f.run(); equal(visual(f.doc), computed, 'retry styles preserved'); retry.dispose(); f.frame.remove();
   });
   await check('two independent browser receivers keep separate anonymous identities and styles', async () => {

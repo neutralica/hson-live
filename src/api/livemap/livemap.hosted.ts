@@ -1,6 +1,6 @@
 import { clone_node } from "../../core/clone-node.js";
 import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "./livemap.parts.js";
-import { decode_document_quads } from "./livemap.document.quad.js";
+import { assert_portable_document_css_correspondence, decode_document_quads, own_document_quads } from "./livemap.document.quad.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
@@ -51,8 +51,8 @@ import { validate_document_path } from "./livemap.document.path.js";
 import { normalize_replacement_lineage } from "./livemap.document.lineage.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
-import { decode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
-import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
+import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { canonical_portable_document_css_op, assert_subject_free_portable_css_operation } from "../../internal/css/portable-document-operations.js";
 import { HOSTED_MAX_SNAPSHOT_BYTES } from "./livemap.hosted-limits.internal.js";
 export { HOSTED_MAX_SNAPSHOT_BYTES } from "./livemap.hosted-limits.internal.js";
 
@@ -424,6 +424,9 @@ export function decode_hosted_commit(
 export function make_portable_aggregate_commit(authority: HostedAggregateCommit): PortableAggregateCommit | undefined {
   if (authority.topology !== undefined) {
     const topology = capture_part_topology(authority.topology);
+    for (const entry of topology.operation.libraries) {
+      if (entry.css !== undefined) assert_subject_free_portable_css_operation({ domain: "css", kind: "replace", stylesheet: entry.css });
+    }
     if (authority.previousRegistryDigest === undefined || authority.operations.length !== 0
       || authority.replay.operations.length !== 0 || !authority.changed
       || authority.rev !== authority.prevRev + 1) {
@@ -453,6 +456,7 @@ export function make_portable_aggregate_commit(authority: HostedAggregateCommit)
     if ("domain" in operation && operation.domain === "graph" && operation.op === "ensure-quid") continue;
     if (evidence.domain === "css") {
       if (!("domain" in operation) || operation.domain !== "css") throw new HostedAggregateRepresentationError("Authority CSS operation domains disagree.");
+      assert_subject_free_portable_css_operation(operation);
       operations.push(Object.freeze({ library: entry.library, domain: "css", kind: operation.kind,
         format: "hson-document-css-op", payload: evidence.payload }));
       continue;
@@ -524,6 +528,7 @@ export function decode_portable_aggregate_commit(
     if (evidence.domain === "css") {
       if (evidence.format !== "hson-document-css-op" || binding.mode !== "document") throw incompatible_graph();
       const css = decode_hosted_css_operation(evidence.payload, binding.mode);
+      assert_subject_free_portable_css_operation(css);
       if (css.kind !== evidence.kind || JSON.stringify(css) !== evidence.payload) {
         throw new HostedAggregateRepresentationError("Hosted client CSS operation is noncanonical.", index);
       }
@@ -672,7 +677,9 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
       if (item.quads === undefined) throw new HostedAggregateRepresentationError("Portable QUAD association cannot be undefined.");
       decode_document_quads(item.quads, decode_hosted_root(item.root, HOSTED_MAX_SNAPSHOT_BYTES), String(entry.mode));
     }
-    if (entry.mode === "document") decode_portable_document_stylesheet(item.css);
+    if (entry.mode === "document") assert_portable_document_css_correspondence(
+      decode_hosted_root(item.root, HOSTED_MAX_SNAPSHOT_BYTES), "document", own_document_quads(item),
+      encode_portable_document_stylesheet(decode_portable_document_stylesheet(item.css)));
   }
   for (let index = 0; index < registry.libraries.length; index++) {
     const entry = exact_record(registry.libraries[index], "Hosted registry entry");

@@ -6,12 +6,12 @@ import type {
   LocusLocalInitializer,
 } from "../../types/locus.projection.types.js";
 import type { LocusSessionNow } from "../../types/locus.core.types.js";
-import type { LiveMap, LiveMapDocumentLibrary } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
+import type { DocumentCssRecord } from "../../types/document-css.types.js";
+import { assert_portable_document_css_correspondence } from "../livemap/livemap.document.quad.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import {
-  document_css_state_internal,
   type CanonicalLibraryDefinition,
-  commit_document_css_internal,
   add_client_local_libraries_internal,
 } from "../livemap/livemap.libraries.js";
 import { hsonLiveMap } from "../livemap/livemap.facade.js";
@@ -101,6 +101,7 @@ function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "
   if (registry.mode !== "document" && entry.css !== undefined) {
     throw new TypeError(`Locus local data initializer ${JSON.stringify(entry.name)} cannot define CSS.`);
   }
+  if (css !== undefined) assert_portable_document_css_correspondence(decoded, registry.mode, undefined, css);
   const base = Object.freeze({
     name: entry.name,
     mode: registry.mode,
@@ -192,6 +193,7 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
       ? canonical_local_css(value.css)
       : undefined;
     if (mode !== "document" && hasCss) throw new Error("Local data initializer cannot carry CSS.");
+    if (css !== undefined) assert_portable_document_css_correspondence(root, mode, undefined, css);
     const base = Object.freeze({
       name: value.name,
       mode,
@@ -208,17 +210,29 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
   return Object.freeze(admitted);
 }
 
-/** Retain the immutable definition identity independently of evolving client state. @internal */
-export function retain_client_local_seed_contracts_internal(map: LiveMap, initializers: readonly LocusLocalInitializer[]): void {
-  const contracts = clientLocalSeedContracts.get(map) ?? new Map<string, LocalSeedContract>();
+/** Check the whole seed set without changing the accepted contract. */
+function prepare_client_local_seed_contracts(map: LiveMap, initializers: readonly LocusLocalInitializer[]): () => void {
+  const contracts = new Map<string, LocalSeedContract>();
   for (const initializer of initializers) {
-    const prior = contracts.get(initializer.name);
+    const prior = contracts.get(initializer.name) ?? clientLocalSeedContracts.get(map)?.get(initializer.name);
     if (prior !== undefined && (prior.mode !== initializer.mode || prior.schemaDigest !== initializer.schemaDigest || prior.validation !== initializer.validation)) {
       throw new Error(`Local Library ${JSON.stringify(initializer.name)} already has a different seed contract.`);
     }
     contracts.set(initializer.name, Object.freeze({ mode: initializer.mode, schemaDigest: initializer.schemaDigest, ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) }));
   }
-  clientLocalSeedContracts.set(map, contracts);
+  return () => {
+    // The accepted Library-add callback runs after the owner's topology/freshness
+    // checks and before notification. Install only this candidate's contracts
+    // into current state; root processing may have accepted independent seeds.
+    const current = clientLocalSeedContracts.get(map) ?? new Map<string, LocalSeedContract>();
+    for (const [name, contract] of contracts) current.set(name, contract);
+    clientLocalSeedContracts.set(map, current);
+  };
+}
+
+/** Retain the immutable definition identity independently of evolving client state. @internal */
+export function retain_client_local_seed_contracts_internal(map: LiveMap, initializers: readonly LocusLocalInitializer[]): void {
+  prepare_client_local_seed_contracts(map, initializers)();
 }
 
 /** Initialize absent local Libraries; compatible existing client-owned state always wins. */
@@ -248,30 +262,13 @@ export function install_client_local_initializers_internal(
   }
   if (missing.length === 0) return;
   const definitions: CanonicalLibraryDefinition[] = [];
+  const css: Record<string, DocumentCssRecord> = Object.create(null);
+  const installContracts = prepare_client_local_seed_contracts(map, missing);
   for (const initializer of missing) {
     const root = decode_hosted_root(initializer.root, HOSTED_MAX_SNAPSHOT_BYTES);
     const schema = HsonSchema.fromHson(initializer.schema);
     definitions.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
+    if (initializer.css !== undefined) css[initializer.name] = initializer.css;
   }
-  add_client_local_libraries_internal(map, Object.freeze(definitions));
-  apply_client_local_initializer_css_internal(map, missing);
-  retain_client_local_seed_contracts_internal(map, missing);
-}
-
-/** Apply canonical initial CSS while establishing newly created local documents. @internal */
-export function apply_client_local_initializer_css_internal(
-  map: LiveMap,
-  initializers: readonly LocusLocalInitializer[],
-): void {
-  for (const initializer of initializers) {
-    if (initializer.mode !== "document" || initializer.css === undefined) continue;
-    const document = map.lib(initializer.name) as LiveMapDocumentLibrary;
-    const stylesheet = decode_portable_document_stylesheet(initializer.css);
-    if (JSON.stringify(stylesheet) === JSON.stringify(empty_portable_document_stylesheet())) continue;
-    commit_document_css_internal(document, Object.freeze({
-      domain: "css", kind: "append", stylesheet: encode_portable_document_stylesheet(stylesheet),
-    }));
-    // Read back through the canonical state owner before establishment continues.
-    document_css_state_internal(document);
-  }
+  add_client_local_libraries_internal(map, Object.freeze(definitions), css, installContracts);
 }

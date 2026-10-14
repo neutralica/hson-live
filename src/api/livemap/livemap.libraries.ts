@@ -63,6 +63,7 @@ import { make_livemap_registry_authority, type InitialSystemState } from "./live
 import { classify_live_root_mode, is_data_livemap_mode } from "./livemap.document.js";
 import { realize_document } from "../../internal/document-cut.js";
 import { make_livemap_document_css } from "./livemap.css.js";
+import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { make_livemap_document_mutation_api } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api, make_livemap_document_flags_read_api } from "./livemap.document.attrs.js";
 import { make_livemap_document_location_factory, read_livemap_document_logical_location } from "./livemap.document.location.js";
@@ -237,7 +238,8 @@ export function commit_document_css_internal(document: LiveMapDocumentLibrary, o
 }
 const CLIENT_LIBRARY_RETIREMENT = new WeakMap<object, Set<() => void>>();
 const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot) => void>();
-const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (definitions: readonly CanonicalLibraryDefinition[]) => LiveMapCommit>();
+const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (definitions: readonly CanonicalLibraryDefinition[],
+  css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>, installed?: () => void) => LiveMapCommit>();
 const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, definitions: readonly CanonicalLibraryDefinition[],
   css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Readonly<{
   transition: PreparedLiveMapAuthorityTransition;
@@ -375,10 +377,12 @@ export function client_library_source_internal(value: object): "authority-projec
 }
 
 /** Admit authorized local initializers without exposing topology mutation on the public map. @internal */
-export function add_client_local_libraries_internal(map: LiveMap, definitions: readonly CanonicalLibraryDefinition[]): LiveMapCommit {
+export function add_client_local_libraries_internal(map: LiveMap, definitions: readonly CanonicalLibraryDefinition[],
+  css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
+  installed?: () => void): LiveMapCommit {
   const admit = CLIENT_LOCAL_LIBRARY_ADMISSION.get(map);
   if (admit === undefined) throw new Error("Client-local topology admission requires a composed LiveMap.");
-  return admit(capture_library_definitions(definitions));
+  return admit(capture_library_definitions(definitions), css, installed);
 }
 
 /** Observe terminal retirement of one projected document binding. @internal */
@@ -470,13 +474,15 @@ function make_livemap_library_receiver(
   const built = make_livemap_registry_authority(definitions.map((definition) => {
     const { name, root, schema, family } = definition;
     const quads = own_document_quads(definition);
+    const css = Object.hasOwn(initialCss, name) ? initialCss[name]
+      : clientSnapshot?.libraries.find(entry => entry.name === name)?.css;
     return {
       root,
       hsonSchema: schema,
       family,
       ...(definition.validation === undefined ? {} : { validation: definition.validation }),
       ...(quads === undefined ? {} : { quads }),
-      ...(Object.hasOwn(initialCss, name) ? { css: decode_portable_document_stylesheet(initialCss[name]) } : {}),
+      ...(css === undefined ? {} : { css: decode_portable_document_stylesheet(css) }),
     };
   }), systems);
   const aggregate = built.aggregate;
@@ -583,7 +589,8 @@ function make_livemap_library_receiver(
     const realization = ssr !== undefined
       ? realize_document(ssr.root, render_portable_document_stylesheet(decode_portable_document_stylesheet(ssr.css)), { quads: ssr.quads })
       : realize_document(decode_hosted_root(document.root, HOSTED_MAX_SNAPSHOT_BYTES),
-        render_portable_document_stylesheet(decode_portable_document_stylesheet(document.css)));
+        render_portable_document_stylesheet(decode_portable_document_stylesheet(document.css)),
+        document_css_subject_identities(document.css, "inbound").length ? { quads: document.quads } : undefined);
     return Object.freeze({ libs, document: html, html: realization });
   }
 
@@ -631,7 +638,7 @@ function make_livemap_library_receiver(
 
   const addLibrariesInternal = (additions: readonly CanonicalLibraryDefinition[],
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
-    clientLocal = false, beforeInstall?: () => void): LiveMapCommit => {
+    clientLocal = false, beforeInstall?: () => void, installed?: () => void): LiveMapCommit => {
     if (!clientLocal) aggregate.assertPublicMutationAllowed();
     for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
@@ -654,6 +661,7 @@ function make_livemap_library_receiver(
         if (definition === undefined || identity === undefined) throw new Error("LiveMap admission lost a Library identity.");
         add(definition, identity);
       }
+      installed?.();
     };
     const commit = clientLocal ? aggregate.addClientLocalLibraries(definitions, afterInstall)
       : aggregate.addLibraries(definitions, afterInstall, beforeInstall);
@@ -806,7 +814,7 @@ function make_livemap_library_receiver(
     return result;
   });
   if (clientSnapshot !== undefined) CLIENT_LOCAL_LIBRARY_ADMISSION.set(libraries,
-    (definitions) => addLibrariesInternal(definitions, {}, true));
+    (definitions, css, installed) => addLibrariesInternal(definitions, css, true, undefined, installed));
   register_echo_map_capability_internal(libraries, Object.freeze({
     revision: () => aggregate.inspect().revision,
     documentMaps: () => Object.freeze([...named.values()]
@@ -1469,15 +1477,11 @@ function make_document_library(
     at: (path) => wrap_location(raw_at(path)),
     proxy: (path: readonly number[] = []) => Object.freeze({ $_: wrap_location(raw_at(path)) }),
     render: mark_browser_html_producer(() => {
-      // No application callbacks or aggregate inspection occur within this read.
-      const position = aggregate.hostedPosition();
-      const documentRoot = clone_hson_graph_without_quids(root());
-      const css = render_portable_document_stylesheet(aggregate.stylesheet(library.identity));
-      const after = aggregate.hostedPosition();
-      if (position.revision !== after.revision || position.authority !== after.authority || position.registryDigest !== after.registryDigest) {
-        throw new Error("Document state changed during rendering read.");
-      }
-      return realize_document(documentRoot, css);
+      const captured = aggregate.captureSelectedHosted([library.name], false).libraries[0];
+      if (captured?.css === undefined) throw new Error("Document render capture is unavailable.");
+      return realize_document(decode_hosted_root(captured.root, HOSTED_MAX_SNAPSHOT_BYTES),
+        render_portable_document_stylesheet(decode_portable_document_stylesheet(captured.css)),
+        document_css_subject_identities(captured.css, "inbound").length ? { quads: captured.quads } : undefined);
     }),
     document: documentApi,
     commits: document_commits,

@@ -25,21 +25,36 @@ export type CssIdentityCorrespondence = Readonly<{
 const PORTABLE_ATTRIBUTE = PORTABLE_DOCUMENT_QUAD_ATTRIBUTE;
 const RUNTIME_ATTRIBUTE = HSON_METADATA_REGISTRY[HSON_META_QUID].markupName;
 
-/** Conservative lexical gate for SSR: preserve identity-free selectors even when
- * their future syntax is opaque to CSSTree. This never rewrites or resolves CSS;
- * a reserved identity identifier sends the entire record through exact translation.
- * Quoted lookalikes and escaped literal pipes remain ordinary token data. @internal
+/** A potential attribute reference, including one hidden in an opaque selector.
+ * Tokens keep strings, comments and escaped literal pipes out of the name grammar.
+ * This gate grants no ownership and never rewrites CSS.
  */
-export function document_css_mentions_subject_identity(input: PortableDocumentStylesheetRecord): boolean {
-  const mentions = (source: string): boolean => {
-    let found = false;
-    tokenize(source, (type, start, end) => {
-      if (type !== tokenTypes.Ident) return;
-      const name = ident.decode(source.slice(start, end)).toLowerCase();
-      if (name === RUNTIME_ATTRIBUTE || name === PORTABLE_ATTRIBUTE) found = true;
-    });
-    return found;
+function mentions_identity_attribute(source: string): boolean {
+  const tokens: { type: number; text: string }[] = [];
+  tokenize(source, (type, start, end) => { tokens.push({ type, text: source.slice(start, end) }); });
+  const next = (index: number): number => {
+    while (tokens[index]?.type === tokenTypes.WhiteSpace || tokens[index]?.type === tokenTypes.Comment) index++;
+    return index;
   };
+  const pipe = (index: number): boolean => tokens[index]?.type === tokenTypes.Delim && tokens[index]?.text === "|";
+  for (let index = 0; index < tokens.length; index++) {
+    if (tokens[index]?.type !== tokenTypes.LeftSquareBracket) continue;
+    let name = next(index + 1);
+    if (pipe(name)) name = next(name + 1);
+    else if ((tokens[name]?.type === tokenTypes.Ident || tokens[name]?.text === "*") && pipe(next(name + 1))) {
+      name = next(next(name + 1) + 1);
+    }
+    const token = tokens[name];
+    if (token?.type !== tokenTypes.Ident) continue;
+    const local = ident.decode(token.text).toLowerCase();
+    if (local === RUNTIME_ATTRIBUTE || local === PORTABLE_ATTRIBUTE) return true;
+  }
+  return false;
+}
+
+/** Preserve identity-free future syntax; only attribute names enter exact admission. @internal */
+export function document_css_mentions_subject_identity(input: PortableDocumentStylesheetRecord): boolean {
+  const mentions = mentions_identity_attribute;
   const groups = (entries: readonly PortableDocumentCssEntry[]): boolean => entries.some(entry =>
     entry.kind === "group" ? mentions(entry.header) || groups(entry.entries)
       : entry.kind === "rule" && entry.scopes.some(mentions));
@@ -69,59 +84,31 @@ function own_field(input: unknown, key: string): unknown {
   return field.value;
 }
 
-/**
- * Translate exact identity attribute nodes in existing portable CSS data.
- * Callers select one Library and prove local issuance/admission and disposition;
- * this pure consumer validates vocabulary and bijection, never graph ownership.
- * Opaque selectors/preludes and non-exact identity tests reject conservatively.
- * No runtime, capture, allocation, stylesheet ownership or transport integration.
- * @internal
- */
-export function translate_document_css_identities(
-  input: PortableDocumentStylesheetRecord,
-  direction: "outbound" | "inbound",
-  correspondence: CssIdentityCorrespondence,
-): PortableDocumentStylesheetRecord {
-  if (direction !== "outbound" && direction !== "inbound") throw new TypeError("Invalid CSS identity translation direction.");
-  const check = own_field(correspondence, "assertCurrent");
-  if (typeof check !== "function") throw new TypeError("CSS identity translation requires a caller fence.");
-  check();
-  const byName = new Map<string, string>(), byQuid = new Map<string, string>();
-  for (const entry of css_array_items(own_field(correspondence, "associations"))) {
-    const name = own_field(entry, "name"), quid = own_field(entry, "quid"), disposition = own_field(entry, "disposition");
-    if (!is_document_quad_name(name) || !is_persisted_quid(quid)
-      || (disposition !== "authored" && disposition !== "disposable")
-      || byName.has(name) || byQuid.has(quid)) throw new TypeError("Invalid or ambiguous CSS identity correspondence.");
-    if (disposition === "disposable" && (name[0] !== "_" || !is_persisted_quid(name.slice(1))
-      || (direction === "outbound" ? name !== `_${quid}` : name.slice(1) === quid))) {
-      throw new TypeError("Incoherent disposable CSS identity correspondence.");
-    }
-    byName.set(name, quid); byQuid.set(quid, name);
-  }
-  const sourceAttribute = direction === "outbound" ? RUNTIME_ATTRIBUTE : PORTABLE_ATTRIBUTE;
-  const targetAttribute = direction === "outbound" ? PORTABLE_ATTRIBUTE : RUNTIME_ATTRIBUTE;
-  const mapping = direction === "outbound" ? byQuid : byName;
-
+/** Walk the exact Cut 8C selector coordinates once; declarations are never references. */
+function visit_document_css_identities(input: PortableDocumentStylesheetRecord,
+  visit: (node: Extract<CssNode, { type: "AttributeSelector" }>) => void,
+  subjectsOnly: boolean): PortableDocumentStylesheetRecord {
   const rewrite = (ast: CssNode): boolean => {
-    let changed = false;
+    let changed = false, featureTests = 0;
     walk(ast, { enter(node: CssNode) {
-      // Conditions such as @supports declarations and @container style() are
-      // ordinary declaration data, including Raw custom-property values.
       if (node.type === "Declaration") return walk.skip;
-      if (node.type === "Raw") throw new SyntaxError("Opaque CSS selector or group prelude cannot be identity-translated.");
+      // @supports selector() asks about syntax, not membership of a subject.
+      // Cut 8C's explicit translator retains its original all-reference mode.
+      const kind: string = node.type;
+      if (kind === "FeatureFunction") featureTests++;
+      if (node.type === "Raw" && mentions_identity_attribute(node.value)) {
+        throw new SyntaxError("Opaque CSS selector or group prelude cannot be identity-translated.");
+      }
       if (node.type !== "AttributeSelector") return;
       const name = attribute_name(node.name.name), localName = name.local.toLowerCase();
       if (localName !== RUNTIME_ATTRIBUTE && localName !== PORTABLE_ATTRIBUTE) return;
-      if (name.namespaced || name.local !== sourceAttribute || node.matcher !== "=" || node.flags !== null || node.value === null) {
-        throw new SyntaxError("Unsupported or mixed CSS identity attribute selector.");
+      if (subjectsOnly && featureTests) {
+        identity_value(node, localName);
+        return;
       }
-      const value = node.value.type === "String" ? node.value.value : ident.decode(node.value.name);
-      const replacement = mapping.get(value);
-      if (replacement === undefined) throw new TypeError("Unresolved CSS identity selector reference.");
-      node.name.name = ident.encode(targetAttribute);
-      node.value = { type: "String", value: replacement };
+      visit(node);
       changed = true;
-    } });
+    }, leave(node: CssNode) { const kind: string = node.type; if (kind === "FeatureFunction") featureTests--; } });
     return changed;
   };
   const selector = (source: string): string => {
@@ -144,13 +131,90 @@ export function translate_document_css_identities(
     if (entry.kind === "rule") return { ...entry, scopes: scopes(entry.scopes) };
     return { ...entry };
   });
-  // Rewrite every duplicated header coordinate with the same deterministic
-  // function. Keep opaque rule keys and independent group occurrences intact.
-  const result = encode_portable_document_stylesheet(decode_portable_document_stylesheet({
-    ...canonical,
+  return encode_portable_document_stylesheet(decode_portable_document_stylesheet({ ...canonical,
     rules: canonical.rules.map(rule => ({ ...rule, selector: selector(rule.selector), scopes: scopes(rule.scopes) })),
     order: order(canonical.order),
   }));
+}
+
+function identity_value(node: Extract<CssNode, { type: "AttributeSelector" }>, attribute: string): string {
+  const name = attribute_name(node.name.name);
+  if (name.namespaced || name.local !== attribute || node.matcher !== "=" || node.flags !== null || node.value === null) {
+    throw new SyntaxError("Unsupported or mixed CSS identity attribute selector.");
+  }
+  return node.value.type === "String" ? node.value.value : ident.decode(node.value.name);
+}
+
+/** Pure extraction grants no issuance or ownership. The Library must prove each demand. @internal */
+export function document_css_subject_identities(input: PortableDocumentStylesheetRecord,
+  direction: "outbound" | "inbound"): readonly string[] {
+  if (!document_css_mentions_subject_identity(input)) return [];
+  const values = new Set<string>();
+  visit_document_css_identities(input, node => {
+    const value = identity_value(node, direction === "outbound" ? RUNTIME_ATTRIBUTE : PORTABLE_ATTRIBUTE);
+    if (direction === "outbound" ? !is_persisted_quid(value) : !is_document_quad_name(value)) {
+      throw new TypeError("Invalid CSS subject identity reference.");
+    }
+    values.add(value);
+  }, true);
+  return Object.freeze([...values]);
+}
+
+/** Compare portable checkpoint semantics across disposable payload renaming; no runtime identity is created. @internal */
+export function remap_portable_document_css_identities(input: PortableDocumentStylesheetRecord,
+  names: ReadonlyMap<string, string>): PortableDocumentStylesheetRecord {
+  if (!document_css_mentions_subject_identity(input)) return input;
+  return visit_document_css_identities(input, node => {
+    const name = identity_value(node, PORTABLE_ATTRIBUTE), replacement = names.get(name);
+    if (replacement === undefined || !is_document_quad_name(replacement)) throw new Error("Unresolved portable CSS correspondence.");
+    node.value = { type: "String", value: replacement };
+  }, true);
+}
+
+/**
+ * Translate exact identity attribute nodes in existing portable CSS data.
+ * Callers select one Library and prove local issuance/admission and disposition;
+ * this pure consumer validates vocabulary and bijection, never graph ownership.
+ * Opaque selectors/preludes and non-exact identity tests reject conservatively.
+ * No runtime, capture, allocation, stylesheet ownership or transport integration.
+ * Ordinary consumers select subjectsOnly. sameRuntime is reserved for a caller's
+ * independently proved exact living-owner restoration, never portable admission.
+ * @internal
+ */
+export function translate_document_css_identities(
+  input: PortableDocumentStylesheetRecord,
+  direction: "outbound" | "inbound",
+  correspondence: CssIdentityCorrespondence,
+  subjectsOnly = false,
+  sameRuntime = false,
+): PortableDocumentStylesheetRecord {
+  if (direction !== "outbound" && direction !== "inbound") throw new TypeError("Invalid CSS identity translation direction.");
+  const check = own_field(correspondence, "assertCurrent");
+  if (typeof check !== "function") throw new TypeError("CSS identity translation requires a caller fence.");
+  check();
+  const byName = new Map<string, string>(), byQuid = new Map<string, string>();
+  for (const entry of css_array_items(own_field(correspondence, "associations"))) {
+    const name = own_field(entry, "name"), quid = own_field(entry, "quid"), disposition = own_field(entry, "disposition");
+    if (!is_document_quad_name(name) || !is_persisted_quid(quid)
+      || (disposition !== "authored" && disposition !== "disposable")
+      || byName.has(name) || byQuid.has(quid)) throw new TypeError("Invalid or ambiguous CSS identity correspondence.");
+    if (disposition === "disposable" && (name[0] !== "_" || !is_persisted_quid(name.slice(1))
+      || (direction === "outbound" ? name !== `_${quid}` : !sameRuntime && name.slice(1) === quid))) {
+      throw new TypeError("Incoherent disposable CSS identity correspondence.");
+    }
+    byName.set(name, quid); byQuid.set(quid, name);
+  }
+  const sourceAttribute = direction === "outbound" ? RUNTIME_ATTRIBUTE : PORTABLE_ATTRIBUTE;
+  const targetAttribute = direction === "outbound" ? PORTABLE_ATTRIBUTE : RUNTIME_ATTRIBUTE;
+  const mapping = direction === "outbound" ? byQuid : byName;
+
+  const result = visit_document_css_identities(input, node => {
+    const value = identity_value(node, sourceAttribute);
+    const replacement = mapping.get(value);
+    if (replacement === undefined) throw new TypeError("Unresolved CSS identity selector reference.");
+    node.name.name = ident.encode(targetAttribute);
+    node.value = { type: "String", value: replacement };
+  }, subjectsOnly);
   check();
   return result;
 }

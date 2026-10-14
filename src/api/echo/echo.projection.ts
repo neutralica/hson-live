@@ -12,7 +12,8 @@ import { decode_hosted_root, HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livema
 import { hsonTransform } from "../transform/transform.facade.js";
 import { interaction_schema_internal } from "../interactions/interactions.projection.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
-import { apply_client_local_initializer_css_internal, retain_client_local_seed_contracts_internal } from "../locus/locus.local-initializer.js";
+import { admit_locus_local_initializers, retain_client_local_seed_contracts_internal } from "../locus/locus.local-initializer.js";
+import type { DocumentCssRecord } from "../../types/document-css.types.js";
 import {
   authority_projection_as_client_composition_internal,
   bind_client_projection_identity_internal,
@@ -35,9 +36,13 @@ export function compose_client_portable_aggregate_internal(
   local: readonly LocusLocalInitializer[],
 ): LiveMap {
   const admitted = portable_aggregate_inputs_internal(snapshot);
+  // Keep the established Library order while admitting each complete seed.
+  // The name set below rejects duplicate local and projected names together.
+  const initializers = local.flatMap(initializer => admit_locus_local_initializers([initializer]));
   const inputs: CanonicalLibraryDefinition[] = [...admitted.inputs];
+  const css: Record<string, DocumentCssRecord> = Object.create(null);
   const names = new Set(inputs.map((entry) => entry.name));
-  for (const initializer of local) {
+  for (const initializer of initializers) {
     if (names.has(initializer.name)) {
       throw new Error(`Local initializer ${JSON.stringify(initializer.name)} collides with shared state.`);
     }
@@ -45,19 +50,19 @@ export function compose_client_portable_aggregate_internal(
     const schema = HsonSchema.fromHson(initializer.schema);
     names.add(initializer.name);
     inputs.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
+    if (initializer.css !== undefined) css[initializer.name] = initializer.css;
   }
   if (inputs.length === 0) {
     throw new Error("An action-only client session has no LiveMap; use endpoint-only Echo.");
   }
-  const localDocumentExists = local.some((initializer) => initializer.mode === "document");
+  const localDocumentExists = initializers.some((initializer) => initializer.mode === "document");
   const systems = admitted.systems.length > 0 || !localDocumentExists ? admitted.systems : [Object.freeze({
     key: INTERACTION_RESERVED_LIBRARY_KEY,
     transportName: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
     root: hsonTransform.fromJson({ descriptors: [] }).toNode(),
     hsonSchema: interaction_schema_internal(),
   })];
-  const map = make_livemap_from_canonical_libraries_internal(Object.freeze(inputs), systems, snapshot);
-  apply_client_local_initializer_css_internal(map, local);
-  retain_client_local_seed_contracts_internal(map, local);
+  const map = make_livemap_from_canonical_libraries_internal(Object.freeze(inputs), systems, snapshot, css);
+  retain_client_local_seed_contracts_internal(map, initializers);
   return map;
 }

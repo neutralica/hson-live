@@ -1,4 +1,5 @@
 import { trim_managed_css } from "./managed-css-lexical.js";
+import { document_css_subject_identities } from "./css-identity-translation.js";
 import type { LiveMapCssOp, LiveMapCssUnitOp } from "../../types/livemap.types.js";
 import {
   css_array_items,
@@ -7,6 +8,24 @@ import {
   reconcile_stylesheet_order,
   type PortableDocumentStylesheet,
 } from "./portable-document-stylesheet.js";
+
+/** Incremental wire operations have no subject correspondence or ordering proof. @internal */
+export function assert_subject_free_portable_css_operation(operation: LiveMapCssOp): void {
+  const units = operation.kind === "batch" ? operation.operations : [operation];
+  for (const unit of units) {
+    const css = unit.kind === "append" || unit.kind === "replace" ? unit.stylesheet
+      : unit.kind === "rule" ? {
+        rules: unit.rule === undefined ? [] : [unit.rule], properties: [], keyframes: [],
+        order: unit.rule === undefined ? unit.scopes.map(header => ({ kind: "group" as const, header, entries: [] }))
+          : [{ kind: "rule" as const, ruleKey: unit.ruleKey, scopes: unit.scopes }],
+      } : undefined;
+    if (css !== undefined) {
+      try { if (document_css_subject_identities(css, "outbound").length === 0) continue; }
+      catch { /* Portable identities and unsupported potentially identity-bearing syntax also fail closed. */ }
+      throw new Error("Portable incremental subject-owned CSS is unsupported without correspondence ordering.");
+    }
+  }
+}
 
 function fields(input: unknown, required: readonly string[], optional: readonly string[] = []): Record<string, unknown> {
   if (input === null || typeof input !== "object" || Array.isArray(input)) throw new TypeError("Invalid document CSS operation.");

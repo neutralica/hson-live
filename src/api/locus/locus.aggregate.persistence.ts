@@ -1,8 +1,11 @@
 import { admit_public_livemap_root } from "../livemap/livemap.node-admission.js";
 import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
+import { document_quad_disposition } from "../livemap/livemap.document.quad.js";
+import { remap_portable_document_css_identities } from "../../internal/css/css-identity-translation.js";
+import { assert_subject_free_portable_css_operation } from "../../internal/css/portable-document-operations.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
-import { decode_document_quads } from "../livemap/livemap.document.quad.js";
+import { assert_portable_document_css_correspondence, decode_document_quads } from "../livemap/livemap.document.quad.js";
 import { registry_from_entries } from "../livemap/livemap.hosted.js";
 import { hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { HsonNode } from "../../core/types.js";
@@ -185,11 +188,22 @@ function checkpoint_libraries_equal(
     const other = right[index];
     if (other === undefined || library.name !== other.name
       || !canonical_hson_graph_equal(library.root, other.root)
-      || Object.hasOwn(library, "css") !== Object.hasOwn(other, "css")
-      || JSON.stringify(own_document_quads(library)) !== JSON.stringify(own_document_quads(other))) return false;
+      || Object.hasOwn(library, "css") !== Object.hasOwn(other, "css")) return false;
+    const leftQuads = own_document_quads(library) ?? [], rightQuads = own_document_quads(other) ?? [];
+    if (leftQuads.length !== rightQuads.length) return false;
+    const byPath = new Map(leftQuads.map(entry => [JSON.stringify(entry.path), entry]));
+    const names = new Map<string, string>();
+    for (const entry of rightQuads) {
+      const left = byPath.get(JSON.stringify(entry.path));
+      if (left === undefined || document_quad_disposition(left) !== document_quad_disposition(entry)
+        || (document_quad_disposition(entry) === "authored" && left.name !== entry.name)) return false;
+      names.set(entry.name, left.name);
+    }
     if (library.css === undefined || other.css === undefined) return library.css === other.css;
     return portable_document_stylesheet_equal(
-      decode_portable_document_stylesheet(library.css), decode_portable_document_stylesheet(other.css),
+      decode_portable_document_stylesheet(remap_portable_document_css_identities(library.css,
+        new Map(leftQuads.map(entry => [entry.name, entry.name])))),
+      decode_portable_document_stylesheet(remap_portable_document_css_identities(other.css, names)),
     );
   });
 }
@@ -212,6 +226,8 @@ export async function write_semantic_checkpoint(
       if (entry === undefined || library.name !== entry.name) throw invalid_state();
       const root = admit_public_livemap_root(library.root, entry.mode === "document" ? "document" : "data", "Checkpoint export");
       const quads = decode_document_quads(own_document_quads(library), root, entry.mode);
+      if (entry.mode === "document") assert_portable_document_css_correspondence(root, "document", quads,
+        encode_portable_document_stylesheet(decode_portable_document_stylesheet(library.css)));
       return Object.freeze({ name: library.name, root,
         ...(quads === undefined ? {} : { quads }),
         ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(library.css)) } : {}) });
@@ -543,6 +559,11 @@ async function validate_hosted_aggregate_state(
       if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
       const commit = assert_commit_fence(item, checkpoint, expectedPrevRev, expectedRegistryDigest);
       if (commit.topology !== undefined) {
+        // Live topology admission and incremental wire codecs reject these too.
+        // A complete checkpoint may carry correspondence; a tail cannot.
+        for (const entry of commit.topology.operation.libraries) {
+          if (entry.css !== undefined) assert_subject_free_portable_css_operation({ domain: "css", kind: "replace", stylesheet: entry.css });
+        }
         const additions = ownership_entries(record(maybe?.locus)?.libraryOwnershipAdded);
         for (const entry of additions) {
           if (runtimeOwnership.has(entry.name)) throw invalid_state();

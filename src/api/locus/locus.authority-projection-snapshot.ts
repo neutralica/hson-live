@@ -1,6 +1,6 @@
 import { own_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
-import { decode_document_quads } from "../livemap/livemap.document.quad.js";
+import { assert_portable_document_css_correspondence, decode_document_quads } from "../livemap/livemap.document.quad.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.internal.types.js";
@@ -158,6 +158,9 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       validate_data_library(decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode, validation);
       const quads = own_document_quads(entry) === undefined ? undefined
         : decode_document_quads(own_document_quads(entry), decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode);
+      if (mode === "document") assert_portable_document_css_correspondence(
+        decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode, quads,
+        encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)));
       return Object.freeze({ name, mode, schema: schemaSource, schemaDigest: hson_schema_digest(schema), rootCodec: "hson-exact-value",
         root: qualifiedRoot,
         ...(validation === undefined ? {} : { validation }),

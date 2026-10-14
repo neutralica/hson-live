@@ -14,11 +14,13 @@ identity issuer, authored attribute vocabulary, or additional CSS owner is added
    map and that installation's `PortableQuadRestoration`, including final-only
    captures without source component Libraries. Restoration issues fresh sparse
    receiver QUIDs; only explicitly authored associations enter authored bindings.
+   Cut 9B-0 rebinds managed CSS before this ordinary restoration is published.
 3. `preparePortableDocumentHandoff` on the restoring aggregate validates provenance,
    Library identity/name, issuance, current overlay coordinates, ordinary subjects,
-   and explicit dispositions. It uses Cut 8C to prepare incoming CSS translation.
-   Private weak sets authenticate installation/candidate objects; they contain no
-   subject lookup, identity issuance, or independent authored-name authority.
+   and explicit dispositions. It checks Cut 8C translation against the original
+   operation-local portable stylesheet evidence behind the restoration fence.
+   Private weak collections authenticate installation/candidate objects; they
+   contain no subject lookup, identity issuance, or independent authored-name authority.
 4. `continue_portable_document_internal(options, handoff)` validates the exact
    selected facade and owner candidate, then uses the existing local continuation
    implementation. The public `continue_document` wrapper has no extra option or
@@ -53,9 +55,10 @@ layers, specificity, and cascade order. Opaque/unresolved/mixed identity selecto
 fail closed; identity-free CSS retains its original state.
 
 After portable exact adoption succeeds, the existing Library stylesheet replace
-operation accepts translated CSS. The candidate renews its own aggregate fence
-only after proving that this exact CSS acceptance was the sole intervening
-transition. The original restoration fence stays stale. Publication reentrancy
+operation verifies accepted translated CSS. With Cut 9B-0 this is normally a
+no-op, since ordinary restoration already rebound it. A no-op leaves the original
+restoration fence current. Any changed acceptance renews the candidate fence only
+after proving it was the sole intervening transition. Publication reentrancy
 changing graph, identities, CSS, registry, or authority rejects without renewing it.
 
 The native transition uses existing mutation-publication protection:
