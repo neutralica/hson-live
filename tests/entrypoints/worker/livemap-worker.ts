@@ -5,6 +5,7 @@ import {
   LiveMapProjectedIdentityError,
   LiveMapProjectedMutationError,
   type LiveMapSnapshot,
+  type LiveMapDocumentQuadLocation,
   type LiveMapDocumentIdentityProvenanceErrorCode,
   type LiveMapDocumentInstallFailureCode,
   type LiveMapProjectedIdentityErrorCode,
@@ -18,6 +19,19 @@ const map = hsonLiveMap.fromLibraries({
   },
 });
 const state = map.lib("state");
+// @ts-expect-error Data Libraries do not expose document QUAD access.
+state.q("member");
+const quadDocument = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }).lib("page");
+const quad: LiveMapDocumentQuadLocation<"page"> | undefined = quadDocument.q("unknown");
+if (quad !== undefined) {
+  const active: boolean = quad.active;
+  const path: readonly number[] = quad.path();
+  quad.attrs.set("title", "ready"); quad.at([0]).replace("Next"); quad.insert(0, "text");
+  quad.flags.set("disabled"); quad.move(0, 1); quad.snap(); quad.delete(); quad.dispose();
+  void active; void path;
+  // @ts-expect-error QUID acquisition is not part of the returned capability.
+  quad.ensureIdentity();
+}
 void state.snap();
 const projectedAcquisitionIsPublic: "ensureIdentity" extends keyof typeof state ? true : false = false;
 const capture: LiveMapSnapshot = map.capture();

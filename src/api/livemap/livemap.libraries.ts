@@ -66,12 +66,14 @@ import { make_livemap_document_css } from "./livemap.css.js";
 import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { make_livemap_document_mutation_api } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api, make_livemap_document_flags_read_api } from "./livemap.document.attrs.js";
-import { make_livemap_document_location_factory, read_livemap_document_logical_location } from "./livemap.document.location.js";
+import { make_livemap_document_location_factory, make_livemap_document_quad_location, read_livemap_document_logical_location } from "./livemap.document.location.js";
+import { internal_document_subject_logical_path } from "./livemap.document.logical.js";
 import { make_livemap_document_proxy } from "./livemap.proxy.js";
 import { clone_hson_graph_without_quids, register_livemap_document_observation_evidence } from "./livemap.document.capture.js";
 import { resolve_document_path } from "./livemap.document.path.js";
 import {
   make_livemap_document_identity_api,
+  make_livemap_document_identity_handle,
   register_livemap_document_identity_api,
 } from "./livemap.document.identity-handle.js";
 import { clone_livemap_document_exact_view, register_livemap_document_identity_overlay } from "./livemap.document.identity.js";
@@ -1309,6 +1311,26 @@ function make_document_library(
       aggregate.acquireLocalDocumentIdentity(library.identity, path, quid, participant),
   });
   const mutation = make_livemap_document_mutation_api(controller);
+  // Input admission may invoke proxy traps. Fence q delegation through the same
+  // mutation controller so reentrant work cannot redirect a captured subject.
+  const quadEditFences: Array<() => void> = [];
+  const quadMutation = make_livemap_document_mutation_api({
+    ...controller,
+    applyMutation: (candidate) => {
+      const assertCurrent = quadEditFences.at(-1);
+      if (assertCurrent === undefined) throw new Error("QUAD edit has no current subject fence.");
+      assertCurrent();
+      return controller.applyMutation(candidate);
+    },
+  });
+  const quad_edit = <T>(run: () => T, assertSubject: () => void): T => {
+    const assertCurrent = aggregate.captureFence();
+    quadEditFences.push(() => {
+      assertCurrent();
+      assertSubject();
+    });
+    try { return run(); } finally { quadEditFences.pop(); }
+  };
   const rawAttrs = Object.freeze({
     ...make_livemap_document_attrs_read_api(controller),
     ...mutation.attrs,
@@ -1360,6 +1382,16 @@ function make_document_library(
     },
   );
   const wrappedLocations = new WeakMap<object, object>();
+  const quad_at = make_livemap_document_location_factory(
+    Object.freeze({ get rev() { return controller.rev(); }, root }), "document",
+    Object.freeze({
+      attrs: Object.freeze({ ...make_livemap_document_attrs_read_api(controller), ...quadMutation.attrs }),
+      flags: Object.freeze({ ...make_livemap_document_flags_read_api(controller), ...quadMutation.flags }),
+      replace: quadMutation.replaceContent, remove: quadMutation.removeContent,
+      insert: quadMutation.insertContent, move: quadMutation.moveContent,
+    }),
+    (path, listener) => raw_at(path).watch(listener),
+  );
   const wrap_location = (raw: ReturnType<typeof raw_at>): ReturnType<LiveMapDocumentLibrary["at"]> => {
     const existing = wrappedLocations.get(raw);
     if (existing !== undefined) return existing as ReturnType<LiveMapDocumentLibrary["at"]>;
@@ -1471,6 +1503,39 @@ function make_document_library(
     ),
     root: () => clone_node(root()),
     at: (path) => wrap_location(raw_at(path)),
+    q: (name) => {
+      if (typeof name !== "string") throw new TypeError("LiveMap document QUAD name is not a string");
+      const subject = aggregate.documentQuad(library.identity, name, undefined);
+      if (subject === undefined) return undefined;
+      const handle = make_livemap_document_identity_handle(controller, subject.quid);
+      const authority = aggregate.documentAuthority(library.identity);
+      const same_authority = () => {
+        const current = aggregate.documentAuthority(library.identity);
+        return current?.logicalMapId === authority?.logicalMapId && current?.incarnationId === authority?.incarnationId;
+      };
+      let terminal = false;
+      let stopLifetime = () => {};
+      const retire = () => {
+        if (terminal) return;
+        terminal = true;
+        handle.dispose();
+        stopLifetime();
+      };
+      // q has strict terminal lifetimes; generic exact-restoration handles keep
+      // their existing semantics. Inspect coherent owner state at installation,
+      // before an earlier public observer can restore an absent subject.
+      stopLifetime = aggregate.observeAuthorityPosition(() => {
+        if (handle.path() === undefined || !same_authority()) retire();
+      }, "installed");
+      return make_livemap_document_quad_location(
+        () => {
+          const path = handle.path();
+          if (path === undefined || !same_authority()) { retire(); return undefined; }
+          return internal_document_subject_logical_path(root(), "document", path);
+        },
+        retire, quad_at, multi_commit, () => aggregate.inspect().revision, quad_edit,
+      );
+    },
     proxy: (path: readonly number[] = []) => Object.freeze({ $_: wrap_location(raw_at(path)) }),
     render: mark_browser_html_producer(() => {
       const captured = aggregate.captureSelectedHosted([library.name], false).libraries[0];

@@ -255,6 +255,30 @@ export function find_internal_document_id_path(
   return visit(scope, scopePath);
 }
 
+/** Derive a subject's logical coordinate through the current carrier correspondence. @internal */
+export function internal_document_subject_logical_path(
+  root: HsonNode,
+  mode: LiveMapDocumentMode,
+  path: LiveMapDocumentPath,
+): readonly number[] | undefined {
+  let cursor: TraversalCursor = document_root_cursor(root, mode);
+  const logical: number[] = [];
+  while (cursor.kind === "node" || cursor.kind === "content") {
+    if (cursor.kind === "node" && cursor.path.length === path.length
+      && cursor.path.every((part, index) => part === path[index])) {
+      return is_ordinary_element_node(cursor.node) ? Object.freeze(logical) : undefined;
+    }
+    const content = cursor.kind === "content" ? cursor : logical_element_content_cursor(cursor, logical.length);
+    const ownerPath = content.ownerPath;
+    if (ownerPath === undefined || !ownerPath.every((part, index) => part === path[index])) return undefined;
+    const index = path[ownerPath.length];
+    if (index === undefined) return undefined;
+    cursor = content_child_cursor(content, index, logical.length);
+    logical.push(index);
+  }
+  return undefined;
+}
+
 /** Lower a resolved logical content container to the existing mutation target. */
 export function lower_internal_document_content_target(
   resolution: InternalDocumentLogicalResolution,

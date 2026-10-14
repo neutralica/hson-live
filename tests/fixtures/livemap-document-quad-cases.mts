@@ -1,4 +1,5 @@
 import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
+import { document_q_cases } from "./livemap-document-q-cases.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { make_livemap_from_authored_libraries_internal as authored, compose_livemap_document_internal } from "../../src/api/livemap/livemap.libraries.ts";
@@ -47,6 +48,7 @@ function unchanged(map: LiveMap, run: () => unknown, pattern?: RegExp): void {
 }
 
 export function document_quad_cases(check: (name: string, run: () => void) => void): void {
+  document_q_cases(check);
   check("authored addresses bind genuine sparse QUIDs without graph revisions", () => {
     const map = fixture(), page = doc(map);
     const aggregate = internal_livemap_aggregate_authority(map), identity = aggregate.libraries()[0]!;

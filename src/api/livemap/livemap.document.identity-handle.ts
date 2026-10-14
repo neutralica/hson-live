@@ -67,6 +67,14 @@ export function acquire_livemap_document_identity(
   return api.acquire(target);
 }
 
+/** Observe an already issued identity without acquisition or publication. @internal */
+export function make_livemap_document_identity_handle(
+  controller: IdentityHandleController,
+  quid: string,
+): LiveMapDocumentIdentityHandle {
+  return make_identity_handle(controller, quid, controller.identityEpoch.current());
+}
+
 function make_identity_handle(
   controller: IdentityHandleController,
   quid: string,
@@ -76,9 +84,10 @@ function make_identity_handle(
 
   const current_path = (): LiveMapDocumentPath | undefined => {
     if (disposed || controller.identityEpoch.current() !== epoch) return undefined;
-    const path = controller.overlay().pathForQuid(quid);
-    if (path === undefined || controller.overlay().quidAtPath(path) !== quid) return undefined;
     try {
+      const overlay = controller.overlay();
+      const path = overlay.pathForQuid(quid);
+      if (path === undefined || overlay.quidAtPath(path) !== quid) return undefined;
       const endpoint = resolve_document_path(controller.root(), controller.mode, path);
       if (!is_ordinary_element_node(endpoint)) return undefined;
       return validate_document_path(path);

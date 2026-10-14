@@ -5,6 +5,9 @@ import type {
   LiveMapDocumentFlagsApi,
   LiveMapDocumentMode,
   LiveMapDocumentContent,
+  LiveMapDocumentQuadLocation,
+  LiveMapCommit,
+  LiveMapGraphOp,
   LiveMapDocumentRequestTarget,
   LiveMapDisposer,
   LiveMapGraphCommit,
@@ -96,6 +99,64 @@ type DocumentLocation = Readonly<{
 }>;
 
 const documentLocations = new WeakSet<object>();
+
+/** Adapt an existing identity to ordinary locations, resolving before every operation. @internal */
+export function make_livemap_document_quad_location(
+  currentPath: () => readonly number[] | undefined,
+  dispose: () => void,
+  at: (path: readonly number[]) => DocumentLocation,
+  commit: <TOp extends LiveMapGraphOp>(value: LiveMapGraphCommit<TOp>) => LiveMapCommit<string, TOp>,
+  revision: () => number,
+  guardedEdit: <T>(run: () => T, assertSubject: () => void) => T,
+): LiveMapDocumentQuadLocation {
+  const relative = (offset: readonly number[]): LiveMapDocumentQuadLocation => {
+    const path = (): readonly number[] | undefined => {
+      const rootPath = currentPath();
+      return rootPath === undefined ? undefined : Object.freeze([...rootPath, ...offset]);
+    };
+    const current = (operation: LiveMapDocumentMutationError["operation"]): DocumentLocation => {
+      const resolved = path();
+      if (resolved === undefined) throw new LiveMapDocumentMutationError(
+        "DOCUMENT_TARGET_NOT_FOUND", operation, "QUAD subject lifetime is no longer active",
+      );
+      return at(resolved);
+    };
+    const edit = <T>(run: () => T): T => {
+      current("get-attr");
+      return guardedEdit(run, () => { current("get-attr"); });
+    };
+    return Object.freeze({
+      get active() { return currentPath() !== undefined; },
+      get rev() { current("get-attr"); return revision(); },
+      path: () => current("get-attr").path(),
+      snap: () => { const resolved = path(); return resolved === undefined ? undefined : at(resolved).snap(); },
+      at: (child) => { current("get-attr"); return relative([...offset, ...must_document_logical_path(child)]); },
+      dispose,
+      replace: (value) => edit(() => commit(current("replace-content").replace(value))),
+      delete: () => edit(() => commit(current("remove-content").delete())),
+      insert: (index, value) => edit(() => commit(current("insert-content").insert(index, value))),
+      move: (from, to) => edit(() => commit(current("move-content").move(from, to))),
+      attrs: Object.freeze({
+        get: (name: string) => current("get-attr").attrs.get(name),
+        has: (name: string) => current("has-attr").attrs.has(name),
+        keys: () => current("list-attrs").attrs.keys(),
+        must: Object.freeze({ get: (name: string) => current("must-get-attr").attrs.must.get(name) }),
+        set: (name: string, value: Parameters<LocationAttrs["set"]>[1]) => edit(() => commit(current("set-attr").attrs.set(name, value))),
+        drop: (name: string) => edit(() => commit(current("remove-attr").attrs.drop(name))),
+        setMany: (values: Parameters<LocationAttrs["setMany"]>[0]) => edit(() => commit(current("replace-attrs").attrs.setMany(values))),
+        dropMany: (names: readonly string[]) => edit(() => commit(current("replace-attrs").attrs.dropMany(names))),
+        clear: () => edit(() => commit(current("replace-attrs").attrs.clear())),
+        replace: (values: Parameters<LocationAttrs["replace"]>[0]) => edit(() => commit(current("replace-attrs").attrs.replace(values))),
+      }),
+      flags: Object.freeze({
+        has: (name: string) => current("has-attr").flags.has(name),
+        set: (...names: string[]) => edit(() => commit(current("replace-attrs").flags.set(...names))),
+        clear: (...names: string[]) => edit(() => commit(current("replace-attrs").flags.clear(...names))),
+      }),
+    });
+  };
+  return relative(Object.freeze([]));
+}
 
 /** Exact-object evidence for a document location created by LiveMap. @internal */
 export function is_livemap_document_location(value: unknown): boolean {

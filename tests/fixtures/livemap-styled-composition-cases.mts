@@ -64,6 +64,33 @@ function atomic(map: LiveMap, run: () => unknown, reason?: RegExp) {
 }
 
 export function styled_composition_cases(check: (name: string, run: () => void) => void) {
+  check("public q edits styled shell and promoted subjects without importing Part-local landmarks", () => {
+    const map = styled_fixture(), result = compose(map, "layout", "page", {
+      configuration: { at: { slot0: { at: { label: { as: "caption" } } } } },
+    });
+    assert.equal("q" in map.lib("parts"), false);
+    assert.equal(result.q("root"), undefined); assert.equal(result.q("label"), undefined); assert.equal(result.q("unused"), undefined);
+    const shell = result.q("slot0")!, caption = result.q("caption")!;
+    assert.equal(shell.attrs.get("id"), "instance0"); assert.equal(caption.at([0]).snap(), "Label");
+    const beforeCss = result.css.snapshot(), ledger = owner(map).identityEpoch().issued();
+    shell.attrs.set("title", "shell"); caption.at([0]).replace("Changed"); caption.attrs.set("title", "caption");
+    assert.equal(result.at(shell.path()).asElement()!.attrs.get("title"), "shell");
+    assert.equal(caption.at([0]).snap(), "Changed"); assert.equal(result.css.snapshot(), beforeCss);
+    const oldPath = shell.path();
+    result.at(oldPath.slice(0, -1)).asElement()!.move(0, 1);
+    assert.notDeepEqual(shell.path(), oldPath); shell.attrs.set("title", "moved shell");
+    assert.equal(shell.attrs.get("title"), "moved shell"); assert.equal(caption.at([0]).snap(), "Changed");
+    assert.equal(result.css.snapshot(), beforeCss);
+    assert.equal(owner(map).identityEpoch().issued().size, ledger.size);
+    const afterLedger = owner(map).identityEpoch().issued();
+    const before = map.capture(); let published = 0; const off = map.commits.observe(() => published++);
+    try { assert.throws(() => shell.delete()); } finally { off(); }
+    assert.deepEqual(map.capture(), before); assert.equal(owner(map).identityEpoch().issued(), afterLedger); assert.equal(published, 0);
+    const restored = install_libraries_snapshot(map.cut({ documents: ["page"], data: [] }).libs).map;
+    assert.equal(page(restored).q("caption")!.at([0]).snap(), "Changed");
+    assert.notEqual(lookup(page(restored), "caption")!.quid, lookup(result, "caption")!.quid);
+    page(restored).q("caption")!.attrs.set("title", "restored"); assert.equal(caption.attrs.get("title"), "caption");
+  });
   check("styled one/repeated occurrences publish one complete ordinary Library with sparse destination subjects", () => {
     for (const count of [1, 2, 3]) {
       const map = styled_fixture(count), before = map.capture(), oldSize = owner(map).identityEpoch().issued().size;

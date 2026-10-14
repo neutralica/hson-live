@@ -672,6 +672,12 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.equal(projected.libraries.find(entry => entry.name === "composed")?.quads, undefined);
     assert.deepEqual(projected.libraries.find(entry => entry.name === "public")?.quads?.map(entry => entry.name), ["shared"]);
     const client = client_projection_map({ authority: projected, local: { ui: { document: '<main/>' } } });
+    const cached = doc(client, "public"), followed = cached.q("shared")!;
+    assert.equal(followed.active, true); assert.ok(followed.snap());
+    const initialClient = client.capture(), initialLedger = owner(client).identityEpoch().issued();
+    assert.throws(() => followed.attrs.set("title", "unauthorized"));
+    assert.throws(() => followed.insert(0, "unauthorized"));
+    assert.deepEqual(client.capture(), initialClient); assert.equal(owner(client).identityEpoch().issued(), initialLedger);
     assert.ok(lookup(doc(client, "public"), "shared")); assert.throws(() => client.lib("hidden"));
     assert.equal(JSON.stringify(client.capture()).includes("PRIVATE_ADDRESS"), false);
     const raw = map.cut({ documents: [], data: ["hidden"] });
@@ -680,6 +686,12 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const before = lookup(doc(client, "public"), "shared")!, manager = {}; owner(client).claimManagement(manager);
     try {
       reconcile_client_projection_snapshot_internal(client, manager, authority_projection_as_client_composition_internal(projected));
+      assert.equal(followed.active, false); assert.equal(followed.snap(), undefined);
+      const afterReplacement = client.capture(); assert.throws(() => followed.attrs.set("title", "stale"));
+      assert.deepEqual(client.capture(), afterReplacement);
+      assert.ok(doc(client, "public").q("shared"));
+      // Cached facades may still look up the current Library, but old handles never reacquire by spelling.
+      const cachedLookup = cached.q("shared"); assert.ok(cachedLookup); assert.equal(cachedLookup.active, true);
       const after = lookup(doc(client, "public"), "shared")!;
       assert.notEqual(after.quid, before.quid); assert.deepEqual(after.path, before.path);
       assert.equal(owner(client).identityEpoch().issued().has(after.quid), true);
@@ -689,6 +701,14 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       assert.throws(() => reconcile_client_projection_snapshot_internal(client, manager,
         { ...authority_projection_as_client_composition_internal(projected), libraries: bad.libraries as never }));
       assert.equal(lookup(doc(client, "public"), "shared")?.quid, after.quid);
+      const beforeRemoval = doc(client, "public").q("shared")!;
+      const omitted = capture_selected_authority_projection_snapshot(map, await projection(map, ["composed"], ["hidden", "layout"]));
+      reconcile_client_projection_snapshot_internal(client, manager, authority_projection_as_client_composition_internal(omitted));
+      assert.equal(beforeRemoval.active, false); assert.equal(beforeRemoval.snap(), undefined);
+      assert.throws(() => cached.q("shared")); assert.throws(() => beforeRemoval.attrs.set("title", "removed"));
+      reconcile_client_projection_snapshot_internal(client, manager, authority_projection_as_client_composition_internal(projected));
+      const reused = doc(client, "public").q("shared")!; assert.equal(reused.active, true);
+      assert.equal(beforeRemoval.active, false); assert.throws(() => beforeRemoval.attrs.set("title", "reused"));
     } finally { owner(client).releaseManagement(manager); }
     const changedAddress = { ...projected, libraries: projected.libraries.map(entry => entry.name === "public"
       ? { ...entry, quads: [{ name: "renamed", path: validate_document_path([0]) }] } : entry) };

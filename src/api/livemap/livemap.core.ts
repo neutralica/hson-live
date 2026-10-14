@@ -355,9 +355,20 @@ function make_livemap_registry_engine(
 
   const aggregateObservers: Array<(commit: LiveMapAggregateCommit) => void> = [];
   const preparedSystemRoots = new WeakMap<import("./livemap.authority.js").PreparedLiveMapAuthorityTransition, HsonNode | undefined>();
-  const aggregatePositionObservers: Array<(revision: number) => void> = [];
+  const aggregatePositionObservers: Array<Readonly<{
+    listener: (revision: number) => void;
+    phase: "published" | "installed";
+  }>> = [];
   const publishAuthorityPosition = (revision = mapRevision): void => {
-    deliver_livemap_observers(aggregatePositionObservers, observer => observer(revision), "authority-position");
+    deliver_livemap_observers(aggregatePositionObservers.filter(observer => observer.phase === "published"),
+      observer => observer.listener(revision), "authority-position");
+  };
+  // Reuse the owner position signal for q's private terminal latch. Publication
+  // can be queued/reentrant, so its live-state observers are too late to prove
+  // that a subject was never absent between two exact restorations.
+  const publishInstalledPosition = (): void => {
+    deliver_livemap_observers(aggregatePositionObservers.filter(observer => observer.phase === "installed"),
+      observer => observer.listener(mapRevision), "identity-installation");
   };
   const aggregateRestoreObservers: Array<(event: Readonly<{
     previousRevision: number;
@@ -1387,6 +1398,7 @@ function make_livemap_registry_engine(
           systemCandidate.system.projectedValue = systemCandidate.value;
         }
         mapRevision = commit.rev;
+        publishInstalledPosition();
       },
       notify: (acceptedCommit) => {
         enqueuePublication(() => {
@@ -2116,6 +2128,7 @@ function make_livemap_registry_engine(
     hostedFence = Object.freeze({ ...checkpoint.authority });
     for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
     transitionController.invalidate();
+    publishInstalledPosition();
     const event = Object.freeze({
       previousRevision,
       revision: checkpoint.revision,
@@ -2257,6 +2270,7 @@ function make_livemap_registry_engine(
     mapRevision = snapshot.revision;
     for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
     transitionController.invalidate();
+    publishInstalledPosition();
     const restored = Object.freeze(candidates.map(({ state }) => state.identity));
     const correspondence = Object.freeze({ associations: Object.freeze(associations), assertCurrent: capture_fence() });
     portableRestorations.set(correspondence, portableStylesheets);
@@ -2440,6 +2454,7 @@ function make_livemap_registry_engine(
     if (authority !== undefined) hostedFence = Object.freeze({ ...authority });
     transitionController.invalidate();
     for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
+    publishInstalledPosition();
     // A hosted recovery snapshot is an atomic replacement boundary, not a
     // fabricated operation commit.  Selected document libraries use this to
     // deliver their normal in-place snapshot observation to Mirror while
@@ -2675,6 +2690,7 @@ function make_livemap_registry_engine(
         .map((binding) => [binding.name, binding])) });
     transitionController.invalidate();
     for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
+    publishInstalledPosition();
     afterTopologyInstall?.(Object.freeze(candidates.map((candidate) => Object.freeze({
       name: candidate.name, identity: candidate.state.identity,
     }))), Object.freeze(retired));
@@ -2971,6 +2987,10 @@ function make_livemap_registry_engine(
       const hosted = require_hosted_state();
       return Object.freeze({ authority: hosted.fence, revision: mapRevision, registryDigest: hosted.registry.digest });
     },
+    documentAuthority: (identity) => {
+      if (require_library(identity).mode !== "document") throw new Error("Document authority requires a document Library.");
+      return clientComposition !== undefined && !clientComposition.projected.has(identity) ? undefined : hostedFence;
+    },
     setInitialHostedAuthority: (authority) => {
 
       transitionController.assertPublicMutationAllowed();
@@ -2981,6 +3001,7 @@ function make_livemap_registry_engine(
       }
       hostedFence = Object.freeze({ ...authority });
       transitionController.invalidate();
+      publishInstalledPosition();
       const continuity = hosted.fence.logicalMapId === authority.logicalMapId
         && hosted.fence.incarnationId === authority.incarnationId ? "same-epoch" as const : "new-epoch" as const;
       const event = Object.freeze({ previousRevision: mapRevision, revision: mapRevision,
@@ -3188,10 +3209,11 @@ function make_livemap_registry_engine(
       publishAuthorityPosition();
       return mapRevision;
     }),
-    observeAuthorityPosition: (listener) => {
-      aggregatePositionObservers.push(listener);
+    observeAuthorityPosition: (listener, phase = "published") => {
+      const observer = Object.freeze({ listener, phase });
+      aggregatePositionObservers.push(observer);
       return () => {
-        const index = aggregatePositionObservers.indexOf(listener);
+        const index = aggregatePositionObservers.indexOf(observer);
         if (index !== -1) aggregatePositionObservers.splice(index, 1);
       };
     },

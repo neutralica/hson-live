@@ -139,7 +139,7 @@ export function resolve_document_quad(root: HsonNode, overlay: LiveMapDocumentId
   return Object.freeze({ name: authoredName, quid: identity, path: validate_document_path(path) });
 }
 
-/** Library facade capability; no public address API is installed. @internal */
+/** Register the Library's existing authored-subject lookup capability. @internal */
 export function register_document_quad_lookup(owner: object, lookup: (name: string | undefined, quid: string | undefined) => DocumentQuadSubject | undefined): void {
   lookups.set(owner, lookup);
 }

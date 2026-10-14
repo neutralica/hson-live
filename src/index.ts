@@ -123,6 +123,7 @@ export type {
   LiveMapDataLibraryInput,
   LiveMapDocumentLibrary,
   LiveMapDocumentLocation,
+  LiveMapDocumentQuadLocation,
   LiveMapDocumentLibraryInput,
   LiveMapInput,
   LiveMapLibraryInput,

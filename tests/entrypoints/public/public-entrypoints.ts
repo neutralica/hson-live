@@ -1,4 +1,25 @@
 import type { LiveMapHtmlCut } from "hson-live/livemap";
+import type { LiveMapDocumentQuadLocation } from "hson-live";
+import type { LiveMapDocumentQuadLocation as QuadLocation } from "hson-live/livemap";
+
+function consume_document_quad(location: LiveMapDocumentQuadLocation<"page">): QuadLocation<"page"> {
+  const active: boolean = location.active;
+  const path: readonly number[] = location.path();
+  location.attrs.set("title", "ready"); location.flags.set("disabled");
+  location.at([0]).replace("Next"); location.insert(0, "Text"); location.move(0, 1);
+  location.snap(); location.delete(); location.dispose();
+  void active; void path;
+  // @ts-expect-error This bounded identity location has no watch capability.
+  location.watch(() => {});
+  return location;
+}
+void consume_document_quad;
+
+const quadLibrary = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { data: {} } });
+const quadLocation: LiveMapDocumentQuadLocation<"page"> | undefined = quadLibrary.lib("page").q("unknown");
+void quadLocation;
+// @ts-expect-error Data Library surfaces remain unchanged.
+quadLibrary.lib("state").q("unknown");
 import { configure_scout, type ScoutProvider } from "hson-live/scout";
 import {
   Hson,

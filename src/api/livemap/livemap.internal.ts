@@ -173,6 +173,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   hostedRegistry: () => HostedRegistry;
   /** Read the hosted identity and revision without capturing roots. @internal */
   hostedPosition: () => Readonly<{ authority: import("./livemap.hosted.js").HostedAuthorityFence; revision: number; registryDigest: string }>;
+  /** Current canonical owning hosted identity; client-local Libraries have no remote authority. @internal */
+  documentAuthority: (library: LiveMapLibraryIdentity) => import("./livemap.hosted.js").HostedAuthorityFence | undefined;
   /** Set a supplied hosted identity before the first transition without recapturing roots. @internal */
   setInitialHostedAuthority: (authority: import("./livemap.hosted.js").HostedAuthorityFence) => void;
   /** Capture only preselected application names and the requested system root. @internal */
@@ -231,8 +233,14 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     prevRev: number;
     rev: number;
   }>) => number;
-  /** Authority position, including commits, progress, and snapshot installation. @internal */
-  observeAuthorityPosition: (listener: (revision: number) => void) => () => void;
+  /**
+   * Authority position, including commits, progress, and snapshot installation.
+   * The internal installed phase is for lifetime guards only: coherent identity
+   * state is visible before any reentrant publication or topology callback.
+   * @internal
+   */
+  observeAuthorityPosition: (listener: (revision: number) => void,
+    phase?: "published" | "installed") => () => void;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
   documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;

@@ -1477,6 +1477,21 @@ export type LiveMapDocumentLocation<
   InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
 >;
 
+/**
+ * An existing QUAD subject lifetime. Each operation resolves its current location.
+ * `.at()` children are fixed coordinates relative to that subject, not independent identities.
+ * Retired/disposed snapshots return undefined; other reads and edits reject.
+ */
+export type LiveMapDocumentQuadLocation<TLibrary extends string = string> = Readonly<
+  Pick<LiveMapLibraryDocumentElementLocation<TLibrary, HsonNode | Primitive | undefined, unknown>,
+    "rev" | "path" | "snap" | "attrs" | "flags" | "replace" | "delete" | "insert" | "move">
+  & {
+    readonly active: boolean;
+    at: (path: readonly number[]) => LiveMapDocumentQuadLocation<TLibrary>;
+    dispose: () => void;
+  }
+>;
+
 /** One selected named document authority. Its writes retain the map-global commit envelope. */
 export type LiveMapDocumentLibrary<
   TEvidence = unknown,
@@ -1487,6 +1502,8 @@ export type LiveMapDocumentLibrary<
   readonly rev: number;
   readonly css: import("./document-css.types.js").DocumentCssHandle;
   root: () => HsonNode;
+  /** Observe an existing authored QUAD; unknown/retired names return undefined without issuing identity. */
+  q: (name: string) => LiveMapDocumentQuadLocation<TLibrary> | undefined;
   at<const TPath extends readonly number[]>(
     path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]
       ? never
