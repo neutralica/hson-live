@@ -66,7 +66,7 @@ function atomic(map: LiveMap, run: () => unknown, reason?: RegExp) {
 export function styled_composition_cases(check: (name: string, run: () => void) => void) {
   check("public q edits styled shell and promoted subjects without importing Part-local landmarks", () => {
     const map = styled_fixture(), result = compose(map, "layout", "page", {
-      configuration: { at: { slot0: { at: { label: { as: "caption" } } } } },
+      configuration: { at: { slot0: { at: { label: { q: "caption" } } } } },
     });
     assert.equal("q" in map.lib("parts"), false);
     assert.equal(result.q("root"), undefined); assert.equal(result.q("label"), undefined); assert.equal(result.q("unused"), undefined);
@@ -99,7 +99,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
         commits.push(commit); assert.match(page(map).css.snapshot(), /padding-left:7px/);
         assert.equal(owner(map).documentOverlay(identity(map)).size, count * 2);
       });
-      try { compose(map, "layout", "page", { configuration: { at: { slot0: { at: { label: { as: "caption" } } } } } }); }
+      try { compose(map, "layout", "page", { configuration: { at: { slot0: { at: { label: { q: "caption" } } } } } }); }
       finally { stop(); }
       assert.equal(commits.length, 1); assert.equal(commits[0]!.operations.length, 1);
       assert.equal(map.rev, before.revision + 1); assert.equal(owner(map).identityEpoch().issued().size, oldSize + count * 2);

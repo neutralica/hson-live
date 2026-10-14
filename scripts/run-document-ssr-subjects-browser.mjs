@@ -19,7 +19,7 @@ const fixture = ssr_subject_fixture();
 const cut = cut_document_ssr_internal(fixture.map, { html: "page" }, fixture.demanded);
 assert.doesNotMatch(cut.html, /hson:quid|hson\\:quid/);
 const components = styled_fixture();
-compose_livemap_document_internal(components, "layout", "page", {configuration:{at:{slot0:{at:{label:{as:"caption"}}}}}});
+compose_livemap_document_internal(components, "layout", "page", {configuration:{at:{slot0:{at:{label:{q:"caption"}}}}}});
 const componentOwner = internal_livemap_aggregate_authority(components), finalIdentity = componentOwner.libraries().at(-1);
 const componentDemand = document_css_subject_identities(encode_portable_document_stylesheet(componentOwner.stylesheet(finalIdentity)), "outbound");
 const componentCut = components.cut({html:"page", documents:["page"], data:[]});

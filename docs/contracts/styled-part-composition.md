@@ -2,7 +2,7 @@
 
 The private composer expands validated keyed Parts from governed data Libraries
 into one ordinary new document Library. It retains `lib`/`at`, recursive `at`
-configuration, `use: { at, lib? }`, root overrides and explicit receiving `as`.
+configuration, `use: { at, lib? }`, root overrides and explicit receiving `q`.
 No public template or fragment API is introduced.
 
 Each selected Part contributes its entire optional managed stylesheet. Stylesheet
@@ -17,7 +17,13 @@ path for that occurrence, including connector replacement roots. Root and descen
 references demand only those receiving subjects. Each occurrence is translated
 separately by the existing syntax-aware CSS translator; local names may repeat
 freely across occurrences. Names from Parts are never installed in the receiving
-authored registry. Shell names and explicit `as` promotions retain existing rules.
+authored registry. Shell names and explicit `q` promotions retain existing rules.
+
+The recursive private configuration uses `q` to promote its selected source
+subject into a named receiving document QUAD. The former `as` configuration
+field is rejected at every level; ordinary content attributes named `as` are
+unrelated and remain unchanged. JavaScript records and native HsonData accept
+the same configuration shape.
 
 Part definitions have no anonymous subject coordinate beyond authored local QUADs.
 Generated QUID claims, unresolved names, non-exact identity selectors and opaque

@@ -193,7 +193,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
       else assert(lookup(f.selected,entry.name)?.quid===entry.quid,'receiving authored QUAD retained');
     });
     assert(!lookup(f.selected,'root')&&!lookup(f.selected,'label'),'Part-local names never promoted');
-    assert(lookup(f.selected,'slot0')&&lookup(f.selected,'slot1')&&lookup(f.selected,'caption'),'shell and explicit as promotions retained');
+    assert(lookup(f.selected,'slot0')&&lookup(f.selected,'slot1')&&lookup(f.selected,'caption'),'shell and explicit q promotions retained');
     const rootEntry=f.correspondence.associations.find(entry=>entry.name==='slot0'),label=sections[0].querySelector('span'),labelId=label.getAttribute('hson:quid');
     f.selected.document.attrs.set({kind:'path',path:rootEntry.path},'title','Edited');
     assert(sections[0].getAttribute('title')==='Edited','live local attribute edit');

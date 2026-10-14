@@ -19,7 +19,7 @@ export type DocumentCompositionOptions = Readonly<{
   schema?: HsonSchema;
   /** Native HsonData or a private own-data record: attrs?: string record, text?: string,
    * use?: { at: string, lib?: string }, at?: QUAD-to-configuration record,
-   * as?: explicit receiving QUAD name (private spelling).
+   * q?: explicit receiving QUAD name (private spelling).
    * use applies only to connectors; omitted lib retains the selected collection.
    */
   configuration?: HsonData | Readonly<Record<string, unknown>>;
@@ -74,7 +74,7 @@ export function document_composition_options(input: DocumentCompositionOptions |
 type Configuration = Readonly<{
   attrs: readonly (readonly [string, string])[];
   text?: string;
-  as?: string;
+  q?: string;
   use?: Readonly<{ lib?: string; at: string }>;
   at: readonly (readonly [string, Configuration])[];
 }>;
@@ -113,7 +113,7 @@ function normalize_configuration(input: unknown): Configuration {
     if (typeof value !== "object" || value === null) throw new TypeError("Invalid configuration.");
     if (active.has(value)) throw new TypeError("Cyclic composition configuration.");
     active.add(value);
-    for (const key of data.keys()) if (!["attrs", "text", "use", "at", "as"].includes(key)) {
+    for (const key of data.keys()) if (!["attrs", "text", "use", "at", "q"].includes(key)) {
       throw new TypeError(`Unknown composition configuration field ${JSON.stringify(key)}.`);
     }
     const attrs: (readonly [string, string])[] = [];
@@ -125,9 +125,9 @@ function normalize_configuration(input: unknown): Configuration {
     }
     const text = data.get("text");
     if (data.has("text") && typeof text !== "string") throw new TypeError("Composition configuration text requires a string.");
-    const receiving = data.get("as");
-    if (data.has("as") && !is_document_quad_name(receiving)) {
-      throw new TypeError("Composition configuration as requires an explicit authored QUAD string.");
+    const receiving = data.get("q");
+    if (data.has("q") && !is_document_quad_name(receiving)) {
+      throw new TypeError("Composition configuration q requires an explicit authored QUAD string.");
     }
     let use: Configuration["use"];
     if (data.has("use")) {
@@ -149,7 +149,7 @@ function normalize_configuration(input: unknown): Configuration {
     const result: Configuration = Object.assign(Object.create(null), {
       attrs: Object.freeze(attrs), at: Object.freeze(at),
       ...(use === undefined ? {} : { use }), ...(typeof text === "string" ? { text } : {}),
-      ...(typeof receiving === "string" ? { as: receiving } : {}),
+      ...(typeof receiving === "string" ? { q: receiving } : {}),
     });
     return Object.freeze(result);
   };
@@ -323,7 +323,7 @@ export function expand_document_composition(
   };
   singleRoot(initialRoot.$_content, limits.configuration);
   const frames: Frame[] = [{ source: initialRoot.$_content, output: root.$_content, outputPath: [], index: 0,
-    ...(limits.configuration?.as === undefined ? {} : { receiving: { names: [limits.configuration.as], start: 0 } }),
+    ...(limits.configuration?.q === undefined ? {} : { receiving: { names: [limits.configuration.q], start: 0 } }),
     owner: root, scope: initialScope,
     occurrence: { ...initial, scopes: [initialScope] },
     customization: limits.configuration,
@@ -380,7 +380,7 @@ export function expand_document_composition(
     };
     const shellName = frame.occurrence.shellNames.get(item);
     const style = frame.occurrence.style, styledName = style?.demanded.get(item);
-    const receiving = [...(shellName === undefined ? [] : [shellName]), ...(configuration?.as === undefined ? [] : [configuration.as])];
+    const receiving = [...(shellName === undefined ? [] : [shellName]), ...(configuration?.q === undefined ? [] : [configuration.q])];
     if (item.$_tag.toLowerCase() === "hson-template") {
       const attrs = item.$_attrs ?? {};
       if (Object.hasOwn(attrs, "quad")) throw new TypeError("hson-template quad selection is unsupported; select a Part with lib and at.");

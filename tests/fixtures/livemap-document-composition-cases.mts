@@ -74,7 +74,7 @@ function atomic(map: LiveMap, run: () => unknown, pattern?: RegExp): void {
   assert.equal(commits, 0); assert.equal(positions, 0);
 }
 const configured = { at: {
-  first: { attrs: { title: "First" }, at: { heading: { as: "caption", text: "One" }, action: { text: "Next" } } },
+  first: { attrs: { title: "First" }, at: { heading: { q: "caption", text: "One" }, action: { text: "Next" } } },
   second: { at: { heading: { text: "Two" }, action: { use: { at: "secondary" }, text: "Previous" } } },
 } };
 
@@ -131,6 +131,15 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.equal(page.document.attrs.get(target(0, 0, 0), "title"), "Edited");
     assert.deepEqual(tokens(compose(map, "layout", "later").root()), ["main", "article", "Changed source", "article", "Changed source", "footer"]);
   });
+  check("JavaScript and native HsonData configuration promote the same nested receiving QUAD", () => {
+    const map = recursive();
+    const configuration = { at: { first: { at: { heading: { q: "caption", text: "One" } } } } };
+    const fromJavaScript = compose(map, "layout", "javascript", { configuration });
+    const fromHsonData = compose(map, "layout", "hson-data", { configuration: Hson.data.from(configuration) });
+    assert.deepEqual(fromHsonData.root(), fromJavaScript.root());
+    assert.deepEqual(lookup(fromHsonData, "caption")?.path, [0, 0, 0, 0, 0]);
+    assert.equal(lookup(fromHsonData, "heading"), undefined);
+  });
   check("Part-local root descendant and connector QUADs remain local without explicit promotion", () => {
     const map = recursive(), page = compose(map, "layout", "page");
     for (const name of ["panel", "heading", "body", "action", "button"]) assert.equal(lookup(page, name), undefined);
@@ -148,14 +157,29 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.equal(lookup(page, "label"), undefined);
     assert.equal(page.document.byQuid(lookup(page, "next")!.quid)?.$_tag, "section");
   });
-  check("shell names and explicit as agree only on the same final association", () => {
+  check("shell names and explicit q agree only on the same final association", () => {
     const map = recursive();
-    const page = compose(map, "layout", "same", { configuration: { as: "page", at: { first: { as: "first" } } } });
+    const page = compose(map, "layout", "same", { configuration: { q: "page", at: { first: { q: "first" } } } });
     assert.deepEqual(lookup(page, "first")?.path, [0, 0, 0]);
-    for (const configuration of [{ as: "renamed" }, { at: { first: { as: "renamed" } } },
-      { at: { first: { as: "page" } } }, { at: { first: { at: { heading: { as: "tail" } } } } }]) {
+    for (const configuration of [{ q: "renamed" }, { at: { first: { q: "renamed" } } },
+      { at: { first: { q: "page" } } }, { at: { first: { at: { heading: { q: "tail" } } } } }]) {
       atomic(map, () => compose(map, "layout", "bad", { configuration }), /one name per subject/);
     }
+  });
+  check("old as composition controls are rejected at root and inside recursive at", () => {
+    const map = recursive();
+    atomic(map, () => compose(map, "layout", "bad-root", { configuration: { as: "page" } }), /Unknown composition configuration field "as"/);
+    atomic(map, () => compose(map, "layout", "bad-nested", { configuration: { at: { first: { as: "first" } } } }), /Unknown composition configuration field "as"/);
+    atomic(map, () => compose(map, "layout", "bad-hson-root", { configuration: Hson.data.from({ as: "page" }) }), /Unknown composition configuration field "as"/);
+    atomic(map, () => compose(map, "layout", "bad-hson-nested", { configuration: Hson.data.from({ at: { first: { as: "first" } } }) }), /Unknown composition configuration field "as"/);
+    assert.ok(lookup(compose(map, "layout", "good", { configuration: { q: "page" } }), "page"));
+  });
+  check("authored content attribute as remains data during q composition", () => {
+    const map = hsonLiveMap.fromLibraries({ layout: { document: '<hson-template lib="parts" at="button"/>' },
+      parts: collection({ button: part('<button as="content"/>') }) });
+    const page = compose(map, "layout", "page", { configuration: { q: "received" } });
+    assert.equal(page.document.attrs.get(target(0), "as"), "content");
+    assert.ok(lookup(page, "received"));
   });
   check("shell addresses do not depend on source runtime QUIDs and final identities are fresh", () => {
     const map = recursive(), shell = doc(map, "layout"), old = lookup(shell, "first")!.quid;
@@ -317,7 +341,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.equal(page.document.attrs.get(target(0, 0, 0, 0, 1, 0, 0), "title"), "Chosen");
   });
   check("prepared reusable subconfigurations equal a complete page configuration", () => {
-    const map = recursive(), button = { as: "promoted", text: "Prepared" }, panel = { at: { action: button, heading: { text: "Heading" } } };
+    const map = recursive(), button = { q: "promoted", text: "Prepared" }, panel = { at: { action: button, heading: { text: "Heading" } } };
     const configuration = { at: { first: panel, second: { at: { action: { text: "Other" } } } } }, before = JSON.stringify(configuration);
     const a = compose(map, "layout", "a", { configuration }), b = compose(map, "layout", "b", { configuration: JSON.parse(before) });
     assert.deepEqual(a.root(), b.root()); assert.equal(JSON.stringify(configuration), before);
@@ -346,15 +370,15 @@ export function document_composition_cases(check: (name: string, run: () => void
     const map = hsonLiveMap.fromLibraries({ layout: { document: '<hson-template lib="parts" at="p"/>' }, parts: collection({ p: part('<p ""/>') }) });
     assert.deepEqual(tokens(compose(map, "layout", "empty", { configuration: Hson.data.from({ text: "" }) }).root()), ["p", ""]);
   });
-  check("configuration exactness rejects old use.quad unknown fields accessors executable values and cycles", () => {
+  check("configuration exactness rejects old as and use.quad fields plus accessors executable values and cycles", () => {
     const map = recursive(), cyclic: Record<string, unknown> = {}; cyclic.at = { first: cyclic };
-    const accessor = {}; Object.defineProperty(accessor, "as", { enumerable: true, get() { throw Error("Getter must not run"); } });
+    const accessor = {}; Object.defineProperty(accessor, "q", { enumerable: true, get() { throw Error("Getter must not run"); } });
     const hidden = {}; Object.defineProperty(hidden, "text", { value: "" });
-    const malformed: unknown[] = [undefined, null, [], () => {}, cyclic, accessor, hidden, { q: "renamed" }, { text: undefined },
+    const malformed: unknown[] = [undefined, null, [], () => {}, cyclic, accessor, hidden, { as: "legacy" }, { text: undefined },
       { at: { first: { use: { quad: "panel" } } } }, { at: { first: { use: { at: "panel", quad: "panel" } } } },
       { at: { first: { use: "parts/panel" } } }, { at: { first: { use: { lib: "parts" } } } },
       { at: { first: { use: { at: "panel", lib: undefined } } } }, { at: { first: { use: { at: 1 } } } },
-      { at: { first: { attrs: { title: false } } } }, { at: { first: { as: false } } }, { at: { first: { at: { "invalid name": {} } } } }];
+      { at: { first: { attrs: { title: false } } } }, { at: { first: { q: false } } }, { at: { first: { at: { "invalid name": {} } } } }];
     for (const configuration of malformed) atomic(map, () => Reflect.apply(compose, undefined, [map, "layout", "bad", { configuration }]));
     const nullRecord = Object.assign(Object.create(null), { at: { first: { attrs: { title: "Allowed" } } } });
     assert.equal(compose(map, "layout", "valid", { configuration: nullRecord }).document.attrs.get(target(0, 0, 0), "title"), "Allowed");
@@ -374,7 +398,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     const map = recursive();
     for (const configuration of [{ at: { second: { use: { at: "missing" } } } },
       { at: { second: { use: { lib: "unknown", at: "primary" } } } }, { at: { second: { attrs: { missing: "bad" } } } },
-      { at: { second: { at: { heading: { as: "caption" } } }, first: { at: { heading: { as: "caption" } } } } }]) {
+      { at: { second: { at: { heading: { q: "caption" } } }, first: { at: { heading: { q: "caption" } } } } }]) {
       atomic(map, () => compose(map, "layout", "bad", { configuration }));
     }
   });
@@ -395,17 +419,17 @@ export function document_composition_cases(check: (name: string, run: () => void
     const map = recursive(), aggregate = owner(map); let calls = 0;
     set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => { calls++; throw Error("Allocator must not run"); });
     try {
-      for (const configuration of [{ at: { first: { as: "different" } } }, { at: { first: { at: { heading: { as: "same" } } }, second: { at: { heading: { as: "same" } } } } },
-        { at: { first: { as: "bad name" } } }, { at: { first: { as: "" } } }]) atomic(map, () => compose(map, "layout", "bad", { configuration }));
+      for (const configuration of [{ at: { first: { q: "different" } } }, { at: { first: { at: { heading: { q: "same" } } }, second: { at: { heading: { q: "same" } } } } },
+        { at: { first: { q: "bad name" } } }, { at: { first: { q: "" } } }]) atomic(map, () => compose(map, "layout", "bad", { configuration }));
       assert.equal(calls, 0);
     } finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
     const legal = hsonLiveMap.fromLibraries({ layout: { document: '<p/>' } });
-    for (const name of ["constructor", "__proto__", "Pascal_Name"]) assert.equal(lookup(compose(legal, "layout", "page" + legal.rev, { configuration: { as: name } }), name)?.path.join("."), "0");
+    for (const name of ["constructor", "__proto__", "Pascal_Name"]) assert.equal(lookup(compose(legal, "layout", "page" + legal.rev, { configuration: { q: name } }), name)?.path.join("."), "0");
   });
   check("receiving cardinality requires one ordinary subject after expansion without guessing", () => {
     for (const document of ['', '"text"', '<i/> <b/>', '"before" <i/>']) {
       const map = hsonLiveMap.fromLibraries({ layout: { document: sourceRoot(document) } });
-      atomic(map, () => compose(map, "layout", "bad", { configuration: { as: "received" } }), /exactly one ordinary resulting/);
+      atomic(map, () => compose(map, "layout", "bad", { configuration: { q: "received" } }), /exactly one ordinary resulting/);
       assert.throws(() => collection({ invalid: part(document) }));
       const shell = parse_authored_document_library('<hson-template @:slot lib="parts" at="invalid"/>');
       assert.throws(() => expand_document_composition("shell", () => ({ root: shell.root, quads: shell.declarations }),
@@ -428,7 +452,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.equal(page.schema.get(), schema); page.document.attrs.set(target(0), "href", "/edited");
     atomic(map, () => page.document.content.replace(target(), 0, { $_tag: "p", $_content: [] }), /schema/i);
     const wrong = Hson.schema`<type "document" tag "p" content "empty">`;
-    atomic(map, () => compose(map, "layout", "bad", { schema: wrong, configuration: { as: "receiving" } }), /schema/i);
+    atomic(map, () => compose(map, "layout", "bad", { schema: wrong, configuration: { q: "receiving" } }), /schema/i);
     atomic(map, () => compose(map, "layout", "page"), /duplicated/);
   });
   check("final capture and fresh restore work with all definition Libraries excluded", () => {
@@ -604,10 +628,10 @@ export function document_composition_cases(check: (name: string, run: () => void
   check("a completed inner receiving composition survives outer candidate identity-allocation rejection", () => {
     const map = fixture(), aggregate = owner(map); let entered = false, after: ReturnType<LiveMap["capture"]> | undefined;
     set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => {
-      if (!entered) { entered = true; compose(map, "layout", "inner", { configuration: { as: "innerRoot" } }); after = map.capture(); }
+      if (!entered) { entered = true; compose(map, "layout", "inner", { configuration: { q: "innerRoot" } }); after = map.capture(); }
       return mint_hson_node_quid();
     });
-    try { assert.throws(() => compose(map, "layout", "outer", { configuration: { as: "outerRoot" } })); }
+    try { assert.throws(() => compose(map, "layout", "outer", { configuration: { q: "outerRoot" } })); }
     finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
     assert.equal(entered, true); assert.ok(lookup(doc(map, "inner"), "innerRoot")); assert.throws(() => map.lib("outer"));
     assert.deepEqual(map.capture(), after); assert.equal(map.rev, 1);
