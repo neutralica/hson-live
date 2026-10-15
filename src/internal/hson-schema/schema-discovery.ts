@@ -1,5 +1,6 @@
 import type ts from "typescript";
 import { is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { admit_hson_tagged_template } from "../embedded-hson/hson-tagged-source-admission.js";
 
 export type DiscoveredHsonSchemaDeclaration = Readonly<{
   sourceFile: ts.SourceFile;
@@ -10,12 +11,14 @@ export type DiscoveredHsonSchemaDeclaration = Readonly<{
   ambiguous: boolean;
   complete: boolean;
   eligible: boolean;
+  source?: string;
+  admissionError?: string;
 }>;
 
 /**
- * Shared declaration identity and ambiguity policy for compiler projects and
- * live editor views. Parsing/compilation remains a caller concern, but only an
- * eligible declaration may own generated precise evidence.
+ * Recognition remains available for diagnostics when admission fails. Only an
+ * unambiguous producer admitted by the shared tag contract is proof-eligible;
+ * callers must still compile its admitted source as a valid Schema definition.
  */
 export function discover_hson_schema_declarations(
   typescript: typeof ts,
@@ -44,9 +47,17 @@ export function discover_hson_schema_declarations(
       || !is_official_hson_package_binding(tagged.tag.expression, "Hson", checker, true)) continue;
     const ambiguous = (counts.get(declaration.name.text) ?? 0) > 1;
     const complete = typescript.isNoSubstitutionTemplateLiteral(tagged.template) && !tagged.template.isUnterminated;
+    let source: string | undefined;
+    let admissionError: string | undefined;
+    if (complete) {
+      try { source = admit_hson_tagged_template(typescript, tagged, "schema"); }
+      catch (error) { admissionError = error instanceof Error ? error.message : "Hson Schema tagged-template admission failed."; }
+    }
     output.push(Object.freeze({
       sourceFile, statement, declaration, tagged, name: declaration.name.text,
-      ambiguous, complete, eligible: !ambiguous && complete,
+      ambiguous, complete, eligible: !ambiguous && source !== undefined,
+      ...(source === undefined ? {} : { source }),
+      ...(admissionError === undefined ? {} : { admissionError }),
     }));
   }
   return Object.freeze(output);

@@ -1,12 +1,10 @@
 import * as messages from "./diagnostic-messages.js";
-import { admit_hson, reconstruct_hson_interpolated_template } from "../../../src/api/transform/hson-admission.js";
-import { admit_canonical_hson_data_value } from "../../../src/api/data/hson-data-hson.js";
-import { qualify_hson_document_source } from "../../../src/api/document/hson-document.js";
+import { admit_hson_tagged_source } from "../../../src/internal/embedded-hson/hson-tagged-source-admission.js";
 import { tokenize_hson, scan_hson_template_segments } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { read_transform_error_details } from "../../../src/core/errors.js";
 import { interpolation_site } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
 import { source_point_range_at, type HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
-import { create_hson_source_program, type HsonAuthoringKind, type HsonTaggedTemplateSource, type InterpolatedEmbeddedHsonTemplate } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { type HsonAuthoringKind, type HsonTaggedTemplateSource, type InterpolatedEmbeddedHsonTemplate } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
 
 type Literal = ReturnType<typeof interpolation_site>["literals"][number];
@@ -35,21 +33,8 @@ function diagnostic(error: unknown, literal: Literal, fallback: HostSourceRange,
 export function diagnose_hson_tag(source: HsonTaggedTemplateSource): readonly DocumentDiagnosticSpec[] {
   // Reuse D5's raw-template newline/UTF-16 correspondence, with zero holes.
   const literal = interpolation_site({ ...source, substitutionRanges: [], expressionRanges: [] }, source.fileName).literals[0]!;
-  // TypeScript, not an editor escape grammar, determines cooked availability.
-  // The real tag rejects undefined cooked segments even though it parses raw.
-  const program = create_hson_source_program(source.fileName, source.hostText.slice(source.templateRange.start, source.templateRange.end));
-  const invalidEscape = program.getSyntacticDiagnostics().length > 0;
-  // Cooked contents are not consumed by Hson, only their availability is checked.
-  const strings = Object.freeze(Object.assign([invalidEscape ? undefined : literal.raw], { raw: Object.freeze([literal.raw]) }));
   try {
-    // Reflect keeps the real tagged-template cooked-segment guard without eval.
-    if (source.authoringKind === "document") {
-      const raw = Reflect.apply(reconstruct_hson_interpolated_template, undefined, [strings, []]);
-      qualify_hson_document_source(raw.source);
-    } else {
-      const canonical = Reflect.apply(admit_hson, undefined, [strings]);
-      if (source.authoringKind === "data" || source.authoringKind === "schema") admit_canonical_hson_data_value(canonical);
-    }
+    admit_hson_tagged_source(source);
     return [];
   } catch (error) {
     return [diagnostic(error, literal, source.bodyRange, source.authoringKind)];

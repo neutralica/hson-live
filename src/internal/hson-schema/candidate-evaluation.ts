@@ -10,7 +10,7 @@ import type { HsonSourceRange } from "../hson-source-provenance/hson-source-prov
 
 export type StaticSchemaCandidate = Readonly<{ source: string; family: "data" | "document" | "canonical" }> | Readonly<{ json: unknown }>;
 export type StaticSchemaEvaluation = Readonly<{ kind: "valid" }> | Readonly<{ kind: "unknown"; error?: string }>
-  | Readonly<{ kind: "invalid"; issue: CanonicalGraphIssue; range?: HsonSourceRange }>;
+  | Readonly<{ kind: "invalid"; issue: CanonicalGraphIssue; range?: HsonSourceRange; relatedRange?: HsonSourceRange }>;
 
 /** One context-aware canonical evaluation for annotation proof and relationships. */
 export function evaluate_static_schema_candidate(compiled: CompiledHsonSchema, candidate: StaticSchemaCandidate): StaticSchemaEvaluation {
@@ -28,6 +28,11 @@ export function evaluate_static_schema_candidate(compiled: CompiledHsonSchema, c
     const resolution = parsed === undefined ? undefined : document
       ? resolve_document_schema_issue_source(parsed.value, "document", parsed.provenance, issue)
       : resolve_projected_schema_issue_source(parsed.value, parsed.provenance, issue);
-    return { kind: "invalid", issue, ...(resolution === undefined || resolution.kind === "unresolved" ? {} : { range: resolution.range }) };
+    const related = parsed === undefined || document || issue.evidence.relatedPath === undefined ? undefined
+      : resolve_projected_schema_issue_source(parsed.value, parsed.provenance, { code: issue.code, path: issue.evidence.relatedPath });
+    return { kind: "invalid", issue,
+      ...(resolution === undefined || resolution.kind === "unresolved" ? {} : { range: resolution.range }),
+      ...(related === undefined || related.kind === "unresolved" ? {} : { relatedRange: related.range }),
+    };
   } catch (error) { return { kind: "unknown", ...(error instanceof Error ? { error: error.message } : {}) }; }
 }

@@ -30,5 +30,12 @@ export function validate_hson_schema_graph(schema: HsonSchema, graph: import("..
     catch { throw new HsonSchemaError("Hson Schema validation failed.", [], [Object.freeze({ code: "TYPE_MISMATCH" as const, path: [], message: "Expected data Hson; received document Hson." })]); }
     result = evaluate_canonical_projected_schema(compiled.graph, projected);
   }
-  if (!result.ok) throw new HsonSchemaError("Hson Schema validation failed.", result.issues[0]?.path ?? [], result.issues.map((issue) => Object.freeze({ code: issue.code, path: issue.path, message: `Schema validation failed at ${issue.path.join(".") || "root"}.`, ...(issue.expected === undefined ? {} : { expected: issue.expected }), ...(issue.received === undefined ? {} : { received: issue.received }), ...(issue.evidence.relatedPath === undefined ? {} : { relatedPath: issue.evidence.relatedPath }), ...(issue.evidence.conflictingKey === undefined ? {} : { conflictingKey: issue.evidence.conflictingKey }) })));
+  if (!result.ok) throw new HsonSchemaError("Hson Schema validation failed.", result.issues[0]?.path ?? [], result.issues.map((issue) => Object.freeze({
+    code: issue.code, path: issue.path, message: `Schema validation failed at ${issue.path.join(".") || "root"}.`,
+    ...(issue.expected === undefined ? {} : { expected: issue.expected }),
+    ...(issue.received === undefined ? {} : { received: issue.received }),
+    ...(issue.attributeName === undefined ? {} : { attributeName: issue.attributeName }),
+    ...(issue.evidence.relatedPath === undefined ? {} : { relatedPath: issue.evidence.relatedPath }),
+    ...(issue.evidence.conflictingKey === undefined ? {} : { conflictingKey: issue.evidence.conflictingKey }),
+  })));
 }

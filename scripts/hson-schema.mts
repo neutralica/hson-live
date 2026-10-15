@@ -13,6 +13,7 @@ const { is_official_hson_package_binding } = await import(`${runtimeBase}/intern
 const { compile_hson_schema } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
 const { library_schema_attachment_plan } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
 const { discover_hson_schema_declarations } = await import(`${runtimeBase}/internal/hson-schema/schema-discovery.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-discovery.ts");
+const { admit_hson_tagged_template } = await import(`${runtimeBase}/internal/embedded-hson/hson-tagged-source-admission.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/embedded-hson/hson-tagged-source-admission.ts");
 const { static_schema_candidate_diagnostics } = await import(`${runtimeBase}/internal/hson-schema/candidate-diagnostics.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/candidate-diagnostics.ts");
 const { evaluate_static_schema_candidate } = await import(`${runtimeBase}/internal/hson-schema/candidate-evaluation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/candidate-evaluation.ts");
 const { resolve_immutable_schema } = await import(`${runtimeBase}/internal/hson-schema/schema-identity.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-identity.ts");
@@ -70,9 +71,10 @@ async function run_project(watch: boolean): Promise<void> {
       if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)) continue;
       attachments.push(...library_schema_attachment_plan(source, checker, attachmentFacts).edits.map(edit => ({ file: source.fileName, ...edit })));
     }
-    // Generated precision replaces ordinary broad-tag diagnostics; missing imports remain errors.
-    const missingImports = program.getSemanticDiagnostics().filter(d => [2307, 2792, 7016].includes(d.code));
-    diagnostics.push(...missingImports.map(d => ({ message: format_ts_diagnostic(d) })));
+    // Generated precision replaces ordinary broad-tag diagnostics; missing
+    // imports and TypeScript's optional-chain tag grammar errors remain errors.
+    const sourceErrors = program.getSemanticDiagnostics().filter(d => [1358, 2307, 2792, 7016].includes(d.code));
+    diagnostics.push(...sourceErrors.map(d => ({ message: format_ts_diagnostic(d) })));
     return { schemas, overlays: [...analysis.overlays, ...attachments], diagnostics: diagnostics.map(d => {
       const source = d.file === undefined ? undefined : program.getSourceFile(d.file);
       const position = source === undefined || d.start === undefined ? undefined : source.getLineAndCharacterOfPosition(d.start);
@@ -123,7 +125,11 @@ function discover_schemas(program: ts.Program, checker: ts.TypeChecker, diagnost
         if (diagnostics === undefined) throw new Error(message);
         diagnostics.push({ message }); continue;
       }
-      const source = raw_template(tagged.template, sourceFile);
+      if (!discovered.eligible || discovered.source === undefined) {
+        diagnostics?.push({ file: sourceFile.fileName, start: tagged.getStart(sourceFile), message: discovered.admissionError ?? `${name} is not eligible for Hson Schema proof.` });
+        continue;
+      }
+      const source = discovered.source;
       const compiled = compile_hson_schema(source);
       if (!compiled.ok) {
         const message = `${sourceFile.fileName}: ${name}: ${compiled.issues.map((issue) => issue.message).join(" ")}`;
@@ -180,7 +186,10 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
           diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: `Schema-bound ${typeName} requires a direct substitution-free official semantic Hson tag.` });
           continue;
         }
-        const evaluated = evaluate_static_schema_candidate(schema.compiled, { source: raw_template(declaration.initializer.template, sourceFile), family: typeName === "HsonData" ? "data" : "document" });
+        let source: string;
+        try { source = admit_hson_tagged_template(ts, declaration.initializer, typeName === "HsonData" ? "data" : "document"); }
+        catch (error) { diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: error_message(error) }); continue; }
+        const evaluated = evaluate_static_schema_candidate(schema.compiled, { source, family: typeName === "HsonData" ? "data" : "document" });
         if (evaluated.kind !== "valid") {
           // Semantic failures are reported once by shared relationship analysis.
           if (evaluated.kind === "unknown" && evaluated.error !== undefined) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: evaluated.error });
@@ -213,7 +222,6 @@ function is_official_hson_member_tag(node: ts.TaggedTemplateExpression, member: 
     && official_binding(node.tag.expression, "Hson", checker);
 }
 
-function raw_template(node: ts.NoSubstitutionTemplateLiteral, sourceFile: ts.SourceFile): string { const text = node.getText(sourceFile); return text.slice(1, -1); }
 function value_after(flag: string): string | undefined { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; }
 function fail(message: string): never { throw new Error(message); }
 function error_message(error: unknown): string { return error instanceof Error ? error.message : String(error); }

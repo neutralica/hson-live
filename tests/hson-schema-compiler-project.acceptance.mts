@@ -4,6 +4,9 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { dirname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
+import { admit_hson_tagged_template } from "../src/internal/embedded-hson/hson-tagged-source-admission.ts";
+import { discover_hson_schema_declarations } from "../src/internal/hson-schema/schema-discovery.ts";
+import { generate_schema_compiler_project } from "../src/internal/hson-schema/compiler-project.ts";
 function unwrap_tagged_schema(node: ts.Expression): ts.TaggedTemplateExpression | undefined {
   if (ts.isTaggedTemplateExpression(node)) return node;
   return ts.isAsExpression(node) || ts.isParenthesizedExpression(node) ? unwrap_tagged_schema(node.expression) : undefined;
@@ -216,7 +219,7 @@ check("evidence is exactly the existing generator output and runtime tags remain
       const compiledTag = unwrap_tagged_schema(compiled.initializer);
       assert.ok(tag && compiledTag);
       assert.equal(tag.getText(original), compiledTag.getText(transformed));
-      const expected = generate_hson_schema_evidence(schema.name, tag.template.getText(original).slice(1, -1), `${record.source}#${schema.name}`);
+      const expected = generate_hson_schema_evidence(schema.name, admit_hson_tagged_template(ts, tag, "schema"), `${record.source}#${schema.name}`);
       assert.equal(readFileSync(join(output, schema.evidence), "utf8"), expected.declaration);
       assert.equal(readFileSync(join(output, schema.evidence.replace(/\.[cm]?ts$/, ".json")), "utf8"), expected.metadata);
       assert.equal(schema.start, authored.getStart(original));
@@ -419,6 +422,118 @@ check("symlink and unowned final destinations are refused before any current rep
   assert.notEqual(generate(project).status, 0);
   assert.equal(readFileSync(destination, "utf8"), "user owned");
   unlinkSync(destination); unlinkSync(extra); succeed(generate(project));
+});
+
+check("producer admission gates CLI evidence, attachments and regenerated governed reads", () => {
+  const directory = join(temporary, "producer-admission"); mkdirSync(directory);
+  const configPath = join(directory, "tsconfig.json");
+  writeFileSync(join(directory, "package.json"), '{"type":"module"}');
+  writeFileSync(configPath, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true,
+    target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], paths: {
+      "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")],
+      "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")],
+    } }, files: ["index.ts"] }));
+  const body = '<type "data" content <name "string">>';
+  const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.lib("state").schema.use(Bad);\r\nconst name: string = map.lib("state").at(["name"]).snap();\r\nconst wrong: number = map.lib("state").at(["name"]).snap();\r\n`;
+  const currentRoot = join(directory, ".hson/compiler-input/tsconfig.json");
+  const current = () => JSON.parse(readFileSync(join(currentRoot, "manifest.json"), "utf8")) as Manifest & { diagnostics: readonly string[] };
+  const mirrored = () => readFileSync(join(currentRoot, "sources/index.ts"), "utf8");
+  const assertValid = (): void => {
+    writeFileSync(join(directory, "index.ts"), valid); succeed(generate(directory));
+    assert.equal(current().sources.flatMap(source => source.schemas).length, 1);
+    assert.match(mirrored(), /__hson_assert_library_schema\(map, "state", Bad\)/);
+    const result = stock_check(join(currentRoot, "tsconfig.json"));
+    assert.notEqual(result.status, 0); assert.match(result.stdout, /Type 'string' is not assignable to type 'number'/);
+    assert.doesNotMatch(result.stdout, /JsonValue.*string/);
+  };
+  assertValid();
+  for (const initializer of [`Hson.schema\`// \\8\r\n${body}\``, `Hson?.schema\`${body}\``, `Hson.schema?.\`${body}\``, `(Hson?.schema\`${body}\`)`, `(Hson.schema?.\`${body}\`)`]) {
+    const rejected = valid.replace(`Hson.schema\`${body}\``, initializer);
+    writeFileSync(join(directory, "index.ts"), rejected);
+    assert.notEqual(generate(directory).status, 0, initializer);
+    const manifest = current();
+    assert.equal(manifest.sources.flatMap(source => source.schemas).length, 0, initializer);
+    assert.ok(manifest.diagnostics.some(message => /invalid Hson tagged template|optional chain|non-optional/.test(message)), JSON.stringify(manifest.diagnostics));
+    assert.equal(manifest.files.some(file => file.path.startsWith("evidence/")), false);
+    assert.doesNotMatch(mirrored(), /__hson_assert_library_schema/);
+    assert.match(stock_check(join(currentRoot, "tsconfig.json")).stdout, /JsonValue.*string/);
+    assertValid();
+  }
+  // The same source-generation admission boundary must protect assignment
+  // overlays even when its Schema producer is valid.
+  for (const tag of ['Hson.data`// \\8\r\n<name "Ada">`', 'Hson?.data`<name "Ada">`', 'Hson.data?.`<name "Ada">`']) {
+    writeFileSync(join(directory, "index.ts"), valid + '\r\nimport type { HsonData } from "hson-live";\r\n' + `const candidate: HsonData<typeof Bad> = ${tag};\r\n`);
+    assert.notEqual(generate(directory).status, 0, tag);
+    assert.doesNotMatch(mirrored().slice(mirrored().indexOf("const candidate:")), /as unknown as HsonData/);
+  }
+  // A custom watch-analysis callback cannot bypass producer eligibility at
+  // materialization by supplying a raw-compilable rejected producer record.
+  writeFileSync(join(directory, "index.ts"), valid.replace(`Hson.schema\`${body}\``, `Hson.schema\`// \\8\r\n${body}\``));
+  const read = ts.readConfigFile(configPath, ts.sys.readFile);
+  const config = ts.parseJsonConfigFileContent(read.config, ts.sys, directory);
+  const snapshot = new SchemaProjectSnapshot();
+  const program = ts.createProgram(config.fileNames, config.options, snapshot.compilerHost(config.options));
+  const file = program.getSourceFile(join(directory, "index.ts"))!;
+  const declaration = file.statements.filter(ts.isVariableStatement).flatMap(statement => [...statement.declarationList.declarations]).find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === "Bad")!;
+  const blockedRoot = join(directory, ".hson/blocked");
+  assert.throws(() => generate_schema_compiler_project(configPath, config, program, [{ sourceFile: file, declaration, name: "Bad", source: `// \\8\n${body}` }], [], { outputRoot: blockedRoot, snapshot, diagnostics: [] }), /not eligible for generated proof/);
+  assert.equal(existsSync(blockedRoot), false);
+});
+
+check("materialization binds every producer field to its admitted source and AST identity", () => {
+  const directory = join(temporary, "producer-identity"); mkdirSync(directory);
+  const configPath = join(directory, "tsconfig.json");
+  writeFileSync(join(directory, "package.json"), '{"type":"module"}');
+  writeFileSync(configPath, JSON.stringify({ compilerOptions: { strict: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [],
+    paths: { "hson-live": [join(root, "dist/index.d.ts")] } }, files: ["good.ts", "bad.ts", "other.ts"] }));
+  const text = 'import { Hson } from "hson-live";\r\nexport const S = Hson.schema`// ok\r\n<type "data" content <name "string">>`;\r\nconst ordinary = 1;\r\nexport const Extra = Hson.schema`<type "data" content <count "number">>`;\r\n';
+  writeFileSync(join(directory, "good.ts"), text);
+  writeFileSync(join(directory, "other.ts"), text);
+  writeFileSync(join(directory, "bad.ts"), text.replace("// ok", "// \\8"));
+  const snapshot = new SchemaProjectSnapshot();
+  const read = ts.readConfigFile(configPath, snapshot.readFile);
+  const config = ts.parseJsonConfigFileContent(read.config, snapshot.host, directory, undefined, configPath);
+  const program = ts.createProgram(config.fileNames, config.options, snapshot.compilerHost(config.options));
+  const checker = program.getTypeChecker();
+  const file = (name: string) => program.getSourceFile(join(directory, name))!;
+  const good = discover_hson_schema_declarations(ts, file("good.ts"), checker)[0]!;
+  const extra = discover_hson_schema_declarations(ts, file("good.ts"), checker)[1]!;
+  const other = discover_hson_schema_declarations(ts, file("other.ts"), checker)[0]!;
+  const bad = discover_hson_schema_declarations(ts, file("bad.ts"), checker)[0]!;
+  assert.equal(good.eligible, true); assert.equal(other.eligible, true); assert.equal(bad.eligible, false);
+  assert.equal(good.sourceFile.text.length, bad.sourceFile.text.length);
+  assert.equal(good.declaration.getStart(), bad.declaration.getStart());
+  assert.equal(good.declaration.getEnd(), bad.declaration.getEnd());
+  const admitted = { sourceFile: good.sourceFile, declaration: good.declaration, name: good.name, source: good.source! };
+  const copy = ts.createSourceFile(good.sourceFile.fileName, text, ts.ScriptTarget.Latest, true);
+  const copiedDeclaration = copy.statements.filter(ts.isVariableStatement)[0]!.declarationList.declarations[0]!;
+  assert.equal(copiedDeclaration.getStart(), good.declaration.getStart());
+  const ordinary = good.sourceFile.statements.filter(ts.isVariableStatement)[1]!.declarationList.declarations[0]!;
+  const mismatches = [
+    { ...admitted, sourceFile: bad.sourceFile },
+    { ...admitted, sourceFile: other.sourceFile },
+    { ...admitted, declaration: other.declaration },
+    { ...admitted, sourceFile: copy },
+    { ...admitted, declaration: copiedDeclaration },
+    { ...admitted, declaration: ordinary },
+    { ...admitted, declaration: extra.declaration },
+    { ...admitted, name: "Extra" },
+    { ...admitted, source: extra.source! },
+  ];
+  for (const [index, record] of mismatches.entries()) {
+    const outputRoot = join(directory, `.hson/rejected-${index}`);
+    assert.throws(() => generate_schema_compiler_project(configPath, config, program, [record], [], { outputRoot, snapshot, diagnostics: [] }), /not eligible for generated proof/, `mismatch ${index}`);
+    assert.equal(existsSync(outputRoot), false, `mismatch ${index} must fail before writing proof`);
+  }
+  const outputRoot = join(directory, ".hson/valid"); mkdirSync(outputRoot, { recursive: true });
+  const result = generate_schema_compiler_project(configPath, config, program, [admitted,
+    { sourceFile: extra.sourceFile, declaration: extra.declaration, name: extra.name, source: extra.source! },
+    { sourceFile: other.sourceFile, declaration: other.declaration, name: other.name, source: other.source! },
+  ], [], { outputRoot, snapshot, diagnostics: [] });
+  assert.equal(result.schemas, 3);
+  const generated: Manifest = JSON.parse(readFileSync(result.manifest, "utf8"));
+  assert.deepEqual(generated.sources.map(source => [source.source, source.schemas.map(schema => schema.name)]).sort(), [["bad.ts", []], ["good.ts", ["S", "Extra"]], ["other.ts", ["S"]]]);
+  assert.doesNotMatch(readFileSync(join(outputRoot, "sources/bad.ts"), "utf8"), /as unknown as __HsonSchema/);
 });
 
 events.terminal("pass");

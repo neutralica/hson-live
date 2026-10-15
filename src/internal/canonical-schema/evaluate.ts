@@ -3,7 +3,7 @@ import { emit_ordered_json } from "../../api/transform/utils/json-utils/ordered-
 import { decode_public_attr_value, decode_public_attrs } from "../../core/public-attrs.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
-import { is_ordered_projected_object, ordered_projected_value_equal, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { is_ordered_projected_object, ordered_projected_value_equal, type OrderedProjectedObject, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HsonNode } from "../../core/types.js";
 import type { HsonSemanticPrimitive } from "../../core/types.js";
 import type { HsonSchemaIssueCode, LivePath } from "../../types/livemap.types.js";
@@ -32,6 +32,7 @@ type EvaluationState = {
   steps: number;
   limits: Required<CanonicalEvaluationLimits>;
   unionWork: number;
+  diagnosticWork: number;
   exhausted: boolean;
 };
 
@@ -42,7 +43,7 @@ export function evaluate_canonical_projected_schema(
 ): CanonicalGraphEvaluation {
   const root = graph.capabilities.projectedRoot;
   if (root === undefined) return invalid([make_issue("INVALID_SCHEMA", [], 0, "invalid graph", "missing projected root", { kind: "invalid-graph" })]);
-  const state: EvaluationState = { steps: 0, limits: resolved_limits(limits), unionWork: 0, exhausted: false };
+  const state: EvaluationState = { steps: 0, limits: resolved_limits(limits), unionWork: 0, diagnosticWork: 0, exhausted: false };
   return projected(graph, root, candidate, [], state);
 }
 
@@ -53,7 +54,7 @@ export function evaluate_canonical_document_schema(
 ): CanonicalGraphEvaluation {
   const ref = graph.capabilities.documentRoot;
   if (ref === undefined) return invalid([make_issue("INVALID_SCHEMA", [], 0, "document root", "missing document root", { kind: "invalid-graph" })]);
-  const state: EvaluationState = { steps: 0, limits: resolved_limits(limits), unionWork: 0, exhausted: false };
+  const state: EvaluationState = { steps: 0, limits: resolved_limits(limits), unionWork: 0, diagnosticWork: 0, exhausted: false };
   const children = logical_root_children(root);
   if (children === undefined) return invalid([make_issue("TYPE_MISMATCH", [], ref, "document root", describe_root(root), { kind: "type-mismatch" })]);
   const node = graph.nodes[ref];
@@ -76,6 +77,10 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
     if (!add_union_work(state, node.choices.length)) return resource(ref, path);
     const branches = node.choices.map((choice) => projected(graph, choice, value, path, state, depth + 1));
     if (branches.some((branch) => branch.ok)) return valid();
+    if (is_ordered_projected_object(value)) {
+      const intended = discriminated_branch(graph, node.choices, value, state);
+      if (intended !== undefined) return branches[intended]!;
+    }
     if (is_ordered_projected_object(value) && node.choices.some((choice) => graph.nodes[unwrap(graph, choice)]?.kind === "projected-object")) {
       let closest = branches[0];
       for (const branch of branches.slice(1)) if ((branch.issues.length < (closest?.issues.length ?? Infinity))) closest = branch;
@@ -147,6 +152,55 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
     return typeof value === expectedType ? valid() : mismatch(graph, ref, path, projected_type(value));
   }
   return invalid([make_issue("INVALID_SCHEMA", path, ref, "projected node", node.kind, { kind: "invalid-graph" })]);
+}
+
+/** Diagnostic selection only, using the required exact strings accepted as
+ * object discriminators by the compiler. Never evaluate or accept a branch here.
+ */
+function discriminated_branch(graph: VerifiedCanonicalSchemaGraph, choices: readonly number[], value: OrderedProjectedObject, state: EvaluationState): number | undefined {
+  // Bound diagnostic inspection separately; it must not spend validation work
+  // or change acceptance/resource-limit semantics in later siblings.
+  const charge = (): boolean => ++state.diagnosticWork <= state.limits.maxUnionWork;
+  const domain = (ref: number, key: string): ReadonlySet<string> | undefined => {
+    const pending = [ref];
+    const values = new Set<string>();
+    while (pending.length > 0) {
+      if (!charge()) return undefined;
+      const node = graph.nodes[pending.pop()!];
+      if (node?.kind === "projected-ref") pending.push(node.target);
+      else if (node?.kind === "projected-optional" || node?.kind === "projected-nullable" || node?.kind === "projected-refinement") pending.push(node.base);
+      else if (node?.kind === "projected-union") {
+        for (const choice of node.choices) {
+          if (!charge()) return undefined;
+          pending.push(choice);
+        }
+      }
+      else if (node?.kind === "projected-object") {
+        let literal: CanonicalSchemaNode | undefined;
+        for (const [name, child] of node.properties) {
+          if (!charge()) return undefined;
+          if (name === key) { literal = graph.nodes[child]; break; }
+        }
+        // Optional members and broader domains cannot establish this evidence.
+        if (literal?.kind !== "projected-literal" || literal.values.length !== 1 || typeof literal.values[0] !== "string") return undefined;
+        values.add(literal.values[0]);
+      } else return undefined;
+    }
+    return values;
+  };
+  const excluded = new Set<number>();
+  const established = new Set<number>();
+  for (const [key, candidate] of value.entries) {
+    if (typeof candidate !== "string") continue;
+    const domains = choices.map(choice => domain(choice, key));
+    if (state.diagnosticWork > state.limits.maxUnionWork) return undefined;
+    const matching = domains.flatMap((item, index) => item?.has(candidate) ? [index] : []);
+    if (matching.length === 0) continue;
+    matching.forEach(index => established.add(index));
+    domains.forEach((item, index) => { if (item !== undefined && !item.has(candidate)) excluded.add(index); });
+  }
+  const remaining = choices.map((_, index) => index).filter(index => !excluded.has(index));
+  return remaining.length === 1 && established.has(remaining[0]!) ? remaining[0] : undefined;
 }
 
 function configured_unique(

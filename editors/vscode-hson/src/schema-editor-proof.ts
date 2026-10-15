@@ -1,10 +1,13 @@
 import type ts from "typescript";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../../src/internal/hson-schema/compiler.js";
-import { evaluate_static_schema_candidate } from "../../../src/internal/hson-schema/candidate-evaluation.js";
+import { evaluate_static_schema_candidate, type StaticSchemaEvaluation } from "../../../src/internal/hson-schema/candidate-evaluation.js";
 import { resolve_immutable_schema } from "../../../src/internal/hson-schema/schema-identity.js";
-import { is_official_hson_package_binding } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { is_official_hson_package_binding, type HsonTaggedTemplateSource } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { hson_tagged_source as tagged_source, admit_hson_tagged_template } from "../../../src/internal/embedded-hson/hson-tagged-source-admission.js";
 import { generate_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
 import { resolve_hson_schema_annotation } from "../../../src/internal/hson-schema/schema-annotation.js";
+import { diagnose_hson_tag, diagnose_hson_prefix } from "./tag-admission.js";
+import { interpolation_site } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
 
 export type VerifiedSchemaAssignmentRange = Readonly<{ start: number; end: number; failed?: true }>;
 type SchemaAssociation = Readonly<{ declaration: ts.VariableDeclaration; compiled: CompiledHsonSchema; mode: "data" | "document" }>;
@@ -29,9 +32,21 @@ export function verified_schema_assignment_ranges(
     if (annotation === undefined || annotation.kind === "projected" || annotation.schema === undefined) continue;
     const association = resolve_schema_association(typescript, program, checker, annotation.schema, evidenceFile);
     if (association === undefined || annotation.kind !== "hson" && association.mode !== annotation.kind) continue;
-    const evaluated = evaluated_initializer(typescript, checker, sourceFile, declaration.initializer, association);
-    if (evaluated === undefined || evaluated.kind === "unknown" || evaluated.kind === "invalid" && !includeFailures) continue;
-    output.push(Object.freeze({ start: declaration.name.getStart(sourceFile), end: declaration.name.getEnd(), ...(evaluated.kind === "invalid" ? { failed: true as const } : {}) }));
+    const initializer = declaration.initializer;
+    if (!typescript.isTaggedTemplateExpression(initializer) || !is_official_member_tag(typescript, checker, initializer, association.mode)) continue;
+    const source = tagged_source(typescript, initializer, association.mode);
+    if (source === undefined) continue;
+    // These producers classify admission failures of this exact template only.
+    // Document-level expectation diagnostics and nested templates cannot supply
+    // evidence for the assigned template's proof error.
+    const interpolated = "substitutionRanges" in source;
+    const admissionFailed = (interpolated ? diagnose_hson_prefix(source) : diagnose_hson_tag(source)).length > 0;
+    const evaluated: StaticSchemaEvaluation = admissionFailed || interpolated ? { kind: "unknown" }
+      : evaluate_static_schema_candidate(association.compiled, { source: template_raw(source), family: association.mode });
+    if (evaluated.kind === "unknown") {
+      if (!includeFailures || !admissionFailed) continue;
+    } else if (evaluated.kind === "invalid" && !includeFailures) continue;
+    output.push(Object.freeze({ start: declaration.name.getStart(sourceFile), end: declaration.name.getEnd(), ...(evaluated.kind !== "valid" ? { failed: true as const } : {}) }));
   }
   return Object.freeze(output);
 }
@@ -58,7 +73,9 @@ function resolve_schema_association(
     const producer = declaration.getSourceFile();
     const tagged = unwrap_tagged_schema(typescript, declaration.initializer);
     if (tagged === undefined || !is_official_member_tag(typescript, checker, tagged, "schema") || !typescript.isNoSubstitutionTemplateLiteral(tagged.template)) return undefined;
-    const source = raw_template(tagged.template, producer);
+    let source: string;
+    try { source = admit_hson_tagged_template(typescript, tagged, "schema"); }
+    catch { return undefined; }
     const compiled = compile_hson_schema(source);
     if (!compiled.ok) return undefined;
     const expected = generate_hson_schema_evidence(declaration.name.text, source, "editor-assignment").declaration;
@@ -71,16 +88,10 @@ function resolve_schema_association(
   });
 }
 
-function evaluated_initializer(
-  typescript: typeof ts,
-  checker: ts.TypeChecker,
-  sourceFile: ts.SourceFile,
-  initializer: ts.Expression,
-  association: SchemaAssociation,
-) {
-  if (!typescript.isTaggedTemplateExpression(initializer) || !is_official_member_tag(typescript, checker, initializer, association.mode)
-    || !typescript.isNoSubstitutionTemplateLiteral(initializer.template) || initializer.template.isUnterminated) return undefined;
-  return evaluate_static_schema_candidate(association.compiled, { source: raw_template(initializer.template, sourceFile), family: association.mode });
+function template_raw(source: HsonTaggedTemplateSource): string {
+  // Runtime Template.raw normalizes physical CR/CRLF; preserve its existing
+  // UTF-16 correspondence rather than cooking or approximating JS escapes.
+  return interpolation_site({ ...source, substitutionRanges: [], expressionRanges: [] }, source.fileName).literals[0]!.raw;
 }
 
 /** Suppress only incompatibility through the Schema proof, never other properties. */
@@ -105,9 +116,4 @@ function is_official_member_tag(typescript: typeof ts, checker: ts.TypeChecker, 
 
 function official_binding(_typescript: typeof ts, checker: ts.TypeChecker, identifier: ts.Identifier, expected: "Hson" | "HsonData" | "HsonDocument"): boolean {
   return is_official_hson_package_binding(identifier, expected, checker, true);
-}
-
-function raw_template(node: ts.NoSubstitutionTemplateLiteral, sourceFile: ts.SourceFile): string {
-  const text = node.getText(sourceFile);
-  return text.slice(1, -1);
 }

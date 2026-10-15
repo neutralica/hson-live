@@ -8,7 +8,8 @@ import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
 import { library_schema_attachment_plan, type PreciseSchemaFact } from "./source-transformation.js";
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 
-export type StaticSchemaDiagnostic = Readonly<{ file: string; start: number; end: number; code: string; message: string }>;
+type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
+export type StaticSchemaDiagnostic = StaticSchemaDiagnosticLocation & Readonly<{ code: string; related?: readonly StaticSchemaDiagnosticLocation[] }>;
 type Schema = Readonly<{ declaration: ts.VariableDeclaration; name: string; compiled: CompiledHsonSchema }>;
 type Candidate = StaticSchemaCandidate & Readonly<{ node: ts.Expression; bodyStart?: number }>;
 
@@ -19,8 +20,8 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   const sources = program.getSourceFiles().filter(source => !source.isDeclarationFile && !program.isSourceFileFromExternalLibrary(source)
     && !source.fileName.replaceAll("\\", "/").split("/").includes(".hson"));
   for (const source of sources) for (const found of discover_hson_schema_declarations(typescript, source, checker)) {
-    if (!found.eligible || !typescript.isNoSubstitutionTemplateLiteral(found.tagged.template)) continue;
-    const compiled = compile_hson_schema(found.tagged.template.getText(source).slice(1, -1));
+    if (!found.eligible || found.source === undefined) continue;
+    const compiled = compile_hson_schema(found.source);
     if (compiled.ok) schemas.set(found.declaration, { declaration: found.declaration, name: found.name, compiled: compiled.value });
   }
   const declaration = (node: ts.Identifier): ts.VariableDeclaration | undefined => {
@@ -107,6 +108,10 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     if (reported.has(key)) return;
     reported.add(key);
     output.push({ file: node.getSourceFile().fileName, ...range, code: first.issue.code,
+      ...(possible.length === 1 && candidate.bodyStart !== undefined && candidate.bodyStart >= 0 && first.relatedRange !== undefined ? { related: [{
+        file: candidate.node.getSourceFile().fileName, start: candidate.bodyStart + first.relatedRange.start, end: candidate.bodyStart + first.relatedRange.end,
+        message: `Conflicting value at ${first.issue.evidence.relatedPath?.join(".")}; derived key ${first.issue.received}.`,
+      }] } : {}),
       message: `Static Hson does not satisfy ${contract.name}: ${issue_detail(first.issue)}${possible.length > 1 ? " (all static alternatives fail)." : "."}` });
   };
   for (const source of sources) {
@@ -187,7 +192,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
 
 function issue_detail(issue: CanonicalGraphIssue): string {
   const description = issue.code === "MISSING_REQUIRED" ? "missing required child/value" : issue.evidence.kind === "document-tag-mismatch" ? "wrong tag" : issue.code.replaceAll("_", " ").toLowerCase();
-  return `${description} at ${issue.path.join(".") || "root"}${issue.expected === undefined ? "" : `; expected ${issue.expected}`}${issue.received === undefined ? "" : `; received ${issue.received}`}`;
+  return `${description} at ${issue.path.join(".") || "root"}${issue.attributeName === undefined ? "" : ` attribute ${JSON.stringify(issue.attributeName)}`}${issue.expected === undefined ? "" : `; expected ${issue.expected}`}${issue.received === undefined ? "" : `; received ${issue.received}`}`;
 }
 
 function object_fields(node: ts.ObjectLiteralExpression, typescript: typeof ts): Map<string, ts.Expression> | undefined {

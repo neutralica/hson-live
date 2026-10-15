@@ -322,6 +322,7 @@
     "test:hson-schema-structural-reads": "node --import=tsx tests/hson-schema-structural-reads.acceptance.mts",
     "test:hson-schema-mvp": "node --import=tsx tests/hson-schema-mvp.acceptance.mts",
     "test:hson-schema-relational-unique": "node --import=tsx tests/hson-schema-relational-unique.acceptance.mts",
+    "test:schema-diagnostic-correctness": "node --import=tsx tests/schema-diagnostic-correctness.acceptance.mts",
     "test:hson-schema-any-worker": "node --import=tsx tests/hson-schema-any-worker.acceptance.mts",
     "test:hson-schema-livemap-convergence": "node --import=tsx tests/hson-schema-livemap-convergence.acceptance.mts",
     "test:hson-schema-composition-recursion": "node --import=tsx tests/hson-schema-composition-recursion.acceptance.mts",

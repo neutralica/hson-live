@@ -139,6 +139,105 @@ try {
     assert.equal((await diagnostics("consumer.ts")).filter(error => error.code === 95002).length, 0);
     await editConsumer(consumer);
   });
+  await check("bundled proof filtering follows malformed initializers through CRLF unsaved edits", async () => {
+    const text = '\uFEFFimport { Hson, type HsonData, type JsonFromSchema } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\nconst malformed: HsonData<typeof S> = Hson.data`\r\n <name "Ada"`;\r\nconst unrelated: number = "wrong";\r\nconst field: JsonFromSchema<typeof S> = { name: 37 };\r\ndeclare const dynamic: HsonData;\r\nconst unproven: HsonData<typeof S> = dynamic;\r\n';
+    await editConsumer(text);
+    const errors = await diagnostics("consumer.ts");
+    assert.equal(errors.length, 3, JSON.stringify(errors));
+    for (const name of ["unrelated:", "name: 37", "unproven:"]) assert.ok(errors.some(error => error.code === 2322
+      && JSON.stringify(error.start) === JSON.stringify(location(text, text.indexOf(name)))), JSON.stringify(errors));
+    const invalid = text.replace('<name "Ada"', '<name 37>');
+    await editConsumer(invalid);
+    const invalidErrors = await diagnostics("consumer.ts");
+    const candidate = invalidErrors.find(error => error.code === 95002);
+    assert.ok(candidate, JSON.stringify(invalidErrors));
+    assert.deepEqual(candidate.start, location(invalid, invalid.indexOf("37>")));
+    assert.deepEqual(candidate.end, location(invalid, invalid.indexOf("37>") + 2));
+    assert.equal(invalidErrors.filter(error => error.code === 2322).length, 3);
+    await editConsumer(text.replace('<name "Ada"', '<name "Ada">'));
+    assert.equal((await diagnostics("consumer.ts")).length, 3);
+    await editConsumer(consumer);
+  });
+  await check("bundled attribute and uniqueness diagnostics preserve collision locations", async () => {
+    const text = 'import { Hson } from "hson-live";\r\nconst Doc = Hson.schema`<type "document" tag "main" attrs <props <lang <exact "en">>> content "empty">`;\r\nDoc.certify(Hson.document`<main\r\n lang="fr"/>`);\r\nconst Unique = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["a", ["K"]], ["b", ["K"]]]>>>>>`;\r\nUnique.certify(Hson.data`<items [\r\n<kind "a">,\r\n<kind "b">]>`);\r\n';
+    await editConsumer(text);
+    const errors = await diagnostics("consumer.ts");
+    assert.equal(errors.length, 2, JSON.stringify(errors));
+    const attr = errors.find(error => error.text.includes("satisfy Doc"));
+    assert.match(attr.text, /at 0 attribute "lang"; expected "en"; received "fr"/);
+    assert.deepEqual(attr.start, location(text, text.indexOf('"fr"')));
+    const collision = errors.find(error => error.text.includes("satisfy Unique"));
+    assert.deepEqual(collision.start, location(text, text.lastIndexOf('"b"')));
+    const earlier = collision.relatedInformation?.[0];
+    assert.equal(earlier.span.file, file("consumer.ts"));
+    assert.deepEqual(earlier.span.start, location(text, text.lastIndexOf('"a"')));
+    assert.deepEqual(earlier.span.end, location(text, text.lastIndexOf('"a"') + 3));
+    assert.match(earlier.message, /items.0.kind.*"K"/);
+    await editConsumer(consumer);
+  });
+  await check("bundled proof errors stay independent of expectation and nested-template failures", async () => {
+    const text = '\uFEFFimport { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\ndeclare const dynamic: string;\r\nconst unused: HsonData<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;\r\nconst nested: HsonData<typeof S> = Hson.data`<name ${Hson.data`+1`}>`;\r\nconst own: HsonData<typeof S> = Hson.data`+1 ${missing}`;\r\nconst escaped: HsonData<typeof S> = Hson.data`// \\8\r\n<name "Ada">`;\r\nconst outer: HsonData<typeof S> = Hson.data`<name ${dynamic}>`;\r\nconst unrelated: number = "wrong";\r\n';
+    const assertErrors = async (source, ownProof) => {
+      const errors = await diagnostics("consumer.ts");
+      const assignments = errors.filter(error => error.code === 2322);
+      assert.equal(assignments.length, ownProof ? 5 : 4, JSON.stringify(errors));
+      for (const name of ["unused:", "nested:", ...(ownProof ? ["own:"] : []), "outer:", "unrelated:"]) {
+        assert.ok(assignments.some(error => JSON.stringify(error.start) === JSON.stringify(location(source, source.indexOf(name)))), `${name}: ${JSON.stringify(errors)}`);
+      }
+      assert.ok(errors.some(error => error.code === 2304 && JSON.stringify(error.start) === JSON.stringify(location(source, source.indexOf("missing")))), JSON.stringify(errors));
+    };
+    await editConsumer(text);
+    await assertErrors(text, false);
+    const repaired = text.replace('Hson.data`+1`', 'Hson.data`<name "Ada">`').replace('+1 ${missing}', '<name ${missing}>').replace('\\8', '\\\\8');
+    await editConsumer(repaired);
+    await assertErrors(repaired, true);
+    await editConsumer(consumer);
+  });
+  await check("optional-chain candidate and producer tags retain grammar diagnostics until repaired", async () => {
+    const schema = '<type "data" content <name "string">>';
+    const text = '\uFEFF' + ['import { Hson, type HsonData } from "hson-live";', `const S = Hson.schema\`${schema}\`;`,
+      'const access: HsonData<typeof S> = Hson?.data`<name "Ada">`;',
+      'const tagged: HsonData<typeof S> = Hson.data?.`<name "Ada">`;',
+      `const AccessSchema = Hson?.schema\`${schema}\`;`, 'const fromAccess: HsonData<typeof AccessSchema> = Hson.data`<name "Ada">`;',
+      `const TaggedSchema = Hson.schema?.\`${schema}\`;`, 'const fromTagged: HsonData<typeof TaggedSchema> = Hson.data`<name "Ada">`;',
+      'const valid: HsonData<typeof S> = Hson.data`<name "Ada">`;', 'const unrelated: number = "wrong";',
+    ].join('\r\n');
+    await editConsumer(text);
+    const errors = await diagnostics("consumer.ts");
+    assert.equal(errors.filter(error => error.code === 1358).length, 4, JSON.stringify(errors));
+    for (const name of ["access:", "tagged:", "unrelated:"]) {
+      assert.ok(errors.some(error => error.code === 2322 && JSON.stringify(error.start) === JSON.stringify(location(text, text.indexOf(name)))), `${name}: ${JSON.stringify(errors)}`);
+    }
+    for (const name of ["AccessSchema", "TaggedSchema"]) assert.ok(errors.some(error => error.code === 2344
+      && JSON.stringify(error.start) === JSON.stringify(location(text, text.indexOf(`typeof ${name}`)))), JSON.stringify(errors));
+    const repaired = text.replaceAll("Hson?.", "Hson.").replaceAll("?.`", "`");
+    await editConsumer(repaired);
+    const repairedErrors = await diagnostics("consumer.ts");
+    assert.equal(repairedErrors.length, 1, JSON.stringify(repairedErrors));
+    assert.equal(repairedErrors[0].code, 2322);
+    assert.deepEqual(repairedErrors[0].start, location(repaired, repaired.indexOf("unrelated:")));
+    await editConsumer(consumer);
+  });
+  await check("upstream Schema producer rejection withdraws attachment precision and recovers unsaved", async () => {
+    const body = '<type "data" content <name "string">>';
+    const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.lib("state").schema.use(Bad);\r\nconst name: string = map.lib("state").at(["name"]).snap();\r\nconst wrong: number = map.lib("state").at(["name"]).snap();\r\n`;
+    const assertValid = async () => {
+      const errors = await diagnostics("consumer.ts");
+      assert.equal(errors.length, 1, JSON.stringify(errors));
+      assert.equal(errors[0].code, 2322); assert.deepEqual(errors[0].start, location(valid, valid.indexOf("wrong:")));
+      assert.match(errors[0].text, /string.*number/);
+    };
+    await editConsumer(valid); await assertValid();
+    for (const initializer of [`Hson.schema\`// \\8\r\n${body}\``, `Hson?.schema\`${body}\``, `Hson.schema?.\`${body}\``, `(Hson?.schema\`${body}\`)`]) {
+      const source = valid.replace(`Hson.schema\`${body}\``, initializer);
+      await editConsumer(source);
+      const errors = await diagnostics("consumer.ts");
+      assert.ok(errors.some(error => error.code === 2322 && JSON.stringify(error.start) === JSON.stringify(location(source, source.indexOf("const name:") + 6))), JSON.stringify(errors));
+      if (initializer.includes("?.")) assert.ok(errors.some(error => error.code === 1358), JSON.stringify(errors));
+      await editConsumer(valid); await assertValid();
+    }
+    await editConsumer(consumer);
+  });
   await check("real tsserver never writes authored source or generated evidence to disk", async () => {
     for (const [name, original] of originals) assert.deepEqual(readFileSync(file(name)), original);
     assert.equal(existsSync(file(".hson")), false);

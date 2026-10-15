@@ -6,6 +6,7 @@ import ts from "typescript";
 import { filter_verified_schema_assignment_diagnostics, verified_schema_assignment_ranges as assignment_ranges } from "../editors/vscode-hson/src/schema-editor-proof.ts";
 import { install_live_schema_view } from "../editors/vscode-hson/src/schema-editor-view.ts";
 import { static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
+import { produce_document_diagnostics } from "../editors/vscode-hson/src/document-diagnostics.ts";
 import { resolve_hson_schema_annotation } from "../src/internal/hson-schema/schema-annotation.ts";
 
 
@@ -137,6 +138,13 @@ const invalid = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.repla
 assert.equal(verified_schema_assignment_ranges(ts, invalid, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(invalid, mvpConsumer).length, 1);
 
+const malformed = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('<name "Ada"', '<name +1')]]));
+assert.equal(verified_schema_assignment_ranges(ts, malformed, mvpConsumer).length, 4, "Malformed Hson never receives verified proof");
+const malformedRanges = assignment_ranges(ts, malformed, mvpConsumer, evidence.get(malformed), true);
+assert.equal(malformedRanges.filter(range => range.failed).length, 1);
+assert.equal(schema_assignment_errors(malformed, mvpConsumer).length, 5, "Underlying TypeScript proof failures remain intact");
+assert.equal(filter_verified_schema_assignment_diagnostics(schema_assignment_errors(malformed, mvpConsumer), malformedRanges).length, 0);
+
 const invalidAlphabet = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('key "abc"', 'key "abd"')]]));
 assert.equal(verified_schema_assignment_ranges(ts, invalidAlphabet, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(invalidAlphabet, mvpConsumer).length, 1);
@@ -163,6 +171,75 @@ const invalidRelationalUnique = program_for(mvpConfig, new Map([[mvpConsumer, co
 )]]));
 assert.equal(verified_schema_assignment_ranges(ts, invalidRelationalUnique, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(invalidRelationalUnique, mvpConsumer).length, 1);
+
+const escapeSpellings = ["\\8", "\\9", "\\unicode", "\\xG0", "\\u{110000}"];
+const adversarialText = '\uFEFF' + [
+  'import { Hson, type HsonData, type HsonDocument, type JsonFromSchema } from "hson-live";',
+  'const S = Hson.schema`<type "data" content <name "string">>`;',
+  'const Doc = Hson.schema`<type "document" tag "main" content "empty">`;',
+  'declare const dynamic: string;',
+  'const unused: HsonData<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;',
+  'const nested: HsonData<typeof S> = Hson.data`<name ${Hson.data`+1`}>`;',
+  'const ownSyntax: HsonData<typeof S> = Hson.data`+1 ${missing}`;',
+  ...escapeSpellings.map((escape, index) => `const escape${index}: HsonData<typeof S> = Hson.data\`// ${escape}\r\n<name "Ada">\`;`),
+  'const escapedDoc: HsonDocument<typeof Doc> = Hson.document`// \\9\r\n<main/>`;',
+  'const valid: HsonData<typeof S> = Hson.data`<name "Ada">`;',
+  'const raw: HsonData<typeof S> = Hson.data`<name "\\\\n">`;',
+  'const validComment: HsonData<typeof S> = Hson.data`// \\n \\u0041 \\0\r\n<name "Ada">`;',
+  'const outer: HsonData<typeof S> = Hson.data`<name ${dynamic}>`;',
+  'const unrelated: number = "wrong";',
+  'const field: JsonFromSchema<typeof S> = { name: 37 };',
+].join('\r\n');
+const adversarial = program_for(mvpConfig, new Map([[mvpConsumer, adversarialText]]));
+const adversarialSource = adversarial.getSourceFile(mvpConsumer)!;
+const rangeNames = (includeFailures: boolean) => assignment_ranges(ts, adversarial, mvpConsumer, evidence.get(adversarial), includeFailures)
+  .map(range => ({ name: adversarialSource.text.slice(range.start, range.end), failed: range.failed === true }));
+assert.deepEqual(rangeNames(false), ["valid", "raw", "validComment"].map(name => ({ name, failed: false })),
+  "Only actually admitted, substitution-free candidates receive verified proof");
+assert.deepEqual(rangeNames(true).filter(range => range.failed).map(range => range.name), ["ownSyntax", ...escapeSpellings.map((_, index) => `escape${index}`), "escapedDoc"],
+  "Only the assigned template's admission failures permit proof-only filtering");
+const adversarialErrors = filter_verified_schema_assignment_diagnostics(schema_assignment_errors(adversarial, mvpConsumer),
+  assignment_ranges(ts, adversarial, mvpConsumer, evidence.get(adversarial), true));
+assert.deepEqual(adversarialErrors.map(error => adversarialSource.text.slice(error.start, error.start! + error.length!)), ["unused", "nested", "outer", "unrelated", "name"]);
+const authoring = produce_document_diagnostics({ fileName: mvpConsumer, text: adversarialText, languageId: "typescript" });
+assert.equal(authoring.filter(issue => issue.code === "HSON_TAGGED_TEMPLATE_REQUIRED").length, escapeSpellings.length + 1);
+assert.ok(authoring.some(issue => issue.code === "HSON_EXPECT_ERROR_UNUSED"));
+for (const issue of authoring.filter(issue => issue.code === "HSON_TAGGED_TEMPLATE_REQUIRED")) {
+  assert.equal(adversarialText.slice(issue.range.start, issue.range.end).startsWith("// \\"), true);
+}
+const invalidProducer = program_for(mvpConfig, new Map([[mvpConsumer,
+  adversarialText.replace('Hson.schema`<type "data"', 'Hson.schema`// \\8\r\n<type "data"')]]));
+assert.equal(verified_schema_assignment_ranges(ts, invalidProducer, mvpConsumer).length, 0, "Rejected Schema tagged admission cannot establish assignment proof either");
+
+// Use TypeScript's tagged-expression OptionalChain flag for both consumers and
+// producers. Parentheses around the expression preserve the syntax violation;
+// parentheses around only the tag end the chain and are valid JS syntax.
+for (const member of ["data", "schema"]) for (const tag of [`Hson?.${member}`, `Hson.${member}?.`]) for (const parenthesized of [false, true]) {
+  const schema = '<type "data" content <name "string">>';
+  const template = `${tag}\`${member === "schema" ? schema : '<name "Ada">'}\``;
+  const initializer = parenthesized ? `(${template})` : template;
+  const source = 'import { Hson, type HsonData } from "hson-live";\r\n'
+    + (member === "schema" ? `const S = ${initializer};\r\nconst value: HsonData<typeof S> = Hson.data\`<name "Ada">\`;`
+      : `const S = Hson.schema\`${schema}\`;\r\nconst value: HsonData<typeof S> = ${initializer};`);
+  const program = program_for(mvpConfig, new Map([[mvpConsumer, source]]));
+  assert.equal(assignment_ranges(ts, program, mvpConsumer, evidence.get(program)).length, 0, source);
+  assert.equal(assignment_ranges(ts, program, mvpConsumer, evidence.get(program), true).length, 0, "Optional chains cannot establish filtering evidence either");
+  assert.equal(program.getSemanticDiagnostics(program.getSourceFile(mvpConsumer)).filter(error => error.code === 1358).length, 1, source);
+  const repaired = source.replace("Hson?.", "Hson.").replace("?.`", "`");
+  const valid = program_for(mvpConfig, new Map([[mvpConsumer, repaired]]));
+  assert.equal(assignment_ranges(ts, valid, mvpConsumer, evidence.get(valid)).length, parenthesized ? 0 : 1,
+    "Removing the chain restores the existing direct-template proof boundary");
+  assert.equal(valid.getSemanticDiagnostics(valid.getSourceFile(mvpConsumer)).filter(error => error.code === 1358).length, 0);
+}
+for (const parenthesizedTag of [
+  'import { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\nconst value: HsonData<typeof S> = (Hson?.data)`<name "Ada">`;',
+  'import { Hson, type HsonData } from "hson-live";\r\nconst S = (Hson?.schema)`<type "data" content <name "string">>`;\r\nconst value: HsonData<typeof S> = Hson.data`<name "Ada">`;',
+]) {
+  const validParenthesizedTag = program_for(mvpConfig, new Map([[mvpConsumer, parenthesizedTag]]));
+  assert.equal(validParenthesizedTag.getSemanticDiagnostics(validParenthesizedTag.getSourceFile(mvpConsumer)).filter(error => error.code === 1358).length, 0);
+  assert.equal(assignment_ranges(ts, validParenthesizedTag, mvpConsumer, evidence.get(validParenthesizedTag)).length, 0,
+    "A valid parenthesized tag retains the existing conservative proof boundary");
+}
 
 const failedRange = [{ start: 10, end: 15, failed: true as const }];
 const schemaProof: ts.DiagnosticMessageChain = { messageText: "Types of property '[HSON_SCHEMA_PROOF]' are incompatible.", category: ts.DiagnosticCategory.Error, code: 2326 };

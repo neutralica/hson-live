@@ -11,6 +11,7 @@ import { Hson } from "../src/hson-authoring.ts";
 import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
 import { spawnSync } from "node:child_process";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { produce_document_diagnostics } from "../editors/vscode-hson/src/document-diagnostics.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "tooling.schema-editor-view", title: "Schema editor compiler view", category: "Tooling", runtime: "node", tags: Object.freeze(["schema", "editor", "typescript", "source-integrity"]) });
 const events = create_test_event_emitter("tooling.schema-editor-view");
@@ -546,6 +547,213 @@ check("document issue ranges follow canonical candidate item paths", () => {
     assert.equal(source.slice(errors[0]!.start, errors[0]!.start! + errors[0]!.length!), expected);
     test.service.dispose();
   }
+});
+
+check("canonical diagnostic details and collision provenance reach authored editor locations", () => {
+  const source = '\uFEFF' + [
+    'import { Hson, type HsonData } from "hson-live";',
+    'const Union = Hson.schema`<type "data" content <value <union [<content <kind <exact "title">>>, <content <kind <exact "code"> language "string" body "string">>, <content <kind <exact "image"> url "string">>]>>>`;',
+    'const missing: HsonData<typeof Union> = Hson.data`<value <kind "code">>`;',
+    'const Doc = Hson.schema`<type "document" tag "main" attrs <props <lang <exact "en">>> content "empty">`;',
+    'Doc.certify(Hson.document`<main\r\n lang="fr"/>`);',
+    'const Unique = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["a", ["K"]], ["b", ["K"]]]>>>>>`;',
+    'const collision = Hson.data`<items [\r\n <kind "a">,\r\n <kind "b">]>`;',
+    'Unique.certify(collision);',
+  ].join('\r\n');
+  const test = project("diagnostic-fidelity", { "index.ts": source });
+  const all = test.errors("index.ts");
+  assert.equal(all.filter(error => error.code === 2322).length, 0, messages(all));
+  const errors = all.filter(error => error.code === 95002);
+  assert.equal(errors.length, 3, messages(all));
+  const union = errors.find(error => String(error.messageText).includes("satisfy Union"))!;
+  assert.match(String(union.messageText), /missing required.*value.language; expected string; received missing/);
+  assert.equal(source.slice(union.start, union.start! + union.length!), ">");
+  const attr = errors.find(error => String(error.messageText).includes("satisfy Doc"))!;
+  assert.match(String(attr.messageText), /at 0 attribute "lang"; expected "en"; received "fr"/);
+  assert.equal(source.slice(attr.start, attr.start! + attr.length!), '"fr"');
+  const collision = errors.find(error => String(error.messageText).includes("satisfy Unique"))!;
+  assert.match(String(collision.messageText), /items.1.kind.*expected unique derived key; received "K"/);
+  assert.equal(source.slice(collision.start, collision.start! + collision.length!), '"b"');
+  assert.equal(collision.relatedInformation?.length, 1);
+  const earlier = collision.relatedInformation![0]!;
+  assert.equal(earlier.file?.fileName, test.file("index.ts"));
+  assert.equal(earlier.file?.text, source);
+  assert.equal(source.slice(earlier.start, earlier.start! + earlier.length!), '"a"');
+  assert.match(String(earlier.messageText), /items.0.kind.*"K"/);
+  test.service.dispose();
+  const values = 'import { Hson } from "hson-live";\r\nexport const collision = Hson.data`<items [\r\n<kind "a">, <kind "b">]>`;\r\n';
+  const consumer = 'import { Hson } from "hson-live";\r\nimport { collision } from "./values.js";\r\n'
+    + source.slice(source.indexOf('const Unique ='), source.indexOf('const collision =')) + 'Unique.certify(collision);';
+  const imported = project("imported-collision", { "index.ts": consumer, "values.ts": values });
+  const importedErrors = imported.errors("index.ts").filter(error => error.code === 95002);
+  assert.equal(importedErrors.length, 1, messages(imported.errors("index.ts")));
+  const importedEarlier = importedErrors[0]!.relatedInformation?.[0];
+  assert.equal(importedEarlier?.file?.fileName, imported.file("values.ts"));
+  assert.equal(values.slice(importedEarlier?.start, importedEarlier!.start! + importedEarlier!.length!), '"a"');
+  imported.service.dispose();
+});
+
+check("malformed initializers suppress only redundant proof errors and recover on unsaved edits", () => {
+  const initial = '\uFEFF' + [
+    'import { Hson, type HsonData, type HsonDocument, type HsonFromSchema, type JsonFromSchema } from "hson-live";',
+    'const S = Hson.schema`<type "data" content <name "string">>`;',
+    'const D = Hson.schema`<type "document" tag "main" content "empty">`;',
+    'type Alias = HsonFromSchema<typeof S>;',
+    'const malformed: Alias = Hson.data`\r\n <name "Ada"`;',
+    'const doc: HsonDocument<typeof D> = Hson.document`\r\n <main`;',
+    'const unrelated: number = "wrong";',
+    'const field: JsonFromSchema<typeof S> = { name: 37 };',
+    'declare const dynamic: HsonData;',
+    'const unproven: HsonData<typeof S> = dynamic;',
+    'const wrongFamily: HsonData<typeof S> = Hson.document`<main/>`;',
+  ].join('\r\n');
+  const test = project("malformed-proof", { "index.ts": initial });
+  for (const source of [initial, initial.replace('<name "Ada"', '<name +1>'), initial.replace('<name "Ada"', '<name [')]) {
+    test.edit("index.ts", source);
+    const syntax = produce_document_diagnostics({ fileName: test.file("index.ts"), languageId: "typescript", text: source });
+    assert.equal(syntax.length, 2);
+    assert.ok(syntax.every(issue => issue.code?.startsWith("HSON_")));
+    const dataIssue = syntax.find(issue => issue.range.start < source.indexOf("const doc:"))!;
+    const expected = source.includes('<name +1>') ? "+" : "<";
+    assert.equal(source.slice(dataIssue.range.start, dataIssue.range.end), expected);
+    const errors = test.errors("index.ts");
+    assert.equal(errors.length, 4, messages(errors));
+    for (const name of ["unrelated:", "name: 37", "unproven:", "wrongFamily:"]) {
+      assert.ok(errors.some(error => error.code === 2322 && error.start === source.indexOf(name)), `${name}\n${messages(errors)}`);
+    }
+    assert.ok(!errors.some(error => error.start === source.indexOf("malformed:") || error.start === source.indexOf("doc:")), messages(errors));
+    assert.ok(test.underlying.getSemanticDiagnostics(test.file("index.ts")).filter(error => ts.flattenDiagnosticMessageText(error.messageText, "\n").includes("[HSON_SCHEMA_PROOF]")).length >= 3,
+      "Filtering cannot grant proof or change the underlying TypeScript diagnostics");
+  }
+  const invalid = initial.replace('<name "Ada"', '<name 37>').replace('<main`', '<aside/>`');
+  test.edit("index.ts", invalid);
+  assert.equal(produce_document_diagnostics({ fileName: test.file("index.ts"), languageId: "typescript", text: invalid }).length, 0);
+  const invalidErrors = test.errors("index.ts");
+  assert.equal(invalidErrors.filter(error => error.code === 95002).length, 2, messages(invalidErrors));
+  assert.equal(invalidErrors.filter(error => error.code === 2322).length, 4, messages(invalidErrors));
+  const repaired = initial.replace('<name "Ada"', '<name "Ada">').replace('<main`', '<main/>`');
+  test.edit("index.ts", repaired);
+  assert.equal(test.errors("index.ts").length, 4, messages(test.errors("index.ts")));
+  const interpolated = repaired.replace('<name "Ada">', '<name +1> ${missingValue}');
+  test.edit("index.ts", interpolated);
+  assert.ok(produce_document_diagnostics({ fileName: test.file("index.ts"), languageId: "typescript", text: interpolated }).some(issue => issue.code === "HSON_NUMBER_LEADING_PLUS"));
+  const interpolationErrors = test.errors("index.ts");
+  assert.equal(interpolationErrors.filter(error => error.code === 2322).length, 4, messages(interpolationErrors));
+  assert.ok(interpolationErrors.some(error => error.code === 2304 && error.start === interpolated.indexOf("missingValue")), messages(interpolationErrors));
+  // An opaque interpolation with no authoring failure still needs Schema proof.
+  const opaque = repaired.replace('<name "Ada">', '<name ${"Ada"}>');
+  test.edit("index.ts", opaque);
+  assert.ok(test.errors("index.ts").some(error => error.code === 2322 && error.start === opaque.indexOf("malformed:")), messages(test.errors("index.ts")));
+  test.service.dispose();
+});
+
+check("proof filtering requires admission evidence owned by the exact assigned template", () => {
+  const source = '\uFEFF' + [
+    'import { Hson, type HsonData, type JsonFromSchema } from "hson-live";',
+    'const S = Hson.schema`<type "data" content <name "string">>`;',
+    'declare const dynamic: string;',
+    'const unused: HsonData<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;',
+    'const nested: HsonData<typeof S> = Hson.data`<name ${Hson.data`+1`}>`;',
+    'const own: HsonData<typeof S> = Hson.data`+1 ${missing}`;',
+    'const escaped: HsonData<typeof S> = Hson.data`// \\8\r\n<name "Ada">`;',
+    'const admitted: HsonData<typeof S> = Hson.data`<name "\\\\n">`;',
+    'const outer: HsonData<typeof S> = Hson.data`<name ${dynamic}>`;',
+    'const unrelated: number = "wrong";',
+    'const field: JsonFromSchema<typeof S> = { name: 37 };',
+  ].join('\r\n');
+  const test = project("exact-template-proof", { "index.ts": source });
+  const assertErrors = (text: string, ownProof: boolean): void => {
+    const errors = test.errors("index.ts");
+    const starts = errors.filter(error => error.code === 2322).map(error => error.start).sort((a, b) => a! - b!);
+    assert.deepEqual(starts, ["unused:", "nested:", ...(ownProof ? ["own:"] : []), "outer:", "unrelated:", "name: 37"].map(name => text.indexOf(name)), messages(errors));
+    assert.ok(errors.some(error => error.code === 2304 && error.start === text.indexOf("missing")), messages(errors));
+    assert.ok(errors.every(error => error.file?.text === text), "All locations use the current authored snapshot");
+  };
+  const syntax = produce_document_diagnostics({ fileName: test.file("index.ts"), text: source, languageId: "typescript" });
+  assert.equal(syntax.filter(issue => issue.code === "HSON_EXPECT_ERROR_UNUSED").length, 1);
+  assert.equal(syntax.filter(issue => issue.code === "HSON_NUMBER_LEADING_PLUS").length, 2);
+  assert.equal(syntax.filter(issue => issue.code === "HSON_TAGGED_TEMPLATE_REQUIRED").length, 1);
+  for (const issue of syntax.filter(issue => issue.code === "HSON_NUMBER_LEADING_PLUS")) assert.equal(source.slice(issue.range.start, issue.range.end), "+");
+  assertErrors(source, false);
+  // Removing the owner's syntax error restores its ordinary proof diagnostic;
+  // repairing a nested error never changes the outer template's proof status.
+  const repaired = source.replace('Hson.data`+1`', 'Hson.data`<name "Ada">`').replace('+1 ${missing}', '<name ${missing}>').replace('\\8', '\\\\8');
+  test.edit("index.ts", repaired);
+  const repairedSyntax = produce_document_diagnostics({ fileName: test.file("index.ts"), text: repaired, languageId: "typescript" });
+  assert.deepEqual(repairedSyntax.map(issue => issue.code), ["HSON_EXPECT_ERROR_UNUSED"]);
+  assertErrors(repaired, true);
+  test.service.dispose();
+});
+
+check("optional-chain tags retain syntax errors and cannot establish candidate or producer proof", () => {
+  const schema = '<type "data" content <name "string">>';
+  const lines = ['import { Hson, type HsonData } from "hson-live";', `const S = Hson.schema\`${schema}\`;`,
+    'const valid: HsonData<typeof S> = Hson.data`<name "Ada">`;'];
+  const invalidNames: string[] = [];
+  for (const parenthesized of [false, true]) for (const [index, tag] of ["Hson?.data", "Hson.data?.", "Hson?.schema", "Hson.schema?."].entries()) {
+    const name = `value${parenthesized ? "Wrapped" : "Direct"}${index}`;
+    invalidNames.push(name);
+    const producer = index >= 2;
+    const template = `${tag}\`${producer ? schema : '<name "Ada">'}\``;
+    const initializer = parenthesized ? `(${template})` : template;
+    if (producer) lines.push(`const ${name}Schema = ${initializer};`, `const ${name}: HsonData<typeof ${name}Schema> = Hson.data\`<name "Ada">\`;`);
+    else lines.push(`const ${name}: HsonData<typeof S> = ${initializer};`);
+  }
+  lines.push('const unrelated: number = "wrong";');
+  const source = '\uFEFF' + lines.join('\r\n');
+  const test = project("optional-chain-proof", { "index.ts": source });
+  const errors = test.errors("index.ts");
+  const grammar = errors.filter(error => error.code === 1358);
+  assert.equal(grammar.length, 8, messages(errors));
+  for (const error of grammar) {
+    assert.equal(error.file?.text, source);
+    const body = source.slice(error.start, error.start! + error.length!);
+    assert.ok(body === '`<name "Ada">`' || body === `\`${schema}\``, body);
+  }
+  for (const name of invalidNames.slice(0, 2)) assert.ok(errors.some(error => error.code === 2322 && error.start === source.indexOf(`${name}:`)), `${name}\n${messages(errors)}`);
+  for (const name of invalidNames.slice(2, 4)) assert.ok(errors.some(error => error.code === 2344 && error.start === source.indexOf(`typeof ${name}Schema`)), `${name}\n${messages(errors)}`);
+  assert.ok(!errors.some(error => error.start === source.indexOf("valid:")), messages(errors));
+  const repaired = source.replaceAll("Hson?.", "Hson.").replaceAll("?.`", "`");
+  test.edit("index.ts", repaired);
+  const repairedErrors = test.errors("index.ts");
+  assert.equal(repairedErrors.filter(error => error.code === 1358).length, 0, messages(repairedErrors));
+  for (const name of invalidNames.slice(0, 4)) assert.ok(!repairedErrors.some(error => error.start === repaired.indexOf(`${name}:`)), `${name}\n${messages(repairedErrors)}`);
+  assert.ok(repairedErrors.some(error => error.code === 2322 && error.start === repaired.indexOf("unrelated:")), messages(repairedErrors));
+  test.service.dispose();
+});
+
+check("rejected Schema producers withdraw generated evidence, attachment assertions and governed reads", () => {
+  const body = '<type "data" content <name "string">>';
+  const valid = `import { Hson } from "hson-live";\r\nexport const Bad = Hson.schema\`${body}\`;\r\n`;
+  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { Bad } from "./schema.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.lib("state").schema.use(Bad);\r\nconst name: string = map.lib("state").at(["name"]).snap();\r\nconst wrong: number = map.lib("state").at(["name"]).snap();\r\n';
+  const test = project("producer-proof-eligibility", { "schema.ts": valid, "index.ts": consumer });
+  const evidence = () => test.service.getProgram()!.getSourceFiles().filter(file => file.fileName.endsWith("/Bad.hson-schema.generated.ts"));
+  const attachment = () => { const snapshot = test.host.getScriptSnapshot(test.file("index.ts"))!; return snapshot.getText(0, snapshot.getLength()).includes('__hson_assert_library_schema(map, "state", Bad)'); };
+  const assertCurrent = (): void => {
+    const errors = test.errors("index.ts");
+    assert.equal(evidence().length, 1, messages(errors)); assert.ok(attachment());
+    assert.equal(errors.length, 1, messages(errors));
+    assert.equal(errors[0]?.code, 2322); assert.equal(errors[0]?.start, consumer.indexOf("wrong:"));
+    assert.match(messages(errors), /string.*number/);
+  };
+  assertCurrent();
+  for (const initializer of [
+    `Hson.schema\`// \\8\r\n${body}\``, `Hson.schema\`// \\unicode\r\n${body}\``,
+    `Hson?.schema\`${body}\``, `Hson.schema?.\`${body}\``,
+    `(Hson?.schema\`${body}\`)`, `(Hson.schema?.\`${body}\`)`,
+  ]) {
+    const rejected = `import { Hson } from "hson-live";\r\nexport const Bad = ${initializer};\r\n`;
+    test.edit("schema.ts", rejected);
+    const errors = test.errors("index.ts");
+    assert.equal(evidence().length, 0, initializer); assert.equal(attachment(), false, initializer);
+    assert.ok(errors.some(error => error.code === 2322 && error.start === consumer.indexOf("const name:") + 6), `${initializer}\n${messages(errors)}`);
+    assert.ok(errors.some(error => error.code === 2322 && error.start === consumer.indexOf("wrong:")), messages(errors));
+    if (initializer.includes("?.")) assert.ok(test.errors("schema.ts").some(error => error.code === 1358), initializer);
+    else assert.ok(produce_document_diagnostics({ fileName: test.file("schema.ts"), languageId: "typescript", text: rejected }).some(issue => issue.code === "HSON_TAGGED_TEMPLATE_REQUIRED"), initializer);
+    test.edit("schema.ts", valid);
+    assertCurrent();
+  }
+  test.service.dispose();
 });
 
 check("editor operations never change disk bytes or materialize a generated project", () => {

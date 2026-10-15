@@ -4,7 +4,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
-import { create_schema_compiler_project_watch, verify_schema_compiler_project } from "../src/internal/hson-schema/compiler-project-watch.ts";
+import { capture_schema_compiler_project, create_schema_compiler_project_watch, verify_schema_compiler_project } from "../src/internal/hson-schema/compiler-project-watch.ts";
+import { check_schema_project } from "../src/internal/hson-schema/compiler-project-build.ts";
+import { discover_hson_schema_declarations } from "../src/internal/hson-schema/schema-discovery.ts";
+import { library_schema_attachment_plan } from "../src/internal/hson-schema/source-transformation.ts";
 import { schema_tooling_fingerprint } from "../src/internal/hson-schema/tooling-fingerprint.ts";
 import { SchemaProjectSnapshot } from "../src/internal/hson-schema/project-snapshot.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -50,6 +53,78 @@ await check("snapshot fingerprints bind exact bytes and freshness checks never a
   const missing = new SchemaProjectSnapshot(); missing.readFile(file);
   assert.equal(SchemaProjectSnapshot.matches(missing.records()), true);
   assert.equal(SchemaProjectSnapshot.matches(JSON.parse(JSON.stringify(missing.records()))), true);
+});
+await check("cross-file producer records cannot publish proof and invalidation withdraws governed read evidence", async () => {
+  const directory = join(project, "producer-provenance"); mkdirSync(directory);
+  const config = join(directory, "tsconfig.json");
+  writeFileSync(join(directory, "package.json"), '{"type":"module"}');
+  writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], declaration: true, outDir: "out", paths: {
+    "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")],
+    "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")],
+  } }, files: ["good.ts", "bad.ts", "consumer.ts"] }));
+  const producer = 'import { Hson } from "hson-live";\r\nexport const S = Hson.schema`// ok\r\n<type "data" content <name "string">>`;\r\n';
+  const invalid = producer.replace("// ok", "// \\8");
+  const badPath = join(directory, "bad.ts"), consumerPath = join(directory, "consumer.ts");
+  writeFileSync(join(directory, "good.ts"), producer); writeFileSync(badPath, invalid);
+  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { S } from "./bad.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.lib("state").schema.use(S);\r\nexport const name: string = map.lib("state").at(["name"]).snap();\r\n';
+  writeFileSync(consumerPath, consumer);
+  const states: string[] = [];
+  let fabricate = true;
+  const watch = create_schema_compiler_project_watch(config, (_config, program) => {
+    const checker = program.getTypeChecker();
+    const good = discover_hson_schema_declarations(ts, program.getSourceFile(join(directory, "good.ts"))!, checker)[0]!;
+    const bad = discover_hson_schema_declarations(ts, program.getSourceFile(badPath)!, checker)[0]!;
+    assert.equal(good.eligible, true);
+    assert.equal(good.declaration.getStart(), bad.declaration.getStart());
+    assert.equal(good.declaration.getEnd(), bad.declaration.getEnd());
+    const admitted = [good, bad].flatMap(found => found.eligible && found.source !== undefined ? [{
+      sourceFile: found.sourceFile, declaration: found.declaration, name: found.name, source: found.source,
+    }] : []);
+    const schemas = fabricate ? [{ sourceFile: bad.sourceFile, declaration: good.declaration, name: good.name, source: good.source! }] : admitted;
+    // Reproduce the original callback's downstream attachment assertion too.
+    const facts = (fabricate ? [bad] : [good, bad].filter(found => found.eligible)).map(found => ({ declaration: found.declaration, mode: "data" as const }));
+    const source = program.getSourceFile(consumerPath)!;
+    const overlays = library_schema_attachment_plan(source, checker, facts).edits.map(edit => ({ file: source.fileName, ...edit }));
+    return { schemas, overlays, diagnostics: fabricate || bad.eligible ? [] : [bad.admissionError!] };
+  }, event => states.push(event.state));
+  const output = join(directory, ".hson/compiler-input/tsconfig.json");
+  const manifestPath = join(output, "manifest.json");
+  const assertUnproven = (): void => {
+    const current = capture_schema_compiler_project(config);
+    assert.deepEqual(current.manifest.sources.find(source => source.source === "bad.ts")!.schemas, []);
+    assert.equal([...current.files.keys()].some(file => file.includes("/evidence/bad.ts/")), false);
+    assert.doesNotMatch(current.files.get(join(output, "sources/bad.ts"))!.toString(), /as unknown as __HsonSchema/);
+    assert.doesNotMatch(current.files.get(join(output, "sources/consumer.ts"))!.toString(), /__hson_assert_library_schema/);
+    assert.throws(() => verify_schema_compiler_project(config), /invalid Hson tagged template/);
+    for (const emit of [false, true]) assert.throws(() => check_schema_project(config, current, emit), /not assignable to type 'string'/);
+    assert.equal(existsSync(join(directory, "out/consumer.d.ts")), false);
+  };
+  try {
+    await assert.rejects(watch.poll(), /not eligible for generated proof/);
+    assert.deepEqual(states, []);
+    assert.equal(existsSync(manifestPath), false);
+    assert.throws(() => verify_schema_compiler_project(config), /Missing generated Hson project/);
+    assert.equal(existsSync(join(directory, "out")), false);
+    fabricate = false; await watch.poll(); assertUnproven();
+    writeFileSync(badPath, producer); await watch.poll();
+    const corrected = verify_schema_compiler_project(config);
+    assert.equal(corrected.manifest.sources.flatMap(source => source.schemas).length, 2);
+    assert.match(corrected.files.get(join(output, "sources/consumer.ts"))!.toString(), /__hson_assert_library_schema\(map, "state", S\)/);
+    check_schema_project(config, corrected, false); check_schema_project(config, corrected, true);
+    assert.match(readFileSync(join(directory, "out/consumer.d.ts"), "utf8"), /name: string/);
+    rmSync(join(directory, "out"), { recursive: true });
+    writeFileSync(consumerPath, consumer + 'const wrong: number = map.lib("state").at(["name"]).snap();\r\n'); await watch.poll();
+    assert.throws(() => check_schema_project(config, verify_schema_compiler_project(config), false), /Type 'string' is not assignable to type 'number'/);
+    writeFileSync(consumerPath, consumer); await watch.poll();
+    const priorManifest = readFileSync(manifestPath), priorStates = states.length;
+    writeFileSync(badPath, invalid);
+    assert.throws(() => verify_schema_compiler_project(config), /Stale generated Hson project/);
+    fabricate = true; await assert.rejects(watch.poll(), /not eligible for generated proof/);
+    assert.equal(states.length, priorStates);
+    assert.deepEqual(readFileSync(manifestPath), priorManifest);
+    assert.throws(() => verify_schema_compiler_project(config), /Stale generated Hson project/);
+    fabricate = false; await watch.poll(); assertUnproven();
+  } finally { watch.stop(); }
 });
 await check("unchanged invalid state is reused across watcher startup", async () => {
   const quiet = mkdtempSync(join(root, "tmp/schema-watch-quiet-"));

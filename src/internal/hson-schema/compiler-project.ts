@@ -5,6 +5,7 @@ import ts from "typescript";
 import { SchemaProjectSnapshot } from "./project-snapshot.js";
 import { schema_tooling_fingerprint } from "./tooling-fingerprint.js";
 import { generate_hson_schema_evidence } from "./generated-evidence.js";
+import { discover_hson_schema_declarations } from "./schema-discovery.js";
 import {
   apply_source_edits, schema_source_plan, type SchemaSourceEdit,
 } from "./source-transformation.js";
@@ -61,10 +62,18 @@ export function generate_schema_compiler_project(
     return true;
   });
   const mirrors = new Map(sourceFiles.map(file => [resolve(file.fileName), join(outputRoot, "sources", relative(projectRoot, file.fileName))]));
-  for (const schema of schemas) {
-    if (!/\.(?:ts|tsx|mts|cts)$/.test(schema.sourceFile.fileName)) throw new Error(`Hson compiler projects require TypeScript Schema producers: ${schema.sourceFile.fileName}`);
-    if (!mirrors.has(resolve(schema.sourceFile.fileName))) throw new Error(`Cannot mirror Schema source ${schema.sourceFile.fileName}.`);
-  }
+  // Match the entire requested producer against this program's discovery. A
+  // declaration admitted in one file cannot authorize edits in another file.
+  const checker = program.getTypeChecker();
+  const eligible = new Map(sourceFiles.flatMap(file => discover_hson_schema_declarations(ts, file, checker))
+    .filter(found => found.eligible).map(found => [found.declaration, found]));
+  const producers = schemas.map(schema => {
+    const found = eligible.get(schema.declaration);
+    if (found === undefined || found.source === undefined || found.sourceFile !== schema.sourceFile
+      || found.name !== schema.name || found.source !== schema.source) throw new Error(`Schema producer ${schema.name} is not eligible for generated proof.`);
+    if (!/\.(?:ts|tsx|mts|cts)$/.test(found.sourceFile.fileName)) throw new Error(`Hson compiler projects require TypeScript Schema producers: ${found.sourceFile.fileName}`);
+    return { sourceFile: found.sourceFile, declaration: found.declaration, name: found.name, source: found.source };
+  });
   const planned = new Map<string, Buffer>();
   const collisionKeys = new Map<string, string>();
   const add = (path: string, content: string | Buffer): void => {
@@ -83,7 +92,7 @@ export function generate_schema_compiler_project(
     const source = slash(relative(projectRoot, sourceFile.fileName));
     const generated = `sources/${source}`;
     const originalBytes = candidate.snapshot.readBytes(sourceFile.fileName);
-    const declarations = schemas.filter(schema => schema.sourceFile === sourceFile);
+    const declarations = producers.filter(schema => schema.sourceFile === sourceFile);
     const associations: { declaration: ts.VariableDeclaration; name: string; specifier: string }[] = [];
     const schemaRecords: SourceRecord["schemas"][number][] = [];
     for (const schema of declarations) {
@@ -144,7 +153,7 @@ export function generate_schema_compiler_project(
   publish_owned_files(projectRoot, candidate.outputRoot, basename(projectPath), planned, records, { revision: candidate.snapshot.fingerprint(), diagnostics: candidate.diagnostics, observations: candidate.snapshot.records() });
   const generatedProject = join(outputRoot, "tsconfig.json");
   verify_module_graph(generatedProject, program, sourceFiles, mirrors, new SchemaProjectSnapshot({ root: outputRoot, files: new Map([...planned].map(([path, bytes]) => [join(outputRoot, path), bytes])) }));
-  return { project: generatedProject, manifest: join(candidate.outputRoot, "manifest.json"), sources: records.length, schemas: schemas.length };
+  return { project: generatedProject, manifest: join(candidate.outputRoot, "manifest.json"), sources: records.length, schemas: producers.length };
 }
 
 /** Reject a changed resolution instead of quietly mixing original and mirrored source identities. */

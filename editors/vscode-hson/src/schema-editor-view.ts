@@ -70,9 +70,9 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
         || !/\.[cm]?tsx?$/.test(candidate.fileName) || candidate.fileName.split(sep).includes(".hson")) continue;
       const found = discover_hson_schema_declarations(typescript, candidate, checker);
       discoveries.set(canonical(candidate.fileName), found);
-      for (const { declaration, tagged: tag, eligible } of found) {
-        if (!eligible || !typescript.isNoSubstitutionTemplateLiteral(tag.template)) continue;
-        const compiled = compile_hson_schema(tag.template.getText(candidate).slice(1, -1));
+      for (const { declaration, source, eligible } of found) {
+        if (!eligible || source === undefined) continue;
+        const compiled = compile_hson_schema(source);
         if (!compiled.ok) continue;
         const mode = compiled.value.semantic.kind === "document" || compiled.value.semantic.kind === "document-element"
           ? "document" as const : "data" as const;
@@ -91,12 +91,13 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
         for (const declaration of statement.declarationList.declarations) {
           if (!typescript.isIdentifier(declaration.name)) continue;
           const tag = declaration.initializer !== undefined && typescript.isTaggedTemplateExpression(declaration.initializer) ? declaration.initializer : undefined;
-          if (supported && tag !== undefined && eligible.has(declaration)
+          const admitted = eligible.get(declaration);
+          if (supported && tag !== undefined && admitted?.source !== undefined
             && typescript.isNoSubstitutionTemplateLiteral(tag.template) && !tag.template.isUnterminated) {
             try {
               const name = declaration.name.text;
               const identity = `${relative(dirname(projectPath), source.fileName).split(sep).join("/")}#${name}`;
-              const generated = generate_hson_schema_evidence(name, tag.template.getText(source).slice(1, -1), identity);
+              const generated = generate_hson_schema_evidence(name, admitted.source, identity);
               const file = virtual(source.fileName, name);
               const key = canonical(file);
               nextEvidence.set(key, snapshot(generated.declaration, evidence.get(key)));
@@ -148,6 +149,10 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     candidate_diagnostics: (file: string): ts.Diagnostic[] => candidateDiagnostics.filter(diagnostic => canonical(diagnostic.file) === canonical(file)).map(diagnostic => ({
       file: authoredService.getProgram()?.getSourceFile(file), start: diagnostic.start, length: Math.max(1, diagnostic.end - diagnostic.start),
       category: typescript.DiagnosticCategory.Error, code: 95002, source: "hson-schema", messageText: diagnostic.message,
+      ...(diagnostic.related === undefined ? {} : { relatedInformation: diagnostic.related.map(related => ({
+        file: authoredService.getProgram()?.getSourceFile(related.file), start: related.start, length: related.end - related.start,
+        category: typescript.DiagnosticCategory.Message, code: 95002, messageText: related.message,
+      })) }),
     })),
     dispose: () => { for (const file of evidence.keys()) registerEvidence?.(file, undefined); authoredService.dispose(); },
     authoredService,
