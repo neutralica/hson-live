@@ -44,6 +44,7 @@ function prepare(name: string): string {
   const base = JSON.parse(readFileSync(basePath, "utf8"));
   base.compilerOptions.paths["hson-live"] = [join(root, "dist/index.d.ts")];
   base.compilerOptions.paths["hson-live/hson"] = [join(root, "dist/hson-authoring.d.ts")];
+  base.compilerOptions.paths["hson-live/livemap"] = [join(root, "dist/api/livemap/index.d.ts")];
   writeFileSync(basePath, JSON.stringify(base, null, 2));
   // Exercise CRLF, no trailing newline, a BOM, and a shebang without normalizing comparisons.
   const schema = join(project, "schema.ts");
@@ -130,11 +131,11 @@ check("post-hoc attachment proof is compiler-view only", () => {
   assert.doesNotMatch(runtime, /__hson_assert_library_schema/);
   const declaration = readFileSync(join(project, "out/consumer.d.ts"), "utf8");
   assert.doesNotMatch(declaration, /__hson_assert_library_schema|\.hson\//);
-  assert.match(declaration, /refinedHomeLibrary\(\): import\("hson-live"\)\.LiveMapDocumentLibrary</);
-  assert.match(declaration, /refinedHome: import\("hson-live"\)\.LiveMapDocumentLibrary/);
-  assert.match(declaration, /refinedSecond: import\("hson-live"\)\.LiveMapDocumentLibrary/);
-  assert.match(declaration, /refinedTitle: import\("hson-live"\)\.LiveMapDocumentLocation/);
-  assert.match(declaration, /getRefinedTitle\(\): import\("hson-live"\)\.LiveMapDocumentLocation/);
+  assert.match(declaration, /refinedHomeLibrary\(\): import\("hson-live\/livemap"\)\.LiveMapDocumentLibrary</);
+  assert.match(declaration, /refinedHome: import\("hson-live\/livemap"\)\.LiveMapDocumentLibrary/);
+  assert.match(declaration, /refinedSecond: import\("hson-live\/livemap"\)\.LiveMapDocumentLibrary/);
+  assert.match(declaration, /refinedTitle: import\("hson-live\/livemap"\)\.LiveMapDocumentLocation/);
+  assert.match(declaration, /getRefinedTitle\(\): import\("hson-live\/livemap"\)\.LiveMapDocumentLocation/);
   assert.doesNotMatch(declaration, /dist\/types|liveMapLibrarySchemaRefinementsType|__hson|SchemaType|DocumentSchemaGraph|DataSchemaValue/);
   assert.match(declaration, /HsonSchema<infer TGraph, "document">/);
   const downstream = join(temporary, "published-document-consumer");
@@ -143,7 +144,7 @@ check("post-hoc attachment proof is compiler-view only", () => {
   writeFileSync(join(downstream, "tsconfig.json"), JSON.stringify({ compilerOptions: {
     strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, noEmit: true,
     target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [],
-    paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")] },
+    paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")] },
   }, files: ["consumer.ts"] }));
   writeFileSync(join(downstream, "consumer.ts"), `
 import { refinedHomeLibrary, refinedTitle, getRefinedTitle } from "../application/out/consumer.js";

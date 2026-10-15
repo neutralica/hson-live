@@ -372,7 +372,7 @@ check("Phase 1 precision fixture passes entirely through the in-memory view", ()
   const directory = join(temporary, "precision"); cpSync(join(root, "tests/fixtures/hson-schema-compiler-project"), directory, { recursive: true });
   const files: Record<string, string> = {};
   for (const [name, contents] of bytes(directory)) files[name] = contents.toString();
-  const exact = project("precision-live", files, { paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "@support/*": ["./support/*"] }, types: ["node"] });
+  const exact = project("precision-live", files, { paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")], "@support/*": ["./support/*"] }, types: ["node"] });
   const before = bytes(exact.directory);
   for (const name of Object.keys(files).filter(name => /\.[cm]?tsx?$/.test(name))) assert.equal(exact.errors(name).length, 0, `${name}\n${messages(exact.errors(name))}`);
   const evidence = exact.service.getProgram()?.getSourceFiles().filter(file => file.fileName.includes("/editor-evidence/"));

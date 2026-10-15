@@ -66,7 +66,7 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
         const evidence = (): ts.TypeNode => ts.factory.createImportTypeNode(ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral(specifier)), undefined, ts.factory.createIdentifier("Evidence"));
         const field = (key: string): ts.TypeNode => ts.factory.createIndexedAccessTypeNode(evidence(), ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral(key)));
         return { changed: true, node: origin.field === undefined
-          ? ts.factory.createImportTypeNode(ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral("hson-live")), undefined, ts.factory.createIdentifier("HsonSchema"), [field("value"), field("mode"), field("identity")])
+          ? ts.factory.createImportTypeNode(ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral("hson-live/hson")), undefined, ts.factory.createIdentifier("HsonSchema"), [field("value"), field("mode"), field("identity")])
           : field(origin.field) };
       }
       const fallback = (): { node: ts.TypeNode; changed: boolean } => {
@@ -216,9 +216,9 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       if (modeName === undefined) return undefined;
       const facade = modeName === "document" ? "LiveMapDocumentLibrary" : "LiveMapDataLibrary";
       const schema = attachment.schema.getText(source);
-      const projection = modeName === "data" ? `import("hson-live").JsonFromSchema<typeof ${schema}>`
-        : `(typeof ${schema} extends import("hson-live").HsonSchema<infer TGraph, "document"> ? TGraph : never)`;
-      return `import("hson-live").${facade}<${projection}, ${JSON.stringify(selected.library.text)}, typeof ${schema}>`;
+      const projection = modeName === "data" ? `import("hson-live/hson").JsonFromSchema<typeof ${schema}>`
+        : `(typeof ${schema} extends import("hson-live/hson").HsonSchema<infer TGraph, "document"> ? TGraph : never)`;
+      return `import("hson-live/livemap").${facade}<${projection}, ${JSON.stringify(selected.library.text)}, typeof ${schema}>`;
     };
     const refinedEndpointType = (expression: ts.Expression, container: ts.Node, before: number): string | undefined => {
       if (!ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression)
@@ -233,7 +233,7 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
         ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.UseAliasDefinedOutsideCurrentScope);
       if (pathNode === undefined) return undefined;
       const schema = attachment.schema.getText(source);
-      return `import("hson-live").LiveMapDocumentLocation<(typeof ${schema} extends import("hson-live").HsonSchema<infer TGraph, "document"> ? TGraph : never), ${JSON.stringify(selected.library.text)}, ${printer.printNode(ts.EmitHint.Unspecified, pathNode, source)}>`;
+      return `import("hson-live/livemap").LiveMapDocumentLocation<(typeof ${schema} extends import("hson-live/hson").HsonSchema<infer TGraph, "document"> ? TGraph : never), ${JSON.stringify(selected.library.text)}, ${printer.printNode(ts.EmitHint.Unspecified, pathNode, source)}>`;
     };
     const targetedExpressionType = (expression: ts.Expression, container: ts.Node, before: number): string | undefined => {
       return refinedLibraryType(expression, container, before) ?? refinedEndpointType(expression, container, before);
@@ -280,9 +280,9 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       if (modeName !== "document" && modeName !== "data") return undefined;
       const facade = modeName === "document" ? "LiveMapDocumentLibrary" : "LiveMapDataLibrary";
       const schema = schemaNode.getText(source);
-      const projection = modeName === "data" ? `import("hson-live").JsonFromSchema<typeof ${schema}>`
-        : `(typeof ${schema} extends import("hson-live").HsonSchema<infer TGraph, "document"> ? TGraph : never)`;
-      return `import("hson-live").${facade}<${projection}, ${JSON.stringify(library.text)}, typeof ${schema}>`;
+      const projection = modeName === "data" ? `import("hson-live/hson").JsonFromSchema<typeof ${schema}>`
+        : `(typeof ${schema} extends import("hson-live/hson").HsonSchema<infer TGraph, "document"> ? TGraph : never)`;
+      return `import("hson-live/livemap").${facade}<${projection}, ${JSON.stringify(library.text)}, typeof ${schema}>`;
     };
     const flowRefinedExportedMap = (node: ts.VariableDeclaration): boolean => {
       if (!ts.isIdentifier(node.name) || node.parent.parent.parent !== source) return false;

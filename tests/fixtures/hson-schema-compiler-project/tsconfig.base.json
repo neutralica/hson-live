@@ -11,7 +11,8 @@
     "paths": {
       "@support/*": ["./support/*"],
       "hson-live": ["../../../dist/index.d.ts"],
-      "hson-live/hson": ["../../../dist/hson-authoring.d.ts"]
+      "hson-live/hson": ["../../../dist/hson-authoring.d.ts"],
+      "hson-live/livemap": ["../../../dist/api/livemap/index.d.ts"]
     },
     "rootDir": ".",
     "declaration": true,

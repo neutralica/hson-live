@@ -27,7 +27,7 @@ writeFileSync(file("package.json"), '{"type":"module"}');
 writeFileSync(file("schema.ts"), schema);
 writeFileSync(file("consumer.ts"), consumer);
 writeFileSync(file("second.ts"), 'import { type HsonDocument } from "hson-live"; import { Slide } from "./schema.js"; export declare const imported: HsonDocument<typeof Slide>;\n');
-writeFileSync(file("tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")] } }, include: ["*.ts"] }));
+writeFileSync(file("tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")] } }, include: ["*.ts"] }));
 const originals = new Map(readdirSync(directory).map(name => [name, readFileSync(file(name))]));
 const child = spawn(process.execPath, [join(root, "node_modules/typescript/lib/tsserver.js"), "--globalPlugins", plugin, "--pluginProbeLocations", extension, "--disableAutomaticTypingAcquisition", "--logVerbosity", "verbose", "--logFile", file("server.log")], { stdio: ["pipe", "pipe", "pipe"] });
 let sequence = 0, buffered = Buffer.alloc(0), stderr = "";

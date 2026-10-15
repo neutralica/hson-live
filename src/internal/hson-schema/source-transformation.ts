@@ -132,7 +132,7 @@ export function library_schema_attachment_plan(
   edits.push({
     start: source.text.length,
     end: source.text.length,
-    text: `\ndeclare function ${helper}<TMap extends object, TLibrary extends import("hson-live").LiveMapKnownNames<TMap>, TSchema extends import("hson-live").HsonSchema>(map: TMap, library: TLibrary, schema: TSchema): asserts map is import("hson-live").LiveMapWithLibrarySchema<TMap, TLibrary, TSchema>;\n`,
+    text: `\ndeclare function ${helper}<TMap extends object, TLibrary extends import("hson-live/livemap").LiveMapKnownNames<TMap>, TSchema extends import("hson-live/hson").HsonSchema>(map: TMap, library: TLibrary, schema: TSchema): asserts map is import("hson-live/livemap").LiveMapWithLibrarySchema<TMap, TLibrary, TSchema>;\n`,
   });
   return { edits, generatedNames: [helper], attachments };
 }
@@ -244,5 +244,5 @@ export function apply_source_edits(source: string, edits: readonly SchemaSourceE
 
 export function generated_exports_block(exports: readonly string[], schemaTypeName = "__HsonSchema"): string {
   if (exports.length === 0) return "";
-  return `${GENERATED_EXPORTS_START}\nimport type { HsonSchema as ${schemaTypeName} } from "hson-live";\n${[...exports].sort().join("\n")}\n${GENERATED_EXPORTS_END}\n`;
+  return `${GENERATED_EXPORTS_START}\nimport type { HsonSchema as ${schemaTypeName} } from "hson-live/hson";\n${[...exports].sort().join("\n")}\n${GENERATED_EXPORTS_END}\n`;
 }
