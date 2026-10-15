@@ -27,7 +27,7 @@ specialist capability from its owning public subpath.
 - **HsonData** is a canonical primitive string with exact semantic data for data values and action
   payloads. Use `Hson.data.entries(data)` for exact ordered inspection and `Hson.data.materialize(data)`
   only when a detached ordinary JavaScript view is wanted.
-- **HsonDocument** is a canonical primitive string in document context. It can be converted to a detached graph and round-trips zero, one, or many top-level items;
+- **HsonDocument** is a canonical primitive string in document context. It can be converted to a detached graph and admits one or many top-level items;
   it carries no LiveMap authority or browser realization behavior.
 - **Hson Schema** validates canonical authored data/graphs. Generated Schema evidence supplies `HsonFromSchema<typeof Schema>` for either Hson family and data-only `JsonFromSchema<typeof DataSchema>` for JS/JSON-shaped values. `HsonData<S>` and `HsonDocument<S>` remain the precise lower-level string proof types.
 - **LiveMap and Libraries** own local canonical state. `hsonLiveMap.create` and
@@ -207,13 +207,13 @@ its Mirror and interaction arrangements without disposing Echo.
 ### 9. Canonical interactions — portable intent plus runtime behavior
 
 ```ts
-import { activate_interactions, add_interaction } from "hson-live";
+import { Hson, activate_interactions, add_interaction } from "hson-live";
 
 add_interaction(libraries, descriptor);
 const dispose = activate_interactions({
   map: libraries,
   tree,
-  local: { reveal: (event, subject, args) => show(subject, args.materialize()) },
+  local: { reveal: (event, subject, args) => show(subject, Hson.data.materialize(args)) },
   dispatch: async (key, payload) => { await echo.action(key, payload); },
 });
 dispose();

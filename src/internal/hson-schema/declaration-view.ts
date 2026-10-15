@@ -5,7 +5,7 @@ import { apply_source_edits, library_schema_attachment_plan, type PreciseSchemaF
 type EvidenceOrigin = Readonly<{ source: string; name: string; evidence: string }>;
 
 /** Name inferred public Schema types through their existing evidence origin, never a second brand. */
-export function schema_declaration_views(program: ts.Program, origins: readonly EvidenceOrigin[]): ReadonlyMap<string, { text: string; edits: readonly SchemaSourceEdit[] }> {
+export function schema_declaration_views(program: ts.Program, origins: readonly EvidenceOrigin[], host: ts.ModuleResolutionHost): ReadonlyMap<string, { text: string; edits: readonly SchemaSourceEdit[] }> {
   if (origins.length === 0) return new Map();
   const checker = program.getTypeChecker();
   const names = new Map<ts.Type, { evidence: string; field?: "value" | "identity" }>();
@@ -46,6 +46,27 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
   const result = new Map<string, { text: string; edits: readonly SchemaSourceEdit[] }>();
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile || source.fileName.includes(".hson-schema.generated.") || program.isSourceFileFromExternalLibrary(source)) continue;
+    // Reuse symbols actually exported by the narrow entrypoints; bare checker names
+    // need not be in scope in the producer being annotated.
+    const publicNames = new Map<ts.Symbol, { specifier: string; name: string }>();
+    for (const specifier of ["hson-live/hson", "hson-live/livemap"]) {
+      const resolved = ts.resolveModuleName(specifier, source.fileName, program.getCompilerOptions(), host, undefined, undefined, source.impliedNodeFormat).resolvedModule;
+      const entrypoint = resolved === undefined ? undefined : program.getSourceFile(resolved.resolvedFileName);
+      const module = entrypoint === undefined ? undefined : checker.getSymbolAtLocation(entrypoint);
+      if (module === undefined) continue;
+      for (const exported of checker.getExportsOfModule(module)) {
+        const symbol = exported.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(exported) : exported;
+        publicNames.set(symbol, { specifier, name: exported.name });
+      }
+    }
+    // A root-only import need not load the narrow LiveMap barrel. Its LiveMap
+    // export is the same interface, and is published through the narrow path.
+    const rootModule = ts.resolveModuleName("hson-live", source.fileName, program.getCompilerOptions(), host, undefined, undefined, source.impliedNodeFormat).resolvedModule;
+    const rootSource = rootModule === undefined ? undefined : program.getSourceFile(rootModule.resolvedFileName);
+    const rootSymbol = rootSource === undefined ? undefined : checker.getSymbolAtLocation(rootSource);
+    const rootMap = rootSymbol === undefined ? undefined : checker.getExportsOfModule(rootSymbol).find(symbol => symbol.name === "LiveMap");
+    if (rootMap !== undefined) publicNames.set(rootMap.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(rootMap) : rootMap,
+      { specifier: "hson-live/livemap", name: "LiveMap" });
     const edits: SchemaSourceEdit[] = [];
     const attachments = library_schema_attachment_plan(source, checker, preciseSchemas).attachments;
     const module = checker.getSymbolAtLocation(source);
@@ -69,10 +90,12 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
           ? ts.factory.createImportTypeNode(ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral("hson-live/hson")), undefined, ts.factory.createIdentifier("HsonSchema"), [field("value"), field("mode"), field("identity")])
           : field(origin.field) };
       }
-      const fallback = (): { node: ts.TypeNode; changed: boolean } => {
+      const fallback = (flags = ts.NodeBuilderFlags.None): { node: ts.TypeNode; changed: boolean } => {
         let node: ts.TypeNode | undefined;
         try {
-          node = checker.typeToTypeNode(type, context, ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.UseAliasDefinedOutsideCurrentScope);
+          const formatting = ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.AllowEmptyTuple | flags;
+          node = checker.typeToTypeNode(type, context, formatting)
+            ?? checker.typeToTypeNode(type, context, formatting | ts.NodeBuilderFlags.UseAliasDefinedOutsideCurrentScope);
         } catch (cause) {
           throw new Error(`Cannot name inferred declaration type near ${context.getText(source)} in ${source.fileName}.`, { cause });
         }
@@ -81,14 +104,33 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       };
       if (seen.has(type)) return fallback();
       const nested = new Set(seen).add(type);
+      // Retain public aliases before expanding intersections. HsonData and
+      // HsonDocument encapsulate private proof keys that must stay private.
+      const symbol = type.aliasSymbol ?? type.getSymbol();
+      const publicName = symbol === undefined ? undefined : publicNames.get(symbol);
+      const arguments_ = type.aliasTypeArguments ?? ((type.flags & ts.TypeFlags.Object) && (type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference ? checker.getTypeArguments(type as ts.TypeReference) : undefined);
+      if (publicName !== undefined) {
+        const entries = arguments_?.map(entry => render(entry, context, nested));
+        // A public name alone does not require an annotation. Rewrite only
+        // declarations whose nested Schema evidence needs publication repair.
+        return { changed: entries?.some(entry => entry.changed) ?? false, node: ts.factory.createImportTypeNode(
+          ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral(publicName.specifier)), undefined,
+          ts.factory.createIdentifier(publicName.name), entries?.map(entry => entry.node),
+        ) };
+      }
       if (type.isUnionOrIntersection()) {
         const entries = type.types.map(entry => render(entry, context, nested));
         return { node: type.isUnion() ? ts.factory.createUnionTypeNode(entries.map(entry => entry.node)) : ts.factory.createIntersectionTypeNode(entries.map(entry => entry.node)), changed: entries.some(entry => entry.changed) };
       }
-      const normal = fallback();
+      // Internal mapped aliases (notably LiveMapKnownDefinitions) have no public
+      // name. Let TypeScript resolve their keys/modifiers, then replace evidence
+      // within their properties using the same structural rendering below.
+      const expandMapped = type.aliasSymbol?.declarations?.some(declaration => !program.isSourceFileDefaultLibrary(declaration.getSourceFile())) === true
+        && (type.flags & ts.TypeFlags.Object) !== 0
+        && ((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Mapped) !== 0;
+      const normal = fallback(expandMapped ? ts.NodeBuilderFlags.InTypeAlias : ts.NodeBuilderFlags.None);
       // Preserve named classes, interfaces and aliases; substitute only their type arguments.
-      const arguments_ = type.aliasTypeArguments ?? ((type.flags & ts.TypeFlags.Object) && (type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference ? checker.getTypeArguments(type as ts.TypeReference) : undefined);
-      if (arguments_?.length) {
+      if (!expandMapped && arguments_?.length) {
         const entries = arguments_.map(entry => render(entry, context, nested));
         if (!entries.some(entry => entry.changed)) return normal;
         if (ts.isTypeReferenceNode(normal.node)) return { changed: true, node: ts.factory.updateTypeReferenceNode(normal.node, normal.node.typeName, ts.factory.createNodeArray(entries.map(entry => entry.node))) };
@@ -96,7 +138,7 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
         if (ts.isArrayTypeNode(normal.node) && entries.length === 1) return { changed: true, node: ts.factory.createArrayTypeNode(entries[0]!.node) };
         return normal;
       }
-      if (!(type.flags & ts.TypeFlags.Object) || type.aliasSymbol !== undefined) return normal;
+      if (!(type.flags & ts.TypeFlags.Object) || (type.aliasSymbol !== undefined && !expandMapped)) return normal;
       if (type.symbol?.declarations?.some(node => ts.isClassDeclaration(node) || ts.isInterfaceDeclaration(node))) return normal;
       if (!ts.isTypeLiteralNode(normal.node) && !ts.isFunctionTypeNode(normal.node)) return normal;
       let changed = false;
@@ -191,19 +233,19 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
         && ((mode as ts.StringLiteralType).value === "data" || (mode as ts.StringLiteralType).value === "document")
         ? (mode as ts.StringLiteralType).value as "data" | "document" : undefined;
     };
-    const selectionCarriesSchema = (
-      selected: Readonly<{ facade: ts.CallExpression }>,
-      schema: ts.Identifier,
-    ): boolean => {
+    const selectedSchema = (selected: Readonly<{ facade: ts.CallExpression }>): ts.Type | undefined => {
       const facade = checker.getTypeAtLocation(selected.facade);
       const schemaProperty = checker.getPropertyOfType(facade, "schema");
-      if (schemaProperty === undefined) return false;
+      if (schemaProperty === undefined) return undefined;
       const schemaFacade = checker.getTypeOfSymbolAtLocation(schemaProperty, selected.facade);
       const getProperty = checker.getPropertyOfType(schemaFacade, "get");
-      if (getProperty === undefined) return false;
+      if (getProperty === undefined) return undefined;
       const signature = checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(getProperty, selected.facade), ts.SignatureKind.Call)[0];
-      if (signature === undefined) return false;
-      const current = checker.getReturnTypeOfSignature(signature);
+      return signature === undefined ? undefined : checker.getReturnTypeOfSignature(signature);
+    };
+    const selectionCarriesSchema = (selected: Readonly<{ facade: ts.CallExpression }>, schema: ts.Identifier): boolean => {
+      const current = selectedSchema(selected);
+      if (current === undefined) return false;
       const requested = checker.getTypeAtLocation(schema);
       return checker.isTypeAssignableTo(current, requested) && checker.isTypeAssignableTo(requested, current);
     };
@@ -211,14 +253,22 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       const selected = selectedLibrary(expression);
       if (selected === undefined) return undefined;
       const attachment = matchingAttachment(selected, container, before);
-      if (attachment === undefined || !selectionCarriesSchema(selected, attachment.schema)) return undefined;
-      const modeName = attachment.mode ?? selectedMode(selected);
+      const current = selectedSchema(selected);
+      const receiver = checker.getTypeAtLocation(selected.map).getSymbol();
+      if (attachment === undefined && (receiver === undefined || publicNames.get(receiver)?.name !== "LiveMap")) return undefined;
+      const knownSchema = current === undefined ? undefined : [...names].find(([type, origin]) => origin.field === undefined
+        && checker.isTypeAssignableTo(current, type) && checker.isTypeAssignableTo(type, current))?.[0];
+      if (attachment === undefined && knownSchema === undefined) return undefined;
+      if (attachment !== undefined && !selectionCarriesSchema(selected, attachment.schema)) return undefined;
+      const modeName = attachment?.mode ?? preciseSchemas.find(fact => checker.getTypeAtLocation(fact.declaration) === knownSchema)?.mode ?? selectedMode(selected);
       if (modeName === undefined) return undefined;
       const facade = modeName === "document" ? "LiveMapDocumentLibrary" : "LiveMapDataLibrary";
-      const schema = attachment.schema.getText(source);
-      const projection = modeName === "data" ? `import("hson-live/hson").JsonFromSchema<typeof ${schema}>`
-        : `(typeof ${schema} extends import("hson-live/hson").HsonSchema<infer TGraph, "document"> ? TGraph : never)`;
-      return `import("hson-live/livemap").${facade}<${projection}, ${JSON.stringify(selected.library.text)}, typeof ${schema}>`;
+      const schema = attachment !== undefined ? `typeof ${attachment.schema.getText(source)}`
+        : knownSchema === undefined ? undefined : printer.printNode(ts.EmitHint.Unspecified, render(knownSchema, expression).node, source);
+      if (schema === undefined) return undefined;
+      const projection = modeName === "data" ? `import("hson-live/hson").JsonFromSchema<${schema}>`
+        : `(${schema} extends import("hson-live/hson").HsonSchema<infer TGraph, "document"> ? TGraph : never)`;
+      return `import("hson-live/livemap").${facade}<${projection}, ${JSON.stringify(selected.library.text)}, ${schema}>`;
     };
     const refinedEndpointType = (expression: ts.Expression, container: ts.Node, before: number): string | undefined => {
       if (!ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression)

@@ -20,12 +20,13 @@ export function check_schema_project(projectPath: string, current: Current, emit
   const readGenerated = ts.readConfigFile(current.project, snapshot.readFile);
   const generated = ts.parseJsonConfigFileContent(readGenerated.config, snapshot.host, dirname(current.project), undefined, current.project);
   diagnostics([...(readGenerated.error ? [readGenerated.error] : []), ...generated.errors]);
-  const baseProgram = ts.createProgram(generated.fileNames, generated.options, snapshot.compilerHost(generated.options));
+  const baseHost = snapshot.compilerHost(generated.options);
+  const baseProgram = ts.createProgram(generated.fileNames, generated.options, baseHost);
   const declarationEnabled = authored.options.declaration || authored.options.composite || authored.options.emitDeclarationOnly;
   const origins = current.manifest.sources.flatMap((record: SourceRecord) => record.schemas.map(schema => ({
     source: join(current.selected, record.generated), name: schema.name, evidence: join(current.selected, schema.evidence),
   })));
-  const views = declarationEnabled ? schema_declaration_views(baseProgram, origins) : new Map<string, { text: string; edits: readonly SchemaSourceEdit[] }>();
+  const views = declarationEnabled ? schema_declaration_views(baseProgram, origins, baseHost) : new Map<string, { text: string; edits: readonly SchemaSourceEdit[] }>();
   const checkHost = snapshot.compilerHost(generated.options);
   const checkRead = checkHost.readFile;
   checkHost.readFile = path => views.get(resolve(path))?.text ?? checkRead(path);
