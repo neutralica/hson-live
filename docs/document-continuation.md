@@ -55,15 +55,13 @@ continuation.tree.attrs.set("data-ready", "yes");
 continuation.dispose();
 ```
 
-The local SSR bootstrap carries document state and revision, without generated
-server QUIDs. Admit the decoded local document root through ordinary portable node
-admission, then restore its revision with `identity: "strip"`; this gives the
-browser a fresh runtime identity context. `map` may be a document `LiveMap`, or an aggregate public-library map. With one
-public document library the aggregate selection is inferred. With two or more,
-pass its stable public document-library handle as `document`. Hidden canonical
-interaction storage is not a selectable document library. The returned `map`
-is always the selected document-facing map/library to which `tree` and
-`mirror` correspond, not the aggregate.
+The local SSR bootstrap carries selected Library state and revision, without
+generated server QUIDs. `install_libraries_snapshot(libs)` installs the decoded
+aggregate snapshot in a fresh runtime identity context. Pass that aggregate
+LiveMap as `map`. With one public document Library the selection is inferred;
+with two or more, pass its public Library handle as `document`. Hidden canonical
+interaction storage is not a selectable document Library. The returned `map`
+is the selected document Library to which `tree` and `mirror` correspond.
 
 After installing a local aggregate cut, select the document named by that cut
 before continuation:

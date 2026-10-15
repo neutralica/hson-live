@@ -56,3 +56,16 @@
 - Repaired ESM subsystem boundaries and tree-shaking, allowing lean LiveMap/Echo imports without dragging unrelated authority/compiler/runtime code into client bundles.
 - Expanded VS Code Hson tooling with structural indentation, embedded delimiter-depth highlighting, and standalone .hson formatting support.
 - Advanced Deck as an integration application, exercising governed data, Schema-derived types, live authority, SSR/continuation, and Hson-native rendering patterns.
+
+### Hson — Templating & QUADs v0.1
+A major push into templating patterns as a first-class operation. Developed composable markup templates, a `Collection` library type for template `Parts`, and QUADS, Quantum Unique Addresses - the authorable, portable, external analogue to QUIDs. 
+- Governed Part collections: Reusable, validated document definitions with optional CSS, stored as inert data Libraries.
+- Automatic Part composition: `<hson-part>` connectors expand recursively during document admission and supported mutations, without a separate templating API.
+- Inline parameters: `%{name}` placeholders support type-preserving scalar initialization and partial string substitution.
+- Occurrence-scoped CSS:** Part styles automatically scope to each instance, including root and nested selectors, without requiring authored QUADs.
+- Automatic CSS lifecycle: Instance-owned styles are installed and removed atomically with their corresponding document subjects.
+- Public document `.q(name)`: Identity-following QUAD locations support ordinary document reads and edits, movement, and safe handle retirement.
+- QUAD/QUID identity improvements: Sparse identity issuance, explicit receiving QUAD promotion, stronger replacement continuity, and authority-lifetime protections.
+- Portable document CSS: Subject identities and styles survive capture, restoration, SSR, and browser grafting with fresh runtime identities.
+- LiveTree/Mirror improvements: Existing DOM Elements retain identity and receive updated CSS identity carriers without replacement.
+- Expanded validation: Additional Node, Worker, and real-Chrome acceptance coverage for composition, CSS, identity, mutation atomicity, and no-JavaScript rendering.

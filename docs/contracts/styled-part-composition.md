@@ -1,9 +1,16 @@
 # Automatic Part admission and occurrence-owned CSS (Cut 9C-3)
 
-A governed Part collection is an inert data Library. Its members retain the
-validated `{ kind: "document", document: string, css?: string }` format and exactly
-one ordinary structural root. Admitting or editing definitions neither expands
-nested connectors nor changes documents previously constructed from them.
+A governed Part collection is an inert object data Library. Its keyed members are
+exact `{ kind: "document", document: string, css?: string }` records with exactly
+one ordinary, non-connector element root. Admitting or editing definitions neither
+expands nested connectors nor changes documents previously constructed from them.
+
+The internal `hson-part-collection-v1` Library validation contract is independent
+of Schema and validates every member of each complete candidate. It travels with
+portable registry/topology state and is enforced on reconstruction as well as
+mutation. A lookalike ordinary data object is not a governed collection. Collection
+admission neither registers separate member Libraries nor issues runtime identity
+for Part definitions. The marker and collection-admission helpers remain internal.
 
 Authored Library admission (`fromLibraries`, local `addLibraries`, and initial
 Locus authority definitions) consumes `<hson-part lib="parts" at="navigation"/>`.
@@ -185,6 +192,8 @@ Canonical restore, replay, capture, cut, rendering and graft never expand Parts.
 Residual connectors at canonical document ingress reject. Full snapshots and
 semantic checkpoints carry realized graph, owned CSS and portable correspondence;
 receivers allocate fresh identities. Final-only cuts need no Part collection.
+The local SSR bootstrap encoder currently rejects transfers that select a governed
+Part collection; exclude source collections from that transfer.
 SSR emits disposable carriers and CSS for the same subjects; synchronous graft
 switches CSS after receiving metadata is written, before carriers are consumed.
 Nonempty CSS rendering retains the existing explicit `html`/`head` requirement.
