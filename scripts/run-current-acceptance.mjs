@@ -11,6 +11,7 @@ const browser = new Set([
   "test:canonical-interactions-browser",
   "test:browser-realization-parser-closure",
   "test:document-ssr-browser",
+  "test:document-ssr-subjects-browser",
   "test:livemap-document-css-browser",
   "test:stylesheet-ingress-browser",
   "test:echo-http-browser",

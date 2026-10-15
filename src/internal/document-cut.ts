@@ -9,6 +9,7 @@ import { DocumentSsrError } from "./document-cut.error.js";
 import type { PortableDocumentQuads } from "../types/livemap.types.js";
 import { plan_portable_document_subjects } from "./browser-realization/portable-document-subjects.js";
 import { decode_hosted_root, HOSTED_MAX_SNAPSHOT_BYTES } from "../api/livemap/livemap.hosted.js";
+import { document_css_subject_identities } from "./css/css-identity-translation.js";
 
 export function realize_document(root: HsonNode, css = "", subjects?: Readonly<{ quads?: PortableDocumentQuads }>): BrowserRealizationHtml {
   try {
@@ -47,5 +48,7 @@ export function cut_hosted_projection(
     throw new DocumentSsrError("bootstrap", "The session document could not be decoded.", cause);
   }
   const css = render_portable_document_stylesheet(decode_portable_document_stylesheet(library.css));
-  return Object.freeze({ html: realize_document(root, css), libs: snapshot, document: selected });
+  return Object.freeze({ html: realize_document(root, css,
+    document_css_subject_identities(library.css!, "inbound").length ? { quads: library.quads } : undefined),
+    libs: snapshot, document: selected });
 }

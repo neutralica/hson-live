@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { document_ssr_subject_cases } from "./fixtures/document-ssr-subjects-cases.mts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
+import { hosted_styled_part_ssr_cases } from "./fixtures/hosted-styled-part-ssr-cases.mts";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "ssr.portable-subjects", title: "Portable subject SSR realization", category: "LiveMap", runtime: "node", tags: Object.freeze(["ssr", "quad", "css", "worker", "identity"]) });
 let passed = 0;
 document_ssr_subject_cases((name, run) => { run(); passed++; console.log(`PASS ${name}`); });
+await hosted_styled_part_ssr_cases(async (name, run) => { await run(); passed++; console.log(`PASS ${name}`); });
 const result = await new Promise<{ passed: number; hasDocument: boolean }>((resolve,reject) => {
   const worker = repository_typescript_worker(new URL("./fixtures/document-ssr-subjects.worker.mts",import.meta.url));
   worker.once("message",resolve); worker.once("error",reject);
