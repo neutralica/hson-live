@@ -1,7 +1,8 @@
 import { own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
-import type { DocumentCompositionStyle } from "./livemap.document.composition.js";
-import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { expand_document_composition, document_composition_options, has_part_connector, type DocumentCompositionStyle } from "./livemap.document.composition.js";
+import { normalize_replacement_lineage } from "./livemap.document.lineage.js";
+import { merge_part_stylesheets, retire_part_styles } from "../../internal/css/part-stylesheet.js";
 import { registry_from_entries } from "./livemap.hosted.js";
 import {
   make_document_quad_bindings,
@@ -67,7 +68,7 @@ import {
   clone_hson_graph_without_quids,
   register_livemap_document_commit_continuity
 } from "./livemap.document.capture.js";
-import { livemap_document_identity_overlay_equal, livemap_document_identity_quids, register_livemap_document_identity_at_path, register_livemap_document_identity_effects, type LiveMapDocumentIdentityEffect } from "./livemap.document.identity.js";
+import { clone_livemap_document_exact_view, livemap_document_identity_overlay_equal, livemap_document_identity_quids, register_livemap_document_identity_at_path, register_livemap_document_identity_effects, type LiveMapDocumentIdentityEffect } from "./livemap.document.identity.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
 import { classify_live_root_mode, prepare_livemap_root } from "./livemap.document.js";
 import { admit_owned_livemap_root, admit_public_livemap_root } from "./livemap.node-admission.js";
@@ -77,7 +78,7 @@ import {
   type PreparedDocumentMutation
 } from "./livemap.document.mutation.js";
 import { document_path_equal, resolve_document_path, validate_document_path } from "./livemap.document.path.js";
-import { register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
+import { livemap_document_identity_quid_unavailable, register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
 import {
   clone_live_root,
   overwrite_hson_node,
@@ -212,6 +213,7 @@ export type RegistryRoot = Readonly<{
   /** Portable internal data-Library contract. @internal */
   validation?: "hson-part-collection-v1";
   quads?: PortableDocumentQuads;
+  compositionStyles?: readonly DocumentCompositionStyle[];
   css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
 }>;
 
@@ -241,7 +243,7 @@ export function make_livemap_registry_authority(
     }
     validate_data_library(graph.root, graph.mode, validation);
     if (css !== undefined && family !== "document") throw new TypeError("Initial CSS requires a document Library.");
-    return { graph, hsonSchema, css, validation, quads: decode_document_quads(quads, graph.root, graph.mode) };
+    return { graph, hsonSchema, css, validation, compositionStyles: definition.compositionStyles, quads: decode_document_quads(quads, graph.root, graph.mode) };
   });
   const aggregate = make_livemap_registry_engine(prepared, systems);
   return Object.freeze({ aggregate, identities: aggregate.libraries() });
@@ -256,6 +258,7 @@ function make_livemap_registry_engine(
     hsonSchema?: HsonSchema;
     validation?: DataLibraryValidation;
     quads?: PortableDocumentQuads;
+    compositionStyles?: readonly DocumentCompositionStyle[];
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[],
   systems: readonly InitialSystemState[] = [],
@@ -565,6 +568,41 @@ function make_livemap_registry_engine(
     return state;
   }
 
+  function compose_styles(root: HsonNode,
+    initialOverlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
+    occurrences: readonly DocumentCompositionStyle[], reserved: Set<string>,
+    before = empty_portable_document_stylesheet(), foreignPayloads: ReadonlySet<string> = new Set(), participantOwner?: object) {
+    const assertCurrent = capture_fence();
+    // Conflict admission precedes all candidate allocation.
+    merge_part_stylesheets([encode_portable_document_stylesheet(before), ...occurrences.map(item => item.css)]);
+    let overlay = initialOverlay;
+    const records = occurrences.map(occurrence => {
+      const demanded = new Set(document_css_subject_identities(occurrence.css, "inbound"));
+      const names = new Set<string>(), paths = new Set<string>();
+      const associations = occurrence.subjects.map(({ name, path }) => {
+        const coordinate = validate_document_path(path), key = JSON.stringify(coordinate);
+        if (!demanded.has(name) || names.has(name) || paths.has(key)
+          || !is_ordinary_element_node(resolve_document_path(root, "document", coordinate))) throw new Error("Part CSS requires exact bijective destination subject demand.");
+        names.add(name); paths.add(key);
+        let quid = overlay.quidAtPath(coordinate);
+        if (quid === undefined) {
+          quid = allocate_livemap_quid(mapIdentityEpoch.owner,
+            candidate => reserved.has(candidate) || mapIdentityEpoch.issued().has(candidate) || foreignPayloads.has(candidate)
+              || participantOwner !== undefined && livemap_document_identity_quid_unavailable(participantOwner, candidate),
+            candidate => ({ claimed: true, value: candidate }));
+          if (quid === undefined) throw new Error("No available destination QUID for Part CSS subject.");
+          reserved.add(quid);
+          overlay = register_livemap_document_identity_at_path(overlay, quid, coordinate).overlay;
+        }
+        return { name, quid, disposition: "authored" as const };
+      });
+      if (names.size !== demanded.size) throw new Error("Unresolved Part CSS destination subject.");
+      return translate_document_css_identities(occurrence.css, "inbound", { associations, assertCurrent }, true);
+    });
+    const stylesheet = merge_part_stylesheets([encode_portable_document_stylesheet(before), ...records]);
+    assertCurrent(); return { documentOverlay: overlay, stylesheet };
+  }
+
   function capture_fence(): () => void {
     const revision = mapRevision, generation = identityGeneration, registry = hostedRegistry, authority = hostedFence;
     if (localIdentityTransactionActive) throw new Error("Capture cannot observe an incomplete identity transaction.");
@@ -857,6 +895,7 @@ function make_livemap_registry_engine(
     const prevRev = mapRevision;
     const preparedIdentityGeneration = identityGeneration;
     const candidates = new Map<LiveMapLibraryIdentity, AggregateCandidate>();
+    const constructionClaims: { library: LiveMapLibraryIdentity; quid: string }[] = [];
     const cssCandidates = new Map<LiveMapLibraryIdentity, Readonly<{
       before: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
       after: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
@@ -882,6 +921,46 @@ function make_livemap_registry_engine(
         : make_aggregate_data_candidate(library);
       candidates.set(identity, candidate);
       return candidate;
+    };
+    const partValues = new Map<LiveMapLibraryIdentity, OrderedProjectedValue>();
+    for (const write of writes) {
+      if (write.target.domain !== "application") continue;
+      const library = require_library(write.target.library);
+      if (library.validation === undefined) continue;
+      if (write.kind === "graph" || write.kind === "css" || write.kind === "ensure-quid" || write.kind === "replay-data") continue;
+      const value = partValues.get(library.identity) ?? must_projected_root_value(library.root);
+      partValues.set(library.identity, plan_write_ops(value, aggregate_write_ops(write, value)).value);
+    }
+    const readPartCandidate = (collection: string, member: string) => {
+      const binding = hostedBindingsByName?.get(collection);
+      if (binding === undefined || binding.mode !== "data-object" || binding.validation === undefined) throw new Error(`Unknown or unavailable Part collection ${JSON.stringify(collection)}.`);
+      const library = require_library(binding.identity);
+      const value = partValues.get(library.identity);
+      const root = value === undefined ? library.root : projected_value_to_hson_root(value);
+      const selected = validate_data_library(root, library.mode, library.validation)?.find(part => part.key === member);
+      if (selected === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
+      return selected;
+    };
+    const realizeOperation = (operation: LiveMapGraphOp) => {
+      const input = operation.op === "insert-content" ? operation.content : operation.op === "replace-content" ? operation.replacement : undefined;
+      if (!is_Node(input) || !has_part_connector(input)) return { operation, styles: Object.freeze<DocumentCompositionStyle[]>([]) };
+      const composed = expand_document_composition("ingress", () => ({ root: { $_tag: ROOT_TAG, $_content: [input] } }),
+        document_composition_options(undefined), readPartCandidate);
+      const output = composed.root.$_content[0];
+      if (!is_Node(output) || composed.root.$_content.length !== 1) throw new Error("Part content must realize exactly one content slot.");
+      if (operation.op !== "insert-content" && operation.op !== "replace-content") throw new Error("Unsupported Part construction operation.");
+      const prefix = [...operation.target.path, operation.index];
+      const styles = composed.styles.map(style => ({ ...style, subjects: style.subjects.map(subject => ({ ...subject, path: [...prefix, ...subject.path.slice(1)] })) }));
+      const destinations = new Map(composed.correspondence.map(entry => [JSON.stringify(entry.source.slice(1)), entry.destination.slice(1)]));
+      const lineage = operation.op === "replace-content" && operation.lineage !== undefined
+        ? normalize_replacement_lineage(operation.lineage).map(entry => {
+          const destination = destinations.get(JSON.stringify(entry.destination));
+          if (destination === undefined) throw new Error("Replacement lineage destination has no realized authored subject.");
+          return { source: entry.source, destination: validate_document_path(destination) };
+        }) : undefined;
+      const realized: LiveMapGraphOp = operation.op === "insert-content" ? { ...operation, content: output }
+        : { ...operation, replacement: output, ...(lineage === undefined ? {} : { lineage }) };
+      return { operation: realized, styles };
     };
     const system_candidate = (): AggregateSystemCandidate | undefined => {
       if (systemState === undefined || systemState.key !== INTERACTION_RESERVED_LIBRARY_KEY) return undefined;
@@ -1084,16 +1163,31 @@ function make_livemap_registry_engine(
         const admittedOperation = write.publicStaged === true
           ? admit_public_document_graph_operation(write.operation)
           : write.operation;
+        const construction = write.publicStaged === true ? realizeOperation(admittedOperation) : { operation: admittedOperation, styles: [] };
         const priorRoot = candidate.root;
         const priorOverlay = candidate.overlay;
         const planned = prepare_document_graph_operation(
           candidate.root,
           "document",
-          admittedOperation,
+          construction.operation,
           candidate.overlay,
         );
+        // Realization can add CSS/ownership and demand identity even when its
+        // markup equals the outgoing fragment. Plan all governed effects before
+        // deciding whether this operation is an observable transition.
+        const beforeStylesheet = construction.styles.length
+          ? cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity) : undefined;
+        const composed = beforeStylesheet === undefined ? undefined : compose_styles(
+          planned.root, planned.overlay, construction.styles,
+          new Set(enumerate_livemap_issued_quids(stagedIssuedLedger)),
+          retire_part_styles(beforeStylesheet, new Set(livemap_document_identity_quids(planned.overlay))),
+          undefined, library.identity,
+        );
         if (!canonical_graph_equal(candidate.root, planned.root)
-          || !livemap_document_identity_overlay_equal(planned.overlay, candidate.overlay)) {
+          || !livemap_document_identity_overlay_equal(planned.overlay, candidate.overlay)
+          || composed !== undefined && beforeStylesheet !== undefined
+            && (!livemap_document_identity_overlay_equal(composed.documentOverlay, candidate.overlay)
+              || !portable_document_stylesheet_equal(beforeStylesheet, composed.stylesheet))) {
           if (planned.operation.op !== "replace-root") {
             stage_candidate_identity(
               livemap_document_identity_quids(candidate.overlay),
@@ -1104,11 +1198,35 @@ function make_livemap_registry_engine(
           candidate.overlay = planned.overlay;
           candidate.operations.push(planned.operation);
           candidate.identityEffects.push(...planned.identityEffects);
+          const graphOperationIndex = operations.length;
           operations.push(Object.freeze({
             target: aggregate_target(library.identity, document_operation_path(planned.operation)),
             operation: planned.operation,
           }));
           stage_interaction_paths(library, priorRoot, priorOverlay, planned.overlay, planned.operation);
+          if (composed !== undefined && beforeStylesheet !== undefined) {
+            for (const quid of livemap_document_identity_quids(composed.documentOverlay)) {
+              if (candidate.overlay.pathForQuid(quid) !== undefined) continue;
+              const path = composed.documentOverlay.pathForQuid(quid)!;
+              candidate.identityEffects.push({ kind: "introduced", quid, path });
+              constructionClaims.push({ library: library.identity, quid });
+            }
+            // New subjects belong to the incoming fragment, not an ensure-quid
+            // registration of an existing projected node. Carry exact owner-issued
+            // identity through the existing structural insertion/lineage proof.
+            if (planned.operation.op !== "insert-content" && planned.operation.op !== "replace-content") throw new Error("Invalid Part construction operation.");
+            const exact = clone_livemap_document_exact_view(candidate.root, "document", composed.documentOverlay);
+            const incoming = resolve_document_path(exact, "document", validate_document_path([...planned.operation.target.path, planned.operation.index]));
+            if (!is_Node(incoming)) throw new Error("Part construction lost its incoming graph.");
+            const operation: LiveMapGraphOp = planned.operation.op === "insert-content" ? { ...planned.operation, content: incoming }
+              : { ...planned.operation, replacement: incoming };
+            candidate.operations[candidate.operations.length - 1] = operation;
+            operations[graphOperationIndex] = { target: aggregate_target(library.identity, document_operation_path(operation)), operation };
+            stage_candidate_identity(livemap_document_identity_quids(candidate.overlay), livemap_document_identity_quids(composed.documentOverlay));
+            candidate.overlay = composed.documentOverlay;
+            cssCandidates.set(library.identity, { before: cssCandidates.get(library.identity)?.before ?? beforeStylesheet, after: composed.stylesheet });
+            operations.push({ target: aggregate_target(library.identity, []), operation: { domain: "css", kind: "replace", stylesheet: encode_portable_document_stylesheet(composed.stylesheet) } });
+          }
         }
         continue;
       }
@@ -1272,7 +1390,20 @@ function make_livemap_registry_engine(
     });
     // Validate every governed collection against the complete final aggregate,
     // before identity installation, hosted encoding, durable acceptance or publication.
-    for (const state of afterStates) validate_data_library(state.root, state.mode, state.validation);
+    for (const state of afterStates) {
+      validate_data_library(state.root, state.mode, state.validation);
+      if (state.mode === "document" && has_part_connector(state.root)) throw new Error("Canonical document state cannot contain construction connectors.");
+    }
+    for (const state of afterStates) {
+      if (state.mode !== "document" || !candidates.has(state.identity) || state.stylesheet === undefined) continue;
+      const next = retire_part_styles(state.stylesheet, new Set(livemap_document_identity_quids(require_document_overlay(state.documentOverlay))));
+      if (!portable_document_stylesheet_equal(next, state.stylesheet)) {
+        const before = cssCandidates.get(state.identity)?.before ?? stylesheet(state.identity);
+        cssCandidates.set(state.identity, { before, after: next });
+        state.stylesheet = next;
+        operations.push({ target: aggregate_target(state.identity, []), operation: { domain: "css", kind: "replace", stylesheet: encode_portable_document_stylesheet(next) } });
+      }
+    }
     const afterActive = aggregate_quid_locations(afterStates);
     const nextQuadBindings = new Map([...candidates.values()].flatMap(candidate => is_aggregate_document_candidate(candidate)
       ? [[candidate.library.identity, retain_document_quad_bindings(candidate.library.documentQuads, candidate.overlay)] as const] : []));
@@ -1366,6 +1497,7 @@ function make_livemap_registry_engine(
       libraryModes: Object.freeze([...candidates.values()].map((candidate) => candidate.library.mode)),
       baseStillCurrent: () => mapRevision === prevRev
         && identityGeneration === preparedIdentityGeneration
+        && constructionClaims.every(({ library, quid }) => !livemap_document_identity_quid_unavailable(library, quid))
         && [...candidates.values()].every((candidate) => canonical_graph_equal(candidate.library.root, candidate.baseRoot))
         && [...cssCandidates].every(([identity, candidate]) => stylesheet(identity) === candidate.before)
         && (systemCandidate === undefined
@@ -1447,7 +1579,11 @@ function make_livemap_registry_engine(
     }
     let transition: import("./livemap.authority.js").PreparedLiveMapAuthorityTransition;
     try {
-      transition = prepare_authority_transition([], [{
+      const operation = candidate.operation;
+      const content = operation.op === "insert-content" ? operation.content : operation.op === "replace-content" ? operation.replacement : undefined;
+      transition = is_Node(content) && has_part_connector(content)
+        ? prepare_authority_transition([{ target: aggregate_target(libraryIdentity, document_operation_path(operation)), kind: "graph", operation, publicStaged: true }])
+        : prepare_authority_transition([], [{
         library: libraryIdentity,
         root: candidate.root,
         overlay: candidate.overlay,
@@ -1607,6 +1743,7 @@ function make_livemap_registry_engine(
 
   type LibraryAddition = Readonly<{
     name: string;
+    authored?: boolean;
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
@@ -1628,6 +1765,27 @@ function make_livemap_registry_engine(
     const hosted = require_hosted_state();
     const generation = identityGeneration;
     const reserved = new Set<string>();
+    // The managed source-definition entry marks authored ingress. Canonical
+    // topology replay/projection never carries that private marker.
+    const assertSourcesCurrent = capture_fence();
+    const defined = new Map(definitions.map(definition => [definition.name, definition]));
+    const readPart = (collection: string, member: string) => {
+      const definition = defined.get(collection);
+      const binding = hosted.byName.get(collection);
+      const source = definition === undefined ? binding === undefined ? undefined : require_library(binding.identity) : definition;
+      const mode = definition === undefined ? binding?.mode : classify_live_root_mode(definition.root, definition.family);
+      if (source === undefined || mode !== "data-object" || source.validation === undefined) throw new Error(`Unknown or unavailable Part collection ${JSON.stringify(collection)}.`);
+      const part = validate_data_library(source.root, mode, source.validation)?.find(part => part.key === member);
+      if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
+      return part;
+    };
+    definitions = definitions.map(definition => {
+      if (definition.authored !== true || definition.family !== "document" || !has_part_connector(definition.root)) return definition;
+      const result = expand_document_composition(definition.name, () => ({ root: definition.root, ...(definition.quads === undefined ? {} : { quads: definition.quads }) }), document_composition_options(undefined), readPart);
+      const { quads: sourceQuads, ...ordinary } = definition;
+      return { ...ordinary, root: result.root, ...(result.quads === undefined ? {} : { quads: result.quads }), compositionStyles: result.styles };
+    });
+    assertSourcesCurrent();
     const foreignPayloads = disposable_document_quad_payloads(definitions.map(definition => own_document_quads(definition)));
     const prepared = definitions.map((definition) => {
       const { name, root, hsonSchema, family, compositionStyles } = definition;
@@ -1639,63 +1797,17 @@ function make_livemap_registry_engine(
       must_hson_schema_family(hsonSchema, family);
       must_hson_schema_root(hsonSchema, graph.root);
       validate_data_library(graph.root, graph.mode, validation);
+      if (has_part_connector(graph.root)) throw new Error("Canonical Library admission cannot contain construction connectors.");
+      if (compositionStyles !== undefined && family !== "document") throw new Error("Part styles require a document candidate.");
       if (compositionStyles !== undefined) {
-        if (family !== "document" || css !== undefined) throw new Error("Part styles require an otherwise unstyled document candidate.");
-        const sourceText = compositionStyles.map(occurrence => {
-          const demanded = new Set(document_css_subject_identities(occurrence.css, "inbound"));
-          const names = new Set<string>(), paths = new Set<string>();
-          for (const subject of occurrence.subjects) {
-            const coordinate = validate_document_path(subject.path), key = JSON.stringify(coordinate);
-            if (!demanded.has(subject.name) || names.has(subject.name) || paths.has(key)
-              || !is_ordinary_element_node(resolve_document_path(graph.root, "document", coordinate))) {
-              throw new Error("Part CSS requires exact bijective destination subject demand.");
-            }
-            names.add(subject.name); paths.add(key);
-          }
-          if (names.size !== demanded.size) throw new Error("Unresolved Part CSS destination subject.");
-          return render_portable_document_stylesheet(decode_portable_document_stylesheet(occurrence.css));
-        });
-        // Check global/order admission before allocating even unpublished identities.
-        parse_document_stylesheet(sourceText.join("\n\n"), []);
-        if (transitionController.managedExecutionOwner() !== undefined && compositionStyles.some(occurrence => occurrence.subjects.length)) {
-          throw new Error("Hosted incremental subject-owned CSS topology is unsupported without correspondence ordering.");
-        }
+        merge_part_stylesheets([...(css === undefined ? [] : [encode_portable_document_stylesheet(css)]), ...compositionStyles.map(item => item.css)]);
+        if (transitionController.managedExecutionOwner() !== undefined && compositionStyles.some(item => item.subjects.length)) throw new Error("Hosted incremental subject-owned CSS topology is unsupported without correspondence ordering.");
       }
       const state = make_livemap_library(graph, hsonSchema, validation);
       Object.assign(state, reconstruct_document(graph, quads, css === undefined ? undefined : encode_portable_document_stylesheet(css), reserved, undefined, [], foreignPayloads));
       if (compositionStyles !== undefined) {
-        const assertCurrent = capture_fence();
-        let overlay = require_document_overlay(state.documentOverlay);
-        const translated = compositionStyles.map(occurrence => {
-          const associations = occurrence.subjects.map(({ name: localName, path }) => {
-            const coordinate = validate_document_path(path);
-            if (!is_ordinary_element_node(resolve_document_path(graph.root, "document", coordinate))) {
-              throw new Error("Part CSS requires an exact ordinary destination subject.");
-            }
-            let quid = overlay.quidAtPath(coordinate);
-            if (quid === undefined) {
-              quid = allocate_livemap_quid(mapIdentityEpoch.owner,
-                candidate => reserved.has(candidate) || mapIdentityEpoch.issued().has(candidate) || foreignPayloads.has(candidate),
-                candidate => ({ claimed: true, value: candidate }));
-              if (quid === undefined) throw new Error("No available destination QUID for Part CSS subject.");
-              reserved.add(quid);
-              overlay = register_livemap_document_identity_at_path(overlay, quid, coordinate).overlay;
-            }
-            // Names are meaningful only within this occurrence, never installed in the receiving QUAD registry.
-            return { name: localName, quid, disposition: "authored" as const };
-          });
-          const record = document_css_mentions_subject_identity(occurrence.css)
-            ? translate_document_css_identities(occurrence.css, "inbound", { associations, assertCurrent }, true) : occurrence.css;
-          return render_portable_document_stylesheet(decode_portable_document_stylesheet(record));
-        });
-        // Raw Part CSS has parser-generated local rule keys. Reparse the complete
-        // ordered stylesheet through the same ordinary allocator, retaining every
-        // rule occurrence and rejecting duplicate global definitions. No selector,
-        // animation name, declaration or structural group is reconciled by guess.
-        css = decode_portable_document_stylesheet(parse_document_stylesheet(translated.join("\n\n"), []));
-        assertCurrent();
-        state.documentOverlay = overlay;
-        state.stylesheet = css;
+        Object.assign(state, compose_styles(graph.root, require_document_overlay(state.documentOverlay), compositionStyles, reserved, state.stylesheet, foreignPayloads));
+        css = state.stylesheet;
       }
       if (css !== undefined) {
         if (family !== "document") throw new TypeError("Initial CSS requires a document Library.");
@@ -2875,7 +2987,9 @@ function make_livemap_registry_engine(
   registry.forEach((entry, index) => {
     const state = states[index];
     if (state === undefined) throw new Error("Incomplete initial Library registry.");
+    if (entry.compositionStyles !== undefined) merge_part_stylesheets([...(entry.css === undefined ? [] : [encode_portable_document_stylesheet(entry.css)]), ...entry.compositionStyles.map(item => item.css)]);
     Object.assign(state, reconstruct_document(entry.graph, entry.quads, entry.css === undefined ? undefined : encode_portable_document_stylesheet(entry.css), initialReserved, undefined, [], initialPayloads));
+    if (entry.compositionStyles !== undefined) Object.assign(state, compose_styles(state.root, require_document_overlay(state.documentOverlay), entry.compositionStyles, initialReserved, state.stylesheet));
     mark_quad_document_root(state.root, state.documentQuads);
   });
   if (initialReserved.size) {

@@ -56,8 +56,8 @@ function mentions_identity_attribute(source: string): boolean {
 export function document_css_mentions_subject_identity(input: PortableDocumentStylesheetRecord): boolean {
   const mentions = mentions_identity_attribute;
   const groups = (entries: readonly PortableDocumentCssEntry[]): boolean => entries.some(entry =>
-    entry.kind === "group" ? mentions(entry.header) || groups(entry.entries)
-      : entry.kind === "rule" && entry.scopes.some(mentions));
+    entry.owner !== undefined && mentions(entry.owner) || (entry.kind === "group" ? mentions(entry.header) || groups(entry.entries)
+      : entry.kind === "rule" && entry.scopes.some(mentions)));
   return input.rules.some(rule => mentions(rule.selector) || rule.scopes.some(mentions)) || groups(input.order);
 }
 
@@ -127,9 +127,10 @@ function visit_document_css_identities(input: PortableDocumentStylesheetRecord,
   const canonical = encode_portable_document_stylesheet(decode_portable_document_stylesheet(input));
   const scopes = (items: readonly string[]): string[] => items.map(header);
   const order = (items: readonly PortableDocumentCssEntry[]): PortableDocumentCssEntry[] => items.map(entry => {
-    if (entry.kind === "group") return { kind: "group", header: header(entry.header), entries: order(entry.entries) };
-    if (entry.kind === "rule") return { ...entry, scopes: scopes(entry.scopes) };
-    return { ...entry };
+    const owner = entry.owner === undefined ? {} : { owner: selector(entry.owner) };
+    if (entry.kind === "group") return { ...entry, ...owner, header: header(entry.header), entries: order(entry.entries) };
+    if (entry.kind === "rule") return { ...entry, ...owner, scopes: scopes(entry.scopes) };
+    return { ...entry, ...owner };
   });
   return encode_portable_document_stylesheet(decode_portable_document_stylesheet({ ...canonical,
     rules: canonical.rules.map(rule => ({ ...rule, selector: selector(rule.selector), scopes: scopes(rule.scopes) })),

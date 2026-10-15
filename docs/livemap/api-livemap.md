@@ -144,3 +144,14 @@ Mirror binds a selected document library: `hsonMirror(map.lib("page"))`. Echo an
 ## Public boundaries
 
 The `hson-live/livemap` subpath exports independent ESM bindings for `create`, `fromLibraries`, `echo`, and `locus`, along with current LiveMap and library types, snapshot installation, and structured errors. `hsonLiveMap.echo.create(...)` establishes an endpoint or retained-session replica; `hsonLiveMap.locus.create(...)`, `.resume(...)`, and `.checkpoint(...)` govern authority. The root `hsonLiveMap` and `hson.liveMap` convenience values remain broader imports. No solo data or document constructor, solo bootstrap, or standalone document map type is available. Transform owns format parsing and HTML ingress; LiveTree owns browser tree operations; Locus owns hosted authority.
+
+## Authored Part construction
+
+Authored document Libraries consume `<hson-part lib="parts" at="member"/>` during
+admission and ordinary connector graph insertion/replacement. Collections remain
+inert data; the Library stores only realized canonical content. Connector QUADs
+transfer to replacement roots, inline scalar inputs substitute `%{name}` values,
+and each Part's CSS is scoped to and owned by its occurrence root. Removal retires
+that owned CSS atomically. Capture, restore, rendering and graft consume realized
+state without source collections. The exact parameter, CSS, source-retention and
+hosted boundaries are in [the Part contract](../contracts/styled-part-composition.md).

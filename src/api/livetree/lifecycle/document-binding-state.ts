@@ -46,6 +46,8 @@ export type DocumentBindingNodeRegistration = Readonly<{
   canonicalPath: readonly number[];
   persistedQuid?: string;
   requireCanonicalIdentity: () => string;
+  /** Project accepted document-CSS demand without changing canonical identity or attrs. */
+  projectCssIdentity?: (required: boolean) => void;
   delegateAttrs: (mutation: DocumentBoundAttrsMutation) => void;
   delegateAttrsAsync: (mutation: DocumentBoundAttrsMutation) => Promise<void>;
   delegateText: (mutation: DocumentBoundTextMutation) => void;

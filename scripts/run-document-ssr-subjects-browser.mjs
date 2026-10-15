@@ -9,8 +9,9 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
 import { ssr_subject_fixture } from "../tests/fixtures/document-ssr-subjects-cases.mts";
-import { compose_livemap_document_internal, cut_document_ssr_internal } from "../src/api/livemap/livemap.libraries.ts";
-import { styled_fixture } from "../tests/fixtures/livemap-styled-composition-cases.mts";
+import { cut_document_ssr_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { second_repair_fixture, selector_fixture, styled_fixture } from "../tests/fixtures/livemap-styled-composition-cases.mts";
+import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { document_css_subject_identities } from "../src/internal/css/css-identity-translation.ts";
 import { encode_portable_document_stylesheet } from "../src/internal/css/portable-document-stylesheet.ts";
 
@@ -19,10 +20,19 @@ const fixture = ssr_subject_fixture();
 const cut = cut_document_ssr_internal(fixture.map, { html: "page" }, fixture.demanded);
 assert.doesNotMatch(cut.html, /hson:quid|hson\\:quid/);
 const components = styled_fixture();
-compose_livemap_document_internal(components, "layout", "page", {configuration:{at:{slot0:{at:{label:{q:"caption"}}}}}});
 const componentOwner = internal_livemap_aggregate_authority(components), finalIdentity = componentOwner.libraries().at(-1);
 const componentDemand = document_css_subject_identities(encode_portable_document_stylesheet(componentOwner.stylesheet(finalIdentity)), "outbound");
 const componentCut = components.cut({html:"page", documents:["page"], data:[]});
+const selectors = selector_fixture(), selectorPage = selectors.lib("page");
+const selectorCut = selectors.cut({html:"page", documents:["page"], data:[]});
+const selectorPages = new Map([["/selectors", selectorCut]]);
+selectorPage.document.content.move({kind:"path",path:[0,0,1,0,0,0]},2,0);
+selectorPages.set("/selectors-moved", selectors.cut({html:"page", documents:["page"], data:[]}));
+const restoredSelectors = install_libraries_snapshot(install_libraries_snapshot(selectorCut.libs).map.cut({data:[],documents:["page"]}).libs).map;
+selectorPages.set("/selectors-restored", restoredSelectors.cut({html:"page", documents:["page"], data:[]}));
+selectorPage.q("ancestor").delete();
+selectorPages.set("/selectors-retired", selectors.cut({html:"page", documents:["page"], data:[]}));
+const secondRepair=second_repair_fixture().cut({html:"page",documents:["page"],data:[]});
 const bundle = await build({ entryPoints: ["tests/browser/document-portable-graft.entry.mjs"], bundle: true,
   write: false, platform: "browser", format: "iife", logLevel: "silent" });
 const browserSource = bundle.outputFiles[0].text;
@@ -41,6 +51,9 @@ try {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     if (request.url === "/graft") { response.end("<!doctype html><html><head></head><body></body></html>"); return; }
     if (request.url === "/composed") { response.end(componentCut.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
+    if (request.url === "/second-repair") { response.end(secondRepair.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
+    const selectorPage = selectorPages.get(request.url);
+    if (selectorPage) { response.end(selectorPage.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
     // A negative probe: this script must never execute in the client.
     response.end(cut.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>'));
   });
@@ -129,11 +142,78 @@ try {
   const composedEvidence = await evaluate(`(() => {
     const visual = element => {const css=getComputedStyle(element),label=getComputedStyle(element.querySelector('span'));return [css.borderTopWidth,label.color,label.paddingLeft];};
     return {instances:[...document.querySelectorAll('section')].map(visual),control:visual(document.getElementById('unrelated')),
+      buttons:[...document.querySelectorAll('button')].map(button=>{const css=getComputedStyle(button);return [css.color,css.paddingLeft];}),connectors:document.querySelectorAll('hson-part').length,
       carriers:document.querySelectorAll('[hson\\\\:quad]').length,foreign:document.querySelectorAll('[hson\\\\:quid]').length,
       styles:document.querySelectorAll('[data-hson-managed-document-css]').length,executed:document.documentElement.dataset.executed??null};
   })()`);
-  assert.deepEqual(composedEvidence, {instances:Array(3).fill(['3px','rgb(10, 20, 30)','7px']),control:['0px','rgb(0, 0, 0)','0px'],carriers:6,foreign:0,styles:1,executed:null});
+  assert.deepEqual(composedEvidence, {instances:Array(3).fill(['3px','rgb(10, 20, 30)','7px']),control:['0px','rgb(0, 0, 0)','0px'],buttons:[...Array(3).fill(['rgb(60, 70, 80)','11px']),['rgb(0, 0, 0)','6px']],connectors:0,carriers:3,foreign:0,styles:1,executed:null});
   console.log(`Chrome styled composition JavaScript-disabled first paint passed: ${JSON.stringify(composedEvidence)}`);
+  for (const path of selectorPages.keys()) {
+    await command("Page.navigate", {url:new URL(path,url).href});
+    let loaded = false;
+    for (let attempt=0;attempt<100;attempt++) {
+      loaded=await evaluate(`document.readyState==="complete" && location.pathname===${JSON.stringify(path)} && !!document.getElementById("bare0")`);
+      if (loaded) break; await delay(50);
+    }
+    assert.equal(loaded,true);
+    const evidence=await evaluate(`(() => {
+      const read=id=>{const e=document.getElementById(id);if(!e)return null;const s=getComputedStyle(e);return {color:s.color,padding:s.paddingLeft,border:s.borderTopWidth,margin:s.marginLeft,right:s.marginRight,paddingRight:s.paddingRight,top:s.marginTop,bottom:s.paddingBottom,paddingTop:s.paddingTop,letter:s.letterSpacing,word:s.wordSpacing,before:getComputedStyle(e,'::before').content};};
+      return {values:Object.fromEntries(['bare0','bare1','ancestor','ancestor-child','ancestor-deep','ancestor-nested','sibling','sibling-child','explicit','outside-section','outside'].map(id=>[id,read(id)])),
+        local:document.querySelector('#ancestor .local')?getComputedStyle(document.querySelector('#ancestor .local')).borderTopWidth:null,
+        order:[...document.querySelector('main').children].map(e=>e.id),connectors:document.querySelectorAll('hson-part').length,
+        carriers:document.querySelectorAll('[hson\\\\:quad]').length,foreign:document.querySelectorAll('[hson\\\\:quid]').length,executed:document.documentElement.dataset.executed??null};
+    })()`);
+    for(const id of ['bare0','bare1']) {
+      assert.equal(evidence.values[id].color,'rgb(10, 20, 30)',`${path}: ordinary button selector matches root`);
+      assert.equal(evidence.values[id].padding,'13px');assert.equal(evidence.values[id].border,'2px');assert.equal(evidence.values[id].before,'"ok"');
+      assert.equal(evidence.values[id].paddingRight,'24px','ordinary selector lists retain per-matching-selector specificity');
+    }
+    assert.equal(evidence.values.explicit.color,'rgb(70, 80, 90)');assert.equal(evidence.values.explicit.padding,'19px');
+    assert.equal(evidence.values.sibling.border,'8px');assert.equal(evidence.values['sibling-child'].color,'rgb(70, 80, 90)');assert.equal(evidence.values['sibling-child'].padding,'21px');
+    assert.equal(evidence.values['sibling-child'].margin,'0px');assert.equal(evidence.values['sibling-child'].top,'0px');
+    assert.equal(evidence.values['outside-section'].border,'0px');assert.equal(evidence.values.outside.color,'rgb(0, 0, 0)');assert.equal(evidence.values.outside.padding,'6px');assert.equal(evidence.values.outside.margin,'0px');
+    const retired=path==='/selectors-retired';
+    if(retired) {assert.equal(evidence.values.ancestor,null);assert.equal(evidence.local,null);}
+    else {
+      assert.equal(evidence.values.ancestor.border,'5px',`${path}: ordinary section selector matches root`);
+      for(const id of ['ancestor-child','ancestor-deep','ancestor-nested']) {
+        const s=evidence.values[id];assert.equal(s.color,'rgb(40, 50, 60)',`${path}: section button includes root ancestor and nested Part descendants`);
+        assert.equal(s.padding,'14px','implicit type nesting');assert.equal(s.margin,'17px');assert.equal(s.paddingRight,'15px','implicit-first mixed list');
+        assert.equal(s.top,'16px','explicit-first mixed list');assert.equal(s.bottom,'18px','implicit nesting in media/supports');
+      }
+      assert.equal(evidence.values['ancestor-child'].border,'4px','implicit class nesting');
+      assert.equal(evidence.values['ancestor-child'].paddingTop,'19px','condition mixed list');
+      assert.equal(evidence.values['ancestor-child'].right,'23px','nesting uses maximum parent-list specificity');
+      assert.equal(evidence.values['ancestor-deep'].word,'6px','nested selector lists');
+      assert.equal(evidence.values['ancestor-deep'].letter,'3px','inner scope root ancestor selector');
+      assert.equal(evidence.local,'7px','inner scope includes its own root');
+    }
+    assert.deepEqual(evidence.order,retired?['bare0','bare1','sibling','explicit']:path==='/selectors-moved'?['ancestor','bare0','bare1','sibling','explicit']:['bare0','bare1','ancestor','sibling','explicit']);
+    assert.equal(evidence.carriers,retired?4:5);assert.equal(evidence.foreign,0);assert.equal(evidence.connectors,0);assert.equal(evidence.executed,null);
+    console.log(`Chrome root-inclusive/implicit nesting JavaScript-disabled ${path} passed: ${JSON.stringify(evidence)}`);
+  }
+  await command("Page.navigate",{url:new URL('/second-repair',url).href});
+  let secondReady=false;
+  for(let attempt=0;attempt<100;attempt++) {
+    secondReady=await evaluate('document.readyState==="complete" && location.pathname==="/second-repair" && !!document.getElementById("colon1-button")');
+    if(secondReady)break;await delay(50);
+  }
+  assert.equal(secondReady,true);
+  const secondEvidence=await evaluate(`(() => {
+    const read=id=>{const e=document.getElementById(id),s=getComputedStyle(e);return {color:s.color,padding:s.paddingLeft,border:s.borderTopWidth,right:s.paddingRight,margin:s.marginLeft,marginRight:s.marginRight,letter:s.letterSpacing,before:getComputedStyle(e,'::before').content};};
+    return {equivalent:[0,1,2,3].map(i=>read('equivalent'+i)),colon:[0,1].map(i=>read('colon'+i+'-button')),sibling:read('colon-sibling-button'),outside:read('colon-outside'),
+      carriers:document.querySelectorAll('[hson\\\\:quad]').length,foreign:document.querySelectorAll('[hson\\\\:quid]').length,connectors:document.querySelectorAll('hson-part').length,executed:document.documentElement.dataset.executed??null};
+  })()`);
+  for(const value of secondEvidence.equivalent){assert.equal(value.color,'rgb(10, 20, 30)','equivalent replacement installs CSS at disabled-JS first paint');assert.equal(value.padding,'13px');}
+  for(const value of secondEvidence.colon){
+    assert.equal(value.color,'rgb(10, 20, 30)','button:is(.b)');assert.equal(value.padding,'13px','button:not(.x)');assert.equal(value.border,'5px','button:first-child');
+    assert.equal(value.before,'"hello"','button::before');assert.equal(value.right,'17px','implicit-first colon mixed list');assert.equal(value.margin,'19px','explicit-first colon mixed list');
+    assert.equal(value.marginRight,'23px','functional pseudo specificity');assert.equal(value.letter,'3px','colon nesting within layer/media/supports');
+  }
+  assert.equal(secondEvidence.sibling.color,'rgb(70, 80, 90)');assert.equal(secondEvidence.sibling.padding,'21px');assert.equal(secondEvidence.sibling.border,'2px');assert.equal(secondEvidence.sibling.before,'none');
+  assert.deepEqual(secondEvidence.outside,{color:'rgb(0, 0, 0)',padding:'6px',border:'2px',right:'6px',margin:'0px',marginRight:'0px',letter:'normal',before:'none'});
+  assert.equal(secondEvidence.carriers,7);assert.equal(secondEvidence.foreign,0);assert.equal(secondEvidence.connectors,0);assert.equal(secondEvidence.executed,null);
+  console.log(`Chrome equivalent replacement/colon nesting JavaScript-disabled first paint passed: ${JSON.stringify(secondEvidence)}`);
   await command("Emulation.setScriptExecutionDisabled", {value:false});
   await command("Page.navigate", {url: new URL("/graft", url).href});
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -146,7 +226,7 @@ try {
   const graftResult = await command("Runtime.evaluate", { expression: `runPortableGraftAcceptance(${JSON.stringify(payload)})`,
     awaitPromise:true, returnByValue:true });
   assert.equal(graftResult.exceptionDetails, undefined, JSON.stringify(graftResult.exceptionDetails));
-  assert.equal(graftResult.result.value.passed, 20);
+  assert.equal(graftResult.result.value.passed, 21);
   console.log(`Chrome JavaScript-enabled portable graft passed: ${JSON.stringify(graftResult.result.value)}`);
 
 } finally {

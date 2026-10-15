@@ -639,6 +639,18 @@ function reflect_document_binding_in_runtime(
       ...(persistedQuid === undefined ? {} : { persistedQuid }),
       requireCanonicalIdentity: () =>
         require_livemap_document_canonical_identity(map.document, registration.canonicalTarget),
+      projectCssIdentity: (required) => {
+        if (currentStatus !== "active") throw new Error("Document CSS projection requires active Mirror correspondence.");
+        validate_bound_registration(registration);
+        if (required && persistedQuid === undefined) throw new Error("Document CSS projection requires an accepted subject identity.");
+        apply_projected_attrs_replacement(node, read_projected_attrs(node), { quid: required ? persistedQuid : undefined });
+        const element = get_el_for_node(node);
+        if (element !== undefined) {
+          if (required) observedDomIdentity.add(element);
+          else observedDomIdentity.delete(element);
+        }
+        validate_bound_registration(registration);
+      },
       delegateAttrs: (mutation) => delegate_attrs(registration, mutation),
       delegateAttrsAsync: (mutation) => delegate_attrs_async(registration, mutation),
       delegateText: (mutation) => delegate_text(registration, mutation),
@@ -1422,6 +1434,7 @@ function reflect_document_binding_in_runtime(
     // Identity preflight must exist before commit observation begins. The
     // revision recheck then closes the capture-to-subscribe initialization gap.
     offIdentityParticipant = register_livemap_document_identity_participant(map.document, Object.freeze({
+      quidUnavailable: (quid: string) => runtime.issuedQuids.has(quid) || runtime.pendingQuidClaims.has(quid) || runtime.quidToNode.has(quid),
       preflight: preflight_identity_operations,
       preflightLocalIdentity: (path: LiveMapDocumentPath, quid: string) =>
         preflight_identity_operations(Object.freeze([]), Object.freeze({ path, quid })),

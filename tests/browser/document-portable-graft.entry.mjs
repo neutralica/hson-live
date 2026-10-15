@@ -1,11 +1,14 @@
 import { hsonTransform } from "../../src/api/transform/transform.facade.ts";
-import { restore_portable_document_receiver_internal as restore } from "../../src/api/livemap/livemap.libraries.ts";
+import { add_livemap_part_collection_internal as addParts, restore_portable_document_receiver_internal as restore } from "../../src/api/livemap/livemap.libraries.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { lookup_document_quad_internal as lookup } from "../../src/api/livemap/livemap.document.quad.ts";
 import { continue_document, continue_portable_document_internal as graft } from "../../src/api/continuation/continue-document.ts";
 import { get_node_for_el } from "../../src/api/livetree/utils/node-map-helpers.ts";
 import { set_document_adoption_fault_hook_for_tests as fault } from "../../src/api/continuation/continuation.adopt.ts";
+import { set_livemap_quid_candidate_source_for_tests as allocator } from "../../src/api/livemap/livemap.quid-allocation.ts";
 import { runtime_for_tree } from "../../src/api/livetree/runtime/livetree-runtime.ts";
+import { hsonLiveMap } from "../../src/api/livemap/livemap.facade.ts";
+import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 
 const assert = (condition, message) => { if (!condition) throw Error(message); };
 const equal = (a, b, message) => assert(JSON.stringify(a) === JSON.stringify(b), `${message}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`);
@@ -166,13 +169,15 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     });
     const before = visual(f.doc), elements = [f.root,...f.root.querySelectorAll('*')], style=f.doc.querySelector(marker);
     equal(before, [...Array(3).fill(['3px','rgb(10, 20, 30)','7px']),['0px','rgb(0, 0, 0)','0px']], 'Part-owned CSS before graft');
+    const buttons=doc=>[...doc.querySelectorAll('button')].map(button=>{const css=doc.defaultView.getComputedStyle(button);return [css.color,css.paddingLeft];});
+    const buttonStyles=buttons(f.doc);equal(buttonStyles,[...Array(3).fill(['rgb(60, 70, 80)','11px']),['rgb(0, 0, 0)','6px']],'bare and nested selectors style nested Part descendants without leaking');
     rejects(() => f.map.lib('parts'), 'no source Part collection'); rejects(() => f.map.lib('layout'), 'no source layout Library');
     const text=Object.getOwnPropertyDescriptor(Node.prototype,'textContent'),prototype=f.doc.defaultView.Element.prototype,remove=prototype.removeAttribute;
     let switches=0,removals=0;
     Object.defineProperty(style,'textContent',{configurable:true,get(){return text.get.call(this);},set(value){
       if(value===f.handoff.receivingCss){
         switches++;
-        assert(f.doc.querySelectorAll('[hson\\:quad]').length===6,'all portable carriers remain at switch');
+        assert(f.doc.querySelectorAll('[hson\\:quad]').length===3,'all portable carriers remain at switch');
         assert(f.correspondence.associations.every(entry=>f.doc.querySelector(`[hson\\:quid="${entry.quid}"]`)),'receiving QUIDs written before switch');
         equal(visual(f.doc),before,'synchronous pre-switch computed styles');
       }
@@ -182,10 +187,10 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     prototype.removeAttribute=function(name){remove.call(this,name);if(name==='hson:quad'){removals++;equal(visual(f.doc),before,'synchronous carrier removal style flush');}};
     let continued;
     try {continued=f.run();} finally {prototype.removeAttribute=remove;delete style.textContent;}
-    assert(switches===1&&removals===6,'one synchronous CSS handoff consumes all six carriers');
+    assert(switches===1&&removals===3,'one synchronous CSS handoff consumes all three root carriers');
     elements.forEach((element,index)=>assert([f.root,...f.root.querySelectorAll('*')][index]===element,'all original Elements retained'));
     assert(f.doc.querySelector(marker)===style&&f.doc.querySelectorAll(marker).length===1,'one original managed style retained');
-    const ids=new Set(f.correspondence.associations.map(entry=>entry.quid));assert(ids.size===6,'six distinct sparse receiving subjects');
+    const ids=new Set(f.correspondence.associations.map(entry=>entry.quid));assert(ids.size===3,'three distinct sparse receiving roots');
     f.correspondence.associations.forEach(entry=>{
       assert(!composed.sourceQuids.includes(entry.quid),'source QUID has no authority');
       assert(f.aggregate.documentOverlay(f.library).quidAtPath(entry.path)===entry.quid,'exact destination ownership');
@@ -193,7 +198,14 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
       else assert(lookup(f.selected,entry.name)?.quid===entry.quid,'receiving authored QUAD retained');
     });
     assert(!lookup(f.selected,'root')&&!lookup(f.selected,'label'),'Part-local names never promoted');
-    assert(lookup(f.selected,'slot0')&&lookup(f.selected,'slot1')&&lookup(f.selected,'caption'),'shell and explicit q promotions retained');
+    assert(lookup(f.selected,'slot0')&&lookup(f.selected,'slot1')&&!lookup(f.selected,'caption'),'connector QUADs retained without local promotions');
+    const rootPath=lookup(f.selected,'slot0').path,parentPath=rootPath.slice(0,-1),rootCss=f.selected.css.snapshot();
+    f.selected.document.content.move({kind:'path',path:parentPath},rootPath.at(-1),2);
+    assert(f.doc.querySelector('main').lastElementChild===sections[0],'root move retains the exact occurrence Element');
+    assert(f.selected.css.snapshot()===rootCss,'root move retains ordinary scoped and implicit nested CSS');
+    equal(visual(f.doc),before,'ordinary root/descendant CSS survives live root move');
+    equal(buttons(f.doc),buttonStyles,'implicit nesting still reaches moved nested Part descendants');
+    f.selected.document.content.move({kind:'path',path:parentPath},2,rootPath.at(-1));
     const rootEntry=f.correspondence.associations.find(entry=>entry.name==='slot0'),label=sections[0].querySelector('span'),labelId=label.getAttribute('hson:quid');
     f.selected.document.attrs.set({kind:'path',path:rootEntry.path},'title','Edited');
     assert(sections[0].getAttribute('title')==='Edited','live local attribute edit');
@@ -201,16 +213,53 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     assert(sections[0].children[1]===label,'live move retains original label Element');
     equal(visual(f.doc),before,'subject styling survives move');
     assert(label.getAttribute('hson:quid')===labelId,'move retains subject identity');
-    f.selected.css.sel(`[hson\\:quid="${rootEntry.quid}"]`).setProp('--tone','rgb(42, 43, 44)');
+    f.selected.css.sel(`[hson\\:quid="${rootEntry.quid}"]`).setProp('--tone','rgb(42, 43, 44) !important');
     assert(f.doc.defaultView.getComputedStyle(label).color==='rgb(42, 43, 44)','live CSS binding updates synchronously');
-    rejects(()=>f.selected.document.content.remove({kind:'path',path:[...rootEntry.path,0]},1),'subject CSS strict retirement');
+    assert(sections.slice(1).every(section=>f.doc.defaultView.getComputedStyle(section.querySelector('span')).color==='rgb(10, 20, 30)'),'editing one occurrence does not style sibling instances');
+    rejects(()=>f.selected.document.content.remove({kind:'path',path:rootEntry.path.slice(0,-1)},rootEntry.path.at(-1)),'independent subject CSS retains strict retirement');
     const recut=f.map.cut({data:[],documents:['page'],html:'page'}),after=visual(f.doc),again=await page(recut.html,recut.libs);
     equal(visual(again.doc),after,'final-only portable restore first paint after edits');
     assert(again.correspondence.associations.every(entry=>!ids.has(entry.quid)),'recurring restoration issues fresh identities');
     const retained=[again.root,...again.root.querySelectorAll('*')],regraft=again.run();
     retained.forEach((element,index)=>assert([again.root,...again.root.querySelectorAll('*')][index]===element,'restored original Elements retained'));
     equal(visual(again.doc),after,'restored graft after edits preserves styling');
+    equal(buttons(again.doc),buttonStyles,'nested Part descendant CSS survives restoration and graft');
+    assert(!again.doc.querySelector('hson-part'),'exactly realized markup');
     assert(again.doc.querySelectorAll(marker).length===1,'restored graft has one managed style');
+    const userRule=again.selected.css.list().find(key=>key.startsWith('sel:'));
+    assert(userRule,'independent authored rule survived restore');again.selected.css.drop(userRule);
+    const retired=lookup(again.selected,'slot0').quid,kept=again.doc.getElementById('instance1');
+    again.selected.q('slot0').delete();
+    assert(!again.doc.getElementById('instance0')&&again.doc.getElementById('instance1')===kept,'owned retirement retains unrelated Elements');
+    assert(!again.selected.css.snapshot().includes(retired)&&again.doc.querySelector(marker).textContent===again.selected.css.snapshot(),'owned CSS disappears in the accepted mutation');
+    const thirdCut=again.map.cut({data:[],documents:['page'],html:'page'}),third=await page(thirdCut.html,thirdCut.libs),thirdGraft=third.run();
+    assert(third.doc.querySelectorAll('section').length===2&&third.correspondence.associations.length===2,'no stale generated rules or identities after re-graft');
+    const priorElements=[third.root,...third.root.querySelectorAll('*')],parent=third.correspondence.associations.find(entry=>entry.name==='slot1').path.slice(0,-1);
+    addParts(third.map,'runtimeParts',{x:{kind:'document',document:'<section id="runtime-part" <button id="runtime-button" "Runtime"/>/>',css:'button{color:rgb(90,91,92)}'}});
+    const runtimeConnector=hsonTransform.fromHson('<hson-part lib="runtimeParts" at="x"/>').toNode().$_content[0];
+    const namespace=runtime_for_tree(thirdGraft.tree),foreignRuntimeId='23456789a';
+    namespace.issuedQuids.add(foreignRuntimeId);
+    const beforeInsertion=third.map.capture(),beforeDom=third.root.outerHTML;
+    allocator(owner(third.map).identityEpoch().owner,()=>foreignRuntimeId);
+    try { rejects(()=>third.selected.document.content.insert({kind:'path',path:parent},2,runtimeConnector),'runtime namespace exhaustion rejects before canonical publication'); }
+    finally { allocator(owner(third.map).identityEpoch().owner,undefined); }
+    equal(third.map.capture(),beforeInsertion,'runtime collision leaves canonical graph CSS and identity unchanged');
+    assert(third.root.outerHTML===beforeDom&&thirdGraft.mirror.status==='active','runtime collision leaves retained DOM and Mirror active');
+    third.selected.document.content.insert({kind:'path',path:parent},2,runtimeConnector);
+    const runtimeRoot=third.doc.getElementById('runtime-part');
+    assert(runtimeRoot,`runtime reflection: ${thirdGraft.mirror.status}: ${thirdGraft.mirror.failure?.message}; cause ${thirdGraft.mirror.failure?.cause?.message}; canonical ${JSON.stringify(third.selected.root())}`);
+    const runtimeId=runtimeRoot.getAttribute('hson:quid');
+    assert(runtimeId&&third.doc.defaultView.getComputedStyle(third.doc.getElementById('runtime-button')).color==='rgb(90, 91, 92)','runtime connector admission and CSS realization are synchronous');
+    assert(!third.doc.querySelector('hson-part')&&!JSON.stringify(third.selected.root()).includes('hson-part'),'runtime connector never publishes unresolved markup');
+    priorElements.forEach(element=>assert(element.isConnected&&third.root.contains(element),'runtime admission retains existing Elements'));
+    third.selected.document.content.remove({kind:'path',path:parent},2);
+    assert(!third.doc.getElementById('runtime-part')&&!third.selected.css.snapshot().includes(runtimeId),'runtime occurrence and owned CSS retire together');
+    const finalCut=third.map.cut({data:[],documents:['page'],html:'page'}),final=await page(finalCut.html,finalCut.libs),finalGraft=final.run();
+    rejects(()=>final.map.lib('runtimeParts'),'runtime definitions omitted from final graft');
+    assert(final.doc.querySelectorAll('section').length===2&&final.correspondence.associations.length===2,'runtime removal leaves no stale CSS or identity in capture and re-graft');
+    finalGraft.dispose();final.frame.remove();
+
+    thirdGraft.dispose();third.frame.remove();
     regraft.dispose();again.frame.remove();continued.dispose();f.frame.remove();
   });
   await check('ordinary carrier-free SSR uses the unchanged exact continuation path', async () => {
@@ -219,5 +268,97 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const root = frame.contentDocument.documentElement;
     const continued = continue_document({map: receiver.map, document:selected, root}); assert(continued.tree.dom.el() === root, 'ordinary root retained'); continued.dispose(); frame.remove();
   });
-  return { passed };
+  const liveCarrierEvidence = [];
+  await check('already continued retained roots acquire and retire CSS carriers through direct and staged graph replacement', async () => {
+    const cases = [];
+    const read = (doc, element) => { const css = doc.defaultView.getComputedStyle(element); return [css.color, css.paddingLeft]; };
+    for (const staged of [false, true]) {
+      const map = hsonLiveMap.fromLibraries({ parts: collection({
+        x: { kind:'document', document:'<button id="live"/>', css:'button{color:rgb(10,20,30);padding-left:13px}' },
+      }), page: { document:'<html <head/> <body <button @:keep id="live"/> <button @:spare id="outside"/>/>/>' } });
+      const selected = map.lib('page'), handle = selected.q('keep'), subject = lookup(selected, 'keep'), spare = lookup(selected, 'spare'), handlePath = handle.path();
+      const frame = document.createElement('iframe'); frame.srcdoc = selected.render();
+      const loaded = new Promise(resolve => frame.onload = resolve); document.body.append(frame); await loaded;
+      const doc = frame.contentDocument, root = doc.documentElement, button = doc.getElementById('live'), outside = doc.getElementById('outside');
+      const continued = continue_document({ map, document:selected, root }), runtime = runtime_for_tree(continued.tree);
+      const nativeNode = get_node_for_el(button), ledger = [...runtime.issuedQuids], initial = map.capture(), graph = selected.root();
+      const parent = subject.path.slice(0,-1), index = subject.path.at(-1), lineage = [{ source:[], destination:[] }];
+      let publications = 0, positions = 0;
+      const off = map.commits.observe(() => publications++), stop = owner(map).observeAuthorityPosition(() => positions++);
+      const replace = source => {
+        const replacement = hsonTransform.fromHson(source).toNode().$_content[0];
+        return staged ? map.batch(draft => draft.lib('page').graph({ domain:'graph', op:'replace-content', target:{ kind:'path', path:parent }, index, replacement, lineage }))
+          : selected.document.content.replace({ kind:'path', path:parent }, index, replacement, lineage);
+      };
+      equal(read(doc,button), ['rgb(0, 0, 0)','6px'], 'continued root starts with default computed styles');
+      assert(doc.querySelectorAll('[hson\\:quid]').length === 0 && !doc.querySelector(marker), 'QUID/QUAD alone does not expose native identity');
+      const noop = replace('<button id="live"/>');
+      assert(!noop.changed && noop.rev === 0 && map.rev === 0 && publications === 0 && positions === 0, 'genuine no-CSS equal replacement remains unpublished');
+      equal(map.capture(),initial,'no-op preserves canonical graph, CSS, QUAD and ledger');
+      const head = doc.head, insert = head.insertBefore;
+      let synchronous;
+      head.insertBefore = function(element,before) {
+        const result = insert.call(this,element,before);
+        if (element.matches?.(marker)) synchronous = { carrier:button.getAttribute('hson:quid'), style:read(doc,button), css:element.textContent };
+        return result;
+      };
+      let accepted;
+      try { accepted = replace('<hson-part lib="parts" at="x"/>'); } finally { delete head.insertBefore; }
+      assert(accepted.changed && accepted.prevRev === 0 && accepted.rev === 1 && map.rev === 1, 'equivalent styled Part accepts one revision');
+      assert(publications === 1 && positions === 1 && continued.mirror.status === 'active', 'exactly one active accepted publication');
+      assert(doc.getElementById('live') === button && get_node_for_el(button) === nativeNode, 'strict original Element and linked node survive explicit lineage');
+      assert(lookup(selected,'keep').quid === subject.quid && lookup(selected,'spare').quid === spare.quid && runtime.quidToNode.get(subject.quid) === nativeNode, 'receiving identity and authored QUAD survive');
+      assert(handle.active && handle.attrs.get('id') === 'live', 'previously issued .q handle stays active');
+      equal(handle.path(),handlePath,'handle retains its logical correspondence');
+      equal([...runtime.issuedQuids],ledger,'existing legitimate identity is reused without issuing another');
+      equal(selected.root(),graph,'public graph remains realized and unchanged');
+      const style = doc.querySelector(marker), css = selected.css.snapshot();
+      assert(style?.textContent === css && css.includes(subject.quid) && css.includes('button:where(:scope,:scope *){color:rgb(10,20,30);padding-left:13px;'), 'managed stylesheet contains the accepted scoped root rule');
+      equal(read(doc,outside),['rgb(0, 0, 0)','6px'],'unrelated sibling remains unaffected');
+      assert(outside.getAttribute('hson:quid') === null && doc.querySelectorAll(marker).length === 1, 'no unrelated identity exposure or duplicate managed style');
+      const evidence = { operation:staged?'staged':'direct', carrier:button.getAttribute('hson:quid'), expected:subject.quid, style:read(doc,button), synchronous,
+        publications, revision:map.rev, retained:doc.getElementById('live')===button, carriers:doc.querySelectorAll('[hson\\:quid]').length };
+      liveCarrierEvidence.push(evidence);
+      cases.push({ map, selected, handle, subject, frame, doc, button, outside, continued, replace, off, stop, readPublications:()=>publications });
+    }
+    console.log(`Retained-root CSS demand evidence: ${JSON.stringify(liveCarrierEvidence)}`);
+    for (const evidence of liveCarrierEvidence) {
+      assert(evidence.carrier === evidence.expected && evidence.carriers === 1, `${evidence.operation}: demanded existing QUID is projected exactly once: ${JSON.stringify(liveCarrierEvidence)}`);
+      equal(evidence.style,['rgb(10, 20, 30)','13px'],`${evidence.operation}: synchronous live root CSS`);
+      assert(evidence.synchronous?.carrier === evidence.expected, `${evidence.operation}: carrier is present when the style enters the document`);
+      equal(evidence.synchronous.style,evidence.style,`${evidence.operation}: synchronous stylesheet placement observation`);
+    }
+    for (const f of cases) {
+      const { selected, handle, subject, doc, button, outside, continued } = f;
+      const before = f.readPublications(), rev = f.map.rev;
+      const noop = f.replace('<button id="live"/>');
+      assert(!noop.changed && f.map.rev === rev && f.readPublications() === before, 'retained styled equal replacement remains a true no-op');
+      selected.document.content.move({kind:'path',path:subject.path.slice(0,-1)},subject.path.at(-1),1);
+      assert(doc.body.lastElementChild === button && doc.body.firstElementChild === outside, 'styled root move retains exact Element');
+      equal(read(doc,button),['rgb(10, 20, 30)','13px'],'retained carrier styles follow root move');
+      // Supported complete stylesheet replacement removes owned rules while another
+      // independently authored rule still demands this same surviving subject.
+      selected.css.stylesheet(`[hson\\:quid="${subject.quid}"]{color:rgb(40,50,60)}`);
+      assert(button.getAttribute('hson:quid') === subject.quid, 'remaining independent CSS demand retains the carrier');
+      equal(read(doc,button),['rgb(40, 50, 60)','6px'],'owned CSS replaced without retiring the subject');
+      const remove = button.removeAttribute;
+      let teardown = 0;
+      button.removeAttribute = function(name) {
+        if (name === 'hson:quid') {
+          assert(!doc.querySelector(marker) && selected.css.snapshot() === '', 'old stylesheet retires before its last carrier');
+          equal(read(doc,button),['rgb(0, 0, 0)','6px'],'synchronous last-demand teardown observation'); teardown++;
+        }
+        return remove.call(this,name);
+      };
+      try { selected.css.clearAll(); } finally { delete button.removeAttribute; }
+      assert(teardown === 1 && button.getAttribute('hson:quid') === null && doc.querySelectorAll('[hson\\:quid]').length === 0, 'last CSS demand removes only its derived native carrier');
+      assert(handle.active && lookup(selected,'keep').quid === subject.quid && runtime_for_tree(continued.tree).quidToNode.get(subject.quid) === get_node_for_el(button), 'carrier teardown preserves canonical/runtime identity and handle');
+      handle.attrs.set('title','after-demand');
+      assert(button.getAttribute('title') === 'after-demand' && button.getAttribute('hson:quid') === null && continued.mirror.status === 'active', 'subsequent ordinary attr projection stays exact and does not expose unused identity');
+      assert(doc.getElementById('live') === button && doc.getElementById('outside') === outside, 'inverse retains original Elements');
+      equal(read(doc,outside),['rgb(0, 0, 0)','6px'],'outside control remains unaffected through teardown');
+      f.off(); f.stop(); continued.dispose(); f.frame.remove();
+    }
+  });
+  return { passed, liveCarrierEvidence };
 };

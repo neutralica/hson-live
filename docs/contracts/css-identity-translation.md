@@ -69,7 +69,8 @@ Rule declarations, strings, URLs, custom-property values, animation and keyframe
 names, property registrations and keyframe steps are retained through the
 existing codec. Quoted selector lookalikes and ordinary attributes are not
 interpreted as references. Opaque rule keys are unchanged, including keys whose
-text contains a selector. Group occurrences, empty layers, source/declaration
+text contains a selector. Occurrence `owner` selectors in ordered entries use the
+same exact traversal and translation; the stylesheet remains their authority. Group occurrences, empty layers, source/declaration
 order and layer order remain structural; equal header text does not merge groups.
 Serialization may normalize CSS spelling without changing its meaning. Text
 with no translated references is retained after existing canonical admission.
@@ -133,8 +134,9 @@ Every affected final graph/CSS candidate must project coherently before
 acceptance. Movement and valid lineage may retain identities. Retirement with any
 remaining subject reference rejects the whole transition. Public synchronous
 `map.batch` can combine graph changes and stylesheet replacement in either order;
-only the complete candidate is judged. No selectors or rules are deleted or
-retargeted implicitly.
+only the complete candidate is judged. Independently authored selectors/rules are never deleted or retargeted implicitly.
+Cut 9C-3 removes only explicitly occurrence-owned entries when their root retires,
+before this final correspondence check.
 
 Full Library snapshots, selected Locus/Echo snapshots and semantic checkpoints
 carry the same associations. Checkpoint equivalence compares disposable references
@@ -152,7 +154,7 @@ Local initializer envelopes carry no subject correspondence: graph/CSS admission
 rejects their subject references before installation. Identity-free initializer CSS
 is installed with its graph and checked seed contract before the first notification.
 Asynchronous
-hosted CSS ordering/replay remains unsupported. Local styled Part composition uses
-the bounded [Cut 9B occurrence contract](styled-part-composition.md).
+hosted CSS ordering/replay remains unsupported. Automatic Part admission uses
+the bounded [Cut 9C-3 occurrence contract](styled-part-composition.md).
 Shared Node/Worker transport tests do not establish browser first paint
 or flash-free grafting.

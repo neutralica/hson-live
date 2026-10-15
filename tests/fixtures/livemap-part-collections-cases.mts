@@ -148,7 +148,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const failures: unknown[] = [null, [], {}, { kind: "data", document: '<p/>' }, { kind: "document" },
       { kind: "document", document: "" }, { kind: "document", document: '"text"' },
       { kind: "document", document: '<p/> <q/>' }, { kind: "document", document: '<p' },
-      { kind: "document", document: '<p/> trailing' }, { kind: "document", document: '<hson-template lib="x"/>' },
+      { kind: "document", document: '<p/> trailing' }, { kind: "document", document: '<hson-part lib="x"/>' },
       { kind: "document", document: '<p @000009001/>' }, { kind: "document", document: '<p @bad/>' },
       { kind: "document", document: '<p @:1bad/>' }, { kind: "document", document: '<p @:same @:other/>' },
       { kind: "document", document: '<p <i @:same/> <b @:same/>/>' },

@@ -197,6 +197,14 @@ function keyframes_definition(input: unknown): KeyframesDef {
   return Object.freeze({ name: normalized.name, steps: Object.freeze(normalized.steps.map((step) => Object.freeze({ at: step.at, decls: Object.freeze({ ...step.decls }) }))) });
 }
 
+function css_owner(entry: Record<string, unknown>): Readonly<{ owner?: string }> {
+  if (!Object.hasOwn(entry, "owner")) return {};
+  // A single exact identity selector is the existing identity translator's vocabulary.
+  const owner = nonempty(entry.owner);
+  if (!/^\[hson\\:(?:quid|quad)="[^"\\]+"\]$/.test(owner)) throw new TypeError("Invalid CSS occurrence owner.");
+  return { owner };
+}
+
 /** Admit a detached, frozen canonical value from a structured portable record. */
 export function decode_portable_document_stylesheet(input: unknown): PortableDocumentStylesheet {
   const value = record(input, ["rules", "properties", "keyframes", "order"]);
@@ -223,25 +231,25 @@ export function decode_portable_document_stylesheet(input: unknown): PortableDoc
     if (item === null || typeof item !== "object") throw new TypeError("Invalid stylesheet order entry.");
     if (active.has(item) || parents.length >= 128) throw new TypeError("Cyclic or excessive stylesheet grouping.");
     if (Object.hasOwn(item, "header")) {
-      const entry = record(item, ["kind", "header", "entries"]);
+      const entry = record(item, ["kind", "header", "entries", ...(Object.hasOwn(item, "owner") ? ["owner"] : [])]);
       if (entry.kind !== "group") throw new TypeError("Invalid stylesheet group.");
       const header = managed_css_group_header(nonempty(entry.header));
       active.add(item);
       const entries = Object.freeze(decode_order(entry.entries, [...parents, header]));
       active.delete(item);
-      return Object.freeze({ kind: "group", header, entries });
+      return Object.freeze({ kind: "group", header, entries, ...css_owner(entry) });
     }
     if (Object.hasOwn(item, "ruleKey")) {
-      const entry = record(item, ["kind", "ruleKey", "scopes"]);
+      const entry = record(item, ["kind", "ruleKey", "scopes", ...(Object.hasOwn(item, "owner") ? ["owner"] : [])]);
       if (entry.kind !== "rule") throw new TypeError("Invalid stylesheet rule order entry.");
       const scopes = Object.freeze(css_array_items(entry.scopes).map(nonempty));
       if (parents.some((parent, index) => scopes[index] !== parent)) throw new TypeError("Rule scopes disagree with group membership.");
-      return Object.freeze({ kind: "rule", ruleKey: nonempty(entry.ruleKey), scopes });
+      return Object.freeze({ kind: "rule", ruleKey: nonempty(entry.ruleKey), scopes, ...css_owner(entry) });
     }
     if (parents.length) throw new TypeError("Scoped stylesheet registries are unsupported.");
-    const entry = record(item, ["kind", "name"]);
+    const entry = record(item, ["kind", "name", ...(Object.hasOwn(item, "owner") ? ["owner"] : [])]);
     if (entry.kind !== "property" && entry.kind !== "keyframes") throw new TypeError("Invalid stylesheet order kind.");
-    return Object.freeze({ kind: entry.kind, name: nonempty(entry.name) });
+    return Object.freeze({ kind: entry.kind, name: nonempty(entry.name), ...css_owner(entry) });
   });
   const order = decode_order(value.order);
   const expected = stylesheet_order_leaves(stylesheet_order_for({ rules, properties, keyframes })).map(css_entry_identity);

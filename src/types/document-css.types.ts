@@ -4,12 +4,15 @@ import type { PropertyRegistration } from "./at-property.types.js";
 import type { KeyframeSelector } from "./keyframes.types.js";
 
 /** Structural wrapper occurrence; identity is its position, never a runtime identifier. */
-export type DocumentCssOrderEntry = Readonly<
+export type DocumentCssOrderEntry = Readonly<{
+  /** Exact subject selector owning this generated contribution; translated with CSS. */
+  owner?: string;
+} & (
   | { kind: "rule"; ruleKey: string; scopes: readonly string[] }
   | { kind: "property"; name: string }
   | { kind: "keyframes"; name: string }
   | { kind: "group"; header: string; entries: readonly DocumentCssOrderEntry[] }
->;
+)>;
 
 /** Structured, DOM-free capture and commit payload; ordinary authors use the facade. */
 export type DocumentCssRecord = Readonly<{

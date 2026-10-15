@@ -30,6 +30,12 @@ export function prepare_livemap_root(input: HsonNode, family?: "data" | "documen
   }
 
   if (mode === "document") {
+    const pending = [root];
+    while (pending.length) {
+      const node = pending.pop()!;
+      if (node.$_tag.toLowerCase() === "hson-part") throw new Error("Canonical document state cannot contain construction connectors.");
+      for (const child of node.$_content) if (is_Node(child)) pending.push(child);
+    }
     const documentOverlay = build_livemap_document_identity_overlay(root, mode);
     classify_live_root_mode(root, family);
     return {

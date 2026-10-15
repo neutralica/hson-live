@@ -1,79 +1,211 @@
-# Styled Part composition (Cut 9B)
+# Automatic Part admission and occurrence-owned CSS (Cut 9C-3)
 
-The private composer expands validated keyed Parts from governed data Libraries
-into one ordinary new document Library. It retains `lib`/`at`, recursive `at`
-configuration, `use: { at, lib? }`, root overrides and explicit receiving `q`.
-No public template or fragment API is introduced.
+A governed Part collection is an inert data Library. Its members retain the
+validated `{ kind: "document", document: string, css?: string }` format and exactly
+one ordinary structural root. Admitting or editing definitions neither expands
+nested connectors nor changes documents previously constructed from them.
 
-Each selected Part contributes its entire optional managed stylesheet. Stylesheet
-order follows depth-first preorder selection: a parent's stylesheet precedes the
-stylesheets of its expanded connectors, and siblings follow actual traversal
-order. Unvisited members contribute no CSS. The collection's complete validation
-contract still applies to reads, including unvisited members' syntax.
+Authored Library admission (`fromLibraries`, local `addLibraries`, and initial
+Locus authority definitions) consumes `<hson-part lib="parts" at="navigation"/>`.
+The selected Part's actual root replaces the connector; there is no wrapper,
+custom element, subscription, instance object, `.template()` or `.compose()` API.
+The private structural traversal remains the construction mechanism. Native HTML
+`<template>` keeps its existing semantics.
 
-An exact `[hson\:quad="label"]` subject reference resolves through that Part's
-validated local authored QUAD path. Traversal records the exact final destination
-path for that occurrence, including connector replacement roots. Root and descendant
-references demand only those receiving subjects. Each occurrence is translated
-separately by the existing syntax-aware CSS translator; local names may repeat
-freely across occurrences. Names from Parts are never installed in the receiving
-authored registry. Shell names and explicit `q` promotions retain existing rules.
+`lib` and `at` are separate exact string coordinates, never a slash-delimited
+address. A top-level connector requires a nonempty `lib`; nested connectors may
+omit `lib` to retain their selected collection. An empty member key is supported.
+A missing, ungoverned or unavailable collection/member rejects immediately. There
+is no deferred resolution. Library-add candidates can provide definitions and
+consumers in either entry order. Ordinary atomic batches resolve against the
+complete final candidate of each edited Part collection, independently of the
+relative order of consumer and definition edits. Invalid final definitions reject
+the entire candidate.
 
-The recursive private configuration uses `q` to promote its selected source
-subject into a named receiving document QUAD. The former `as` configuration
-field is rejected at every level; ordinary content attributes named `as` are
-unrelated and remain unchanged. JavaScript records and native HsonData accept
-the same configuration shape.
+The optional connector `@:name` becomes a receiving-document QUAD on the realized
+root. Authored Library source uses the existing QUAD scanner, diagnostics, name
+rules and receiving bindings. Ordinary Transform/HsonDocument parsing still does
+not accept QUAD declarations. Part-local QUADs remain construction addresses and
+are never implicitly registered in the receiving document. CSS can demand a root
+QUID without an authored QUAD. Reads, capture and rendering allocate nothing.
 
-Part definitions have no anonymous subject coordinate beyond authored local QUADs.
-Generated QUID claims, unresolved names, non-exact identity selectors and opaque
-identity syntax reject. An anonymous *receiving* instance is supported: its local
-Part landmarks still supply exact occurrence coordinates. Ordinary selectors
-retain document-wide CSS semantics, including specificity, cascade and inheritance.
-Composition supplies no encapsulation or selector isolation.
+## Parameters
 
-The receiving owner prepares the complete graph and authored associations, then
-uses its existing allocator and identity overlay for demanded subjects lacking an
-authored receiving association. Per-occurrence correspondence is detached candidate
-work, never a portable field, stored component scope or provenance ledger. Ordinary
-preparation publishes the graph, sparse issued ledger, QUAD bindings and merged CSS
-in one topology transition. Failed preparation publishes nothing; independently
-accepted reentrant work is preserved. Source fencing ends only after coherent
-detachment. Subsequent source changes do not change that detached graph or CSS;
-the receiving preparation retains its own authority and revision fences.
+Connectors must be empty. Every attribute other than `lib` and `at` is a named
+initial parameter. Names match `[A-Za-z_][A-Za-z0-9_-]*`. Values are supported
+canonical scalars: string, finite number, boolean or null. Structural values,
+arrays, opaque objects and undefined are rejected, including structured `style`
+inputs. Missing parameters, unused/unknown inputs and malformed `%{name}` tokens
+reject with the parameter name or placement in the error. There are no defaults,
+expressions, recursive configuration objects or ongoing bindings.
 
-Raw Part CSS has locally generated `stylesheet:N` rule keys from the ordinary
-parser. The complete rendered occurrence stylesheets are admitted by that same
-parser as one stylesheet. Its ordinary sequential key allocator gives every rule
-occurrence a distinct key; no rules are deduplicated. This reconciles only the
-parser's local administrative keys, with no selector or global CSS-name changes.
-The portable record decoder continues to reject duplicate keys and inconsistent
-order records. Custom properties, supported groups, repeated group occurrences,
-empty semantic layer entries, declaration order and global definitions retain
-ordinary parser/render semantics. Named layers repeat under standard CSS ordering;
-layer-order statements remain unsupported by the current parser. Duplicate
-keyframes and property registrations reject, including identical definitions from
-two instances. Global conflicts are checked before candidate identity allocation.
-There is no renaming of keyframes or rewriting of animation declarations.
+Placeholders occur only in decoded document text and ordinary attribute values,
+including values forwarded to nested connectors. An attribute consisting entirely
+of `%{name}` preserves its scalar type. Partial attributes and all document text
+become strings using the scalar's ordinary string spelling (`null`, `true`, etc.).
+Canonical document text is STR-only; it cannot contain a typed VAL leaf. A
+replacement value is never scanned again for placeholders and is never parsed as
+Hson or HTML. Quotes, `<`, `&`, Unicode and empty strings pass through normal
+Hson/HTML serialization and escaping. No raw markup is inserted.
 
-After admission, Cut 9B-0 owns ordinary capture, restoration and strict retirement.
-Final-only document cuts omit Part collections and shell Libraries. Authored
-receiving names remain authored, while CSS-only subjects project disposable portable
-correspondence and receive fresh QUIDs on every new runtime admission. Capture,
-source reads and rendering issue no additional identities. Moves and legitimate
-lineage retain subject CSS; retirement requires dependent CSS to change in the same
-atomic graph/CSS transition. Rules are never automatically removed.
+Tags, attribute names, identity metadata, structured style maps, script/style
+content and placeholders in attributes beginning with `on` (case-insensitive) are unsupported. Existing CSS
+and Hson admission may reject invalid placements before construction. CSS is not
+interpolated. Literal `%{` in Part text must not be used: there is no separate
+escape/interpolation language. A string passed to an existing runtime text
+mutation remains text; graph mutations receive canonical content under their
+existing grammar.
 
-Nonempty managed CSS rendering retains the existing explicit `html`/`head`
-requirement. Portable SSR emits the existing derived subject carriers and one
-managed style. The existing synchronous graft writes receiving QUID metadata while
-portable carriers remain, switches the retained stylesheet, then consumes carriers.
-Cut 9B's Chrome acceptance flushes computed styles at that switch and during carrier
-removal, checks original Elements, live edits and final-only restoration/grafting.
-It also measures the server-rendered styled page with JavaScript disabled and an
-unrelated element control.
+## Occurrence CSS
 
-Styled document shells remain unsupported composition sources. Hosted incremental
-subject-CSS topology, operations and durable transport remain rejected by Cut 9B-0;
-this cut does not add hosted correspondence ordering, broaden initializer admission
-or change full-snapshot routes.
+A balanced-token pass splits recovered style blocks into declarations and nested
+rules, each parsed with CSSTree before lowering and ordinary managed stylesheet
+admission. Bare type and class nesting (`.a { button { ... } }` and
+`.a { .b { ... } }`), nested selector lists, either mixed explicit/implicit list
+order, and supported nested conditions follow the same lowering path. Declaration
+runs retain their position before, between and after nested rules. Implicit
+nested selectors use `:is(parent)` and a descendant combinator, retaining CSS
+nesting's maximum parent-list specificity; explicit `&` is replaced structurally.
+
+Colon-bearing implicit selectors such as `button:is(.b)`, `button:not(.x)`,
+`button:first-child` and `button::before` use the same path, including either
+mixed-list order with explicit `&`. CSSTree may initially recover these as a
+declaration with a raw value; the complete non-custom declaration is re-split at
+balanced token boundaries to identify the qualified nested rule. Actual property
+values containing colons, strings, URLs and functions remain declarations. Custom
+properties own their raw values, including colon-bearing text and balanced blocks;
+they are never reinterpreted as nested selectors. Malformed values/selectors and
+unsupported opaque constructs still reject through the strict managed codec.
+Recovery uses original source spans, preserving the descendant whitespace in
+`button :is(...)` instead of regenerating it as `button:is(...)`.
+
+Each occurrence's ordinary rules are placed in an explicit
+`@scope ([hson\:quid="receiving-id"])` anchored to its single root. Each ordinary
+selector's first compound receives the structural zero-specificity constraint
+`:where(:scope,:scope *)`, before any pseudo-element. This makes that compound
+match the root or a descendant and avoids native scope's implicit descendant-only
+anchoring: both `button` on a button root and `section button` through a section
+root work. Selector lists retain their individual matching specificity. Explicit
+scope-containing selectors retain their authored relationship; top-level `&`
+becomes `:scope`. Structured functional selectors, pseudo-elements and supported
+inner scopes keep their CSS meaning. Identity remains solely in the scope/owner
+references, using the actual receiving root, with no authored root QUAD required.
+
+Scope includes the root and its descendants. Parent rules can style nested Part
+descendants through the ordinary cascade; this is not Shadow DOM isolation.
+An unrelated sibling occurrence and outside elements are outside that scope.
+Specificity, layer order, inheritance and native scope proximity still apply. In
+particular, scope proximity can resolve equal-specificity declarations; an
+explicit higher-specificity or important override follows the normal cascade.
+See the [CSS scope specification](https://www.w3.org/TR/css-cascade-6/#scoped-styles).
+
+Supported conditions/groups retain their order and repeated occurrences:
+`@media`, `@supports`, `@layer`, `@container`, `@scope`, and `@starting-style`.
+Nested conditions inside style rules are lowered with those rules. A nested
+`@scope` inside a style rule is explicitly unsupported. Opaque selector arguments
+that CSSTree cannot structurally inspect reject. Imports, namespace declarations,
+font-face, layer-order statements, unsupported global forms and malformed CSS
+reject rather than escaping the occurrence's scope. Existing managed-codec
+limits, including duplicate declarations that cannot be represented, remain.
+
+Top-level supported `@keyframes` and `@property` definitions retain their global
+CSS names and semantics. Duplicate definitions across occurrences reject, even
+when identical. Names and animation declarations are not automatically renamed.
+Exact Part-local `[hson\:quad="name"]` subject references continue to resolve
+through local QUAD paths and receive identities within the occurrence scope.
+Unresolved, generated, mixed, opaque or non-exact identity claims reject through
+the existing CSS identity translator. Ordinary selectors need only root identity.
+
+## Ownership and atomicity
+
+The managed stylesheet's existing ordered entries carry an optional `owner`:
+one exact subject selector, translated with all other CSS identity references.
+This is CSS/document state, not an independent registry, graph or runtime ledger.
+Each generated top-level group or global definition carries its occurrence root
+owner. Rendering ignores this metadata; portable capture retains and translates
+it using the existing authored/disposable correspondence envelope.
+
+Moving a root keeps its contribution. Retiring a root removes only entries with
+that explicit owner, including global definitions, in the same accepted graph/CSS
+candidate. Retiring an enclosing root also retires nested roots still inside it.
+Replacement retires old contributions before checking new global conflicts.
+Independently authored rules are not inferred to be owned from their selectors:
+remaining references to retired subjects still reject the complete mutation.
+Explicit granular replacement of an owned contribution rejects; complete
+stylesheet replacement can explicitly take over stylesheet ownership. Explicit
+rule/scopes conflicts remain errors.
+
+One existing LiveMap authority installs graph, overlay, issued ledger, authored
+bindings and CSS together. Construction, Schema, resource, cycle, allocation,
+reentrancy and authority failures expose no partial outer candidate. Independently
+accepted inner work is preserved. New runtime subjects carry owner-issued identity
+in the ordinary incoming graph operation, using Mirror's structural insertion proof
+rather than an existing-subject registration. Allocation consults the registered
+projection's active, pending and issued namespace and rechecks currency before
+acceptance. The private same-runtime exact admission
+facility continues to use its existing ownership path; portable constructors do
+not accept generated QUID claims.
+
+The complete composition candidate is planned before deciding whether an edit is
+a no-op. Replacing an element with a Part that realizes to identical markup still
+admits demanded identity, owned CSS and ownership/order metadata in one accepted
+transition. Valid explicit lineage reuses an existing receiving identity and its
+QUAD/handles. A truly equivalent candidate with no new governed effects publishes
+nothing, issues no identity and leaves the revision unchanged; graph equality
+alone does not decide that result.
+
+## Realized-only source decision
+
+This cut stores only the realized canonical Library graph. The consumed connector
+is not available for in-Library source editing, and there is no `source` property.
+Applications may retain authored input externally and submit fresh content through
+ordinary replacement/admission, with ordinary replacement identity consequences.
+Definition changes never retroactively rebuild accepted occurrences.
+
+Explicit replacement lineage is interpreted against the old graph and the
+authored incoming fragment. Construction records transient authored-to-final
+subject correspondence, including a connector's single resulting root, and
+translates only the requested destination paths before ordinary identity planning.
+Generated Part descendants have no authored incoming path. Missing, ambiguous or
+invalid correspondence rejects atomically; expansion neither invents continuity
+nor discards requested continuity. The graph planner and existing authority still
+own the final overlay, authored QUAD bindings, issued ledger and CSS retirement.
+
+The bounded feasibility review found one graph, sparse identity overlay and
+mutation ledger per document in `livemap.library.ts`/`livemap.core.ts`; document
+capture, semantic checkpoints, projection and restore all transport that graph.
+Editable source retention would add a second authoritative graph plus transport
+and reconciliation of arbitrary source/runtime edits. That is outside this cut.
+Unrelated live edits are preserved because construction only handles the newly
+inserted/replaced content, rather than recomposing the retained document.
+
+## Transport and support boundaries
+
+Canonical restore, replay, capture, cut, rendering and graft never expand Parts.
+Residual connectors at canonical document ingress reject. Full snapshots and
+semantic checkpoints carry realized graph, owned CSS and portable correspondence;
+receivers allocate fresh identities. Final-only cuts need no Part collection.
+SSR emits disposable carriers and CSS for the same subjects; synchronous graft
+switches CSS after receiving metadata is written, before carriers are consumed.
+Nonempty CSS rendering retains the existing explicit `html`/`head` requirement.
+
+Authorized private definitions may be instantiated into initially shared markup
+and CSS. Projection shares only those realized values, never unvisited definitions
+or private source data. Receiving clients do not re-expand them. Public local
+mutation gates, projected-document authority, private/shared/local policies and
+incomplete-identity guards remain in force. Hosted incremental subject CSS,
+including occurrence topology/mutation and durable incremental encoding, remains
+unsupported and fails closed. Authored hosted topology definitions expand under the existing managed owner gate;
+identity-free Parts are supported there. Styled additions reject before identity
+allocation under the subject-CSS boundary. Receiving topology replay/projection
+admits only the realized canonical operation and never re-expands it. Local initializers retain their
+existing subject-correspondence limitation. Full authority snapshots/checkpoints
+remain the supported transport for realized subject CSS.
+
+Permanent acceptance covers Node and actual Worker construction/mutation, scalar
+parameters, inert definitions, coherent batches, ownership retirement, local CSS
+references, conflict and reentrancy failures, source-free A→B→C restoration,
+private projection and durable checkpoints. Source-bundled real Chrome checks
+JavaScript-disabled first paint, parent rules reaching nested Part buttons,
+outside controls, root-only allocation, synchronous CSS handoff, retained Elements,
+strict independent-rule retirement, owned teardown and re-grafting without sources.

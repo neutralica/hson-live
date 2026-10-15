@@ -12,7 +12,7 @@ import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { make_livemap_from_authored_libraries_internal as authored, compose_livemap_document_internal as compose,
   add_livemap_canonical_libraries_internal as addCanonical, reconcile_client_projection_snapshot_internal,
-  install_client_projected_topology_internal } from "../../src/api/livemap/livemap.libraries.ts";
+  install_client_projected_topology_internal, prepare_hosted_livemap_library_add_internal as hostedAdd } from "../../src/api/livemap/livemap.libraries.ts";
 import { lookup_document_quad_internal as lookup, decode_document_quads } from "../../src/api/livemap/livemap.document.quad.ts";
 import { encode_hosted_root, decode_hosted_root, make_portable_aggregate_snapshot, make_portable_aggregate_commit,
   registry_from_entries } from "../../src/api/livemap/livemap.hosted.ts";
@@ -78,6 +78,74 @@ async function projection(map: LiveMap, names: readonly string[], privateNames: 
 
 export async function portable_quad_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
   await document_css_subject_cases(check);
+  await check("automatic private Parts project only realized markup and owned CSS; clients never need definitions", async () => {
+    const map = hsonLiveMap.fromLibraries({ hidden: collection({ used: { kind: "document", document: '<section @:PRIVATE_LOCAL <button "Shared"/>/>', css: 'button{color:rgb(12,34,56)}' },
+      secret: { kind: "document", document: '<p "UNUSED_PRIVATE_SOURCE"/>', css: 'p{--private:UNUSED_PRIVATE_CSS}' } }),
+      page: { document: '<html <head/> <body <hson-part @:slot lib="hidden" at="used"/>/>/>' } });
+    const projected = capture_selected_authority_projection_snapshot(map, await projection(map, ["page"], ["hidden"]));
+    assert.doesNotMatch(JSON.stringify(projected), /UNUSED_PRIVATE_SOURCE|UNUSED_PRIVATE_CSS|PRIVATE_LOCAL|hson-part/);
+    const client = client_projection_map({ authority: projected, local: {} });
+    assert.throws(() => client.lib("hidden")); assert.match(doc(client).css.snapshot(), /rgb\(12,34,56\)/);
+    assert.notEqual(subject(client, "slot").quid, subject(map, "slot").quid);
+    assert.doesNotMatch(JSON.stringify(doc(client).root()), /hson-part/);
+    const independent = install_libraries_snapshot(client.cut({ documents: ["page"], data: [] }).libs).map;
+    doc(independent).q("slot")!.delete(); assert.equal(doc(independent).css.snapshot(), "");
+    assert.equal(owner(independent).documentOverlay(owner(independent).libraries()[0]!).size, 0);
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<hson-part lib="hidden" at="used"/>' } }), /collection/);
+  });
+  await check("initial Locus construction combines authored document CSS with private Part occurrence CSS", async () => {
+    const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: collection({ x: { kind: "document", document: '<section <button "Shared"/>/>', css: 'button{color:red}' },
+      unused: { kind: "document", document: '<p "PRIVATE_UNVISITED"/>' } }) }],
+      shared: [{ name: "page", definition: { document: '<html <head/> <body <hson-part lib="parts" at="x"/>/>/>' }, css: 'body{margin:0}' }], defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    try {
+      const selected = locus.lib("page"); if (selected.mode !== "document") throw Error("document");
+      assert.match(selected.css.snapshot(), /body\{margin:0/); assert.match(selected.css.snapshot(), /button:where\(:scope,:scope \*\)\{color:red/);
+      const session = await locus.session.create({ libraries: ["page"] });
+      const snapshot = session.now({ html: "page" });
+      assert.match(snapshot.html, /<section/); assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_UNVISITED|hson-part/);
+    } finally { locus.dispose(); }
+  });
+  await check("managed authored topology realizes authorized Parts and rejects styled incremental additions before publication", async () => {
+    const map = hsonLiveMap.fromLibraries({ hidden: collection({ plain: { kind: "document", document: '<nav @:private "Shared"/>' },
+      styled: { kind: "document", document: '<button/>', css: 'button{color:red}' } }) });
+    const aggregate = owner(map), manager = {}; aggregate.claimManagement(manager);
+    try {
+      const prepared = hostedAdd(map, manager, { page: { document: '<main <hson-part @:slot lib="hidden" at="plain"/>/>' } });
+      aggregate.accept(prepared.transition, "isolate", prepared.afterInstall);
+      assert.ok(doc(map).q("slot")); assert.equal(doc(map).q("private"), undefined);
+      assert.doesNotMatch(JSON.stringify(doc(map).root()), /hson-part/);
+      const before = map.capture(), ledger = aggregate.identityEpoch().issued();
+      assert.throws(() => hostedAdd(map, manager, { bad: { document: '<hson-part lib="hidden" at="styled"/>' } }), /subject-owned CSS/);
+      assert.deepEqual(map.capture(), before); assert.equal(aggregate.identityEpoch().issued(), ledger); assert.throws(() => map.lib("bad"));
+      assert.throws(() => hostedAdd(map, {}, { bad: { document: '<hson-part lib="hidden" at="plain"/>' } }));
+    } finally { aggregate.releaseManagement(manager); }
+    const client = client_projection_map({ authority: capture_selected_authority_projection_snapshot(map, await projection(map, ["page"], ["hidden"])), local: {} });
+    assert.throws(() => client.lib("hidden")); assert.match(doc(client).render(), /<nav>Shared<\/nav>/);
+  });
+  await check("owned Part CSS survives semantic checkpoints and fresh durable restoration, then retires without stale rules", async () => {
+    const source = hsonLiveMap.fromLibraries({ parts: collection({ x: { kind: "document", document: '<section <button/>/>', css: 'button{color:red}' } }),
+      page: { document: '<html <head/> <body <hson-part @:slot lib="parts" at="x"/>/>/>' } });
+    const map = install_libraries_snapshot(source.cut({ data: [], documents: ["page"] }).libs).map, aggregate = owner(map);
+    aggregate.setInitialHostedAuthority({ logicalMapId: "owned-part-checkpoint", incarnationId: "run" });
+    const adapter = new MemoryCheckpointAdapter(); await write_semantic_checkpoint(aggregate.captureSemanticCheckpoint(), adapter);
+    const restored = await load("owned-part-checkpoint", { persistence: adapter }); assert.ok(restored);
+    try {
+      assert.match(doc(restored.map).css.snapshot(), /button:where\(:scope,:scope \*\)\{color:red/);
+      assert.notEqual(subject(restored.map, "slot").quid, subject(map, "slot").quid);
+      await restored.checkpoint();
+      const local = install_libraries_snapshot(restored.map.cut({ documents: ["page"], data: [] }).libs).map;
+      doc(local).q("slot")!.delete(); assert.equal(doc(local).css.snapshot(), "");
+      assert.equal(owner(local).documentOverlay(owner(local).libraries()[0]!).size, 0);
+    } finally { restored.dispose(); }
+    doc(map).q("slot")!.delete();
+    // A local subject-CSS edit has no supported durable incremental tail. Keep the
+    // existing covered-history guard, and export the complete checkpoint separately.
+    await assert.rejects(() => write_semantic_checkpoint(aggregate.captureSemanticCheckpoint(), adapter));
+    const finalAdapter = new MemoryCheckpointAdapter(); await write_semantic_checkpoint(aggregate.captureSemanticCheckpoint(), finalAdapter);
+    const retired = await load("owned-part-checkpoint", { persistence: finalAdapter }); assert.ok(retired);
+    try { assert.equal(doc(retired.map).css.snapshot(), ""); assert.equal(owner(retired.map).documentOverlay(owner(retired.map).libraries()[0]!).size, 0); }
+    finally { retired.dispose(); }
+  });
   await check("disposable projection preserves the exact QUID alphabet and sparse observational behavior", () => {
     for (const char of PERSISTED_QUID_ALPHABET) {
       const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } });
@@ -185,7 +253,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.equal(aggregate.projectDocumentCorrespondence(id, []), undefined);
   });
   await check("independent composed occurrences use receiving identities and final-only restoration", () => {
-    const source = authored({ layout: { document: '<main <hson-template lib="components" at="button"/> <hson-template lib="components" at="button"/>/>' },
+    const source = authored({ layout: { document: '<main <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>' },
       components: collection({ button: { kind: "document", document: '<button @:source/>' } }) });
     const sourceQuid = mint_hson_node_quid();
     assert.equal(owner(source).identityEpoch().issued().has(sourceQuid), false);
@@ -662,7 +730,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     } finally { clientOwner.releaseManagement(management); seedOwner.releaseManagement(serverManager); }
   });
   await check("selected cuts and authorized projections preserve private source separation and Echo registry restoration", async () => {
-    const map = authored({ hidden: collection({ private: { kind: "document", document: '<aside @:PRIVATE_ADDRESS/>' } }), layout: { document: '<main <hson-template lib="hidden" at="private"/>/>' },
+    const map = authored({ hidden: collection({ private: { kind: "document", document: '<aside @:PRIVATE_ADDRESS/>' } }), layout: { document: '<main <hson-part lib="hidden" at="private"/>/>' },
       public: { document: '<button @:shared/>' } });
     compose(map, "layout", "composed");
     const effective = await projection(map, ["hidden", "composed", "public"], ["hidden", "layout"]);
@@ -715,12 +783,12 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.notEqual(authority_projection_state_fingerprint_internal(projected), authority_projection_state_fingerprint_internal(changedAddress));
   });
   await check("restored Parts compose independently with preserved shell and local Part addresses", () => {
-    const original = authored({ layout: { document: '<main @:layout <hson-template lib="parts" at="header"/> <hson-template lib="parts" at="header"/>/>' },
-      parts: collection({ header: { kind: "document", document: '<header @:header <hson-template at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } }) });
+    const original = authored({ layout: { document: '<main @:layout <hson-part lib="parts" at="header"/> <hson-part lib="parts" at="header"/>/>' },
+      parts: collection({ header: { kind: "document", document: '<header @:header <hson-part at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } }) });
     const received = install_libraries_snapshot(original.capture()).map;
     const result = compose(received, "layout", "result");
     assert.equal(lookup(result, "button"), undefined); assert.ok(lookup(result, "layout"));
-    assert.equal(JSON.stringify(result.root()).includes("hson-template"), false);
+    assert.equal(JSON.stringify(result.root()).includes("hson-part"), false);
     assert.equal(JSON.stringify(result.root()).includes("quid"), false);
     assert.ok(lookup(doc(original, "layout"), "layout")); assert.ok(lookup(doc(received, "layout"), "layout"));
     assert.equal(owner(received).projectedOverlay(owner(received).libraries()[1]!).size, 0);

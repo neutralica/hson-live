@@ -97,7 +97,7 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
     candidate.acceptCss(); assert.equal(one.document.css.snapshot().includes('hson\\:quid'), true);
   });
   check("final-only composed receiver binds two independently owned component subjects", () => {
-    const map = make_livemap_from_authored_libraries_internal({ layout: { document:'<html <head/> <body <hson-template lib="components" at="button"/> <hson-template lib="components" at="button"/>/>/>' }, components:collection({button:{kind:"document",document:'<button @:source/>'}}) });
+    const map = make_livemap_from_authored_libraries_internal({ layout: { document:'<html <head/> <body <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>/>' }, components:collection({button:{kind:"document",document:'<button @:source/>'}}) });
     const page = compose_livemap_document_internal(map, "layout", "final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;
     const demanded = ["345678901", "456789012"];
     aggregate.acquireLocalDocumentIdentity(library, validate_document_path([0,0,1,0,0]), demanded[0]!);

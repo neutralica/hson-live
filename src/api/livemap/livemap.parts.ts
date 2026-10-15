@@ -4,7 +4,7 @@ import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
-import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { parse_part_stylesheet } from "../../internal/css/part-stylesheet.js";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { DocumentCssRecord } from "../../types/document-css.types.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
@@ -63,7 +63,7 @@ export function validate_part_collection(value: OrderedProjectedValue): readonly
     const authored = parse_authored_document_library(source);
     const root = admit_public_livemap_root(authored.root, "document", "Part document");
     const element = root.$_content[0];
-    if (root.$_content.length !== 1 || !is_ordinary_element_node(element) || element.$_tag.toLowerCase() === "hson-template") {
+    if (root.$_content.length !== 1 || !is_ordinary_element_node(element) || element.$_tag.toLowerCase() === "hson-part") {
       throw new TypeError("Part requires exactly one ordinary element root.");
     }
     const quads = authored.declarations.length === 0 ? undefined : decode_document_quads(
@@ -71,7 +71,7 @@ export function validate_part_collection(value: OrderedProjectedValue): readonly
     const rawCss = fields.get("css");
     if (fields.has("css") && typeof rawCss !== "string") throw new TypeError("Part CSS requires raw stylesheet text.");
     const css = typeof rawCss === "string" ? encode_portable_document_stylesheet(
-      decode_portable_document_stylesheet(parse_document_stylesheet(rawCss, []))) : undefined;
+      decode_portable_document_stylesheet(parse_part_stylesheet(rawCss))) : undefined;
     return Object.freeze({ key, root, ...(quads === undefined ? {} : { quads }), ...(css === undefined ? {} : { css }) });
   }));
 }

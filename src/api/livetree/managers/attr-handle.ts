@@ -39,7 +39,7 @@ import {
 import type { LiveTree } from "../livetree.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
-import { get_quid } from "../quid/data-quid.js";
+import { get_quid, HSON_QUID_MARKUP_NAME } from "../quid/data-quid.js";
 import {
   runtime_for_tree,
   active_subject_for_tree,
@@ -164,16 +164,27 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
 export function apply_projected_attrs_replacement(
   node: HsonNode,
   values: CanonicalPublicAttrs,
+  nativeIdentity?: Readonly<{ quid: string | undefined }>,
 ): void {
   const next = decode_public_attrs(values);
   const current = decode_public_attrs(node.$_attrs ?? {});
   if (next === undefined || current === undefined) {
     throw new Error("LiveTree projected attrs replacement requires canonical attrs.");
   }
-  if (canonical_public_attrs_equal(current, next)) return;
-  if (Object.keys(next).length === 0) delete node.$_attrs;
-  else node.$_attrs = clone_node(next);
-  project_attrs_replacement(node, current, next);
+  if (!canonical_public_attrs_equal(current, next)) {
+    if (Object.keys(next).length === 0) delete node.$_attrs;
+    else node.$_attrs = clone_node(next);
+    project_attrs_replacement(node, current, next);
+  }
+  // Native identity is a derived projection, independent of public attrs. Only
+  // the bound owner supplies this request after proving accepted CSS demand.
+  if (nativeIdentity !== undefined) {
+    const element = get_el_for_node(node);
+    if (element !== undefined && element.getAttribute(HSON_QUID_MARKUP_NAME) !== (nativeIdentity.quid ?? null)) {
+      if (nativeIdentity.quid === undefined) element.removeAttribute(HSON_QUID_MARKUP_NAME);
+      else element.setAttribute(HSON_QUID_MARKUP_NAME, nativeIdentity.quid);
+    }
+  }
 }
 
 export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTree> {

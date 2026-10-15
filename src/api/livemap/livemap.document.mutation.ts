@@ -96,6 +96,7 @@ export type PreparedDocumentMutation<TOp extends LiveMapGraphOp = LiveMapGraphOp
 export type LiveMapDocumentMutationController = Readonly<{
   mode: LiveMapDocumentMode;
   rev: () => number;
+  captureFence: () => () => void;
   root: () => HsonNode;
   overlay: () => LiveMapDocumentIdentityOverlay;
   acquireLocalIdentity: (
@@ -396,7 +397,9 @@ function replace_document_content(
   replacementInput: unknown,
   lineageInput?: unknown,
 ): LiveMapGraphCommit<LiveMapGraphReplaceContentOp> {
+  const assertCurrent = controller.captureFence();
   const candidate = prepare_replace_document_content(controller.root(), controller.mode, controller.overlay(), targetInput, indexInput, replacementInput, "request", lineageInput);
+  assertCurrent();
   return finish_mutation(controller, candidate);
 }
 
@@ -460,9 +463,11 @@ function insert_document_content(
   indexInput: unknown,
   contentInput: unknown,
 ): LiveMapGraphCommit<LiveMapGraphInsertContentOp> {
+  const assertCurrent = controller.captureFence();
   const candidate = prepare_insert_document_content(
     controller.root(), controller.mode, controller.overlay(), targetInput, indexInput, contentInput,
   );
+  assertCurrent();
   return finish_mutation(controller, candidate);
 }
 

@@ -43,6 +43,8 @@ export type LiveMapDocumentIdentityCommitReservation = Readonly<{
 
 /** One active local projection participant; never serialized or exposed publicly. */
 export type LiveMapDocumentIdentityParticipant = Readonly<{
+  /** Existing runtime namespace, including retired/pending identities. @internal */
+  quidUnavailable?: (quid: string) => boolean;
   preflight: (operations: readonly LiveMapGraphOp[]) => LiveMapDocumentIdentityCommitReservation;
   preflightLocalIdentity: (path: LiveMapDocumentPath, quid: string) => LiveMapDocumentIdentityCommitReservation;
   verifyExisting: (path: LiveMapDocumentPath, quid: string) => void;
@@ -71,8 +73,10 @@ const reservationForCommit = new WeakMap<LiveMapGraphCommit<LiveMapGraphOp>, Liv
 export function register_livemap_document_identity_authority(
   owner: object,
   controller: LiveMapDocumentIdentityAuthority,
+  libraryOwner?: object,
 ): void {
   authorityForOwner.set(owner, controller);
+  if (libraryOwner !== undefined) authorityForOwner.set(libraryOwner, controller);
   reservedForAuthority.set(controller, new Set());
 }
 
@@ -95,6 +99,12 @@ export function register_livemap_document_identity_participant(
       participantForAuthority.delete(authority);
     }
   };
+}
+
+/** Reuse the registered projection's namespace for unpublished incoming subject allocation. @internal */
+export function livemap_document_identity_quid_unavailable(owner: object, quid: string): boolean {
+  const authority = authorityForOwner.get(owner);
+  return authority === undefined ? false : participantForAuthority.get(authority)?.quidUnavailable?.(quid) ?? false;
 }
 
 /** Narrow deterministic allocator seam for authoritative tests only. @internal */

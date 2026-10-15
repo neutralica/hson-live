@@ -147,6 +147,17 @@ export function apply_portable_document_css_op(
 function apply_css_unit(current: PortableDocumentStylesheet, operation: LiveMapCssUnitOp): PortableDocumentStylesheet {
   if (operation.domain !== "css") throw new TypeError("Invalid document CSS operation domain.");
   const encoded = encode_portable_document_stylesheet(current);
+  const owned = (entries: typeof encoded.order, inherited = false): boolean => entries.some(entry => {
+    const owner = inherited || entry.owner !== undefined;
+    if (entry.kind === "group") return owned(entry.entries, owner);
+    if (!owner) return false;
+    return operation.kind === "rule" && entry.kind === "rule" ? entry.ruleKey === operation.ruleKey && JSON.stringify(entry.scopes) === JSON.stringify(operation.scopes)
+      : operation.kind === "property" && entry.kind === "property" ? entry.name === operation.name
+      : operation.kind === "keyframes" && entry.kind === "keyframes" && entry.name === operation.name;
+  });
+  if ((operation.kind === "rule" ? operation.rule !== undefined : operation.kind === "property" || operation.kind === "keyframes" ? operation.definition !== undefined : false) && owned(encoded.order)) {
+    throw new Error("Explicit CSS operation conflicts with an occurrence-owned contribution; replace the complete stylesheet to take ownership.");
+  }
   if (operation.kind === "clear-all") {
     return decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [], order: [] });
   }

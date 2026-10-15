@@ -237,8 +237,8 @@ check("inline style manager shares typed leaf rendering and rejects nested rules
     const element = mount(value);
     value.style.setProp("width", { value: 2, unit: "px" });
     assert.deepEqual(value.attrs.get("style"), { width: "2px" });
-    assert.equal(element.style.values.get("width"), "2px");
-    const before = JSON.stringify(value.node);
+    assert.equal(element.getAttribute("style"), "width: 2px");
+    const before = snapshot(value, element);
     for (const map of [
       { color: "must-not-apply", _hover: { color: "blue" } },
       { color: "must-not-apply", __before: { content: '"x"' } },
@@ -248,7 +248,7 @@ check("inline style manager shares typed leaf rendering and rejects nested rules
         () => Reflect.apply(value.style.setMany, value.style, [map]),
         /Inline style does not support (pseudo|selector) declarations/,
       );
-      assert.equal(JSON.stringify(value.node), before);
+      assert.deepEqual(snapshot(value, element), before);
     }
   } finally {
     if (priorElement === undefined) Reflect.deleteProperty(globalThis, "Element");

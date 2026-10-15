@@ -8,10 +8,11 @@ import { materialize_owned_occurrences } from "../livetree/runtime/materialize-o
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { is_document_quad_name, type DocumentQuadAdmission } from "./livemap.document.quad.js";
 import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
-import type { PortableDocumentQuads } from "../../types/livemap.types.js";
+import type { LiveMapReplacementLineage, PortableDocumentQuads } from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
 import { admit_hson_data_input } from "../data/hson-data.js";
 import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
+import { scope_part_stylesheet } from "../../internal/css/part-stylesheet.js";
 import type { DocumentCssRecord } from "../../types/document-css.types.js";
 
 /** Private construction bounds; callers may lower, but cannot disable, the caps. @internal */
@@ -182,6 +183,7 @@ type Frame = {
   source: readonly (HsonNode | Primitive)[];
   output: NodeContent;
   outputPath: readonly number[];
+  sourcePath: readonly number[];
   index: number;
   receiving?: Readonly<{ names: readonly string[]; start: number }>;
   selection?: Selection;
@@ -191,6 +193,7 @@ type Frame = {
   owner: HsonNode;
   emptyClusterParent?: HsonNode;
   styledConnector?: Readonly<{ name: string; style: NonNullable<Occurrence["style"]>; start: number }>;
+  shellConnector?: Readonly<{ source: readonly number[]; start: number }>;
 };
 
 /** Exact immediate logical string shape; undefined includes absence, never an empty string. */
@@ -215,7 +218,7 @@ export function expand_document_composition(
   readShell: (name: string) => DocumentCompositionSource,
   limits: Readonly<{ maxDepth: number; maxNodes: number; maxCharacters: number; configuration?: Configuration }>,
   readPart: (collection: string, member: string) => DocumentCompositionSource,
-): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; styles: readonly DocumentCompositionStyle[] }> {
+): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; styles: readonly DocumentCompositionStyle[]; correspondence: LiveMapReplacementLineage }> {
   const sources = new Map<string, Map<string, DocumentCompositionSource>>();
   const part = (collection: string, member: string): DocumentCompositionSource => {
     const members = sources.get(collection) ?? new Map<string, DocumentCompositionSource>();
@@ -224,7 +227,7 @@ export function expand_document_composition(
       selected = readPart(collection, member);
       if (selected.root.$_tag !== ROOT_TAG || selected.root.$_content.length !== 1
         || !is_ordinary_element_node(selected.root.$_content[0])
-        || selected.root.$_content[0].$_tag.toLowerCase() === "hson-template") {
+        || selected.root.$_content[0].$_tag.toLowerCase() === "hson-part") {
         throw new TypeError("Composition Part requires exactly one ordinary element root.");
       }
       members.set(member, selected);
@@ -256,10 +259,16 @@ export function expand_document_composition(
   };
   const root: HsonNode = { $_tag: ROOT_TAG, $_content: [] };
   const associations: DocumentQuadAdmission[] = [];
+  // Detached construction evidence only: authored shell coordinates to final
+  // coordinates. Part descendants have no authored shell correspondence.
+  const correspondence: LiveMapReplacementLineage[number][] = [];
+  const correspond = (source: readonly number[], destination: readonly number[]) => {
+    correspondence.push(Object.freeze({ source: validate_document_path(source), destination: validate_document_path(destination) }));
+  };
   const names = new Map<string, string>(), subjects = new Map<string, string>();
   const receive = (name: string, content: NodeContent, start: number, outputPath: readonly number[]): void => {
     if (content.length !== start + 1 || !is_ordinary_element_node(content[start])
-      || content[start].$_tag.toLowerCase() === "hson-template") {
+      || content[start].$_tag.toLowerCase() === "hson-part") {
       throw new TypeError("Composition receiving QUAD requires exactly one ordinary resulting element.");
     }
     const path = validate_document_path([...outputPath, start]), key = JSON.stringify(path);
@@ -286,12 +295,21 @@ export function expand_document_composition(
     if (collection !== undefined && source.css !== undefined) {
       charge(JSON.stringify(source.css));
       const demanded = new Map<HsonNode, string>();
-      for (const name of document_css_subject_identities(source.css, "inbound")) {
+      const rootElement = source.root.$_content[0];
+      if (!is_ordinary_element_node(rootElement)) throw new Error("Part CSS requires one ordinary root.");
+      let rootName = [...landmarks].find(([, landmark]) => landmark.node === rootElement)?.[0];
+      if (rootName === undefined) {
+        rootName = "part_root";
+        while (landmarks.has(rootName)) rootName += "_";
+        landmarks.set(rootName, { node: rootElement, path: [0] });
+      }
+      const css = scope_part_stylesheet(source.css, rootName);
+      for (const name of document_css_subject_identities(css, "inbound")) {
         const landmark = landmarks.get(name);
         if (landmark === undefined) throw new Error(`Part CSS subject ${JSON.stringify(name)} requires an exact Part-local authored QUAD; anonymous source identity is unsupported.`);
         demanded.set(landmark.node, name);
       }
-      style = { css: source.css, demanded, subjects: new Map() };
+      style = { css, demanded, subjects: new Map() };
       styles.push(style);
     }
     return { landmarks, shellNames, ...(collection === undefined ? {} : { collection }), scopes: [], ...(style === undefined ? {} : { style }) };
@@ -322,7 +340,7 @@ export function expand_document_composition(
     }
   };
   singleRoot(initialRoot.$_content, limits.configuration);
-  const frames: Frame[] = [{ source: initialRoot.$_content, output: root.$_content, outputPath: [], index: 0,
+  const frames: Frame[] = [{ source: initialRoot.$_content, output: root.$_content, outputPath: [], sourcePath: [], index: 0,
     ...(limits.configuration?.q === undefined ? {} : { receiving: { names: [limits.configuration.q], start: 0 } }),
     owner: root, scope: initialScope,
     occurrence: { ...initial, scopes: [initialScope] },
@@ -347,6 +365,13 @@ export function expand_document_composition(
         }
         style.subjects.set(name, validate_document_path([...frame.outputPath, start]));
       }
+      if (frame.shellConnector !== undefined) {
+        const { source, start } = frame.shellConnector;
+        if (frame.output.length !== start + 1 || !is_ordinary_element_node(frame.output[start])) {
+          throw new Error("Authored connector correspondence requires one resulting subject.");
+        }
+        correspond(source, [...frame.outputPath, start]);
+      }
       frames.pop();
       if (frame.selection !== undefined) {
         const selections = active.get(frame.selection.collection)!;
@@ -357,6 +382,7 @@ export function expand_document_composition(
       if (frame.emptyClusterParent !== undefined && frame.output.length === 0) frame.emptyClusterParent.$_content = [];
       continue;
     }
+    const sourcePath = [...frame.sourcePath, frame.index];
     const item = frame.source[frame.index++];
     if (!is_Node(item)) {
       if (typeof item === "string") charge(item);
@@ -381,33 +407,29 @@ export function expand_document_composition(
     const shellName = frame.occurrence.shellNames.get(item);
     const style = frame.occurrence.style, styledName = style?.demanded.get(item);
     const receiving = [...(shellName === undefined ? [] : [shellName]), ...(configuration?.q === undefined ? [] : [configuration.q])];
-    if (item.$_tag.toLowerCase() === "hson-template") {
+    if (item.$_tag.toLowerCase() === "hson-part") {
       const attrs = item.$_attrs ?? {};
-      if (Object.hasOwn(attrs, "quad")) throw new TypeError("hson-template quad selection is unsupported; select a Part with lib and at.");
-      const overrideNames = Object.keys(attrs).filter(key => key !== "lib" && key !== "at");
+      const parameterNames = Object.keys(attrs).filter(key => key !== "lib" && key !== "at");
       const libField = Object.getOwnPropertyDescriptor(attrs, "lib");
       let lib: unknown = libField === undefined ? frame.occurrence.collection : libField.value;
-      if (typeof lib !== "string" || lib.length === 0) throw new TypeError("hson-template requires an unambiguous nonempty collection lib.");
+      if (typeof lib !== "string" || lib.length === 0) throw new TypeError("hson-part requires an unambiguous nonempty collection lib.");
       let member: unknown = Object.getOwnPropertyDescriptor(attrs, "at")?.value;
-      if (typeof member !== "string") throw new TypeError("hson-template requires an exact Part member at.");
-      const overrides: [string, string][] = [];
-      for (const name of overrideNames) {
+      if (typeof member !== "string") throw new TypeError("hson-part requires an exact Part member at.");
+      const parameters = new Map<string, Primitive>();
+      for (const name of parameterNames) {
         const value: unknown = Object.getOwnPropertyDescriptor(attrs, name)?.value;
-        if (!is_public_attr_name(name) || typeof value !== "string") {
-          throw new TypeError("hson-template overrides require ordinary public attributes with string values.");
-        }
-        overrides.push([name, value]);
+        if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name) || !parameter_scalar(value)) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(name)}: expected a scalar.`);
+        parameters.set(name, value);
       }
-      const text = sole_immediate_string(item);
-      if (item.$_content.length !== 0 && text === undefined) {
-        throw new TypeError("hson-template content requires exactly one immediate logical string.");
-      }
+      if (item.$_content.length !== 0) throw new TypeError("hson-part connectors must be empty; inputs are named scalar attributes.");
       if (configuration?.use !== undefined) {
         lib = configuration.use.lib ?? lib;
         member = configuration.use.at;
       }
       if (typeof lib !== "string" || typeof member !== "string") throw new TypeError("Composition Part coordinates must be strings.");
-      const selected = part(lib, member), content = selected.root.$_content;
+      const definition = part(lib, member);
+      const selected = { ...definition, root: substitute_part_parameters(definition.root, parameters) };
+      const content = selected.root.$_content;
       const selection: Selection = { collection: lib, member };
       if (active.get(lib)?.has(member)) {
         const chain = frames.flatMap(current => current.selection === undefined ? [] : [label(current.selection)]);
@@ -416,10 +438,11 @@ export function expand_document_composition(
       const childOccurrence = occurrence(selected, lib);
       // A connector's at belongs to the newly selected component, never its source siblings.
       const childScope = scope(childOccurrence, [], configuration);
-      const childCustomization: RootCustomization = { attrs: [...overrides, ...customization.attrs],
-        text: customization.text ?? text };
+      const childCustomization: RootCustomization = { attrs: customization.attrs,
+        text: customization.text };
       singleRoot(content, childCustomization);
-      push({ source: content, output: frame.output, outputPath: frame.outputPath, index: 0, selection, owner: frame.owner,
+      push({ source: content, output: frame.output, outputPath: frame.outputPath, sourcePath: [], index: 0, selection, owner: frame.owner,
+        ...(frame.occurrence.collection === undefined ? { shellConnector: { source: sourcePath, start: frame.output.length } } : {}),
         ...(style === undefined || styledName === undefined ? {} : { styledConnector: { name: styledName, style, start: frame.output.length } }),
         ...(receiving.length === 0 ? {} : { receiving: { names: receiving, start: frame.output.length } }),
         customization: childCustomization, scope: childScope,
@@ -447,7 +470,7 @@ export function expand_document_composition(
         if (attrs === undefined) throw new TypeError("Selected root attributes are not canonical.");
         for (const [name, value] of customization.attrs) {
           if (!Object.hasOwn(attrs, name) || typeof attrs[name] !== "string") {
-            throw new TypeError(`hson-template override ${JSON.stringify(name)} requires an existing string-valued root attribute.`);
+            throw new TypeError(`hson-part override ${JSON.stringify(name)} requires an existing string-valued root attribute.`);
           }
           attrs = plan_public_attr_set(attrs, name, value);
         }
@@ -455,7 +478,7 @@ export function expand_document_composition(
       }
       if (customization.text !== undefined) {
         if (sole_immediate_string(item) === undefined) {
-          throw new TypeError("hson-template text replacement requires an existing sole immediate logical string.");
+          throw new TypeError("hson-part text replacement requires an existing sole immediate logical string.");
         }
         // Traverse only the replacement, charging its ELEM, STR and payload through the ordinary budgets.
         content = [{ $_tag: ELEM_TAG, $_content: [{ $_tag: STR_TAG, $_content: [customization.text] }] }];
@@ -466,10 +489,11 @@ export function expand_document_composition(
     // frames extend its final path, never the selected source's coordinates.
     const outputPath = [...frame.outputPath, frame.output.length];
     frame.output.push(copy);
+    if (frame.occurrence.collection === undefined && is_ordinary_element_node(item)) correspond(sourcePath, outputPath);
     if (style !== undefined && styledName !== undefined) style.subjects.set(styledName, validate_document_path(outputPath));
     for (const name of receiving) receive(name, frame.output, frame.output.length - 1, frame.outputPath);
     if (content.length) push({
-      source: content, output: copy.$_content, outputPath, index: 0, owner: copy, occurrence: nestedOccurrence, scope: nestedScope,
+      source: content, output: copy.$_content, outputPath, sourcePath, index: 0, owner: copy, occurrence: nestedOccurrence, scope: nestedScope,
       ...(item.$_tag === ELEM_TAG ? { emptyClusterParent: frame.owner } : {}),
     });
     else if (nestedScope?.size) throw new Error("Composition configuration has inaccessible QUAD targets.");
@@ -485,6 +509,65 @@ export function expand_document_composition(
     return Object.freeze({ css, subjects: Object.freeze([...subjects].map(([name, path]) => Object.freeze({ name, path }))) });
   });
   return Object.freeze({ root: clone_hson_graph_without_quids(root),
+    correspondence: Object.freeze(correspondence),
     styles: Object.freeze(occurrenceStyles),
     ...(associations.length === 0 ? {} : { quads: Object.freeze(associations) }) });
+}
+
+
+function parameter_scalar(value: unknown): value is Primitive {
+  return value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value);
+}
+
+/** Only decoded text payloads and whole public attribute values participate. No source concatenation. */
+function substitute_part_parameters(root: HsonNode, parameters: ReadonlyMap<string, Primitive>): HsonNode {
+  const copy = clone_hson_graph_without_quids(root), used = new Set<string>();
+  const substitute = (value: string): Primitive => {
+    const pattern = /%\{([A-Za-z_][A-Za-z0-9_-]*)\}/g;
+    const matches = [...value.matchAll(pattern)];
+    if (value.replace(pattern, "").includes("%{")) throw new TypeError("Invalid Part placeholder; expected %{name}.");
+    const read = (name: string): Primitive => {
+      if (!parameters.has(name)) throw new TypeError(`Missing Part parameter ${JSON.stringify(name)}.`);
+      used.add(name); return parameters.get(name)!;
+    };
+    if (matches.length === 1 && matches[0]![0] === value) return read(matches[0]![1]!);
+    return value.replace(pattern, (_, name: string) => String(read(name)));
+  };
+  const stack = [copy];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.$_tag.includes("%{")) throw new TypeError("Part placeholders cannot occur in tags.");
+    if (node.$_meta !== undefined && JSON.stringify(node.$_meta).includes("%{")) throw new TypeError("Part placeholders cannot occur in identity metadata.");
+    if (node.$_attrs !== undefined) {
+      const attrs: NonNullable<HsonNode["$_attrs"]> = Object.create(null);
+      for (const [name, value] of Object.entries(node.$_attrs)) {
+        if (name.includes("%{")) throw new TypeError("Part placeholders cannot occur in attribute names.");
+        if (/^on/i.test(name) && typeof value === "string" && value.includes("%{")) throw new TypeError("Part placeholders in event-handler attributes are unsupported.");
+        if (typeof value === "object" && value !== null && JSON.stringify(value).includes("%{")) throw new TypeError("Part placeholders in structured attributes are unsupported.");
+        attrs[name] = typeof value === "string" ? substitute(value) : value;
+      }
+      node.$_attrs = attrs;
+    }
+    if (node.$_tag === STR_TAG && typeof node.$_content[0] === "string") {
+      const value = substitute(node.$_content[0]);
+      // Canonical document text is STR-only; strong scalar types apply to attributes.
+      node.$_content = [String(value)];
+    } else {
+      if (["script", "style"].includes(node.$_tag.toLowerCase()) && JSON.stringify(node.$_content).includes("%{")) throw new TypeError("Part placeholders in script/style content are unsupported.");
+      for (const child of node.$_content) if (is_Node(child)) stack.push(child);
+    }
+  }
+  for (const name of parameters.keys()) if (!used.has(name)) throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)}.`);
+  return copy;
+}
+
+/** Presence check only, with no source lookup or identity issuance. @internal */
+export function has_part_connector(root: HsonNode): boolean {
+  const stack = [root];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.$_tag.toLowerCase() === "hson-part") return true;
+    for (const child of node.$_content) if (is_Node(child)) stack.push(child);
+  }
+  return false;
 }

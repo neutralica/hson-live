@@ -4,7 +4,7 @@ import { repository_typescript_worker } from "./helpers/repository-typescript-wo
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "livemap.document-composition", title: "Private governed Part composition",
+  id: "livemap.document-composition", title: "Automatic Part admission and occurrence-owned CSS",
   category: "LiveMap", runtime: "node",
   tags: Object.freeze(["livemap", "document", "composition", "worker", "identity", "atomicity"]),
 });

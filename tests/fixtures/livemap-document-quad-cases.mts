@@ -133,15 +133,15 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
       { $_tag: "button", $_meta: { quad: "confirm" }, $_content: [] },
     ] }, "document", "undeclared QUAD metadata"));
   });
-  check("ordinary Transform HsonDocument and public Library ingress retain their grammar", () => {
+  check("Transform keeps its grammar while authored Library admission accepts document QUADs", () => {
     const source = '<button @:confirm "Confirm"/>';
     assert.throws(() => hsonTransform.fromHson(source).toNode());
     assert.throws(() => Hson.document.fromHson(source as HsonCanonical));
     assert.throws(() => Hson.document`<button @:confirm "Confirm"/>`);
-    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source } }));
-    const normal = hsonLiveMap.create(), before = normal.capture();
-    assert.throws(() => normal.addLibraries({ page: { document: source } }));
-    assert.deepEqual(normal.capture(), before);
+    assert.ok(lookup(doc(hsonLiveMap.fromLibraries({ page: { document: source } })), "confirm"));
+    const normal = hsonLiveMap.create();
+    normal.addLibraries({ page: { document: source } });
+    assert.ok(lookup(doc(normal), "confirm"));
     assert.throws(() => parse_tokens(tokenize_authored_document_library(source)), /require.*Library admission/);
     assert.equal(JSON.stringify(hsonTransform.fromHson('<button "Confirm"/>').toNode()).includes("Confirm"), true);
   });
@@ -286,13 +286,13 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     internal_livemap_aggregate_authority(fixture()).setInitialHostedAuthority({ logicalMapId: "map", incarnationId: "run" });
   });
   check("recursive Part composition preserves shell QUADs and leaves Part addresses local", () => {
-    const map = authored({ layout: { document: '<main @:page <hson-template lib="parts" at="header"/> <hson-template lib="parts" at="header"/>/>' },
-      parts: collection({ header: { kind: "document", document: '<header @:header <hson-template at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } }) });
+    const map = authored({ layout: { document: '<main @:page <hson-part lib="parts" at="header"/> <hson-part lib="parts" at="header"/>/>' },
+      parts: collection({ header: { kind: "document", document: '<header @:header <hson-part at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } }) });
     const source = subject(doc(map, "layout"), "page"), original = map.lib("parts").root();
     const ledger = enumerate_livemap_issued_quids(internal_livemap_aggregate_authority(map).identityEpoch().issued());
     const page = compose_livemap_document_internal(map, "layout", "result");
     assert.equal(JSON.stringify(page.root()).includes("quid"), false);
-    assert.equal(JSON.stringify(page.root()).includes("hson-template"), false);
+    assert.equal(JSON.stringify(page.root()).includes("hson-part"), false);
     assert.ok(lookup(page, "page")); assert.equal(lookup(page, "button"), undefined);
     assert.equal(reverse(page, source.quid), undefined);
     assert.deepEqual(map.lib("parts").root(), original);

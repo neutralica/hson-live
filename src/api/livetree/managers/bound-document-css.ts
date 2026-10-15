@@ -12,7 +12,9 @@ import {
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
 import { is_runtime_infrastructure, mark_runtime_infrastructure } from "../../../internal/browser-realization/browser-realization-dom.js";
 import { MANAGED_DOCUMENT_CSS_MARKER } from "../../../internal/browser-realization/managed-document-css.js";
-import { observe_client_library_retirement_internal } from "../../livemap/livemap.libraries.js";
+import { document_css_state_internal, observe_client_library_retirement_internal } from "../../livemap/livemap.libraries.js";
+import { document_css_subject_identities } from "../../../internal/css/css-identity-translation.js";
+import { encode_portable_document_stylesheet } from "../../../internal/css/portable-document-stylesheet.js";
 
 type Binding = {
   document: LiveMapDocumentLibrary;
@@ -49,14 +51,32 @@ export function bind_document_css_tree(
   runtimeBindings.add(binding);
   RUNTIME_BINDINGS.set(runtime, runtimeBindings);
   if (style !== undefined) mark_runtime_infrastructure(style);
+  // Previous demand is only a derived projection checkpoint, never identity authority.
+  let subjects = new Set<string>();
+  const projectSubject = (quid: string, required: boolean): void => {
+    const node = runtime.quidToNode.get(quid);
+    const registration = node === undefined ? undefined : document_binding_for_node(node);
+    if (registration?.owner !== owner) {
+      if (required) throw new Error("Document CSS subject has no active owning Mirror correspondence.");
+      return; // Terminal subject retirement already scrubbed its native carrier.
+    }
+    if (registration.projectCssIdentity === undefined) throw new Error("Document CSS subject cannot project native identity.");
+    registration.projectCssIdentity(required);
+  };
   const sync = (): void => {
     if (BINDINGS.get(owner) !== binding) return;
     const next = document.css.snapshot();
+    const demanded = new Set(document_css_subject_identities(encode_portable_document_stylesheet(document_css_state_internal(document)), "outbound"));
+    // Add before switching styles; remove obsolete carriers only after the old
+    // stylesheet is gone. Synchronous style observation sees coherent selectors.
+    for (const quid of demanded) if (!subjects.has(quid)) projectSubject(quid, true);
     if (!next) {
       if (style !== undefined) {
         style.remove();
         style = undefined;
       }
+      for (const quid of subjects) if (!demanded.has(quid)) projectSubject(quid, false);
+      subjects = demanded;
       return;
     }
     {
@@ -74,6 +94,8 @@ export function bind_document_css_tree(
       }
       mark_runtime_infrastructure(style);
     }
+    for (const quid of subjects) if (!demanded.has(quid)) projectSubject(quid, false);
+    subjects = demanded;
   };
   const stop = document.commits.observe(sync);
   const offRetirement = hosted ? observe_client_library_retirement_internal(document, () => {

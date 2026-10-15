@@ -300,7 +300,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     assert.match(cut(map,{html:"page"},["012345678"]).html,/hson:quad="_012345678"/);
   });
   check("final-only composed page projects receiving subjects without source component Libraries", () => {
-    const map = authored({layout:{document:'<html <head/> <body <hson-template lib="components" at="button"/> <hson-template lib="components" at="button"/>/>/>'},
+    const map = authored({layout:{document:'<html <head/> <body <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>/>'},
       components:collection({button:{kind:"document",document:'<button @:source/>'}})});
     const sourceQuid = "012345678";
     assert.equal(owner(map).identityEpoch().issued().has(sourceQuid),false);
