@@ -1,3 +1,4 @@
+import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { LiveMapDocumentPath, LiveMapGraphOp } from "../../types/livemap.types.js";
@@ -37,7 +38,7 @@ export type PreparedDocumentScopedComposition = DocumentScopedQuadContext & Read
   scopes: DocumentScopedQuads;
   identityEffects: readonly LiveMapDocumentIdentityEffect[];
   initialStyles: readonly DocumentCompositionStyle[];
-  steps: readonly Readonly<{ operation: LiveMapGraphOp; styles: readonly DocumentCompositionStyle[];
+  steps: readonly Readonly<{ operation: DocumentGraphOp; styles: readonly DocumentCompositionStyle[];
     context: DocumentScopedQuadContext; scopes: DocumentScopedQuads }>[];
   changed: boolean;
   assertCurrent: () => void;
@@ -63,6 +64,16 @@ function merge(context: DocumentScopedQuadContext, state: DocumentScopedQuads,
     ...incoming.occurrences.map(scope => ({ ...scope, parent: scope.parent ?? parentPath }))]
       .sort((a, b) => compare_document_paths(a.root, b.root)), subjects: [],
   }, context.root);
+  return materialize_document_scoped_record(context, state, record, demands, authority, foreignPayloads);
+}
+
+/** Shared sparse issuer for composition and prevalidated incremental replay.
+ * Existing occurrence markers are retained by their reconciled root coordinates.
+ * Callers must retire replaced lifetimes before entering this function. @internal */
+export function materialize_document_scoped_record(context: DocumentScopedQuadContext, state: DocumentScopedQuads,
+  record: DocumentScopedQuadRecord, demands: readonly (readonly number[])[],
+  authority: DocumentScopedCompositionAuthority, foreignPayloads: ReadonlySet<string> = new Set()) {
+  decode_document_scoped_quads(record, context.root);
   const requested = new Map<string, LiveMapDocumentPath>();
   for (const path of [...record.document.map(binding => binding.path), ...record.occurrences.flatMap(scope =>
     [scope.root, ...scope.bindings.map(binding => binding.path)]), ...demands]) {
@@ -91,7 +102,9 @@ function merge(context: DocumentScopedQuadContext, state: DocumentScopedQuads,
   const next: DocumentScopedQuadContext = { ...context, overlay,
     issued: stage_livemap_identity_epoch(context.issued, livemap_document_identity_quids(context.overlay), livemap_document_identity_quids(overlay)) };
   const lifetimes = new Map(state.occurrences.map(scope => [JSON.stringify(context.overlay.pathForQuid(scope.rootQuid)), scope.lifetime]));
-  for (const scope of incoming.occurrences) lifetimes.set(JSON.stringify(scope.root), new_document_quad_occurrence(context.owner));
+  for (const scope of record.occurrences) if (!lifetimes.has(JSON.stringify(scope.root))) {
+    lifetimes.set(JSON.stringify(scope.root), new_document_quad_occurrence(context.owner));
+  }
   const bindings = (entries: readonly ScopedQuadBindingRecord[]): DocumentScopedQuadBinding[] =>
     entries.map(({ name, kind, path }) => ({ name, kind, quid: overlay.quidAtPath(path)! }));
   const scopes = make_document_scoped_quads(next, bindings(record.document), record.occurrences.map(scope => ({
@@ -145,7 +158,7 @@ function insertion_owner(context: DocumentScopedQuadContext, state: DocumentScop
   return parent;
 }
 
-function retain(context: DocumentScopedQuadContext, state: DocumentScopedQuads, operation: LiveMapGraphOp,
+export function retain_document_scoped_operation(context: DocumentScopedQuadContext, state: DocumentScopedQuads, operation: LiveMapGraphOp,
   next: DocumentScopedQuadContext): DocumentScopedQuads {
   const displaced = operation.op === "replace-content" || operation.op === "remove-content"
     ? validate_document_path([...operation.target.path, operation.index]) : undefined;
@@ -199,7 +212,7 @@ export function prepare_document_scoped_operations(before: DocumentScopedQuadCon
     const planned = prepare_document_graph_operation(context.root, "document", operation, context.overlay);
     let next: DocumentScopedQuadContext = { ...context, root: planned.root, overlay: planned.overlay,
       issued: stage_livemap_identity_epoch(context.issued, livemap_document_identity_quids(context.overlay), livemap_document_identity_quids(planned.overlay)) };
-    let nextScopes = retain(context, state, operation, next);
+    let nextScopes = retain_document_scoped_operation(context, state, operation, next);
     effects.push(...planned.identityEffects);
     let styles: readonly DocumentCompositionStyle[] = [];
     if (composition !== undefined && (operation.op === "insert-content" || operation.op === "replace-content")) {

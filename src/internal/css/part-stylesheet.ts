@@ -173,12 +173,20 @@ export function scope_part_stylesheet(css: DocumentCssRecord, rootName: string):
 
 /** Remove only explicitly owned contributions whose root retired in this candidate. @internal */
 export function retire_part_styles(stylesheet: PortableDocumentStylesheet, active: ReadonlySet<string>): PortableDocumentStylesheet {
+  return retire_part_styles_by_owner(stylesheet, owner => {
+    const root = /^\[hson\\:quid="([^"\\]+)"\]$/.exec(owner)?.[1];
+    if (root === undefined) throw new Error("Runtime Part CSS requires an exact root QUID owner.");
+    return active.has(root);
+  });
+}
+
+/** Same ownership pruning for a validated portable candidate; no identity issuance. @internal */
+export function retire_part_styles_by_owner(stylesheet: PortableDocumentStylesheet,
+  active: (owner: string) => boolean): PortableDocumentStylesheet {
   const record = encode_portable_document_stylesheet(stylesheet);
   const keep = (entries: readonly DocumentCssOrderEntry[]): DocumentCssOrderEntry[] => entries.flatMap(entry => {
     if (entry.owner !== undefined) {
-      const root = /^\[hson\\:quid="([^"\\]+)"\]$/.exec(entry.owner)?.[1];
-      if (root === undefined) throw new Error("Runtime Part CSS requires an exact root QUID owner.");
-      if (!active.has(root)) return [];
+      if (!active(entry.owner)) return [];
     }
     return [entry.kind === "group" ? { ...entry, entries: keep(entry.entries) } : entry];
   });

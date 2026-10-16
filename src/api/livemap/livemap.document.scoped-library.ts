@@ -1,3 +1,4 @@
+import { capture_document_scoped_effect, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { document_css_subject_identities, translate_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import { merge_part_stylesheets, retire_part_styles } from "../../internal/css/part-stylesheet.js";
@@ -10,12 +11,15 @@ import { resolve_document_path, validate_document_path } from "./livemap.documen
 import type { DocumentQuadCorrespondence } from "./livemap.document.quad.js";
 
 /** Complete detached state, authenticated by its existing Library authority.
- * There is deliberately no install/commit capability until scoped portable
- * correspondence and incremental replay can represent every accepted effect.
+ * There is deliberately no install/commit capability: hosted ordering,
+ * projection and coordinated public publication remain separate integration.
  * @internal
  */
 export type PreparedDocumentScopedLibrary = PreparedDocumentScopedComposition & Readonly<{
   stylesheet: PortableDocumentStylesheet;
+  /** Undefined for initial/restored or CSS-only preparation: never an empty
+   * incremental replacement for unavailable evidence. */
+  effects: readonly DocumentScopedEffect[] | undefined;
 }>;
 
 type ScopedState = DocumentScopedQuadContext & Readonly<{ scopes: DocumentScopedQuads }>;
@@ -70,18 +74,21 @@ function install(stylesheet: PortableDocumentStylesheet, styles: readonly Docume
  * @internal
  */
 export function prepare_document_scoped_library_styles(candidate: PreparedDocumentScopedComposition,
-  stylesheet: PortableDocumentStylesheet, before?: PreparedDocumentScopedLibrary): PreparedDocumentScopedLibrary {
+  stylesheet: PortableDocumentStylesheet, before?: PreparedDocumentScopedLibrary, captureEffects = false): PreparedDocumentScopedLibrary {
   candidate.assertCurrent();
   let css = candidate.steps.length === 0
     ? install(stylesheet, candidate.initialStyles, candidate, candidate.assertCurrent) : stylesheet;
-  let previous: ScopedState | undefined = before;
+  let previous = before;
+  const effects: DocumentScopedEffect[] = [];
   for (const step of candidate.steps) {
     if (previous === undefined) throw new Error("Scoped mutation CSS requires its before-state.");
     const next = { ...step.context, scopes: step.scopes };
     css = install(retire_document_scoped_styles(css, previous, next), step.styles, next, candidate.assertCurrent);
-    previous = next;
+    const prepared: PreparedDocumentScopedLibrary = { ...candidate, ...next, stylesheet: css, effects: [], steps: [] };
+    if (captureEffects) effects.push(capture_document_scoped_effect(previous, prepared, step.operation, step.styles, effects.length));
+    previous = prepared;
   }
   candidate.assertCurrent();
-  return Object.freeze({ ...candidate, stylesheet: css,
+  return Object.freeze({ ...candidate, stylesheet: css, effects: captureEffects ? Object.freeze(effects) : undefined,
     changed: candidate.changed || !portable_document_stylesheet_equal(stylesheet, css) });
 }

@@ -86,7 +86,7 @@ export function restore_document_scoped_library_styles(candidate: PreparedDocume
   const css = translate_document_css_identities(portable.css, "inbound", { associations, assertCurrent: candidate.assertCurrent }, true);
   const stylesheet = decode_portable_document_stylesheet(css);
   candidate.assertCurrent();
-  return Object.freeze({ ...candidate, stylesheet });
+  return Object.freeze({ ...candidate, stylesheet, effects: undefined });
 }
 
 /** Equality of portable meaning after alpha-renaming CSS subject references by

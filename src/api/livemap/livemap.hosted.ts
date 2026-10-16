@@ -1037,3 +1037,16 @@ function hosted_identity(label: string): string {
   const random = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   return `${label}-${Date.now().toString(36)}-${random}`;
 }
+
+/** Existing portable graph codec shared by private scoped effects. This does not
+ * enable scoped state in hosted commits. @internal */
+export function encode_scoped_effect_graph_operation(operation: DocumentGraphOp): string {
+  if (operation.op === "replace-root" || operation.op === "ensure-quid") throw incompatible_graph();
+  return encode_hosted_graph_operation(operation, true);
+}
+/** @internal */
+export function decode_scoped_effect_graph_operation(payload: string): DocumentGraphOp {
+  const operation = decode_hosted_graph_operation(payload, "document", true);
+  if (operation.op === "replace-root" || operation.op === "ensure-quid") throw incompatible_graph();
+  return operation;
+}

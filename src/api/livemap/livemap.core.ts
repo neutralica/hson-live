@@ -1,3 +1,4 @@
+import { encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
 import { own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
@@ -612,7 +613,7 @@ function make_livemap_registry_engine(
     transitionController.assertPublicMutationAllowed();
     transitionController.assertLocalIdentityAllowed();
     if (clientComposition !== undefined || transitionController.managedExecutionOwner() !== undefined) {
-      throw new Error("Scoped Library preparation is local-only until portable scope replay is available.");
+      throw new Error("Scoped Library preparation is local-only until hosted scoped replay is integrated.");
     }
     const generation = transitionController.generation;
     return {
@@ -3121,7 +3122,20 @@ function make_livemap_registry_engine(
       const authority = scoped_preparation_authority(before.assertCurrent);
       before.assertCurrent();
       const candidate = prepare_document_scoped_operations(before, before.scopes, operations, authority);
-      return finish_scoped_preparation(prepare_document_scoped_library_styles(candidate, before.stylesheet, before));
+      return finish_scoped_preparation(prepare_document_scoped_library_styles(candidate, before.stylesheet, before, true));
+    },
+    captureScopedDocumentEffects: (candidate) => {
+      if (!scopedPreparations.has(candidate)) throw new Error("Scoped candidate belongs to another Library preparation authority.");
+      candidate.assertCurrent();
+      if (candidate.effects === undefined) throw new Error("Scoped candidate has no incremental operation evidence.");
+      return encode_document_scoped_effects(candidate.effects);
+    },
+    prepareScopedDocumentEffectReplay: (before, input) => {
+      if (!scopedPreparations.has(before)) throw new Error("Scoped candidate belongs to another Library preparation authority.");
+      const authority = scoped_preparation_authority(before.assertCurrent), library = require_library(before.owner);
+      return finish_scoped_preparation(replay_document_scoped_effects(before, input, authority, root => {
+        if (library.hsonSchema !== undefined) must_hson_schema_root(library.hsonSchema, root);
+      }));
     },
     captureScopedDocument: (candidate) => {
       if (!scopedPreparations.has(candidate)) throw new Error("Scoped candidate belongs to another Library preparation authority.");

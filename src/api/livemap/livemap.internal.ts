@@ -146,6 +146,11 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     before: import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary,
     operations: readonly LiveMapGraphOp[],
   ) => import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary;
+  /** Operation-local incremental evidence; no public hosted/capture integration. */
+  captureScopedDocumentEffects: (candidate: import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary) => string;
+  /** Preflight a complete ordered batch before staging receiving identities. */
+  prepareScopedDocumentEffectReplay: (before: import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary,
+    input: unknown) => import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary;
   /** Observational capture of one authenticated private candidate; no public transport integration. */
   captureScopedDocument: (candidate: import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary
   ) => import("./livemap.document.scoped-portable.js").PortableDocumentScopedLibrary;
