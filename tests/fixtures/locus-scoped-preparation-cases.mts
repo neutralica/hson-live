@@ -44,6 +44,22 @@ async function projection(f: ReturnType<typeof fixture>) {
 const operation = (member = "panel"): Extract<LiveMapGraphOp, { op: "insert-content" }> => ({ domain: "graph", op: "insert-content", target: { kind: "path", path: path([0, 0]) }, index: 0, content: connector(member) });
 const write = (f: ReturnType<typeof fixture>, op = operation()) => ({ target: { domain: "application" as const, library: f.library, path: path([0, 0]) }, kind: "graph" as const, operation: op, publicStaged: true as const });
 
+function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
+  const roots = f.a.libraries().map(id => [id, f.a.root(id)] as const), graphs = roots.map(([, root]) => JSON.stringify(root));
+  const overlay = f.a.documentOverlay(f.library), scopes = f.a.documentScopes(f.library), css = f.a.stylesheet(f.library);
+  const state = f.a.scopedDocumentState(f.library), ledger = f.a.identityEpoch().issued(), epoch = f.a.identityEpoch().current();
+  const revision = f.map.rev, position = f.a.hostedPosition(), projection = f.a.clientProjection(), registry = f.a.hostedRegistry();
+  let observations = 0, positions = 0, installations = 0;
+  const off = f.map.commits.observe(() => observations++), stop = f.a.observeAuthorityPosition(() => positions++);
+  const stopInstalled = f.a.observeAuthorityPosition(() => installations++, "installed");
+  try { run(); } finally { off(); stop(); stopInstalled(); }
+  assert.equal(f.map.rev, revision); assert.deepEqual(f.a.hostedPosition(), position); assert.deepEqual(f.a.clientProjection(), projection);
+  assert.equal(f.a.hostedRegistry(), registry); assert.equal(f.a.identityEpoch().issued(), ledger); assert.equal(f.a.identityEpoch().current(), epoch);
+  assert.equal(f.a.documentOverlay(f.library), overlay); assert.equal(f.a.documentScopes(f.library), scopes); assert.equal(f.a.stylesheet(f.library), css);
+  assert.ok(equal(state, f.a.scopedDocumentState(f.library))); assert.deepEqual([observations, positions, installations], [0, 0, 0]);
+  roots.forEach(([id, root], index) => { assert.equal(f.a.root(id), root); assert.equal(JSON.stringify(root), graphs[index]); });
+}
+
 export async function locus_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   await check("actual Locus preparation carries complete ordered Library evidence and excludes private definitions", async () => {
     const f = fixture(), effective = await projection(f), initial = f.a.scopedDocumentState(f.library);
@@ -142,6 +158,93 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     assert.throws(() => encode(f.map, duplicate), /stale/);
     f.a.releaseManagement(owner);
   });
+  for (const reserved of [false, true]) for (const revocation of ["release", "replacement", "same-owner reacquisition"]) {
+    await check(`scoped Locus candidate rejects ${revocation} after preparation${reserved ? " while reserved" : ""}`, async () => {
+      const f = fixture(), owner = {}, nextOwner = revocation === "same-owner reacquisition" ? owner : {};
+      f.a.claimManagement(owner);
+      const initial = f.a.scopedDocumentState(f.library), root = f.a.root(f.library), overlay = f.a.documentOverlay(f.library);
+      const ledger = f.a.identityEpoch().issued(), css = f.a.stylesheet(f.library), scopes = f.a.documentScopes(f.library);
+      let observations = 0, installations = 0;
+      const off = f.map.commits.observe(() => observations++), stop = f.a.observeAuthorityPosition(() => installations++, "installed");
+      const pending = f.a.prepareManaged(owner, [write(f)], true);
+      const release = reserved ? f.a.reserve(pending) : () => {};
+      try {
+        f.a.releaseManagement(owner);
+        if (revocation !== "release") f.a.claimManagement(nextOwner);
+        assert.throws(() => f.a.accept(pending), /management|authority|stale|installation/i);
+        assert.equal(f.map.rev, 0); assert.equal(f.a.identityEpoch().issued(), ledger);
+        assert.equal(f.a.root(f.library), root); assert.equal(f.a.documentOverlay(f.library), overlay);
+        assert.equal(f.a.stylesheet(f.library), css); assert.equal(f.a.documentScopes(f.library), scopes);
+        assert.ok(equal(initial, f.a.scopedDocumentState(f.library))); assert.equal(observations, 0); assert.equal(installations, 0);
+        release();
+        if (revocation === "release") f.a.claimManagement(nextOwner);
+        f.a.accept(f.a.prepareManaged(nextOwner, [write(f)], true));
+        assert.equal(f.map.rev, 1); assert.equal(observations, 1); assert.equal(installations, 1);
+        assert.throws(() => f.a.accept(pending), /stale|discarded/);
+      } finally { release(); off(); stop(); f.a.releaseManagement(owner); f.a.releaseManagement(nextOwner); }
+    });
+  }
+  for (const empty of [false, true]) for (const activity of ["release", "different-owner reacquisition", "same-owner reacquisition", "same-owner replacement", "retained grant"] as const) {
+    await check(`scoped aggregate captures before inspecting ${empty ? "empty" : "changed"} writes: ${activity}`, async () => {
+      const f = fixture(), owner = {}, replacement = activity === "different-owner reacquisition" ? {} : owner;
+      f.a.claimManagement(owner);
+      let entered = false;
+      const writes = new Proxy(empty ? [] : [write(f)], {
+        get(target, key, receiver) {
+          if (!entered && key === "length") {
+            entered = true;
+            if (activity === "retained grant") f.a.releaseManagement({});
+            else {
+              if (activity !== "same-owner replacement") f.a.releaseManagement(owner);
+              if (activity !== "release") f.a.claimManagement(replacement);
+            }
+          }
+          return Reflect.get(target, key, receiver);
+        },
+      });
+      try {
+        if (activity === "retained grant") {
+          const pending = f.a.prepareManaged(owner, writes, true);
+          assert.equal(pending.commit.changed, !empty);
+          f.a.accept(pending);
+          assert.equal(f.map.rev, empty ? 0 : 1);
+        } else unchanged(f, () => assert.throws(() => f.a.prepareManaged(owner, writes, true), /management|authority|stale/i));
+        assert.ok(entered);
+      } finally { f.a.releaseManagement(owner); f.a.releaseManagement(replacement); }
+    });
+  }
+  for (const empty of [false, true]) for (const reserved of [false, true]) for (const activity of ["release", "different-owner reacquisition", "same-owner reacquisition", "same-owner replacement", "retained grant"] as const) {
+    await check(`scoped ${empty ? "empty" : "unchanged"} candidate validates its original grant${reserved ? " while reserved" : ""}: ${activity}`, async () => {
+      const f = fixture(), owner = {}, replacement = activity === "different-owner reacquisition" ? {} : owner;
+      f.a.claimManagement(owner);
+      // A real unchanged graph operation, as well as empty aggregate input,
+      // must retain authority even though neither invokes installation.
+      const noop = { ...write(f), operation: { domain: "graph" as const, op: "remove-attr" as const,
+        target: { kind: "path" as const, path: path([0]) }, name: "missing" } };
+      const pending = f.a.prepareManaged(owner, empty ? [] : [noop], true);
+      assert.equal(pending.commit.changed, false);
+      const release = reserved ? f.a.reserve(pending) : () => {};
+      try {
+        if (activity === "retained grant") f.a.releaseManagement({});
+        else {
+          if (activity !== "same-owner replacement") f.a.releaseManagement(owner);
+          if (activity !== "release") f.a.claimManagement(replacement);
+        }
+        unchanged(f, () => {
+          if (activity === "retained grant") assert.equal(f.a.accept(pending).commit, pending.commit);
+          else assert.throws(() => f.a.accept(pending), /management|authority|stale|installation/i);
+        });
+        release();
+        if (activity !== "retained grant") {
+          f.a.releaseManagement(replacement); f.a.claimManagement(owner);
+        }
+        unchanged(f, () => {
+          const healthy = f.a.prepareManaged(owner, [noop], true), release = reserved ? f.a.reserve(healthy) : () => {};
+          try { assert.equal(f.a.accept(healthy).commit.changed, false); } finally { release(); }
+        });
+      } finally { release(); f.a.releaseManagement(owner); f.a.releaseManagement(replacement); }
+    });
+  }
   await check("reentrant identity allocation preserves independent accepted work and rejects the outer candidate", async () => {
     const f = fixture(), owner = {}, initial = f.a.scopedDocumentState(f.library); f.a.claimManagement(owner);
     let entered = false;

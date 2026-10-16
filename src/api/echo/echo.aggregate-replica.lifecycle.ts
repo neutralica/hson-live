@@ -4,7 +4,7 @@ import type { LocusDisposer } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
-import type { PortableAggregateCommit } from "../livemap/livemap.hosted.js";
+import type { PortableAggregateCommit, PrivateScopedAggregateCommit } from "../livemap/livemap.hosted.js";
 import type { LiveMapLibraryAddOperation } from "../../types/livemap.types.js";
 import { install_client_projected_topology_internal, reconcile_client_projection_snapshot_internal } from "../livemap/livemap.libraries.js";
 import type { HostedAuthorityFence, HostedRegistry } from "../livemap/livemap.hosted.js";
@@ -18,6 +18,11 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMap | und
   clientProjection: () => Readonly<{ authority: HostedAuthorityFence; registry: HostedRegistry; revision: number; libraries: readonly string[] }> | undefined;
   restoreHosted: (snapshot: PortableAggregateSnapshot) => void;
   replayHosted: (commit: PortableAggregateCommit, authorityRev?: number) => number;
+  /** Private scoped receiving seam; public delivery/restore formats stay closed. */
+  replayScopedHosted: (commit: PrivateScopedAggregateCommit) => number;
+  initializeScopedDocuments: (documents: readonly Readonly<{
+    library: string; state: import("../livemap/livemap.document.scoped-portable.js").PortableDocumentScopedLibrary;
+  }>[]) => void;
   installProjectedTopology: (operation: LiveMapLibraryAddOperation, expectedRegistryDigest: string,
     system?: Readonly<{ format: "hson-exact-value"; payload: string }>) => void;
   advanceHostedProgress: (progress: Readonly<{
@@ -78,6 +83,17 @@ export function create_echo_aggregate_replica_capability_internal(
     replayHosted(commit, authorityRev): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       return internal_livemap_aggregate_authority(map).replayClientHostedManaged(owner, commit, authorityRev).rev;
+    },
+    replayScopedHosted(commit): number {
+      if (disposed) throw terminalError();
+      if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
+      const aggregate = internal_livemap_aggregate_authority(map);
+      return aggregate.replayClientHostedManaged(owner, commit, aggregate.clientProjection()?.revision, true).rev;
+    },
+    initializeScopedDocuments(documents): void {
+      if (disposed) throw terminalError();
+      if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
+      internal_livemap_aggregate_authority(map).initializeClientScopedDocumentsManaged(owner, documents);
     },
     installProjectedTopology(operation, expectedRegistryDigest, system): void {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");

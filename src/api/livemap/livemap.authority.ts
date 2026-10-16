@@ -46,6 +46,7 @@ type AuthorityTransitionRecord<TCommit> = {
   generation: number;
   commit: TCommit;
   baseStillCurrent: () => boolean;
+  assertManagementCurrent?: () => void;
   install: () => void;
   notify: (commit: TCommit) => void;
 };
@@ -57,6 +58,8 @@ export type LiveMapAuthorityTransitionPreparation = Readonly<{
   commit: LiveMapAggregateCommit;
   libraryModes: readonly LiveMapRootMode[];
   baseStillCurrent: () => boolean;
+  /** Retain the invocation's exact management grant even across reservation/no-op acceptance. */
+  assertManagementCurrent?: () => void;
   install: () => void;
   notify: (commit: LiveMapAggregateCommit) => void;
 }>;
@@ -85,6 +88,8 @@ export type LiveMapTransitionController = Readonly<{
   withPublicBatch: <T>(callback: () => T) => T;
   /** The owner currently executing a privileged transition, if any. @internal */
   managedExecutionOwner: () => object | undefined;
+  /** Retain the exact existing management grant, including release/reacquire with one owner. @internal */
+  captureManagementFence: (owner: object) => () => void;
   claimManagement: (owner: object, schedule: LiveMapManagedMutationScheduler<object>) => void;
   releaseManagement: (owner: object) => void;
   /** Run a preparation owned by the current exclusive manager. @internal */
@@ -149,6 +154,7 @@ export function make_livemap_transition_controller(
       generation,
       commit,
       baseStillCurrent: preparation.baseStillCurrent,
+      assertManagementCurrent: preparation.assertManagementCurrent,
       install: preparation.install,
       notify: preparation.notify,
     });
@@ -171,6 +177,7 @@ export function make_livemap_transition_controller(
       || !record.baseStillCurrent()) {
       throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", "Prepared LiveMap authority transition is stale.");
     }
+    record.assertManagementCurrent?.();
   }
 
   function reserveAuthority(transition: PreparedLiveMapAuthorityTransition): () => void {
@@ -199,6 +206,9 @@ export function make_livemap_transition_controller(
       || record.generation !== generation || !record.baseStillCurrent())) {
       throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", `Prepared ${label} transition is stale.`);
     }
+    // A durable reservation retains the candidate, never its revoked grant.
+    // Unchanged acceptance has no installation callback to perform this check.
+    record.assertManagementCurrent?.();
     if (record.commit.changed) {
       try { record.install(); }
       catch (cause) {
@@ -274,6 +284,17 @@ export function make_livemap_transition_controller(
       finally { publicBatchActive = false; }
     },
     managedExecutionOwner: () => managedExecutionOwner,
+    captureManagementFence(owner) {
+      const granted = management;
+      if (granted === undefined || granted.owner !== owner) {
+        throw new LiveMapTransitionError("LIVEMAP_MANAGED_MUTATION_REJECTED", "LiveMap management authority is unavailable.");
+      }
+      return () => {
+        if (management !== granted) {
+          throw new LiveMapTransitionError("LIVEMAP_MANAGED_MUTATION_REJECTED", "LiveMap management authority changed during preparation.");
+        }
+      };
+    },
     claimManagement(owner, schedule): void {
       if (management !== undefined && management.owner !== owner) {
         throw new LiveMapTransitionError(

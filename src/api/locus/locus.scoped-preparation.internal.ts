@@ -2,22 +2,18 @@ import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-sto
 import type { LiveMap } from "../../types/livemap.types.js";
 import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { make_portable_aggregate_commit, type PortableAggregateOperation } from "../livemap/livemap.hosted.js";
-import type { DocumentScopedEffect } from "../livemap/livemap.document.scoped-effects.js";
+import { make_portable_aggregate_commit } from "../livemap/livemap.hosted.js";
 import type { LocusEffectiveProjection } from "./locus.projection.js";
 import { projected_registry_digest, project_locus_live_transition_internal } from "./locus.live-projection.js";
 
 /** Private producer shape, deliberately absent from public protocol unions.
  * The containing authority/registry/revision is the only ordering boundary.
  * Library-local ordinals describe operation order, never receipt authority. @internal */
-export type LocusPreparedScopedOperation = PortableAggregateOperation | Readonly<{
-  library: string;
-  domain: "document";
-  effect: DocumentScopedEffect;
-}>;
+export type LocusPreparedScopedOperation = import("../livemap/livemap.hosted.js").PrivateScopedAggregateOperation;
 
 /** Prepare from the actual pending transition, never from later Library state.
- * No decoder, receiver authority, checkpoint format or public delivery is enabled.
+ * The receiver consumes this complete private evidence under its existing Echo
+ * authority position. No checkpoint format or public delivery is enabled.
  * The caller must retain the existing reservation through durable acceptance. @internal */
 export function prepare_locus_scoped_commit_internal(map: LiveMap,
   transition: PreparedLiveMapAuthorityTransition, effective?: LocusEffectiveProjection) {
@@ -66,5 +62,5 @@ export function prepare_locus_scoped_commit_internal(map: LiveMap,
   aggregate.assertPrepared(transition);
   return Object.freeze({ authority: commit.authority,
     registryDigest: effective === undefined ? commit.registryDigest : projected_registry_digest(effective),
-    prevRev: commit.prevRev, rev: commit.rev, operations: Object.freeze(operations) });
+    prevRev: commit.prevRev, rev: commit.rev, operationCount: operations.length, operations: Object.freeze(operations) });
 }

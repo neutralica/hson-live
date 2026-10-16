@@ -175,7 +175,7 @@ export function encode_document_scoped_effects(effects: readonly DocumentScopedE
   return JSON.stringify({ count: effects.length, after: effects.at(-1)?.after ?? null, effects });
 }
 /** Strict private producer validation; not receipt or replay authority. @internal */
-export function validate_document_scoped_effects(input: unknown): readonly DocumentScopedEffect[] {
+export function validate_document_scoped_effects(input: unknown, startOrdinal = 0): readonly DocumentScopedEffect[] {
   if (typeof input !== "string" || input.length > HOSTED_MAX_SNAPSHOT_BYTES) fail();
   const envelope = fields(JSON.parse(input), ["count", "after", "effects"]), items = array(envelope.effects);
   if (Object.is(envelope.count, -0) || envelope.count !== items.length || (items.length === 0 ? envelope.after !== null
@@ -183,7 +183,7 @@ export function validate_document_scoped_effects(input: unknown): readonly Docum
   if (items.length > HOSTED_MAX_OPERATIONS) fail();
   return freeze(items.map((value, ordinal) => {
     const item = fields(value, ["ordinal", "before", "after", "graph", "retired", "removed", "created", "added", "styles"]);
-    if (Object.is(item.ordinal, -0) || item.ordinal !== ordinal || typeof item.graph !== "string" || typeof item.before !== "string"
+    if (Object.is(item.ordinal, -0) || item.ordinal !== startOrdinal + ordinal || typeof item.graph !== "string" || typeof item.before !== "string"
       || typeof item.after !== "string" || !/^[a-f0-9]{64}$/.test(item.before) || !/^[a-f0-9]{64}$/.test(item.after)) fail();
     decode_scoped_effect_graph_operation(item.graph);
     const styles = array(item.styles).map(value => {
@@ -195,7 +195,7 @@ export function validate_document_scoped_effects(input: unknown): readonly Docum
       });
       return { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(style.css)), subjects };
     });
-    return { ordinal, before: item.before, after: item.after, graph: item.graph, retired: array(item.retired).map(occurrence),
+    return { ordinal: item.ordinal, before: item.before, after: item.after, graph: item.graph, retired: array(item.retired).map(occurrence),
       removed: array(item.removed).map(bindingEffect), created: array(item.created).map(occurrence), added: array(item.added).map(bindingEffect), styles };
   }));
 }
@@ -254,9 +254,9 @@ function applyPortable(before: PortableDocumentScopedLibrary, effect: DocumentSc
  * returned/published on failure. This is an unpublished candidate computation,
  * not a transport receipt or cross-message replay/durability authority. @internal */
 export function replay_document_scoped_effects(before: PreparedDocumentScopedLibrary, input: unknown,
-  authority: DocumentScopedCompositionAuthority, validateRoot: (root: PreparedDocumentScopedLibrary["root"]) => void): PreparedDocumentScopedLibrary {
+  authority: DocumentScopedCompositionAuthority, validateRoot: (root: PreparedDocumentScopedLibrary["root"]) => void, startOrdinal = 0): PreparedDocumentScopedLibrary {
   authority.assertCurrent();
-  const effects = validate_document_scoped_effects(input), states: PortableDocumentScopedLibrary[] = [];
+  const effects = validate_document_scoped_effects(input, startOrdinal), states: PortableDocumentScopedLibrary[] = [];
   let portable = capture_document_scoped_library(before);
   for (const effect of effects) {
     portable = applyPortable(portable, effect);

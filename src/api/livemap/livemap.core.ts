@@ -100,6 +100,8 @@ import {
   decode_hosted_commit,
   decode_hosted_root,
   decode_portable_aggregate_commit,
+  decode_private_scoped_aggregate_commit,
+  type PrivateScopedAggregateCommit,
   encode_hosted_root,
   HOSTED_MAX_ISSUED_QUIDS,
   HOSTED_MAX_SNAPSHOT_BYTES,
@@ -660,6 +662,20 @@ function make_livemap_registry_engine(
     return candidate;
   }
 
+  function reconstruct_scoped_library(library: LiveMapLibraryState, input: unknown,
+    authority: import("./livemap.document.scoped-composition.js").DocumentScopedCompositionAuthority,
+    issued = mapIdentityEpoch.issued()): PreparedDocumentScopedLibrary {
+    if (library.mode !== "document") throw new Error("Scoped restoration requires a document Library.");
+    const portable = decode_document_scoped_library(input);
+    const prepared = prepare_livemap_root(portable.root, "document");
+    if (!canonical_graph_equal(portable.root, prepared.root)) throw new Error("Scoped restoration requires canonical graph coordinates.");
+    if (library.hsonSchema !== undefined) must_hson_schema_root(library.hsonSchema, prepared.root);
+    authority.assertCurrent();
+    const candidate = prepare_document_scoped_reconstruction({ owner: library.identity, root: prepared.root,
+      overlay: require_document_overlay(prepared.documentOverlay), issued }, portable.scopes, authority);
+    return finish_scoped_preparation(restore_document_scoped_library_styles(candidate, portable));
+  }
+
   function capture_fence(): () => void {
     const revision = mapRevision, generation = identityGeneration, registry = hostedRegistry, authority = hostedFence;
     if (localIdentityTransactionActive) throw new Error("Capture cannot observe an incomplete identity transaction.");
@@ -930,7 +946,16 @@ function make_livemap_registry_engine(
     }>[] = [],
     hostedIncremental = false,
     scopedDocuments = false,
+    receivingScoped?: ReadonlyMap<LiveMapAggregateWrite, import("./livemap.document.scoped-effects.js").DocumentScopedEffect>,
+    receivingRevision?: number,
+    entryManagementFence?: () => void,
   ): import("./livemap.authority.js").PreparedLiveMapAuthorityTransition {
+    const managementOwner = transitionController.managedExecutionOwner();
+    // Replay must retain the grant captured before caller-controlled decoding.
+    // Direct aggregate preparation captures before inspecting writes/operations.
+    const assertManagementCurrent = entryManagementFence ?? (managementOwner === undefined ? undefined
+      : transitionController.captureManagementFence(managementOwner));
+    assertManagementCurrent?.();
     if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     else {
       const executing = transitionController.managedExecutionOwner();
@@ -950,7 +975,16 @@ function make_livemap_registry_engine(
         }
       }
     }
-    const assertPreparationCurrent = capture_fence();
+    const assertPreparationBase = capture_fence(), receivingComposition = clientComposition;
+    const assertPreparationCurrent = () => {
+      assertManagementCurrent?.();
+      assertPreparationBase();
+      // Local work may survive authority-only progress. A receiving candidate
+      // must remain bound to the exact projection position it prepared against.
+      if (receivingRevision !== undefined && clientComposition !== receivingComposition) {
+        throw new Error("Echo receiving authority position changed during preparation.");
+      }
+    };
     const preparedGeneration = transitionController.generation;
     const assertScopedCurrent = () => {
       assertPreparationCurrent();
@@ -1201,9 +1235,9 @@ function make_livemap_registry_engine(
       }
       const library = require_library(write.target.library);
       const target = aggregate_target(library.identity, write.target.path);
-      if (!scopedDocuments && (library.documentScopes !== undefined
+      if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined
         || library.documentScopesUnavailable && transitionController.managedExecutionOwner() !== undefined)) {
-        throw new Error("Scoped document effects require private Locus preparation until Echo support.");
+        throw new Error("Scoped document effects require private Locus/Echo preparation.");
       }
       if (scopedDocuments && library.mode === "document" && write.kind !== "graph") {
         throw new Error("Missing scoped evidence for non-graph document operation.");
@@ -1228,7 +1262,7 @@ function make_livemap_registry_engine(
         if (!is_aggregate_document_candidate(candidate)) {
           throw new Error("Aggregate graph operations require a document library.");
         }
-        if (scopedDocuments) {
+        if (scopedDocuments || receivingScoped?.has(write)) {
           assertScopedCurrent();
           if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence from initial or local Part construction.");
           const context = { owner: library.identity, root: candidate.root, overlay: candidate.overlay, issued: stagedIssuedLedger };
@@ -1240,11 +1274,14 @@ function make_livemap_registry_engine(
             stylesheet: stylesheet(library.identity), effects: undefined, identityEffects: [], initialStyles: [], steps: [],
             changed: false, assertCurrent: assertScopedCurrent,
           } : { ...previous, issued: stagedIssuedLedger };
-          const composition = prepare_document_scoped_operations(before, before.scopes, [write.operation], {
-            identityOwner: mapIdentityEpoch.owner, assertCurrent: assertScopedCurrent, readPart: readPartCandidate,
-          });
-          const next = prepare_document_scoped_library_styles(composition, before.stylesheet, before, true);
-          if (!next.changed) continue;
+          const receiving = receivingScoped?.get(write);
+          const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: assertScopedCurrent, readPart: readPartCandidate };
+          const next = receiving === undefined
+            ? prepare_document_scoped_library_styles(prepare_document_scoped_operations(before, before.scopes, [write.operation],
+              scopedAuthority), before.stylesheet, before, true)
+            : replay_document_scoped_effects(before, encode_document_scoped_effects([receiving]), scopedAuthority,
+              () => {}, candidate.operations.length); // Schema validates the complete transaction below.
+          if (!next.changed && receiving === undefined) continue;
           const step = next.steps[0], effect = next.effects?.[0];
           if (step === undefined || effect === undefined || next.effects?.length !== 1) throw new Error("Missing scoped document operation evidence.");
           const ordinal = candidate.operations.length;
@@ -1609,6 +1646,7 @@ function make_livemap_registry_engine(
     documentRootByAggregate.set(commit, documentRoots);
     const prepared = transitionController.prepareAuthority({
       commit,
+      assertManagementCurrent,
       libraryModes: Object.freeze([...candidates.values()].map((candidate) => candidate.library.mode)),
       baseStillCurrent: () => {
         try { assertPreparationCurrent(); } catch { return false; }
@@ -1621,6 +1659,8 @@ function make_livemap_registry_engine(
           || canonical_graph_equal(systemCandidate.system.root, systemCandidate.baseRoot));
       },
       install: () => {
+        // A reservation retains the candidate, not a revoked management grant.
+        assertManagementCurrent?.();
         if (resetsIdentityEpoch) mapIdentityEpoch.replace(afterActive.keys());
         else mapIdentityEpoch.install(nextLedger!);
         for (const candidate of candidates.values()) {
@@ -1650,6 +1690,9 @@ function make_livemap_registry_engine(
           systemCandidate.system.projectedValue = systemCandidate.value;
         }
         mapRevision = commit.rev;
+        if (receivingRevision !== undefined && clientComposition !== undefined) {
+          clientComposition = Object.freeze({ ...clientComposition, revision: receivingRevision });
+        }
         publishInstalledPosition();
       },
       notify: (acceptedCommit) => {
@@ -1682,6 +1725,7 @@ function make_livemap_registry_engine(
       },
     });
     preparedSystemRoots.set(prepared, systemCandidate === undefined ? systemState?.root : systemCandidate.nextRoot);
+    assertPreparationCurrent();
     return prepared;
   }
 
@@ -2947,24 +2991,40 @@ function make_livemap_registry_engine(
     });
   }
 
-  function replay_portable_hosted_aggregate(input: PortableAggregateCommit, durable: boolean, authorityRev?: number): LiveMapAggregateCommit | undefined {
+  function replay_portable_hosted_aggregate(input: PortableAggregateCommit | PrivateScopedAggregateCommit, durable: boolean, authorityRev?: number, scoped = false): LiveMapAggregateCommit | undefined {
+    // Capture before any input traps, getters, enumeration or serialization.
+    const managementOwner = transitionController.managedExecutionOwner();
+    const assertManagementCurrent = managementOwner === undefined ? undefined
+      : transitionController.captureManagementFence(managementOwner);
     if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
     const composition = clientComposition;
-    const decoded = decode_portable_aggregate_commit(input,
-      composition?.registry ?? hosted.registry,
-      composition?.bindings ?? hosted.byName);
+    if (scoped && (composition === undefined || transitionController.managedExecutionOwner() !== clientManagementOwner)) {
+      throw new Error("Private scoped receiving requires the managed Echo projection.");
+    }
+    let decoded: readonly (import("./livemap.hosted.js").DecodedHostedOperation & Readonly<{
+      scoped?: import("./livemap.document.scoped-effects.js").DocumentScopedEffect;
+    }>)[];
+    if (scoped) {
+      if ("format" in input || composition === undefined) throw new Error("Invalid private scoped receiving envelope.");
+      decoded = decode_private_scoped_aggregate_commit(input, composition.registry, composition.bindings);
+    } else {
+      if (!("format" in input)) throw new Error("Private scoped delivery remains inactive.");
+      decoded = decode_portable_aggregate_commit(input, composition?.registry ?? hosted.registry, composition?.bindings ?? hosted.byName);
+    }
     if (input.authority.logicalMapId !== hosted.fence.logicalMapId
       || input.authority.incarnationId !== hosted.fence.incarnationId) {
       throw new Error("Hosted client commit authority fence is incompatible.");
     }
     if (composition !== undefined || authorityRev !== undefined) {
-      if (authorityRev === undefined || input.prevRev !== authorityRev) {
+      if (authorityRev === undefined || input.prevRev !== authorityRev
+        || composition !== undefined && authorityRev !== composition.revision) {
         throw new LiveMapRevError(input.prevRev, authorityRev ?? -1);
       }
     } else if (input.prevRev !== mapRevision) throw new LiveMapRevError(input.prevRev, mapRevision);
     let replaySharedRoot: OrderedProjectedValue | undefined;
     let replayComposedDescriptors: OrderedProjectedValue | undefined;
+    const receivingEffects = new Map<LiveMapAggregateWrite, import("./livemap.document.scoped-effects.js").DocumentScopedEffect>();
     const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
       if (entry.css !== undefined) return Object.freeze({
         target: aggregate_target(entry.library.identity as LiveMapLibraryIdentity, []),
@@ -3009,12 +3069,14 @@ function make_livemap_registry_engine(
       if (entry.graph === undefined || entry.graph.op === "ensure-quid") {
         throw new Error("Hosted client event contains an identity-only operation.");
       }
-      return Object.freeze({ target, kind: "graph", operation: entry.graph });
+      const write: LiveMapAggregateWrite = Object.freeze({ target, kind: "graph", operation: entry.graph });
+      if (entry.scoped !== undefined) receivingEffects.set(write, entry.scoped);
+      return write;
     });
-    const transition = prepare_authority_transition(writes, [], true);
-    if (composition !== undefined) return transitionController.acceptAuthority(transition, "isolate", () => {
-      clientComposition = Object.freeze({ ...composition, revision: input.rev });
-    }).commit;
+    if (composition !== clientComposition) throw new Error("Echo receiving projection changed during decoding.");
+    const transition = prepare_authority_transition(writes, [], true, false, receivingEffects,
+      composition === undefined ? undefined : input.rev, assertManagementCurrent);
+    if (composition !== undefined) return transitionController.acceptAuthority(transition, "isolate").commit;
     const local = transition.commit.hosted;
     if (durable && !transition.commit.changed) {
       // The old runtime may have distinguished equal-content subjects only
@@ -3028,7 +3090,7 @@ function make_livemap_registry_engine(
     }
     const localClient = local === undefined ? undefined : make_portable_aggregate_commit(local);
     const matchesPortableEffects = localClient !== undefined
-      && localClient.format === input.format
+      && "format" in input && localClient.format === input.format
       && JSON.stringify(localClient.authority) === JSON.stringify(input.authority)
       && localClient.registryDigest === input.registryDigest
       && (authorityRev !== undefined || (localClient.prevRev === input.prevRev && localClient.rev === input.rev))
@@ -3053,8 +3115,8 @@ function make_livemap_registry_engine(
     return transitionController.acceptAuthority(transition).commit;
   }
 
-  function replay_client_hosted_aggregate(input: PortableAggregateCommit, authorityRev?: number): LiveMapAggregateCommit {
-    const replayed = replay_portable_hosted_aggregate(input, false, authorityRev);
+  function replay_client_hosted_aggregate(input: PortableAggregateCommit | PrivateScopedAggregateCommit, authorityRev?: number, scoped = false): LiveMapAggregateCommit {
+    const replayed = replay_portable_hosted_aggregate(input, false, authorityRev, scoped);
     if (replayed === undefined) throw new Error("Hosted client replay made no authority progress.");
     return replayed;
   }
@@ -3217,16 +3279,60 @@ function make_livemap_registry_engine(
     },
     prepareScopedDocumentRestoration: (identity, input) => {
       const authority = scoped_preparation_authority(), library = require_library(identity);
-      if (library.mode !== "document") throw new Error("Scoped restoration requires a document Library.");
-      const portable = decode_document_scoped_library(input);
-      const prepared = prepare_livemap_root(portable.root, "document");
-      if (!canonical_graph_equal(portable.root, prepared.root)) throw new Error("Scoped restoration requires canonical graph coordinates.");
-      if (library.hsonSchema !== undefined) must_hson_schema_root(library.hsonSchema, prepared.root);
-      authority.assertCurrent();
-      const candidate = prepare_document_scoped_reconstruction({ owner: library.identity, root: prepared.root,
-        overlay: require_document_overlay(prepared.documentOverlay), issued: mapIdentityEpoch.issued() }, portable.scopes, authority);
-      return finish_scoped_preparation(restore_document_scoped_library_styles(candidate, portable));
+      return reconstruct_scoped_library(library, input, authority);
     },
+    initializeClientScopedDocumentsManaged: (owner, documents) => transitionController.runManaged(owner, () => {
+      // Even documents.length may execute a caller Proxy trap.
+      const assertManagementCurrent = transitionController.captureManagementFence(owner);
+      const composition = clientComposition;
+      if (composition === undefined || clientManagementOwner !== owner || documents.length === 0) throw new Error("Scoped initialization requires Echo projection management and complete documents.");
+      const assertCurrent = capture_fence(), generation = transitionController.generation;
+      const authority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: () => {
+        assertManagementCurrent();
+        assertCurrent(); transitionController.assertLocalIdentityAllowed();
+        if (generation !== transitionController.generation || composition !== clientComposition) throw new Error("Scoped initialization authority changed.");
+      }, readPart: () => { throw new Error("Receiving scoped restoration cannot read Part collections."); } };
+      const seen = new Set<string>();
+      // Initial private restoration only enriches an already authorized graph.
+      // It cannot replace a graph, an installed scoped predecessor, or a cursor.
+      // Own the result array: a caller-supplied map/species must not carry
+      // candidate callbacks or iterators into the installation phase.
+      const inputs = Array.from(documents, entry => {
+        const binding = composition.bindings.get(entry.library);
+        if (seen.has(entry.library) || binding === undefined || binding.mode !== "document" || binding.scope !== undefined) {
+          throw new Error("Scoped initialization requires an exact authorized document Library.");
+        }
+        seen.add(entry.library);
+        const library = require_library(binding.identity);
+        const state = decode_document_scoped_library(entry.state);
+        if (library.documentScopes !== undefined || library.documentScopesUnavailable
+          || !canonical_graph_equal(library.root, state.root)) throw new Error("Scoped initialization disagrees with its installed predecessor.");
+        return { library, state };
+      });
+      let issued = mapIdentityEpoch.issued();
+      const candidates = inputs.map(({ library, state }) => {
+        const candidate = reconstruct_scoped_library(library, state, authority, issued);
+        issued = make_livemap_issued_quid_ledger([...enumerate_livemap_issued_quids(issued), ...enumerate_livemap_issued_quids(candidate.issued)]);
+        // Flat aliases already admitted by the projected initial state retain
+        // their names through paths; disposable CSS labels never become aliases.
+        const quads = make_document_quad_bindings([...(library.documentQuads?.byName ?? [])].map(([name, quid]) => {
+          const path = library.documentOverlay?.pathForQuid(quid), next = path === undefined ? undefined : candidate.overlay.quidAtPath(path);
+          if (next === undefined) throw new Error("Scoped initialization lost an authored alias.");
+          return { name, quid: next };
+        }));
+        return { library, candidate, quads };
+      });
+      authority.assertCurrent();
+      mapIdentityEpoch.install(issued);
+      for (const { library, candidate, quads } of candidates) Object.assign(library, {
+        root: candidate.root, documentOverlay: candidate.overlay, documentScopes: candidate.scopes,
+        documentQuads: quads, stylesheet: candidate.stylesheet,
+      });
+      for (const { library } of candidates) mark_quad_document_root(library.root, library.documentQuads);
+      identityGeneration += 1;
+      transitionController.invalidate();
+      publishInstalledPosition();
+    }),
     captureDocumentSsr: (identity, demanded) => {
       const assertCurrent = capture_fence(), state = require_library(identity);
       if (state.mode !== "document") throw new Error("SSR subject capture requires a document Library.");
@@ -3466,9 +3572,9 @@ function make_livemap_registry_engine(
     replayHosted: replay_hosted_aggregate,
     replayClientHosted: replay_client_hosted_aggregate,
     replayDurableHosted: replay_durable_hosted_aggregate,
-    replayClientHostedManaged: (owner, commit, authorityRev) => transitionController.runManaged(
+    replayClientHostedManaged: (owner, commit, authorityRev, scoped) => transitionController.runManaged(
       owner,
-      () => replay_client_hosted_aggregate(commit, authorityRev),
+      () => replay_client_hosted_aggregate(commit, authorityRev, scoped),
     ),
     replayHostedManaged: (owner, commit) => transitionController.runManaged(
       owner,
@@ -3531,6 +3637,7 @@ function make_livemap_registry_engine(
       owner,
       () => prepare_authority_transition(writes, [], false, scopedDocuments),
     ),
+    documentScopes: (identity) => require_library(identity).documentScopes,
     scopedDocumentState: (identity) => {
       const library = require_library(identity), assertCurrent = capture_fence();
       if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence.");

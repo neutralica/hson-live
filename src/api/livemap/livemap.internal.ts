@@ -157,6 +157,10 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Fresh-runtime, source-free reconstruction into an unpublished Library candidate. */
   prepareScopedDocumentRestoration: (library: LiveMapLibraryIdentity, input: unknown
   ) => import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary;
+  /** Private initial source-free scope restoration over an already authorized graph; no checkpoint/reconcile path. */
+  initializeClientScopedDocumentsManaged: (owner: object, documents: readonly Readonly<{
+    library: string; state: import("./livemap.document.scoped-portable.js").PortableDocumentScopedLibrary;
+  }>[]) => void;
   /** Explicit bounded SSR subject demand; never reads LiveTree CSS or acquires identity. */
   captureDocumentSsr: (library: LiveMapLibraryIdentity, demanded: readonly string[]) => DocumentSsrCandidate;
   /** Private initial receiver installation after owner-proven sparse acquisition. @internal */
@@ -242,7 +246,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   replayClientHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit) => LiveMapAggregateCommit;
   /** Replay durable portable effects, including a revision whose effects collapse after identity reset. @internal */
   replayDurableHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit) => void;
-  replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").PortableAggregateCommit, authorityRev?: number) => LiveMapAggregateCommit;
+  replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit, authorityRev?: number, scoped?: boolean) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */
   replayHostedManaged: (owner: object, commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   /** Advance a managed replica through one effect-free authority revision. @internal */
@@ -263,6 +267,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     phase?: "published" | "installed") => () => void;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
+  /** Immutable installed private scope/lifetime evidence; not a public lookup API. */
+  documentScopes: (library: LiveMapLibraryIdentity) => import("./livemap.document.scoped-quad.js").DocumentScopedQuads | undefined;
   documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;
   projectedOverlay: (library: LiveMapLibraryIdentity) => LiveMapProjectedIdentityOverlay;
   /** Exact-capture continuity proof for a projected document Library. @internal */

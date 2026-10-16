@@ -171,6 +171,24 @@ export type PortableAggregateCommit = Readonly<{
   operations: readonly PortableAggregateOperation[];
 }>;
 
+/** Private Cut 3D/3E evidence. Uses the containing hosted position; it is not
+ * a public wire format, checkpoint, or an independent replay authority. @internal */
+export type PrivateScopedAggregateOperation = PortableAggregateOperation | Readonly<{
+  library: string;
+  domain: "document";
+  effect: DocumentScopedEffect;
+}>;
+/** @internal */
+export type PrivateScopedAggregateCommit = Readonly<{
+  authority: HostedAuthorityFence;
+  registryDigest: string;
+  prevRev: number;
+  rev: number;
+  /** Completeness bound only; never a replay cursor or receipt authority. */
+  operationCount: number;
+  operations: readonly PrivateScopedAggregateOperation[];
+}>;
+
 export type DecodedHostedOperation = Readonly<{
   library: HostedRegistryBinding;
   semantic: LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp;
@@ -587,6 +605,64 @@ export function decode_portable_aggregate_commit(
       throw new HostedAggregateRepresentationError("Hosted client graph operation is noncanonical.", index);
     }
     return Object.freeze({ library: binding, semantic: graph, graph });
+  }));
+}
+
+/** Decode only at the private managed Echo boundary. Projection membership is
+ * resolved from the receiver's fixed bindings, never from effect contents.
+ * Shape/semantic validation does not authorize receipt of this position. @internal */
+export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggregateCommit,
+  registry: HostedRegistry, bindings: ReadonlyMap<string, HostedRegistryBinding>):
+  readonly (DecodedHostedOperation & Readonly<{ scoped?: DocumentScopedEffect }>)[] {
+  const record = exact_record(input, "Private scoped commit");
+  exact_keys(record, ["authority", "registryDigest", "prevRev", "rev", "operationCount", "operations"], "Private scoped commit");
+  const authority = exact_record(record.authority, "Private scoped authority");
+  exact_keys(authority, ["logicalMapId", "incarnationId"], "Private scoped authority");
+  if (record.registryDigest !== registry.digest || !valid_revision(record.prevRev) || !valid_revision(record.rev) || record.rev !== record.prevRev + 1
+    || typeof authority.logicalMapId !== "string" || !authority.logicalMapId
+    || typeof authority.incarnationId !== "string" || !authority.incarnationId
+    || !Array.isArray(record.operations) || !record.operations.length || record.operations.length > HOSTED_MAX_OPERATIONS
+    || record.operationCount !== record.operations.length) {
+    throw new HostedAggregateRepresentationError("Private scoped commit envelope is malformed.");
+  }
+  assert_encoded_bound(input, HOSTED_MAX_COMMIT_BYTES, "Private scoped commit");
+  const effects = new Map<string, DocumentScopedEffect[]>();
+  const ordinary: PortableAggregateOperation[] = [];
+  for (const operation of input.operations) {
+    const entry = exact_record(operation, "Private scoped operation");
+    if (entry.domain !== "document") {
+      // Every document operation in this cut needs complete scoped evidence.
+      // Data/system replay still uses its existing exact portable decoder.
+      if (entry.domain !== "data") throw new HostedAggregateRepresentationError("Missing scoped document evidence.");
+      if (operation.domain === "document") throw incompatible_graph();
+      ordinary.push(operation);
+      continue;
+    }
+    exact_keys(entry, ["library", "domain", "effect"], "Private scoped operation");
+    const binding = typeof entry.library === "string" ? bindings.get(entry.library) : undefined;
+    if (binding === undefined || binding.mode !== "document" || binding.scope !== undefined) {
+      throw new HostedAggregateRepresentationError("Scoped effect references an unauthorized document Library.");
+    }
+    const batch = effects.get(binding.name) ?? [];
+    if (operation.domain !== "document") throw incompatible_graph();
+    batch.push(operation.effect);
+    effects.set(binding.name, batch);
+  }
+  const validated = new Map([...effects].map(([name, batch]) =>
+    [name, validate_document_scoped_effects(encode_document_scoped_effects(batch))]));
+  const decoded = ordinary.length === 0 ? [] : decode_portable_aggregate_commit({
+    format: PORTABLE_AGGREGATE_COMMIT_FORMAT, authority: input.authority, registryDigest: input.registryDigest,
+    prevRev: input.prevRev, rev: input.rev, operations: ordinary,
+  }, registry, bindings);
+  let ordinaryIndex = 0;
+  const ordinals = new Map<string, number>();
+  return Object.freeze(input.operations.map(operation => {
+    if (operation.domain !== "document") return decoded[ordinaryIndex++]!;
+    const ordinal = ordinals.get(operation.library) ?? 0;
+    ordinals.set(operation.library, ordinal + 1);
+    const scoped = validated.get(operation.library)![ordinal]!;
+    const graph = decode_scoped_effect_graph_operation(scoped.graph);
+    return Object.freeze({ library: bindings.get(operation.library)!, semantic: graph, graph, scoped });
   }));
 }
 
