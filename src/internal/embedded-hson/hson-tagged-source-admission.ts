@@ -1,7 +1,7 @@
 import type ts from "typescript";
 import { admit_hson, reconstruct_hson_interpolated_template } from "../../api/transform/hson-admission.js";
 import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
-import { qualify_hson_document_source } from "../../api/document/hson-document.js";
+import { qualify_authored_document_source } from "../../api/document/hson-authored.js";
 import { interpolation_site } from "../trusted-schema-diagnostics/interpolation-source.js";
 import { create_hson_source_program, read_template_substitution_ranges, type HsonAuthoringKind, type HsonTaggedTemplateSource, type InterpolatedEmbeddedHsonTemplate } from "./discover-hson-tagged-templates.js";
 
@@ -24,7 +24,7 @@ export function hson_tagged_source(typescript: typeof ts, tagged: ts.TaggedTempl
   };
 }
 
-/** Same admission as the real substitution-free tag; return its normalized raw source. */
+/** Match runtime tag admission; document authoring confers no canonical brand. */
 export function admit_hson_tagged_source(source: HsonTaggedTemplateSource): string {
   const literal = interpolation_site({ ...source, substitutionRanges: [], expressionRanges: [] }, source.fileName).literals[0]!;
   // TypeScript determines cooked availability. Hson consumes raw text, but the
@@ -34,7 +34,7 @@ export function admit_hson_tagged_source(source: HsonTaggedTemplateSource): stri
   const strings = Object.freeze(Object.assign([invalidEscape ? undefined : literal.raw], { raw: Object.freeze([literal.raw]) }));
   if (source.authoringKind === "document") {
     const raw = Reflect.apply(reconstruct_hson_interpolated_template, undefined, [strings, []]);
-    qualify_hson_document_source(raw.source);
+    qualify_authored_document_source(raw.source, new Map());
   } else {
     const canonical = Reflect.apply(admit_hson, undefined, [strings]);
     if (source.authoringKind === "data" || source.authoringKind === "schema") admit_canonical_hson_data_value(canonical);
@@ -44,6 +44,7 @@ export function admit_hson_tagged_source(source: HsonTaggedTemplateSource): stri
 
 /** Producer/assignment proof admission, separate from recognizing source for diagnostics. */
 export function admit_hson_tagged_template(typescript: typeof ts, tagged: ts.TaggedTemplateExpression, kind: HsonAuthoringKind): string {
+  if (kind === "document") throw new TypeError("Hson.document returns HsonAuthored; canonical document Schema evidence requires explicit canonical qualification and certification.");
   const source = hson_tagged_source(typescript, tagged, kind);
   if (source === undefined || "substitutionRanges" in source) throw new TypeError(`Hson.${kind} proof requires a complete, non-optional, substitution-free tagged template.`);
   return admit_hson_tagged_source(source);

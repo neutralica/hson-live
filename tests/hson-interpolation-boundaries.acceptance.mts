@@ -1,6 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Hson, type HsonCanonical, type HsonData, type HsonDocument } from "../src/hson-authoring.ts";
+import { Hson, type HsonCanonical, type HsonData, type HsonAuthored } from "../src/hson-authoring.ts";
 import { hsonTransform } from "../src/api/transform/transform.facade.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { tokenize_hson, scan_hson_template_segments } from "../src/api/transform/parsers/tokenize-hson.ts";
@@ -239,14 +239,14 @@ check("quoted strings preserve exact contents and cannot leak structural nodes",
 check("runtime brands cannot alter meaning and universal STRs cross families", () => {
   const ordinary: string = "<p/>";
   const canonical: HsonCanonical = Hson.canonical`<p/>`;
-  const document: HsonDocument = Hson.document`<p/>`;
+  const document: HsonAuthored = Hson.document`<p/>`;
   for (const source of [ordinary, canonical, document]) {
     assert.equal(typeof source, "string");
     closes(Hson.canonical`${source}`, "<p/>");
     closes(Hson.canonical`"${source}"`, '"<p/>"');
   }
   const dataString: HsonData = Hson.data`"hello"`;
-  const documentString: HsonDocument = Hson.document`"hello"`;
+  const documentString: HsonAuthored = Hson.document`"hello"`;
   const canonicalString: HsonCanonical = Hson.canonical`"hello"`;
   const ordinaryString: string = '"hello"';
   for (const source of [dataString, documentString, canonicalString, ordinaryString]) {

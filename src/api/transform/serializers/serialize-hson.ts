@@ -25,6 +25,7 @@ import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-pri
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import type { HsonCanonical } from "../transform.types.js";
 import { serialize_canonical_hson_data } from "../../../core/hson-data-canonical-codec.js";
+import { is_document_quad_name } from "../../../internal/document-quad-name.js";
 import { is_projected_value_hson_node, projected_value_from_hson_node } from "../../../core/projected-value-graph.js";
 
 type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
@@ -42,6 +43,7 @@ type HsonSerializeOptions = Readonly<{
 type SerializeContext = Readonly<{
   options: HsonSerializeOptions;
   guard: ReturnType<typeof cycleGuard>;
+  authoredQuad?: (node: HsonNode) => string | undefined;
 }>;
 
 function cycleGuard() {
@@ -443,7 +445,8 @@ function emitStandardNode(
   if (quid !== undefined && !is_persisted_quid(quid)) {
     _throw_transform_err(`serialize-hson: invalid quid`, "serialize_hson");
   }
-  const header = `<${tag}${quid === undefined ? "" : ` @${quid}`}${emitAttrsAndMeta(node.$_attrs)}`;
+  const quad = ctx.authoredQuad?.(node);
+  const header = `<${tag}${quad === undefined ? "" : ` @:${quad}`}${quid === undefined ? "" : ` @${quid}`}${emitAttrsAndMeta(node.$_attrs)}`;
   const { children, closer, cluster } = standardContent(node);
 
   if (children.length === 0) return `${pad}${header}${closer}`;
@@ -509,7 +512,8 @@ function serialize_hson_with_ownership(
   inputOptions: HsonSerializeInputOptions = {},
   ownedDocumentText = false,
   exactRuntimeIdentity = false,
-): HsonCanonical {
+  authoredQuad?: (node: HsonNode) => string | undefined,
+): string {
   if (Object.hasOwn(inputOptions, "noQuid")) {
     _throw_transform_err("noQuid is retired; ordinary portable Hson always omits generated QUIDs", "serialize_hson");
   }
@@ -556,8 +560,9 @@ function serialize_hson_with_ownership(
       exactRuntimeIdentity,
     },
     guard: cycleGuard(),
+    authoredQuad,
   };
-  return emitNode(root, 0, undefined, ctx).trim() as HsonCanonical;
+  return emitNode(root, 0, undefined, ctx).trim();
 }
 
 function is_detached_scalar_object_carrier(node: HsonNode): boolean {
@@ -577,7 +582,7 @@ export function serialize_hson(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
 ): HsonCanonical {
-  return serialize_hson_with_ownership(root, inputOptions, false);
+  return serialize_hson_with_ownership(root, inputOptions, false) as HsonCanonical;
 }
 
 /** @internal Serialize authored document content while detaching its internal root. */
@@ -585,6 +590,27 @@ export function serialize_hson_owned_document_content(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
 ): HsonCanonical {
+  return serialize_document_content(root, inputOptions) as HsonCanonical;
+}
+
+/** @internal Same document serializer with operation-local authored associations. */
+export function serialize_hson_authored_document_content(root: HsonNode, quads: ReadonlyMap<HsonNode, string>): string {
+  const emitted = new Set<HsonNode>();
+  const source = serialize_document_content(root, {}, node => {
+    const name = quads.get(node);
+    if (name !== undefined) {
+      if (!is_document_quad_name(name)) throw new TypeError("Invalid authored QUAD association.");
+      emitted.add(node);
+    }
+    return name;
+  });
+  if (emitted.size !== quads.size) throw new Error("Authored QUAD occurrence was lost during serialization.");
+  return source;
+}
+
+function serialize_document_content(root: HsonNode, inputOptions: HsonSerializeInputOptions,
+  authoredQuad?: (node: HsonNode) => string | undefined,
+): string {
   if (root.$_tag === ROOT_TAG) {
     assert_invariants(root, "serialize_hson_owned_document_content");
     if (root.$_content.length === 0) {
@@ -600,10 +626,10 @@ export function serialize_hson_owned_document_content(
           "serialize_hson_owned_document_content",
         );
       }
-      return serialize_hson_with_ownership(item, inputOptions, true);
-    }).join(separator) as HsonCanonical;
+      return serialize_hson_with_ownership(item, inputOptions, true, false, authoredQuad);
+    }).join(separator);
   }
-  return serialize_hson_with_ownership(root, inputOptions, true);
+  return serialize_hson_with_ownership(root, inputOptions, true, false, authoredQuad);
 }
 
 /** @internal Temporary exact-runtime Hson codec for hosted recovery. */

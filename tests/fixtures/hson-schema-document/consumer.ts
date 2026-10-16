@@ -1,16 +1,16 @@
 import { AnyDocumentSchema, DocumentSequenceSchema, ListSchema, MainDocumentSchema, PageSchema } from "./producer.js";
 import { HsonDocument, Hson, hsonLiveMap } from "hson-live";
 
-export const authored: HsonDocument<typeof PageSchema> = Hson.document`<main id=hero data-extension=yes <section "body"/>/>`;
+export const authored: HsonDocument<typeof PageSchema> = PageSchema.certify(Hson.document`<main id=hero data-extension=yes <section "body"/>/>`);
 export const broadDocument: HsonDocument<typeof AnyDocumentSchema> = AnyDocumentSchema.certify(Hson.document`<main <p "body"/>/>`);
 export const broadMainDocument: HsonDocument<typeof MainDocumentSchema> = MainDocumentSchema.certify(Hson.document`<main <p "body"/>/>`);
 
 declare const dynamic: import("hson-live/hson").HsonCanonical;
 export const certified: HsonDocument<typeof PageSchema> = PageSchema.certify(dynamic);
 
-export const repeated: HsonDocument<typeof ListSchema> = Hson.document`<list <item code=ok-one/> <item code=ok-two/>/>`;
+export const repeated: HsonDocument<typeof ListSchema> = ListSchema.certify(Hson.document`<list <item code=ok-one/> <item code=ok-two/>/>`);
 export const repeatedCertified: HsonDocument<typeof ListSchema> = ListSchema.certify(dynamic);
-export const documentSequence: HsonDocument<typeof DocumentSequenceSchema> = Hson.document`<item/><item/>`;
+export const documentSequence: HsonDocument<typeof DocumentSequenceSchema> = DocumentSequenceSchema.certify(Hson.document`<item/><item/>`);
 export const documentSequenceCertified: HsonDocument<typeof DocumentSequenceSchema> = DocumentSequenceSchema.certify(dynamic);
 
 const libraries = hsonLiveMap.fromLibraries({

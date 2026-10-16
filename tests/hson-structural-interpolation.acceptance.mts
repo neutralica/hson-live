@@ -1,6 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Hson } from "../src/hson-authoring.ts";
+import { ANY_DOCUMENT, Hson } from "../src/hson-authoring.ts";
 import { TransformError } from "../src/core/errors.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -47,7 +47,7 @@ check("unquoted document insertion and quoted string content differ", () => {
   const value = Hson.document`<main/>`;
   assert.equal(Hson.document`<body "${value}"/>`, Hson.document`<body "<main/>"/>`);
   const hostile = '<script src="/evil.js"/>';
-  const textRoot = Hson.document.toNode(Hson.document`<p "${hostile}"/>`);
+  const textRoot = Hson.document.toNode(ANY_DOCUMENT.certify(Hson.document`<p "${hostile}"/>`));
   assert.match(JSON.stringify(textRoot), /"_hson_str"/);
   assert.doesNotMatch(JSON.stringify(textRoot), /"\$_tag":"script"/);
   assert.equal(Hson.document`<body ${hostile}/>`, Hson.document`<body <script src="/evil.js"/>/>`);
@@ -56,14 +56,14 @@ check("unquoted document insertion and quoted string content differ", () => {
 
 check("document absence is zero nodes while quoted empty text is one STR", () => {
   const absent: import("../src/hson-authoring.ts").HsonDocument | undefined = undefined;
-  assert.deepEqual(Hson.document.toNode(Hson.document`<main ${absent}/>`), Hson.document.toNode(Hson.document`<main/>`));
+  assert.deepEqual(Hson.document.toNode(ANY_DOCUMENT.certify(Hson.document`<main ${absent}/>`)), Hson.document.toNode(ANY_DOCUMENT.certify(Hson.document`<main/>`)));
   assert.equal(Hson.document`<main <p "before"/> ${undefined} <p "after"/>/>`,
     Hson.document`<main <p "before"/> <p "after"/>/>`);
   error(() => Hson.document`<main ${""}/>`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
   error(() => Hson.document`${""}`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
   error(() => Hson.document`${""}${""}`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
-  assert.deepEqual(Hson.document.toNode(Hson.document`<main "${""}"/>`),
-    Hson.document.toNode(Hson.document`<main ""/>`));
+  assert.deepEqual(Hson.document.toNode(ANY_DOCUMENT.certify(Hson.document`<main "${""}"/>`)),
+    Hson.document.toNode(ANY_DOCUMENT.certify(Hson.document`<main ""/>`)));
   error(() => Hson.document`<main "${undefined}"/>`, "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
   for (const run of [
     () => (Hson.data as any)`${undefined}`,

@@ -10,6 +10,7 @@ export interface BinaryDecodeOptions {
 declare const HSON_CANONICAL_BRAND: unique symbol;
 declare const HSON_DATA_BRAND: unique symbol;
 declare const HSON_DOCUMENT_BRAND: unique symbol;
+declare const HSON_AUTHORED_BRAND: unique symbol;
 declare const HSON_SCHEMA_DATA_BRAND: unique symbol;
 declare const HSON_SCHEMA_PROOF: unique symbol;
 
@@ -24,6 +25,13 @@ declare const HSON_SCHEMA_PROOF: unique symbol;
  */
 export type HsonCanonical = string & {
   readonly [HSON_CANONICAL_BRAND]: true;
+};
+
+/** Authored document source, possibly containing QUAD declarations awaiting governed admission.
+ * A primitive string with no canonical qualification or runtime identity authority.
+ */
+export type HsonAuthored = string & {
+  readonly [HSON_AUTHORED_BRAND]: true;
 };
 
 /** Static root domain established by the generated Hson Schema analyzer. */

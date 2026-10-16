@@ -131,7 +131,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const restored = install_libraries_snapshot(map.capture()).map;
     for (const member of ["absent", "empty", "text"]) assert.deepEqual(read(restored, "collection", member), read(map, "collection", member));
     assert.deepEqual(data(restored).snap(), data(map).snap());
-    assert.throws(() => Hson.document`<p @:label/>`, "authored QUAD syntax remains private");
+    assert.equal(Hson.document`<p @:label/>`, "<p @:label/>");
   });
   await check("CSS keeps the full owned stylesheet including ordering-only layers properties and keyframes", () => {
     const map = fixture(), part = read(map, "collection", "first/β");

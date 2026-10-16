@@ -74,7 +74,7 @@ check("document Hson constructs one, many, text, quoted-empty, and mixed documen
     Hson.canonical`""`,
     Hson.document`"before"<main/>"after"`,
   ];
-  const documents = fixtures.map((source) => Hson.document.fromHson(source));
+  const documents = fixtures.map((source) => Hson.document.fromHson(Hson.canonical`${source}`));
   assert.deepEqual(documents.map((document) => Hson.document.toNode(document).$_content.length), [1, 2, 1, 1, 3]);
   assert.equal(documents[3], `""`);
   for (const document of documents) {
@@ -94,7 +94,7 @@ check("all tokenless authored document sources reject consistently", () => {
   }
   assert.throws(() => Hson.document``);
   assert.throws(() => Hson.document.toNode("" as HsonDocument), /has no semantic value/);
-  assert.equal(Hson.document.toNode(Hson.document`""`).$_content.length, 1);
+  assert.equal(Hson.document.toNode(ANY_DOCUMENT.certify(Hson.document`""`)).$_content.length, 1);
 });
 
 check("attrs and structured style retain portable document closure", () => {
@@ -295,14 +295,14 @@ check("every accepted fixture has total exact readable serialization closure", (
   for (const document of fixtures) {
     const source = document;
     assert.equal(typeof source, "string");
-    assert.equal(Hson.document.fromHson(source), document);
+    assert.equal(Hson.document.fromHson(Hson.canonical`${source}`), document);
   }
   assert.equal(fixtures[1], "<main/>\n<aside/>");
   assert.doesNotMatch(fixtures[1] ?? "", /_hson_root/);
 });
 
 check("every nonempty document root shape closes through generic Hson and exact document qualification", () => {
-  const fixtures: readonly HsonDocument[] = [
+  const fixtures = [
     Hson.document`"a"`,
     Hson.document`"a" "b"`,
     Hson.document`""`,
@@ -316,7 +316,7 @@ check("every nonempty document root shape closes through generic Hson and exact 
     Hson.document`<p "a" "" "b"/>`,
   ];
   for (const document of fixtures) {
-    const owned = Hson.document.toNode(document);
+    const owned = Hson.document.toNode(ANY_DOCUMENT.certify(document));
     const generic = hsonTransform.fromHson(document).toNode();
     assert.equal(canonical_hson_graph_equal(Hson.document.toNode(Hson.document.fromNode(generic)), owned), true);
     for (const noBreak of [false, true]) {
@@ -458,7 +458,7 @@ check("quoted text remains a string and unquoted document content composes struc
 
   const child = Hson.document`<style "body{margin:0}"/>`;
   const parent = Hson.document`<html <head ${child}/> <body/>/>`;
-  const html = Hson.document.toNode(parent).$_content[0] as HsonNode;
+  const html = Hson.document.toNode(ANY_DOCUMENT.certify(parent)).$_content[0] as HsonNode;
   const head = ((html.$_content[0] as HsonNode).$_content[0] as HsonNode);
   assert.equal(head.$_tag, "head");
   assert.equal((head.$_content[0] as HsonNode).$_tag, "_hson_elem");

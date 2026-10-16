@@ -167,7 +167,7 @@ export function getRefinedTitle() {
 
 // Existing static-literal validation is reused for generated inputs as well.
 const authored: HsonData<typeof RecordSchema> = Hson.data`<name "Ada" age 3 status "ready" choice "left" flags [true] pair ["x", 1]>`;
-const authoredDocument: HsonDocument<typeof slideSchema> = Hson.document`<main/>`;
+const authoredDocument: HsonDocument<typeof slideSchema> = slideSchema.certify(Hson.document`<main/>`);
 const broadData: HsonData<typeof annotatedSchema> = annotatedSchema.certify(Hson.data`42`);
 
 declare const tsSchema: typeof TsSchema;

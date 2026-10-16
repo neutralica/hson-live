@@ -1,5 +1,7 @@
-import { Hson, type HsonData, type HsonDocument, type HsonCanonical, type HsonSchema } from "hson-live/hson";
+import { ANY_DATA, ANY_DOCUMENT, Hson, type HsonData, type HsonDocument, type HsonCanonical, type HsonSchema } from "hson-live/hson";
 import type { HsonCanonical as TransformCanonical } from "hson-live/transform";
+import type { HsonAuthored as TransformAuthored } from "hson-live/transform";
+import type { HsonAuthored } from "hson-live/hson";
 
 declare const schema: HsonSchema;
 const authored: HsonCanonical = Hson.canonical`<age 37>`;
@@ -17,3 +19,28 @@ schema.certify("<age 37>");
 void checked;
 void materialized;
 void Hson.document.toNode(document);
+
+const plain = Hson.document`<main/>`;
+const named = Hson.document`<main @:main/>`;
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type Expect<T extends true> = T;
+type AuthoringTypes = [Expect<Equal<typeof plain, HsonAuthored>>, Expect<Equal<typeof named, HsonAuthored>>,
+  Expect<Equal<TransformAuthored, HsonAuthored>>];
+const primitive: string = named;
+const canonicalDocument: HsonCanonical = document;
+// @ts-expect-error Authored source never claims canonical qualification, even without QUADs.
+const falseCanonical: HsonCanonical = plain;
+// @ts-expect-error Authored source is not a canonical document.
+const falseDocument: HsonDocument = named;
+// @ts-expect-error Canonical-only helper requires qualification first.
+Hson.document.toNode(plain);
+// @ts-expect-error Canonical-only helper cannot consume authored declarations.
+Hson.document.fromHson(named);
+// @ts-expect-error The authored brand is distinct in both directions.
+const falseAuthored: HsonAuthored = document;
+void primitive; void canonicalDocument;
+
+const certifiedAuthored: HsonDocument = ANY_DOCUMENT.certify(plain);
+// @ts-expect-error Data certification does not accept authored documents.
+ANY_DATA.certify(plain);
+void certifiedAuthored;

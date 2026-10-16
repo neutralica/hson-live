@@ -66,6 +66,8 @@ export const AnyPage = Hson.schema\`<type "document">\`;
 export const Twin = Hson.schema\`<type "data" content <name "string" format <union [<exact "hson">, <exact "html">]>>>\`;
 export const Tree = Hson.schema\`<type "data" defs <Node <content <value "string" children <array <ref "Node">>>>> content <ref "Node">>\`;
 export const certificate = S.certify(Hson.data\`<name "Ada" format "hson">\`);
+export const authoredPlain = Hson.document\`<main "body"/>\`;
+export const authoredNamed = Hson.document\`<main @:main "body"/>\`;
 export const documentCertificate = Page.certify(Hson.document\`<main "body"/>\`);
 export function getCertificate() { return certificate; }
 export const certificates = [certificate];
@@ -114,13 +116,19 @@ check("isolated stock TypeScript consumes only published Worker declarations", (
   cpSync(join(producer, "out"), join(published, "dist"), { recursive: true });
   writeFileSync(join(published, "package.json"), JSON.stringify({ name: "schema-producer", type: "module", exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } } }));
   project(consumer, `
-import { S, Twin, Tree, alias, Page, pageAlias, library, page, text, getText, certificate, documentCertificate, getCertificate, certificates, certificateObject, Certificates, map, getMap, snapshot, treeValue, treeLibrary } from "schema-producer";
-import type { JsonFromSchema, HsonFromSchema } from "hson-live/hson";
+import { authoredPlain, authoredNamed, S, Twin, Tree, alias, Page, pageAlias, library, page, text, getText, certificate, documentCertificate, getCertificate, certificates, certificateObject, Certificates, map, getMap, snapshot, treeValue, treeLibrary } from "schema-producer";
+import type { HsonAuthored, HsonDocument, HsonCanonical, JsonFromSchema, HsonFromSchema } from "hson-live/hson";
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Assert<T extends true> = T;
 type Shape = { readonly name: string; readonly format: "hson" | "html" };
 type Exact = Assert<Equal<JsonFromSchema<typeof S>, Shape>>;
 type Certificate = Assert<Equal<typeof certificate, HsonFromSchema<typeof S>>>;
+type AuthoredPlain = Assert<Equal<typeof authoredPlain, HsonAuthored>>;
+type AuthoredNamed = Assert<Equal<typeof authoredNamed, HsonAuthored>>;
+// @ts-expect-error Published authoring has no canonical proof.
+const falseCanonical: HsonCanonical = authoredPlain;
+// @ts-expect-error Declarations cannot promote authored names to canonical documents.
+const falseDocument: HsonDocument = authoredNamed;
 type DocumentCertificate = Assert<Equal<typeof documentCertificate, HsonFromSchema<typeof Page>>>;
 const returnedCertificate: HsonFromSchema<typeof S> = getCertificate();
 const arrayCertificate: HsonFromSchema<typeof S> | undefined = certificates[0];

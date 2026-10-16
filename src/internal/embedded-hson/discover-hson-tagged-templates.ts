@@ -16,7 +16,7 @@ const supportedPackageSpecifiers: ReadonlySet<string> = new Set([
 /** Require the lexical import binding, rather than a matching symbol name or filename. */
 export function is_official_hson_package_binding(
   identifier: ts.Identifier,
-  expected: "Hson" | "HsonData" | "HsonDocument" | "HsonFromSchema" | "JsonFromSchema",
+  expected: "Hson" | "HsonData" | "HsonDocument" | "HsonAuthored" | "HsonFromSchema" | "JsonFromSchema",
   checker: ts.TypeChecker,
   requireResolvedOrigin = false,
 ): boolean {
@@ -36,7 +36,7 @@ export function is_official_hson_package_binding(
   return target.declarations?.some(item => official_declaration_origin(item.getSourceFile().fileName, expected)) === true;
 }
 
-function official_declaration_origin(fileName: string, expected: "Hson" | "HsonData" | "HsonDocument" | "HsonFromSchema" | "JsonFromSchema"): boolean {
+function official_declaration_origin(fileName: string, expected: "Hson" | "HsonData" | "HsonDocument" | "HsonAuthored" | "HsonFromSchema" | "JsonFromSchema"): boolean {
   let directory = dirname(resolve(fileName));
   while (true) {
     const manifestPath = resolve(directory, "package.json");
@@ -296,11 +296,44 @@ export function read_template_substitution_ranges(
   return Object.freeze(ranges);
 }
 
+/** Diagnostic-only literal boundaries from the host AST; never authoring admission.
+ * An unfinished hole masks its entire remaining expression. No suffix is guessed.
+ */
+function document_quad_recovery_source(fileName: string, hostText: string, sourceFile: ts.SourceFile,
+  tagged: ts.TaggedTemplateExpression, template: ts.TemplateExpression,
+): InterpolatedEmbeddedHsonTemplate | undefined {
+  const templateRange = nodeRange(template, sourceFile);
+  if (hostText[templateRange.start] !== "`") return undefined;
+  const substitutionRanges: HostSourceRange[] = [];
+  const expressionRanges: HostSourceRange[] = [];
+  let preceding: ts.TemplateLiteralLikeNode = template.head;
+  let bodyEnd = templateRange.end;
+  for (const span of template.templateSpans) {
+    const start = preceding.getEnd() - 2;
+    if (hostText.slice(start, start + 2) !== "${") return undefined;
+    const closingStart = span.literal.getStart(sourceFile);
+    if (hostText[closingStart] !== "}") {
+      bodyEnd = templateRange.end;
+      substitutionRanges.push({ start, end: templateRange.end });
+      expressionRanges.push({ start: start + 2, end: templateRange.end });
+      break;
+    }
+    substitutionRanges.push({ start, end: closingStart + 1 });
+    expressionRanges.push({ start: start + 2, end: closingStart });
+    preceding = span.literal;
+    bodyEnd = span.literal.getEnd() - (span.literal.isUnterminated ? 0 : 1);
+  }
+  return { fileName, hostText, authoringKind: "document", tagRange: nodeRange(tagged.tag, sourceFile),
+    templateRange, bodyRange: { start: templateRange.start + 1, end: bodyEnd }, substitutionRanges, expressionRanges };
+}
+
 /** Discover semantic member tags rooted in an official Hson import; a supplied program represents the same host text. */
 export function discover_hson_tagged_templates(
   fileName: string,
   hostText: string,
   sourceProgram?: ts.Program,
+  // Opt-in diagnostics only. Recovered templates never enter either admitted result list.
+  onDocumentQuadRecovery?: (source: InterpolatedEmbeddedHsonTemplate) => void,
 ): HsonTaggedTemplateDiscoveryResult {
   const empty = (): HsonTaggedTemplateDiscoveryResult => Object.freeze({
     sources: Object.freeze([]),
@@ -334,27 +367,30 @@ export function discover_hson_tagged_templates(
       const relevantRange = nodeRange(node, sourceFile);
       if (symbol !== undefined
         && importSymbols.has(symbol)
-        && !hasOverlappingDiagnostic(diagnostics, relevantRange)) {
+        && !hasOverlappingDiagnostic(diagnostics, nodeRange(node.tag, sourceFile))) {
         const tagRange = nodeRange(node.tag, sourceFile);
         const templateRange = nodeRange(node.template, sourceFile);
         const bodyRange = Object.freeze({
           start: templateRange.start + 1,
           end: templateRange.end - 1,
         });
-        const validated = validateTemplateDescriptor(
+        const validated = hasOverlappingDiagnostic(diagnostics, relevantRange) ? undefined : validateTemplateDescriptor(
           fileName,
           hostText,
           tagRange,
           templateRange,
           bodyRange,
         );
+        let discovered = false;
         if (validated !== undefined) {
           const authoringKind = node.tag.name.text;
           if (ts.isNoSubstitutionTemplateLiteral(node.template)) {
             sources.push(Object.freeze({ ...validated, authoringKind }));
+            discovered = true;
           } else {
             const substitutionRanges = read_template_substitution_ranges(node.template, hostText, sourceFile);
             if (substitutionRanges !== undefined) {
+              discovered = true;
               interpolated.push(Object.freeze({
                 authoringKind,
                 fileName,
@@ -367,6 +403,11 @@ export function discover_hson_tagged_templates(
               }));
             }
           }
+        }
+        if (!discovered && onDocumentQuadRecovery !== undefined && node.tag.name.text === "document"
+          && ts.isTemplateExpression(node.template)) {
+          const recovered = document_quad_recovery_source(fileName, hostText, sourceFile, node, node.template);
+          if (recovered !== undefined) onDocumentQuadRecovery(recovered);
         }
       }
     }

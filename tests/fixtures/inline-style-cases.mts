@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, hsonLiveTree, hsonMirror, hsonTransform } from "../../src/index.ts";
+import { ANY_DOCUMENT, Hson, hsonLiveMap, hsonLiveTree, hsonMirror, hsonTransform } from "../../src/index.ts";
 import { parse_style_string } from "../../src/api/transform/utils/attrs-utils/parse-style.ts";
 import { serialize_style } from "../../src/api/transform/utils/attrs-utils/serialize-style.ts";
 import { InlineCssError } from "../../src/internal/css/inline-css.ts";
@@ -26,7 +26,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
       assert.throws(() => Hson.data.fromHson(text(source)), TypeError);
     }
     const page = Hson.document`<p style="color:red!important;color:blue"/>`;
-    const p = Hson.document.toNode(page).$_content[0] as HsonNode;
+    const p = Hson.document.toNode(ANY_DOCUMENT.certify(page)).$_content[0] as HsonNode;
     assert.equal(p.$_attrs?.style?.color, "red !important");
     assert.throws(() => hsonTransform.fromHson('<p style="width:min(var(--missing,2s),10px)"/>').toNode(),
       (error) => error instanceof InlineCssError || error instanceof Error && error.cause instanceof InlineCssError);
@@ -36,7 +36,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     const expected = { content: '"a\\\";b"', color: "red" };
     assert.deepEqual(parse_style_string(source), expected);
     const page = Hson.document`<p style="${source}"/>`;
-    const p = Hson.document.toNode(page).$_content[0] as HsonNode;
+    const p = Hson.document.toNode(ANY_DOCUMENT.certify(page)).$_content[0] as HsonNode;
     assert.deepEqual({ ...p.$_attrs?.style }, expected);
     assert.deepEqual(parse_style_string('--text:"  a; b  "; --escaped:foo\\;bar'), {
       "--text": '"  a; b  "', "--escaped": 'foo\\;bar',
@@ -379,7 +379,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     assert.equal(serialize_style(input), '--zero: 0; width: 0px');
     assert.ok(Object.is(input['--zero'], -0));assert.ok(Object.is(input.width.value, -0));
     const doc = Hson.document`<main <p style="color:red"/> <style "p{color:blue}"/>/>`;
-    assert.ok(Hson.document.fromNode(Hson.document.toNode(doc)));
+    assert.ok(Hson.document.fromNode(Hson.document.toNode(ANY_DOCUMENT.certify(doc))));
     assert.ok(hsonTransform.fromHson(doc).toHtml().serialize().includes('color: red'));
   });
 }

@@ -1,10 +1,11 @@
 import { admit_hson, admit_hson_source, reconstruct_hson_interpolated_template } from "./api/transform/hson-admission.js";
 import { ExactDataCarrier, hson_data_value } from "./api/data/hson-data.js";
-import { ExactDocumentCarrier, qualify_hson_document_source } from "./api/document/hson-document.js";
+import { ExactDocumentCarrier } from "./api/document/hson-document.js";
+import { qualify_authored_document_source, assemble_authored_document, serialize_authored_document } from "./api/document/hson-authored.js";
 import { ELEM_TAG, STR_TAG } from "./core/constants.js";
 import type { HsonNode } from "./core/types.js";
 import { parse_hson, parse_hson_interpolated_template } from "./api/transform/parsers/parse-hson.js";
-import { tokenize_hson } from "./api/transform/parsers/tokenize-hson.js";
+import { tokenize_hson, tokenize_authored_document_library } from "./api/transform/parsers/tokenize-hson.js";
 import { make_leaf } from "./api/transform/parsers/parse-tokens.js";
 import { admit_hson_number } from "./core/hson-number.js";
 import { projected_value_to_hson_node } from "./core/projected-value-graph.js";
@@ -16,7 +17,7 @@ import { is_transform_error } from "./core/errors.js";
 import { is_Node } from "./core/node-guards.js";
 import { HsonSchema } from "./api/schema/hson-schema.js";
 export { ANY_DATA, ANY_DOCUMENT } from "./api/schema/hson-schema.js";
-import type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData } from "./api/transform/transform.types.js";
+import type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData } from "./api/transform/transform.types.js";
 import type { Tokens } from "./api/transform/token.types.js";
 
 type Substitution = string | number | boolean | null;
@@ -33,6 +34,7 @@ function interpolation_values(
   tokens: readonly Tokens[],
   substitutions: readonly DocumentSubstitution[],
   mode: "canonical" | "document" | "data",
+  quads = new Map<HsonNode, string>(),
 ) {
   const values: Array<readonly HsonNode[]> = [];
   for (const token of tokens) {
@@ -52,7 +54,7 @@ function interpolation_values(
         && typeof candidate !== "number" && typeof candidate !== "boolean";
       _throw_transform_err(
         mode === "document"
-          ? "unquoted document interpolation requires HsonDocument source or undefined; wrap strings in Hson quotes to insert text"
+          ? "unquoted document interpolation requires authored document source or undefined; wrap strings in Hson quotes to insert text"
           : "unquoted interpolation requires Hson source or a primitive valid in this grammatical position",
         unsupportedCanonical ? "Hson" : `Hson.${mode}`, undefined, undefined,
         { code: unsupportedCanonical
@@ -62,7 +64,7 @@ function interpolation_values(
     }
     try {
       if (mode === "document") {
-        values[token.slot] = qualify_hson_document_source(candidate).$_content.map((item) => {
+        values[token.slot] = qualify_authored_document_source(candidate, quads).$_content.map((item) => {
           if (!is_Node(item)) throw new TypeError("Document root content must be nodes.");
           return item;
         });
@@ -86,7 +88,7 @@ function interpolation_values(
     } catch (cause) {
       _throw_transform_err(
         mode === "document"
-          ? "unquoted document interpolation must contain valid HsonDocument source; wrap it in Hson quotes to insert text"
+          ? "unquoted document interpolation must contain valid authored document source; wrap it in Hson quotes to insert text"
           : "unquoted interpolation must contain valid Hson source for its grammatical position; wrap it in Hson quotes to insert a string",
         `Hson.${mode}`, undefined, cause,
         { code: "HSON_INTERPOLATION_CANDIDATE_INVALID", stage: "template-admission",
@@ -120,14 +122,15 @@ function data_tag(strings: TemplateStringsArray, ...substitutions: readonly Subs
   }
 }
 
-function document_tag(strings: TemplateStringsArray, ...substitutions: readonly DocumentSubstitution[]): HsonDocument {
+function document_tag(strings: TemplateStringsArray, ...substitutions: readonly DocumentSubstitution[]): HsonAuthored {
   const template = reconstruct_hson_interpolated_template(strings, substitutions);
-  if (template.slots.length === 0) return ExactDocumentCarrier.fromHson(template.source as HsonCanonical).toHson() as HsonDocument;
-  const tokens = tokenize_hson(template.source, 0, undefined, template.slots, "document", substitutions);
-  const values = interpolation_values(template.source, tokens, substitutions, "document");
+  const quads = new Map<HsonNode, string>();
+  if (template.slots.length === 0) return serialize_authored_document(qualify_authored_document_source(template.source, quads), quads);
+  const tokens = tokenize_authored_document_library(template.source, undefined, { slots: template.slots, substitutions });
+  const values = interpolation_values(template.source, tokens, substitutions, "document", quads);
   try {
-    const root = parse_hson_interpolated_template(template.source, "document", values, tokens);
-    return ExactDocumentCarrier.fromNode(root).toHson() as HsonDocument;
+    const root = assemble_authored_document(tokens, values, quads);
+    return serialize_authored_document(root, quads);
   } catch (cause) {
     if (is_transform_error(cause)) throw cause;
     _throw_transform_err("composed Hson.document value failed admission", "Hson.document", undefined, cause,
@@ -177,7 +180,7 @@ export const Hson = Object.freeze({
   })),
 });
 
-export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchema, HsonFromSchema, JsonFromSchema } from "./api/transform/transform.types.js";
+export type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchema, HsonFromSchema, JsonFromSchema } from "./api/transform/transform.types.js";
 export type {
   BasicValue, HsonAttrs, HsonMeta, HsonNode, ReadonlyHsonNode, HsonSemanticPrimitive, JsonValue, NodeContent, Primitive,
 } from "./core/types.js";

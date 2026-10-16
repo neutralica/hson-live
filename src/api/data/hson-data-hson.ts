@@ -2,8 +2,8 @@ import type { OrderedProjectedValue } from "../../core/ordered-projected-value.j
 import { parse_canonical_hson_data, serialize_canonical_hson_data } from "../../core/hson-data-canonical-codec.js";
 import type { HsonCanonical } from "../transform/transform.types.js";
 
-/** Parse canonical authored Hson and require one complete data-mode value. */
-export function admit_canonical_hson_data_value(input: HsonCanonical): OrderedProjectedValue {
+/** Qualify source through the canonical data parser before creating any carrier or evidence. */
+export function admit_canonical_hson_data_value(input: string): OrderedProjectedValue {
   try {
     return parse_canonical_hson_data(input);
   } catch (cause) {

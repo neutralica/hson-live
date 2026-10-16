@@ -1,4 +1,4 @@
-import { ANY_DOCUMENT, Hson, hsonLiveMap, type HsonDocument, type HsonSchema } from "../src/index.ts";
+import { ANY_DOCUMENT, Hson, hsonLiveMap, type HsonAuthored, type HsonDocument, type HsonSchema } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
 import type { Evidence as PageEvidence } from "./fixtures/hson-schema-document/out/internal/hson-schema/producer.ts/PageSchema.hson-schema.generated.js";
@@ -10,11 +10,11 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends
 type Expect<T extends true> = T;
 type BroadEndpoint = HsonNode | string | undefined;
 
-function makeDoc(): HsonDocument {
+function makeDoc(): HsonAuthored {
   return Hson.document`<main <hr/> <p "x"/> />`;
 }
 
-const shell = (insert: HsonDocument) => Hson.document`
+const shell = (insert: HsonAuthored) => Hson.document`
   <html <head/> <body ${insert} /> />
 `;
 
@@ -32,7 +32,7 @@ declare const textArray: LiveMapDocumentLibrary<TextArrayRoot, "page">;
 
 if (false) {
   const doc = Hson.document`<main <hr/> <p "x"/> />`;
-  const annotated: HsonDocument = doc;
+  const annotated: HsonAuthored = doc;
   const map = hsonLiveMap.fromLibraries({
     direct: { document: doc },
     annotated: { document: annotated },

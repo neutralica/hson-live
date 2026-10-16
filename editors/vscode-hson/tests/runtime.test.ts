@@ -6,6 +6,8 @@ import { join, resolve } from "node:path";
 import { TransformError } from "../../../src/core/errors.js";
 import { hson } from "../../../src/hson.js";
 import { Hson } from "../../../src/hson-authoring.js";
+import { admit_hson_tagged_source } from "../../../src/internal/embedded-hson/hson-tagged-source-admission.js";
+import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import {
   DIAGNOSTIC_SOURCE,
   produce_document_diagnostics,
@@ -660,7 +662,7 @@ check("editor completion uses current same-file Schema and exact partial token r
 });
 
 check("static interpolation diagnostics report position failures without inferring branded source", () => {
-  const prefix = 'import { Hson, type HsonData, type HsonDocument, type HsonCanonical } from "hson-live"; const S = Hson.schema`<type "data" content <value "string">>`; const D = Hson.schema`<type "document" tag "main" content "empty">`; const data: HsonData<typeof S> = Hson.data`<value "x">`; const document: HsonDocument<typeof D> = Hson.document`<main/>`; const plain: string = "<main/>"; declare const canonical: HsonCanonical; ';
+  const prefix = 'import { Hson, type HsonData, type HsonDocument, type HsonCanonical } from "hson-live"; const S = Hson.schema`<type "data" content <value "string">>`; const D = Hson.schema`<type "document" tag "main" content "empty">`; const data: HsonData<typeof S> = Hson.data`<value "x">`; const document: HsonDocument<typeof D> = D.certify(Hson.document`<main/>`); const plain: string = "<main/>"; declare const canonical: HsonCanonical; ';
   const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/interpolation.ts").map(d => d.code).filter(code => code?.includes("STATIC_TYPE") || code?.includes("DATA_IN_DOCUMENT") || code?.includes("DOCUMENT_IN_DATA"));
   assert.deepEqual(codes('Hson.document`<main ${data}/>`;'), []);
   const mismatchSource = prefix + 'Hson.document`<main ${123}/>`;';
@@ -919,6 +921,129 @@ check("inferred Hson brands leave serialized candidate qualification to runtime"
   assert.deepEqual(familyCodes('const data = Hson.data`<x 1>`; Hson.document`<p "${data}"/>`;'), []);
   assert.deepEqual(familyCodes('const data = Hson.data`<main "">`; Hson.document`<html <head/> ${data}/>`;'), []);
   assert.deepEqual(familyCodes('const data = Hson.data`<main "">`; const route = "/"; Hson.document`<html <head <style "a>b"/> /> ${data} <body <iframe src=${route} title="Pulse"/> /> />`;'), []);
+});
+
+check("authored QUAD syntax diagnostics are distinct from canonical producer proof", () => {
+  const text = 'import { Hson } from "hson-live"; Hson.document`<nav @:navigation <a @:next/>/>`;';
+  assert.deepEqual(diagnose(text, "typescript", "/workspace/source.ts"), []);
+  const source = discover_hson_tagged_templates("/workspace/source.ts", text).sources[0]!;
+  assert.equal(admit_hson_tagged_source(source), '<nav @:navigation <a @:next/>/>');
+  for (const body of ['<main @:bad-name/>', '<main @:same <p @:same/>/>', '<main @:valid @000000001/>', '<script @:valid/>']) {
+    const invalid = text.slice(0, text.indexOf('`') + 1) + body + '`;';
+    assert.equal(diagnose(invalid, "typescript", "/workspace/source.ts").length, 1);
+    if (!body.includes('@:same')) assert.throws(() => admit_hson_tagged_source(discover_hson_tagged_templates("/workspace/source.ts", invalid).sources[0]!));
+  }
+});
+
+check("QUAD and portable-QUID errors around slots retain literal positions and related declarations", () => {
+  const prefix = 'import { Hson } from "hson-live";\r\ndeclare const value: string;\r\nHson.document`';
+  for (const [body, code, occurrence] of [
+    ['<main @: "${value}"/>', 'HSON_LIBRARY_QUAD_INVALID', '@:'],
+    ['<main @:bad-name "${value}"/>', 'HSON_LIBRARY_QUAD_INVALID', '@:bad-name'],
+    ['<main "${value}"\r\n <p @:bad-name/>/>', 'HSON_LIBRARY_QUAD_INVALID', '@:bad-name'],
+    ['<main @:first @:second "${value}"/>', 'HSON_LIBRARY_QUAD_DUPLICATE', '@:second'],
+    ['<main @000000001 "${value}"/>', 'PORTABLE_RUNTIME_QUID_FORBIDDEN', '@000000001'],
+    ['<main "😀" "${value}" <p @000000001/>/>', 'PORTABLE_RUNTIME_QUID_FORBIDDEN', '@000000001'],
+  ]) {
+    const text = prefix + body + '`;';
+    const diagnostics = diagnose(text, "typescript", "/workspace/source.ts");
+    assert.equal(diagnostics.length, 1, body);
+    assert.equal(diagnostics[0]?.code, code, body);
+    assert.deepEqual(diagnostics[0]?.range, { start: text.indexOf(occurrence!), end: text.indexOf(occurrence!) + 1 });
+    if (code === 'HSON_LIBRARY_QUAD_DUPLICATE') assert.deepEqual(diagnostics[0]?.related[0]?.range,
+      { start: text.indexOf('@:first'), end: text.indexOf('@:first') + 1 });
+  }
+  assert.deepEqual(diagnose(prefix + '<main @:main "${value}" <p @:child/>/>`;', "typescript", "/workspace/source.ts"), []);
+  assert.equal(diagnose(prefix + '<main @:${value}/>`;', "typescript", "/workspace/source.ts")[0]?.code,
+    'HSON_INTERPOLATION_POSITION_INVALID');
+  assert.equal(diagnose(prefix + '<main @:main ${42}/>`;', "typescript", "/workspace/source.ts")[0]?.code,
+    'HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE');
+});
+
+check("literal QUAD duplicates retain primary and related positions across quoted and structural holes", () => {
+  const prefix = 'import { Hson } from "hson-live/hson";\r\nconst text = "body";\r\ndeclare const fragment: string;\r\nHson.document`\r\n';
+  for (const body of [
+    '<main @:same "${text}"\r\n  <p @:same/>\r\n/>',
+    '<main @:same ${fragment}\r\n  <p @:same/>\r\n/>',
+    '<main @:same "body"\r\n  <p @:same/>\r\n/>',
+    '<main "😀" ${fragment}\r\n <p @:same/> "${text}" <aside @:distinct/> ${fragment} <p @:same/>/>',
+    '<main @:same "${(() => {\r\n return text;\r\n})()}" <p @:same/>/>',
+  ]) {
+    const text = prefix + body + '`;';
+    const issues = diagnose(text, "typescript", "/workspace/quad.ts");
+    assert.equal(issues.length, 1, body);
+    assert.equal(issues[0]?.code, "HSON_LIBRARY_QUAD_DUPLICATE", body);
+    assert.equal(issues[0]?.precision, "point");
+    assert.deepEqual(issues[0]?.range, { start: text.lastIndexOf("@:same"), end: text.lastIndexOf("@:same") + 1 });
+    assert.deepEqual(issues[0]?.related, [{ message: "Related Hson source (first-declaration).",
+      range: { start: text.indexOf("@:same"), end: text.indexOf("@:same") + 1 } }]);
+  }
+});
+
+check("literal QUAD diagnostics keep each first declaration across multiple opaque slots", () => {
+  const text = 'import { Hson } from "hson-live/hson"; declare const unknown: string;\n'
+    + 'Hson.document`<main @:one ${unknown} <p @:two/> "${unknown}" <p @:one/> ${unknown} <p @:two/> <p @:one/>/>`;';
+  const issues = diagnose(text, "typescript", "/workspace/quad.ts");
+  assert.equal(issues.length, 3);
+  for (const [index, name] of ["one", "two", "one"].entries()) {
+    const first = text.indexOf(`@:${name}`);
+    const duplicate = index === 2 ? text.lastIndexOf(`@:${name}`) : text.indexOf(`@:${name}`, first + 1);
+    assert.equal(issues[index]?.code, "HSON_LIBRARY_QUAD_DUPLICATE");
+    assert.deepEqual(issues[index]?.range, { start: duplicate, end: duplicate + 1 });
+    assert.deepEqual(issues[index]?.related[0]?.range, { start: first, end: first + 1 });
+  }
+});
+
+check("unfinished interpolation retains only scanner-observed literal duplicate evidence", () => {
+  const prefix = 'import { Hson } from "hson-live/hson";\r\nHson.document`';
+  for (const body of [
+    '<main @:same "${}" <p @:same/>/>`;',
+    '<main @:same ${value.} <p @:same/>/>`;',
+    '<main @:same ${value} <p @:same/> ${value.',
+    '<main @:same <p @:same ${',
+    '<main @:same "${value}" <p @:same/>',
+  ]) {
+    const text = prefix + body;
+    // Recovery does not broaden authoritative discovery, even for parseable literals.
+    assert.deepEqual(discover_hson_tagged_templates("/workspace/quad.ts", text), { sources: [], interpolated: [] });
+    const issues = diagnose(text, "typescript", "/workspace/quad.ts");
+    assert.equal(issues.length, 1, body);
+    assert.equal(issues[0]?.code, "HSON_LIBRARY_QUAD_DUPLICATE", body);
+    assert.equal(issues[0]?.range.start, text.lastIndexOf("@:same"));
+    assert.equal(issues[0]?.related[0]?.range.start, text.indexOf("@:same"));
+  }
+  for (const body of [
+    '<main @:same ${value.} <p @:other/>/>`;',
+    '<main @:same ${"<p @:same/>"}/>;',
+  ]) assert.deepEqual(diagnose(prefix + body, "typescript", "/workspace/quad.ts"), []);
+  const local = prefix.replace('"hson-live/hson"', '"other"') + '<main @:same ${} <p @:same/>/>`;';
+  assert.deepEqual(diagnose(local, "typescript", "/workspace/quad.ts"), []);
+});
+
+check("opaque values and separate templates cannot invent or share literal QUAD names", () => {
+  const prefix = 'import { Hson } from "hson-live/hson"; declare const unknown: string;\n';
+  for (const body of [
+    'Hson.document`<main @:one ${unknown} <p @:two/> "${unknown}" <p @:three/>/>`;',
+    'Hson.document`<main @:same ${"<p @:same/>"}/>`;',
+    'Hson.document`<main @:same ${Hson.document`<p @:same/>`}/>`;',
+    'Hson.document`<main @:same ${unknown}/>`; Hson.document`<p @:same "${unknown}"/>`;',
+    'Hson.document`<main @:same "literal @:same" "${unknown}"/>`;',
+  ]) assert.deepEqual(diagnose(prefix + body, "typescript", "/workspace/quad.ts"), [], body);
+});
+
+check("editing a duplicate name clears the production published diagnostic and related location", () => {
+  const host = new FakeHost(), publisher = new FakePublisher();
+  const text = 'import { Hson } from "hson-live/hson"; const text="body"; Hson.document`<main @:same "${text}" <p @:same/>/>`;';
+  const first: DiagnosticDocument = { uri: "file:///quad.ts", fileName: "/quad.ts", languageId: "typescript", version: 1, text };
+  host.documents = [first];
+  const controller = start_diagnostics(host, publisher);
+  assert.equal(publisher.published.get(first.uri)?.[0]?.code, "HSON_LIBRARY_QUAD_DUPLICATE");
+  assert.equal(publisher.published.get(first.uri)?.[0]?.related.length, 1);
+  const edited = { ...first, version: 2, text: text.replace("<p @:same", "<p @:other") };
+  host.documents = [edited]; host.emit(host.changes, edited); host.runTimer(1);
+  assert.deepEqual(publisher.published.get(first.uri), []);
+  assert.deepEqual(host.unexpected, []);
+  controller.dispose();
 });
 
 process.stdout.write(`ok - ${checks} focused runtime and lifecycle checks passed\n`);

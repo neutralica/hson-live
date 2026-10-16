@@ -99,6 +99,23 @@ check("package includes the source and build inputs needed for derived tooling i
   const files = new Set(JSON.parse(result.stdout)[0].files.map((file: { path: string }) => file.path));
   for (const file of ["scripts/hson-schema.mts", "scripts/build-hson-schema-cli.mjs", "tsconfig.json", "src/internal/hson-schema/tooling-fingerprint.ts", "dist/internal/hson-schema/tooling-fingerprint.js"]) assert.ok(files.has(file), file);
 });
+
+check("authored document assignments never generate canonical proof overlays", () => {
+  const directory = prepare("authored-boundary");
+  const consumer = join(directory, "consumer.ts");
+  const original = readFileSync(consumer, "utf8");
+  for (const body of ["<main/>", "<main @:main/>"]) {
+    writeFileSync(consumer, original.replace('slideSchema.certify(Hson.document`<main/>`)', `Hson.document\`${body}\``));
+    const result = generate(directory);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout + result.stderr, /HsonAuthored.*canonical document Schema evidence requires explicit/);
+    const generated = join(directory, ".hson/compiler-input/tsconfig.json/sources/consumer.ts");
+    if (existsSync(generated)) {
+      const text = readFileSync(generated, "utf8");
+      assert.doesNotMatch(text.slice(text.indexOf("const authoredDocument:")), /as unknown as HsonDocument/);
+    }
+  }
+});
 check("packaged current CLI generates a complete compiler project without touching authored bytes", () => {
   const result = generate(project);
   succeed(result);

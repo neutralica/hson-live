@@ -32,6 +32,9 @@ export function verified_schema_assignment_ranges(
     if (annotation === undefined || annotation.kind === "projected" || annotation.schema === undefined) continue;
     const association = resolve_schema_association(typescript, program, checker, annotation.schema, evidenceFile);
     if (association === undefined || annotation.kind !== "hson" && association.mode !== annotation.kind) continue;
+    // Hson.document always produces authored source, including QUAD-free text.
+    // A structural match cannot remove the missing canonical qualification.
+    if (association.mode === "document") continue;
     const initializer = declaration.initializer;
     if (!typescript.isTaggedTemplateExpression(initializer) || !is_official_member_tag(typescript, checker, initializer, association.mode)) continue;
     const source = tagged_source(typescript, initializer, association.mode);

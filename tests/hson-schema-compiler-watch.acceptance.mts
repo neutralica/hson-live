@@ -402,11 +402,12 @@ try {
     write("base.json", JSON.stringify({ ...base, include: ["./*.ts"] })); current = await next(); passes(); preserve();
   });
   await check("static proof overlays, document mode and refinement evidence share the existing compiler", async () => {
-    write("precision.ts", `import { Hson, type HsonData, type HsonDocument, type JsonFromSchema } from "hson-live";
+    write("precision.ts", `import { Hson, type HsonAuthored, type HsonData, type HsonDocument, type JsonFromSchema } from "hson-live";
 export const Refined = Hson.schema\`<type "data" content <age <number <int true min 0>>>>\`;
 export const Document = Hson.schema\`<type "document">\`;
 export const Text = Hson.schema\`<type "document" content "string">\`;
-const text: HsonDocument<typeof Text> = Hson.document\`"hello"\`;
+const authoredText: HsonAuthored = Hson.document\`"hello"\`;
+const text: HsonDocument<typeof Text> = Text.certify(authoredText);
 Text.certify(text);
 const data: HsonData<typeof Refined> = Hson.data\`<age 4>\`;
 declare const value: JsonFromSchema<typeof Refined>;
@@ -415,7 +416,10 @@ const changed: JsonFromSchema<typeof Refined>["age"] = value.age + 1;
 const wrong: HsonData<typeof Document> = data;
 void changed; void wrong;
 `);
-    current = await next(); passes(); preserve();
+    current = await next();
+    assert.equal(current.diagnostics.length, 1);
+    assert.match(current.diagnostics[0]!, /precision\.ts:\d+:\d+: Schema mode does not match HsonData\./);
+    passes(); preserve();
     remove("precision.ts"); current = await next(); passes(); preserve();
   });
   await check("direct certification failures publish authored locations and recover in the next watch publication", async () => {

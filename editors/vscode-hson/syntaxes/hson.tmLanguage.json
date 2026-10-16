@@ -8,6 +8,7 @@
     { "include": "#quoted-names" },
     { "include": "#unquoted-attribute-values" },
     { "include": "#reserved-names" },
+    { "include": "#quads" },
     { "include": "#quids" },
     { "include": "#numbers" },
     { "include": "#primitives" },
@@ -91,6 +92,14 @@
         {
           "name": "invalid.illegal.reserved-name.hson",
           "match": "(?<![A-Za-z0-9:._-])_hson_[A-Za-z0-9:._-]*(?![A-Za-z0-9:._-])"
+        }
+      ]
+    },
+    "quads": {
+      "patterns": [
+        {
+          "name": "constant.other.quad.hson",
+          "match": "@:[A-Za-z_$][A-Za-z0-9_$]{0,127}(?=[ \\t\\r\\n<>\"'\\[\\]«»,=/]|$)"
         }
       ]
     },

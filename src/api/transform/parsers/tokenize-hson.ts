@@ -60,7 +60,7 @@ export function hson_interpolation_roles(source: string, mode: HsonEditorMode, s
   if (mode === "schema" || source.length > 128_000) return roles;
   const substitutions = slots.map(() => "");
   const scanner = new HsonScanner(source, 0, undefined, slots, mode, substitutions, mode, undefined, undefined,
-    (index, role) => { roles[index] = role; }, index => { roles[index] = undefined; });
+    (index, role) => { roles[index] = role; }, index => { roles[index] = undefined; }, mode === "document");
   // Callbacks retain observed evidence even when scanning stops. Unreached slots
   // stay unknown: truncating source or slots could change their grammar.
   try { scanner.scan(); } catch { /* A later syntax error does not erase earlier proven roles. */ }
@@ -118,8 +118,11 @@ export function tokenize_hson(
 }
 
 /** Explicit authored document-Library context; ordinary scanners retain their grammar. @internal */
-export function tokenize_authored_document_library(hson: string, collector?: HsonSourceLexicalCollector): Tokens[] {
-  return new HsonScanner(hson, 0, collector, [], undefined, [], undefined, undefined, undefined, undefined, undefined, true).scan();
+export function tokenize_authored_document_library(hson: string, collector?: HsonSourceLexicalCollector,
+  template?: Readonly<{ slots: readonly HsonTemplateSlot[]; substitutions: readonly unknown[] }>,
+): Tokens[] {
+  return new HsonScanner(hson, 0, collector, template?.slots, template === undefined ? undefined : "document",
+    template?.substitutions, template === undefined ? undefined : "document", undefined, undefined, undefined, undefined, true).scan();
 }
 
 class HsonScanner {
@@ -664,7 +667,9 @@ class HsonScanner {
         const quidPos = this.position();
         if (contentStarted) {
           this.fail(
-            `persisted QUID declaration is forbidden after content begins`,
+            this.authoredQuads && this.startsWith("@:")
+              ? "authored QUAD declaration is forbidden after content begins"
+              : "persisted QUID declaration is forbidden after content begins",
             quidPos,
             "HSON_ELEMENT_HEADER_AFTER_CONTENT",
           );
@@ -672,6 +677,10 @@ class HsonScanner {
         this.consumeExpected("@");
         if (this.authoredQuads && this.peek() === ":") {
           this.consumeExpected(":");
+          if (this.slotHere() !== undefined) this.rejectSlot("an authored QUAD name");
+          if (!/^[A-Za-z_$]$/.test(this.peek())) {
+            this.fail("invalid authored QUAD name", quidPos, "HSON_LIBRARY_QUAD_INVALID");
+          }
           const value = this.scanBareToken();
           if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) || value.length > 128) {
             this.fail("invalid authored QUAD name", quidPos, "HSON_LIBRARY_QUAD_INVALID");

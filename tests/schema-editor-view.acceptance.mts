@@ -80,14 +80,14 @@ type Local = HsonData<typeof DataSchema>; export type Chain = Local;
 const direct: HsonData<typeof DataSchema> = Hson.data\`<name "Ada">\`;
 const local: Chain = Hson.data\`<name "Ada">\`;
 const imported: Imported = Hson.data\`<name "Ada">\`;
-const document: ImportedDoc = Hson.document\`<main/>\`;
+const document: ImportedDoc = DocSchema.certify(Hson.document\`<main/>\`);
 type HsonLocal = HsonFromSchema<typeof DataSchema>; type HsonChain = HsonLocal;
 const hsonDirect: HsonFromSchema<typeof DataSchema> = Hson.data\`<name "Ada">\`;
 const hsonAlias: HsonChain = Hson.data\`<name "Ada">\`;
-const hsonDocument: HsonFromSchema<typeof DocSchema> = Hson.document\`<main/>\`;
-const hsonDocumentAlias: ImportedHsonDoc = Hson.document\`<main/>\`;
+const hsonDocument: HsonFromSchema<typeof DocSchema> = DocSchema.certify(Hson.document\`<main/>\`);
+const hsonDocumentAlias: ImportedHsonDoc = DocSchema.certify(Hson.document\`<main/>\`);
 const hsonInvalid: HsonChain = Hson.data\`<name 37>\`;
-const hsonDocumentInvalid: ImportedHsonDoc = Hson.document\`<aside/>\`;
+const hsonDocumentInvalid: ImportedHsonDoc = DocSchema.certify(Hson.document\`<aside/>\`);
 const invalid: Chain = Hson.data\`<name 37>\`;
 type Value = JsonFromSchema<typeof DataSchema>;
 const projected: Value = Hson.data\`<name "Ada">\`;
@@ -478,12 +478,13 @@ hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
 });
 
 check("annotation proof, certification, aliases and generated diagnostics converge", () => {
-  const source = `import { Hson, hsonLiveMap, type HsonData, type HsonDocument } from "hson-live";
+  const source = `import { Hson, hsonLiveMap, type HsonAuthored, type HsonData, type HsonDocument } from "hson-live";
 const Text = Hson.schema\`<type "document" content "string">\`;
-const text: HsonDocument<typeof Text> = Hson.document\`"hello"\`;
+const authoredText: HsonAuthored = Hson.document\`"hello"\`;
+const text: HsonDocument<typeof Text> = Text.certify(authoredText);
 Text.certify(text);
 const Page = Hson.schema\`<type "document" tag "main" content "string">\`;
-const document: HsonDocument<typeof Page> = Hson.document\`<main "hello"/>\`;
+const document: HsonDocument<typeof Page> = Page.certify(Hson.document\`<main "hello"/>\`);
 Page.certify(document);
 const S = Hson.schema\`<type "data" content <name "string">>\`;
 const A = S;
@@ -600,7 +601,7 @@ check("malformed initializers suppress only redundant proof errors and recover o
     'const D = Hson.schema`<type "document" tag "main" content "empty">`;',
     'type Alias = HsonFromSchema<typeof S>;',
     'const malformed: Alias = Hson.data`\r\n <name "Ada"`;',
-    'const doc: HsonDocument<typeof D> = Hson.document`\r\n <main`;',
+    'const doc: HsonDocument<typeof D> = D.certify(Hson.document`\r\n <main`);',
     'const unrelated: number = "wrong";',
     'const field: JsonFromSchema<typeof S> = { name: 37 };',
     'declare const dynamic: HsonData;',
@@ -622,8 +623,13 @@ check("malformed initializers suppress only redundant proof errors and recover o
       assert.ok(errors.some(error => error.code === 2322 && error.start === source.indexOf(name)), `${name}\n${messages(errors)}`);
     }
     assert.ok(!errors.some(error => error.start === source.indexOf("malformed:") || error.start === source.indexOf("doc:")), messages(errors));
-    assert.ok(test.underlying.getSemanticDiagnostics(test.file("index.ts")).filter(error => ts.flattenDiagnosticMessageText(error.messageText, "\n").includes("[HSON_SCHEMA_PROOF]")).length >= 3,
-      "Filtering cannot grant proof or change the underlying TypeScript diagnostics");
+    const underlying = test.underlying.getSemanticDiagnostics(test.file("index.ts"));
+    for (const name of ["malformed:", "unproven:"]) {
+      assert.ok(underlying.some(error => error.start !== undefined
+        && error.file?.text.slice(error.start, error.start + name.length) === name
+        && ts.flattenDiagnosticMessageText(error.messageText, "\n").includes("[HSON_SCHEMA_PROOF]")),
+        `${name} must retain its underlying TypeScript proof diagnostic: ${messages(underlying)}`);
+    }
   }
   const invalid = initial.replace('<name "Ada"', '<name 37>').replace('<main`', '<aside/>`');
   test.edit("index.ts", invalid);

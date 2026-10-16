@@ -1,11 +1,12 @@
-import type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchemaMode } from "../transform/transform.types.js";
-import { ExactDataCarrier } from "../data/hson-data.js";
-import { ExactDocumentCarrier } from "../document/hson-document.js";
+import type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchemaMode } from "../transform/transform.types.js";
+import { ExactDataCarrier, hson_data_from_value } from "../data/hson-data.js";
+import { qualify_hson_document_source } from "../document/hson-document.js";
+import { admit_canonical_hson_data_value } from "../data/hson-data-hson.js";
+import { serialize_hson_owned_document_content } from "../transform/serializers/serialize-hson.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../internal/hson-schema/compiler.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { hson_data_value } from "../data/hson-data.js";
 import { projected_value_to_hson_node } from "../../core/projected-value-graph.js";
-import { hson_document_root } from "../document/hson-document.js";
 import { schema_definition_identity } from "../../internal/hson-schema/definition-identity.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 
@@ -16,7 +17,7 @@ type Certified<TSchema extends HsonSchema> = TSchema extends HsonSchema<unknown,
     ? HsonDocument<Extract<TSchema, HsonSchema<unknown, "document">>>
     : HsonData | HsonDocument;
 type WrongMode<TSchema extends HsonSchema> = [TSchema] extends [HsonSchema<unknown, "data">]
-  ? HsonDocument
+  ? HsonDocument | HsonAuthored
   : [TSchema] extends [HsonSchema<unknown, "document">] ? HsonData : never;
 
 const schema_state = new WeakMap<object, Readonly<{ source: HsonSchemaData; digest: string; compiled: Compiled }>>();
@@ -50,18 +51,19 @@ export class HsonSchema<
     return schema_state_of(this).source;
   }
 
-  certify<TSchema extends HsonSchema, const TCandidate extends HsonCanonical>(
+  certify<TSchema extends HsonSchema, const TCandidate extends HsonCanonical | HsonAuthored>(
     this: TSchema,
     candidate: TCandidate & (TCandidate extends WrongMode<TSchema> ? never : unknown),
   ): Certified<TSchema> {
-    if (typeof candidate !== "string") throw new TypeError("Schema certification requires canonical Hson text.");
+    if (typeof candidate !== "string") throw new TypeError("Schema certification requires Hson text.");
     const compiled = schema_state_of(this).compiled;
     if (compiled.semantic.kind === "document" || compiled.semantic.kind === "document-element") {
-      const document = ExactDocumentCarrier.fromHson(candidate);
-      validate_hson_schema_graph(this, hson_document_root(document));
-      return document.toHson() as unknown as Certified<TSchema>;
+      // Canonical qualification rejects unconsumed QUADs before Schema evidence is issued.
+      const document = qualify_hson_document_source(candidate);
+      validate_hson_schema_graph(this, document);
+      return serialize_hson_owned_document_content(document) as unknown as Certified<TSchema>;
     }
-    const data = ExactDataCarrier.fromHson(candidate);
+    const data = hson_data_from_value(admit_canonical_hson_data_value(candidate));
     validate_hson_schema_graph(this, projected_value_to_hson_node(hson_data_value(data)));
     return data.toHson() as unknown as Certified<TSchema>;
   }

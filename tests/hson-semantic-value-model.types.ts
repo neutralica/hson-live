@@ -2,7 +2,7 @@ import { Hson, hsonLiveMap } from "hson-live";
 // @ts-expect-error JsonFromSchema is the sole public Schema value projection.
 import type { HsonSchemaValue } from "hson-live";
 import type {
-  HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonFromSchema, JsonFromSchema,
+  HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonFromSchema, JsonFromSchema,
   LiveMapDocumentLibrary, LiveMapDataLibrary, LiveMapStagedWriter, Locus,
   HsonSchema,
 } from "hson-live";
@@ -110,12 +110,16 @@ const governorSchema: typeof PageSchema = documentLocus.lib("page").schema.get()
 void governorSchema;
 
 // Undefined is an input only for document structural slots; outputs remain total.
-declare const optionalDocument: HsonDocument | undefined;
-const omittedDocument: HsonDocument = Hson.document`<main ${optionalDocument}/>`;
+declare const optionalDocument: HsonAuthored | undefined;
+const omittedDocument: HsonAuthored = Hson.document`<main ${optionalDocument}/>`;
+// @ts-expect-error An authored document never inherits the canonical brand.
 const omittedCanonical: HsonCanonical = omittedDocument;
-type DocumentTagOutput = Assert<Equal<ReturnType<typeof Hson.document>, HsonDocument>>;
+type DocumentTagOutput = Assert<Equal<ReturnType<typeof Hson.document>, HsonAuthored>>;
 // @ts-expect-error Data omission is not defined.
 Hson.data`<value ${undefined}>`;
 // @ts-expect-error Generic canonical substitution still excludes undefined.
 Hson.canonical`${undefined}`;
 void omittedCanonical;
+
+import type { HsonAuthored as NarrowAuthored } from "hson-live/hson";
+type AuthoredExports = Assert<Equal<HsonAuthored, NarrowAuthored>>;

@@ -21,7 +21,7 @@ const map = hsonLiveMap.fromLibraries({
 const state = map.lib("state");
 // @ts-expect-error Data Libraries do not expose document QUAD access.
 state.q("member");
-const quadDocument = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }).lib("page");
+const quadDocument = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main @:main/>` } }).lib("page");
 const quad: LiveMapDocumentQuadLocation<"page"> | undefined = quadDocument.q("unknown");
 if (quad !== undefined) {
   const active: boolean = quad.active;

@@ -1,7 +1,7 @@
 import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { document_q_cases } from "./livemap-document-q-cases.mts";
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
+import { ANY_DOCUMENT, Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { make_livemap_from_authored_libraries_internal as authored, compose_livemap_document_internal } from "../../src/api/livemap/livemap.libraries.ts";
 import { lookup_document_quad_internal as lookup, authored_quad_for_quid_internal as reverse,
   parse_authored_document_library, resolve_document_quad, make_document_quad_bindings } from "../../src/api/livemap/livemap.document.quad.ts";
@@ -20,7 +20,8 @@ import { capture_internal_document } from "../helpers/document-capture.mts";
 import { acquire_document_identity } from "../helpers/livemap-identity-internal.mts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import { read_transform_error_details } from "../../src/core/errors.ts";
-import { tokenize_authored_document_library } from "../../src/api/transform/parsers/tokenize-hson.ts";
+import { tokenize_authored_document_library, scan_hson_template_segments, hson_interpolation_roles } from "../../src/api/transform/parsers/tokenize-hson.ts";
+import { reject_portable_quid_tokens } from "../../src/api/transform/parsers/parse-hson-source.ts";
 import { parse_tokens } from "../../src/api/transform/parsers/parse-tokens.ts";
 
 const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
@@ -48,6 +49,88 @@ function unchanged(map: LiveMap, run: () => unknown, pattern?: RegExp): void {
 }
 
 export function document_quad_cases(check: (name: string, run: () => void) => void): void {
+  check("public authored fragments preserve declarations and issue identity only at governed admission", () => {
+    const crypto = globalThis.crypto;
+    const descriptor = Object.getOwnPropertyDescriptor(crypto, "getRandomValues");
+    Object.defineProperty(crypto, "getRandomValues", { configurable: true, value: () => { throw Error("Authoring attempted identity issuance"); } });
+    let source: ReturnType<typeof Hson.document>;
+    try {
+      const next = Hson.document`<a @:next href="${"/next"}" "${"Next < > @:literal"}"/>`;
+      const previous = Hson.document`<a @:previous href="/previous"/>`;
+      const navigation = Hson.document`<nav @:navigation ${next} ${undefined} ${previous}/>`;
+      source = Hson.document`<html <head/> <body ${navigation}/>/>`;
+      assert.equal(typeof source, "string");
+      assert.match(source, /@:navigation/); assert.match(source, /@:next/); assert.match(source, /@:previous/);
+      assert.doesNotMatch(source, /@[0-9]{9}|undefined/);
+    } finally {
+      if (descriptor === undefined) Reflect.deleteProperty(crypto, "getRandomValues");
+      else Object.defineProperty(crypto, "getRandomValues", descriptor);
+    }
+    const page = doc(hsonLiveMap.fromLibraries({ page: { document: source } }));
+    for (const name of ["navigation", "next", "previous"]) {
+      assert.ok(page.q(name)); assert.ok(is_persisted_quid(subject(page, name).quid));
+    }
+    assert.equal(page.q("literal"), undefined);
+    assert.doesNotMatch(JSON.stringify(page.root()), /\$_meta|"quad"|"quid"/);
+    assert.match(page.render(), /Next &lt; > @:literal/);
+  });
+  check("composed duplicate names reject atomically with retained declaration locations", () => {
+    const fragment = Hson.document`<button @:same/>`;
+    const source = Hson.document`<main ${fragment} ${undefined} ${fragment}/>`;
+    const map = fixture();
+    unchanged(map, () => map.addLibraries({ incoming: { document: source } }), /duplicate.*QUAD/i);
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source } }), error => {
+      const details = read_transform_error_details(error);
+      assert.equal(details?.code, "HSON_LIBRARY_QUAD_DUPLICATE");
+      assert.equal(details?.source?.index, source.lastIndexOf("@:same"));
+      assert.equal(details?.related?.[0]?.source.index, source.indexOf("@:same"));
+      return true;
+    });
+    unchanged(map, () => map.addLibraries({ incoming: { document: '<main @:bad-name/>' } }));
+    assert.throws(() => Hson.document`<main ${'<p @:bad-name/>'}/>`, error => {
+      const details = read_transform_error_details(error);
+      assert.equal(details?.code, "HSON_INTERPOLATION_CANDIDATE_INVALID");
+      assert.equal(details?.path, "$slot[0]");
+      assert.equal(details?.source?.index, 6);
+      assert.equal(read_transform_error_details(error instanceof Error ? error.cause : undefined)?.source?.index, 3);
+      return true;
+    });
+    for (const source of ['<p @000000001/>', '<p @:named @000000001/>']) {
+      assert.throws(() => Hson.document`<main ${source}/>`);
+    }
+    const canonical = ANY_DOCUMENT.certify(Hson.document`<main/>`);
+    assert.equal(Hson.document.fromHson(canonical), canonical);
+  });
+  check("authored template scanning retains declaration evidence without canonical qualification", () => {
+    const substitutions = ["text", undefined];
+    const template = scan_hson_template_segments(['<main @:main "', '" <p @:child/> ', '/>'], substitutions);
+    const tokens = tokenize_authored_document_library(template.source, undefined, { slots: template.slots, substitutions });
+    assert.deepEqual(tokens.flatMap(token => token.kind === "OPEN" && token.quad !== undefined ? [token.quad.value] : []), ['main', 'child']);
+    assert.deepEqual(hson_interpolation_roles(template.source, "document", template.slots), ['quoted-string', 'document-content']);
+    assert.throws(() => parse_tokens(tokens), /require.*Library admission/);
+    const forbidden = scan_hson_template_segments(['<main @:main @000000001 "', '"/>'], ['text']);
+    assert.throws(() => reject_portable_quid_tokens(tokenize_authored_document_library(forbidden.source, undefined,
+      { slots: forbidden.slots, substitutions: ['text'] })), /generated runtime QUID.*invalid/);
+    for (const segments of [['<main @:bad-name "', '"/>'], ['<main "', '" <p @:bad-name/>/>']]) {
+      const invalid = scan_hson_template_segments(segments, ['text']);
+      assert.throws(() => tokenize_authored_document_library(invalid.source, undefined,
+        { slots: invalid.slots, substitutions: ['text'] }), error => read_transform_error_details(error)?.code === 'HSON_LIBRARY_QUAD_INVALID');
+    }
+  });
+  check("public governed admission retains nested authored names and complete HTML connector ownership", () => {
+    const source = Hson.document`<nav @:navigation <a @:next href="/next" "Next"/> <a @:previous href="/previous" "Previous"/>/>`;
+    const page = doc(hsonLiveMap.fromLibraries({ page: { document: source } }));
+    for (const name of ['navigation', 'next', 'previous']) assert.ok(page.q(name));
+    const connector = Hson.document`<hson-part @:content lib="parts" at="content"/>`;
+    const shell = Hson.document`<html <head/> <body <main ${connector}/>/>/>`;
+    const html = doc(hsonLiveMap.fromLibraries({
+      parts: collection({ content: { kind: 'document', document: Hson.document`<article @:article "Body"/>` } }),
+      page: { document: shell },
+    }));
+    assert.ok(html.q('content'));
+    assert.doesNotMatch(JSON.stringify(html.at([]).snap()), /\$_meta|@:|hson-part/);
+    assert.throws(() => hsonTransform.fromHson(shell).toNode());
+  });
   document_q_cases(check);
   check("authored addresses bind genuine sparse QUIDs without graph revisions", () => {
     const map = fixture(), page = doc(map);
@@ -137,7 +220,12 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     const source = '<button @:confirm "Confirm"/>';
     assert.throws(() => hsonTransform.fromHson(source).toNode());
     assert.throws(() => Hson.document.fromHson(source as HsonCanonical));
-    assert.throws(() => Hson.document`<button @:confirm "Confirm"/>`);
+    assert.equal(Hson.document`<button @:confirm "Confirm"/>`, source);
+    assert.throws(() => ANY_DOCUMENT.certify(Hson.document`<button @:confirm "Confirm"/>`));
+    assert.throws(() => Hson.canonical`${Hson.document`<button @:confirm/>`}`);
+    const schema = Hson.schema`<type "document" tag "button" content "string">`;
+    const governed = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<button @:confirm "Confirm"/>`, schema } });
+    assert.ok(governed.lib("page").q("confirm"));
     assert.ok(lookup(doc(hsonLiveMap.fromLibraries({ page: { document: source } })), "confirm"));
     const normal = hsonLiveMap.create();
     normal.addLibraries({ page: { document: source } });

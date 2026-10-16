@@ -57,6 +57,7 @@ function type_family(node: ts.TypeNode, checker: ts.TypeChecker, seen = new Set<
   if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
     if (is_official_hson_package_binding(node.typeName, "HsonData", checker)) return "data";
     if (is_official_hson_package_binding(node.typeName, "HsonDocument", checker)) return "document";
+    if (is_official_hson_package_binding(node.typeName, "HsonAuthored", checker)) return "document";
   }
   const resolved = resolved_type_family(checker.getTypeFromTypeNode(node));
   if (resolved !== "unknown") return resolved;

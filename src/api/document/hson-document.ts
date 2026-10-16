@@ -185,7 +185,12 @@ function normalize_owned_document_boundary(node: HsonNode): HsonNode {
 /** Private contextual source admission shared with editor diagnostics. */
 export function qualify_hson_document_source(source: string): HsonNode {
   if (typeof source !== "string") throw new TypeError("ExactDocumentCarrier.fromHson requires canonical Hson source text.");
-  const root = normalize_owned_document_boundary(parse_hson(source, { allowTopLevelDocumentText: true }));
+  return qualify_hson_document_root(parse_hson(source, { allowTopLevelDocumentText: true }));
+}
+
+/** @internal Validate operation-owned document structure without copying its subjects. */
+export function qualify_hson_document_root(input: HsonNode): HsonNode {
+  const root = normalize_owned_document_boundary(input);
   qualify_exact_document_root(root);
   return root;
 }

@@ -125,7 +125,7 @@ try {
     assert.equal((await diagnostics("consumer.ts")).length, 3);
   });
   await check("bundled diagnostics underline authored static candidates and clear on unsaved repair", async () => {
-    const text = 'import { Hson, hsonLiveMap, type HsonFromSchema } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;\ntype PageHson = HsonFromSchema<typeof S>; const bad: PageHson = Hson.document`<html <body/>/>`;\nS.certify(bad); S.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<html <body/> <head/>/>`, schema: S } });\n';
+    const text = 'import { Hson, hsonLiveMap, type HsonAuthored, type HsonFromSchema } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;\ntype PageHson = HsonFromSchema<typeof S>; const bad: HsonAuthored = Hson.document`<html <body/>/>`;\nconst certified: PageHson = S.certify(bad); S.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<html <body/> <head/>/>`, schema: S } });\n';
     await editConsumer(text);
     const all = await diagnostics("consumer.ts");
     assert.ok(!all.some(error => error.code === 2322), JSON.stringify(all));
@@ -136,7 +136,7 @@ try {
     assert.ok(errors.every(error => error.start.line === 3 || error.start.line === 5));
     assert.ok(errors.every(error => !error.text.includes(".hson/")));
     await editConsumer(text.replace('<html <body/>/>', '<html <head/> <body/>/>').replace('<html <body/> <head/>/>', '<html <head/> <body/>/>'));
-    assert.equal((await diagnostics("consumer.ts")).filter(error => error.code === 95002).length, 0);
+    assert.equal((await diagnostics("consumer.ts")).length, 0);
     await editConsumer(consumer);
   });
   await check("bundled proof filtering follows malformed initializers through CRLF unsaved edits", async () => {

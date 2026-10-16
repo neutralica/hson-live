@@ -21,6 +21,17 @@ async function run(): Promise<void> {
   const check = (name: string, body: () => void) => { body(); console.log(`ok ${++checks} - ${name}`); };
   const source = (body: string, imported = "Hson", tag = "Hson", pkg = "hson-live/hson") => `import { ${imported} } from "${pkg}";\nconst source = ${tag}.canonical\`${body}\`;`;
   const tokens = (text: string, fileName = "/workspace/baseline.ts") => hson_highlights(grammar, fileName, text);
+  check("authored QUAD highlighting retains declaration positions around protected expressions", () => {
+    const text = 'import { Hson } from "hson-live/hson"; Hson.document`<main @:main ${fragment} <hson-part @:content lib="parts" at="content"/>/>`;';
+    const highlights = tokens(text);
+    for (const declaration of ['@:main', '@:content']) {
+      const token = highlights.find(item => text.slice(item.range.start, item.range.end) === declaration);
+      assert.equal(token?.type, 'hsonQuad');
+      assert.ok(token?.scopes.includes('constant.other.quad.hson'));
+    }
+    assert.ok(!highlights.some(item => item.range.start < text.indexOf('${fragment}') + '${fragment}'.length
+      && item.range.end > text.indexOf('${fragment}')));
+  });
 
   for (const eol of ["\n", "\r", "\r\n"]) {
     const host = source('<p "' + eol + 'inside' + eol + '"/>') + eol + source('<after/>');

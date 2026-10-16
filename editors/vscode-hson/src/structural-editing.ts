@@ -2,7 +2,8 @@ import { OBJ_TAG } from "../../../src/core/constants.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import { serialize_hson } from "../../../src/api/transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../../../src/api/transform/utils/node-utils/detach-hson-root-value.js";
-import { tokenize_hson } from "../../../src/api/transform/parsers/tokenize-hson.js";
+import { tokenize_hson, tokenize_authored_document_library } from "../../../src/api/transform/parsers/tokenize-hson.js";
+import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
 import type { Tokens } from "../../../src/api/transform/token.types.js";
 import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
@@ -16,6 +17,7 @@ export type StructuralRegion = Readonly<{
   protectedRanges: readonly StructuralRange[];
   baseIndentation: string;
   bodyStartsAtLineStart: boolean;
+  authoredDocument?: boolean;
 }>;
 export type StructuralDocumentEvidence = Readonly<{
   fileName: string;
@@ -76,6 +78,7 @@ function discoverStructuralRegions(
   const regions: StructuralRegion[] = [];
   for (const source of discovery.sources) regions.push(Object.freeze({
     kind: "template",
+    authoredDocument: source.authoringKind === "document",
     bodyRange: source.bodyRange,
     protectedRanges: Object.freeze([]),
     baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
@@ -83,6 +86,7 @@ function discoverStructuralRegions(
   }));
   for (const source of discovery.interpolated) regions.push(Object.freeze({
     kind: "template",
+    authoredDocument: source.authoringKind === "document",
     bodyRange: source.bodyRange,
     protectedRanges: Object.freeze(source.substitutionRanges),
     baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
@@ -309,27 +313,28 @@ function structuralPairs(tokens: readonly Tokens[]): readonly StructuralPair[] {
   return Object.freeze(pairs);
 }
 
-function analyzedStructure(source: string): Readonly<{
+function analyzedStructure(source: string, authoredDocument = false): Readonly<{
   pairs: readonly StructuralPair[];
   tokens: readonly Tokens[];
 }> | undefined {
   try {
-    parse_hson(source);
-    const tokens = tokenize_hson(source);
+    if (authoredDocument) parse_authored_document_library(source);
+    else parse_hson(source);
+    const tokens = authoredDocument ? tokenize_authored_document_library(source) : tokenize_hson(source);
     return { pairs: structuralPairs(tokens), tokens };
   } catch {
     return undefined;
   }
 }
 
-function lexicalRanges(source: string): Readonly<{
+function lexicalRanges(source: string, authoredDocument = false): Readonly<{
   literals: readonly StructuralRange[];
   comments: readonly StructuralRange[];
 }> {
   const literals: StructuralRange[] = [];
   const attributeValues: StructuralRange[] = [];
   try {
-    tokenize_hson(source, 0, {
+    const collector: import("../../../src/internal/hson-source-provenance/hson-source-provenance.js").HsonSourceLexicalCollector = {
       recordToken(token, evidence) {
         if (token.kind === "TEXT" && token.quoted === true && evidence.roles.coverage !== undefined) {
           literals.push(evidence.roles.coverage);
@@ -343,7 +348,9 @@ function lexicalRanges(source: string): Readonly<{
         attributeValues.push(roles.value);
         if (source[roles.value.start] === '"') literals.push(roles.value);
       },
-    });
+    };
+    if (authoredDocument) tokenize_authored_document_library(source, collector);
+    else tokenize_hson(source, 0, collector);
   } catch { return Object.freeze({ literals: Object.freeze([]), comments: Object.freeze([]) }); }
   const comments: StructuralRange[] = [];
   for (let index = 0; index < source.length;) {
@@ -388,8 +395,16 @@ function preferredHorizontalTrivia(source: string, start: number, end: number): 
   return adjacent ? "" : " ";
 }
 
-function canonicalMeaning(source: string): string | undefined {
-  try { return serialize_hson(detach_hson_root_value(parse_hson(source))); }
+function canonicalMeaning(source: string, authoredDocument = false): string | undefined {
+  try {
+    if (authoredDocument) {
+      const { root, declarations } = parse_authored_document_library(source);
+      // Compare both parts of authored meaning. The serializer sees only the
+      // graph; source edits, never canonical serialization, produce the result.
+      return JSON.stringify([serialize_hson(detach_hson_root_value(root)), declarations]);
+    }
+    return serialize_hson(detach_hson_root_value(parse_hson(source)));
+  }
   catch { return undefined; }
 }
 
@@ -434,10 +449,10 @@ export function structural_formatting_edits(
     const body = maskProtectedSource(text, region);
     if (body === undefined) continue;
     const regionEditStart = edits.length;
-    const structure = analyzedStructure(body);
+    const structure = analyzedStructure(body, region.authoredDocument);
     if (structure === undefined) continue;
     const { pairs, tokens } = structure;
-    const lexical = lexicalRanges(body);
+    const lexical = lexicalRanges(body, region.authoredDocument);
     const comments = lexical.comments;
     for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex++) {
       const token = tokens[tokenIndex];
@@ -554,8 +569,8 @@ export function structural_formatting_edits(
     for (const edit of [...regionEdits].sort((left, right) => right.start - left.start || right.end - left.end)) {
       candidate = candidate.slice(0, edit.start) + edit.text + candidate.slice(edit.end);
     }
-    const beforeMeaning = canonicalMeaning(body);
-    if (beforeMeaning === undefined || canonicalMeaning(candidate) !== beforeMeaning) edits.splice(regionEditStart);
+    const beforeMeaning = canonicalMeaning(body, region.authoredDocument);
+    if (beforeMeaning === undefined || canonicalMeaning(candidate, region.authoredDocument) !== beforeMeaning) edits.splice(regionEditStart);
   }
   return Object.freeze(edits.sort((left, right) => left.start - right.start || left.end - right.end));
 }

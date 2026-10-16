@@ -40,9 +40,9 @@ assert.equal(verified_schema_assignment_ranges(ts, mvp, mvpConsumer).length, 5);
 assert.equal(assignment_ranges(ts, mvp, mvpConsumer).length, 0, "No implicit colocated evidence fallback");
 
 const document = program_for(documentConfig, new Map());
-assert.equal(schema_assignment_errors(document, documentConsumer).length, 3);
+assert.equal(schema_assignment_errors(document, documentConsumer).length, 0);
 assert.equal(filtered_schema_assignment_errors(document, documentConsumer).length, 0);
-assert.equal(verified_schema_assignment_ranges(ts, document, documentConsumer).length, 3);
+assert.equal(verified_schema_assignment_ranges(ts, document, documentConsumer).length, 0);
 
 const consumerText = readFileSync(mvpConsumer, "utf8");
 const mvpProducer = resolve(repositoryRoot, "tests/fixtures/hson-schema-mvp/producer.ts");
@@ -64,20 +64,20 @@ for (const annotation of ["Deck", "ExportedDeck", "Chain", "WrappedAgain<typeof 
   assert.equal(verified_schema_assignment_ranges(ts, aliasProgram, mvpConsumer).length, 5, annotation);
   assert.equal(filtered_schema_assignment_errors(aliasProgram, mvpConsumer).length, 0, annotation);
 }
-const documentText = readFileSync(documentConsumer, "utf8");
+const documentText = readFileSync(documentConsumer, "utf8").replace(/(PageSchema|ListSchema|DocumentSequenceSchema)\.certify\((Hson.document`[^`]*`)\)/g, "$2");
 for (const annotation of ["HsonFromSchema<typeof $1>", "HsonDocAlias<typeof $1>"]) {
   const unifiedDocument = program_for(documentConfig, new Map([[documentConsumer,
     documentText.replace(/HsonDocument<typeof (\w+)>/g, annotation)
     + '\nimport type { HsonFromSchema, HsonSchema } from "hson-live"; type HsonDocBase<S extends HsonSchema> = HsonFromSchema<S>; type HsonDocAlias<S extends HsonSchema> = HsonDocBase<S>;\n']]));
-  assert.equal(verified_schema_assignment_ranges(ts, unifiedDocument, documentConsumer).length, 3, annotation);
-  assert.equal(filtered_schema_assignment_errors(unifiedDocument, documentConsumer).length, 0, annotation);
+  assert.equal(verified_schema_assignment_ranges(ts, unifiedDocument, documentConsumer).length, 0, annotation);
+  assert.equal(filtered_schema_assignment_errors(unifiedDocument, documentConsumer).length, 3, annotation);
 }
 
 const documentAliases = program_for(documentConfig, new Map([[documentConsumer,
   documentText.replace(/HsonDocument<typeof (\w+)>/g, "DocumentAlias<typeof $1>")
   + '\nimport type { HsonSchema } from "hson-live"; type DocumentBase<S extends HsonSchema<unknown, "document">> = HsonDocument<S>; export type DocumentAlias<S extends HsonSchema<unknown, "document">> = DocumentBase<S>;\n']]));
-assert.equal(verified_schema_assignment_ranges(ts, documentAliases, documentConsumer).length, 3);
-assert.equal(filtered_schema_assignment_errors(documentAliases, documentConsumer).length, 0);
+assert.equal(verified_schema_assignment_ranges(ts, documentAliases, documentConsumer).length, 0);
+assert.equal(filtered_schema_assignment_errors(documentAliases, documentConsumer).length, 3);
 
 // Identical candidate failures and proof withdrawal through a transparent alias.
 const directInvalid = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('<name "Ada"', "<name 37")]]));
@@ -104,7 +104,7 @@ for (const annotation of ["HsonFromSchema<typeof $1>", "InvalidDocumentAlias<typ
     invalidDocumentText.replace(/HsonDocument<typeof (\w+)>/g, annotation)
     + '\nimport type { HsonFromSchema, HsonSchema } from "hson-live"; type InvalidDocumentAlias<S extends HsonSchema> = HsonFromSchema<S>;\n']]));
   assert.deepEqual(documentFailures(unifiedInvalid), documentFailures(directDocumentInvalid), annotation);
-  assert.equal(verified_schema_assignment_ranges(ts, unifiedInvalid, documentConsumer).length, 2, annotation);
+  assert.equal(verified_schema_assignment_ranges(ts, unifiedInvalid, documentConsumer).length, 0, annotation);
 }
 
 
@@ -196,11 +196,11 @@ const rangeNames = (includeFailures: boolean) => assignment_ranges(ts, adversari
   .map(range => ({ name: adversarialSource.text.slice(range.start, range.end), failed: range.failed === true }));
 assert.deepEqual(rangeNames(false), ["valid", "raw", "validComment"].map(name => ({ name, failed: false })),
   "Only actually admitted, substitution-free candidates receive verified proof");
-assert.deepEqual(rangeNames(true).filter(range => range.failed).map(range => range.name), ["ownSyntax", ...escapeSpellings.map((_, index) => `escape${index}`), "escapedDoc"],
+assert.deepEqual(rangeNames(true).filter(range => range.failed).map(range => range.name), ["ownSyntax", ...escapeSpellings.map((_, index) => `escape${index}`)],
   "Only the assigned template's admission failures permit proof-only filtering");
 const adversarialErrors = filter_verified_schema_assignment_diagnostics(schema_assignment_errors(adversarial, mvpConsumer),
   assignment_ranges(ts, adversarial, mvpConsumer, evidence.get(adversarial), true));
-assert.deepEqual(adversarialErrors.map(error => adversarialSource.text.slice(error.start, error.start! + error.length!)), ["unused", "nested", "outer", "unrelated", "name"]);
+assert.deepEqual(adversarialErrors.map(error => adversarialSource.text.slice(error.start, error.start! + error.length!)), ["unused", "nested", "escapedDoc", "outer", "unrelated", "name"]);
 const authoring = produce_document_diagnostics({ fileName: mvpConsumer, text: adversarialText, languageId: "typescript" });
 assert.equal(authoring.filter(issue => issue.code === "HSON_TAGGED_TEMPLATE_REQUIRED").length, escapeSpellings.length + 1);
 assert.ok(authoring.some(issue => issue.code === "HSON_EXPECT_ERROR_UNUSED"));

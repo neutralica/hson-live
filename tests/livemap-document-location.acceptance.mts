@@ -1,6 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { ANY_DOCUMENT, Hson, hsonLiveMap, type HsonDocument, type HsonSchema } from "../src/index.ts";
+import { ANY_DOCUMENT, Hson, hsonLiveMap, type HsonAuthored, type HsonSchema } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -41,7 +41,7 @@ const tag = (value: unknown): string | undefined => is_Node(value) ? value.$_tag
 const tree = (source: string) => hsonLiveMap.fromLibraries({ page: { document: source, schema: TreeSchema } });
 
 check("broad composed documents retain logical, relative, and proxy paths", () => {
-  const shell = (insert: HsonDocument) => Hson.document`
+  const shell = (insert: HsonAuthored) => Hson.document`
     <html <head/> <body ${insert} /> />
   `;
   const document = shell(Hson.document`<section "slide00"/>`);

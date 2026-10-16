@@ -23,7 +23,7 @@ AuthorityProjectionSnapshot BinaryDecodeOptions BrowserRealizationHtml DataLiveM
 DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsrError Echo EchoActionFn EchoActionPromise EchoActionRequest
 EchoActionStatusResult EchoAttachmentEvent EchoEndpointTransport EchoReplicaTransport EchoSubmission EchoHttpTransport EchoHttpTransportOptions EchoWebSocketConstructor EchoWebSocketLike EchoWebSocketTransport EchoWebSocketTransportOptions EchoOptions EchoReplicaOptions EchoSyncError EchoRetryActionFn EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions
 EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation LocusLocalInitializer LocusSessionApi LocusSession LocusSessionCreateOptions LocusSessionNow LocusSessionHtmlNow Hson HsonCanonical
-HsonData HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData InteractionActionDispatcher
+HsonAuthored HsonData HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData InteractionActionDispatcher
 InteractionActivationOptions InteractionDescriptor InteractionFailure InteractionListener InteractionLocalBehavior InteractionLocalBehaviors LiveHost
 LiveHostApplication LiveHostApplicationContext LiveHostRuntime LiveHostConnection LiveHostConnectionRoute LiveHostCreateInput LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
 LiveHostLocusRegistryResult LiveHostPrincipal LiveHostRequestRoute LiveMap LiveMapDataLibrary LiveMapDataLibraryInput LiveMapDocumentAttributeNotFoundError LiveMapDocumentIdentityProvenanceError
@@ -197,7 +197,7 @@ await check("LiveTree declarations expose styling capabilities without runtime m
 
 const ownerProofs = Object.freeze({
   "dist/index.d.ts": ["ReadonlyHsonNode"],
-  "dist/hson-authoring.d.ts": ["HsonDocument", "HsonNode", "ReadonlyHsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
+  "dist/hson-authoring.d.ts": ["HsonAuthored", "HsonDocument", "HsonNode", "ReadonlyHsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
   "dist/api/livetree/index.d.ts": ["ReadonlyHsonNode", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
   "dist/api/livemap/index.d.ts": ["LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
   "dist/api/mirror/index.d.ts": ["reflect_collection", "CollectionMirror", "CollectionMirrorErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
@@ -216,7 +216,7 @@ await check("specialist contracts remain available from owning entrypoints", () 
     const actual = new Set(declaration_exports(file));
     for (const name of expected) {
       assert.equal(actual.has(name), true, `${name} must remain exported by ${file}`);
-      if (!["ReadonlyHsonNode", "HsonDocument", "BrowserRealizationHtml", "DocumentSsrError", "create_livehost_locus_registry", "LiveHost", "LiveHostRuntime", "hsonLiveHost", "LocusDefinitionOptions", "LocusResumeOptions"].includes(name)) {
+      if (!["ReadonlyHsonNode", "HsonAuthored", "HsonDocument", "BrowserRealizationHtml", "DocumentSsrError", "create_livehost_locus_registry", "LiveHost", "LiveHostRuntime", "hsonLiveHost", "LocusDefinitionOptions", "LocusResumeOptions"].includes(name)) {
         assert.equal(root.has(name), false, `${name} must not leak back into the root`);
       }
     }

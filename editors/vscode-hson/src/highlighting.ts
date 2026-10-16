@@ -36,6 +36,7 @@ function tokenType(scopes: readonly string[]): HsonHighlight["type"] | undefined
     if (scope.startsWith("string.")) return "hsonString";
     if (scope.startsWith("constant.numeric.")) return "hsonNumber";
     if (scope.startsWith("constant.other.quid.")) return "hsonQuid";
+    if (scope.startsWith("constant.other.quad.")) return "hsonQuad";
     if (scope.startsWith("constant.language.")) return "hsonKeyword";
     if (scope.startsWith("comment.")) return "hsonComment";
     if (scope.startsWith("punctuation.")) return "hsonDelimiter";

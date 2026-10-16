@@ -325,6 +325,12 @@ for (const order of [
     if (modules.some((module) => Object.hasOwn(module, "HsonDocument"))) throw new Error("retired public constructor returned");
     const value = modules[0].Hson.document.fromHson('<main/>');
     if (modules[1].Hson.document.fromHson(value) !== value) throw new Error("round trip changed by import order");
+    const child = modules[0].Hson.document\`<button @:next "Next"/>\`;
+    const authored = modules[1].Hson.document\`<nav @:navigation \${child} \${undefined}/>\`;
+    const { hsonLiveMap } = await import("hson-live/livemap");
+    const page = hsonLiveMap.fromLibraries({ page: { document: authored } }).lib("page");
+    if (!page.q("navigation") || !page.q("next")) throw new Error("authored names lost across entrypoints");
+    if (modules.some((module) => Object.hasOwn(module, "HsonAuthored"))) throw new Error("authored type became a wrapper");
   `);
 }
 

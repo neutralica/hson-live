@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
+import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
+import { hsonLiveMap } from "../../../src/api/livemap/livemap.public.js";
+import { part_collection_definition_internal } from "../../../src/api/livemap/livemap.parts.js";
 import { formatting_target_is_current } from "../src/formatting-target.js";
 import {
   StructuralDocumentEvidenceCache,
@@ -40,6 +43,52 @@ const arrayPair = (marked: string, language: "typescript" | "markdown" = "typesc
   const text = marked.slice(0, offset) + marked.slice(offset + 1);
   return structural_array_pair_for_bracket(language === "markdown" ? "/workspace/readme.md" : "/workspace/source.ts", language, text, offset);
 };
+
+check("authored document formatting preserves nested QUADs, connector admission, and exact text", () => {
+  const bodies = [
+    '\n<nav   @:navigation\n<a   @:next href="/next" "  Next  "/>\n<a @:previous href="/previous" "Previous"/>\n/>\n',
+    '\n<html\n<head/>\n<body\n<main\n<hson-part   @:content lib="parts" at="content"/>\n/>\n/>\n/>\n',
+    '\n<main @:main\n<p @:text "first\n  second\nthird"/>\n// comment @:untouched\n/>\n',
+  ];
+  for (const body of bodies) {
+    const hostPrefix = prefix.replace("Hson.canonical", "Hson.document");
+    const input = hostPrefix + body + "`;";
+    const result = format(input);
+    assert.notEqual(result, input, "valid authored source must actually format");
+    assert.equal(format(result), result, "formatting must be idempotent");
+    const formattedBody = result.slice(hostPrefix.length, -2);
+    assert.deepEqual(parse_authored_document_library(formattedBody), parse_authored_document_library(body));
+    const map = hsonLiveMap.fromLibraries({
+      parts: part_collection_definition_internal({ content: { kind: "document", document: '<article "Body"/>' } }),
+      page: { document: formattedBody },
+    });
+    const page = map.lib("page");
+    if (page.mode !== "document") throw new Error("Expected document Library");
+    for (const declaration of parse_authored_document_library(body).declarations) assert.ok(page.q(declaration.name));
+    assert.doesNotMatch(JSON.stringify(page.at([]).snap()), /\$_meta|@:|hson-part/);
+  }
+  const result = format(prefix.replace("Hson.canonical", "Hson.document") + bodies[0] + "`;");
+  assert.ok(result.includes('\n  <a @:next href="/next" "  Next  "/>'));
+});
+
+check("authored formatting protects interpolation expressions and keeps declaration meaning", () => {
+  const body = '\n<main   @:main\n${fragment}\n<p   @:label "${text}"/>\n${optional}\n/>\n';
+  const input = prefix.replace("Hson.canonical", "Hson.document") + body + "`;";
+  const result = format(input);
+  assert.notEqual(result, input);
+  assert.equal(format(result), result);
+  for (const expression of ['${fragment}', '${text}', '${optional}']) assert.ok(result.includes(expression));
+  assert.ok(result.includes('\n  <p @:label "${text}"/>'));
+  assert.deepEqual(result.match(/@:[A-Za-z]+/g), input.match(/@:[A-Za-z]+/g));
+});
+
+check("formatting rejects malformed declarations and retains canonical context boundaries", () => {
+  for (const body of ['<main @:bad-name  />', '<main @:same @:again  />', '<main @000000001  />', '<main @:same <p @:same/>  />']) {
+    const text = prefix.replace("Hson.canonical", "Hson.document") + body + "`;";
+    assert.deepEqual(structural_formatting_edits('/workspace/source.ts', 'typescript', text, { insertSpaces: true, tabSize: 2 }), []);
+  }
+  assert.equal(format(template('<main   @:main/>')), template('<main   @:main/>'));
+});
 
 check("a bracket gesture creates a canonical pair only at parser-owned Hson array positions", () => {
   assert.equal(arrayPair(template("|")), true);

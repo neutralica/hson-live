@@ -58,11 +58,7 @@ export function disposable_document_quad_payloads(inputs: readonly (PortableDocu
 const addressedRoots = new WeakSet<HsonNode>();
 const lookups = new WeakMap<object, (name: string | undefined, quid: string | undefined) => DocumentQuadSubject | undefined>();
 
-/** Private authored source admission, preserving scanner diagnostics and occurrence evidence. @internal */
-export function parse_authored_document_library(source: string): Readonly<{ root: HsonNode; declarations: readonly DocumentQuadAdmission[] }> {
-  const names = new Map<string, AuthoredQuadDeclaration>();
-  const subjects = new WeakMap<HsonNode, string>();
-  const fail = (message: string, declaration: AuthoredQuadDeclaration, code: string, first?: AuthoredQuadDeclaration): never =>
+const fail_quad_declaration = (message: string, declaration: AuthoredQuadDeclaration, code: string, first?: AuthoredQuadDeclaration): never =>
     _throw_transform_err(message, "LiveMap.authored-document", undefined, undefined, {
       code, stage: "library-admission",
       source: { index: declaration.start.index, line: declaration.start.line, column: declaration.start.col },
@@ -70,12 +66,22 @@ export function parse_authored_document_library(source: string): Readonly<{ root
         index: first.start.index, line: first.start.line, column: first.start.col,
       } }] }),
     });
+
+/** Share declaration uniqueness and source evidence with diagnostic-only scanner observers. @internal */
+export function register_document_quad_declaration(names: Map<string, AuthoredQuadDeclaration>, declaration: AuthoredQuadDeclaration): void {
+  const first = names.get(declaration.value);
+  if (first !== undefined) fail_quad_declaration(`duplicate authored QUAD ${JSON.stringify(declaration.value)}`, declaration, "HSON_LIBRARY_QUAD_DUPLICATE", first);
+  names.set(declaration.value, declaration);
+}
+
+/** Private authored source admission, preserving scanner diagnostics and occurrence evidence. @internal */
+export function parse_authored_document_library(source: string): Readonly<{ root: HsonNode; declarations: readonly DocumentQuadAdmission[] }> {
+  const names = new Map<string, AuthoredQuadDeclaration>();
+  const subjects = new WeakMap<HsonNode, string>();
   const root = normalize_document_root(parse_hson_source(source, split_attrs_meta,
     { allowTopLevelDocumentText: true }, new HsonSourceProvenanceBuilder(), false, (node, declaration) => {
-      if (!is_ordinary_element_node(node)) fail("QUAD subject must be an ordinary document element", declaration, "HSON_LIBRARY_QUAD_INELIGIBLE");
-      const first = names.get(declaration.value);
-      if (first !== undefined) fail(`duplicate authored QUAD ${JSON.stringify(declaration.value)}`, declaration, "HSON_LIBRARY_QUAD_DUPLICATE", first);
-      names.set(declaration.value, declaration);
+      if (!is_ordinary_element_node(node)) fail_quad_declaration("QUAD subject must be an ordinary document element", declaration, "HSON_LIBRARY_QUAD_INELIGIBLE");
+      register_document_quad_declaration(names, declaration);
       subjects.set(node, declaration.value);
     }));
   const declarations: DocumentQuadAdmission[] = [];

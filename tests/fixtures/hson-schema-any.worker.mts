@@ -30,5 +30,5 @@ parentPort?.postMessage({
   emptyCount: empty.capture().libraries.length,
   primitiveMode: primitive.lib("value").mode,
   primitiveValue: primitive.lib("value").snap(),
-  broadDocument: ANY_DOCUMENT.certify(broadDocument) === broadDocument,
+  broadDocument: ANY_DOCUMENT.certify(broadDocument) === String(broadDocument),
 });

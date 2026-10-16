@@ -87,6 +87,16 @@ function hasScope(tokens, scope) {
   return tokens.some((token) => token.scopes.includes(scope));
 }
 
+const quads = await tokenize("source.hson", '<nav @:navigation <a @:next/> <hson-part @:content lib="parts" at="content"/>/>');
+for (const declaration of ['@:navigation', '@:next', '@:content']) {
+  assert.ok(has(quads, declaration, 'constant.other.quad.hson'));
+  assert.ok(!has(quads, declaration, 'constant.other.quid.hson'));
+}
+assert.ok(has(await tokenize('source.hson', '<p @:text"Text"/>'), '@:text', 'constant.other.quad.hson'));
+for (const invalid of ['@:bad-name', '@:123', '@:' + 'x'.repeat(129)]) {
+  assert.ok(!hasScope(await tokenize('source.hson', '<p ' + invalid + '/>'), 'constant.other.quad.hson'));
+}
+
 const standaloneSource = await readFile(new URL("./fixtures/standalone.hson", import.meta.url), "utf8");
 const standalone = await tokenize("source.hson", standaloneSource);
 assert.ok(hasScope(standalone, "comment.line.double-slash.hson"));
