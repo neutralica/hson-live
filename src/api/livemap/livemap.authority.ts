@@ -75,6 +75,8 @@ export type LiveMapTransitionController = Readonly<{
   /** Fence all local identity and competing authority changes across an async durable decision. @internal */
   reserveAuthority: (transition: PreparedLiveMapAuthorityTransition) => () => void;
   assertLocalIdentityAllowed: () => void;
+  /** Check existing transition provenance and fences without reserving. @internal */
+  assertPreparedAuthority: (transition: PreparedLiveMapAuthorityTransition) => void;
   /** @internal */
   discardAuthority: (transition: PreparedLiveMapAuthorityTransition) => void;
   invalidate: () => void;
@@ -162,13 +164,18 @@ export function make_livemap_transition_controller(
     return accept_record(record, "LiveMap authority", transition, afterInstall);
   }
 
-  function reserveAuthority(transition: PreparedLiveMapAuthorityTransition): () => void {
+  function assertPreparedAuthority(transition: PreparedLiveMapAuthorityTransition): void {
     const record = authority_record_for(transition);
-    if (reserved !== undefined || record.state !== "pending"
+    if ((reserved !== undefined && reserved !== transition) || record.state !== "pending"
       || record.baseRevision !== getRevision() || record.generation !== generation
       || !record.baseStillCurrent()) {
-      throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", "Prepared LiveMap authority transition cannot be reserved.");
+      throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", "Prepared LiveMap authority transition is stale.");
     }
+  }
+
+  function reserveAuthority(transition: PreparedLiveMapAuthorityTransition): () => void {
+    assertPreparedAuthority(transition);
+    if (reserved !== undefined) throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", "Authority is already reserved.");
     reserved = transition;
     return () => { if (reserved === transition) reserved = undefined; };
   }
@@ -237,6 +244,7 @@ export function make_livemap_transition_controller(
     prepareAuthority,
     acceptAuthority,
     reserveAuthority,
+    assertPreparedAuthority,
     assertLocalIdentityAllowed(): void {
       if (reserved !== undefined) throw new LiveMapTransitionError(
         "LIVEMAP_MANAGED_MUTATION_REJECTED",

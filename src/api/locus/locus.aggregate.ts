@@ -1,3 +1,4 @@
+import { prepare_locus_scoped_commit_internal } from "./locus.scoped-preparation.internal.js";
 import type { JsonValue } from "../../core/types.js";
 import { ExactDataCarrier } from "../data/hson-data.js";
 import type {
@@ -62,6 +63,8 @@ export type LocusHostedAggregatePreaccept = Readonly<{
 
 export type LocusHostedAggregateOptions = Readonly<{
   map: LiveMap;
+  /** Private producer acceptance only. Public factories never enable this before Echo support. @internal */
+  scopedDocuments?: true;
   actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
   /** The existing Locus pre-accept/durability boundary, at aggregate granularity. */
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
@@ -135,6 +138,10 @@ export function create_locus_hosted_aggregate_internal(
     let releaseReservation: (() => void) | undefined;
     let preaccept: LocusHostedAggregatePreaccept | void;
     try {
+      if (hosted.replay.operations.some(entry => entry.scoped !== undefined)) {
+        if (options.scopedDocuments !== true) throw new Error("Scoped document publication requires Echo support.");
+        prepare_locus_scoped_commit_internal(options.map, transition);
+      }
       options.prepareGate?.(gateInput);
       releaseReservation = aggregate.reserve(transition);
       reservedDecision = true;
@@ -206,7 +213,7 @@ export function create_locus_hosted_aggregate_internal(
       const writes = accumulator.writes();
       if (writes.length === 0) return Object.freeze({ result, commit: undefined });
 
-      const transition = aggregate.prepareManaged(owner, writes);
+      const transition = aggregate.prepareManaged(owner, writes, options.scopedDocuments);
       return Object.freeze({ result, commit: await accept_prepared(transition) });
     };
     const next = tail.then(run, run);

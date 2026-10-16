@@ -284,11 +284,15 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   prepareManaged: (
     owner: object,
     writes: readonly LiveMapAggregateWrite[],
+    scopedDocuments?: true,
   ) => PreparedLiveMapAuthorityTransition;
+  /** Private inspection; unavailable through public snapshots until coordinated recovery. */
+  scopedDocumentState: (library: LiveMapLibraryIdentity) => import("./livemap.document.scoped-portable.js").PortableDocumentScopedLibrary;
   /** Detached resulting system root of one prepared transition, before acceptance. @internal */
   preparedSystemRoot: (transition: PreparedLiveMapAuthorityTransition) => HsonNode | undefined;
   accept: LiveMapTransitionController["acceptAuthority"];
   reserve: LiveMapTransitionController["reserveAuthority"];
+  assertPrepared: LiveMapTransitionController["assertPreparedAuthority"];
   discard: LiveMapTransitionController["discardAuthority"];
   /** Claim/release the exclusive aggregate mutation boundary. @internal */
   claimManagement: (owner: object) => void;

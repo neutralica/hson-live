@@ -38,6 +38,8 @@ export type LiveMapAuthorityTarget = LiveMapStructuralTarget | LiveMapSystemTarg
 /** One library-qualified operation in the map-global internal order. @internal */
 export type LiveMapAggregateOperation = Readonly<{
   target: LiveMapAuthorityTarget;
+  /** Complete operation-local scoped effects; never graph semantics. @internal */
+  scoped?: import("./livemap.document.scoped-effects.js").DocumentScopedEffect;
   operation: LiveMapAnyOp | LiveMapCssOp;
   /** Carrier-native evidence for exact data transport. @internal */
   projected?: LiveMapProjectedDataOp;
@@ -137,6 +139,10 @@ export type LiveMapLibraryState = {
   readonly mode: LiveMapRootMode;
   root: HsonNode;
   documentOverlay?: LiveMapDocumentIdentityOverlay;
+  /** Unscoped construction has no occurrence evidence; scoped admission must reject. */
+  documentScopesUnavailable?: true;
+  /** Private hosted state, installed with graph, identity and CSS. */
+  documentScopes?: import("./livemap.document.scoped-quad.js").DocumentScopedQuads;
   /** Library-local authored names bound only to legitimate runtime subjects. */
   documentQuads?: import("./livemap.document.quad.js").DocumentQuadBindings;
   projectedOverlay?: LiveMapProjectedIdentityOverlay;

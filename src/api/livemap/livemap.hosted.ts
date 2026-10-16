@@ -1,3 +1,4 @@
+import { encode_document_scoped_effects, validate_document_scoped_effects, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { clone_node } from "../../core/clone-node.js";
 import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "./livemap.parts.js";
@@ -114,6 +115,8 @@ export type HostedSemanticOperation = Readonly<{
 
 export type HostedReplayOperation = Readonly<{
   library: string;
+  /** Private complete document effect under the containing commit position. @internal */
+  scoped?: DocumentScopedEffect;
   domain: "data" | "graph" | "css";
   kind: string;
   format: "structural-json" | typeof HOSTED_GRAPH_OP_FORMAT | "hson-document-css-op";
@@ -254,6 +257,8 @@ export function make_hosted_commit(
       target: Readonly<{ library?: LiveMapLibraryIdentity; system?: LiveMapSystemIdentity }>;
       operation: LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp;
       projected?: LiveMapProjectedDataOp;
+      /** @internal */
+      scoped?: DocumentScopedEffect;
     }>[];
   }>,
 ): HostedAggregateCommit {
@@ -262,6 +267,7 @@ export function make_hosted_commit(
   }
   const semantic: HostedSemanticOperation[] = [];
   const replay: HostedReplayOperation[] = [];
+  const scopedByLibrary = new Map<string, DocumentScopedEffect[]>();
   for (const entry of input.operations) {
     const identity = entry.target.library ?? entry.target.system;
     const binding = identity === undefined ? undefined : bindingsByIdentity.get(identity);
@@ -280,7 +286,31 @@ export function make_hosted_commit(
       : evidence.domain === "css" ? decode_hosted_css_operation(evidence.payload, binding.mode)
       : decode_hosted_graph_operation(evidence.payload, binding.mode);
     semantic.push(Object.freeze({ library: binding.name, operation }));
-    replay.push(evidence);
+    if (entry.scoped !== undefined) {
+      if (binding.mode !== "document" || evidence.domain !== "graph" || !("domain" in entry.operation)
+        || entry.operation.domain !== "graph" || entry.operation.op === "ensure-quid"
+        || entry.scoped.graph !== encode_scoped_effect_graph_operation(entry.operation)) {
+        throw new HostedAggregateRepresentationError("Scoped document graph and Library evidence disagree.");
+      }
+      const effects = scopedByLibrary.get(binding.name) ?? [];
+      if (entry.scoped.ordinal !== effects.length || effects.length > 0 && effects.at(-1)?.after !== entry.scoped.before) {
+        throw new HostedAggregateRepresentationError("Scoped document operation order is inconsistent.");
+      }
+      effects.push(entry.scoped); scopedByLibrary.set(binding.name, effects);
+      replay.push(Object.freeze({ ...evidence, scoped: entry.scoped }));
+    } else replay.push(evidence);
+  }
+  for (const [library, effects] of scopedByLibrary) {
+    if (replay.some(entry => entry.library === library && entry.scoped === undefined)) {
+      throw new HostedAggregateRepresentationError("Missing complete scoped document evidence.");
+    }
+    // Validate the shared incremental representation, including contiguous ordinals.
+    const captured = validate_document_scoped_effects(encode_document_scoped_effects(effects));
+    let ordinal = 0;
+    for (let index = 0; index < replay.length; index++) {
+      const entry = replay[index]!;
+      if (entry.library === library) replay[index] = Object.freeze({ ...entry, scoped: captured[ordinal++]! });
+    }
   }
   const commit: HostedAggregateCommit = Object.freeze({
     format: HOSTED_COMMIT_FORMAT,
@@ -293,6 +323,16 @@ export function make_hosted_commit(
     replay: Object.freeze({ operations: Object.freeze(replay) }),
   });
   assert_encoded_bound(commit, HOSTED_MAX_COMMIT_BYTES, "Hosted commit");
+  if (scopedByLibrary.size > 0) {
+    // Semantic operations were decoded into owned data above. The durable gate
+    // must not be able to change them independently of the complete effects.
+    const pending: unknown[] = [commit], seen = new Set<object>();
+    while (pending.length) {
+      const value = pending.pop();
+      if (value === null || typeof value !== "object" || seen.has(value)) continue;
+      seen.add(value); pending.push(...Object.values(value)); Object.freeze(value);
+    }
+  }
   return commit;
 }
 
@@ -423,6 +463,9 @@ export function decode_hosted_commit(
 
 /** Derive QUID-free semantic effects from a living authority transition. */
 export function make_portable_aggregate_commit(authority: HostedAggregateCommit): PortableAggregateCommit | undefined {
+  if (authority.replay.operations.some(entry => entry.scoped !== undefined)) {
+    throw new HostedAggregateRepresentationError("Scoped document delivery requires coordinated Echo support.");
+  }
   if (authority.topology !== undefined) {
     const topology = capture_part_topology(authority.topology);
     for (const entry of topology.operation.libraries) {

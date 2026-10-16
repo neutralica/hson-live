@@ -174,7 +174,8 @@ function bindingEffect(value: unknown): BindingEffect {
 export function encode_document_scoped_effects(effects: readonly DocumentScopedEffect[]): string {
   return JSON.stringify({ count: effects.length, after: effects.at(-1)?.after ?? null, effects });
 }
-function decodeEffects(input: unknown): readonly DocumentScopedEffect[] {
+/** Strict private producer validation; not receipt or replay authority. @internal */
+export function validate_document_scoped_effects(input: unknown): readonly DocumentScopedEffect[] {
   if (typeof input !== "string" || input.length > HOSTED_MAX_SNAPSHOT_BYTES) fail();
   const envelope = fields(JSON.parse(input), ["count", "after", "effects"]), items = array(envelope.effects);
   if (Object.is(envelope.count, -0) || envelope.count !== items.length || (items.length === 0 ? envelope.after !== null
@@ -255,7 +256,7 @@ function applyPortable(before: PortableDocumentScopedLibrary, effect: DocumentSc
 export function replay_document_scoped_effects(before: PreparedDocumentScopedLibrary, input: unknown,
   authority: DocumentScopedCompositionAuthority, validateRoot: (root: PreparedDocumentScopedLibrary["root"]) => void): PreparedDocumentScopedLibrary {
   authority.assertCurrent();
-  const effects = decodeEffects(input), states: PortableDocumentScopedLibrary[] = [];
+  const effects = validate_document_scoped_effects(input), states: PortableDocumentScopedLibrary[] = [];
   let portable = capture_document_scoped_library(before);
   for (const effect of effects) {
     portable = applyPortable(portable, effect);
