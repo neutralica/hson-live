@@ -1,5 +1,7 @@
 import { hson_grammar_checkpoint, hson_interpolation_roles, type HsonEditorMode, type HsonGrammarCheckpoint, type HsonInterpolationRole, type HsonTemplateSlot } from "../../api/transform/parsers/tokenize-hson.js";
 import { serialize_hson_tag_name } from "../../api/transform/utils/hson-utils/hson-tag-helpers.js";
+import { serialize_primitive_hson } from "../../api/transform/utils/primitive-utils/serialize-primitive.utils.js";
+import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { HSON_SCHEMA_DATA_ROOT_ORDER, type CompiledHsonSchema, type HsonSchemaDataSemanticNode } from "../hson-schema/compiler.js";
 
 export type HsonEditorCandidate = Readonly<{
@@ -31,7 +33,11 @@ export function query_hson_editor_context(input: Readonly<{
   const candidates = input.mode === "schema" ? schema_candidates(checkpoint)
     : input.mode === "data" && input.schema !== undefined ? data_candidates(input.schema, checkpoint)
     : input.mode === "data" || input.mode === "canonical" ? grammar_candidates(checkpoint) : [];
-  const prefix = input.source.slice(checkpoint.range.start, input.cursor);
+  let prefix = input.source.slice(checkpoint.range.start, input.cursor);
+  if (checkpoint.quoted !== undefined && input.mode === "data") {
+    try { prefix = serialize_primitive_hson(decode_hson_content_string(prefix)).slice(0, -1); }
+    catch { return { checkpoint, candidates: [], interpolationRoles, expectedKinds: expected_kinds(checkpoint) }; }
+  }
   return { checkpoint, candidates: prefix === "" ? candidates : candidates.filter(candidate => candidate.label.startsWith(prefix)),
     interpolationRoles, expectedKinds: expected_kinds(checkpoint) };
 }
@@ -67,32 +73,89 @@ function schema_candidates(context: HsonGrammarCheckpoint): readonly HsonEditorC
 }
 
 function data_candidates(schema: CompiledHsonSchema, context: HsonGrammarCheckpoint): readonly HsonEditorCandidate[] {
-  if (context.kind !== "member" || schema.semantic.kind === "document" || schema.semantic.kind === "document-element") return [];
+  if (context.kind !== "member" && context.kind !== "value" || schema.semantic.kind === "document" || schema.semantic.kind === "document-element") return [];
   const definitions = new Map(schema.definitions.map(definition => [definition.name, definition.schema]));
   let budget = 256;
+  let exhausted = false;
   const expand = (node: HsonSchemaDataSemanticNode, seen = new Set<string>()): readonly HsonSchemaDataSemanticNode[] => {
-    if (--budget < 0 || seen.size > 64) return [];
+    if (--budget < 0 || seen.size > 64) { exhausted = true; return []; }
     if (node.kind === "ref") {
-      if (seen.has(node.name)) return [];
+      if (seen.has(node.name)) { exhausted = true; return []; }
       const target = definitions.get(node.name);
       return target === undefined || target.kind === "document-element" ? [] : expand(target, new Set(seen).add(node.name));
     }
     return node.kind === "union" ? node.choices.flatMap(choice => expand(choice, seen)) : [node];
   };
+  const samePath = (left: readonly (string | number)[], right: readonly (string | number)[]): boolean => left.length === right.length && left.every((part, i) => part === right[i]);
+  const narrow = (nodes: readonly HsonSchemaDataSemanticNode[], path: readonly (string | number)[]): readonly HsonSchemaDataSemanticNode[] => {
+    if (nodes.length < 2) return nodes;
+    // The compiler distinguishes object unions by required exact string members.
+    // Match those facts only; this is not structural inference or validation.
+    return nodes.filter(node => node.kind !== "object" || node.members.every(member => {
+      if (member.optional || member.schema.kind !== "exact" || typeof member.schema.value !== "string") return true;
+      const memberPath = [...path, member.name];
+      if (context.kind === "value" && samePath(context.path, memberPath)) return true;
+      const fact = context.dataFacts?.find(fact => fact.kind !== "member" && samePath(fact.path, memberPath));
+      return fact === undefined || fact.kind === "unknown" || fact.kind === "scalar" && fact.value === member.schema.value;
+    }));
+  };
   let nodes: readonly HsonSchemaDataSemanticNode[] = expand(schema.semantic);
+  const path: (string | number)[] = [];
   for (const part of context.path) {
-    if (typeof part !== "string") return [];
-    if (nodes.length === 0 || nodes.some(node => node.kind !== "object")) return [];
-    const next = nodes.map(node => node.kind === "object" ? node.members.find(member => member.name === part)?.schema : undefined);
+    nodes = narrow(nodes, path);
+    if (nodes.length === 0) return [];
+    const next = nodes.map(node => {
+      if (typeof part === "string") return node.kind === "object" ? node.members.find(member => member.name === part)?.schema : undefined;
+      if (node.kind !== "array" && node.kind !== "tuple") return undefined;
+      if (node.refinements.some(({ rule }) => rule.kind === "collection-length" && rule.maximum !== undefined && part >= rule.maximum)) return undefined;
+      return node.kind === "array" ? node.item : node.items[part];
+    });
     if (next.some(node => node === undefined)) return [];
     nodes = next.flatMap(node => node === undefined ? [] : expand(node));
+    path.push(part);
   }
+  nodes = narrow(nodes, path);
+  if (exhausted) return [];
+  if (context.kind === "value") return value_candidates(nodes, context);
   if (nodes.length === 0 || nodes.some(node => node.kind !== "object")) return [];
   const first = nodes[0];
   if (first.kind !== "object") return [];
   const already = new Set(context.existing);
+  for (const fact of context.dataFacts ?? []) {
+    if (fact.kind !== "member" || !samePath(fact.path.slice(0, -1), context.path)
+      || context.range.start < fact.range.end && context.range.end > fact.range.start) continue;
+    const name = fact.path.at(-1);
+    if (typeof name === "string") already.add(name);
+  }
   return first.members.flatMap((member, index) => {
     if (already.has(member.name) || nodes.some(node => node.kind !== "object" || !node.members.some(other => other.name === member.name))) return [];
-    return [item(member.name, "member", serialize_hson_tag_name(member.name), member.optional ? "optional data member" : "required data member", index)];
+    const optional = nodes.map(node => node.kind === "object" && node.members.find(other => other.name === member.name)?.optional);
+    const detail = optional.every(Boolean) ? "optional data member" : optional.some(Boolean) ? "data member (required in some union alternatives)" : "required data member";
+    return [item(member.name, "member", template_safe(serialize_hson_tag_name(member.name)), detail, index)];
   });
+}
+
+/** Hson escapes also preserve the host template's lexical boundaries. */
+function template_safe(text: string): string {
+  return text.replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
+}
+
+function value_candidates(nodes: readonly HsonSchemaDataSemanticNode[], context: HsonGrammarCheckpoint): readonly HsonEditorCandidate[] {
+  const candidates = new Map<string, HsonEditorCandidate>();
+  const literal = (value: string | number | boolean | null): void => {
+    if (context.quoted !== undefined && typeof value !== "string") return;
+    const label = serialize_primitive_hson(value);
+    const insertText = template_safe(context.quoted === undefined ? label : label.slice(1, -1));
+    candidates.set(label, item(label, "literal", insertText, nodes.length > 1 ? "Schema literal (union alternative)" : "Schema literal", candidates.size));
+  };
+  for (const node of nodes) {
+    if (node.kind === "exact") literal(node.value);
+    else if (node.kind === "null") literal(null);
+    else if (node.kind === "boolean") { literal(true); literal(false); }
+    else if (context.quoted === undefined && context.range.start === context.range.end) {
+      const label = node.kind === "object" ? "<" : node.kind === "array" || node.kind === "tuple" ? "«" : undefined;
+      if (label !== undefined) candidates.set(label, item(label, "syntax", label, node.kind === "object" ? "Schema object" : "Schema collection", candidates.size));
+    }
+  }
+  return [...candidates.values()];
 }

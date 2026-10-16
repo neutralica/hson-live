@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
+import { Hson } from "../dist/hson-authoring.js";
 import { compile_hson_schema } from "../dist/internal/hson-schema/compiler.js";
 import { discover_hson_tagged_templates } from "../dist/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { admit_hson_tagged_source } from "../dist/internal/embedded-hson/hson-tagged-source-admission.js";
@@ -33,6 +34,21 @@ writeFileSync(file("second.ts"), 'import { type HsonDocument } from "hson-live";
 writeFileSync(file("tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")] } }, include: ["*.ts", "*.tsx", "*.mts", "*.cts"] }));
 const completionSource = 'import { Hson, type HsonFromSchema } from "hson-live"; import { Thing as S } from "./schema.js"; type Alias<T> = HsonFromSchema<T>; const x: Alias<typeof S> = Hson.data`<na`;';
 for (const ext of ["ts", "tsx", "mts", "cts"]) writeFileSync(file(`completion-${ext}.${ext}`), completionSource);
+const contextual = JSON.parse(readFileSync(join(root, "tests/fixtures/contextual-completion.json"), "utf8"));
+const contextualProducer = 'import { Hson } from "hson-live"; export const S = Hson.schema`' + contextual.schema + '`;';
+writeFileSync(file("contextual-schema.ts"), contextualProducer);
+const contextualRequests = [];
+for (const ext of ["ts", "tsx", "mts", "cts", "local.ts"]) {
+  const name = ext === "local.ts" ? "contextual-local.ts" : `contextual-${ext}.${ext}`;
+  const prefix = 'import { Hson, type HsonFromSchema } from "hson-live";\n'
+    + (ext === "local.ts" ? 'const S = Hson.schema`' + contextual.schema + '`;' : 'import { S } from "./contextual-schema.js";')
+    + '\ntype Alias<T> = HsonFromSchema<T>;\nconst value: Alias<typeof S> = Hson.data`';
+  for (const { name: title, body, expected } of contextual.cases) {
+    const source = prefix + body.replace("|", "") + '`;\n';
+    contextualRequests.push({ file: name, source, offset: prefix.length + body.indexOf("|"), title, expected });
+  }
+  writeFileSync(file(name), 'export {};\n');
+}
 const originals = new Map(readdirSync(directory).map(name => [name, readFileSync(file(name))]));
 const child = spawn(process.execPath, [join(root, "node_modules/typescript/lib/tsserver.js"), "--globalPlugins", plugin, "--pluginProbeLocations", extension, "--disableAutomaticTypingAcquisition", "--logVerbosity", "verbose", "--logFile", file("server.log")], { stdio: ["pipe", "pipe", "pipe"] });
 let sequence = 0, buffered = Buffer.alloc(0), stderr = "";
@@ -116,6 +132,90 @@ try {
     await edit(schema);
     const repaired = await request("completionInfo", { file: file("completion-ts.ts"), ...location(completionSource, offset) });
     assert.deepEqual(repaired.entries.map(entry => entry.name), ["name"]);
+  });
+  await check("packaged contextual completion covers collections, tuples, unions and literals in all TS extensions", async () => {
+    for (const name of new Set(contextualRequests.map(item => item.file))) {
+      await request("open", { file: file(name) });
+      let previous = readFileSync(file(name), "utf8");
+      for (const { source, offset, title, expected } of contextualRequests.filter(item => item.file === name)) {
+        await request("updateOpen", { changedFiles: [{ fileName: file(name), textChanges: [{ start: { line: 1, offset: 1 }, end: location(previous, previous.length), newText: source }] }] });
+        previous = source;
+        const result = await request("completionInfo", { file: file(name), ...location(source, offset) }).catch(error => {
+          if (!/No content available/.test(error.message)) throw error;
+        });
+        assert.deepEqual(result?.entries.map(entry => entry.name) ?? [], expected, `${name}: ${title}`);
+        for (const entry of result?.entries ?? []) assert.ok(entry.replacementSpan, title);
+      }
+      await request("close", { file: file(name) });
+    }
+  });
+  await check("packaged literal insertion preserves escaped identity, quotes and neighboring TypeScript", async () => {
+    const values = ['tick`name', '${Math.random()}', 'quote"\\u0060\\Ω\n', 'e\u0301', '\u00e9', ''];
+    const escaped = value => JSON.stringify(value).replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
+    const schema = '<type "data" content <value <union [' + values.map(value => '<exact ' + escaped(value) + '>').join(', ') + ']>>>';
+    const prefix = '\uFEFFimport { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`' + schema + '`;\r\nconst x: HsonData<typeof S> = Hson.data`<value ';
+    const suffix = '`;\r\nconst untouched = "keep"; // keep\r\nconst adjacent = Hson.data`<value "keep">`;';
+    for (const [body, from, to] of [['|>', 0, 0], ['"|old">', 1, 4], ['"|', 1, 1]]) {
+      const source = prefix + body.replace("|", "") + suffix;
+      await editConsumer(source);
+      const offset = prefix.length + body.indexOf("|");
+      const result = await request("completionInfo", { file: file("consumer.ts"), ...location(source, offset) });
+      assert.deepEqual(result.entries.map(entry => entry.name), values.map(value => JSON.stringify(value)));
+      for (const [i, entry] of result.entries.entries()) {
+        assert.deepEqual(entry.replacementSpan, { start: location(source, prefix.length + from), end: location(source, prefix.length + to) });
+        assert.equal(entry.insertText, body.startsWith('"') ? escaped(values[i]).slice(1, -1) : escaped(values[i]));
+        const repaired = source.slice(0, prefix.length + from) + entry.insertText + source.slice(prefix.length + to);
+        assert.ok(repaired.endsWith(suffix));
+        await editConsumer(repaired);
+        assert.deepEqual(await request("syntacticDiagnosticsSync", { file: file("consumer.ts") }), []);
+        const discovery = discover_hson_tagged_templates(file("consumer.ts"), repaired);
+        assert.equal(discovery.interpolated.length, 0);
+        assert.equal(discovery.sources.length, 3);
+        if (body !== '"|') {
+          const site = discovery.sources.find(site => site.authoringKind === "data");
+          assert.ok(site);
+          assert.deepEqual(Hson.data.materialize(Hson.data.fromHson(admit_hson_tagged_source(site))), { value: values[i] });
+        }
+      }
+    }
+    await editConsumer(consumer);
+  });
+  await check("packaged contextual requests refresh imported Schema edits and preserve interpolation completion", async () => {
+    const prefix = 'import { Hson, type HsonData } from "hson-live"; import { S } from "./contextual-schema.js"; declare const dynamic: string; const x: HsonData<typeof S> = Hson.data`';
+    const marked = prefix + '<blocks [<kind "code" language |>]>`;';
+    const source = marked.replace("|", "");
+    await editConsumer(source);
+    const complete = async () => (await request("completionInfo", { file: file("consumer.ts"), ...location(source, marked.indexOf("|")) }).catch(error => {
+      if (!/No content available/.test(error.message)) throw error;
+    }))?.entries.map(entry => entry.name) ?? [];
+    assert.deepEqual(await complete(), ['"ts"', '"tsx"']);
+    await request("open", { file: file("contextual-schema.ts") });
+    let previous = contextualProducer;
+    for (const [next, expected] of [
+      [contextualProducer.replace('<exact "tsx">', '<exact "js">'), ['"ts"', '"js"']],
+      [contextualProducer.replace('<exact "code">', '<exact "program">'), []],
+      [contextualProducer.replace('"data"', '"broken"'), []],
+      [contextualProducer, ['"ts"', '"tsx"']],
+    ]) {
+      await request("updateOpen", { changedFiles: [{ fileName: file("contextual-schema.ts"), textChanges: [{ start: { line: 1, offset: 1 }, end: location(previous, previous.length), newText: next }] }] });
+      previous = next;
+      for (let i = 0; i < 3; i++) assert.deepEqual(await complete(), expected);
+    }
+    const interpolated = prefix + '<blocks [<kind ${dynamic} >]>`;';
+    await editConsumer(interpolated);
+    const result = await request("completionInfo", { file: file("consumer.ts"), ...location(interpolated, interpolated.indexOf("dynamic}") + 3) });
+    assert.ok(result.entries.some(entry => entry.name === "dynamic"));
+    assert.ok(!result.entries.some(entry => ["title", "language", "items", "kind"].includes(entry.name)));
+    for (const [body, expected] of [['<tones [${dynamic}, |]>', ['"Warm"', '"cool"']], ['<blocks [<kind "${dynamic}" |>]>', []]]) {
+      const marked = prefix + body + '`;';
+      const source = marked.replace("|", "");
+      await editConsumer(source);
+      const result = await request("completionInfo", { file: file("consumer.ts"), ...location(source, marked.indexOf("|")) }).catch(error => {
+        if (!/No content available/.test(error.message)) throw error;
+      });
+      assert.deepEqual(result?.entries.map(entry => entry.name) ?? [], expected);
+    }
+    await editConsumer(consumer);
   });
   await check("bundled reference completion cannot replace host statements and filters document capabilities", async () => {
     const prefix = 'import { Hson } from "hson-live"; const S = Hson.schema`<type "document" defs <Title "string" Card <tag "article" content "empty">> tag "main" content <sequence «<ref "';

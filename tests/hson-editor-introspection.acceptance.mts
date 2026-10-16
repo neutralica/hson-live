@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { hson_grammar_checkpoint, hson_interpolation_roles, scan_hson_template_segments, tokenize_hson, type HsonInterpolationRole } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { query_hson_editor_context } from "../src/internal/editor-introspection/query.ts";
@@ -37,6 +38,16 @@ assert.deepEqual(query_hson_editor_context({ mode: "schema", source: '<type "dat
 const union = compile_hson_schema('<type "data" defs <U <union [<content <kind <exact "left"> shared "string" left "number">>, <content <kind <exact "right"> shared "string" right "number">>]>> content <ref "U">>');
 assert.equal(union.ok, true);
 if (union.ok) assert.deepEqual(query_hson_editor_context({ mode: "data", source: "<", cursor: 1, schema: union.value }).candidates.map(candidate => candidate.label), ["kind", "shared"]);
+
+const contextual: { schema: string; cases: { name: string; body: string; expected: string[] }[] } = JSON.parse(readFileSync(new URL("./fixtures/contextual-completion.json", import.meta.url), "utf8"));
+const contextualSchema = compile_hson_schema(contextual.schema);
+assert.ok(contextualSchema.ok, JSON.stringify(contextualSchema));
+for (const { name, body, expected } of contextual.cases) {
+  const result = query_hson_editor_context({ mode: "data", source: body.replace("|", ""), cursor: body.indexOf("|"), schema: contextualSchema.value });
+  assert.deepEqual(result.candidates.map(candidate => candidate.label), expected, name);
+}
+const optionalTuple = compile_hson_schema('<type "data" content <pair <tuple ["number", <optional "string">]>>>');
+assert.ok(!optionalTuple.ok && optionalTuple.issues.some(issue => issue.code === "ILLEGAL_OPTIONAL"), "Optional tuple entries are not accepted grammar");
 
 const roles = query_hson_editor_context({ mode: "document", source: '<main "" />', slots: [{ offset: 7, substitution: 0 }] }).interpolationRoles;
 assert.deepEqual(roles, ["quoted-string"]);

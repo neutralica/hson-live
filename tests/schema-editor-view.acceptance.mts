@@ -11,6 +11,7 @@ import { admit_hson_tagged_source } from "../src/internal/embedded-hson/hson-tag
 import { local_hson_schema_completion } from "../editors/vscode-hson/src/hson-schema-symbols.ts";
 import { local_hson_schema_diagnostics } from "../editors/vscode-hson/src/hson-schema-local.ts";
 import { Hson } from "../src/hson-authoring.ts";
+import { hson } from "../src/hson.ts";
 import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
 import { spawnSync } from "node:child_process";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -984,6 +985,117 @@ check("reference insertions round trip through TypeScript raw templates and the 
     assert.equal(local_hson_schema_diagnostics(app.file("app.ts"), repaired).length, 0);
   }
   app.service.dispose();
+});
+
+const contextual: { schema: string; cases: { name: string; body: string; expected: string[] }[] } = JSON.parse(readFileSync(join(root, "tests/fixtures/contextual-completion.json"), "utf8"));
+check("production contextual completions use collection positions, branch facts and literal domains", () => {
+  const producer = 'import { Hson } from "hson-live"; export const S = Hson.schema`' + contextual.schema + '`;';
+  const files: Record<string, string> = { "schema.ts": producer };
+  const requests: { file: string; offset: number; name: string; expected: string[] }[] = [];
+  for (const ext of ["ts", "tsx", "mts", "cts", "local.ts"]) {
+    const file = `app.${ext}`;
+    let source = 'import { Hson, type HsonFromSchema } from "hson-live";\n'
+      + (ext === "local.ts" ? 'const S = Hson.schema`' + contextual.schema + '`;' : 'import { S } from "./schema.js";')
+      + '\ntype Alias<T> = HsonFromSchema<T>;\n';
+    contextual.cases.forEach(({ name, body, expected }, i) => {
+      source += `const value${i}: Alias<typeof S> = Hson.data\``;
+      requests.push({ file, offset: source.length + body.indexOf("|"), name, expected });
+      source += body.replace("|", "") + '`;\n';
+    });
+    files[file] = source;
+  }
+  const app = project("contextual-completion", files);
+  for (const { file, offset, name, expected } of requests) {
+    const entries = app.service.getCompletionsAtPosition(app.file(file), offset, {})?.entries ?? [];
+    assert.deepEqual(entries.map(entry => entry.name), expected, `${file}: ${name}`);
+    for (const entry of entries) {
+      const span = entry.replacementSpan;
+      assert.ok(span && span.start <= offset && span.start + span.length >= offset, name);
+      const source = app.text(file);
+      const repaired = source.slice(0, span.start) + entry.insertText + source.slice(span.start + span.length);
+      assert.ok(repaired.endsWith(source.slice(span.start + span.length)), name);
+    }
+  }
+  const file = "app.ts";
+  const marked = 'import { Hson, type HsonData } from "hson-live"; import { S } from "./schema.js"; declare const dynamic: string; const x: HsonData<typeof S> = Hson.data`<blocks [<kind ${dynamic} | >]>`;';
+  const source = marked.replace("|", "");
+  app.edit(file, source);
+  assert.deepEqual(app.service.getCompletionsAtPosition(app.file(file), marked.indexOf("|"), {})?.entries.map(entry => entry.name) ?? [], [], "An opaque authored discriminator cannot select a branch or be duplicated");
+  const expression = source.indexOf("dynamic}") + 3;
+  const host = app.service.getCompletionsAtPosition(app.file(file), expression, {})?.entries ?? [];
+  assert.ok(host.some(entry => entry.name === "dynamic"), "Ordinary TypeScript completion remains available inside interpolation");
+  assert.ok(!host.some(entry => ["title", "language", "items", "kind"].includes(entry.name)));
+  const prefix = source.slice(0, source.indexOf('Hson.data`') + 10);
+  for (const body of ['<tones [${dynamic}, |]>', '<blocks [<kind "${dynamic}" |>]>']) {
+    const marked = prefix + body + '`;';
+    app.edit(file, marked.replace("|", ""));
+    const names = app.service.getCompletionsAtPosition(app.file(file), marked.indexOf("|"), {})?.entries.map(entry => entry.name) ?? [];
+    assert.deepEqual(names, body.startsWith('<tones') ? ['"Warm"', '"cool"'] : []);
+  }
+  app.service.dispose();
+});
+
+check("contextual literal edits preserve exact decoded identity and every surrounding source byte", () => {
+  const values = ['tick`name', '${Math.random()}', 'quote"\\u0060\\Ω\n', 'e\u0301', '\u00e9', ''];
+  const escaped = (value: string) => JSON.stringify(value).replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
+  const schema = '<type "data" content <value <union [' + values.map(value => '<exact ' + escaped(value) + '>').join(', ') + ']>>>';
+  const prefix = '\uFEFFimport { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`' + schema + '`;\r\nconst x: HsonData<typeof S> = Hson.data`<value ';
+  const suffix = '`;\r\nconst untouched = "keep"; // keep\r\nconst adjacent = Hson.data`<value "keep">`;';
+  const app = project("contextual-literal-insertion", { "app.ts": prefix + '>' + suffix });
+  for (const [body, from, to] of [['|>', 0, 0], ['"|old">', 1, 4], ['"|', 1, 1]] as const) {
+    const source = prefix + body.replace("|", "") + suffix;
+    app.edit("app.ts", source);
+    const offset = prefix.length + body.indexOf("|");
+    const entries = app.service.getCompletionsAtPosition(app.file("app.ts"), offset, {})?.entries ?? [];
+    assert.deepEqual(entries.map(entry => entry.name), values.map(value => JSON.stringify(value)));
+    for (const [i, entry] of entries.entries()) {
+      assert.deepEqual(entry.replacementSpan, { start: prefix.length + from, length: to - from });
+      assert.equal(entry.insertText, body.startsWith('"') ? escaped(values[i]).slice(1, -1) : escaped(values[i]));
+      const repaired = source.slice(0, prefix.length + from) + entry.insertText + source.slice(prefix.length + to);
+      assert.ok(repaired.endsWith(suffix));
+      app.edit("app.ts", repaired);
+      assert.deepEqual(app.service.getSyntacticDiagnostics(app.file("app.ts")), []);
+      const discovery = discover_hson_tagged_templates(app.file("app.ts"), repaired);
+      assert.equal(discovery.interpolated.length, 0);
+      assert.equal(discovery.sources.length, 3);
+      if (body !== '"|') {
+        const site = discovery.sources.find(site => site.authoringKind === "data");
+        assert.ok(site);
+        const value = admit_hson_tagged_source(site);
+        assert.deepEqual(JSON.parse(hson.fromHson(value).toJson().serialize()), { value: values[i] }, "The inserted value has the original decoded identity");
+      }
+    }
+  }
+  app.service.dispose();
+});
+
+check("contextual completion refreshes branches and literals while reusing program evidence", () => {
+  const producer = 'import { Hson } from "hson-live"; export const S = Hson.schema`' + contextual.schema + '`;';
+  const source = 'import { Hson, type HsonData } from "hson-live"; import { S } from "./schema.js"; const x: HsonData<typeof S> = Hson.data`<blocks [<kind "code" language >]>`;';
+  const app = project("contextual-refresh", { "schema.ts": producer, "app.ts": source });
+  const cursor = source.indexOf('language >') + 9;
+  const complete = () => app.service.getCompletionsAtPosition(app.file("app.ts"), cursor, {})?.entries.map(entry => entry.name) ?? [];
+  const counters: unknown = Reflect.get(ts, "performance");
+  assert.ok(counters !== null && typeof counters === "object" && "enable" in counters && typeof counters.enable === "function"
+    && "disable" in counters && typeof counters.disable === "function" && "getCount" in counters && typeof counters.getCount === "function");
+  counters.enable();
+  try {
+    assert.deepEqual(complete(), ['"ts"', '"tsx"']);
+    const before: unknown = counters.getCount("beforeProgram");
+    for (let i = 0; i < 30; i++) assert.deepEqual(complete(), ['"ts"', '"tsx"']);
+    assert.equal(counters.getCount("beforeProgram"), before);
+    app.edit("schema.ts", producer.replace('<exact "tsx">', '<exact "js">'));
+    assert.deepEqual(complete(), ['"ts"', '"js"']);
+    const refreshed: unknown = counters.getCount("beforeProgram");
+    for (let i = 0; i < 30; i++) assert.deepEqual(complete(), ['"ts"', '"js"']);
+    assert.equal(counters.getCount("beforeProgram"), refreshed);
+    app.edit("schema.ts", producer.replace('<exact "code">', '<exact "program">'));
+    assert.deepEqual(complete(), [], "The old discriminator cannot retain a stale branch");
+    app.edit("schema.ts", producer.replace('"data"', '"broken"'));
+    assert.deepEqual(complete(), [], "Unresolved Schema values cannot fall back to generic suggestions");
+    app.edit("schema.ts", producer);
+    assert.deepEqual(complete(), ['"ts"', '"tsx"']);
+  } finally { counters.disable(); app.service.dispose(); }
 });
 
 check("unchanged production reference requests construct zero independent TypeScript programs", () => {

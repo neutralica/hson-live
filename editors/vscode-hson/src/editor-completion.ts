@@ -10,7 +10,10 @@ import { schema_reference_completion } from "./hson-schema-symbols.js";
 import type { HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
 
 export type HostCompletion = Readonly<{ candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }> }>;
-type CachedDocument = Readonly<{ version: number; text: string; program: ts.Program; file: ts.SourceFile; checker: ts.TypeChecker; discovery: HsonTaggedTemplateDiscoveryResult }>;
+type CachedDocument = Readonly<{
+  version: number; text: string; program: ts.Program; file: ts.SourceFile; checker: ts.TypeChecker; discovery: HsonTaggedTemplateDiscoveryResult;
+  schemaDeclarations: Map<ts.SourceFile, ReturnType<typeof discover_hson_schema_declarations>>;
+}>;
 
 /** Version-scoped discovery and bounded Schema compilation, with no workspace execution. */
 export class HsonEditorCompletionCache {
@@ -32,7 +35,7 @@ export class HsonEditorCompletionCache {
       const program = sourceProgram ?? create_hson_source_program(fileName, text);
       const file = program.getSourceFile(fileName);
       if (file === undefined || file.text !== text) return [];
-      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program) };
+      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program), schemaDeclarations: new Map() };
       this.documents.set(fileName, cached);
       if (this.documents.size > 8) {
         const oldest = this.documents.keys().next().value;
@@ -85,12 +88,13 @@ export class HsonEditorCompletionCache {
         : { start: site.bodyRange.start + range.start, end: site.bodyRange.start + range.end };
     }
     const schema = site.authoringKind === "data" ? this.resolveSchema(cached, site.tagRange.start) : undefined;
+    if (schema === null) return [];
     const result = query_hson_editor_context({ mode: site.authoringKind, source, cursor, slots, schema });
     const range = result.checkpoint?.range === undefined ? undefined : map(result.checkpoint.range);
     return range === undefined ? [] : result.candidates.map(candidate => ({ candidate, range }));
   }
 
-  private resolveSchema(document: CachedDocument, tagStart: number): CompiledHsonSchema | undefined {
+  private resolveSchema(document: CachedDocument, tagStart: number): CompiledHsonSchema | null | undefined {
     let tagged: ts.TaggedTemplateExpression | undefined;
     const visit = (node: ts.Node): void => {
       if (ts.isTaggedTemplateExpression(node) && node.tag.getStart(document.file) === tagStart) tagged = node;
@@ -102,15 +106,20 @@ export class HsonEditorCompletionCache {
       || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
       || declaration.parent.declarations.length !== 1) return undefined;
     const annotation = resolve_hson_schema_annotation(ts, document.checker, declaration.type);
-    if (annotation?.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson") return undefined;
+    if (annotation === undefined) return undefined;
+    if (annotation.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson") return null;
     const source = resolve_immutable_schema(ts, document.checker, annotation.schema, producer => {
       const file = producer.getSourceFile();
       if (file.isDeclarationFile || document.program.isSourceFileFromExternalLibrary(file)
         || file.fileName.replaceAll("\\", "/").split("/").includes(".hson")) return undefined;
-      return discover_hson_schema_declarations(ts, file, document.checker)
-        .find(found => found.declaration === producer && found.eligible)?.source;
+      let declarations = document.schemaDeclarations.get(file);
+      if (declarations === undefined) {
+        declarations = discover_hson_schema_declarations(ts, file, document.checker);
+        document.schemaDeclarations.set(file, declarations);
+      }
+      return declarations.find(found => found.declaration === producer && found.eligible)?.source;
     });
-    if (source === undefined) return undefined;
+    if (source === undefined) return null;
     const raw = source;
     if (!this.schemas.has(raw)) {
       const compiled = compile_hson_schema(raw);
@@ -121,7 +130,7 @@ export class HsonEditorCompletionCache {
       }
     }
     const compiled = this.schemas.get(raw);
-    return compiled ?? undefined;
+    return compiled ?? null;
   }
 }
 

@@ -30,6 +30,10 @@ const HSON_TRIVIA = new Set([" ", "\t", "\n", "\r"]);
 
 export type HsonTemplateSlot = Readonly<{ offset: number; substitution: number }>;
 export type HsonEditorMode = "canonical" | "data" | "document" | "schema";
+export type HsonEditorDataFact = Readonly<{
+  path: readonly (string | number)[];
+  range: Readonly<{ start: number; end: number }>;
+} & ({ kind: "scalar"; value: string | number | boolean | null } | { kind: "object" | "array" | "unknown" | "member" })>;
 export type HsonGrammarCheckpoint = Readonly<{
   kind: "member" | "value" | "tag" | "header" | "child" | "attribute-value";
   path: readonly (string | number)[];
@@ -39,6 +43,8 @@ export type HsonGrammarCheckpoint = Readonly<{
   rootType?: "data" | "document";
   /** Interior of a scanner-proven quoted value, including an unfinished EOF value. */
   quoted?: Readonly<{ complete: boolean; closingDelimiters: readonly string[] }>;
+  /** Authored data observed by the scanner; interpolation values remain unknown. */
+  dataFacts?: readonly HsonEditorDataFact[];
 }>;
 export type HsonInterpolationRole = "canonical-value" | "data-value" | "document-content" | "quoted-string";
 
@@ -50,10 +56,19 @@ export function hson_grammar_checkpoint(
   if (!Number.isInteger(cursor) || cursor < 0 || cursor > source.length || source.length > 128_000) return undefined;
   const stop = {};
   let result: HsonGrammarCheckpoint | undefined;
-  const scanner = new HsonScanner(source, 0, undefined, slots.filter(slot => slot.offset < cursor),
-    mode === "schema" ? "data" : mode, slots.map(() => ""), mode, cursor, checkpoint => { result = checkpoint; throw stop; });
-  try { scanner.scan(); } catch (error) { if (error !== stop) return undefined; }
-  return result;
+  const dataFacts: HsonEditorDataFact[] = [];
+  const scanner = new HsonScanner(source, 0, undefined, mode === "data" ? slots : slots.filter(slot => slot.offset < cursor),
+    mode === "schema" ? "data" : mode, slots.map(() => ""), mode, cursor, checkpoint => {
+      result ??= checkpoint;
+      // Data observations may include a discriminator after the cursor. Stop at
+      // the first syntax failure, retaining only facts the scanner actually saw.
+      if (mode !== "data") throw stop;
+    }, undefined, undefined, false, fact => { dataFacts.push(fact); });
+  try { scanner.scan(); } catch (error) {
+    if (error !== stop && result === undefined) return undefined;
+    if (mode === "data" && read_transform_error_details(error)?.code === "HSON_OBJECT_DUPLICATE_MEMBER") return undefined;
+  }
+  return result === undefined || mode !== "data" ? result : { ...result, dataFacts };
 }
 
 /** Observe roles only on original source and complete slots; recover in place. */
@@ -147,6 +162,7 @@ class HsonScanner {
     private readonly editorSlot?: (index: number, role: HsonInterpolationRole) => void,
     private readonly editorRejectedSlot?: (index: number) => void,
     private readonly authoredQuads = false,
+    private readonly editorDataFact?: (fact: HsonEditorDataFact) => void,
   ) {}
   private readonly editorPath: (string | number)[] = [];
   private readonly editorContainers: ("object" | "array" | "element")[] = [];
@@ -167,6 +183,7 @@ class HsonScanner {
       this.rejectSlot(context === "document-content" ? "document content under a data tag" : "a data value under a document tag");
     }
     this.editorSlot?.(slot.substitution, context);
+    this.observeData({ kind: "unknown" }, this.index);
     this.emit({ kind: "INTERPOLATION_SLOT", slot: slot.substitution, context, pos: this.position() });
     this.nextSlot += 1;
   }
@@ -209,8 +226,20 @@ class HsonScanner {
     this.collector?.recordToken(token, evidence);
   }
 
+  private observeData(value: { kind: "scalar"; value: string | number | boolean | null } | { kind: "object" | "array" | "unknown" | "member" }, start: number): void {
+    if (this.editorMode === "data") this.editorDataFact?.({ ...value, path: [...this.editorPath], range: { start, end: this.index } });
+  }
+
+  private bareValueCheckpoint(start: number, raw: string): void {
+    if (this.editorMode !== "data") return;
+    // Only a complete primitive or its unambiguous keyword prefix is editable.
+    if (isPrimitiveLiteral(raw) || ["true", "false", "null"].some(value => value.startsWith(raw))) this.completionSlot("value", start);
+  }
+
   private completionSlot(kind: Parameters<NonNullable<HsonSourceLexicalCollector["completionSlot"]>>[0], start?: number): void {
-    if (this.editorCheckpoint !== undefined && !this.editorCommentEof) {
+    const occupiedDataValue = this.editorMode === "data" && kind === "value" && start === undefined
+      && (this.slotHere() !== undefined || !this.atEnd() && ![">", "]", "»", ","].includes(this.peek()));
+    if (this.editorCheckpoint !== undefined && !this.editorCommentEof && !occupiedDataValue) {
       let boundary = start ?? this.index;
       if (start === undefined) while (boundary > 0 && isHsonTrivia(this.source[boundary - 1])) boundary--;
       const cursor = this.editorCursor;
@@ -234,6 +263,9 @@ class HsonScanner {
   public scan(): Tokens[] {
     while (true) {
       this.skipTrivia();
+      // A data checkpoint belongs to one root value. Trailing roots cannot
+      // contribute discriminator facts at the same logical paths.
+      if (this.editorCheckpoint !== undefined && this.editorMode === "data" && this.tokens.length > 0) return this.tokens;
       this.completionSlot("value");
       if (this.slotHere() !== undefined) {
         this.emitSlot(this.interpolationMode === "canonical" ? "canonical-value" : this.interpolationMode === "document" ? "document-content" : "data-value");
@@ -275,6 +307,7 @@ class HsonScanner {
       } else {
         const pos = this.position();
         const raw = this.scanBareToken();
+        this.bareValueCheckpoint(pos.index, raw);
         if (!isPrimitiveLiteral(raw)) {
           const numericDefect = classifyNumberDefect(raw);
           this.fail(
@@ -290,6 +323,7 @@ class HsonScanner {
           );
         }
         this.assertFiniteNumberLiteral(raw, pos);
+        if (this.editorDataFact !== undefined) this.observeData({ kind: "scalar", value: JSON.parse(raw) }, pos.index);
         const token = this.emit(CREATE_TEXT_TOKEN(raw, undefined, pos));
         if (this.collector !== undefined) this.recordToken(token, {
           roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
@@ -315,6 +349,7 @@ class HsonScanner {
     this.consumeExpected("<");
 
     if (closeKind === CLOSE_KIND.obj) {
+      this.observeData({ kind: "object" }, openPos.index);
       this.scanObjectAfterOpen(openPos, depth);
       return;
     }
@@ -329,7 +364,7 @@ class HsonScanner {
       // tag mode may decide its unfinished grammar; canonical remains ambiguous.
       const code = read_transform_error_details(error)?.code;
       if (code !== "HSON_CONTAINER_UNTERMINATED"
-        && !(code === "HSON_STRING_UNTERMINATED" && this.editorMode === "schema" && this.editorCursor === this.source.length)) throw error;
+        && !(code === "HSON_STRING_UNTERMINATED" && (this.editorMode === "schema" || this.editorMode === "data") && this.editorCursor === this.source.length)) throw error;
       if (this.editorMode === "data" || this.editorMode === "schema") return CLOSE_KIND.obj;
       if (this.editorMode === "document") return CLOSE_KIND.elem;
       throw error;
@@ -461,6 +496,7 @@ class HsonScanner {
       declarations.set(name, namePos);
       this.editorExisting = [...declarations.keys()];
       this.editorPath.push(name);
+      this.observeData({ kind: "member" }, namePos.index);
 
       const separatedFromValue = this.skipTrivia();
       if (separatedFromValue) this.completionSlot("value");
@@ -571,6 +607,7 @@ class HsonScanner {
 
     const pos = this.position();
     const raw = this.scanBareToken();
+    this.bareValueCheckpoint(pos.index, raw);
     if (!isPrimitiveLiteral(raw)) {
       if (this.peek() === "=") {
         this.fail(
@@ -591,6 +628,7 @@ class HsonScanner {
       );
     }
     this.assertFiniteNumberLiteral(raw, pos);
+    if (this.editorDataFact !== undefined) this.observeData({ kind: "scalar", value: JSON.parse(raw) }, pos.index);
     const token = this.emit(CREATE_TEXT_TOKEN(raw, undefined, pos));
     if (this.collector !== undefined) this.recordToken(token, {
       roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
@@ -849,6 +887,7 @@ class HsonScanner {
   }
 
   private scanArray(depth: number): void {
+    this.observeData({ kind: "array" }, this.index);
     this.editorContainers.push("array");
     this.assertNesting(depth);
     const opener = this.peek();
@@ -992,6 +1031,7 @@ class HsonScanner {
 
     const pos = this.position();
     const raw = this.scanBareToken();
+    this.bareValueCheckpoint(pos.index, raw);
     if (!isPrimitiveLiteral(raw)) {
       const numericDefect = classifyNumberDefect(raw);
       this.fail(
@@ -1003,6 +1043,7 @@ class HsonScanner {
       );
     }
     this.assertFiniteNumberLiteral(raw, pos);
+    if (this.editorDataFact !== undefined) this.observeData({ kind: "scalar", value: JSON.parse(raw) }, pos.index);
     const token = this.emit(CREATE_TEXT_TOKEN(raw, undefined, pos));
     if (this.collector !== undefined) this.recordToken(token, {
       roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
@@ -1093,6 +1134,7 @@ class HsonScanner {
       } else {
         this.editorSlot?.(slot, "quoted-string");
         this.consumeExpected(`"`);
+        this.observeData({ kind: "unknown" }, start.index);
         return { raw: `""`, directValue: value };
       }
     }
@@ -1108,8 +1150,10 @@ class HsonScanner {
       if (ch === `"`) {
         this.quotedValueCheckpoint(start.index + 1, true);
         this.consumeExpected(`"`);
-        return { raw: raw.includes("\n") || raw.includes("\t")
-          ? JSON.stringify(decode_hson_content_string(raw.slice(1))) : raw + `"` };
+        const lowered = raw.includes("\n") || raw.includes("\t")
+          ? JSON.stringify(decode_hson_content_string(raw.slice(1))) : raw + `"`;
+        if (this.editorDataFact !== undefined) this.observeData({ kind: "scalar", value: JSON.parse(lowered) }, start.index);
+        return { raw: lowered };
       }
 
       if (ch === "\\") {
@@ -1138,7 +1182,7 @@ class HsonScanner {
 
   private quotedValueCheckpoint(start: number, complete: boolean): void {
     const cursor = this.editorCursor;
-    if (this.editorMode !== "schema" || cursor === undefined || cursor < start || cursor > this.index) return;
+    if (this.editorMode !== "schema" && this.editorMode !== "data" || cursor === undefined || cursor < start || cursor > this.index) return;
     // Without a closing quote, only an EOF cursor with an unambiguous value
     // prefix is editable. Never consume a malformed suffix or another member.
     if (!complete && (cursor !== this.index || /[\r\n<>«»]/.test(this.source.slice(start, this.index)))) return;

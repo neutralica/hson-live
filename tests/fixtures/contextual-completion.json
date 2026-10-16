@@ -1,0 +1,429 @@
+{
+  "schema": "<type \"data\" defs <\nPoint <content <x \"number\" y <optional \"string\">>>\nTone <union [<exact \"Warm\">, <exact \"cool\">]>\nHeading <content <kind <exact \"heading\"> title \"string\" level <union [<exact 1>, <exact 2>]> note <optional \"string\">>>\nParagraph <content <kind <exact \"paragraph\"> text \"string\">>\nCode <content <kind <exact \"code\"> source \"string\" language <union [<exact \"ts\">, <exact \"tsx\">]>>>\nList <content <kind <exact \"list\"> items <array <ref \"Block\">>>>\nBlock <union [<ref \"Heading\">, <ref \"Paragraph\">, <ref \"Code\">, <ref \"List\">]>\n> content <\npoints <array <ref \"Point\">> booleans <array \"boolean\"> tones <array <ref \"Tone\">>\ngrid <array <array <ref \"Point\">>> pair <tuple [<ref \"Point\">, <ref \"Tone\">, <array <ref \"Block\">>]>\nblocks <array <ref \"Block\">> limited <array <content <ref \"Point\"> maxlen 1>>\nnumbers <array \"number\"> strings <array \"string\"> text \"string\" choice <union [<exact -0>, <exact 0>, <exact true>, \"null\", <exact \"Yes\">]>\noptionalGroup <optional <content <inner <ref \"Point\">>>>\n>>",
+  "cases": [
+    {
+      "name": "array itself",
+      "body": "<points |>",
+      "expected": [
+        "«"
+      ]
+    },
+    {
+      "name": "object item structure",
+      "body": "<points [|]>",
+      "expected": [
+        "<"
+      ]
+    },
+    {
+      "name": "referenced object item",
+      "body": "<points [<|>]>",
+      "expected": [
+        "x",
+        "y"
+      ]
+    },
+    {
+      "name": "existing object member",
+      "body": "<points [<x 1 |>]>",
+      "expected": [
+        "y"
+      ]
+    },
+    {
+      "name": "sibling object isolation",
+      "body": "<points [<x 1>, <|>]>",
+      "expected": [
+        "x",
+        "y"
+      ]
+    },
+    {
+      "name": "primitive items",
+      "body": "<booleans «|»>",
+      "expected": [
+        "true",
+        "false"
+      ]
+    },
+    {
+      "name": "primitive keyword prefix",
+      "body": "<booleans [t|]>",
+      "expected": [
+        "true"
+      ]
+    },
+    {
+      "name": "primitive replacement",
+      "body": "<booleans [tr|ue, false]>",
+      "expected": [
+        "true"
+      ]
+    },
+    {
+      "name": "referenced literal items",
+      "body": "<tones [|]>",
+      "expected": [
+        "\"Warm\"",
+        "\"cool\""
+      ]
+    },
+    {
+      "name": "literal quoted prefix",
+      "body": "<tones [\"W|arm\"]>",
+      "expected": [
+        "\"Warm\""
+      ]
+    },
+    {
+      "name": "literal casing",
+      "body": "<tones [\"w|\"]>",
+      "expected": []
+    },
+    {
+      "name": "escaped literal prefix",
+      "body": "<tones [\"\\u0057|arm\"]>",
+      "expected": [
+        "\"Warm\""
+      ]
+    },
+    {
+      "name": "nested array item structure",
+      "body": "<grid [|]>",
+      "expected": [
+        "«"
+      ]
+    },
+    {
+      "name": "nested array object",
+      "body": "<grid [[<|>]]>",
+      "expected": [
+        "x",
+        "y"
+      ]
+    },
+    {
+      "name": "tuple itself",
+      "body": "<pair |>",
+      "expected": [
+        "«"
+      ]
+    },
+    {
+      "name": "tuple first position",
+      "body": "<pair [<|>, \"Warm\", []]>",
+      "expected": [
+        "x",
+        "y"
+      ]
+    },
+    {
+      "name": "tuple second position",
+      "body": "<pair [<x 1>, |, []]>",
+      "expected": [
+        "\"Warm\"",
+        "\"cool\""
+      ]
+    },
+    {
+      "name": "tuple third position",
+      "body": "<pair [<x 1>, \"Warm\", |]>",
+      "expected": [
+        "«"
+      ]
+    },
+    {
+      "name": "tuple nested union",
+      "body": "<pair [<x 1>, \"Warm\", [<kind \"code\" |>]]>",
+      "expected": [
+        "source",
+        "language"
+      ]
+    },
+    {
+      "name": "tuple exhausted",
+      "body": "<pair [<x 1>, \"Warm\", [], |]>",
+      "expected": []
+    },
+    {
+      "name": "array limit exhausted",
+      "body": "<limited [<x 1>, <|>]>",
+      "expected": []
+    },
+    {
+      "name": "optional object member",
+      "body": "<optionalGroup <inner <|>>>",
+      "expected": [
+        "x",
+        "y"
+      ]
+    },
+    {
+      "name": "missing discriminator",
+      "body": "<blocks [<|>]>",
+      "expected": [
+        "kind"
+      ]
+    },
+    {
+      "name": "missing discriminator value",
+      "body": "<blocks [<kind |>]>",
+      "expected": [
+        "\"heading\"",
+        "\"paragraph\"",
+        "\"code\"",
+        "\"list\""
+      ]
+    },
+    {
+      "name": "heading branch",
+      "body": "<blocks [<kind \"heading\" |>]>",
+      "expected": [
+        "title",
+        "level",
+        "note"
+      ]
+    },
+    {
+      "name": "paragraph branch",
+      "body": "<blocks [<kind \"paragraph\" |>]>",
+      "expected": [
+        "text"
+      ]
+    },
+    {
+      "name": "code branch",
+      "body": "<blocks [<kind \"code\" |>]>",
+      "expected": [
+        "source",
+        "language"
+      ]
+    },
+    {
+      "name": "list branch",
+      "body": "<blocks [<kind \"list\" |>]>",
+      "expected": [
+        "items"
+      ]
+    },
+    {
+      "name": "recursive nested union",
+      "body": "<blocks [<kind \"list\" items [<kind \"heading\" |>]>]>",
+      "expected": [
+        "title",
+        "level",
+        "note"
+      ]
+    },
+    {
+      "name": "selected branch literal",
+      "body": "<blocks [<kind \"code\" language |>]>",
+      "expected": [
+        "\"ts\"",
+        "\"tsx\""
+      ]
+    },
+    {
+      "name": "incompatible branch field",
+      "body": "<blocks [<kind \"paragraph\" language |>]>",
+      "expected": []
+    },
+    {
+      "name": "unknown discriminator",
+      "body": "<blocks [<kind \"unknown\" |>]>",
+      "expected": []
+    },
+    {
+      "name": "invalid discriminator type",
+      "body": "<blocks [<kind 1 |>]>",
+      "expected": []
+    },
+    {
+      "name": "invalid discriminator structure",
+      "body": "<blocks [<kind <> |>]>",
+      "expected": []
+    },
+    {
+      "name": "incomplete discriminator value",
+      "body": "<blocks [<kind \"hea|\">]>",
+      "expected": [
+        "\"heading\""
+      ]
+    },
+    {
+      "name": "unfinished discriminator quote",
+      "body": "<blocks [<kind \"hea|",
+      "expected": [
+        "\"heading\""
+      ]
+    },
+    {
+      "name": "invalid complete discriminator being replaced",
+      "body": "<blocks [<kind \"|unknown\">]>",
+      "expected": [
+        "\"heading\"",
+        "\"paragraph\"",
+        "\"code\"",
+        "\"list\""
+      ]
+    },
+    {
+      "name": "discriminator follows cursor",
+      "body": "<blocks [<| kind \"code\">]>",
+      "expected": [
+        "source",
+        "language"
+      ]
+    },
+    {
+      "name": "branch prefix with discriminator after cursor",
+      "body": "<blocks [<sou|rce \"\" kind \"code\">]>",
+      "expected": [
+        "source"
+      ]
+    },
+    {
+      "name": "following members excluded",
+      "body": "<blocks [<kind \"heading\" |title \"Hi\">]>",
+      "expected": [
+        "level",
+        "note"
+      ]
+    },
+    {
+      "name": "sibling discriminator isolation",
+      "body": "<blocks [<kind \"heading\" title \"A\">, <kind \"code\" |>]>",
+      "expected": [
+        "source",
+        "language"
+      ]
+    },
+    {
+      "name": "no sibling branch borrowing",
+      "body": "<blocks [<kind \"heading\" title \"A\">, <|>]>",
+      "expected": [
+        "kind"
+      ]
+    },
+    {
+      "name": "escaped discriminator identity",
+      "body": "<blocks [<kind \"he\\u0061ding\" |>]>",
+      "expected": [
+        "title",
+        "level",
+        "note"
+      ]
+    },
+    {
+      "name": "unconstrained string",
+      "body": "<text \"|\">",
+      "expected": []
+    },
+    {
+      "name": "finite mixed literals",
+      "body": "<choice |>",
+      "expected": [
+        "-0",
+        "0",
+        "true",
+        "null",
+        "\"Yes\""
+      ]
+    },
+    {
+      "name": "literal quote filters primitive alternatives",
+      "body": "<choice \"|\">",
+      "expected": [
+        "\"Yes\""
+      ]
+    },
+    {
+      "name": "partially authored array",
+      "body": "<points [<|",
+      "expected": [
+        "x",
+        "y"
+      ]
+    },
+    {
+      "name": "partially authored nested union",
+      "body": "<blocks [<kind \"code\" |",
+      "expected": [
+        "source",
+        "language"
+      ]
+    },
+    {
+      "name": "malformed missing comma",
+      "body": "<points [<x 1> <|>]>",
+      "expected": []
+    },
+    {
+      "name": "malformed double comma",
+      "body": "<points [<x 1>,, <|>]>",
+      "expected": []
+    },
+    {
+      "name": "duplicate discriminator",
+      "body": "<blocks [<kind \"heading\" kind \"code\" |>]>",
+      "expected": []
+    },
+    {
+      "name": "duplicate discriminator after cursor",
+      "body": "<blocks [<kind \"heading\" |kind \"code\">]>",
+      "expected": []
+    },
+    {
+      "name": "unfinished escape",
+      "body": "<tones [\"Wa\\u0|",
+      "expected": []
+    },
+    {
+      "name": "comment not value",
+      "body": "<tones [// |\n]>",
+      "expected": []
+    },
+    {
+      "name": "occupied structural value",
+      "body": "<points |[]>",
+      "expected": []
+    },
+    {
+      "name": "occupied scalar before quote",
+      "body": "<tones [|\"Warm\"]>",
+      "expected": []
+    },
+    {
+      "name": "occupied scalar after quote",
+      "body": "<tones [\"Warm\"|]>",
+      "expected": []
+    },
+    {
+      "name": "no object members on collection",
+      "body": "<points <|>>",
+      "expected": []
+    },
+    {
+      "name": "unconstrained primitive number items",
+      "body": "<numbers [|]>",
+      "expected": []
+    },
+    {
+      "name": "unconstrained primitive string items",
+      "body": "<strings [|]>",
+      "expected": []
+    },
+    {
+      "name": "unrelated trailing root cannot select a branch",
+      "body": "<blocks [<|>]> <blocks [<kind \"code\">]>",
+      "expected": [
+        "kind"
+      ]
+    },
+    {
+      "name": "trailing data root has no governing location",
+      "body": "<points []> <points [<|>]>",
+      "expected": []
+    }
+  ]
+}
