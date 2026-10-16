@@ -101,6 +101,8 @@ import type { PreparedLiveMapAuthorityTransition } from "./livemap.authority.js"
 import { deliver_livemap_observers } from "./livemap.observer-delivery.js";
 import { is_staged_thenable, make_livemap_staged_writer } from "./livemap.staged.js";
 import type { LiveMapAggregateWrite } from "./livemap.library.js";
+import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
+import { own_document_scopes } from "./livemap.document.scoped-portable.js";
 import { expand_document_composition, document_composition_options, has_part_connector, type DocumentCompositionOptions } from "./livemap.document.composition.js";
 import { parse_authored_document_library, register_document_quad_lookup, decode_document_quads, own_document_quads } from "./livemap.document.quad.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
@@ -123,6 +125,8 @@ export type CanonicalLibraryDefinition = Readonly<{
   quads?: PortableDocumentQuads;
   validation?: DataLibraryValidation;
   compositionStyles?: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[];
+  compositionScopes?: DocumentScopedQuadRecord;
+  scopes?: DocumentScopedQuadRecord;
   authored?: boolean;
 }>;
 
@@ -153,8 +157,12 @@ function capture_library_definitions(definitions: readonly CanonicalLibraryDefin
     const admitted = admit_public_livemap_root(root, family, `LiveMap.reconstruct(${name})`);
     validate_data_library(admitted, classify_live_root_mode(admitted, family), validation);
     if (family === "document" && has_part_connector(admitted)) throw new Error("Canonical document state cannot contain construction connectors.");
+    const scopeInput = own_document_scopes(definition);
+    const scopes = scopeInput === undefined ? undefined : decode_document_scoped_quads(scopeInput, admitted);
+    if (scopes !== undefined && family !== "document") throw new Error("Scoped state requires a document.");
     const associations = decode_document_quads(quads, admitted, family);
     return Object.freeze({ name, family, schema, root: admitted,
+      ...(scopes === undefined ? {} : { scopes }),
       ...(validation === undefined ? {} : { validation }),
       ...(associations === undefined ? {} : { quads: associations }) });
   });
@@ -181,7 +189,7 @@ function realize_authored_definitions(definitions: readonly CanonicalLibraryDefi
     const candidate = expand_document_composition(definition.name, () => ({ ...definition, root: normalize_document_root(definition.root) }),
       document_composition_options(undefined), readPart);
     const { quads: sourceQuads, ...ordinary } = definition;
-    return { ...ordinary, root: candidate.root, ...(candidate.quads === undefined ? {} : { quads: candidate.quads }), compositionStyles: candidate.styles };
+    return { ...ordinary, root: candidate.root, ...(candidate.quads === undefined ? {} : { quads: candidate.quads }), compositionStyles: candidate.styles, compositionScopes: candidate.scoped };
   });
 }
 
@@ -267,7 +275,7 @@ export function commit_document_css_internal(document: LiveMapDocumentLibrary, o
   commit(operation);
 }
 const CLIENT_LIBRARY_RETIREMENT = new WeakMap<object, Set<() => void>>();
-const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot) => void>();
+const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot, scoped?: boolean) => void>();
 const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (definitions: readonly CanonicalLibraryDefinition[],
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>, installed?: () => void) => LiveMapCommit>();
 const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, definitions: readonly CanonicalLibraryDefinition[],
@@ -425,11 +433,11 @@ export function observe_client_library_retirement_internal(value: object, listen
 
 /** Reconcile only the managed authority partition of an existing composed map. @internal */
 export function reconcile_client_projection_snapshot_internal(
-  map: LiveMap, owner: object, snapshot: PortableAggregateSnapshot,
+  map: LiveMap, owner: object, snapshot: PortableAggregateSnapshot, scoped = false,
 ): void {
   const reconcile = CLIENT_PROJECTION_RECONCILE.get(map);
   if (reconcile === undefined) throw new Error("Client projection reconciliation requires a composed LiveMap.");
-  reconcile(owner, snapshot);
+  reconcile(owner, snapshot, scoped);
 }
 
 /** True only for the dedicated local multi-library public facade. @internal */
@@ -475,8 +483,9 @@ export function make_livemap_from_canonical_libraries_internal(
   systems: readonly InitialSystemState[] = [],
   clientSnapshot?: PortableAggregateSnapshot,
   initialCss: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
+  scoped = false,
 ): LiveMap {
-  return make_livemap_library_receiver(capture_library_definitions(definitions), systems, clientSnapshot, initialCss);
+  return make_livemap_library_receiver(capture_library_definitions(definitions), systems, clientSnapshot, initialCss, scoped);
 }
 
 /**
@@ -493,6 +502,7 @@ function make_livemap_library_receiver(
   definitions: readonly CanonicalLibraryDefinition[], systems: readonly InitialSystemState[],
   clientSnapshot: PortableAggregateSnapshot | undefined,
   initialCss: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
+  scoped = false,
 ): LiveMap {
   const built = make_livemap_registry_authority(definitions.map((definition) => {
     const { name, root, schema, family } = definition;
@@ -505,6 +515,8 @@ function make_livemap_library_receiver(
       family,
       ...(definition.validation === undefined ? {} : { validation: definition.validation }),
       ...(definition.compositionStyles === undefined ? {} : { compositionStyles: definition.compositionStyles }),
+      ...(definition.compositionScopes === undefined ? {} : { compositionScopes: definition.compositionScopes }),
+      ...(definition.scopes === undefined ? {} : { scopes: definition.scopes }),
       ...(quads === undefined ? {} : { quads }),
       ...(css === undefined ? {} : { css: decode_portable_document_stylesheet(css) }),
     };
@@ -543,7 +555,7 @@ function make_livemap_library_receiver(
       ...(validation === undefined ? {} : { validation }),
     });
   }));
-  if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot);
+  if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot, scoped);
 
   function cut(options: LiveMapCutOptions = {}, demanded?: readonly string[]): LiveMapCut | LiveMapHtmlCut {
     const checkCapture = aggregate.captureFence();
@@ -894,7 +906,8 @@ function make_livemap_library_receiver(
       },
     });
   });
-  if (clientSnapshot !== undefined) CLIENT_PROJECTION_RECONCILE.set(libraries, (owner, snapshot) => {
+  if (clientSnapshot !== undefined) CLIENT_PROJECTION_RECONCILE.set(libraries, (owner, snapshot, scoped) => {
+    const assertCurrent = aggregate.captureManagedRestorationFence(owner);
     const prior = aggregate.clientProjection();
     if (prior === undefined) throw new Error("Client projection is unavailable.");
     const previousNames = prior.registry.libraries.filter((entry) => entry.scope === undefined)
@@ -906,6 +919,7 @@ function make_livemap_library_receiver(
       const schema = HsonSchemaHandle.fromHson(entry.schema);
       inputs.set(entry.name, { name: entry.name, family: entry.mode === "document" ? "document" : "data", schema });
     }
+    assertCurrent();
     aggregate.restoreClientHostedManaged(owner, snapshot, (projected, retired) => {
       const nextByName = new Map(projected.map((entry) => [entry.name, entry.identity]));
       const retiredFacades: object[] = [];
@@ -929,7 +943,7 @@ function make_livemap_library_receiver(
       for (const facade of retiredFacades) {
         deliver_livemap_observers([...(CLIENT_LIBRARY_RETIREMENT.get(facade) ?? [])], listener => listener(), "library-retirement");
       }
-    });
+    }, scoped);
   });
   return libraries as unknown as LiveMap;
 }
@@ -967,8 +981,9 @@ export function make_livemap_client_composition_from_portable_aggregate_internal
 /** Structurally admit one authority partition without constructing its runtime. @internal */
 export function portable_aggregate_inputs_internal(
   snapshot: PortableAggregateSnapshot,
+  scoped = false,
 ): Readonly<{ inputs: readonly CanonicalLibraryDefinition[]; systems: readonly InitialSystemState[] }> {
-  assert_portable_aggregate_snapshot_shape(snapshot);
+  assert_portable_aggregate_snapshot_shape(snapshot, scoped);
   const inputs: CanonicalLibraryDefinition[] = [];
   const systems: InitialSystemState[] = [];
   for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
@@ -987,6 +1002,7 @@ export function portable_aggregate_inputs_internal(
       systems.push(Object.freeze({ key: entry.name, transportName: entry.name, root, hsonSchema: schema }));
     } else {
       inputs.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root, schema,
+        ...(encoded.scopes === undefined ? {} : { scopes: encoded.scopes }),
         ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
         ...(own_document_quads(encoded) === undefined ? {} : { quads: decode_document_quads(own_document_quads(encoded), root, entry.mode) }) });
     }

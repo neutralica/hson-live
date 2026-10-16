@@ -54,6 +54,22 @@ export function ssr_subject_fixture(): DocumentSsrSubjectFixture {
 }
 
 export function document_ssr_subject_cases(check: (name: string, run: () => void) => void) {
+  check("flat authored QUAD subjects retain ordinary capture and SSR without occurrence scopes", () => {
+    const map = authored({ page: { document: '<html @:page <head/> <body <p @:firstChild "Flat"/>/>/>' } });
+    const page = map.lib("page"), aggregate = owner(map), library = aggregate.libraries()[0]!;
+    if (page.mode !== "document") throw Error("document");
+    page.css.stylesheet(`[hson\\:quid="${lookup(page,"firstChild")!.quid}"]{color:red}`);
+    assert.equal(aggregate.documentScopes(library), undefined);
+    const snapshot = map.capture(), result = map.cut({ html: "page" });
+    assert.deepEqual(result.libs, snapshot);
+    assert.equal(result.html, page.render());
+    const receiving = install_libraries_snapshot(snapshot).map;
+    const received = receiving.lib("page");
+    if (received.mode !== "document") throw Error("document");
+    assert.equal(owner(receiving).documentScopes(owner(receiving).libraries()[0]!), undefined);
+    assert.ok(lookup(received, "firstChild"));
+    assert.equal(received.render(), result.html);
+  });
   check("one fenced candidate shares graph CSS correspondence and exact paths", () => {
     const { map, page, aggregate, library, demanded } = ssr_subject_fixture();
     const before = map.capture(), overlay = aggregate.documentOverlay(library), ledger = aggregate.identityEpoch().issued();
@@ -309,14 +325,34 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     aggregate.acquireLocalDocumentIdentity(library,path([0,0,1,0,0]),demanded[0]!);
     aggregate.acquireLocalDocumentIdentity(library,path([0,0,1,0,1]),demanded[1]!);
     page.css.stylesheet('[hson\\:quid="345678901"]{color:red}[hson\\:quid="456789012"]{color:blue}');
-    const before = map.capture(), result = cut(map,{html:"final",documents:["final"],data:[]},demanded);
+    const layout = aggregate.libraries()[0]!, scopes = aggregate.documentScopes(layout);
+    assert.equal(scopes?.occurrences.length,2,"Initial layout retains both actual Part occurrences.");
+    assert.equal(aggregate.documentScopes(library),undefined,"The final Library uses the existing flat composition contract.");
+    assert.throws(() => map.capture(), /Scoped document capture/);
+    assert.throws(() => aggregate.captureDocumentSsr(layout,[]), /Scoped document SSR/);
+    // Observe every source Library without requesting unsupported portable state
+    // for the scoped layout. Inspection also checks runtime identities and scopes,
+    // which the former whole-map portable snapshot could not represent.
+    const observe = () => {
+      const graph = aggregate.inspect();
+      return { graph, registry: aggregate.hostedRegistry(), position: aggregate.hostedPosition(),
+        epoch: aggregate.identityEpoch().current(), issued: aggregate.identityEpoch().issued(),
+        documents: graph.libraries.flatMap(entry => entry.mode !== "document" ? [] : [{
+          identity: entry.identity, overlay: aggregate.documentOverlay(entry.identity),
+          scopes: aggregate.documentScopes(entry.identity), stylesheet: aggregate.stylesheet(entry.identity),
+          quads: aggregate.projectDocumentCorrespondence(entry.identity,[]),
+        }]),
+      };
+    };
+    const before = observe(), result = cut(map,{html:"final",documents:["final"],data:[]},demanded);
     assert.deepEqual(result.libs.libraries.map(library=>library.name),["final"]);
     assert.equal((result.html.match(/ hson:quad=/g) ?? []).length,2);
     for (const quid of demanded) {
       assert.ok(result.html.includes(`hson:quad="_${quid}"`));
       assert.ok(result.html.includes(`[hson\\:quad="_${quid}"]`));
     }
-    assert.equal(result.html.includes(sourceQuid),false); assert.deepEqual(map.capture(),before);
+    assert.equal(result.html.includes(sourceQuid),false); assert.deepEqual(observe(),before);
+    assert.equal(aggregate.documentScopes(layout),scopes,"SSR preserves the exact source occurrence lifetimes.");
     const receiving = install_libraries_snapshot(result.libs).map;
     assert.throws(() => receiving.lib("components")); assert.throws(() => receiving.lib("layout"));
     assert.equal(owner(receiving).identityEpoch().issued().has(sourceQuid),false);

@@ -100,3 +100,14 @@ export function document_scoped_libraries_semantically_equal(left: unknown, righ
   return portable_document_stylesheet_equal(decode_portable_document_stylesheet(a.css),
     decode_portable_document_stylesheet(remap_portable_document_css_identities(b.css, names)));
 }
+
+/** Exact optional scoped content field; never authorizes a Library. @internal */
+export function own_document_scopes(input: object): unknown | undefined {
+  const field = Object.getOwnPropertyDescriptor(input, "scopes");
+  if (field === undefined) return undefined;
+  if (!field.enumerable || !Object.hasOwn(field, "value") || field.value === undefined) {
+    throw new TypeError("Scoped state requires an own defined data field.");
+  }
+  if (Object.hasOwn(input, "quads")) throw new TypeError("Conflicting flat/scoped correspondence.");
+  return field.value;
+}

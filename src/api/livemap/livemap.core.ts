@@ -1,10 +1,11 @@
+import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
 import { encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
 import { own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
 import { prepare_document_scoped_library_styles, type PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
-import { capture_document_scoped_library, decode_document_scoped_library, restore_document_scoped_library_styles } from "./livemap.document.scoped-portable.js";
+import { capture_document_scoped_library, decode_document_scoped_library, own_document_scopes, restore_document_scoped_library_styles } from "./livemap.document.scoped-portable.js";
 import { expand_document_composition, document_composition_options, has_part_connector, type DocumentCompositionStyle } from "./livemap.document.composition.js";
 import { merge_part_stylesheets, retire_part_styles } from "../../internal/css/part-stylesheet.js";
 import { registry_from_entries } from "./livemap.hosted.js";
@@ -220,6 +221,10 @@ export type RegistryRoot = Readonly<{
   validation?: "hson-part-collection-v1";
   quads?: PortableDocumentQuads;
   compositionStyles?: readonly DocumentCompositionStyle[];
+  /** @internal */
+  compositionScopes?: DocumentScopedQuadRecord;
+  /** @internal */
+  scopes?: DocumentScopedQuadRecord;
   css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
 }>;
 
@@ -249,7 +254,15 @@ export function make_livemap_registry_authority(
     }
     validate_data_library(graph.root, graph.mode, validation);
     if (css !== undefined && family !== "document") throw new TypeError("Initial CSS requires a document Library.");
-    return { graph, hsonSchema, css, validation, compositionStyles: definition.compositionStyles, quads: decode_document_quads(quads, graph.root, graph.mode) };
+    const scopeInput = own_document_scopes(definition);
+    if (scopeInput !== undefined && (definition.compositionScopes !== undefined || definition.compositionStyles !== undefined)) {
+      throw new TypeError("Initial scoped state cannot also claim authored composition evidence.");
+    }
+    const scopes = scopeInput === undefined ? undefined : decode_document_scoped_library({
+      root: graph.root, scopes: scopeInput, css: css === undefined ? undefined : encode_portable_document_stylesheet(css),
+    }).scopes;
+    const compositionScopes = definition.compositionScopes === undefined ? undefined : decode_document_scoped_quads(definition.compositionScopes, graph.root);
+    return { graph, hsonSchema, css, validation, scopes, compositionScopes, compositionStyles: definition.compositionStyles, quads: decode_document_quads(quads, graph.root, graph.mode) };
   });
   const aggregate = make_livemap_registry_engine(prepared, systems);
   return Object.freeze({ aggregate, identities: aggregate.libraries() });
@@ -265,6 +278,8 @@ function make_livemap_registry_engine(
     validation?: DataLibraryValidation;
     quads?: PortableDocumentQuads;
     compositionStyles?: readonly DocumentCompositionStyle[];
+    compositionScopes?: DocumentScopedQuadRecord;
+    scopes?: DocumentScopedQuadRecord;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[],
   systems: readonly InitialSystemState[] = [],
@@ -664,7 +679,7 @@ function make_livemap_registry_engine(
 
   function reconstruct_scoped_library(library: LiveMapLibraryState, input: unknown,
     authority: import("./livemap.document.scoped-composition.js").DocumentScopedCompositionAuthority,
-    issued = mapIdentityEpoch.issued()): PreparedDocumentScopedLibrary {
+    issued = mapIdentityEpoch.issued(), foreignPayloads: ReadonlySet<string> = new Set()): PreparedDocumentScopedLibrary {
     if (library.mode !== "document") throw new Error("Scoped restoration requires a document Library.");
     const portable = decode_document_scoped_library(input);
     const prepared = prepare_livemap_root(portable.root, "document");
@@ -672,8 +687,12 @@ function make_livemap_registry_engine(
     if (library.hsonSchema !== undefined) must_hson_schema_root(library.hsonSchema, prepared.root);
     authority.assertCurrent();
     const candidate = prepare_document_scoped_reconstruction({ owner: library.identity, root: prepared.root,
-      overlay: require_document_overlay(prepared.documentOverlay), issued }, portable.scopes, authority);
-    return finish_scoped_preparation(restore_document_scoped_library_styles(candidate, portable));
+      overlay: require_document_overlay(prepared.documentOverlay), issued }, portable.scopes, authority, foreignPayloads);
+    return restore_document_scoped_library_styles(candidate, portable);
+  }
+
+  function scoped_aliases(candidate: PreparedDocumentScopedLibrary): DocumentQuadBindings {
+    return make_document_quad_bindings(candidate.scopes.document.map(({ name, quid }) => ({ name, quid })));
   }
 
   function capture_fence(): () => void {
@@ -1845,11 +1864,11 @@ function make_livemap_registry_engine(
     return install_hosted_registry([...bindings, ...systemBinding]);
   }
 
-  function configure_client_composition(snapshot: PortableAggregateSnapshot): void {
+  function configure_client_composition(snapshot: PortableAggregateSnapshot, scoped = false): void {
     if (clientComposition !== undefined || clientManagementOwner !== undefined || mapRevision !== 0) {
       throw new Error("Client LiveMap ownership must be fixed before its first transition.");
     }
-    assert_portable_aggregate_snapshot_shape(snapshot);
+    assert_portable_aggregate_snapshot_shape(snapshot, scoped);
     const hosted = require_hosted_state();
     const projected = new Set<LiveMapLibraryIdentity>();
     const bindings = new Map<string, HostedRegistryBinding>();
@@ -2239,7 +2258,7 @@ function make_livemap_registry_engine(
     return snapshot;
   }
 
-  function capture_selected_hosted(names: readonly string[], includeSystem: boolean) {
+  function capture_selected_hosted(names: readonly string[], includeSystem: boolean, scoped = false) {
     const checkCapture = capture_fence();
     const hosted = require_hosted_state();
     const revision = mapRevision;
@@ -2250,6 +2269,14 @@ function make_livemap_registry_engine(
         throw new Error("Selected hosted Library is unavailable.");
       }
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
+      if (scoped && state.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence.");
+      if (scoped && state.documentScopes !== undefined) {
+        const captured = capture_document_scoped_library({ owner: state.identity, root: state.root,
+          overlay: require_document_overlay(state.documentOverlay), issued: mapIdentityEpoch.issued(),
+          scopes: state.documentScopes, stylesheet: stylesheet(state.identity), identityEffects: [], initialStyles: [], steps: [],
+          changed: false, effects: undefined, assertCurrent: checkCapture });
+        return Object.freeze({ name, root: encode_hosted_root(captured.root, HOSTED_MAX_SNAPSHOT_BYTES), scopes: captured.scopes, css: captured.css });
+      }
       return Object.freeze({ name, root: encode_hosted_root(
         clone_hson_graph_without_quids(validated_library_root(state)), HOSTED_MAX_SNAPSHOT_BYTES),
         ...portable_quads(state) });
@@ -2790,15 +2817,28 @@ function make_livemap_registry_engine(
     snapshot: PortableAggregateSnapshot,
     afterTopologyInstall?: (projected: readonly Readonly<{ name: string; identity: LiveMapLibraryIdentity }>[],
       retired: readonly LiveMapLibraryIdentity[]) => void,
+    scoped = false,
   ): void {
-    const checkRestore = capture_fence();
+    // Capture the authentic grant before any caller-controlled snapshot access.
+    const owner = transitionController.managedExecutionOwner();
+    if (owner === undefined) throw new Error("Client restoration requires management.");
+    const checkGrant = transitionController.captureManagementFence(owner);
+    const position = capture_fence(), generation = transitionController.generation;
+    const checkRestore = () => {
+      checkGrant(); position();
+      if (generation !== transitionController.generation) throw new Error("Restoration preparation changed.");
+    };
     const composition = clientComposition;
     if (composition === undefined) throw new Error("Client projection is not configured.");
     if (clientManagementOwner === undefined
       || transitionController.managedExecutionOwner() !== clientManagementOwner) {
       throw new Error("Client projection restore requires Echo management.");
     }
-    assert_portable_aggregate_snapshot_shape(snapshot);
+    assert_portable_aggregate_snapshot_shape(snapshot, scoped);
+    if (scoped && (snapshot.authority.incarnationId !== composition.authority.incarnationId
+      || snapshot.registryDigest !== composition.registry.digest || snapshot.revision < composition.revision)) {
+      throw new Error("Private scoped restoration requires its current authorized registry and authority.");
+    }
     if (snapshot.authority.logicalMapId !== composition.authority.logicalMapId) {
       throw new Error("Client projection snapshot authority is incompatible.");
     }
@@ -2814,6 +2854,7 @@ function make_livemap_registry_engine(
       state: LiveMapLibraryState;
       root: HsonNode;
       documentQuads?: DocumentQuadBindings;
+      documentScopes?: import("./livemap.document.scoped-quad.js").DocumentScopedQuads;
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       projectedOverlay?: LiveMapProjectedIdentityOverlay;
       projectedValue?: OrderedProjectedValue;
@@ -2824,7 +2865,11 @@ function make_livemap_registry_engine(
       binding: HostedRegistryBinding;
     }>> = [];
     const reserved = new Set<string>();
-    const foreignPayloads = disposable_document_quad_payloads(snapshot.libraries.map(entry => own_document_quads(entry)));
+    const foreignPayloads = new Set([...disposable_document_quad_payloads(snapshot.libraries.map(entry => own_document_quads(entry))),
+      ...snapshot.libraries.flatMap(entry => entry.scopes?.subjects.map(subject => subject.name.slice(1)) ?? [])]);
+    const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: checkRestore,
+      readPart: () => { throw new Error("Receiving restoration cannot read Part definitions."); } };
+    let stagedIssued = mapIdentityEpoch.issued();
     let nextSystem: LiveMapSystemState | undefined;
     let systemBinding: HostedRegistryBinding | undefined;
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
@@ -2863,9 +2908,20 @@ function make_livemap_registry_engine(
           && oldBinding.mode === entry.mode && oldBinding.validation === own_data_library_validation(entry) && hson_schema_digest(oldBinding.schema) === hson_schema_source_digest(entry.schema);
         const previous = retained ? require_library(oldBinding.identity as LiveMapLibraryIdentity) : undefined;
         const state = previous ?? make_livemap_library(prepared, schema, own_data_library_validation(entry));
-        const graphChanged = previous === undefined || !canonical_graph_equal(previous.root, prepared.root)
+        if (!scoped && previous?.documentScopes !== undefined) throw new Error("Scoped restoration requires private admission.");
+        const scopedCandidate = encoded.scopes === undefined ? undefined : reconstruct_scoped_library(state,
+          { root: prepared.root, scopes: encoded.scopes, css: encoded.css }, scopedAuthority,
+          make_livemap_issued_quid_ledger([...enumerate_livemap_issued_quids(stagedIssued), ...reserved]), foreignPayloads);
+        if (scopedCandidate !== undefined) {
+          stagedIssued = scopedCandidate.issued;
+          for (const quid of enumerate_livemap_issued_quids(stagedIssued)) reserved.add(quid);
+        }
+        const graphChanged = scopedCandidate !== undefined || previous?.documentScopes !== undefined
+          || previous === undefined || !canonical_graph_equal(previous.root, prepared.root)
           || own_document_quads(encoded) !== undefined || (previous.documentQuads?.byName.size ?? 0) > 0;
-        const addressState = graphChanged ? reconstruct_document(prepared, own_document_quads(encoded), encoded.css, reserved, undefined, [], foreignPayloads)
+        const addressState = scopedCandidate !== undefined
+          ? { documentOverlay: scopedCandidate.overlay, documentQuads: scoped_aliases(scopedCandidate), stylesheet: scopedCandidate.stylesheet }
+          : graphChanged ? reconstruct_document(prepared, own_document_quads(encoded), encoded.css, reserved, undefined, [], foreignPayloads)
           : { documentOverlay: state.documentOverlay, documentQuads: state.documentQuads, stylesheet: state.stylesheet };
         const css = graphChanged ? addressState.stylesheet : entry.mode === "document"
           ? decode_portable_document_stylesheet(encoded.css) : undefined;
@@ -2875,8 +2931,9 @@ function make_livemap_registry_engine(
           mode: entry.mode, schema, ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }) });
         candidates.push(Object.freeze({
           name: entry.name, state, binding, retained, graphChanged, changed,
-          root: graphChanged ? prepared.root : state.root,
+          root: scopedCandidate?.root ?? (graphChanged ? prepared.root : state.root),
           documentOverlay: addressState.documentOverlay, documentQuads: addressState.documentQuads,
+          documentScopes: scopedCandidate?.scopes,
           projectedOverlay: graphChanged ? prepared.projectedOverlay : state.projectedOverlay,
           projectedValue: entry.mode === "document" ? undefined
             : graphChanged ? must_projected_root_value(prepared.root) : state.projectedValue,
@@ -2953,6 +3010,7 @@ function make_livemap_registry_engine(
     for (const candidate of candidates) {
       if (candidate.changed) Object.assign(candidate.state, {
         root: candidate.root, documentOverlay: candidate.documentOverlay, documentQuads: candidate.documentQuads,
+        documentScopes: candidate.documentScopes, documentScopesUnavailable: undefined,
         projectedOverlay: candidate.projectedOverlay, projectedValue: candidate.projectedValue,
         ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
       });
@@ -3171,14 +3229,34 @@ function make_livemap_registry_engine(
   }
 
   const initialReserved = new Set<string>();
-  const initialPayloads = disposable_document_quad_payloads(registry.map(entry => entry.quads));
+  const initialPayloads = new Set([...disposable_document_quad_payloads(registry.map(entry => entry.quads)),
+    ...registry.flatMap(entry => entry.scopes?.subjects.map(subject => subject.name.slice(1)) ?? [])]);
   registry.forEach((entry, index) => {
     const state = states[index];
     if (state === undefined) throw new Error("Incomplete initial Library registry.");
     if (entry.compositionStyles !== undefined) merge_part_stylesheets([...(entry.css === undefined ? [] : [encode_portable_document_stylesheet(entry.css)]), ...entry.compositionStyles.map(item => item.css)]);
-    Object.assign(state, reconstruct_document(entry.graph, entry.quads, entry.css === undefined ? undefined : encode_portable_document_stylesheet(entry.css), initialReserved, undefined, [], initialPayloads));
-    if (entry.compositionStyles !== undefined) state.documentScopesUnavailable = true;
-    if (entry.compositionStyles !== undefined) Object.assign(state, compose_styles(state.root, require_document_overlay(state.documentOverlay), entry.compositionStyles, initialReserved, state.stylesheet));
+    if (entry.scopes === undefined) Object.assign(state, reconstruct_document(entry.graph, entry.quads, entry.css === undefined ? undefined : encode_portable_document_stylesheet(entry.css), initialReserved, undefined, [], initialPayloads));
+    const initialAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: capture_fence(),
+      readPart: () => { throw new Error("Initial restoration cannot read Part collections."); } };
+    if (entry.scopes !== undefined) {
+      const candidate = reconstruct_scoped_library(state, { root: state.root, scopes: entry.scopes,
+        css: encode_portable_document_stylesheet(entry.css!) }, initialAuthority,
+        make_livemap_issued_quid_ledger(initialReserved), initialPayloads);
+      for (const quid of enumerate_livemap_issued_quids(candidate.issued)) initialReserved.add(quid);
+      Object.assign(state, { root: candidate.root, documentOverlay: candidate.overlay, documentScopes: candidate.scopes,
+        documentQuads: scoped_aliases(candidate), stylesheet: candidate.stylesheet });
+    } else if (entry.compositionScopes !== undefined) {
+      const composition = { root: state.root, scoped: entry.compositionScopes, styles: entry.compositionStyles ?? [],
+        identityDemands: (entry.compositionStyles ?? []).flatMap(style => style.subjects.map(subject => subject.path)) };
+      const candidate = prepare_document_scoped_library_styles(prepare_document_scoped_composition({ owner: state.identity,
+        root: state.root, overlay: require_document_overlay(state.documentOverlay),
+        issued: make_livemap_issued_quid_ledger(initialReserved) }, composition, initialAuthority), state.stylesheet!);
+      for (const quid of enumerate_livemap_issued_quids(candidate.issued)) initialReserved.add(quid);
+      Object.assign(state, { documentOverlay: candidate.overlay, documentScopes: candidate.scopes, stylesheet: candidate.stylesheet });
+    } else if (entry.compositionStyles !== undefined) {
+      state.documentScopesUnavailable = true;
+      Object.assign(state, compose_styles(state.root, require_document_overlay(state.documentOverlay), entry.compositionStyles, initialReserved, state.stylesheet));
+    }
     mark_quad_document_root(state.root, state.documentQuads);
   });
   if (initialReserved.size) {
@@ -3279,7 +3357,7 @@ function make_livemap_registry_engine(
     },
     prepareScopedDocumentRestoration: (identity, input) => {
       const authority = scoped_preparation_authority(), library = require_library(identity);
-      return reconstruct_scoped_library(library, input, authority);
+      return finish_scoped_preparation(reconstruct_scoped_library(library, input, authority));
     },
     initializeClientScopedDocumentsManaged: (owner, documents) => transitionController.runManaged(owner, () => {
       // Even documents.length may execute a caller Proxy trap.
@@ -3408,6 +3486,14 @@ function make_livemap_registry_engine(
       });
     },
     captureSelectedHosted: capture_selected_hosted,
+    captureManagedRestorationFence: (owner) => {
+      const management = transitionController.captureManagementFence(owner), position = capture_fence();
+      const composition = clientComposition, generation = transitionController.generation;
+      return () => {
+        management(); position();
+        if (composition !== clientComposition || generation !== transitionController.generation) throw new Error("Receiving restoration authority changed.");
+      };
+    },
     configureClientComposition: configure_client_composition,
     clientProjection: () => clientComposition === undefined ? undefined : Object.freeze({
       authority: clientComposition.authority,
@@ -3560,10 +3646,10 @@ function make_livemap_registry_engine(
     },
     restoreHosted: restore_hosted_aggregate,
     restoreClientHosted: restore_client_hosted_aggregate,
-    restoreClientHostedManaged: (owner, snapshot, afterTopologyInstall) => transitionController.runManaged(
+    restoreClientHostedManaged: (owner, snapshot, afterTopologyInstall, scoped) => transitionController.runManaged(
       owner,
       () => clientComposition === undefined ? restore_client_hosted_aggregate(snapshot)
-        : restore_client_projection(snapshot, afterTopologyInstall),
+        : restore_client_projection(snapshot, afterTopologyInstall, scoped),
     ),
     restoreHostedManaged: (owner, snapshot) => transitionController.runManaged(
       owner,

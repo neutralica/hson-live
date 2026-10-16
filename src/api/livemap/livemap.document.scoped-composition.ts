@@ -131,11 +131,11 @@ export function prepare_document_scoped_composition(context: DocumentScopedQuadC
  * Transport labels exclude sender payloads from allocation but never become bindings. @internal
  */
 export function prepare_document_scoped_reconstruction(context: DocumentScopedQuadContext,
-  input: DocumentScopedQuadRecord, authority: DocumentScopedCompositionAuthority): PreparedDocumentScopedComposition {
+  input: DocumentScopedQuadRecord, authority: DocumentScopedCompositionAuthority, foreignPayloads: ReadonlySet<string> = new Set()): PreparedDocumentScopedComposition {
   authority.assertCurrent();
   const record = decode_document_scoped_quads(input, context.root);
   return prepare_initial(context, record, record.subjects.map(subject => subject.path), [], authority,
-    new Set(record.subjects.map(subject => subject.name.slice(1))));
+    new Set([...foreignPayloads, ...record.subjects.map(subject => subject.name.slice(1))]));
 }
 
 function prepare_initial(context: DocumentScopedQuadContext, record: DocumentScopedQuadRecord,

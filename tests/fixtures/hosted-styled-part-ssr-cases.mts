@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { hsonLiveMap, encode_ssr_bootstrap, decode_ssr_bootstrap } from "../../src/index.ts";
+import { hsonLiveMap, hsonTransform, encode_ssr_bootstrap, decode_ssr_bootstrap } from "../../src/index.ts";
 import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { set_livemap_quid_candidate_source_for_tests as allocation } from "../../src/api/livemap/livemap.quid-allocation.ts";
@@ -8,34 +8,105 @@ import { client_projection_map } from "../helpers/client-projection.mts";
 import { admit_authority_projection_snapshot } from "../../src/api/locus/locus.authority-projection-snapshot.ts";
 import { DocumentSsrError } from "../../src/internal/document-cut.error.ts";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.ts";
+import { normalize_document_root } from "../../src/api/livemap/livemap.document.ts";
 
-/** Public hosted construction and retained-session cut, shared by Node/Worker/Chrome. */
-export async function hosted_styled_part_fixture(document = '<button id="%{id}" "Styled"/>') {
+async function hosted_subject_fixture(page: string, css?: string) {
   const locus = hsonLiveMap.locus.create({
     private: [{ name: "PRIVATE_PARTS_SENTINEL", definition: collection({
-      button: { kind: "document", document, css: 'button{color:rgb(12,34,56)}' },
+      button: { kind: "document", document: '<button id="%{id}" "Styled"/>', css: 'button{color:rgb(12,34,56)}' },
       unused: { kind: "document", document: '<i "PRIVATE_UNUSED_SENTINEL"/>', css: 'i{color:rgb(98,76,54)}' },
     }) }],
     shared: [
-      { name: "page", definition: { document: '<html <head/> <body <hson-part @:a lib="PRIVATE_PARTS_SENTINEL" at="button" id="hosted-a"/> <hson-part @:b lib="PRIVATE_PARTS_SENTINEL" at="button" id="hosted-b"/> <button id="hosted-outside" "Outside"/>/>/>' } },
+      { name: "page", definition: { document: page }, ...(css === undefined ? {} : { css }) },
       { name: "ungranted", definition: { document: '<aside "UNGRANTED_DOCUMENT_SENTINEL"/>' } },
     ],
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
   });
   try {
     const session = await locus.session.create({ libraries: ["page", "PRIVATE_PARTS_SENTINEL"] });
-    return { locus, session, cut: session.now({ html: "page" }) };
+    return { locus, session };
   } catch (cause) {
     locus.dispose();
     throw cause;
   }
 }
 
+/** Actual occurrences remain installed, but public scoped delivery is temporarily
+ * unavailable until coordinated Cut 3H activation. This fixture never flattens them. */
+export function hosted_styled_part_fixture() {
+  return hosted_subject_fixture('<html <head/> <body <hson-part @:a lib="PRIVATE_PARTS_SENTINEL" at="button" id="hosted-a"/> <hson-part @:b lib="PRIVATE_PARTS_SENTINEL" at="button" id="hosted-b"/> <button id="hosted-outside" "Outside"/>/>/>');
+}
+
+/** Authored flat subjects, not a conversion of scoped state. Keep public
+ * snapshot/bootstrap/Echo and Chrome first-paint coverage on this supported path. */
+export async function hosted_flat_subject_fixture(document = '<button @:a id="hosted-a" "Styled"/> <button @:b id="hosted-b" "Styled"/>') {
+  const fixture = await hosted_subject_fixture(`<html <head/> <body ${document} <button id="hosted-outside" "Outside"/>/>/>`,
+    '@scope ([hson\\:quad="a"]){:scope{color:rgb(12,34,56)}}@scope ([hson\\:quad="b"]){:scope{color:rgb(12,34,56)}}');
+  try { return { ...fixture, cut: fixture.session.now({ html: "page" }) }; }
+  catch (cause) { fixture.locus.dispose(); throw cause; }
+}
+
 export async function hosted_styled_part_ssr_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
-  await check("hosted private styled Parts share captured CSS and exact receiving subject markers with local cuts", async () => {
-    const { locus, session, cut } = await hosted_styled_part_fixture();
+  await check("styled Part occurrences retain complete state and reject public hosted delivery until Cut 3H", async () => {
+    const { locus, session } = await hosted_styled_part_fixture();
+    try {
+      const map = locus_map_internal(locus), aggregate = owner(map);
+      const identity = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(entry => entry.name === "page")]!;
+      const scopes = aggregate.documentScopes(identity);
+      assert.ok(scopes); assert.equal(scopes.occurrences.length, 2);
+      assert.notEqual(scopes.occurrences[0]!.lifetime, scopes.occurrences[1]!.lifetime);
+      assert.deepEqual(scopes.occurrences.map(scope => scope.parent), [null, null]);
+      const state = aggregate.scopedDocumentState(identity);
+      assert.deepEqual(state.scopes.document, [
+        { name: "a", kind: "part", path: [0,0,1,0,0] },
+        { name: "b", kind: "part", path: [0,0,1,0,1] },
+      ]);
+      assert.deepEqual(state.scopes.occurrences.map(scope => scope.root), [[0,0,1,0,0], [0,0,1,0,1]]);
+      const expected = normalize_document_root(hsonTransform.fromHson('<html <head/> <body <button id="hosted-a" "Styled"/> <button id="hosted-b" "Styled"/> <button id="hosted-outside" "Outside"/>/>/>').toNode());
+      assert.deepEqual(state.root, expected);
+      assert.doesNotMatch(JSON.stringify(state.root), /hson-part|%\{id\}|PRIVATE_UNUSED_SENTINEL/);
+      for (const [index, name] of ["a", "b"].entries()) {
+        const subject = aggregate.documentQuad(identity, name, undefined);
+        assert.ok(subject); assert.equal(subject.quid, scopes.occurrences[index]!.rootQuid);
+        assert.deepEqual(subject.path, state.scopes.occurrences[index]!.root);
+      }
+      const css = locus.lib("page").css.snapshot();
+      assert.equal((css.match(/color:rgb\(12,34,56\)/g) ?? []).length, 2);
+      for (const scope of scopes.occurrences) assert.ok(css.includes(`@scope ([hson\\:quid="${scope.rootQuid}"])`));
+      assert.throws(() => session.now(), /^Error: Authority projection snapshot is malformed\.$/);
+      assert.throws(() => session.now({ html: "page" }), /^Error: Authority projection snapshot is malformed\.$/);
+      assert.throws(() => map.capture(), /Scoped document capture/);
+      assert.throws(() => map.cut({ documents: ["page"], data: [], html: "page" }), /Scoped document/);
+      assert.throws(() => aggregate.captureDocumentSsr(identity, []), /Scoped document SSR/);
+      assert.equal(aggregate.documentScopes(identity), scopes);
+      assert.deepEqual(aggregate.scopedDocumentState(identity), state);
+    } finally { locus.dispose(); }
+  });
+  await check("repeated rejected scoped hosted captures publish nothing and preserve occurrence lifetimes", async () => {
+    const { locus, session } = await hosted_styled_part_fixture();
+    const map = locus_map_internal(locus), aggregate = owner(map), before = aggregate.inspect();
+    const identity = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(entry => entry.name === "page")]!;
+    const root = aggregate.root(identity), overlay = aggregate.documentOverlay(identity), ledger = aggregate.identityEpoch().issued();
+    const scopes = aggregate.documentScopes(identity), css = aggregate.stylesheet(identity), position = aggregate.hostedPosition();
+    let allocations = 0, commits = 0, observations = 0;
+    const off = map.commits.observe(() => { commits++; });
+    const stop = aggregate.observeAuthorityPosition(() => { observations++; }, "installed");
+    allocation(aggregate.identityEpoch().owner, () => { allocations++; throw Error("Unexpected scoped capture allocation"); });
+    try {
+      for (let repeat = 0; repeat < 3; repeat++) assert.throws(() => session.now({ html: "page" }), /^Error: Authority projection snapshot is malformed\.$/);
+      assert.equal(allocations, 0); assert.equal(commits, 0); assert.equal(observations, 0);
+      assert.equal(aggregate.root(identity), root); assert.equal(aggregate.documentOverlay(identity), overlay);
+      assert.equal(aggregate.identityEpoch().issued(), ledger); assert.equal(aggregate.documentScopes(identity), scopes);
+      assert.equal(aggregate.stylesheet(identity), css); assert.deepEqual(aggregate.hostedPosition(), position);
+      assert.deepEqual(aggregate.inspect(), before);
+    } finally { allocation(aggregate.identityEpoch().owner, undefined); off(); stop(); locus.dispose(); }
+  });
+  await check("flat hosted subjects share captured CSS and exact markers through bootstrap and Echo reconstruction", async () => {
+    const { locus, session, cut } = await hosted_flat_subject_fixture();
     try {
       const map = locus_map_internal(locus);
+      const aggregate = owner(map), identity = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(entry => entry.name === "page")]!;
+      assert.equal(aggregate.documentScopes(identity), undefined);
       const local = map.cut({ data: [], documents: ["page"], html: "page" });
       const page = cut.libs.libraries[0]!;
       assert.deepEqual(cut.libs.libraries.map(entry => entry.name), ["page"]);
@@ -58,6 +129,11 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       assert.throws(() => client.lib("PRIVATE_PARTS_SENTINEL"), /Unknown/);
       assert.throws(() => client.lib("ungranted"), /Unknown/);
       assert.equal(client.lib("page").mode, "document");
+      const receiving = owner(client);
+      assert.equal(receiving.documentScopes(receiving.libraries()[0]!), undefined);
+      for (const quid of enumerate_livemap_issued_quids(owner(map).identityEpoch().issued())) {
+        assert.equal(receiving.identityEpoch().issued().has(quid), false);
+      }
       const recovered = client.cut({ html: "page" });
       assert.equal(recovered.html, cut.html, "Source-free portable installation retains first-paint correspondence.");
       const transport = JSON.stringify(decoded.bootstrap);
@@ -74,7 +150,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
     } finally { locus.dispose(); }
   });
   await check("repeated hosted cuts observe one captured revision without allocating identity or mutating ownership", async () => {
-    const { locus, session, cut } = await hosted_styled_part_fixture();
+    const { locus, session, cut } = await hosted_flat_subject_fixture();
     const map = locus_map_internal(locus), aggregate = owner(map), before = map.capture();
     const identity = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(entry => entry.name === "page")]!;
     const root = aggregate.root(identity), overlay = aggregate.documentOverlay(identity), ledger = aggregate.identityEpoch().issued();
@@ -89,7 +165,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
     } finally { allocation(aggregate.identityEpoch().owner, undefined); off(); locus.dispose(); }
   });
   await check("invalid portable correspondence rejects at existing admission before hosted rendering", async () => {
-    const { locus, cut } = await hosted_styled_part_fixture();
+    const { locus, cut } = await hosted_flat_subject_fixture();
     try {
       const page = cut.libs.libraries[0]!, quads = page.quads!;
       for (const invalid of [undefined, [], quads.slice(0, 1),
@@ -104,10 +180,10 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
   });
   await check("hosted subject planning rejects authored marker collisions and retains parser closure", async () => {
     for (const [document, reason] of [
-      ['<button HSON:QUAD="forged" id="%{id}"/>', /reserved portable document subject carrier/],
-      ['<noscript id="%{id}"/>', /parsing depends on the native scripting flag/],
+      ['<button @:a HSON:QUAD="forged"/> <button @:b/>', /reserved portable document subject carrier/],
+      ['<noscript @:a/> <button @:b/>', /parsing depends on the native scripting flag/],
     ] as const) {
-      await assert.rejects(() => hosted_styled_part_fixture(document), error => {
+      await assert.rejects(() => hosted_flat_subject_fixture(document), error => {
         assert.ok(error instanceof DocumentSsrError); assert.equal(error.phase, "realize");
         assert.ok(error.cause instanceof Error); assert.match(error.cause.message, reason);
         return true;

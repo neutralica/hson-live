@@ -1,3 +1,4 @@
+import { decode_document_scoped_library, own_document_scopes } from "../livemap/livemap.document.scoped-portable.js";
 import { own_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { assert_portable_document_css_correspondence, decode_document_quads } from "../livemap/livemap.document.quad.js";
@@ -27,11 +28,18 @@ const clientProjectionIdentity = new WeakMap<LiveMap, Readonly<{
   incarnationId: string;
   systemFeatures: AuthorityProjectionSnapshot["systemFeatures"];
 }>>();
-const admittedSnapshots = new WeakMap<object, AuthorityProjectionSnapshot>();
+/** Same projection family, private per-document content extension. Public ingress stays flat. @internal */
+export type ScopedAuthorityProjectionSnapshot = Readonly<Omit<AuthorityProjectionSnapshot, "libraries"> & {
+  libraries: readonly (AuthorityProjectionSnapshot["libraries"][number] & Readonly<{
+    scopes?: import("../livemap/livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
+  }>)[];
+}>;
+const admittedSnapshots = new WeakMap<object, ScopedAuthorityProjectionSnapshot>();
+const admittedScopedSnapshots = new WeakMap<object, ScopedAuthorityProjectionSnapshot>();
 
 /** @internal The client contract digest is independent of its local registry. */
-export function bind_client_projection_identity_internal(map: LiveMap, snapshot: AuthorityProjectionSnapshot): void {
-  const admitted = admit_authority_projection_snapshot(snapshot);
+export function bind_client_projection_identity_internal(map: LiveMap, snapshot: AuthorityProjectionSnapshot, scoped = false): void {
+  const admitted = admit_authority_projection_snapshot(snapshot, scoped);
   const previous = clientProjectionIdentity.get(map);
   if (previous !== undefined && previous.incarnationId === admitted.authority.incarnationId
     && previous.digest !== admitted.projectionDigest) fail();
@@ -76,7 +84,7 @@ export function advance_client_projection_identity_internal(
 export const AUTHORITY_PROJECTION_SNAPSHOT_FORMAT: "hson-authority-projection-snapshot" = "hson-authority-projection-snapshot";
 
 type Root = Readonly<{ format: "hson-exact-value"; payload: string }>;
-type AuthorityProjectionLibrary = AuthorityProjectionSnapshot["libraries"][number];
+type AuthorityProjectionLibrary = ScopedAuthorityProjectionSnapshot["libraries"][number];
 
 function fail(): never { throw new Error("Authority projection snapshot is malformed."); }
 function record(value: unknown, keys: readonly string[]): Record<string, unknown> {
@@ -95,7 +103,19 @@ function string(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) return fail();
   return value;
 }
-function array(value: unknown): readonly unknown[] { if (!Array.isArray(value)) return fail(); return value; }
+function array(value: unknown): readonly unknown[] {
+  if (!Array.isArray(value)) return fail();
+  const length = Object.getOwnPropertyDescriptor(value, "length")?.value;
+  if (!Number.isSafeInteger(length) || length < 0 || length > HOSTED_MAX_SNAPSHOT_BYTES
+    || Reflect.ownKeys(value).length !== length + 1) return fail();
+  const result: unknown[] = [];
+  for (let index = 0; index < length; index++) {
+    const field = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!field?.enumerable || !Object.hasOwn(field, "value")) return fail();
+    result.push(field.value);
+  }
+  return result;
+}
 function json_utf8_bytes(value: unknown): number {
   if (value === null) return 4;
   if (typeof value === "string") return new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -119,9 +139,13 @@ function root(value: unknown, schema: HsonSchema, mode: import("../../types/live
 }
 
 /** Decode and validate the entire candidate before any client runtime is constructed. */
-export function admit_authority_projection_snapshot(input: unknown): AuthorityProjectionSnapshot {
+export function admit_authority_projection_snapshot(input: unknown): AuthorityProjectionSnapshot;
+/** Private scoped admission does not widen the public flat contract. @internal */
+export function admit_authority_projection_snapshot(input: unknown, scoped: boolean): ScopedAuthorityProjectionSnapshot;
+export function admit_authority_projection_snapshot(input: unknown, scoped = false): ScopedAuthorityProjectionSnapshot {
+  const cache = scoped ? admittedScopedSnapshots : admittedSnapshots;
   if (typeof input === "object" && input !== null) {
-    const admitted = admittedSnapshots.get(input);
+    const admitted = cache.get(input);
     if (admitted !== undefined) {
       for (const entry of admitted.libraries) if (entry.validation !== undefined) validate_data_library(
         decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES), entry.mode, entry.validation);
@@ -141,7 +165,7 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       const candidateMode = typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "mode")
         ? Reflect.get(candidate, "mode") : undefined;
       const entry = record(candidate, candidateMode === "document"
-        ? ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", "css", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : []), ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "quads") ? ["quads"] : [])]
+        ? ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", "css", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : []), ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "quads") ? ["quads"] : []), ...(scoped && typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "scopes") ? ["scopes"] : [])]
         : ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : [])]);
       const name = string(entry.name);
       if (names.has(name)) return fail();
@@ -158,13 +182,17 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       validate_data_library(decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode, validation);
       const quads = own_document_quads(entry) === undefined ? undefined
         : decode_document_quads(own_document_quads(entry), decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode);
-      if (mode === "document") assert_portable_document_css_correspondence(
+      const scopeInput = own_document_scopes(entry);
+      const scopedState = scopeInput === undefined ? undefined : decode_document_scoped_library({
+        root: decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), scopes: scopeInput, css: entry.css });
+      if (scopedState === undefined && mode === "document") assert_portable_document_css_correspondence(
         decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode, quads,
         encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)));
       return Object.freeze({ name, mode, schema: schemaSource, schemaDigest: hson_schema_digest(schema), rootCodec: "hson-exact-value",
         root: qualifiedRoot,
         ...(validation === undefined ? {} : { validation }),
         ...(quads === undefined ? {} : { quads }),
+        ...(scopedState === undefined ? {} : { scopes: scopedState.scopes }),
         ...(mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
     });
     if (libraries.some((entry, index) => index > 0 && libraries[index - 1]!.name.localeCompare(entry.name) >= 0)) return fail();
@@ -188,25 +216,26 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       if (encode_hosted_root(projected, HOSTED_MAX_SNAPSHOT_BYTES).payload !== validatedRoot.payload) return fail();
       system = Object.freeze({ interactions: validatedRoot });
     } else if (value.system !== null) return fail();
-    const contract = libraries.map(({ root: _root, css: _css, ...entry }) => { delete entry.quads; return entry; });
+    const contract = libraries.map(({ root: _root, css: _css, ...entry }) => { delete entry.quads; delete entry.scopes; return entry; });
     if (locus_projection_contract_digest(authority, contract, systemFeatures, writableDocuments) !== digest) return fail();
-    const snapshot: AuthorityProjectionSnapshot = Object.freeze({ format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
+    const snapshot: ScopedAuthorityProjectionSnapshot = Object.freeze({ format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
       authority, revision, projectionDigest: digest, libraries: Object.freeze(libraries),
       systemFeatures: Object.freeze(systemFeatures),
       writableDocuments: Object.freeze(writableDocuments), system });
     if (json_utf8_bytes(snapshot) > HOSTED_MAX_SNAPSHOT_BYTES) return fail();
-    admittedSnapshots.set(snapshot, snapshot);
+    cache.set(snapshot, snapshot);
     return snapshot;
   } catch { return fail(); }
 }
 
 /** @internal Fingerprint mutable projected contents separately from the scope contract. */
-export function authority_projection_state_fingerprint_internal(input: AuthorityProjectionSnapshot): string {
-  const snapshot = admit_authority_projection_snapshot(input);
+export function authority_projection_state_fingerprint_internal(input: AuthorityProjectionSnapshot, scoped = false): string {
+  const snapshot = admit_authority_projection_snapshot(input, scoped);
   return sha256_sync(JSON.stringify({
     libraries: snapshot.libraries.map((entry) => ({
       name: entry.name,
       root: entry.root.payload,
+      ...(entry.scopes === undefined ? {} : { scopes: entry.scopes }),
       ...(own_document_quads(entry) === undefined ? {} : { quads: own_document_quads(entry) }),
       ...(entry.mode === "document" ? { css: entry.css } : {}),
     })),
@@ -267,16 +296,18 @@ export function project_authority_snapshot(
 export function capture_selected_authority_projection_snapshot(
   map: LiveMap,
   effective: LocusEffectiveProjection,
-): AuthorityProjectionSnapshot {
+  scoped = false,
+): ScopedAuthorityProjectionSnapshot {
   try {
     const selected = internal_livemap_aggregate_authority(map).captureSelectedHosted(
-      effective.libraries.map((entry) => entry.name), effective.hasSystemFeature("interactions"));
+      effective.libraries.map((entry) => entry.name), effective.hasSystemFeature("interactions"), scoped);
     if (selected.authority.logicalMapId !== effective.authority.logicalMapId
       || selected.authority.incarnationId !== effective.authority.incarnationId) return fail();
     const libraries: AuthorityProjectionLibrary[] = effective.libraries.map((contract, index) => {
       const captured = selected.libraries[index];
       if (captured?.name !== contract.name) return fail();
       return Object.freeze({ ...contract, root: captured.root,
+        ...(own_document_scopes(captured) === undefined ? {} : { scopes: decode_document_scoped_library({ root: decode_hosted_root(captured.root, HOSTED_MAX_SNAPSHOT_BYTES), scopes: own_document_scopes(captured), css: captured.css }).scopes }),
         ...(own_document_quads(captured) === undefined ? {} : { quads: own_document_quads(captured) }),
         ...(contract.mode === "document" ? { css: captured.css } : {}) });
     });
@@ -288,7 +319,7 @@ export function capture_selected_authority_projection_snapshot(
       authority: selected.authority, revision: selected.revision, projectionDigest: effective.digest,
       libraries, systemFeatures: effective.systemFeatures,
       writableDocuments: effective.writableDocuments, system,
-    }));
+    }), scoped);
   } catch { return fail(); }
 }
 
@@ -306,11 +337,11 @@ export function capture_locus_session_authority_projection_snapshot(
 }
 
 /** Runtime-only adapter for the existing Step 6A.5 ownership machinery. @internal */
-export function authority_projection_as_client_composition_internal(input: AuthorityProjectionSnapshot): PortableAggregateSnapshot {
-  const snapshot = admit_authority_projection_snapshot(input);
+export function authority_projection_as_client_composition_internal(input: AuthorityProjectionSnapshot, scoped = false): PortableAggregateSnapshot {
+  const snapshot = admit_authority_projection_snapshot(input, scoped);
   // Reuse LiveMap's authority-neutral subset registry builder. Admission has
   // already validated these canonical contracts; no Schema resolver is needed.
-  const entries: HostedRegistryEntry[] = snapshot.libraries.map(({ root: _root, css: _css, ...entry }) => { delete entry.quads; return entry; });
+  const entries: HostedRegistryEntry[] = snapshot.libraries.map(({ root: _root, css: _css, ...entry }) => { delete entry.quads; delete entry.scopes; return entry; });
   const systemSchema = interaction_schema_internal();
   if (snapshot.system !== null) entries.push(Object.freeze({
     name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, scope: "hson-internal", mode: "data-object", schema: systemSchema.toHson(),
@@ -319,6 +350,7 @@ export function authority_projection_as_client_composition_internal(input: Autho
   const registry = registry_from_entries(entries);
   const libraries = snapshot.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest, root: entry.root,
+    ...(entry.scopes === undefined ? {} : { scopes: entry.scopes }),
     ...(own_document_quads(entry) === undefined ? {} : { quads: own_document_quads(entry) }),
     ...(entry.mode === "document" ? { css: entry.css } : {}),
   }));

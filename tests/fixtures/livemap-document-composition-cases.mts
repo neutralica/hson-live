@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { realize_document } from "../../src/internal/document-cut.ts";
 import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import { read_livemap_part_internal as readPart, compose_livemap_document_internal as compose,
@@ -123,9 +124,11 @@ export function document_composition_cases(check: (name: string, run: () => void
     const parts = map.lib(lib);
     parts.at(["leaf", "document"]).set('<i "edited definition"/>');
     assert.deepEqual(page.root(), before); assert.equal(owner(map).identityEpoch().issued().size, ledger.size);
-    const restored = install_libraries_snapshot(map.cut({ documents: ["page"], data: [] }).libs).map;
-    assert.deepEqual(leaves(doc(restored).root()), ["one", "two"]); assert.throws(() => restored.lib(lib));
-    assert.equal(doc(restored).q("local"), undefined);
+    const scoped = owner(map).scopedDocumentState(owner(map).libraries()[1]!);
+    assert.deepEqual(leaves(scoped.root), ["one", "two"]);
+    assert.equal(scoped.scopes.occurrences.length, 4);
+    // Complete initial scopes cannot silently fall back to the flat public cut.
+    assert.throws(() => map.cut({ documents: ["page"], data: [] }), /Echo\/checkpoint/);
   });
   check("native template remains an ordinary native template, separate from construction connectors", () => {
     const map = hsonLiveMap.fromLibraries({ page: { document: '<main <template <p "Kept"/>/>/>' } });
@@ -152,7 +155,8 @@ export function document_composition_cases(check: (name: string, run: () => void
       const root = doc(map).root(), outer = root.$_content[0]; if (!is_Node(outer)) throw Error("outer");
       assert.equal(outer.$_attrs?.title, value); assert.equal(outer.$_attrs?.["data-note"], `prefix:${value}:end`);
       assert.deepEqual(leaves(root), [String(value)]);
-      const html = doc(map).render(); assert.doesNotMatch(html, /<雪|<script|hson-part/);
+      assert.throws(() => doc(map).render(), /Scoped document capture/);
+      const html = realize_document(root, ""); assert.doesNotMatch(html, /<雪|<script|hson-part/);
       if (typeof value === "string" && value) { assert.match(html, /&lt;/); assert.match(html, /&amp;/); assert.match(html, /&quot;/); }
     }
   });

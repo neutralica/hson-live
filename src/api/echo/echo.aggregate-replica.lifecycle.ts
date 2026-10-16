@@ -1,3 +1,6 @@
+import { compose_client_projection_internal } from "./echo.projection.js";
+import { admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
+import type { AuthorityProjectionSnapshot, LocusLocalInitializer } from "../../types/locus.projection.types.js";
 import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.internal.types.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import type { LocusDisposer } from "../../types/locus.types.js";
@@ -20,6 +23,8 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMap | und
   replayHosted: (commit: PortableAggregateCommit, authorityRev?: number) => number;
   /** Private scoped receiving seam; public delivery/restore formats stay closed. */
   replayScopedHosted: (commit: PrivateScopedAggregateCommit) => number;
+  /** Complete private restoration under the existing projected contract. */
+  restoreScopedProjection: (snapshot: AuthorityProjectionSnapshot) => void;
   initializeScopedDocuments: (documents: readonly Readonly<{
     library: string; state: import("../livemap/livemap.document.scoped-portable.js").PortableDocumentScopedLibrary;
   }>[]) => void;
@@ -90,6 +95,17 @@ export function create_echo_aggregate_replica_capability_internal(
       const aggregate = internal_livemap_aggregate_authority(map);
       return aggregate.replayClientHostedManaged(owner, commit, aggregate.clientProjection()?.revision, true).rev;
     },
+    restoreScopedProjection(snapshot): void {
+      if (disposed || map === undefined) throw terminalError();
+      const aggregate = internal_livemap_aggregate_authority(map);
+      const assertCurrent = aggregate.captureManagedRestorationFence(owner);
+      const expectedDigest = client_projection_identity_internal(map);
+      const admitted = admit_authority_projection_snapshot(snapshot, true);
+      const composition = authority_projection_as_client_composition_internal(admitted, true);
+      if (admitted.projectionDigest !== expectedDigest) throw new Error("Scoped restoration projection is unauthorized.");
+      assertCurrent();
+      reconcile_client_projection_snapshot_internal(map, owner, composition, true);
+    },
     initializeScopedDocuments(documents): void {
       if (disposed) throw terminalError();
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
@@ -156,4 +172,12 @@ export function create_echo_aggregate_replica_capability_internal(
       else if (map !== undefined) internal_livemap_aggregate_authority(map).releaseManagement(owner);
     },
   });
+}
+
+/** Complete private Locus state -> fresh Echo composition. No endpoint, public
+ * constructor, recovery orchestration, or flat-then-scoped enrichment. @internal */
+export function create_echo_scoped_replica_internal(snapshot: AuthorityProjectionSnapshot,
+  local: readonly LocusLocalInitializer[] = []): EchoAggregateReplicaCapability {
+  const map = compose_client_projection_internal(snapshot, local, true);
+  return create_echo_aggregate_replica_capability_internal(map);
 }

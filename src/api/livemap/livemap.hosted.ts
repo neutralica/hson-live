@@ -1,3 +1,4 @@
+import { decode_document_scoped_library, own_document_scopes } from "./livemap.document.scoped-portable.js";
 import { encode_document_scoped_effects, validate_document_scoped_effects, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { clone_node } from "../../core/clone-node.js";
@@ -685,7 +686,7 @@ export function make_portable_aggregate_snapshot(authority: HostedLiveMapSnapsho
 }
 
 /** Reject all identity claims in a remote client snapshot before runtime installation. */
-export function assert_portable_aggregate_snapshot_shape(snapshot: PortableAggregateSnapshot): void {
+export function assert_portable_aggregate_snapshot_shape(snapshot: PortableAggregateSnapshot, scoped = false): void {
   const record = exact_record(snapshot, "Hosted client snapshot");
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "authority"], "Hosted client snapshot");
   const authority = exact_record(record.authority, "Hosted client snapshot authority");
@@ -695,7 +696,7 @@ export function assert_portable_aggregate_snapshot_shape(snapshot: PortableAggre
     || typeof authority.incarnationId !== "string" || !authority.incarnationId) {
     throw new HostedAggregateRepresentationError("Hosted client snapshot envelope is malformed.");
   }
-  assert_libraries_snapshot_entries(record);
+  assert_libraries_snapshot_entries(record, scoped);
   if (snapshot.registryDigest !== snapshot.registry.digest
     || snapshot.libraries.length !== snapshot.registry.libraries.length) {
     throw new HostedAggregateRepresentationError("Hosted client snapshot registry is malformed.");
@@ -769,7 +770,7 @@ export function assert_libraries_snapshot_shape(snapshot: LiveMapSnapshot): void
   assert_libraries_snapshot_entries(record);
 }
 
-function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>): void {
+function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>, scoped = false): void {
   const registry = exact_record(record.registry, "Hosted snapshot registry");
   exact_keys(registry, ["format", "libraries", "digest"], "Hosted snapshot registry");
   if (registry.format !== HOSTED_REGISTRY_FORMAT
@@ -791,13 +792,15 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
   for (const entry of record.libraries) {
     const item = exact_record(entry, "Hosted snapshot Library");
     exact_keys(item, entry.mode === "document"
-      ? ["name", "mode", "schema", "schemaDigest", "root", "css", ...(Object.hasOwn(item, "quads") ? ["quads"] : [])]
+      ? ["name", "mode", "schema", "schemaDigest", "root", "css", ...(Object.hasOwn(item, "quads") ? ["quads"] : []), ...(scoped && Object.hasOwn(item, "scopes") ? ["scopes"] : [])]
       : ["name", "mode", "schema", "schemaDigest", "root"], "Hosted snapshot Library");
     if (Object.hasOwn(item, "quads")) {
       if (item.quads === undefined) throw new HostedAggregateRepresentationError("Portable QUAD association cannot be undefined.");
       decode_document_quads(item.quads, decode_hosted_root(item.root, HOSTED_MAX_SNAPSHOT_BYTES), String(entry.mode));
     }
-    if (entry.mode === "document") assert_portable_document_css_correspondence(
+    const scopes = own_document_scopes(item);
+    if (scopes !== undefined) decode_document_scoped_library({ root: decode_hosted_root(item.root, HOSTED_MAX_SNAPSHOT_BYTES), scopes, css: item.css });
+    else if (entry.mode === "document") assert_portable_document_css_correspondence(
       decode_hosted_root(item.root, HOSTED_MAX_SNAPSHOT_BYTES), "document", own_document_quads(item),
       encode_portable_document_stylesheet(decode_portable_document_stylesheet(item.css)));
   }

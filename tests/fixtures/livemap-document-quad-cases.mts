@@ -382,7 +382,8 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     const received = install_libraries_snapshot(cut.libs).map;
     assert.deepEqual(doc(received, "result").root(), page.root());
     assert.equal(lookup(doc(received, "result"), "button"), undefined);
-    assert.equal(map.capture().libraries.filter(entry => entry.quads !== undefined).length, 2);
+    assert.throws(() => map.capture(), /Echo\/checkpoint/);
+    assert.equal(internal_livemap_aggregate_authority(map).scopedDocumentState(internal_livemap_aggregate_authority(map).libraries()[0]!).scopes.occurrences.length, 4);
   });
   check("after all addressed subjects retire QUAD-free capture behaves normally", () => {
     const map = authored({ page: { document: '<main <button @:only/>/> ' } }), page = doc(map);

@@ -15,6 +15,7 @@ import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPOR
 import { admit_locus_local_initializers, retain_client_local_seed_contracts_internal } from "../locus/locus.local-initializer.js";
 import type { DocumentCssRecord } from "../../types/document-css.types.js";
 import {
+  admit_authority_projection_snapshot,
   authority_projection_as_client_composition_internal,
   bind_client_projection_identity_internal,
 } from "../locus/locus.authority-projection-snapshot.js";
@@ -23,10 +24,12 @@ import {
 export function compose_client_projection_internal(
   authority: AuthorityProjectionSnapshot,
   local: readonly LocusLocalInitializer[],
+  scoped = false,
 ): LiveMap {
-  const snapshot = authority_projection_as_client_composition_internal(authority);
-  const map = compose_client_portable_aggregate_internal(snapshot, local);
-  bind_client_projection_identity_internal(map, authority);
+  const admitted = admit_authority_projection_snapshot(authority, scoped);
+  const snapshot = authority_projection_as_client_composition_internal(admitted, scoped);
+  const map = compose_client_portable_aggregate_internal(snapshot, local, scoped);
+  bind_client_projection_identity_internal(map, admitted, scoped);
   return map;
 }
 
@@ -34,8 +37,9 @@ export function compose_client_projection_internal(
 export function compose_client_portable_aggregate_internal(
   snapshot: PortableAggregateSnapshot,
   local: readonly LocusLocalInitializer[],
+  scoped = false,
 ): LiveMap {
-  const admitted = portable_aggregate_inputs_internal(snapshot);
+  const admitted = portable_aggregate_inputs_internal(snapshot, scoped);
   // Keep the established Library order while admitting each complete seed.
   // The name set below rejects duplicate local and projected names together.
   const initializers = local.flatMap(initializer => admit_locus_local_initializers([initializer]));
@@ -62,7 +66,7 @@ export function compose_client_portable_aggregate_internal(
     root: hsonTransform.fromJson({ descriptors: [] }).toNode(),
     hsonSchema: interaction_schema_internal(),
   })];
-  const map = make_livemap_from_canonical_libraries_internal(Object.freeze(inputs), systems, snapshot, css);
+  const map = make_livemap_from_canonical_libraries_internal(Object.freeze(inputs), systems, snapshot, css, scoped);
   retain_client_local_seed_contracts_internal(map, initializers);
   return map;
 }

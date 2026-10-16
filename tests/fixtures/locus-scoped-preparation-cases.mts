@@ -290,8 +290,9 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     const locus = create({ map: f.map, scopedDocuments: true, gate() { gates++; } });
     await assert.rejects(locus.stage(writer => { insert(writer); document(writer).css.stylesheet("main{color:red}"); }), /scoped evidence/);
     assert.equal(gates, 0); assert.equal(f.map.rev, 0); locus.dispose();
-    const initial = hsonLiveMap.fromLibraries({ parts: collection({ leaf: { kind: "document", document: '<b/>' } }),
-      page: { document: '<main <hson-part lib="parts" at="leaf"/>/>' } });
+    // Legacy incremental construction still has no complete scoped evidence.
+    const initial = hsonLiveMap.fromLibraries({ parts: collection({ leaf: { kind: "document", document: '<b/>' } }) });
+    initial.addLibraries({ page: { document: '<main <hson-part lib="parts" at="leaf"/>/>' } });
     const blocked = create({ map: initial, scopedDocuments: true, gate() { gates++; } });
     await assert.rejects(blocked.stage(writer => document(writer).attrs.set({ kind: "path", path: path([0]) }, "title", "new")), /Missing scoped predecessor/);
     assert.equal(gates, 0); blocked.dispose();

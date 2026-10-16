@@ -14,7 +14,7 @@ import { second_repair_fixture, selector_fixture, styled_fixture } from "../test
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { document_css_subject_identities } from "../src/internal/css/css-identity-translation.ts";
 import { encode_portable_document_stylesheet } from "../src/internal/css/portable-document-stylesheet.ts";
-import { hosted_styled_part_fixture } from "../tests/fixtures/hosted-styled-part-ssr-cases.mts";
+import { hosted_flat_subject_fixture } from "../tests/fixtures/hosted-styled-part-ssr-cases.mts";
 
 // Source-only Chrome acceptance: no build and no writes to tracked distribution.
 const fixture = ssr_subject_fixture();
@@ -34,7 +34,9 @@ selectorPages.set("/selectors-restored", restoredSelectors.cut({html:"page", doc
 selectorPage.q("ancestor").delete();
 selectorPages.set("/selectors-retired", selectors.cut({html:"page", documents:["page"], data:[]}));
 const secondRepair=second_repair_fixture().cut({html:"page",documents:["page"],data:[]});
-const hosted = await hosted_styled_part_fixture();
+// Public scoped Part delivery is closed until Cut 3H. Exercise first paint on
+// genuinely flat authored subjects, without converting a scoped document.
+const hosted = await hosted_flat_subject_fixture();
 const bundle = await build({ entryPoints: ["tests/browser/document-portable-graft.entry.mjs"], bundle: true,
   write: false, platform: "browser", format: "iife", logLevel: "silent" });
 const browserSource = bundle.outputFiles[0].text;
@@ -52,7 +54,7 @@ try {
   server = createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     if (request.url === "/graft") { response.end("<!doctype html><html><head></head><body></body></html>"); return; }
-    if (request.url === "/hosted-composed") { response.end(hosted.cut.html + '<script>document.documentElement.dataset.executed="yes"</script>'); return; }
+    if (request.url === "/hosted-flat") { response.end(hosted.cut.html + '<script>document.documentElement.dataset.executed="yes"</script>'); return; }
     if (request.url === "/composed") { response.end(componentCut.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
     if (request.url === "/second-repair") { response.end(secondRepair.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
     const selectorPage = selectorPages.get(request.url);
@@ -135,10 +137,10 @@ try {
   assert.throws(() => assert_ordinary_rule_order(managedCss.replace(".ordinary{color:rgb(130,140,150);}", "")), /Missing winning ordinary rule/);
   assert.throws(() => assert_ordinary_rule_order(".ordinary{color:rgb(130,140,150);}.ordinary{color:red;}"), /out of cascade order/);
   console.log(`Chrome JavaScript-disabled first paint passed: ${JSON.stringify(evidence)}`);
-  await command("Page.navigate", {url: new URL("/hosted-composed", url).href});
+  await command("Page.navigate", {url: new URL("/hosted-flat", url).href});
   let hostedReady = false;
   for (let attempt = 0; attempt < 100; attempt++) {
-    hostedReady = await evaluate('document.readyState === "complete" && location.pathname === "/hosted-composed" && !!document.getElementById("hosted-b")');
+    hostedReady = await evaluate('document.readyState === "complete" && location.pathname === "/hosted-flat" && !!document.getElementById("hosted-b")');
     if (hostedReady) break; await delay(50);
   }
   assert.equal(hostedReady, true);
@@ -148,7 +150,7 @@ try {
       carriers:document.querySelectorAll('[hson\\\\:quad]').length,foreign:document.querySelectorAll('[hson\\\\:quid]').length,
       styles:document.querySelectorAll('[data-hson-managed-document-css]').length,executed:document.documentElement.dataset.executed??null};
   })()`);
-  console.log(`Chrome hosted styled-Part JavaScript-disabled first paint: ${JSON.stringify(hostedEvidence)}`);
+  console.log(`Chrome flat hosted-subject JavaScript-disabled first paint: ${JSON.stringify(hostedEvidence)}`);
   assert.deepEqual(hostedEvidence, {a:{color:'rgb(12, 34, 56)',quad:'a'},b:{color:'rgb(12, 34, 56)',quad:'b'},
     outside:{color:'rgb(0, 0, 0)',quad:null},carriers:2,foreign:0,styles:1,executed:null});
   await command("Page.navigate", {url: new URL("/composed", url).href});

@@ -202,19 +202,21 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Set a supplied hosted identity before the first transition without recapturing roots. @internal */
   setInitialHostedAuthority: (authority: import("./livemap.hosted.js").HostedAuthorityFence) => void;
   /** Capture only preselected application names and the requested system root. @internal */
-  captureSelectedHosted: (names: readonly string[], includeSystem: boolean) => Readonly<{
+  captureSelectedHosted: (names: readonly string[], includeSystem: boolean, scoped?: boolean) => Readonly<{
     authority: import("./livemap.hosted.js").HostedAuthorityFence;
     revision: number;
     libraries: readonly Readonly<{
       name: string;
+      scopes?: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
       root: Readonly<{ format: "hson-exact-value"; payload: string }>;
       quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
       css?: import("../../types/document-css.types.js").DocumentCssRecord;
     }>[];
     system: Readonly<{ format: "hson-exact-value"; payload: string }> | null;
   }>;
+  captureManagedRestorationFence: (owner: object) => () => void;
   /** Bind a fixed authority-projected subset of this client map. @internal */
-  configureClientComposition: (snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot) => void;
+  configureClientComposition: (snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot, scoped?: boolean) => void;
   clientProjection: () => Readonly<{
     authority: import("./livemap.hosted.js").HostedAuthorityFence;
     registry: HostedRegistry;
@@ -239,7 +241,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   restoreClientHosted: (snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot) => void;
   restoreClientHostedManaged: (owner: object, snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot,
     afterTopologyInstall?: (projected: readonly Readonly<{ name: string; identity: LiveMapLibraryIdentity }>[],
-      retired: readonly LiveMapLibraryIdentity[]) => void) => void;
+      retired: readonly LiveMapLibraryIdentity[]) => void, scoped?: boolean) => void;
   /** Apply a transport snapshot while this aggregate is client-managed. @internal */
   restoreHostedManaged: (owner: object, snapshot: HostedLiveMapSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
