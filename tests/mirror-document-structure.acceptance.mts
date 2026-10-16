@@ -73,11 +73,11 @@ check("moves preserve the projected node and mounted DOM", () => {
   binding.dispose();
 });
 
-check("compatible replacement lineage retains the exact projected root", () => {
+check("attribute update retains the exact projected root", () => {
   const page = element(`<main <a @000000408 title="old"/>/>`);
   const binding = hsonMirror(page);
   const original = raw_node(retained_subject(binding.tree), [0, 0]);
-  page.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
+  page.document.attrs.set(path(0, 0), "title", "new");
   assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), original);
   assert.equal(original.$_attrs?.title, "new");
   binding.dispose();

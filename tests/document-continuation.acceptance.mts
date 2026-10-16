@@ -332,8 +332,7 @@ for (const restored of [false, true]) {
   assert.equal(continuation.mirror.status, "active", continuation.mirror.failure?.message);
   assert.equal(root.childNodes[1], button);
   assert.deepEqual(lookup_document_quad_internal(page, "confirm")!.path, [0, 0, 1]);
-  page.document.content.replace(path(0), 1, { $_tag: "button", $_content: [] },
-    [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
+  page.document.attrs.set(path(0, 1), "title", "continued");
   assert.equal(lookup_document_quad_internal(page, "confirm")!.quid, quid);
   assert.equal(continuation.tree.find.byQuid(quid)!.dom.el(), button as unknown as Element);
   continuation.dispose();

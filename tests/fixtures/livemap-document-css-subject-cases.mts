@@ -123,16 +123,13 @@ export async function document_css_subject_cases(check: (name: string, run: () =
       map = install_libraries_snapshot(snapshot).map;
     }
   });
-  await check("strict retirement judges complete graph and CSS batches in either order while movement and lineage retain identity", () => {
+  await check("strict retirement judges complete graph and CSS batches in either order while movement retains identity", () => {
     const map = fixture(), document = page(map);
     map.batch(draft => { const selected = draft.lib("page");
       selected.attrs.set(target(0), "title", "atomic");
       selected.css.stylesheet(`${selector("123456789")}{color:green}.ordinary{color:blue}`);
     });
     document.document.content.move(target(0, 0), 0, 1);
-    assertCurrentCss(map, [[0, 0, 1]]);
-    map.batch(draft => draft.lib("page").graph({ domain: "graph", op: "replace-content", target: target(0, 0), index: 1,
-      replacement: { $_tag: "section", $_content: [] }, lineage: [{ source: path([]), destination: path([]) }] }));
     assertCurrentCss(map, [[0, 0, 1]]);
     atomic(map, () => document.document.content.remove(target(0, 0), 1));
     atomic(map, () => document.document.content.replace(target(0, 0), 1, { $_tag: "section", $_content: [] }));

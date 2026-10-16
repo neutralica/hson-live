@@ -111,9 +111,10 @@ export function make_echo_library_selector(
             stylesheet: parse_document_stylesheet(text, []) }) } })) },
     );
     const content = Object.assign(() => document.document.content(), {
-      replace: (where: LiveMapDocumentCommitTarget, index: number, value: LiveMapDocumentContent) => enqueue(() => Object.freeze({
-        name: "document.content.replace" as const, payload: { target: where, index, replacement: value },
-      })),
+      replace(where: LiveMapDocumentCommitTarget, index: number, value: LiveMapDocumentContent) {
+        if (arguments.length !== 3) throw new TypeError("Document content replacement requires exactly three arguments; caller-authored lineage is unsupported.");
+        return enqueue(() => Object.freeze({ name: "document.content.replace" as const, payload: { target: where, index, replacement: value } }));
+      },
       insert: (where: LiveMapDocumentCommitTarget, index: number, value: LiveMapDocumentContent) => enqueue(() => Object.freeze({
         name: "document.content.insert" as const, payload: { target: where, index, content: value },
       })),

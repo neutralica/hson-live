@@ -87,15 +87,7 @@ check("replacement without lineage retires an old handle", () => {
   assert.equal(handle.active, false);
 });
 
-check("explicit local lineage preserves an identified replacement", () => {
-  const map = fixture();
-  const handle = acquire_document_identity(map.document, target(0));
-  map.document.content.replace(path(0), 0, projected_element('<item title="same"/>'), [
-    { source: validate_document_path([]), destination: validate_document_path([]) },
-  ]);
-  assert.equal(handle.active, true);
-  assert.equal(handle.snap()?.$_attrs?.title, "same");
-});
+
 
 check("portable registry restoration invalidates prior identity handles", () => {
   const map = fixture();

@@ -55,16 +55,7 @@ check("incoming document replacement rejects supplied identity atomically", () =
   assert.deepEqual({ root: map.root(), rev: map.rev }, before);
 });
 
-check("explicit same-runtime lineage retains a local QUID lifetime", () => {
-  const map = element('<main <item/>/>');
-  set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
-  const handle = acquire_document_identity(map.document, target(0));
-  map.document.content.replace(path(0), 0, projected_element('<item title="new"/>'), [
-    { source: validate_document_path([]), destination: validate_document_path([]) },
-  ]);
-  assert.equal(handle.active, true);
-  assert.equal(map.document.byQuid(Q1)?.$_attrs?.title, "new");
-});
+
 
 check("portable capture never serializes issued QUID ledger entries", () => {
   const map = element('<main <item/>/>');

@@ -91,11 +91,10 @@ try {
     page.document.content.move({ kind: "path", path: parent }, 0, 1);
     check(`QUAD movement retains Element and address (${fixture.multiple})`, grafted.mirror.status === "active"
       && button.parentNode.children[1] === button && lookup_document_quad_internal(page, "confirm").path.at(-1) === 1);
-    page.document.content.replace({ kind: "path", path: parent }, 1,
-      { $_tag: "button", $_attrs: { id: "quad-button", title: "lineage" }, $_content: [] }, [{ source: [], destination: [] }]);
-    check(`QUAD replacement lineage retains identity (${fixture.multiple})`, grafted.mirror.status === "active"
+    page.document.attrs.set({ kind: "path", path: [...parent, 1] }, "title", "continued");
+    check(`QUAD attribute update retains identity (${fixture.multiple})`, grafted.mirror.status === "active"
       && lookup_document_quad_internal(page, "confirm").quid === address.quid
-      && grafted.tree.find.byQuid(address.quid).dom.el() === button && button.title === "lineage");
+      && grafted.tree.find.byQuid(address.quid).dom.el() === button && button.title === "continued");
     page.css.sel("#quad-button").setProp("color", "rgb(44, 55, 66)");
     check(`QUAD graft live managed CSS updates (${fixture.multiple})`, frame.contentWindow.getComputedStyle(button).color === "rgb(44, 55, 66)"
       && root.querySelector('style[data-hson-managed-document-css="managed"]') === style);

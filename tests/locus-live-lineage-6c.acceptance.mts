@@ -1,3 +1,4 @@
+import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
@@ -15,6 +16,9 @@ const authority = hsonLiveMap.fromLibraries({
   privateData: { data: { value: "PRIVATE_SENTINEL" }, schema: DataSchema },
 });
 const engine = internal_livemap_aggregate_authority(authority);
+const pageId = engine.libraries()[0]!;
+const quid = "000009c01";
+engine.acquireLocalDocumentIdentity(pageId, validate_document_path([0, 0, 0]), quid);
 const before = engine.captureHosted();
 const policy = make_locus_hosted_projection_policy(before.registry, before.authority, [
   { name: "page", ownership: "shared" }, { name: "privateData", ownership: "private" },
@@ -23,13 +27,15 @@ const effective = await normalize_locus_effective_projection(policy, { libraries
 const projected = project_authority_snapshot(before, effective);
 const client = client_projection_map({ authority: projected, local: {} });
 const replica = create_echo_aggregate_replica_capability_internal(client);
-const pageId = engine.libraries()[0]!;
+const clientEngine = internal_livemap_aggregate_authority(client);
+const clientId = clientEngine.libraries()[0]!, clientQuid = "000009c02";
+clientEngine.acquireLocalDocumentIdentity(clientId, validate_document_path([0, 0, 0]), clientQuid);
 const target = { kind: "path" as const, path: validate_document_path([0, 0]) };
-const lineage = [{ source: validate_document_path([]), destination: validate_document_path([]) }];
 const graph = { domain: "graph" as const, op: "replace-content" as const, target, index: 0,
   replacement: { $_tag: "item", $_content: [{ $_tag: "_hson_elem", $_content: [
     { $_tag: "_hson_str", $_content: ["VISIBLE_LINEAGE_SENTINEL"] },
-  ] }] }, lineage };
+  ] }] } };
+assign_hson_node_quid(graph.replacement, quid);
 const hosted = engine.commit([{ target: engine.target(pageId, target.path), kind: "graph", operation: graph }]).hosted;
 assert.ok(hosted);
 const after = engine.captureHosted();
@@ -47,11 +53,27 @@ assert.equal(encoded.toLowerCase().includes("quid"), false);
 const decoded = decode_locus_live_projected_envelope_internal(JSON.parse(encoded), {
   ...effective.authority, registryDigest: replica.clientProjection()!.registry.digest,
 });
+const clientBefore = client.capture(), clientOverlay = clientEngine.documentOverlay(clientId);
+let publications = 0; const stop = client.commits.observe(() => publications++);
+for (const lineage of [
+  [{ source: [99], destination: [] }],
+  [{ source: [], destination: [] }, { source: [], destination: [] }],
+]) {
+  const operation = decoded.operations[0]!;
+  const payload = JSON.parse(operation.payload);
+  payload.lineage = lineage;
+  const damaged = { ...decoded, operations: [{ ...operation, payload: JSON.stringify(payload) }] };
+  assert.throws(() => replica.replayHosted(damaged, before.revision));
+  assert.deepEqual(client.capture(), clientBefore); assert.equal(clientEngine.documentOverlay(clientId), clientOverlay);
+  assert.equal(publications, 0);
+}
 replica.replayHosted(decoded, before.revision);
 assert.equal(client.rev, 1);
+assert.deepEqual(clientEngine.documentOverlay(clientId).pathForQuid(clientQuid), [0, 0, 0]);
+assert.equal(clientEngine.documentOverlay(clientId).pathForQuid(quid), undefined);
 const page = client.lib("page");
 if (page.mode !== "document") throw new Error("Expected document.");
 const main = page.root().$_content[0];
 assert.equal(typeof main, "object");
-replica.dispose();
+stop(); replica.dispose();
 process.stdout.write("Step 6C replacement lineage acceptance passed.\n");

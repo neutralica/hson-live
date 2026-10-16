@@ -1795,8 +1795,8 @@ function document_action_target(
     replace(request, values) { draft.attrs.replace(target(request), values); return commit(); },
   });
   const content: LocusDocumentActionTarget["document"]["content"] = Object.freeze({
-    replace(request, index, replacement, lineage) {
-      draft.graph(Object.freeze({ domain: "graph", op: "replace-content", target: target(request), index, replacement, ...(lineage === undefined ? {} : { lineage }) }));
+    replace(request, index, replacement) {
+      draft.graph(Object.freeze({ domain: "graph", op: "replace-content", target: target(request), index, replacement }));
       return commit();
     },
     insert(request, index, inserted) { draft.content.insert(target(request), index, inserted); return commit(); },

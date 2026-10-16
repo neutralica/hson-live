@@ -48,10 +48,13 @@ planning. An intervening local identity acquisition makes a prepared
 transition stale, even when its application revision and root are unchanged.
 The generation is internal and never substitutes for `map.rev`.
 
-Replacement lineage is operation-relative path correspondence. The receiving
-runtime applies its own overlay to that lineage. Current hosted client effects
-carry lineage and QUID-free content. Exact-QUID evidence remains inside the
-authority history compatibility boundary and is not a second client oracle.
+Replacement correspondence is internal, operation-relative identity evidence.
+Public content replacement accepts only target, index, and replacement content;
+public graph instructions and Locus replacement actions reject a `lineage` field.
+Ordinary replacement retires displaced identities, even for equal markup.
+Automatic reconciliation can derive survival from existing owner-held exact
+identity evidence. Hosted client effects carry that correspondence and QUID-free
+content; the receiving runtime applies its own overlay, never sender QUIDs.
 
 Interaction subjects remain path-based. Ordinary graph transitions maintain
 interaction movement, replacement, and death together with application state.
@@ -101,8 +104,8 @@ requested subject. Anonymous subjects receive disposable records without
 issuance, graph mutation, or registry installation. Complete candidate
 validation rejects collisions with authored names, including unrequested
 subjects, rather than renaming a payload. Inactive, retired, foreign, and
-incoherent subject claims fail. Movement and explicit surviving replacement
-lineage are resolved from the current overlay, not captured old coordinates.
+incoherent subject claims fail. Movement and internally established replacement
+correspondence are resolved from the current overlay, not captured old coordinates.
 When pairing projected records with a graph capture, an enclosing aggregate
 capture fence must cover both operations.
 

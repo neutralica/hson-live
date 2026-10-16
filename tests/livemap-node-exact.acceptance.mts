@@ -496,7 +496,6 @@ check("canonical insert, replace and remove instructions retain batch behavior",
   map.batch(writer => {
     writer.lib("page").graph({ domain: "graph", op: "insert-content", target, index: 1, content: node("j") });
     const replacement = { domain: "graph" as const, op: "replace-content" as const, target, index: 0, replacement: node("k") };
-    Reflect.set(replacement, "lineage", undefined);
     writer.lib("page").graph(replacement);
     writer.lib("page").graph({ domain: "graph", op: "remove-content", target, index: 1 });
   });

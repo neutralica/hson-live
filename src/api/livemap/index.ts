@@ -95,7 +95,6 @@ export type {
   LiveMapDataOp,
   LiveMapGraphOp,
   LiveMapGraphCommit,
-  LiveMapReplacementLineage,
   LiveMapDisposer,
 } from "../../types/livemap.types.js";
 export type {

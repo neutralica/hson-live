@@ -1,3 +1,4 @@
+import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { clone_node } from "../../core/clone-node.js";
 import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "./livemap.parts.js";
 import { assert_portable_document_css_correspondence, decode_document_quads, own_document_quads } from "./livemap.document.quad.js";
@@ -171,7 +172,7 @@ export type DecodedHostedOperation = Readonly<{
   library: HostedRegistryBinding;
   semantic: LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp;
   projected?: LiveMapProjectedDataOp;
-  graph?: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp;
+  graph?: DocumentGraphOp | LiveMapProjectedGraphEnsureQuidOp;
   css?: import("../../types/livemap.types.js").LiveMapCssOp;
 }>;
 
@@ -770,7 +771,7 @@ function projected_operation_from_semantic(op: LiveMapDataOp): LiveMapProjectedD
   return Object.freeze({ kind: op.kind, path, prev: optional_projected(op.prev), next: admit_projected_value(op.next) });
 }
 
-function encode_hosted_graph_operation(operation: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp, portable = false): string {
+function encode_hosted_graph_operation(operation: DocumentGraphOp | LiveMapProjectedGraphEnsureQuidOp, portable = false): string {
   let representation: Record<string, unknown>;
   if (operation.op === "replace-root") {
     representation = { domain: "graph", op: operation.op, mode: operation.mode, root: encode_exact_hson_value(portable ? clone_hson_graph_without_quids(operation.root) : operation.root) };
@@ -798,7 +799,7 @@ function encode_hosted_graph_operation(operation: LiveMapGraphOp | LiveMapProjec
   return JSON.stringify(representation);
 }
 
-function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode, portable = false): LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp {
+function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode, portable = false): DocumentGraphOp | LiveMapProjectedGraphEnsureQuidOp {
   let value: unknown;
   try { value = JSON.parse(payload); } catch (cause) {
     throw new HostedAggregateRepresentationError("Hosted graph operation payload is malformed.", undefined, { cause });

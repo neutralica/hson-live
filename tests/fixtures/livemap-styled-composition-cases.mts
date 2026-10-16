@@ -61,10 +61,9 @@ export function second_repair_fixture() {
   const p=page(map),before=p.root();
   for(let index=0;index<4;index++) {
     const replacement=hsonTransform.fromHson(`<hson-part lib="parts" at="equivalent" id="equivalent${index}"/>`).toNode().$_content[0];if(!is_Node(replacement))throw Error("connector");
-    const lineage=index%2?[{source:path([]),destination:path([])}]:[];
     const target:LiveMapDocumentCommitTarget={kind:"path",path:path([0,0,1,0,0,0])};
-    const result=index<2?p.document.content.replace(target,index,replacement,lineage)
-      :map.batch(draft=>draft.lib("page").graph({domain:"graph",op:"replace-content",target,index,replacement,lineage}));
+    const result=index<2?p.document.content.replace(target,index,replacement)
+      :map.batch(draft=>draft.lib("page").graph({domain:"graph",op:"replace-content",target,index,replacement}));
     assert.equal(result.changed,true);assert.equal(result.rev,index+1);assert.deepEqual(p.root(),before);
   }
   return map;
@@ -103,7 +102,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
   check("equivalent replacement and colon-bearing nested selectors share source-free scoped ownership", () => {
     const map=second_repair_fixture(),aggregate=owner(map),record=encode_portable_document_stylesheet(aggregate.stylesheet(identity(map)));
     assert.equal(map.rev,4);assert.equal(aggregate.documentOverlay(identity(map)).size,7);
-    assert.equal(document_css_subject_identities(record,"outbound").length,7);assert.ok(page(map).q("eq1")!.active);assert.ok(page(map).q("eq3")!.active);
+    assert.equal(document_css_subject_identities(record,"outbound").length,7);assert.equal(page(map).q("eq1"),undefined);assert.equal(page(map).q("eq3"),undefined);
     assert.ok(record.rules.some(rule=>rule.selector.includes('button:is(.b)')));assert.ok(record.rules.some(rule=>rule.selector.includes('button::before')));
     const next=install_libraries_snapshot(map.cut({data:[],documents:["page"]}).libs).map;
     assert.equal(owner(next).documentOverlay(identity(next)).size,7);assert.match(page(next).css.snapshot(),/content:"hello"/);

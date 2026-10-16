@@ -262,9 +262,7 @@ await check("compatible Mirror reuse preserves resources on the same exact subje
   let calls = 0;
   tree.listen.onClick(() => { calls += 1; });
 
-  map.document.content.replace(path(0), 0, projected_element(`<a title="same"/>`), [
-    { source: validate_document_path([]), destination: validate_document_path([]) },
-  ]);
+  map.document.attrs.set(path(0, 0), "title", "same");
   assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), original);
   assert.equal(typeof acquired, "string");
   assert.equal(get_el_for_node(original), target);
@@ -274,7 +272,7 @@ await check("compatible Mirror reuse preserves resources on the same exact subje
   binding.dispose();
 });
 
-await check("incompatible path-lineage replacement cleans the outgoing subject without transfer", () => {
+await check("ordinary replacement cleans the outgoing subject without transfer", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);

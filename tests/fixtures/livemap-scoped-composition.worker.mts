@@ -1,0 +1,10 @@
+import { scoped_library_cases } from "./livemap-scoped-library-cases.mts";
+import { scoped_portable_cases, scoped_portable_roundtrip } from "./livemap-scoped-portable-cases.mts";
+import assert from "node:assert/strict";
+import { isMainThread, parentPort, workerData } from "node:worker_threads";
+import { scoped_composition_cases } from "./livemap-scoped-composition-cases.mts";
+assert.equal(isMainThread, false);
+assert.equal(typeof document, "undefined");
+let cases = 0;
+[scoped_composition_cases, scoped_library_cases, scoped_portable_cases].forEach(suite => suite((_name, run) => { run(); cases++; }));
+parentPort!.postMessage({ cases, portable: scoped_portable_roundtrip(workerData.portable) });

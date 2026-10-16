@@ -222,8 +222,7 @@ await case_("two data and two document libraries retain system interactions and 
     const page = draft.lib("pageB");
     if (!("graph" in page)) throw new Error("Expected document Library.");
     page.graph({ domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([0, 0]) },
-      index: 0, replacement: { $_tag: "item", $_attrs: { title: "continued" }, $_content: [] },
-      lineage: [{ source: validate_document_path([]), destination: validate_document_path([]) }] });
+      index: 0, replacement: { $_tag: "item", $_attrs: { title: "continued" }, $_content: [] } });
   });
   assert.ok(JSON.stringify(adapter.state(id)?.commits).includes("lineage"));
   locus.dispose();

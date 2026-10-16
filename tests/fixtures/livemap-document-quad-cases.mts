@@ -205,27 +205,16 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     assert.equal(lookup(page, "confirm"), undefined);
     assert.ok(internal_livemap_aggregate_authority(map).identityEpoch().issued().has(initial.quid));
   });
-  check("ordinary replacement retires addresses while explicit surviving lineage retains them", () => {
+  check("ordinary replacement retires addresses while precise mutations retain them", () => {
     const map = fixture(), page = doc(map), initial = subject(page, "confirm");
-    page.document.content.replace(target(0, 0), 0, { $_tag: "button", $_content: [] }, [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
+    page.document.attrs.set(target(0, 0, 0), "title", "updated");
     assert.equal(subject(page, "confirm").quid, initial.quid);
     assert.equal(page.document.byQuid(initial.quid)?.$_tag, "button");
     page.document.content.replace(target(0, 0), 0, { $_tag: "button", $_content: [] });
     assert.equal(lookup(page, "confirm"), undefined); assert.equal(reverse(page, initial.quid), undefined);
     assert.ok(lookup(page, "page"));
   });
-  check("nested lineage preserves only explicitly surviving addressed descendants", () => {
-    const map = authored({ page: { document: '<main <section @:section <button @:button/> <aside @:discard/>/>/>' } }), page = doc(map);
-    const section = subject(page, "section"), button = subject(page, "button");
-    const replacement: HsonNode = { $_tag: "section", $_content: [{ $_tag: "_hson_elem", $_content: [{ $_tag: "button", $_content: [] }] }] };
-    page.document.content.replace(target(0, 0), 0, replacement, [
-      { source: validate_document_path([]), destination: validate_document_path([]) },
-      { source: validate_document_path([0, 0]), destination: validate_document_path([0, 0]) },
-    ]);
-    assert.equal(subject(page, "section").quid, section.quid);
-    assert.equal(subject(page, "button").quid, button.quid);
-    assert.equal(lookup(page, "discard"), undefined);
-  });
+
   check("stale bindings never fall back to an element occupying the former path", () => {
     const map = fixture(), page = doc(map), initial = subject(page, "confirm");
     const oldBindings = make_document_quad_bindings([{ name: "confirm", quid: initial.quid }]);

@@ -1,3 +1,4 @@
+import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -204,15 +205,19 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const replacementBucket = replacementRoot.$_content[0];
   const replacement = typeof replacementBucket === "object" && replacementBucket !== null && "$_content" in replacementBucket ? replacementBucket.$_content[0] : undefined;
   if (!is_Node(replacement)) throw new Error("Expected replacement section.");
-  const authority = internal_livemap_aggregate_authority(map);
+  const authority = internal_livemap_aggregate_authority(map), id = authority.libraries()[0]!;
+  const quid = "000007303";
+  authority.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 0, 0, 0]), quid);
+  const surviving = replacement.$_content[0];
+  if (!is_Node(surviving) || !is_Node(surviving.$_content[2])) throw Error("Missing surviving button.");
+  assign_hson_node_quid(surviving.$_content[2], quid);
   authority.commit([{
-    target: authority.target(authority.libraries()[0]!, [0, 0]),
+    target: authority.target(id, [0, 0]),
     kind: "graph",
     operation: Object.freeze({
       domain: "graph", op: "replace-content",
       target: Object.freeze({ kind: "path", path: validate_document_path([0, 0]) }),
       index: 0, replacement,
-      lineage: Object.freeze([{ source: validate_document_path([0, 0]), destination: validate_document_path([0, 2]) }]),
     }),
   }]);
   assert.deepEqual(paths(map), { survivor: [0, 0, 0, 0, 2] });

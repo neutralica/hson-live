@@ -13,7 +13,7 @@ Each returned capability captures one existing subject identity and its runtime
 epoch. Before every read or edit it checks that identity against the current
 Library owner and overlay, derives the current canonical-to-logical correspondence,
 and delegates to the ordinary document location engine. Moving the subject changes
-`.path()` without changing the target. Explicit valid replacement lineage preserves
+`.path()` without changing the target. Internal exact replacement correspondence preserves
 the identity under ordinary owner rules. Retirement, unrelated replacement, owner
 incarnation replacement, or epoch replacement invalidates the capability. It never
 looks the name up again. Ordinary portable restoration issues fresh QUIDs and requires fresh
@@ -38,7 +38,7 @@ replaces only the fence object. Client-local Libraries are excluded using the
 owner's projected-Library identity set: replacing a remote authority does not
 retire their otherwise surviving local families. Reading this owner identity
 does not initialize an absent hosted authority or mint identity.
-Final-state checking preserves movement and valid replacement lineage, rather than
+Final-state checking preserves movement and internal exact correspondence, rather than
 mistaking intermediate structural replacement effects for terminal retirement.
 
 The bounded surface provides `active`, `rev`, `path()`, detached `snap()`, `attrs`,

@@ -226,7 +226,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     aggregate.restorePortableLibrariesWithCorrespondence(snapshot);
     assert.throws(result.assertCurrent, /changed during capture/);
   });
-  await check("disposable lifecycle follows moves explicit replacement lineage and terminal retirement", () => {
+  await check("disposable lifecycle follows moves precise mutations and terminal retirement", () => {
     const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } });
     const aggregate = owner(map), id = aggregate.libraries()[0]!;
     aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 0]), "9abcdefgh");
@@ -236,8 +236,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     page.document.content.move(target(0, 0), 0, 1);
     assert.throws(result.assertCurrent, /changed during capture/);
     assert.deepEqual(project()?.[0]?.path, [0, 0, 1]);
-    page.document.content.replace(target(0, 0), 1, { $_tag: "button", $_content: [] },
-      [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
+    page.document.attrs.set(target(0, 0, 1), "title", "continued");
     assert.equal(project()?.[0]?.name, `_${subject.quid}`);
     page.document.content.remove(target(0, 0), 1);
     atomic(map, project);
@@ -535,13 +534,12 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.equal(JSON.stringify(captured).includes('"quid"'), false);
     for (const entry of captured.libraries) assert.equal(JSON.stringify(decode_hosted_root(entry.root)).includes("quad"), false);
   });
-  await check("movement and lineage before and after portable restoration preserve occurrence correspondence", () => {
+  await check("movement and precise mutation before and after portable restoration preserve occurrence correspondence", () => {
     const map = fixture(); doc(map).at([]).asElement()!.move(0, 1);
     assert.deepEqual(subject(map).path, [0, 0, 1]);
     const receiving = install_libraries_snapshot(map.capture()).map, quid = subject(receiving).quid;
     assert.deepEqual(subject(receiving).path, [0, 0, 1]);
-    doc(receiving).document.content.replace(target(0, 0), 1, { $_tag: "button", $_content: [] },
-      [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
+    doc(receiving).document.attrs.set(target(0, 0, 1), "title", "continued");
     assert.equal(subject(receiving).quid, quid);
     const next = install_libraries_snapshot(receiving.capture()).map;
     assert.deepEqual(subject(next).path, [0, 0, 1]);
@@ -795,7 +793,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const final = install_libraries_snapshot(received.cut({ documents: ["result"], data: [] }).libs).map;
     assert.deepEqual(doc(final, "result").root(), result.root());
   });
-  await check("hosted checkpoint and tail recovery preserve addresses and fresh identity through moves lineage and retirement", async () => {
+  await check("hosted checkpoint and tail recovery preserve addresses and fresh identity through moves updates and retirement", async () => {
     const adapter = new MemoryCheckpointAdapter(), map = fixture(), old = subject(map).quid;
     const locus = await host({ map, persistence: adapter, logicalMapId: "quad-host", incarnationId: "quad-run" });
     try {
@@ -807,8 +805,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       try { assert.deepEqual(subject(recovered.map).path, [0, 0, 1]); assert.notEqual(subject(recovered.map).quid, old); }
       finally { recovered.dispose(); }
       await locus.stage(draft => { const page = draft.lib("page"); if (page.mode !== "document") throw Error("doc");
-        page.graph({ domain: "graph", op: "replace-content", target: target(0, 0), index: 1,
-          replacement: { $_tag: "button", $_content: [] }, lineage: [{ source: validate_document_path([]), destination: validate_document_path([]) }] }); });
+        page.attrs.set(target(0, 0, 1), "title", "continued"); });
       await locus.checkpoint();
       const restored = await load("quad-host", { persistence: adapter }); assert.ok(restored);
       try { assert.deepEqual(subject(restored.map).path, [0, 0, 1]); assert.notEqual(subject(restored.map).quid, old); }

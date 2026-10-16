@@ -1150,3 +1150,15 @@ type RootDataProof = HsonFromSchema<typeof import("hson-live").ANY_DATA>;
 type RootJson = JsonFromSchema<typeof import("hson-live").ANY_DATA>;
 type HsonDataProof = HsonEntryProof<typeof import("hson-live").ANY_DATA>;
 type HsonJson = HsonEntryJson<typeof import("hson-live").ANY_DATA>;
+
+// Caller-authored replacement correspondence is absent from the built package.
+// @ts-expect-error Removed public type, with no compatibility alias.
+import type { LiveMapReplacementLineage } from "hson-live/livemap";
+import type { LiveMapGraphOp } from "hson-live/livemap";
+function replacement_boundary(page: LiveMapDocumentLibrary, operation: Extract<LiveMapGraphOp, { op: "replace-content" }>): void {
+  // @ts-expect-error Replacement accepts exactly target, index and content.
+  page.document.content.replace(operation.target, operation.index, operation.replacement, []);
+  // @ts-expect-error Private replay correspondence is absent from public instructions.
+  void operation.lineage;
+}
+void replacement_boundary;

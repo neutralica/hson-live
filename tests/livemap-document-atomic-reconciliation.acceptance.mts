@@ -43,13 +43,7 @@ check("incoming collision with an active claim rejects atomically", () => {
   assert.deepEqual({ root: map.root(), rev: map.rev }, before);
 });
 
-check("explicit same-runtime lineage may preserve displaced local identity", () => {
-  const map = fixture();
-  map.document.content.replace(path(0), 0, projected_element('<item title="retained"/>'), [
-    { source: validate_document_path([]), destination: validate_document_path([]) },
-  ]);
-  assert.equal(map.document.byQuid(Q1)?.$_attrs?.title, "retained");
-});
+
 
 check("invalid request path cannot route through an existing QUID", () => {
   const map = fixture();

@@ -2,33 +2,47 @@ import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import {
   assign_hson_node_quid,
   read_hson_node_quid,
-  remove_hson_node_quid,
 } from "../../core/hson-node-quid.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
-  LiveMapDocumentMode,
-  LiveMapDocumentContent,
   LiveMapDocumentPath,
-  LiveMapDocumentRequestTarget,
-  LiveMapReplacementLineage,
+  LiveMapGraphOp,
+  LiveMapGraphReplaceContentOp,
 } from "../../types/livemap.types.js";
 import {
   append_document_path,
   encode_document_path,
-  resolve_document_path,
+  document_path_is_prefix,
   validate_document_path,
 } from "./livemap.document.path.js";
+import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 
-/** One replacement's portable, relative source/destination correspondence. */
+type ReplacementIdentitySource = Readonly<{ overlay: LiveMapDocumentIdentityOverlay; path: LiveMapDocumentPath }>;
+
+/** Receiving-runtime correspondence, derived by the framework and transported only in internal commits. */
+export type DocumentReplacementLineage = readonly Readonly<{
+  source: LiveMapDocumentPath;
+  destination: LiveMapDocumentPath;
+}>[];
+
+/** Internal graph evidence is deliberately absent from public write instructions. */
+export type DocumentGraphReplaceContentOp = LiveMapGraphReplaceContentOp & Readonly<{
+  lineage?: DocumentReplacementLineage;
+}>;
+
+/** Private graph operation representation; not exported by a package entrypoint. */
+export type DocumentGraphOp = Exclude<LiveMapGraphOp, LiveMapGraphReplaceContentOp> | DocumentGraphReplaceContentOp;
+
+/** Validate one internal replacement's portable, relative correspondence. @internal */
 export function normalize_replacement_lineage(
   input: unknown,
   before?: HsonNode | Primitive,
   after?: HsonNode | Primitive,
-): LiveMapReplacementLineage {
+): DocumentReplacementLineage {
   if (!Array.isArray(input)) throw new TypeError("Replacement lineage must be an array.");
   const sources = new Set<string>();
   const destinations = new Set<string>();
-  const result: Array<LiveMapReplacementLineage[number]> = [];
+  const result: Array<DocumentReplacementLineage[number]> = [];
   for (const entry of input) {
     if (!plain_record(entry) || Object.keys(entry).length !== 2
       || !Object.hasOwn(entry, "source") || !Object.hasOwn(entry, "destination")) {
@@ -57,75 +71,58 @@ export function normalize_replacement_lineage(
 export function derive_replacement_lineage(
   before: HsonNode | Primitive,
   after: HsonNode | Primitive,
-): LiveMapReplacementLineage {
+  sourceIdentity?: ReplacementIdentitySource,
+): DocumentReplacementLineage {
   const oldPaths = new Map<string, LiveMapDocumentPath>();
   visit_subjects(before, (node, path) => {
     const quid = read_hson_node_quid(node);
     if (quid !== undefined) oldPaths.set(quid, path);
   });
-  const entries: Array<LiveMapReplacementLineage[number]> = [];
+  const entries: Array<DocumentReplacementLineage[number]> = [];
   visit_subjects(after, (node, destination) => {
     const quid = read_hson_node_quid(node);
-    const source = quid === undefined ? undefined : oldPaths.get(quid);
+    const ownedPath = quid === undefined ? undefined : sourceIdentity?.overlay.pathForQuid(quid);
+    const source = quid === undefined ? undefined : oldPaths.get(quid)
+      ?? (ownedPath !== undefined && sourceIdentity !== undefined && document_path_is_prefix(sourceIdentity.path, ownedPath)
+        ? validate_document_path(ownedPath.slice(sourceIdentity.path.length)) : undefined);
     if (source !== undefined) entries.push(Object.freeze({ source, destination }));
   });
   return normalize_replacement_lineage(entries, before, after);
-}
-
-/** Derive an Echo-authored request from Echo's own pre-state. */
-export function derive_replacement_lineage_for_action(
-  root: HsonNode,
-  mode: LiveMapDocumentMode,
-  target: LiveMapDocumentRequestTarget,
-  index: number,
-  replacement: LiveMapDocumentContent,
-): LiveMapReplacementLineage {
-  const parent = resolve_document_path(root, mode, validate_document_path(target.path));
-  if (!is_Node(parent) || !Number.isSafeInteger(index) || index < 0) {
-    throw new TypeError("Replacement action target is invalid.");
-  }
-  const before = parent.$_content[index];
-  if (before === undefined) throw new TypeError("Replacement action source is absent.");
-  return derive_replacement_lineage(before, replacement);
 }
 
 /** Apply only receiving-runtime identities to a detached replacement candidate. */
 export function apply_replacement_lineage(
   before: HsonNode | Primitive,
   after: HsonNode | Primitive,
-  lineage: LiveMapReplacementLineage,
-  incomingClaimsAreForeign = false,
+  lineage: DocumentReplacementLineage,
+  sourceIdentity?: ReplacementIdentitySource,
 ): void {
-  const oracle = derive_replacement_lineage(before, after);
+  const oracle = derive_replacement_lineage(before, after, sourceIdentity);
   const mapped = new Map(lineage.map(({ source, destination }) => [encode_document_path(source), encode_document_path(destination)]));
   for (const entry of oracle) {
     if (mapped.get(encode_document_path(entry.source)) !== encode_document_path(entry.destination)) {
       throw new TypeError("Replacement lineage disagrees with existing exact-QUID evidence.");
     }
   }
-  if (oracle.length > 0 && !incomingClaimsAreForeign) {
+  if (oracle.length > 0) {
     for (const { source, destination } of lineage) {
       const old = relative_subject(before, source);
       const next = relative_subject(after, destination);
       if (!is_Node(old) || !is_Node(next)) continue;
-      const localQuid = read_hson_node_quid(old);
+      const localQuid = read_hson_node_quid(old)
+        ?? (sourceIdentity === undefined ? undefined : sourceIdentity.overlay.quidAtPath(validate_document_path([...sourceIdentity.path, ...source])));
       if (localQuid !== undefined && read_hson_node_quid(next) !== localQuid) {
         throw new TypeError("Replacement lineage adds survival absent from existing exact-QUID evidence.");
       }
     }
   }
 
-  // Echo-authored content carries Echo-local claims only as a temporary
-  // oracle. None of those values may be installed in the authority runtime.
-  if (incomingClaimsAreForeign) visit_subjects(after, (node) => {
-    if (read_hson_node_quid(node) !== undefined) remove_hson_node_quid(node);
-  });
-
   for (const { source, destination } of lineage) {
     const old = relative_subject(before, source);
     const next = relative_subject(after, destination);
     if (!is_Node(old) || !is_Node(next)) throw new TypeError("Replacement lineage endpoint disappeared.");
-    const localQuid = read_hson_node_quid(old);
+    const localQuid = read_hson_node_quid(old)
+      ?? (sourceIdentity === undefined ? undefined : sourceIdentity.overlay.quidAtPath(validate_document_path([...sourceIdentity.path, ...source])));
     const incomingQuid = read_hson_node_quid(next);
     if (localQuid === undefined) {
       if (incomingQuid !== undefined) {

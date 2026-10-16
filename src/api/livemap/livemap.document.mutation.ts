@@ -29,20 +29,19 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
+  LiveMapGraphOp,
   LiveMapGraphInsertContentOp,
   LiveMapGraphMoveContentOp,
-  LiveMapGraphOp,
   LiveMapGraphRemoveAttrOp,
   LiveMapGraphReplaceAttrsOp,
   LiveMapGraphRemoveContentOp,
-  LiveMapGraphReplaceContentOp,
   LiveMapGraphSetAttrOp,
-  LiveMapReplacementLineage,
 } from "../../types/livemap.types.js";
 import type { LiveMapGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import type { LiveMapRuntimeIdentityParticipant } from "./livemap.runtime-identity.js";
 import { LiveMapDocumentMutationError } from "./livemap.error.js";
 import { clone_live_root } from "./livemap.editor.js";
+import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { TransformError } from "../../core/errors.js";
 import { capture_exact_hson_graph } from "../../internal/exact-node-qualification.js";
 import { admit_public_livemap_root, is_livemap_primitive_slot, qualify_livemap_content, qualify_livemap_document } from "./livemap.node-admission.js";
@@ -63,6 +62,9 @@ import {
 } from "./livemap.document.path.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import {
+  type DocumentGraphOp,
+  type DocumentGraphReplaceContentOp,
+  type DocumentReplacementLineage,
   apply_replacement_lineage,
   derive_replacement_lineage,
   normalize_replacement_lineage,
@@ -85,7 +87,7 @@ import {
 type DocumentOperation = LiveMapDocumentMutationError["operation"];
 type PreparedTargetAuthority = "request" | "commit";
 
-export type PreparedDocumentMutation<TOp extends LiveMapGraphOp = LiveMapGraphOp> = Readonly<{
+export type PreparedDocumentMutation<TOp extends DocumentGraphOp = DocumentGraphOp> = Readonly<{
   root: HsonNode;
   overlay: LiveMapDocumentIdentityOverlay;
   operation: TOp;
@@ -104,7 +106,7 @@ export type LiveMapDocumentMutationController = Readonly<{
     quid: string,
     participant?: LiveMapRuntimeIdentityParticipant,
   ) => void;
-  applyMutation: <TOp extends LiveMapGraphOp>(
+  applyMutation: <TOp extends DocumentGraphOp>(
     candidate: PreparedDocumentMutation<TOp>,
   ) => LiveMapGraphCommit<TOp>;
 }>;
@@ -124,8 +126,7 @@ export function make_livemap_document_mutation_api(
     target: LiveMapDocumentRequestTarget,
     index: number,
     replacement: LiveMapDocumentContent,
-    lineage?: LiveMapReplacementLineage,
-  ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+  ) => LiveMapGraphCommit<DocumentGraphReplaceContentOp>;
   insertContent: (
     target: LiveMapDocumentRequestTarget,
     index: number,
@@ -157,8 +158,8 @@ export function make_livemap_document_mutation_api(
     attrs,
     flags,
     replaceAttrs: (target, values) => replace_document_attrs(controller, target, values),
-    replaceContent: (target, index, replacement, lineage) =>
-      replace_document_content(controller, target, index, replacement, lineage),
+    replaceContent: (target, index, replacement) =>
+      replace_document_content(controller, target, index, replacement),
     insertContent: (target, index, content) =>
       insert_document_content(controller, target, index, content),
     removeContent: (target, index) =>
@@ -395,10 +396,9 @@ function replace_document_content(
   targetInput: unknown,
   indexInput: unknown,
   replacementInput: unknown,
-  lineageInput?: unknown,
-): LiveMapGraphCommit<LiveMapGraphReplaceContentOp> {
+): LiveMapGraphCommit<DocumentGraphReplaceContentOp> {
   const assertCurrent = controller.captureFence();
-  const candidate = prepare_replace_document_content(controller.root(), controller.mode, controller.overlay(), targetInput, indexInput, replacementInput, "request", lineageInput);
+  const candidate = prepare_replace_document_content(controller.root(), controller.mode, controller.overlay(), targetInput, indexInput, replacementInput, "request");
   assertCurrent();
   return finish_mutation(controller, candidate);
 }
@@ -412,7 +412,7 @@ function prepare_replace_document_content(
   replacementInput: unknown,
   targetAuthority: PreparedTargetAuthority = "request",
   lineageInput?: unknown,
-): PreparedDocumentMutation<LiveMapGraphReplaceContentOp> {
+): PreparedDocumentMutation<DocumentGraphReplaceContentOp> {
   const operationName = "replace-content";
   const index = normalize_content_index(indexInput, operationName);
   const replacement = clone_content(replacementInput, operationName, targetAuthority === "request");
@@ -432,21 +432,23 @@ function prepare_replace_document_content(
   if (before === undefined) {
     throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operationName, "replacement source is absent");
   }
-  let lineage: LiveMapReplacementLineage;
+  const sourceIdentity = { overlay, path: append_document_path(preparedTarget.target.path, index) };
+  let lineage: DocumentReplacementLineage;
   try {
     lineage = lineageInput === undefined
-      ? derive_replacement_lineage(before, canonicalReplacement)
+      ? derive_replacement_lineage(before, canonicalReplacement, sourceIdentity)
       : normalize_replacement_lineage(lineageInput, before, canonicalReplacement);
-    apply_replacement_lineage(before, canonicalReplacement, lineage);
+    apply_replacement_lineage(before, canonicalReplacement, lineage, sourceIdentity);
   } catch (cause) {
     if (cause instanceof HsonNodeQuidValidationError) {
       throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, "candidate persisted identity is invalid", cause);
     }
     throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operationName, "replacement lineage is invalid", cause);
   }
-  endpoint.$_content[index] = canonicalReplacement;
+  // Exact evidence belongs to the internal operation; the installed graph stays portable.
+  endpoint.$_content[index] = is_Node(canonicalReplacement) ? clone_hson_graph_without_quids(canonicalReplacement) : canonicalReplacement;
 
-  const operation: LiveMapGraphReplaceContentOp = Object.freeze({
+  const operation: DocumentGraphReplaceContentOp = Object.freeze({
     domain: "graph",
     op: operationName,
     target: preparedTarget.target,
@@ -586,14 +588,14 @@ function prepare_move_document_content(
   return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
 
-function finish_mutation<TOp extends LiveMapGraphOp>(
+function finish_mutation<TOp extends DocumentGraphOp>(
   controller: LiveMapDocumentMutationController,
   candidate: PreparedDocumentMutation<TOp>,
 ): LiveMapGraphCommit<TOp> {
   return controller.applyMutation(candidate);
 }
 
-function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
+function prepare_finished_mutation<TOp extends DocumentGraphOp>(
   expectedMode: LiveMapDocumentMode,
   root: HsonNode,
   currentOverlay: LiveMapDocumentIdentityOverlay,
@@ -707,7 +709,7 @@ export function prepare_ensure_document_quid(
 
 function reconcile_operation_identity(
   overlay: LiveMapDocumentIdentityOverlay,
-  operation: LiveMapGraphOp,
+  operation: DocumentGraphOp,
 ): LiveMapDocumentIdentityReconciliation {
   if (operation.op === "replace-root") {
     throw new LiveMapDocumentIdentityError(
@@ -846,9 +848,7 @@ export function admit_public_document_graph_operation(operation: LiveMapGraphOp)
       return admitted;
     }
     case "replace-content": {
-      must_exact_keys(selected, Object.hasOwn(selected, "lineage")
-        ? ["domain", "op", "target", "index", "replacement", "lineage"]
-        : ["domain", "op", "target", "index", "replacement"], selected.op);
+      must_exact_keys(selected, ["domain", "op", "target", "index", "replacement"], selected.op);
       const replacement = clone_content(selected.replacement, selected.op, true);
       const admitted = { ...capture_public_instruction({ ...selected, replacement: null }), replacement };
       if (admitted.target?.witness !== undefined) throw new Error("Public graph operations cannot admit a QUID witness.");

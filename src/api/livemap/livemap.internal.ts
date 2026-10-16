@@ -137,6 +137,21 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   assertPublicMutationAllowed: () => void;
   /** Existing aggregate capture fence, also covering non-revisioned identity state. @internal */
   captureFence: () => () => void;
+  /** Private Library preparation only. Not an accepted transition or portable state. */
+  prepareScopedDocument: (library: LiveMapLibraryIdentity,
+    source: import("./livemap.document.composition.js").DocumentCompositionSource,
+  ) => import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary;
+  /** Continue only a candidate prepared by this authority under its original fence. */
+  prepareScopedDocumentOperations: (
+    before: import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary,
+    operations: readonly LiveMapGraphOp[],
+  ) => import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary;
+  /** Observational capture of one authenticated private candidate; no public transport integration. */
+  captureScopedDocument: (candidate: import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary
+  ) => import("./livemap.document.scoped-portable.js").PortableDocumentScopedLibrary;
+  /** Fresh-runtime, source-free reconstruction into an unpublished Library candidate. */
+  prepareScopedDocumentRestoration: (library: LiveMapLibraryIdentity, input: unknown
+  ) => import("./livemap.document.scoped-library.js").PreparedDocumentScopedLibrary;
   /** Explicit bounded SSR subject demand; never reads LiveTree CSS or acquires identity. */
   captureDocumentSsr: (library: LiveMapLibraryIdentity, demanded: readonly string[]) => DocumentSsrCandidate;
   /** Private initial receiver installation after owner-proven sparse acquisition. @internal */

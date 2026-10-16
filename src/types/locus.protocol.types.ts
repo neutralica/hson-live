@@ -5,7 +5,6 @@ import type {
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
-  LiveMapReplacementLineage,
   LiveMapDocumentRequestTarget,
 } from "./livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "../api/livemap/livemap.identity.types.js";
@@ -78,7 +77,6 @@ export type LocusDocumentActionPayloads = Readonly<{
     target: LocusDocumentTargetPayload;
     index: number;
     replacement: LiveMapDocumentContent;
-    lineage?: LiveMapReplacementLineage;
   };
   "document.content.insert": {
     target: LocusDocumentTargetPayload;

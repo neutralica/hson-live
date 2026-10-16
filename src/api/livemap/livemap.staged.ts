@@ -154,7 +154,10 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
         replace: (target: LiveMapDocumentCommitTarget, values: import("../../types/livemap.types.js").LiveMapDocumentAttrs) => graph(Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs: values })),
       }),
       content: Object.freeze({
-        replace: (target: LiveMapDocumentCommitTarget, index: number, replacement: LiveMapDocumentContent) => graph(Object.freeze({ domain: "graph", op: "replace-content", target, index, replacement })),
+        replace(target: LiveMapDocumentCommitTarget, index: number, replacement: LiveMapDocumentContent) {
+          if (arguments.length !== 3) throw new TypeError("Document content replacement requires exactly three arguments; caller-authored lineage is unsupported.");
+          return graph(Object.freeze({ domain: "graph", op: "replace-content", target, index, replacement }));
+        },
         insert: (target: LiveMapDocumentCommitTarget, index: number, content: LiveMapDocumentContent) => graph(Object.freeze({ domain: "graph", op: "insert-content", target, index, content })),
         remove: (target: LiveMapDocumentCommitTarget, index: number) => graph(Object.freeze({ domain: "graph", op: "remove-content", target, index })),
         move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => graph(Object.freeze({ domain: "graph", op: "move-content", target, from, to })),

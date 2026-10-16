@@ -317,7 +317,7 @@ await check("local document and data identity leave durable checkpoint and histo
   restored.dispose();
 });
 
-await check("fresh-runtime local identity follows movement and explicit replacement lineage after restart", async () => {
+await check("fresh-runtime local identity follows movement and precise updates after restart", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = make_map();
   const host = await create_persistent_locus_hosted_aggregate_internal({
@@ -344,17 +344,13 @@ await check("fresh-runtime local identity follows movement and explicit replacem
     domain: "graph", op: "move-content", target: { kind: "path", path: validate_document_path([0, 0]) }, from: 0, to: 1,
   }));
   assert.deepEqual(authority.resolveQuid(RESTART_DOCUMENT_QUID)?.path, [0, 0, 1]);
-  await restored.stage((draft) => document(draft, "page").graph({
-    domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([0, 0]) },
-    index: 1, replacement: { $_tag: "item", $_attrs: { title: "continued" }, $_content: [] },
-    lineage: [{ source: validate_document_path([]), destination: validate_document_path([]) }],
-  }));
+  await restored.stage((draft) => document(draft, "page").attrs.set({ kind: "path", path: validate_document_path([0, 0, 1]) }, "title", "continued"));
   assert.equal(restored.rev, 4);
   assert.equal(authority.resolveQuid(RESTART_DOCUMENT_QUID)?.path.join("/"), "0/0/1");
   const durable = adapter.state(restored.logicalMapId)!;
   assert.equal(durable.commits.length, 2);
   assert.equal(JSON.stringify(durable).includes(RESTART_DOCUMENT_QUID), false);
-  assert.equal(JSON.stringify(durable.commits[1]).includes("lineage"), true);
+  assert.equal(/"lineage":/.test(JSON.stringify(durable.commits[1])), false);
   restored.dispose();
 
   const replayed = await load_persistent_locus_hosted_aggregate_internal("h4-lineage", { persistence: adapter });

@@ -134,23 +134,23 @@ check("move preserves tree-event and other resource ownership", () => {
   binding.dispose();
 });
 
-check("compatible path-lineage replacement preserves the exact root node", () => {
+check("attribute update preserves the exact root node", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
   const { binding } = reflected(map);
   const original = raw_node(retained_subject(binding.tree), [0, 0]);
-  map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
+  map.document.attrs.set(path(0, 0), "title", "new");
   assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), original);
   assert.equal(original.$_attrs?.title, "new");
   binding.dispose();
 });
 
-check("compatible path-lineage replacement preserves root DOM identity", () => {
+check("attribute update preserves root DOM identity", () => {
   const map = element(`<main <a @${Q3}/>/` + `>`);
   const { binding } = reflected(map, documentRuntime);
   mount(retained_subject(binding.tree));
   const original = raw_node(retained_subject(binding.tree), [0, 0]);
   const dom = get_el_for_node(original);
-  map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
+  map.document.attrs.set(path(0, 0), "title", "new");
   assert.equal(get_el_for_node(original), dom);
   binding.dispose();
 });

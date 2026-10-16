@@ -16,7 +16,7 @@ import { overwrite_hson_node } from "../../src/api/livemap/livemap.editor.ts";
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
 import { livemap_document_identity_effects_for, type LiveMapDocumentIdentityEffect } from "../../src/api/livemap/livemap.document.identity.ts";
 import type { HsonNode } from "../../src/core/types.ts";
-import type { LiveMap, LiveMapDocumentLibrary, LiveMapGraphOp, LiveMapReplacementLineage } from "../../src/types/livemap.types.ts";
+import type { LiveMap, LiveMapDocumentLibrary, LiveMapGraphOp } from "../../src/types/livemap.types.ts";
 import { styled_composition_cases } from "./livemap-styled-composition-cases.mts";
 import { document_css_state_internal } from "../../src/api/livemap/livemap.libraries.ts";
 import { document_css_subject_identities } from "../../src/internal/css/css-identity-translation.ts";
@@ -30,9 +30,6 @@ export const doc = (map: LiveMap, name = "page"): LiveMapDocumentLibrary => {
 export const element = (source: string): HsonNode => {
   const first = hsonTransform.fromHson(source).toNode().$_content[0]; if (!is_Node(first)) throw Error("element"); return first;
 };
-const lineage_entry = (source: readonly number[], destination: readonly number[]): LiveMapReplacementLineage[number] => ({
-  source: validate_document_path(source), destination: validate_document_path(destination),
-});
 export function atomic(map: LiveMap, run: () => unknown, reason?: RegExp) {
   const before = map.capture(), aggregate = owner(map), ledger = aggregate.identityEpoch().issued();
   const registry = aggregate.hostedRegistry(), epoch = aggregate.identityEpoch(), position = aggregate.hostedPosition();
@@ -53,90 +50,41 @@ function leaves(root: HsonNode): readonly unknown[] {
   return root.$_tag === STR_TAG || root.$_tag === VAL_TAG ? root.$_content : root.$_content.flatMap(child => is_Node(child) ? leaves(child) : [child]);
 }
 export function document_composition_cases(check: (name: string, run: () => void) => void) {
-  check("retained-root CSS demand publishes with existing receiving identity and retires without retiring its QUAD", () => {
-    for (const staged of [false,true]) {
-      const map=hsonLiveMap.fromLibraries({parts:collection({x:part('<button id="live"/>','button{color:rgb(10,20,30);padding-left:13px}')}),
-        page:{document:'<html <head/> <body <button @:keep id="live"/> <button @:spare id="outside"/>/>/>'}}),p=doc(map),aggregate=owner(map);
-      const subject=lookup(p,"keep")!,spare=lookup(p,"spare")!,handle=p.q("keep")!,id=aggregate.libraries()[1]!;
-      const root=p.root(),overlay=aggregate.documentOverlay(id),ledger=aggregate.identityEpoch().issued();
-      const demand=()=>document_css_subject_identities(encode_portable_document_stylesheet(document_css_state_internal(p)),"outbound");
-      const observations:Readonly<{rev:number;demand:readonly string[];quid:string;active:boolean;css:string}>[]=[];
-      const off=p.commits.observe(()=>observations.push({rev:map.rev,demand:demand(),quid:lookup(p,"keep")!.quid,active:handle.active,css:p.css.snapshot()}));
-      const replace=(source:string)=>{
-        const replacement=element(source),target={kind:"path" as const,path:validate_document_path(subject.path.slice(0,-1))},index=subject.path.at(-1)!;
-        const lineage=[lineage_entry([],[])];
-        return staged?map.batch(draft=>draft.lib("page").graph({domain:"graph",op:"replace-content",target,index,replacement,lineage}))
-          :p.document.content.replace(target,index,replacement,lineage);
-      };
-      try {
-        assert.equal(replace('<button id="live"/>').changed,false);assert.equal(map.rev,0);assert.equal(observations.length,0);
-        assert.equal(aggregate.documentOverlay(id),overlay);assert.equal(aggregate.identityEpoch().issued(),ledger);
-        const accepted=replace('<hson-part lib="parts" at="x"/>');assert.equal(accepted.changed,true);assert.equal(accepted.rev,1);
-        assert.deepEqual(p.root(),root);assert.equal(observations.length,1);
-        assert.deepEqual(observations[0],{rev:1,demand:[subject.quid],quid:subject.quid,active:true,css:p.css.snapshot()});
-        assert.equal(lookup(p,"spare")!.quid,spare.quid);assert.deepEqual(enumerate_livemap_issued_quids(aggregate.identityEpoch().issued()),enumerate_livemap_issued_quids(ledger));
-        assert.equal(replace('<button id="live"/>').changed,false);assert.equal(map.rev,1);assert.equal(observations.length,1);
-        p.css.stylesheet(`[hson\\:quid="${subject.quid}"]{color:rgb(40,50,60)}`);
-        assert.deepEqual(demand(),[subject.quid]);assert.equal(observations.length,2);assert.equal(observations[1]!.rev,2);
-        p.css.clearAll();assert.equal(p.css.snapshot(),"");assert.deepEqual(demand(),[]);assert.equal(map.rev,3);assert.equal(observations.length,3);
-        assert.deepEqual(observations[2],{rev:3,demand:[],quid:subject.quid,active:true,css:""});
-        assert.equal(handle.active,true);assert.equal(handle.attrs.get("id"),"live");assert.equal(aggregate.documentOverlay(id).quidAtPath(subject.path),subject.quid);
-        assert.deepEqual(enumerate_livemap_issued_quids(aggregate.identityEpoch().issued()),enumerate_livemap_issued_quids(ledger));assert.deepEqual(p.root(),root);
-      } finally {off();}
-    }
+  for (const batch of [false, true]) check(`${batch ? "batch" : "direct"} equal Part replacement retires addressed identity and preserves unaddressed no-ops`, () => {
+    const map = hsonLiveMap.fromLibraries({ parts: collection({ plain: part('<button/>'), styled: part('<button/>', 'button{color:red}') }),
+      page: { document: '<button @:keep/>' } });
+    const page = doc(map), aggregate = owner(map), id = aggregate.libraries()[1]!, old = page.q("keep")!;
+    const oldQuid = lookup(page, "keep")!.quid, graph = page.root();
+    const replace = (member: string) => {
+      const replacement = element(`<hson-part lib="parts" at="${member}"/>`), target = { kind: "path" as const, path: validate_document_path([]) };
+      return batch ? map.batch(draft => draft.lib("page").graph({ domain: "graph", op: "replace-content", target, index: 0, replacement }))
+        : page.document.content.replace(target, 0, replacement);
+    };
+    assert.equal(replace("plain").changed, true); assert.equal(old.active, false); assert.equal(page.q("keep"), undefined);
+    assert.equal(aggregate.documentOverlay(id).pathForQuid(oldQuid), undefined); assert.deepEqual(page.root(), graph);
+    assert.equal(replace("plain").changed, false); assert.equal(map.rev, 1);
+    assert.equal(replace("styled").changed, true); assert.equal(map.rev, 2); assert.match(page.css.snapshot(), /color:red/);
+    const styledQuid = aggregate.documentOverlay(id).quidAtPath(validate_document_path([0]))!;
+    assert.ok(styledQuid); assert.notEqual(styledQuid, oldQuid); assert.deepEqual(page.root(), graph);
+    assert.equal(replace("plain").changed, true); assert.equal(map.rev, 3); assert.equal(page.css.snapshot(), "");
+    assert.equal(aggregate.documentOverlay(id).pathForQuid(styledQuid), undefined); assert.deepEqual(page.root(), graph);
+    assert.ok(aggregate.identityEpoch().issued().has(oldQuid)); assert.ok(aggregate.identityEpoch().issued().has(styledQuid));
   });
-  for (const batch of [false,true]) check(`${batch ? "batch graph" : "direct"} graph-equivalent Part replacement admits complete effects and preserves true no-ops`, () => {
-    for (const marked of [false,true]) {
-      const map=hsonLiveMap.fromLibraries({parts:collection({x:part('<button/>','button{color:rgb(10,20,30);padding-left:13px}'),plain:part('<button/>'),empty:part('<button/>','')}),
-        page:{document:marked?'<button @:keep/>':'<button/>'}}), p=doc(map),aggregate=owner(map),id=aggregate.libraries()[1]!;
-      const handle=p.q("keep"),priorQuid=lookup(p,"keep")?.quid,graph=p.root(),initialLedger=aggregate.identityEpoch().issued();
-      let commits=0,positions=0,effects:readonly LiveMapDocumentIdentityEffect[]=[];
-      const off=map.commits.observe(()=>commits++),stop=aggregate.observeAuthorityPosition(()=>positions++);
-      const observe=aggregate.observe(commit=>{const documentCommit=aggregate.documentCommitFor(id,commit);effects=documentCommit===undefined?[]:livemap_document_identity_effects_for(documentCommit)??[];});
-      const replace=(member:string,lineage:LiveMapReplacementLineage=marked?[lineage_entry([],[])]:[])=>{
-        const replacement=element(`<hson-part lib="parts" at="${member}"/>`);
-        return batch?map.batch(draft=>draft.lib("page").graph({domain:"graph",op:"replace-content",target:{kind:"path",path:validate_document_path([])},index:0,replacement,lineage}))
-          :p.document.content.replace({kind:"path",path:[]},0,replacement,lineage);
-      };
-      try {
-        for(const member of ["plain","empty"]) {
-          const before=map.capture(),overlay=aggregate.documentOverlay(id);
-          const result=replace(member);assert.equal(result.changed,false);assert.equal(result.prevRev,0);assert.equal(result.rev,0);
-          assert.deepEqual(map.capture(),before);assert.equal(aggregate.documentOverlay(id),overlay);assert.equal(aggregate.identityEpoch().issued(),initialLedger);
-        }
-        assert.equal(commits,0);assert.equal(positions,0);
-        const result=replace("x");assert.equal(result.changed,true);assert.equal(result.prevRev,0);assert.equal(result.rev,1);
-        assert.equal(map.rev,1);assert.equal(commits,1);assert.equal(positions,1);assert.deepEqual(p.root(),graph);
-        const overlay=aggregate.documentOverlay(id),quid=overlay.quidAtPath(validate_document_path([0]));assert.ok(quid);assert.equal(overlay.size,1);
-        assert.equal(aggregate.identityEpoch().issued().size,1);assert.ok(aggregate.identityEpoch().issued().has(quid));
-        assert.equal(effects.filter(effect=>effect.kind==="introduced" && effect.quid!==priorQuid).length,marked?0:1);
-        assert.ok(effects.every(effect=>effect.quid===quid));
-        assert.equal(effects.some(effect=>effect.kind==="retired" && effect.quid!==priorQuid),false);
-        if(marked){assert.equal(quid,priorQuid);assert.equal(handle!.active,true);assert.equal(lookup(p,"keep")!.quid,priorQuid);handle!.attrs.get("title");}
-        else assert.equal(p.q("keep"),undefined);
-        assert.match(p.css.snapshot(),/button:where\(:scope,:scope \*\)\{color:rgb\(10,20,30\);padding-left:13px;/);
-        const before=map.capture(),ledger=aggregate.identityEpoch().issued();
-        const noop=replace("empty",[lineage_entry([],[])]);assert.equal(noop.changed,false);assert.equal(noop.rev,1);
-        assert.deepEqual(map.capture(),before);assert.equal(aggregate.identityEpoch().issued(),ledger);assert.equal(commits,1);assert.equal(positions,1);
-      } finally {off();stop();observe();}
-      const css=p.css.snapshot(),quid=aggregate.documentOverlay(id).quidAtPath(validate_document_path([0]))!;
-      p.document.content.insert({kind:"path",path:[]},1,element('<i/>'));
-      p.document.content.move({kind:"path",path:[]},0,1);assert.equal(p.css.snapshot(),css);
-      assert.deepEqual(aggregate.documentOverlay(id).pathForQuid(quid),[1]);
-      let current:LiveMap=map;const seen=new Set<string>([quid]);
-      for(let cycle=0;cycle<2;cycle++) {
-        current=install_libraries_snapshot(current.cut({data:[],documents:["page"]}).libs).map;
-        const receiver=owner(current),receiverId=receiver.libraries()[0]!,rootQuid=receiver.documentOverlay(receiverId).quidAtPath(validate_document_path([1]));
-        assert.ok(rootQuid);assert.equal(seen.has(rootQuid),false);seen.add(rootQuid);
-        assert.match(doc(current).css.snapshot(),new RegExp(rootQuid));assert.match(doc(current).css.snapshot(),/padding-left:13px/);
-        assert.equal(doc(current).q("keep")!==undefined,marked);assert.throws(()=>current.lib("parts"),/Unknown LiveMap Library/);
-      }
-      const receiver=owner(current),receiverId=receiver.libraries()[0]!,retiring=doc(current).q("keep"),rootQuid=receiver.documentOverlay(receiverId).quidAtPath(validate_document_path([1]))!;
-      doc(current).document.content.remove({kind:"path",path:[]},1);
-      assert.equal(doc(current).css.snapshot(),"");assert.equal(receiver.documentOverlay(receiverId).size,0);assert.ok(receiver.identityEpoch().issued().has(rootQuid));
-      if(retiring)assert.equal(retiring.active,false);if(handle)assert.equal(handle.active,true);
-    }
+  check("Part replacement retires its old QUAD while retaining independent ancestor CSS", () => {
+    const map = hsonLiveMap.fromLibraries({ parts: collection({ styled: part('<button/>', 'button{color:red}') }),
+      page: { document: '<main @:ancestor <button @:keep/>/>' } });
+    const page = doc(map), ancestor = page.q("ancestor")!, old = page.q("keep")!, quid = lookup(page, "ancestor")!.quid;
+    page.css.sel(`[hson\\:quid="${quid}"]`).setProp("border-top", "5px solid red");
+    page.document.content.replace({ kind: "path", path: [0, 0] }, 0, element('<hson-part lib="parts" at="styled"/>'));
+    assert.equal(old.active, false); assert.equal(ancestor.active, true); assert.match(page.css.snapshot(), /color:red/);
+    assert.match(page.css.snapshot(), /border-top:5px solid red/);
+    ancestor.at([0]).delete();
+    assert.doesNotMatch(page.css.snapshot(), /color:red/); assert.match(page.css.snapshot(), /border-top:5px solid red/);
+    atomic(map, () => ancestor.delete());
   });
+
+
+
   for (const batch of [false,true]) check(`${batch ? "batch graph" : "direct"} graph-equivalent Part effects fail atomically and retain reentrant inner work`, () => {
     const fixture=(extraCss='')=>hsonLiveMap.fromLibraries({parts:collection({x:part('<button/>',`button{color:red}${extraCss}`)}),state:{data:{n:0}},page:{document:'<button/>'}});
     const replace=(map:LiveMap)=>{
@@ -158,22 +106,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.equal(entered,true);assert.deepEqual(reentrant.capture(),after);assert.deepEqual(doc(reentrant).root(),beforeGraph);assert.equal(doc(reentrant).css.snapshot(),"");
     assert.equal(reentrant.rev,1);assert.equal(commits,1);assert.equal(owner(reentrant).identityEpoch().issued().size,0);
   });
-  check("graph-equivalent Part replacement reuses receiving identity and preserves independent ancestor CSS and ownership-only effects", () => {
-    for(const batch of [false,true]) for(const css of ['button{color:red}','@layer order{}']) {
-      const map=hsonLiveMap.fromLibraries({parts:collection({x:part('<button/>',css)}),page:{document:'<main @:ancestor <button @:keep/>/>'}}),p=doc(map),ancestor=p.q("ancestor")!,keep=p.q("keep")!;
-      const rootQuid=lookup(p,"ancestor")!.quid,quid=lookup(p,"keep")!.quid,aggregate=owner(map);
-      p.css.sel(`[hson\\:quid="${rootQuid}"]`).setProp('border-top','5px solid red');const revision=map.rev,ledgerSize=aggregate.identityEpoch().issued().size;let count=0;
-      const off=map.commits.observe(()=>count++),replacement=element('<hson-part lib="parts" at="x"/>'),lineage=[lineage_entry([],[])];
-      allocator(aggregate.identityEpoch().owner,()=>{throw Error("surviving subject must not allocate");});
-      try{const result=batch?map.batch(draft=>draft.lib("page").graph({domain:"graph",op:"replace-content",target:{kind:"path",path:validate_document_path([0,0])},index:0,replacement,lineage}))
-        :p.document.content.replace({kind:"path",path:[0,0]},0,replacement,lineage);assert.equal(result.changed,true);}
-      finally{off();allocator(aggregate.identityEpoch().owner,undefined);}
-      assert.equal(count,1);assert.equal(map.rev,revision+1);assert.equal(aggregate.identityEpoch().issued().size,ledgerSize);
-      assert.equal(lookup(p,"keep")!.quid,quid);assert.equal(keep.active,true);assert.equal(ancestor.active,true);assert.match(p.css.snapshot(),/border-top:5px solid red/);
-      keep.delete();assert.doesNotMatch(p.css.snapshot(),/color:red|@layer order/);assert.match(p.css.snapshot(),/border-top:5px solid red/);
-      atomic(map,()=>p.document.content.remove({kind:"path",path:[]},0),/Correspondence requires an active subject/);
-    }
-  });
+
   check("Part collections are inert; authored documents eagerly realize nested exact coordinates", () => {
     const key = 'n/a "& 雪', lib = 'p/art 雪';
     const map = hsonLiveMap.fromLibraries({
@@ -245,68 +178,8 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.equal(seen, 2);
     atomic(map, () => doc(map).document.content.insert({ kind: "path", path: [0, 0] }, 0, element('<hson-part lib="parts" at="absent"/>')));
   });
-  for (const batch of [false, true]) check(`${batch ? "batch graph" : "direct"} replacement translates explicit lineage through Parts and preserves the complete receiving state`, () => {
-    const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<b <em/>/>', 'b{color:blue}@keyframes fresh{from{opacity:0}}'),
-      old: part('<u/>', 'u{--retired:yes}@keyframes retired{from{opacity:0}}') }),
-      page: { document: '<main @:keep <i @:child/> <hson-part @:retire lib="parts" at="old"/>/>' } });
-    const page = doc(map), aggregate = owner(map), keep = page.q("keep")!, child = page.q("child")!, retired = page.q("retire")!;
-    const rootQuid = lookup(page, "keep")!.quid, childQuid = lookup(page, "child")!.quid, retiredQuid = lookup(page, "retire")!.quid;
-    page.css.sel(`[hson\\:quid="${rootQuid}"]`).setProp("border-top", "5px solid red");
-    const beforeRevision = map.rev, issued = aggregate.identityEpoch().issued().size;
-    const lineage: LiveMapReplacementLineage = [lineage_entry([], []), lineage_entry([0, 0], [0, 1])];
-    let commits = 0, positions = 0, accepted: LiveMapGraphOp | undefined;
-    const off = map.commits.observe(commit => {
-      commits++;
-      const op = commit.operations.find(entry => "op" in entry.operation && entry.operation.op === "replace-content")?.operation;
-      if (op !== undefined && "op" in op && op.op === "replace-content") accepted = op;
-      assert.equal(keep.active, true); assert.equal(child.active, true); assert.equal(retired.active, false);
-      assert.equal(lookup(page, "keep")!.quid, rootQuid); assert.equal(lookup(page, "child")!.quid, childQuid);
-      assert.match(page.css.snapshot(), /border-top:5px solid red/); assert.match(page.css.snapshot(), /color:blue/);
-      assert.doesNotMatch(page.css.snapshot(), /retired/); assert.match(page.css.snapshot(), /@keyframes fresh/);
-      assert.doesNotMatch(JSON.stringify(page.root()), /hson-part/);
-      assert.equal(aggregate.documentOverlay(aggregate.libraries()[1]!).size, 3);
-    }), stop = aggregate.observeAuthorityPosition(() => positions++);
-    const replace = (input: LiveMapReplacementLineage) => {
-      const replacement = element('<main <hson-part lib="parts" at="x"/> <i title="surviving"/>/>');
-      if (batch) map.batch(draft => draft.lib("page").graph({ domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([]) }, index: 0, replacement, lineage: input }));
-      else page.document.content.replace({ kind: "path", path: [] }, 0, replacement, input);
-    };
-    try { replace(lineage); } finally { off(); stop(); }
-    assert.equal(commits, 1); assert.equal(positions, 1); assert.equal(map.rev, beforeRevision + 1);
-    assert.ok(accepted?.op === "replace-content"); assert.deepEqual(accepted.lineage, lineage);
-    assert.equal(aggregate.identityEpoch().issued().size, issued + 1);
-    assert.ok(aggregate.identityEpoch().issued().has(rootQuid)); assert.ok(aggregate.identityEpoch().issued().has(childQuid));
-    assert.ok(aggregate.identityEpoch().issued().has(retiredQuid)); assert.equal(page.document.byQuid(retiredQuid), undefined);
-    assert.deepEqual(lookup(page, "keep")!.path, [0]); assert.deepEqual(lookup(page, "child")!.path, [0, 0, 1]);
-    assert.equal(child.attrs.get("title"), "surviving");
-    assert.equal(page.q("retire"), undefined); assert.equal(page.q("x"), undefined);
-    // Missing source, carrier destination, invented Part descendant, and non-bijective mappings all roll back.
-    for (const invalid of [
-      [lineage_entry([9], [])], [lineage_entry([], [0])],
-      [lineage_entry([], [0, 0, 0, 0])],
-      [lineage_entry([], []), lineage_entry([0, 1], [])],
-    ]) atomic(map, () => replace(invalid));
-    // Retire the new Part alone: surviving independent ancestor CSS remains valid.
-    const beforeRemove = page.css.snapshot();
-    page.document.content.remove({ kind: "path", path: [0, 0] }, 0);
-    assert.notEqual(page.css.snapshot(), beforeRemove); assert.doesNotMatch(page.css.snapshot(), /color:blue/);
-    assert.doesNotMatch(page.css.snapshot(), /@keyframes fresh/);
-    assert.match(page.css.snapshot(), /border-top:5px solid red/); assert.equal(keep.active, true); assert.equal(child.active, true);
-    atomic(map, () => keep.delete()); // Independent authored CSS still fails closed.
-  });
-  check("connector replacement correspondence is explicit and cannot name generated Part descendants", () => {
-    for (const batch of [false,true]) for (const preserve of [false,true]) {
-      const map=hsonLiveMap.fromLibraries({parts:collection({x:part('<section <b/>/>','section{color:red}') }),page:{document:'<main @:keep/>'}});
-      const p=doc(map),keep=p.q("keep")!,prior=lookup(p,"keep")!.quid;
-      const replacement=element('<hson-part lib="parts" at="x"/>'),lineage:LiveMapReplacementLineage=preserve?[lineage_entry([],[])]:[];
-      if(batch) map.batch(draft=>draft.lib("page").graph({domain:"graph",op:"replace-content",target:{kind:"path",path:validate_document_path([])},index:0,replacement,lineage}));
-      else p.document.content.replace({kind:"path",path:[]},0,replacement,lineage);
-      assert.equal(keep.active,preserve);assert.equal(p.q("keep")!==undefined,preserve);
-      const overlay=owner(map).documentOverlay(owner(map).libraries()[1]!);
-      assert.equal(overlay.size,1);assert.equal(overlay.quidAtPath(validate_document_path([0]))===prior,preserve);
-      assert.equal(overlay.quidAtPath(validate_document_path([0,0,0])),undefined);
-    }
-  });
+
+
   check("reentrant connector input capture rejects the outer edit and preserves accepted inner data work", () => {
     const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<p/>') }), state: { data: { n: 0 } }, page: { document: '<main <i/>/>' } });
     const before = doc(map).root(); let entered = false;

@@ -106,9 +106,8 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     assert.equal(old.active, true); assert.equal(old.attrs.get("title"), "revision one");
     assert.deepEqual(lookup(selected, "nextButton"), identity);
     selected.q("page")!.move(0, 1); assert.deepEqual(old.path(), [1]);
-    selected.document.content.replace({ kind: "path", path: [0, 0] }, 1, button(),
-      [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
-    assert.equal(old.active, true); old.attrs.set("title", "lineage"); assert.equal(old.attrs.get("title"), "lineage");
+    selected.q("nextButton")!.attrs.set("title", "updated");
+    assert.equal(old.active, true); old.attrs.set("title", "updated"); assert.equal(old.attrs.get("title"), "updated");
   });
   check("public q remote incarnation replacement preserves client-local families and projected write guards", () => {
     const source = fixture(), sourceOwner = owner(source);
@@ -178,9 +177,8 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
       assert.equal(independent.attrs.get("title"), "restored"); fresh.at([0]).dispose();
       assert.equal(fresh.active, false); assert.equal(independent.active, true);
       selected.q("page")!.move(0, 1); assert.deepEqual(independent.path(), [1]);
-      selected.document.content.replace({ kind: "path", path: [0, 0] }, 1, button(),
-        [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
-      assert.equal(independent.active, true); independent.attrs.set("title", "lineage");
+      selected.q("nextButton")!.attrs.set("title", "updated");
+      assert.equal(independent.active, true); independent.attrs.set("title", "updated");
       assert.equal(location.active, false); assert.equal(child.active, false);
     }
   });
@@ -306,14 +304,13 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     selected.at([]).asRoot()!.move(1, 0);
     assert.deepEqual(location.path(), [0, 0, 0]); assert.equal(location.attrs.get("title"), "deep");
   });
-  check("public q retains explicit lineage and retires ordinary replacement or removal without retargeting", () => {
+  check("public q retains precise mutations and retires ordinary replacement or removal without retargeting", () => {
     for (const remove of [false, true]) {
       const map = fixture(), selected = page(map), location = selected.q("nextButton")!, child = location.at([0]);
       const identity = lookup(selected, "nextButton")!.quid;
-      selected.document.content.replace({ kind: "path", path: [0, 0] }, 0, button(),
-        [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
+      selected.q("nextButton")!.attrs.set("title", "updated");
       assert.equal(lookup(selected, "nextButton")!.quid, identity); assert.equal(location.active, true);
-      location.attrs.set("title", "lineage"); assert.equal(location.attrs.get("title"), "lineage");
+      location.attrs.set("title", "updated"); assert.equal(location.attrs.get("title"), "updated");
       if (remove) { location.delete(); selected.q("page")!.insert(0, button()); }
       else location.replace(button());
       assert.equal(location.active, false); assert.equal(child.active, false); assert.equal(location.snap(), undefined);

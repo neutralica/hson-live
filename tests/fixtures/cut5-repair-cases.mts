@@ -1,3 +1,5 @@
+import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
+import { assign_hson_node_quid } from "../../src/core/hson-node-quid.ts";
 import { LiveTree } from '../../src/api/livetree/livetree.ts';
 import type { HsonNode, ReadonlyHsonNode } from '../../src/core/types.ts';
 import { is_Node } from '../../src/core/node-guards.ts';
@@ -67,15 +69,25 @@ function mirrorFixture() {
     const a = binding.tree.findAll.byTag('p').array();
     // Explicit canonical acquisition supplies continuity evidence for only two subjects.
     const qa = a[0]!.quid, qb = a[2]!.quid;
-    const replacement = () => n('_hson_elem', n('section', n('_hson_elem', n('p'), n('p'))), n('section', n('_hson_elem', n('p'))));
-    const lineage = [{ source: validate_document_path([0, 0, 0]), destination: validate_document_path([1, 0, 0]) }, { source: validate_document_path([1, 0, 0]), destination: validate_document_path([0, 0, 0]) }];
-    return { registry, page, binding, root, main, a: a[0]!, b: a[2]!, qa, qb, replacement, lineage };
+    const replacement = () => {
+        const content = n('_hson_elem', n('section', n('_hson_elem', n('p'), n('p'))), n('section', n('_hson_elem', n('p'))));
+        assign_hson_node_quid(at(content, 1, 0, 0), qa);
+        assign_hson_node_quid(at(content, 0, 0, 0), qb);
+        return content;
+    };
+    const replace = () => {
+        const authority = internal_livemap_aggregate_authority(registry), id = authority.libraries()[0]!;
+        return authority.commit([{ target: authority.target(id, [0]), kind: 'graph', operation: {
+            domain: 'graph', op: 'replace-content', target: path(), index: 0, replacement: replacement(),
+        } }]);
+    };
+    return { registry, page, binding, root, main, a: a[0]!, b: a[2]!, qa, qb, replacement, replace };
 }
 export function cut5_repair_cases(check: (name: string, run: () => void) => void): void {
-    check('F1 cross-parent lineage swap publishes exact final parent indexes', () => {
+    check('F1 internal exact cross-parent swap publishes exact final parent indexes', () => {
         const f = mirrorFixture(), dom = mount(f.binding.tree.find.must.byTag('main')), a = subject_for_tree(f.a), b = subject_for_tree(f.b), ad = get_dom_for_node(a), bd = get_dom_for_node(b);
         try {
-            f.page.document.content.replace(path(), 0, f.replacement(), f.lineage);
+            f.replace();
             same(f.binding.status, 'active', 'continuity failed');
             same(at(f.main, 0, 1, 0, 0), a, 'a identity replaced');
             same(at(f.main, 0, 0, 0, 0), b, 'b identity replaced');
@@ -132,7 +144,7 @@ export function cut5_repair_cases(check: (name: string, run: () => void) => void
         runtime.realizationListeners.add(first);
         runtime.realizationListeners.add(second);
         try {
-            f.page.document.content.replace(path(), 0, f.replacement(), f.lineage);
+            f.replace();
             same(f.binding.status, 'active', 'observer failed completed Mirror');
             same(f.binding.sourceRevision, before + 1, 'Mirror completion lost revision');
             same(delivered, 1, 'Mirror fan-out aborted');
@@ -156,7 +168,7 @@ export function cut5_repair_cases(check: (name: string, run: () => void) => void
         const original = dom.replaceChildren;
         dom.replaceChildren = () => { throw new Error('injected Mirror native failure'); };
         try {
-            f.page.document.content.replace(path(), 0, f.replacement(), f.lineage);
+            f.replace();
         }
         finally {
             dom.replaceChildren = original;
@@ -187,7 +199,7 @@ export function cut5_repair_cases(check: (name: string, run: () => void) => void
         dom.getAttribute = function (name) { if (armed && name === 'hson:quid')
             throw new Error('late correspondence validation fault'); return get.call(this, name); };
         try {
-            f.page.document.content.replace(path(), 0, f.replacement(), f.lineage);
+            f.replace();
         }
         finally {
             dom.replaceChildren = replace;

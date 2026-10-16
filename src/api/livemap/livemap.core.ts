@@ -1,7 +1,9 @@
 import { own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
+import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
+import { prepare_document_scoped_library_styles, type PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
+import { capture_document_scoped_library, decode_document_scoped_library, restore_document_scoped_library_styles } from "./livemap.document.scoped-portable.js";
 import { expand_document_composition, document_composition_options, has_part_connector, type DocumentCompositionStyle } from "./livemap.document.composition.js";
-import { normalize_replacement_lineage } from "./livemap.document.lineage.js";
 import { merge_part_stylesheets, retire_part_styles } from "../../internal/css/part-stylesheet.js";
 import { registry_from_entries } from "./livemap.hosted.js";
 import {
@@ -603,6 +605,58 @@ function make_livemap_registry_engine(
     assertCurrent(); return { documentOverlay: overlay, stylesheet };
   }
 
+  // Candidate provenance only, not a second installed scope registry. Nothing
+  // here enters capture, commit observations, Locus, Echo or durable recovery.
+  const scopedPreparations = new WeakSet<PreparedDocumentScopedLibrary>();
+  function scoped_preparation_authority(assertCurrent = capture_fence()) {
+    transitionController.assertPublicMutationAllowed();
+    transitionController.assertLocalIdentityAllowed();
+    if (clientComposition !== undefined || transitionController.managedExecutionOwner() !== undefined) {
+      throw new Error("Scoped Library preparation is local-only until portable scope replay is available.");
+    }
+    const generation = transitionController.generation;
+    return {
+      identityOwner: mapIdentityEpoch.owner,
+      assertCurrent: () => {
+        assertCurrent();
+        transitionController.assertPublicMutationAllowed();
+        transitionController.assertLocalIdentityAllowed();
+        if (generation !== transitionController.generation) throw new Error("Scoped preparation authority changed.");
+      },
+      readPart: (collection: string, member: string) => {
+        const binding = hostedBindingsByName?.get(collection);
+        if (binding === undefined || binding.mode !== "data-object" || binding.validation === undefined) {
+          throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
+        }
+        const library = require_library(binding.identity);
+        const part = validate_data_library(library.root, library.mode, library.validation)?.find(part => part.key === member);
+        if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
+        return part;
+      },
+    };
+  }
+
+  function finish_scoped_preparation(candidate: PreparedDocumentScopedLibrary): PreparedDocumentScopedLibrary {
+    const library = require_library(candidate.owner);
+    if (library.hsonSchema !== undefined) must_hson_schema_root(library.hsonSchema, candidate.root);
+    candidate.assertCurrent();
+    // Authentication must also protect the graph that the scopes and CSS were
+    // checked against. These are detached, qualified graphs; freezing them
+    // cannot freeze source Libraries or caller input. Operations clone before
+    // editing, so subsequent preparation still uses the ordinary mutation path.
+    const pending: unknown[] = [candidate.root, ...candidate.steps.map(step => step.context.root)];
+    const seen = new Set<object>();
+    while (pending.length) {
+      const value = pending.pop();
+      if (value === null || typeof value !== "object" || seen.has(value)) continue;
+      seen.add(value);
+      pending.push(...Object.values(value));
+      Object.freeze(value);
+    }
+    scopedPreparations.add(candidate);
+    return candidate;
+  }
+
   function capture_fence(): () => void {
     const revision = mapRevision, generation = identityGeneration, registry = hostedRegistry, authority = hostedFence;
     if (localIdentityTransactionActive) throw new Error("Capture cannot observe an incomplete identity transaction.");
@@ -951,15 +1005,8 @@ function make_livemap_registry_engine(
       if (operation.op !== "insert-content" && operation.op !== "replace-content") throw new Error("Unsupported Part construction operation.");
       const prefix = [...operation.target.path, operation.index];
       const styles = composed.styles.map(style => ({ ...style, subjects: style.subjects.map(subject => ({ ...subject, path: [...prefix, ...subject.path.slice(1)] })) }));
-      const destinations = new Map(composed.correspondence.map(entry => [JSON.stringify(entry.source.slice(1)), entry.destination.slice(1)]));
-      const lineage = operation.op === "replace-content" && operation.lineage !== undefined
-        ? normalize_replacement_lineage(operation.lineage).map(entry => {
-          const destination = destinations.get(JSON.stringify(entry.destination));
-          if (destination === undefined) throw new Error("Replacement lineage destination has no realized authored subject.");
-          return { source: entry.source, destination: validate_document_path(destination) };
-        }) : undefined;
       const realized: LiveMapGraphOp = operation.op === "insert-content" ? { ...operation, content: output }
-        : { ...operation, replacement: output, ...(lineage === undefined ? {} : { lineage }) };
+        : { ...operation, replacement: output };
       return { operation: realized, styles };
     };
     const system_candidate = (): AggregateSystemCandidate | undefined => {
@@ -1581,8 +1628,13 @@ function make_livemap_registry_engine(
     try {
       const operation = candidate.operation;
       const content = operation.op === "insert-content" ? operation.content : operation.op === "replace-content" ? operation.replacement : undefined;
+      // Connector expansion replans the admitted public instruction. The preliminary
+      // candidate's derived evidence belongs to its unexpanded graph only.
+      const instruction: LiveMapGraphOp = operation.op === "replace-content"
+        ? { domain: "graph", op: "replace-content", target: operation.target, index: operation.index, replacement: operation.replacement }
+        : operation;
       transition = is_Node(content) && has_part_connector(content)
-        ? prepare_authority_transition([{ target: aggregate_target(libraryIdentity, document_operation_path(operation)), kind: "graph", operation, publicStaged: true }])
+        ? prepare_authority_transition([{ target: aggregate_target(libraryIdentity, document_operation_path(operation)), kind: "graph", operation: instruction, publicStaged: true }])
         : prepare_authority_transition([], [{
         library: libraryIdentity,
         root: candidate.root,
@@ -3053,6 +3105,40 @@ function make_livemap_registry_engine(
     addClientLocalLibraries: add_client_local_libraries,
     assertPublicMutationAllowed: transitionController.assertPublicMutationAllowed,
     captureFence: capture_fence,
+    prepareScopedDocument: (identity, source) => {
+      const authority = scoped_preparation_authority(), library = require_library(identity);
+      if (library.mode !== "document") throw new Error("Scoped preparation requires a document Library.");
+      const composition = expand_document_composition("candidate", () => source,
+        document_composition_options(undefined), authority.readPart);
+      authority.assertCurrent();
+      const prepared = prepare_livemap_root(composition.root, "document");
+      const candidate = prepare_document_scoped_composition({ owner: library.identity, root: composition.root,
+        overlay: require_document_overlay(prepared.documentOverlay), issued: mapIdentityEpoch.issued() }, composition, authority);
+      return finish_scoped_preparation(prepare_document_scoped_library_styles(candidate, stylesheet(identity)));
+    },
+    prepareScopedDocumentOperations: (before, operations) => {
+      if (!scopedPreparations.has(before)) throw new Error("Scoped candidate belongs to another Library preparation authority.");
+      const authority = scoped_preparation_authority(before.assertCurrent);
+      before.assertCurrent();
+      const candidate = prepare_document_scoped_operations(before, before.scopes, operations, authority);
+      return finish_scoped_preparation(prepare_document_scoped_library_styles(candidate, before.stylesheet, before));
+    },
+    captureScopedDocument: (candidate) => {
+      if (!scopedPreparations.has(candidate)) throw new Error("Scoped candidate belongs to another Library preparation authority.");
+      return capture_document_scoped_library(candidate);
+    },
+    prepareScopedDocumentRestoration: (identity, input) => {
+      const authority = scoped_preparation_authority(), library = require_library(identity);
+      if (library.mode !== "document") throw new Error("Scoped restoration requires a document Library.");
+      const portable = decode_document_scoped_library(input);
+      const prepared = prepare_livemap_root(portable.root, "document");
+      if (!canonical_graph_equal(portable.root, prepared.root)) throw new Error("Scoped restoration requires canonical graph coordinates.");
+      if (library.hsonSchema !== undefined) must_hson_schema_root(library.hsonSchema, prepared.root);
+      authority.assertCurrent();
+      const candidate = prepare_document_scoped_reconstruction({ owner: library.identity, root: prepared.root,
+        overlay: require_document_overlay(prepared.documentOverlay), issued: mapIdentityEpoch.issued() }, portable.scopes, authority);
+      return finish_scoped_preparation(restore_document_scoped_library_styles(candidate, portable));
+    },
     captureDocumentSsr: (identity, demanded) => {
       const assertCurrent = capture_fence(), state = require_library(identity);
       if (state.mode !== "document") throw new Error("SSR subject capture requires a document Library.");

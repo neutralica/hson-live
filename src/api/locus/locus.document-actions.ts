@@ -1,9 +1,7 @@
 import type {
   LiveMapDocumentApi,
-  LiveMapReplacementLineage,
 } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
-import { is_Node } from "../../core/node-guards.js";
 import type {
   LocusDocumentActionName,
 } from "../../types/locus.types.js";
@@ -15,8 +13,6 @@ import {
   is_locus_json_value,
 } from "./locus.protocol.js";
 import { decode_locus_portable_graph_content } from "./locus.graph-content-codec.js";
-import { resolve_document_path, validate_document_path } from "../livemap/livemap.document.path.js";
-import { normalize_replacement_lineage } from "../livemap/livemap.document.lineage.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 
 export type LocusDocumentActionResolution =
@@ -40,7 +36,7 @@ export type LocusDocumentActionTarget = Readonly<{
       replace: (...args: Parameters<LiveMapDocumentApi["attrs"]["replace"]>) => unknown;
     }>;
     content: Readonly<{
-      replace: (target: Parameters<LiveMapDocumentApi["content"]["replace"]>[0], index: number, replacement: Parameters<LiveMapDocumentApi["content"]["replace"]>[2], lineage?: LiveMapReplacementLineage) => unknown;
+      replace: (...args: Parameters<LiveMapDocumentApi["content"]["replace"]>) => unknown;
       insert: (...args: Parameters<LiveMapDocumentApi["content"]["insert"]>) => unknown;
       remove: (...args: Parameters<LiveMapDocumentApi["content"]["remove"]>) => unknown;
       move: (...args: Parameters<LiveMapDocumentApi["content"]["move"]>) => unknown;
@@ -164,8 +160,7 @@ export function resolve_locus_document_action(
   }
 
   if (name === "document.content.replace") {
-    if (!has_exact_keys(payload, ["target", "index", "replacement"])
-      && !has_exact_keys(payload, ["target", "index", "replacement", "lineage"])) return invalid_fields(name);
+    if ("lineage" in payload || !has_exact_keys(payload, ["target", "index", "replacement"])) return invalid_fields(name);
     const index = non_negative_integer(payload.index);
     if (index === undefined) return invalid_index(name);
     let replacement;
@@ -174,26 +169,10 @@ export function resolve_locus_document_action(
     } catch {
       return Object.freeze({ kind: "invalid", message: `Locus action ${name} replacement is invalid.` });
     }
-    let lineage;
-    try {
-      lineage = payload.lineage === undefined ? undefined : normalize_replacement_lineage(payload.lineage);
-    } catch {
-      return Object.freeze({ kind: "invalid", message: `Locus action ${name} lineage is invalid.` });
-    }
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: (targetMap = map) => {
-        if (lineage === undefined) return document_api_for(targetMap).content.replace(target, index, replacement);
-        const authorityRoot = "root" in map && typeof map.root === "function" ? map.root() : undefined;
-        if (!is_Node(authorityRoot)) throw new TypeError("Replacement authority root is unavailable.");
-        const parent = resolve_document_path(authorityRoot, "document", validate_document_path(target.path));
-        if (!is_Node(parent)) throw new TypeError("Replacement lineage scope is not a document node.");
-        const before = parent.$_content[index];
-        if (before === undefined) throw new TypeError("Replacement lineage source is absent.");
-        const checked = normalize_replacement_lineage(lineage, before, replacement);
-        return document_api_for(targetMap).content.replace(target, index, replacement, checked);
-      },
+      execute: (targetMap = map) => document_api_for(targetMap).content.replace(target, index, replacement),
     });
   }
 

@@ -465,7 +465,6 @@ export type LiveMapDocumentContentApi = (() => readonly NodeContent[number][]) &
     target: LiveMapDocumentRequestTarget,
     index: number,
     replacement: LiveMapDocumentContent,
-    lineage?: LiveMapReplacementLineage,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
   insert: (
     target: LiveMapDocumentRequestTarget,
@@ -1524,7 +1523,7 @@ export type LiveMapDocumentLibrary<
   document: Readonly<{
     root: () => HsonNode;
     content: (() => readonly NodeContent[number][]) & Readonly<{
-      replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent, lineage?: LiveMapReplacementLineage) =>
+      replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent) =>
         LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceContentOp>;
       insert: (target: LiveMapDocumentRequestTarget, index: number, content: LiveMapDocumentContent) =>
         LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphInsertContentOp>;
@@ -1924,20 +1923,12 @@ export type LiveMapGraphReplaceAttrsOp = Readonly<{
   attrs: LiveMapDocumentAttrs;
 }>;
 
-/** Relative paths within the pre/post replace-content slot; no generated identity. */
-export type LiveMapReplacementLineage = readonly Readonly<{
-  source: LiveMapDocumentPath;
-  destination: LiveMapDocumentPath;
-}>[];
-
 export type LiveMapGraphReplaceContentOp = Readonly<{
   domain: "graph";
   op: "replace-content";
   target: LiveMapDocumentCommitTarget;
   index: number;
   replacement: LiveMapDocumentContent;
-  /** Present on newly planned operations; omitted input derives current local evidence. */
-  lineage?: LiveMapReplacementLineage;
 }>;
 
 export type LiveMapGraphInsertContentOp = Readonly<{

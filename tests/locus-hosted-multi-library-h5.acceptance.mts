@@ -1,3 +1,4 @@
+import type { DocumentGraphReplaceContentOp } from "../src/api/livemap/livemap.document.lineage.ts";
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
@@ -312,10 +313,15 @@ draft.lib("page").graph(insert_item()); })();
     replacement: encode_locus_portable_graph_content({ $_tag: "item", $_attrs: { title: "lineage" }, $_content: [] }),
     lineage: [{ source: [], destination: [] }],
   }));
+  const beforeReplacement = serverMap.capture(), clientBefore = clientMap.capture();
+  const rejected = await client.action("document.content.replace", replacementRequest);
+  assert.equal(rejected.type, "error", JSON.stringify(rejected));
+  assert.deepEqual(serverMap.capture(), beforeReplacement); assert.deepEqual(clientMap.capture(), clientBefore);
+  delete replacementRequest.lineage;
   const replacementResult = await client.action("document.content.replace", replacementRequest);
   assert.equal(replacementResult.type, "ack", JSON.stringify(replacementResult));
   await wait_for_aggregate_revision(clientMap, 4);
-  assert.equal(serverMap.lib("page").document.byQuid(QUID)?.$_attrs?.title, "lineage");
+  assert.equal(serverMap.lib("page").document.byQuid(QUID), undefined);
   assert.equal(clientMap.lib("page").document.byQuid(QUID), undefined);
   assert.equal(page_item(clientMap)?.$_attrs?.title, "lineage");
   assert.equal(reflection.sourceRevision, 4);
@@ -388,7 +394,10 @@ await check("named Mirror text replacement carries empty portable lineage throug
   const lineages: unknown[] = [];
   const stop = serverMap.commits.observe((commit) => {
     for (const entry of commit.operations) {
-      if ("op" in entry.operation && entry.operation.op === "replace-content") lineages.push(entry.operation.lineage);
+      if ("op" in entry.operation && entry.operation.op === "replace-content") {
+        const operation: DocumentGraphReplaceContentOp = entry.operation;
+        lineages.push(operation.lineage);
+      }
     }
   });
   await reflection.tree.find.must.byTag("item").async.text.set("new");

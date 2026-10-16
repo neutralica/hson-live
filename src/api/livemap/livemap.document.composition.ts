@@ -8,11 +8,12 @@ import { materialize_owned_occurrences } from "../livetree/runtime/materialize-o
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { is_document_quad_name, type DocumentQuadAdmission } from "./livemap.document.quad.js";
 import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
-import type { LiveMapReplacementLineage, PortableDocumentQuads } from "../../types/livemap.types.js";
+import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
 import { admit_hson_data_input } from "../data/hson-data.js";
 import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { scope_part_stylesheet } from "../../internal/css/part-stylesheet.js";
+import type { DocumentScopedQuadRecord, ScopedQuadBindingRecord, ScopedQuadOccurrenceRecord } from "./livemap.document.scoped-quad-codec.js";
 import type { DocumentCssRecord } from "../../types/document-css.types.js";
 
 /** Private construction bounds; callers may lower, but cannot disable, the caps. @internal */
@@ -171,6 +172,8 @@ export type DocumentCompositionStyle = Readonly<{
 }>;
 type Landmark = Readonly<{ node: HsonNode; path: readonly number[] }>;
 type Occurrence = Readonly<{
+  evidence: { root: readonly number[] | null; bindings: ScopedQuadBindingRecord[]; byName: Map<string, ScopedQuadBindingRecord> };
+  localNames: ReadonlyMap<HsonNode, readonly string[]>;
   landmarks: ReadonlyMap<string, Landmark>;
   shellNames: ReadonlyMap<HsonNode, string>;
   collection?: string;
@@ -183,7 +186,6 @@ type Frame = {
   source: readonly (HsonNode | Primitive)[];
   output: NodeContent;
   outputPath: readonly number[];
-  sourcePath: readonly number[];
   index: number;
   receiving?: Readonly<{ names: readonly string[]; start: number }>;
   selection?: Selection;
@@ -193,7 +195,6 @@ type Frame = {
   owner: HsonNode;
   emptyClusterParent?: HsonNode;
   styledConnector?: Readonly<{ name: string; style: NonNullable<Occurrence["style"]>; start: number }>;
-  shellConnector?: Readonly<{ source: readonly number[]; start: number }>;
 };
 
 /** Exact immediate logical string shape; undefined includes absence, never an empty string. */
@@ -218,7 +219,7 @@ export function expand_document_composition(
   readShell: (name: string) => DocumentCompositionSource,
   limits: Readonly<{ maxDepth: number; maxNodes: number; maxCharacters: number; configuration?: Configuration }>,
   readPart: (collection: string, member: string) => DocumentCompositionSource,
-): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; styles: readonly DocumentCompositionStyle[]; correspondence: LiveMapReplacementLineage }> {
+): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; styles: readonly DocumentCompositionStyle[]; scoped: DocumentScopedQuadRecord; identityDemands: readonly (readonly number[])[] }> {
   const sources = new Map<string, Map<string, DocumentCompositionSource>>();
   const part = (collection: string, member: string): DocumentCompositionSource => {
     const members = sources.get(collection) ?? new Map<string, DocumentCompositionSource>();
@@ -259,12 +260,7 @@ export function expand_document_composition(
   };
   const root: HsonNode = { $_tag: ROOT_TAG, $_content: [] };
   const associations: DocumentQuadAdmission[] = [];
-  // Detached construction evidence only: authored shell coordinates to final
-  // coordinates. Part descendants have no authored shell correspondence.
-  const correspondence: LiveMapReplacementLineage[number][] = [];
-  const correspond = (source: readonly number[], destination: readonly number[]) => {
-    correspondence.push(Object.freeze({ source: validate_document_path(source), destination: validate_document_path(destination) }));
-  };
+  const occurrences: ScopedQuadOccurrenceRecord[] = [];
   const names = new Map<string, string>(), subjects = new Map<string, string>();
   const receive = (name: string, content: NodeContent, start: number, outputPath: readonly number[]): void => {
     if (content.length !== start + 1 || !is_ordinary_element_node(content[start])
@@ -283,12 +279,16 @@ export function expand_document_composition(
   // Preorder selection is the actual expansion order, independent of completion order.
   const styles: NonNullable<Occurrence["style"]>[] = [];
   const label = (selection: Selection): string => JSON.stringify([selection.collection, selection.member]);
-  const occurrence = (source: DocumentCompositionSource, collection?: string): Occurrence => {
+  const occurrence = (source: DocumentCompositionSource, collection?: string, coordinate: readonly number[] | null = null, parent: readonly number[] | null = null): Occurrence => {
+    const evidence: Occurrence["evidence"] = { root: coordinate, bindings: [], byName: new Map() };
+    if (coordinate !== null) occurrences.push({ root: validate_document_path(coordinate), parent: parent === null ? null : validate_document_path(parent), bindings: evidence.bindings });
+    const localNames = new Map<HsonNode, string[]>();
     const landmarks = new Map<string, Landmark>(), shellNames = new Map<HsonNode, string>();
     for (const quad of source.quads ?? []) {
       const node = resolve_document_path(source.root, "document", quad.path);
       if (!is_ordinary_element_node(node) || landmarks.has(quad.name)) throw new Error("Invalid composition landmark.");
       landmarks.set(quad.name, { node, path: quad.path });
+      localNames.set(node, [...(localNames.get(node) ?? []), quad.name]);
       if (collection === undefined) shellNames.set(node, quad.name);
     }
     let style: Occurrence["style"];
@@ -312,7 +312,21 @@ export function expand_document_composition(
       style = { css, demanded, subjects: new Map() };
       styles.push(style);
     }
-    return { landmarks, shellNames, ...(collection === undefined ? {} : { collection }), scopes: [], ...(style === undefined ? {} : { style }) };
+    return { evidence, localNames, landmarks, shellNames, ...(collection === undefined ? {} : { collection }), scopes: [], ...(style === undefined ? {} : { style }) };
+  };
+  const bind = (occurrence: Occurrence, name: string, kind: "element" | "part", coordinate: readonly number[]): void => {
+    const path = validate_document_path(coordinate);
+    const previous = occurrence.evidence.byName.get(name);
+    // Repeating the same configuration selection is idempotent. Distinct
+    // declarations were rejected while building this occurrence's landmarks.
+    if (previous !== undefined) {
+      if (previous.kind === kind && JSON.stringify(previous.path) === JSON.stringify(path)) return;
+      // Preserve conflicting evidence for private candidate admission. The
+      // shared composer must not change committed receiving-name semantics.
+    }
+    const binding = Object.freeze({ name, kind, path });
+    occurrence.evidence.bindings.push(binding);
+    occurrence.evidence.byName.set(name, binding);
   };
   const scope = (occurrence: Occurrence, path: readonly number[], configuration?: Configuration): ConfigurationScope => {
     const targets: ConfigurationScope = new Map();
@@ -340,7 +354,7 @@ export function expand_document_composition(
     }
   };
   singleRoot(initialRoot.$_content, limits.configuration);
-  const frames: Frame[] = [{ source: initialRoot.$_content, output: root.$_content, outputPath: [], sourcePath: [], index: 0,
+  const frames: Frame[] = [{ source: initialRoot.$_content, output: root.$_content, outputPath: [], index: 0,
     ...(limits.configuration?.q === undefined ? {} : { receiving: { names: [limits.configuration.q], start: 0 } }),
     owner: root, scope: initialScope,
     occurrence: { ...initial, scopes: [initialScope] },
@@ -365,13 +379,6 @@ export function expand_document_composition(
         }
         style.subjects.set(name, validate_document_path([...frame.outputPath, start]));
       }
-      if (frame.shellConnector !== undefined) {
-        const { source, start } = frame.shellConnector;
-        if (frame.output.length !== start + 1 || !is_ordinary_element_node(frame.output[start])) {
-          throw new Error("Authored connector correspondence requires one resulting subject.");
-        }
-        correspond(source, [...frame.outputPath, start]);
-      }
       frames.pop();
       if (frame.selection !== undefined) {
         const selections = active.get(frame.selection.collection)!;
@@ -382,7 +389,6 @@ export function expand_document_composition(
       if (frame.emptyClusterParent !== undefined && frame.output.length === 0) frame.emptyClusterParent.$_content = [];
       continue;
     }
-    const sourcePath = [...frame.sourcePath, frame.index];
     const item = frame.source[frame.index++];
     if (!is_Node(item)) {
       if (typeof item === "string") charge(item);
@@ -435,14 +441,16 @@ export function expand_document_composition(
         const chain = frames.flatMap(current => current.selection === undefined ? [] : [label(current.selection)]);
         throw new Error(`Recursive document composition cycle: ${[...chain, label(selection)].join(" -> ")}.`);
       }
-      const childOccurrence = occurrence(selected, lib);
+      const coordinate = [...frame.outputPath, frame.output.length];
+      const childOccurrence = occurrence(selected, lib, coordinate, frame.occurrence.evidence.root);
+      const localNames = frame.occurrence.localNames.get(item) ?? [];
+      for (const name of [...localNames, configuration?.q]) if (name !== undefined) bind(frame.occurrence, name, "part", coordinate);
       // A connector's at belongs to the newly selected component, never its source siblings.
       const childScope = scope(childOccurrence, [], configuration);
       const childCustomization: RootCustomization = { attrs: customization.attrs,
         text: customization.text };
       singleRoot(content, childCustomization);
-      push({ source: content, output: frame.output, outputPath: frame.outputPath, sourcePath: [], index: 0, selection, owner: frame.owner,
-        ...(frame.occurrence.collection === undefined ? { shellConnector: { source: sourcePath, start: frame.output.length } } : {}),
+      push({ source: content, output: frame.output, outputPath: frame.outputPath, index: 0, selection, owner: frame.owner,
         ...(style === undefined || styledName === undefined ? {} : { styledConnector: { name: styledName, style, start: frame.output.length } }),
         ...(receiving.length === 0 ? {} : { receiving: { names: receiving, start: frame.output.length } }),
         customization: childCustomization, scope: childScope,
@@ -489,11 +497,12 @@ export function expand_document_composition(
     // frames extend its final path, never the selected source's coordinates.
     const outputPath = [...frame.outputPath, frame.output.length];
     frame.output.push(copy);
-    if (frame.occurrence.collection === undefined && is_ordinary_element_node(item)) correspond(sourcePath, outputPath);
+    const localNames = frame.occurrence.localNames.get(item) ?? [];
+    for (const name of [...localNames, configuration?.q]) if (name !== undefined) bind(frame.occurrence, name, "element", outputPath);
     if (style !== undefined && styledName !== undefined) style.subjects.set(styledName, validate_document_path(outputPath));
     for (const name of receiving) receive(name, frame.output, frame.output.length - 1, frame.outputPath);
     if (content.length) push({
-      source: content, output: copy.$_content, outputPath, sourcePath, index: 0, owner: copy, occurrence: nestedOccurrence, scope: nestedScope,
+      source: content, output: copy.$_content, outputPath, index: 0, owner: copy, occurrence: nestedOccurrence, scope: nestedScope,
       ...(item.$_tag === ELEM_TAG ? { emptyClusterParent: frame.owner } : {}),
     });
     else if (nestedScope?.size) throw new Error("Composition configuration has inaccessible QUAD targets.");
@@ -508,8 +517,22 @@ export function expand_document_composition(
     if (subjects.size !== demanded.size) throw new Error("Part CSS subject was lost during composition.");
     return Object.freeze({ css, subjects: Object.freeze([...subjects].map(([name, path]) => Object.freeze({ name, path }))) });
   });
-  return Object.freeze({ root: clone_hson_graph_without_quids(root),
-    correspondence: Object.freeze(correspondence),
+  if (limits.configuration?.q !== undefined) bind(initial, limits.configuration.q,
+    occurrences.some(occurrence => JSON.stringify(occurrence.root) === "[0]") ? "part" : "element", [0]);
+  const sortBindings = (bindings: readonly ScopedQuadBindingRecord[]) => [...bindings].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  const realizedRoot = clone_hson_graph_without_quids(root);
+  // These are construction coordinates, not an admitted portable payload.
+  // Scoped admission and its resource bounds belong to the private preparer;
+  // public composition continues to use its committed receiving associations.
+  const scoped: DocumentScopedQuadRecord = Object.freeze({ document: Object.freeze(sortBindings(initial.evidence.bindings)),
+    occurrences: Object.freeze(occurrences.map(occurrence => Object.freeze({ ...occurrence,
+      bindings: Object.freeze(sortBindings(occurrence.bindings)) }))), subjects: Object.freeze([]) });
+  const demands = new Map<string, readonly number[]>();
+  for (const path of [...scoped.document.map(binding => binding.path), ...scoped.occurrences.flatMap(occurrence =>
+    [occurrence.root, ...occurrence.bindings.map(binding => binding.path)]), ...occurrenceStyles.flatMap(style => style.subjects.map(subject => subject.path))]) {
+    demands.set(JSON.stringify(path), path);
+  }
+  return Object.freeze({ root: realizedRoot, scoped, identityDemands: Object.freeze([...demands.values()]),
     styles: Object.freeze(occurrenceStyles),
     ...(associations.length === 0 ? {} : { quads: Object.freeze(associations) }) });
 }

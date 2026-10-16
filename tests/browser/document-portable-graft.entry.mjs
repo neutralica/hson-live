@@ -91,11 +91,8 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     f.selected.at([1, 0, 0]).attrs.set('title', 'updated');
     assert(anonymous.getAttribute('title') === 'updated', 'document update retains correspondence');
     const firstId = lookup(f.selected, 'first').quid;
-    f.selected.document.content.replace({ kind: 'path', path: [0,0,1,0] }, 0,
-      hsonTransform.fromHson('<section id="first" <p id="anonymous-one"/> <p id="first-child"/>/>').toNode().$_content[0],
-      [{ source:[], destination:[] }, { source:[0,0], destination:[0,0] }, { source:[0,1], destination:[0,1] }]);
-    assert(lookup(f.selected, 'first')?.quid === firstId, 'legitimate replacement lineage retains authored identity');
-    assert(f.doc.getElementById('first').getAttribute('hson:quid') === firstId, 'replacement metadata agrees');
+    f.selected.document.attrs.set({ kind: 'path', path: [0,0,1,0,0] }, 'title', 'continued');
+    assert(lookup(f.selected, 'first')?.quid === firstId, 'precise mutation retains authored identity');
     rejects(() => f.selected.at([1, 1]).delete(), 'remaining identity CSS rejects retirement');
     f.map.batch(draft => {
       const selected = draft.lib(libs.libraries[0].name);
@@ -268,97 +265,77 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const root = frame.contentDocument.documentElement;
     const continued = continue_document({map: receiver.map, document:selected, root}); assert(continued.tree.dom.el() === root, 'ordinary root retained'); continued.dispose(); frame.remove();
   });
-  const liveCarrierEvidence = [];
-  await check('already continued retained roots acquire and retire CSS carriers through direct and staged graph replacement', async () => {
-    const cases = [];
+  await check('continued CSS carriers install and retire through supported direct and staged operations', async () => {
     const read = (doc, element) => { const css = doc.defaultView.getComputedStyle(element); return [css.color, css.paddingLeft]; };
     for (const staged of [false, true]) {
       const map = hsonLiveMap.fromLibraries({ parts: collection({
         x: { kind:'document', document:'<button id="live"/>', css:'button{color:rgb(10,20,30);padding-left:13px}' },
-      }), page: { document:'<html <head/> <body <button @:keep id="live"/> <button @:spare id="outside"/>/>/>' } });
-      const selected = map.lib('page'), handle = selected.q('keep'), subject = lookup(selected, 'keep'), spare = lookup(selected, 'spare'), handlePath = handle.path();
-      const frame = document.createElement('iframe'); frame.srcdoc = selected.render();
-      const loaded = new Promise(resolve => frame.onload = resolve); document.body.append(frame); await loaded;
-      const doc = frame.contentDocument, root = doc.documentElement, button = doc.getElementById('live'), outside = doc.getElementById('outside');
-      const continued = continue_document({ map, document:selected, root }), runtime = runtime_for_tree(continued.tree);
-      const nativeNode = get_node_for_el(button), ledger = [...runtime.issuedQuids], initial = map.capture(), graph = selected.root();
-      const parent = subject.path.slice(0,-1), index = subject.path.at(-1), lineage = [{ source:[], destination:[] }];
-      let publications = 0, positions = 0;
-      const off = map.commits.observe(() => publications++), stop = owner(map).observeAuthorityPosition(() => positions++);
-      const replace = source => {
-        const replacement = hsonTransform.fromHson(source).toNode().$_content[0];
-        return staged ? map.batch(draft => draft.lib('page').graph({ domain:'graph', op:'replace-content', target:{ kind:'path', path:parent }, index, replacement, lineage }))
-          : selected.document.content.replace({ kind:'path', path:parent }, index, replacement, lineage);
+      }), page: { document:'<html <head/> <body <button id="live"/> <button id="outside"/>/>/>' } });
+      const selected = map.lib('page'), frame = document.createElement('iframe');
+      frame.srcdoc = selected.render(); const loaded = new Promise(resolve => frame.onload = resolve);
+      document.body.append(frame); await loaded;
+      const doc = frame.contentDocument, root = doc.documentElement, outside = doc.getElementById('outside');
+      const continued = continue_document({ map, document:selected, root });
+      const parent = {kind:'path',path:[0,0,1,0]};
+      const replace = () => {
+        const replacement = hsonTransform.fromHson('<hson-part lib="parts" at="x"/>').toNode().$_content[0];
+        return staged ? map.batch(draft => draft.lib('page').graph({domain:'graph',op:'replace-content',target:parent,index:0,replacement}))
+          : selected.document.content.replace(parent,0,replacement);
       };
-      equal(read(doc,button), ['rgb(0, 0, 0)','6px'], 'continued root starts with default computed styles');
-      assert(doc.querySelectorAll('[hson\\:quid]').length === 0 && !doc.querySelector(marker), 'QUID/QUAD alone does not expose native identity');
-      const noop = replace('<button id="live"/>');
-      assert(!noop.changed && noop.rev === 0 && map.rev === 0 && publications === 0 && positions === 0, 'genuine no-CSS equal replacement remains unpublished');
-      equal(map.capture(),initial,'no-op preserves canonical graph, CSS, QUAD and ledger');
-      const head = doc.head, insert = head.insertBefore;
-      let synchronous;
+      let publications = 0; const off = map.commits.observe(() => publications++);
+      assert(!doc.querySelector(marker) && !doc.querySelector('[hson\\:quid]'), 'continued document starts without CSS carriers');
+      if (staged) {
+        const before = map.capture(), native = doc.getElementById('live'), markup = root.outerHTML;
+        const ledger = owner(map).identityEpoch().issued();
+        rejects(() => map.batch(draft => {
+          const page = draft.lib('page');
+          page.graph({domain:'graph',op:'replace-content',target:parent,index:0,
+            replacement:hsonTransform.fromHson('<hson-part lib="parts" at="x"/>').toNode().$_content[0]});
+          page.graph({domain:'graph',op:'remove-content',target:parent,index:999});
+        }), 'later invalid batch operation rejects prepared Part CSS');
+        equal(map.capture(),before,'rejected batch preserves canonical graph and CSS');
+        assert(map.rev === 0 && publications === 0 && owner(map).identityEpoch().issued() === ledger,
+          'rejected batch publishes no revision or issued identities');
+        assert(root.outerHTML === markup && doc.getElementById('live') === native && !doc.querySelector(marker),
+          'rejected batch installs no native carrier or stylesheet');
+      }
+      const head = doc.head, insert = head.insertBefore; let synchronous;
       head.insertBefore = function(element,before) {
-        const result = insert.call(this,element,before);
-        if (element.matches?.(marker)) synchronous = { carrier:button.getAttribute('hson:quid'), style:read(doc,button), css:element.textContent };
+        const result = insert.call(this,element,before), button = doc.getElementById('live');
+        if (element.matches?.(marker)) synchronous = { carrier:button?.getAttribute('hson:quid'), style:button && read(doc,button) };
         return result;
       };
       let accepted;
-      try { accepted = replace('<hson-part lib="parts" at="x"/>'); } finally { delete head.insertBefore; }
-      assert(accepted.changed && accepted.prevRev === 0 && accepted.rev === 1 && map.rev === 1, 'equivalent styled Part accepts one revision');
-      assert(publications === 1 && positions === 1 && continued.mirror.status === 'active', 'exactly one active accepted publication');
-      assert(doc.getElementById('live') === button && get_node_for_el(button) === nativeNode, 'strict original Element and linked node survive explicit lineage');
-      assert(lookup(selected,'keep').quid === subject.quid && lookup(selected,'spare').quid === spare.quid && runtime.quidToNode.get(subject.quid) === nativeNode, 'receiving identity and authored QUAD survive');
-      assert(handle.active && handle.attrs.get('id') === 'live', 'previously issued .q handle stays active');
-      equal(handle.path(),handlePath,'handle retains its logical correspondence');
-      equal([...runtime.issuedQuids],ledger,'existing legitimate identity is reused without issuing another');
-      equal(selected.root(),graph,'public graph remains realized and unchanged');
-      const style = doc.querySelector(marker), css = selected.css.snapshot();
-      assert(style?.textContent === css && css.includes(subject.quid) && css.includes('button:where(:scope,:scope *){color:rgb(10,20,30);padding-left:13px;'), 'managed stylesheet contains the accepted scoped root rule');
-      equal(read(doc,outside),['rgb(0, 0, 0)','6px'],'unrelated sibling remains unaffected');
-      assert(outside.getAttribute('hson:quid') === null && doc.querySelectorAll(marker).length === 1, 'no unrelated identity exposure or duplicate managed style');
-      const evidence = { operation:staged?'staged':'direct', carrier:button.getAttribute('hson:quid'), expected:subject.quid, style:read(doc,button), synchronous,
-        publications, revision:map.rev, retained:doc.getElementById('live')===button, carriers:doc.querySelectorAll('[hson\\:quid]').length };
-      liveCarrierEvidence.push(evidence);
-      cases.push({ map, selected, handle, subject, frame, doc, button, outside, continued, replace, off, stop, readPublications:()=>publications });
-    }
-    console.log(`Retained-root CSS demand evidence: ${JSON.stringify(liveCarrierEvidence)}`);
-    for (const evidence of liveCarrierEvidence) {
-      assert(evidence.carrier === evidence.expected && evidence.carriers === 1, `${evidence.operation}: demanded existing QUID is projected exactly once: ${JSON.stringify(liveCarrierEvidence)}`);
-      equal(evidence.style,['rgb(10, 20, 30)','13px'],`${evidence.operation}: synchronous live root CSS`);
-      assert(evidence.synchronous?.carrier === evidence.expected, `${evidence.operation}: carrier is present when the style enters the document`);
-      equal(evidence.synchronous.style,evidence.style,`${evidence.operation}: synchronous stylesheet placement observation`);
-    }
-    for (const f of cases) {
-      const { selected, handle, subject, doc, button, outside, continued } = f;
-      const before = f.readPublications(), rev = f.map.rev;
-      const noop = f.replace('<button id="live"/>');
-      assert(!noop.changed && f.map.rev === rev && f.readPublications() === before, 'retained styled equal replacement remains a true no-op');
-      selected.document.content.move({kind:'path',path:subject.path.slice(0,-1)},subject.path.at(-1),1);
-      assert(doc.body.lastElementChild === button && doc.body.firstElementChild === outside, 'styled root move retains exact Element');
-      equal(read(doc,button),['rgb(10, 20, 30)','13px'],'retained carrier styles follow root move');
-      // Supported complete stylesheet replacement removes owned rules while another
-      // independently authored rule still demands this same surviving subject.
-      selected.css.stylesheet(`[hson\\:quid="${subject.quid}"]{color:rgb(40,50,60)}`);
-      assert(button.getAttribute('hson:quid') === subject.quid, 'remaining independent CSS demand retains the carrier');
-      equal(read(doc,button),['rgb(40, 50, 60)','6px'],'owned CSS replaced without retiring the subject');
-      const remove = button.removeAttribute;
-      let teardown = 0;
-      button.removeAttribute = function(name) {
-        if (name === 'hson:quid') {
-          assert(!doc.querySelector(marker) && selected.css.snapshot() === '', 'old stylesheet retires before its last carrier');
-          equal(read(doc,button),['rgb(0, 0, 0)','6px'],'synchronous last-demand teardown observation'); teardown++;
-        }
-        return remove.call(this,name);
-      };
-      try { selected.css.clearAll(); } finally { delete button.removeAttribute; }
-      assert(teardown === 1 && button.getAttribute('hson:quid') === null && doc.querySelectorAll('[hson\\:quid]').length === 0, 'last CSS demand removes only its derived native carrier');
-      assert(handle.active && lookup(selected,'keep').quid === subject.quid && runtime_for_tree(continued.tree).quidToNode.get(subject.quid) === get_node_for_el(button), 'carrier teardown preserves canonical/runtime identity and handle');
-      handle.attrs.set('title','after-demand');
-      assert(button.getAttribute('title') === 'after-demand' && button.getAttribute('hson:quid') === null && continued.mirror.status === 'active', 'subsequent ordinary attr projection stays exact and does not expose unused identity');
-      assert(doc.getElementById('live') === button && doc.getElementById('outside') === outside, 'inverse retains original Elements');
-      equal(read(doc,outside),['rgb(0, 0, 0)','6px'],'outside control remains unaffected through teardown');
-      f.off(); f.stop(); continued.dispose(); f.frame.remove();
+      try { accepted = replace(); } finally { delete head.insertBefore; }
+      const button = doc.getElementById('live'), quid = button.getAttribute('hson:quid');
+      assert(accepted.changed && map.rev === 1 && publications === 1 && continued.mirror.status === 'active', 'one accepted graph/CSS revision');
+      assert(quid && synchronous?.carrier === quid, 'carrier exists synchronously when managed style is placed');
+      equal(synchronous.style,['rgb(10, 20, 30)','13px'],'synchronous first managed CSS paint');
+      assert(doc.querySelector(marker).textContent === selected.css.snapshot() && doc.querySelectorAll(marker).length === 1, 'one coherent managed style');
+      assert(doc.getElementById('outside') === outside && outside.getAttribute('hson:quid') === null, 'unrelated native sibling stays carrier-free');
+      equal(read(doc,outside),['rgb(0, 0, 0)','6px'],'unrelated sibling CSS remains unchanged');
+      const moved = staged ? map.batch(draft => draft.lib('page').graph({domain:'graph',op:'move-content',target:parent,from:0,to:1}))
+        : selected.document.content.move(parent,0,1);
+      assert(moved.changed && doc.body.lastElementChild === button && button.getAttribute('hson:quid') === quid, 'move retains exact Element and carrier');
+      equal(read(doc,button),['rgb(10, 20, 30)','13px'],'CSS follows moved root');
+      selected.css.stylesheet(`[hson\\:quid="${quid}"]{color:rgb(40,50,60)}`);
+      assert(button.getAttribute('hson:quid') === quid, 'independent subject CSS retains carrier');
+      selected.css.stylesheet('body{margin:0}');
+      assert(button.getAttribute('hson:quid') === null && doc.querySelectorAll('[hson\\:quid]').length === 0, 'last CSS demand removes carrier from surviving Element');
+      equal(read(doc,button),['rgb(0, 0, 0)','6px'],'teardown restores native default styles');
+      selected.css.clearAll(); assert(!doc.querySelector(marker),'empty managed CSS removes style');
+      // Reintroduce demand at index zero, then remove the new Part through the
+      // same supported operation family. No public replacement lineage exists.
+      selected.document.content.move(parent,1,0);
+      replace();
+      const fresh = doc.getElementById('live'), freshQuid = fresh.getAttribute('hson:quid');
+      assert(freshQuid && doc.querySelector(marker), 'later Part installs a fresh carrier');
+      if (staged) map.batch(draft => draft.lib('page').graph({domain:'graph',op:'remove-content',target:parent,index:0}));
+      else selected.document.content.remove(parent,0);
+      assert(!fresh.isConnected && !doc.querySelector(marker) && !selected.css.snapshot().includes(freshQuid), 'removal retires owned CSS and its native carrier');
+      assert(continued.mirror.status === 'active', 'supported mutations preserve active continuation');
+      off(); continued.dispose(); frame.remove();
     }
   });
-  return { passed, liveCarrierEvidence };
+  return { passed };
 };

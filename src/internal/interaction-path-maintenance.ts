@@ -1,3 +1,4 @@
+import type { DocumentGraphOp } from "../api/livemap/livemap.document.lineage.js";
 import { is_Node } from "../core/node-guards.js";
 import {
   is_ordered_projected_object,
@@ -7,7 +8,6 @@ import {
   type OrderedProjectedValue,
 } from "../core/ordered-projected-value.js";
 import type { HsonNode } from "../core/types.js";
-import type { LiveMapGraphOp } from "../types/livemap.types.js";
 import type { LiveMapDocumentIdentityOverlay } from "../api/livemap/livemap.document.identity.js";
 import {
   append_document_path,
@@ -61,7 +61,7 @@ export function rewrite_interaction_subjects(
   beforeRoot: HsonNode,
   beforeOverlay: LiveMapDocumentIdentityOverlay,
   afterOverlay: LiveMapDocumentIdentityOverlay,
-  operation: LiveMapGraphOp,
+  operation: DocumentGraphOp,
 ): OrderedProjectedValue | undefined {
   const effect = document_path_effect_for_graph_operation(operation);
   if (effect === undefined || !Array.isArray(descriptors)) return undefined;

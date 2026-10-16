@@ -34,7 +34,6 @@ import type {
   LiveMapDocumentRequestTarget,
   LiveMapDocumentCommitTarget,
   LiveMapDocumentContent,
-  LiveMapReplacementLineage,
   LiveMapGraphCommit,
   LiveMapGraphOp,
   LiveMapCommit,
@@ -1489,8 +1488,10 @@ function make_document_library(
     content: Object.freeze(Object.assign(
       () => clone_node(root()).$_content.slice(),
       {
-        replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent, lineage?: LiveMapReplacementLineage) =>
-          multi_commit(mutation.replaceContent(target, index, replacement, lineage)),
+        replace(target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent) {
+          if (arguments.length !== 3) throw new TypeError("Document content replacement requires exactly three arguments; caller-authored lineage is unsupported.");
+          return multi_commit(mutation.replaceContent(target, index, replacement));
+        },
         insert: (target: LiveMapDocumentRequestTarget, index: number, content: LiveMapDocumentContent) => multi_commit(mutation.insertContent(target, index, content)),
         remove: (target: LiveMapDocumentRequestTarget, index: number) => multi_commit(mutation.removeContent(target, index)),
         move: (target: LiveMapDocumentRequestTarget, from: number, to: number) => multi_commit(mutation.moveContent(target, from, to)),

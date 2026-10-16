@@ -19,7 +19,8 @@ import { assign_hson_node_quid } from "../../core/hson-node-quid.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
 import type { CanonicalPublicAttrs, HsonNode, Primitive } from "../../core/types.js";
-import type { LiveMapDocumentCommitTarget, LiveMapGraphOp, LiveMapReplacementLineage } from "../../types/livemap.types.js";
+import type { LiveMapDocumentCommitTarget } from "../../types/livemap.types.js";
+import type { DocumentGraphOp, DocumentReplacementLineage } from "../livemap/livemap.document.lineage.js";
 import { reconcile_browser_realization_children } from "../../internal/browser-realization/browser-realization-dom.js";
 import { index_subtree_ownership, release_subtree_ownership } from "../livetree/lifecycle/graph-ownership.js";
 import { apply_projected_attrs_replacement } from "../livetree/managers/attr-handle.js";
@@ -89,7 +90,7 @@ type PersistedQuidLookup = (node: HsonNode) => string | undefined;
 export function plan_document_structural_transaction(
   projectedRoot: HsonNode,
   canonicalFinalRoot: HsonNode,
-  operations: readonly LiveMapGraphOp[],
+  operations: readonly DocumentGraphOp[],
   persistedQuidForExisting: PersistedQuidLookup,
 ): DocumentStructuralPlan {
   const root = shadow_existing(projectedRoot, persistedQuidForExisting);
@@ -413,7 +414,7 @@ function plan_replacement(
   parent: ShadowNode,
   current: ShadowContent | undefined,
   replacementInput: HsonNode | Primitive,
-  lineage: LiveMapReplacementLineage | undefined,
+  lineage: DocumentReplacementLineage | undefined,
   continuity: ContinuityPlanningContext,
 ): ShadowContent {
   const replacement = materialize_owned_occurrences(replacementInput);

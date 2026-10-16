@@ -3,7 +3,6 @@ import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, path, projected_element, raw_node, mount, registry_for_document_library } from "./helpers/mirror-unit6.mts";
-import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
@@ -31,7 +30,6 @@ function check(name: string, run: () => void): void {
 const Q1 = "000006a01";
 const Q2 = "000006a02";
 const fixture = () => element(`<main <item @${Q1}/>/` + `>`);
-const self = [{ source: validate_document_path([]), destination: validate_document_path([]) }];
 const target = { kind: "path" as const, path: [0, 0, 0] };
 
 check("replacement without lineage retires the active mapping", () => {
@@ -50,27 +48,9 @@ check("retired identity stays retired when a later local demand allocates anothe
   assert.equal(map.document.byQuid(Q1), undefined);
 });
 
-check("explicit self lineage preserves canonical local identity", () => {
-  const map = fixture();
-  const handle = acquire_document_identity(map.document, target);
-  map.document.content.replace(path(0), 0, projected_element('<item title="same"/>'), self);
-  assert.equal(handle.active, true);
-  assert.equal(map.document.byQuid(Q1)?.$_attrs?.title, "same");
-  assert.equal(livemap_identity_epoch_accounting(map.document).issued, 1);
-});
 
-check("compatible lineage preserves reflected subject and DOM", () => {
-  const map = fixture();
-  const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
-  mount(retained_subject(binding.tree));
-  const original = raw_node(retained_subject(binding.tree), [0, 0]);
-  const dom = get_el_for_node(original);
-  map.document.content.replace(path(0), 0, projected_element('<item title="new"/>'), self);
-  assert.equal(raw_node(retained_subject(binding.tree), [0, 0]), original);
-  assert.equal(get_el_for_node(original), dom);
-  assert.equal(original.$_attrs?.title, "new");
-  binding.dispose();
-});
+
+
 
 check("QUID-free replacement can later acquire local identity", () => {
   const map = element('<main <item/>/>');
