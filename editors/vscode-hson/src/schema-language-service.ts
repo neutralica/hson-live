@@ -1,10 +1,17 @@
 import type ts from "typescript";
 import { install_live_schema_view } from "./schema-editor-view.js";
 import { filter_verified_schema_assignment_diagnostics, verified_schema_assignment_ranges } from "./schema-editor-proof.js";
+import { HsonEditorCompletionCache } from "./editor-completion.js";
 
 /** Only this boundary translates positions. Neither service ever writes authored source. */
 export function create_schema_language_service(typescript: typeof ts, service: ts.LanguageService, host: ts.LanguageServiceHost, projectPath: string, registerEvidence?: (file: string, text: string | undefined) => void): ts.LanguageService {
   const view = install_live_schema_view(typescript, host, projectPath, registerEvidence);
+  const completion = new HsonEditorCompletionCache();
+  const hsonCompletions = (file: string, offset: number) => {
+    const program = view.authoredService.getProgram();
+    const source = program?.getSourceFile(file);
+    return source === undefined ? [] : completion.complete(file, source.text, 0, offset, program);
+  };
   // Syntax, formatting, refactor/code-fix edits and outline operate on authored snapshots.
   // They cannot accidentally propose writing generated imports/assertions into the editor.
   const proxy: ts.LanguageService = Object.create(service);
@@ -117,15 +124,25 @@ export function create_schema_language_service(typescript: typeof ts, service: t
     return result === undefined || applicableSpan === undefined ? undefined : { ...result, applicableSpan };
   };
   proxy.getCompletionsAtPosition = (file, offset, options, formatting) => {
+    const hson = hsonCompletions(file, offset);
     const result = service.getCompletionsAtPosition(file, position(file, offset), options, formatting);
-    if (result === undefined) return undefined;
+    if (result === undefined && hson.length === 0) return undefined;
+    const entries: ts.CompletionEntry[] = hson.map(({ candidate, range }) => ({
+      name: candidate.label, insertText: candidate.insertText, sortText: candidate.sortText,
+      kind: candidate.kind === "member" ? typescript.ScriptElementKind.memberVariableElement
+        : candidate.kind === "reference" ? typescript.ScriptElementKind.alias : typescript.ScriptElementKind.string,
+      replacementSpan: { start: range.start, length: range.end - range.start },
+    }));
     return { ...result,
-      ...(result.optionalReplacementSpan === undefined ? {} : { optionalReplacementSpan: editSpan(file, result.optionalReplacementSpan) }),
-      entries: result.entries.flatMap(entry => {
-        if (!result.isMemberCompletion && view.generated_name(file, entry.name) || entry.source?.includes("/.hson/editor-evidence/")) return [];
+      isGlobalCompletion: result?.isGlobalCompletion ?? false, isMemberCompletion: result?.isMemberCompletion ?? false,
+      isNewIdentifierLocation: result?.isNewIdentifierLocation ?? false,
+      ...(result?.optionalReplacementSpan === undefined ? {} : { optionalReplacementSpan: editSpan(file, result.optionalReplacementSpan) }),
+      entries: [...entries, ...(result?.entries ?? []).flatMap(entry => {
+        if (entries.some(candidate => candidate.name === entry.name)
+          || !result?.isMemberCompletion && view.generated_name(file, entry.name) || entry.source?.includes("/.hson/editor-evidence/")) return [];
         const replacementSpan = entry.replacementSpan === undefined ? undefined : editSpan(file, entry.replacementSpan);
         return entry.replacementSpan !== undefined && replacementSpan === undefined ? [] : [{ ...entry, ...(replacementSpan === undefined ? {} : { replacementSpan }) }];
-      }),
+      })],
     };
   };
   const changes = (files: readonly ts.FileTextChanges[]): ts.FileTextChanges[] | undefined => {
@@ -143,6 +160,9 @@ export function create_schema_language_service(typescript: typeof ts, service: t
     return output;
   };
   proxy.getCompletionEntryDetails = (file, offset, name, format, source, preferences, data) => {
+    const hson = hsonCompletions(file, offset).find(entry => entry.candidate.label === name);
+    if (hson !== undefined) return { name, kind: typescript.ScriptElementKind.string, kindModifiers: "",
+      displayParts: [{ text: hson.candidate.detail, kind: "text" }] };
     const result = service.getCompletionEntryDetails(file, position(file, offset), name, format, source, preferences, data);
     if (result === undefined) return undefined;
     return { ...result, ...(result.codeActions === undefined ? {} : { codeActions: result.codeActions.flatMap(action => {
@@ -161,6 +181,6 @@ export function create_schema_language_service(typescript: typeof ts, service: t
     }
     return { ...result, spans };
   };
-  proxy.dispose = () => { view.dispose(); service.dispose(); };
+  proxy.dispose = () => { completion.clear(); view.dispose(); service.dispose(); };
   return proxy;
 }

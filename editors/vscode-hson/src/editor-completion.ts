@@ -1,27 +1,38 @@
 import ts from "typescript";
-import { create_hson_source_program, discover_hson_tagged_templates, is_official_hson_package_binding, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { create_hson_source_program, discover_hson_tagged_templates, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../../src/internal/hson-schema/compiler.js";
 import { query_hson_editor_context, type HsonEditorCandidate } from "../../../src/internal/editor-introspection/query.js";
 import { interpolation_site } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
+import { resolve_hson_schema_annotation } from "../../../src/internal/hson-schema/schema-annotation.js";
+import { resolve_immutable_schema } from "../../../src/internal/hson-schema/schema-identity.js";
+import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
+import { schema_reference_completion } from "./hson-schema-symbols.js";
 import type { HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
 
 export type HostCompletion = Readonly<{ candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }> }>;
-type CachedDocument = Readonly<{ version: number; text: string; file: ts.SourceFile; checker: ts.TypeChecker; discovery: HsonTaggedTemplateDiscoveryResult }>;
+type CachedDocument = Readonly<{ version: number; text: string; program: ts.Program; file: ts.SourceFile; checker: ts.TypeChecker; discovery: HsonTaggedTemplateDiscoveryResult }>;
 
 /** Version-scoped discovery and bounded Schema compilation, with no workspace execution. */
 export class HsonEditorCompletionCache {
   private readonly documents = new Map<string, CachedDocument>();
   private readonly schemas = new Map<string, CompiledHsonSchema | null>();
-  clear(): void { this.documents.clear(); this.schemas.clear(); }
+  private sourceProgram: ts.Program | undefined;
+  clear(): void { this.documents.clear(); this.schemas.clear(); this.sourceProgram = undefined; }
   forget(fileName: string): void { this.documents.delete(fileName); }
-  complete(fileName: string, text: string, version: number, offset: number): readonly HostCompletion[] {
-    if (!/\.tsx?$/.test(fileName) || offset < 0 || offset > text.length) return [];
+  complete(fileName: string, text: string, version: number, offset: number, sourceProgram?: ts.Program): readonly HostCompletion[] {
+    if (!/\.(?:[cm]?ts|tsx)$/.test(fileName) || offset < 0 || offset > text.length) return [];
+    // A producer edit can change every consumer without changing its text.
+    // Retain discovery/checkers only for the current authored program.
+    if (this.sourceProgram !== sourceProgram) {
+      this.documents.clear();
+      this.sourceProgram = sourceProgram;
+    }
     let cached = this.documents.get(fileName);
-    if (cached === undefined || cached.version !== version || cached.text !== text) {
-      const program = create_hson_source_program(fileName, text);
+    if (cached === undefined || cached.version !== version || cached.text !== text || sourceProgram !== undefined && cached.program !== sourceProgram) {
+      const program = sourceProgram ?? create_hson_source_program(fileName, text);
       const file = program.getSourceFile(fileName);
-      if (file === undefined) return [];
-      cached = { version, text, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text) };
+      if (file === undefined || file.text !== text) return [];
+      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program) };
       this.documents.set(fileName, cached);
       if (this.documents.size > 8) {
         const oldest = this.documents.keys().next().value;
@@ -31,6 +42,15 @@ export class HsonEditorCompletionCache {
     const interpolated = cached.discovery.interpolated.find(source => offset >= source.bodyRange.start && offset <= source.bodyRange.end);
     const site = interpolated ?? cached.discovery.sources.find(source => offset >= source.bodyRange.start && offset <= source.bodyRange.end);
     if (site === undefined) return [];
+    if (site.authoringKind === "schema" && interpolated === undefined) {
+      const reference = schema_reference_completion(text.slice(site.bodyRange.start, site.bodyRange.end), offset - site.bodyRange.start);
+      if (reference !== undefined) return reference.definitions.map((definition, index) => ({
+        range: { start: site.bodyRange.start + reference.range.start, end: site.bodyRange.start + reference.range.end },
+        candidate: { label: definition.name, kind: "reference", insertText: template_reference_text(definition.name),
+          detail: definition.capability === "data" ? "Hson Schema definition" : "Hson Schema document definition",
+          sortText: String(index).padStart(4, "0") },
+      }));
+    }
     let source: string, cursor: number, slots: readonly HsonTemplateSlot[] = [];
     let map: (range: Readonly<{ start: number; end: number }>) => Readonly<{ start: number; end: number }> | undefined;
     if (interpolated !== undefined) {
@@ -61,7 +81,8 @@ export class HsonEditorCompletionCache {
     } else {
       source = text.slice(site.bodyRange.start, site.bodyRange.end);
       cursor = offset - site.bodyRange.start;
-      map = range => ({ start: site.bodyRange.start + range.start, end: site.bodyRange.start + range.end });
+      map = range => range.start < 0 || range.end < range.start || range.end > source.length ? undefined
+        : { start: site.bodyRange.start + range.start, end: site.bodyRange.start + range.end };
     }
     const schema = site.authoringKind === "data" ? this.resolveSchema(cached, site.tagRange.start) : undefined;
     const result = query_hson_editor_context({ mode: site.authoringKind, source, cursor, slots, schema });
@@ -78,18 +99,19 @@ export class HsonEditorCompletionCache {
     visit(document.file);
     const declaration = tagged?.parent;
     if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer !== tagged || declaration.type === undefined
-      || !ts.isTypeReferenceNode(declaration.type) || !ts.isIdentifier(declaration.type.typeName)
-      || !is_official_hson_package_binding(declaration.type.typeName, "HsonData", document.checker)
-      || declaration.type.typeArguments?.length !== 1) return undefined;
-    const query = declaration.type.typeArguments[0];
-    if (query === undefined || !ts.isTypeQueryNode(query) || !ts.isIdentifier(query.exprName)) return undefined;
-    const symbol = document.checker.getSymbolAtLocation(query.exprName);
-    const producer = symbol?.declarations?.length === 1 ? symbol.declarations[0] : undefined;
-    if (producer === undefined || !ts.isVariableDeclaration(producer) || producer.getSourceFile() !== document.file
-      || !ts.isIdentifier(producer.name) || producer.initializer === undefined || !ts.isTaggedTemplateExpression(producer.initializer)
-      || !ts.isNoSubstitutionTemplateLiteral(producer.initializer.template)
-      || !official_schema_tag(producer.initializer, document.checker)) return undefined;
-    const raw = producer.initializer.template.getText(document.file).slice(1, -1);
+      || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+      || declaration.parent.declarations.length !== 1) return undefined;
+    const annotation = resolve_hson_schema_annotation(ts, document.checker, declaration.type);
+    if (annotation?.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson") return undefined;
+    const source = resolve_immutable_schema(ts, document.checker, annotation.schema, producer => {
+      const file = producer.getSourceFile();
+      if (file.isDeclarationFile || document.program.isSourceFileFromExternalLibrary(file)
+        || file.fileName.replaceAll("\\", "/").split("/").includes(".hson")) return undefined;
+      return discover_hson_schema_declarations(ts, file, document.checker)
+        .find(found => found.declaration === producer && found.eligible)?.source;
+    });
+    if (source === undefined) return undefined;
+    const raw = source;
     if (!this.schemas.has(raw)) {
       const compiled = compile_hson_schema(raw);
       this.schemas.set(raw, compiled.ok ? compiled.value : null);
@@ -103,7 +125,9 @@ export class HsonEditorCompletionCache {
   }
 }
 
-function official_schema_tag(tagged: ts.TaggedTemplateExpression, checker: ts.TypeChecker): boolean {
-  return ts.isPropertyAccessExpression(tagged.tag) && tagged.tag.name.text === "schema"
-    && ts.isIdentifier(tagged.tag.expression) && is_official_hson_package_binding(tagged.tag.expression, "Hson", checker);
+/** Hson reads raw template text: use Hson escapes that are also safe TS lexemes.
+ * Escaping a backtick as \` or a dollar as \$ would introduce invalid Hson escapes.
+ */
+function template_reference_text(name: string): string {
+  return JSON.stringify(name).slice(1, -1).replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
 }

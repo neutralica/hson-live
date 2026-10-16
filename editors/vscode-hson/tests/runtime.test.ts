@@ -1,5 +1,6 @@
+import ts from "typescript";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -644,21 +645,29 @@ check("unsupported transitions and unexpected adapter errors clear stale diagnos
 
 check("editor completion uses current same-file Schema and exact partial token ranges", () => {
   const cache = new HsonEditorCompletionCache();
+  const complete = (file: string, text: string, version: number, offset: number) => {
+    const options: ts.CompilerOptions = { noLib: true, moduleResolution: ts.ModuleResolutionKind.Bundler,
+      module: ts.ModuleKind.ESNext, paths: { "hson-live": [resolve(existsSync("dist/index.d.ts") ? "dist/index.d.ts" : "../../dist/index.d.ts")] } };
+    const host = ts.createCompilerHost(options);
+    const read = host.readFile;
+    host.readFile = name => name === file ? text : read(name);
+    return cache.complete(file, text, version, offset, ts.createProgram([file], options, host));
+  };
   const source = 'import { Hson, type HsonData } from "hson-live"; const S = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; const x: HsonData<typeof S> = Hson.data`<co`';
-  const result = cache.complete("/workspace/completion.ts", source, 1, source.length - 1);
+  const result = complete("/workspace/completion.ts", source, 1, source.length - 1);
   assert.deepEqual(result.map(entry => entry.candidate.label), ["count", "color"]);
   assert.deepEqual(result[0]?.range, { start: source.length - 3, end: source.length - 1 });
   const nested = source.replace('Hson.data`<co`', 'Hson.data`<presentation <th`');
-  assert.deepEqual(cache.complete("/workspace/completion.ts", nested, 2, nested.length - 1).map(entry => entry.candidate.label), ["theme"]);
+  assert.deepEqual(complete("/workspace/completion.ts", nested, 2, nested.length - 1).map(entry => entry.candidate.label), ["theme"]);
   const used = source.replace('Hson.data`<co`', 'Hson.data`<count 1 co`');
-  assert.deepEqual(cache.complete("/workspace/completion.ts", used, 3, used.length - 1).map(entry => entry.candidate.label), ["color"]);
+  assert.deepEqual(complete("/workspace/completion.ts", used, 3, used.length - 1).map(entry => entry.candidate.label), ["color"]);
   const noSchema = 'import { Hson } from "hson-live"; const x = Hson.data`<co`';
-  assert.deepEqual(cache.complete("/workspace/no-schema.ts", noSchema, 1, noSchema.length - 1), []);
+  assert.deepEqual(complete("/workspace/no-schema.ts", noSchema, 1, noSchema.length - 1), []);
   const schema = 'import { Hson } from "hson-live"; const S = Hson.schema`<type "data" co`';
-  assert.deepEqual(cache.complete("/workspace/schema-completion.ts", schema, 1, schema.length - 1).map(entry => entry.candidate.label), ["content"]);
+  assert.deepEqual(complete("/workspace/schema-completion.ts", schema, 1, schema.length - 1).map(entry => entry.candidate.label), ["content"]);
   const interpolated = source.replace('Hson.data`<co`', 'Hson.data`<count ${count} co`');
-  assert.deepEqual(cache.complete("/workspace/completion.ts", interpolated, 4, interpolated.indexOf("${count}") + 3), []);
-  assert.deepEqual(cache.complete("/workspace/completion.ts", interpolated, 4, interpolated.length - 1).map(entry => entry.candidate.label), ["color"]);
+  assert.deepEqual(complete("/workspace/completion.ts", interpolated, 4, interpolated.indexOf("${count}") + 3), []);
+  assert.deepEqual(complete("/workspace/completion.ts", interpolated, 4, interpolated.length - 1).map(entry => entry.candidate.label), ["color"]);
 });
 
 check("static interpolation diagnostics report position failures without inferring branded source", () => {

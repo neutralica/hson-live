@@ -1,4 +1,6 @@
-import { compile_hson_schema, type HsonSchemaSymbolTable } from "../../../src/internal/hson-schema/compiler.js";
+import { hson_grammar_checkpoint } from "../../../src/api/transform/parsers/tokenize-hson.js";
+import { compile_hson_schema, type HsonSchemaSymbolTable, type HsonSchemaDefinitionSymbol } from "../../../src/internal/hson-schema/compiler.js";
+import { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-mapping.js";
 import { serialize_hson_tag_name } from "../../../src/api/transform/utils/hson-utils/hson-tag-helpers.js";
 import { local_hson_schema_declarations, type LocalHsonSchemaDeclaration } from "./hson-schema-local.js";
 
@@ -30,7 +32,7 @@ export type LocalHsonSchemaSymbols = Readonly<{
  * here resolves names: it only gives compiler-owned ranges their host offsets.
  */
 export function local_hson_schema_symbols(fileName: string, text: string): LocalHsonSchemaSymbols {
-  const declarations = local_hson_schema_declarations(text);
+  const declarations = local_hson_schema_declarations(text, fileName);
   const definitions: SchemaDefinitionSymbol[] = [];
   const references: SchemaReferenceSymbol[] = [];
   for (const declaration of declarations) {
@@ -43,40 +45,69 @@ export function local_hson_schema_symbols(fileName: string, text: string): Local
   return Object.freeze({ declarations, definitions: Object.freeze(definitions), references: Object.freeze(references) });
 }
 
-export function local_hson_schema_completion(fileName: string, text: string, offset: number): readonly SchemaDefinitionSymbol[] {
-  const symbols = local_hson_schema_symbols(fileName, text);
-  const declaration = symbols.declarations.find(candidate => offset >= candidate.templateStart && offset <= candidate.templateEnd);
-  if (declaration === undefined) return Object.freeze([]);
-  const localOffset = offset - declaration.templateStart;
-  if (!is_ref_string_position(declaration.template, localOffset)) return Object.freeze([]);
-  if (symbols.definitions.some(definition => definition.schemaId === `${fileName}:${declaration.start}:${declaration.end}`)) {
-    return Object.freeze(symbols.definitions.filter(definition => definition.schemaId === `${fileName}:${declaration.start}:${declaration.end}`));
+/** Source-only query: the provider already owns host discovery and its program. */
+export function schema_reference_completion(source: string, cursor: number): Readonly<{
+  range: Readonly<{ start: number; end: number }>;
+  definitions: readonly HsonSchemaDefinitionSymbol[];
+}> | undefined {
+  const checkpoint = hson_grammar_checkpoint(source, cursor, "schema");
+  if (checkpoint?.quoted === undefined || checkpoint.path.at(-1) !== "ref") return undefined;
+  const { range } = checkpoint;
+  const compiled = compile_hson_schema(source);
+  const original = compiled.ok ? compiled.value.symbols : compiled.symbols;
+  let reference = original?.references.find(reference => reference.range.start === range.start - 1 && reference.range.end === range.end + 1);
+  let definitions = original?.definitions;
+  if (reference === undefined) {
+    // Repair only this value in a private compiler view. Keeping the entire
+    // suffix lets the compiler retain forward definitions, including the
+    // definition containing an empty reference. No authored edit uses this view.
+    const probe = "hsonCompletionProbe";
+    const mapping = new SchemaSourceMapping(source, [{ start: range.start, end: range.end,
+      text: probe + (checkpoint.quoted.complete ? "" : '"') }]);
+    let result = compile_hson_schema(mapping.text);
+    let facts = result.ok ? result.value.symbols : result.symbols;
+    if (facts === undefined && range.end + (checkpoint.quoted.complete ? 1 : 0) === source.length) {
+      // Only an EOF value may recover missing containers. Never discard a suffix.
+      result = compile_hson_schema(mapping.text + checkpoint.quoted.closingDelimiters.join(""));
+      facts = result.ok ? result.value.symbols : result.symbols;
+    }
+    reference = facts?.references.find(reference => reference.range.start === range.start - 1 && reference.range.end === range.start + probe.length + 1);
+    const authored = (range: Readonly<{ start: number; end: number }>) => {
+      const span = mapping.authored_edit({ start: range.start, length: range.end - range.start });
+      return span === undefined ? [] : [{ start: span.start, end: span.start + span.length }];
+    };
+    definitions = facts?.definitions.flatMap(definition => authored(definition.declarationRange).map(declarationRange => ({
+      ...definition, declarationRange, id: `definition:${declarationRange.start}:${declarationRange.end}`,
+      // The synthetic reference has no authored target; only copied uses survive.
+      referenceRanges: definition.referenceRanges.flatMap(authored),
+    })));
   }
-  // The normal parser intentionally rejects half-written strings. Recover only
-  // their delimiters, then hand the complete synthetic source to the compiler.
-  const recovered = recover_ref_prefix(declaration.template, localOffset);
-  const result = compile_hson_schema(recovered);
-  const facts = result.ok ? result.value.symbols : result.symbols;
-  if (facts === undefined) return Object.freeze([]);
-  const definitions: SchemaDefinitionSymbol[] = [];
-  append_symbols(facts, declaration, `${fileName}:${declaration.start}:${declaration.end}`, definitions, []);
-  return Object.freeze(definitions);
+  if (definitions === undefined || reference === undefined) return undefined;
+  return Object.freeze({ range,
+    definitions: Object.freeze(definitions.filter(definition => definition.capability === reference.requiredCapability)) });
 }
 
-export function schema_ref_completion_range(text: string, offset: number): Readonly<{ start: number; end: number }> | undefined {
-  const prefix = text.slice(0, offset);
-  const match = /<\s*ref\s+"[^"\\]*(?:\\.[^"\\]*)*$/.exec(prefix);
-  if (match === null) return undefined;
-  const start = (match.index ?? 0) + match[0].lastIndexOf('"') + 1;
-  let end = offset, escaped = false;
-  while (end < text.length) {
-    const char = text[end];
-    if (escaped) escaped = false;
-    else if (char === "\\") escaped = true;
-    else if (char === '"') break;
-    end += 1;
-  }
-  return Object.freeze({ start, end });
+export function local_hson_schema_reference_completion(fileName: string, text: string, offset: number): Readonly<{
+  range: Readonly<{ start: number; end: number }>;
+  definitions: readonly SchemaDefinitionSymbol[];
+}> | undefined {
+  const declaration = local_hson_schema_declarations(text, fileName)
+    .find(candidate => offset >= candidate.templateStart && offset <= candidate.templateEnd);
+  if (declaration === undefined) return undefined;
+  const result = schema_reference_completion(declaration.template, offset - declaration.templateStart);
+  if (result === undefined) return undefined;
+  const definitions: SchemaDefinitionSymbol[] = [];
+  append_symbols({ definitions: result.definitions, references: [] }, declaration,
+    `${fileName}:${declaration.start}:${declaration.end}`, definitions, []);
+  return Object.freeze({ range: offset_range(declaration, result.range), definitions: Object.freeze(definitions) });
+}
+
+export function local_hson_schema_completion(fileName: string, text: string, offset: number): readonly SchemaDefinitionSymbol[] {
+  return local_hson_schema_reference_completion(fileName, text, offset)?.definitions ?? Object.freeze([]);
+}
+
+export function schema_ref_completion_range(text: string, offset: number, fileName = "schema.ts"): Readonly<{ start: number; end: number }> | undefined {
+  return local_hson_schema_reference_completion(fileName, text, offset)?.range;
 }
 
 export function schema_definition_at(symbols: LocalHsonSchemaSymbols, offset: number): SchemaDefinitionSymbol | undefined {
@@ -127,32 +158,6 @@ function offset_range(declaration: LocalHsonSchemaDeclaration, range: Readonly<{
 
 function contains(range: Readonly<{ start: number; end: number }>, offset: number): boolean {
   return offset >= range.start && offset <= range.end;
-}
-
-function is_ref_string_position(source: string, offset: number): boolean {
-  const prefix = source.slice(0, offset);
-  return /<\s*ref\s+"[^"\\]*(?:\\.[^"\\]*)*$/.test(prefix);
-}
-
-function recover_ref_prefix(source: string, offset: number): string {
-  const prefix = source.slice(0, offset);
-  const suffix = source.slice(offset);
-  const repaired = `${prefix}"${suffix}`;
-  return `${repaired}${">".repeat(unclosed_angles(repaired))}`;
-}
-
-function unclosed_angles(source: string): number {
-  let depth = 0, quoted = false, escaped = false;
-  for (const char of source) {
-    if (quoted) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === '"') quoted = false;
-    } else if (char === '"') quoted = true;
-    else if (char === "<") depth += 1;
-    else if (char === ">") depth = Math.max(0, depth - 1);
-  }
-  return depth;
 }
 
 function valid_definition_name(name: string): boolean {

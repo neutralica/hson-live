@@ -3,6 +3,9 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
+import { compile_hson_schema } from "../dist/internal/hson-schema/compiler.js";
+import { discover_hson_tagged_templates } from "../dist/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { admit_hson_tagged_source } from "../dist/internal/embedded-hson/hson-tagged-source-admission.js";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "tooling.schema-editor-tsserver", title: "Schema bundled tsserver integration", category: "Tooling", runtime: "node", tags: Object.freeze(["schema", "editor", "typescript", "source-integrity"]) });
@@ -27,7 +30,9 @@ writeFileSync(file("package.json"), '{"type":"module"}');
 writeFileSync(file("schema.ts"), schema);
 writeFileSync(file("consumer.ts"), consumer);
 writeFileSync(file("second.ts"), 'import { type HsonDocument } from "hson-live"; import { Slide } from "./schema.js"; export declare const imported: HsonDocument<typeof Slide>;\n');
-writeFileSync(file("tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")] } }, include: ["*.ts"] }));
+writeFileSync(file("tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")] } }, include: ["*.ts", "*.tsx", "*.mts", "*.cts"] }));
+const completionSource = 'import { Hson, type HsonFromSchema } from "hson-live"; import { Thing as S } from "./schema.js"; type Alias<T> = HsonFromSchema<T>; const x: Alias<typeof S> = Hson.data`<na`;';
+for (const ext of ["ts", "tsx", "mts", "cts"]) writeFileSync(file(`completion-${ext}.${ext}`), completionSource);
 const originals = new Map(readdirSync(directory).map(name => [name, readFileSync(file(name))]));
 const child = spawn(process.execPath, [join(root, "node_modules/typescript/lib/tsserver.js"), "--globalPlugins", plugin, "--pluginProbeLocations", extension, "--disableAutomaticTypingAcquisition", "--logVerbosity", "verbose", "--logFile", file("server.log")], { stdio: ["pipe", "pipe", "pipe"] });
 let sequence = 0, buffered = Buffer.alloc(0), stderr = "";
@@ -93,6 +98,88 @@ try {
     const completions = await request("completionInfo", { file: file("schema.ts"), ...location(schema, schema.length), includeExternalModuleExports: false });
     assert.ok(completions.entries.some(entry => entry.name === "name"));
     assert.deepEqual(completions.optionalReplacementSpan.start, location(schema, schema.length - 2));
+  });
+  await check("bundled production Hson completion resolves authored aliases and imports in all TS extensions", async () => {
+    const offset = completionSource.indexOf('<na`') + 3;
+    for (const ext of ["ts", "tsx", "mts", "cts"]) {
+      const path = file(`completion-${ext}.${ext}`);
+      await request("open", { file: path });
+      const result = await request("completionInfo", { file: path, ...location(completionSource, offset), includeExternalModuleExports: false });
+      assert.deepEqual(result.entries.map(entry => entry.name), ["name"], ext);
+      assert.deepEqual(result.entries[0].replacementSpan, { start: location(completionSource, offset - 2), end: location(completionSource, offset) });
+      const details = await request("completionEntryDetails", { file: path, ...location(completionSource, offset), entryNames: ["name"] });
+      assert.match(details[0].displayParts.map(part => part.text).join(""), /required data member/);
+    }
+    await edit(schema.replace('name "string"', 'name "broken"'));
+    const invalid = await request("completionInfo", { file: file("completion-ts.ts"), ...location(completionSource, offset) }).catch(() => undefined);
+    assert.ok(!invalid?.entries.some(entry => entry.name === "name"));
+    await edit(schema);
+    const repaired = await request("completionInfo", { file: file("completion-ts.ts"), ...location(completionSource, offset) });
+    assert.deepEqual(repaired.entries.map(entry => entry.name), ["name"]);
+  });
+  await check("bundled reference completion cannot replace host statements and filters document capabilities", async () => {
+    const prefix = 'import { Hson } from "hson-live"; const S = Hson.schema`<type "document" defs <Title "string" Card <tag "article" content "empty">> tag "main" content <sequence «<ref "';
+    const suffix = '`;\nconst after = 123;\n// untouched\nconst adjacent = Hson.data`<value "keep">`;';
+    const source = prefix + 'Ca' + suffix;
+    await editConsumer(source);
+    const result = await request("completionInfo", { file: file("consumer.ts"), ...location(source, prefix.length + 2) });
+    assert.deepEqual(result.entries.map(entry => entry.name), ["Card"]);
+    assert.deepEqual(result.entries[0].replacementSpan, { start: location(source, prefix.length), end: location(source, prefix.length + 2) });
+    assert.ok((source.slice(0, prefix.length) + result.entries[0].name + source.slice(prefix.length + 2)).endsWith(suffix));
+    await editConsumer(consumer);
+  });
+  await check("bundled reference completion retains empty and nonempty forward definitions", async () => {
+    for (const [body, expected] of [
+      ['<type "data" defs <First <ref "|"> Title "string"> content <ref "First">>', ["First", "Title"]],
+      ['<type "document" defs <First <tag "main" content <sequence «<ref "|">»>> Title "string" Card <tag "article" content "empty">> content <sequence «<ref "First">»>>', ["First", "Card"]],
+    ]) {
+      for (const name of ["", "Missing"]) {
+        const marked = 'import { Hson } from "hson-live"; const S = Hson.schema`' + body + '`;\nconst after = "untouched";';
+        const offset = marked.indexOf('|'), source = marked.replace('|', name);
+        await editConsumer(source);
+        const result = await request("completionInfo", { file: file("consumer.ts"), ...location(source, offset + name.length) });
+        assert.deepEqual(result.entries.map(entry => entry.name), expected);
+        for (const entry of result.entries) assert.deepEqual(entry.replacementSpan, { start: location(source, offset), end: location(source, offset + name.length) });
+        // Schema declaration diagnostics belong to the existing authoring
+        // provider; tsserver separately owns candidate/TypeScript diagnostics.
+        const invalid = compile_hson_schema(body.replace('|', name));
+        assert.ok(!invalid.ok && invalid.issues.some(issue => /ref|definition/i.test(issue.message)), "The original invalid reference retains its Schema diagnostic");
+      }
+    }
+    await editConsumer(consumer);
+  });
+  await check("bundled inserted names survive TypeScript syntax and Hson Schema decoding exactly", async () => {
+    const names = [
+      ['tick`name', "'tick\\u0060name'"],
+      ['${Math.random()}', "'\\u0024{Math.random()}'"],
+      ['quote"\\u0060\\Ω\n', "'quote\"\\\\u0060\\\\\\u03a9\\n'"],
+    ];
+    const body = '<type "data" defs <' + names.map(([, authored]) => authored + ' "string"').join(' ') + '> content <ref "">>';
+    const source = 'import { Hson } from "hson-live"; const S = Hson.schema`' + body + '`;\nconst after = "untouched"; // keep\nconst adjacent = Hson.data`<value "keep">`;';
+    const offset = source.indexOf('<ref "') + 6;
+    await editConsumer(source);
+    const result = await request("completionInfo", { file: file("consumer.ts"), ...location(source, offset) });
+    assert.deepEqual(result.entries.map(entry => entry.name), names.map(([name]) => name));
+    for (const entry of result.entries) {
+      assert.equal(typeof entry.insertText, "string");
+      assert.deepEqual(entry.replacementSpan, { start: location(source, offset), end: location(source, offset) });
+      const repaired = source.slice(0, offset) + entry.insertText + source.slice(offset);
+      assert.ok(repaired.endsWith(source.slice(offset)), "Host statements and the adjacent template survive unchanged");
+      await editConsumer(repaired);
+      assert.deepEqual(await request("syntacticDiagnosticsSync", { file: file("consumer.ts") }), []);
+      const discovered = discover_hson_tagged_templates(file("consumer.ts"), repaired);
+      assert.equal(discovered.interpolated.length, 0);
+      assert.equal(discovered.sources.length, 2);
+      const schema = discovered.sources.find(site => site.authoringKind === "schema");
+      assert.ok(schema);
+      const parsed = compile_hson_schema(admit_hson_tagged_source(schema));
+      assert.ok(parsed.ok, entry.name);
+      const reference = parsed.value.symbols.references[0];
+      assert.equal(reference.name, entry.name);
+      assert.equal(reference.targetId, parsed.value.symbols.definitions.find(definition => definition.name === entry.name).id);
+      assert.equal((await diagnostics("consumer.ts")).length, 0);
+    }
+    await editConsumer(consumer);
   });
   await check("unsaved edits refresh evidence, invalid text withdraws proof, and repair restores it", async () => {
     await edit(schema.replace('name "string"', 'name "number"'));

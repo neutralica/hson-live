@@ -4,8 +4,11 @@ import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
 import { SchemaSourceMapping } from "../src/internal/hson-schema/source-mapping.ts";
-import { read_supported_hson_import_symbols } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
+import { discover_hson_tagged_templates, read_supported_hson_import_symbols } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
+import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
+import { admit_hson_tagged_source } from "../src/internal/embedded-hson/hson-tagged-source-admission.ts";
+import { local_hson_schema_completion } from "../editors/vscode-hson/src/hson-schema-symbols.ts";
 import { local_hson_schema_diagnostics } from "../editors/vscode-hson/src/hson-schema-local.ts";
 import { Hson } from "../src/hson-authoring.ts";
 import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
@@ -766,4 +769,247 @@ check("editor operations never change disk bytes or materialize a generated proj
   assert.deepEqual(bytes(app.directory), originalBytes); assert.equal(existsSync(join(app.directory, ".hson")), false);
 });
 app.service.dispose();
+check("production completion bounds unfinished references to their active templates", () => {
+  const prefix = 'import { Hson } from "hson-live"; const S = Hson.schema`<type "data" defs <Title "string" Total "number"> content <ref "';
+  const suffix = '`;\nconst after = 123;\n// keep this comment\nconst other = "untouched"; const next = Hson.data`<title "other">`;';
+  const source = prefix + 'Ti' + suffix;
+  const app = project("completion-ranges", { "app.ts": source });
+  const entries = (text: string, offset: number) => {
+    app.edit("app.ts", text);
+    return app.service.getCompletionsAtPosition(app.file("app.ts"), offset, {})?.entries.filter(entry => entry.replacementSpan?.start === prefix.length) ?? [];
+  };
+  const suggestions = entries(source, prefix.length + 2);
+  assert.deepEqual(suggestions.map(entry => entry.name), ["Title", "Total"]);
+  for (const entry of suggestions) {
+    assert.deepEqual(entry.replacementSpan, { start: prefix.length, length: 2 });
+    const edited = source.slice(0, prefix.length) + entry.insertText + source.slice(prefix.length + 2);
+    assert.ok(edited.endsWith(suffix));
+  }
+  // Empty strings, missing containers, and a closed value with the cursor in
+  // its middle keep their exact interior; no closing delimiters are inserted.
+  for (const tail of ['', 'Ti', 'Title"', 'Title">>']) {
+    const text = prefix + tail + suffix;
+    const cursor = prefix.length + Math.min(tail.indexOf('"') < 0 ? tail.length : tail.indexOf('"'), 2);
+    const result = entries(text, cursor);
+    assert.ok(result.some(entry => entry.name === "Title"), tail);
+    const length = tail.indexOf('"') < 0 ? tail.length : tail.indexOf('"');
+    assert.deepEqual(result[0]?.replacementSpan, { start: prefix.length, length });
+  }
+  for (const tail of ['Ti> next', 'Ti\nother', 'Ti\\', 'Ti\\u12', 'Ti\\q']) {
+    assert.deepEqual(entries(prefix + tail + suffix, prefix.length + tail.length), [], tail);
+  }
+  assert.deepEqual(entries(prefix + 'Ti suffix' + suffix, prefix.length + 2), [], "ambiguous unfinished suffix is not replaced");
+  assert.deepEqual(entries(prefix + 'Ti', prefix.length + 2), [], "unterminated host template is not recovered");
+  app.service.dispose();
+});
+
+check("production reference completion uses compiler capabilities, decoded names and diagnostics", () => {
+  const source = 'import { Hson } from "hson-live"; const S = Hson.schema`<type "document" defs <Title "string" Card <tag "article" content "empty"> \'display "card"\' <tag "aside" content "empty">> tag "main" content <sequence «<ref "Missing">»>>`;';
+  const app = project("completion-reference-facts", { "app.ts": source });
+  const cursor = source.indexOf('"Missing"') + 3;
+  const result = app.service.getCompletionsAtPosition(app.file("app.ts"), cursor, {})?.entries ?? [];
+  assert.deepEqual(result.map(entry => entry.name), ["Card", 'display "card"']);
+  assert.deepEqual(result.map(entry => entry.sortText), ["0000", "0001"]);
+  const quoted = result.find(entry => entry.name === 'display "card"');
+  assert.ok(quoted?.replacementSpan);
+  assert.equal(quoted.insertText, 'display \\"card\\"');
+  assert.equal(source.slice(quoted.replacementSpan.start, quoted.replacementSpan.start + quoted.replacementSpan.length), "Missing");
+  assert.ok(local_hson_schema_diagnostics(app.file("app.ts"), source).some(issue => /reference|definition/i.test(issue.message)));
+  const escaped = source.replace('Missing', 'display \\"card\\"');
+  app.edit("app.ts", escaped);
+  const escapedEntries = app.service.getCompletionsAtPosition(app.file("app.ts"), escaped.indexOf('display \\"card') + 11, {})?.entries ?? [];
+  assert.deepEqual(escapedEntries.map(entry => entry.name), ["Card", 'display "card"']);
+  assert.equal(local_hson_schema_diagnostics(app.file("app.ts"), escaped).length, 0);
+  const dataSlot = source.replace('tag "main" content <sequence «<ref "Missing">»>', 'tag "main" attrs <props <title <ref "Missing">>> content "empty"');
+  app.edit("app.ts", dataSlot);
+  assert.deepEqual(app.service.getCompletionsAtPosition(app.file("app.ts"), dataSlot.indexOf('"Missing"') + 2, {})?.entries.map(entry => entry.name), ["Title"]);
+  for (const sequence of [source, source.replace('sequence «', 'sequence [').replace('»', ']')]) {
+    const incomplete = sequence.slice(0, sequence.indexOf('Missing') + 2) + '`; const after = 1;';
+    app.edit("app.ts", incomplete);
+    assert.deepEqual(app.service.getCompletionsAtPosition(app.file("app.ts"), incomplete.indexOf('"Mi') + 3, {})?.entries.map(entry => entry.name), ["Card", 'display "card"']);
+  }
+  app.service.dispose();
+});
+
+check("production Schema associations share annotations and imported source identity in every TS authoring extension", () => {
+  const producer = 'import { Hson, type HsonSchema, type HsonFromSchema, type HsonData } from "hson-live"; export const S: HsonSchema = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; export const Alias = S; export type Imported = HsonFromSchema<typeof Alias>; export type Generic<T> = HsonData<T>;';
+  const forms = ["HsonData<typeof S>", "HsonFromSchema<typeof S>", "Chain", "Generic<typeof Alias>", "Imported"];
+  const files: Record<string, string> = { "schema.ts": producer,
+    "binding.ts": 'import { Hson as H } from "hson-live"; import type { Imported } from "./schema.js"; const S = H.schema`<type "data" content <wrong "number">>`; const value: Imported = H.data`<co`;',
+  };
+  for (const ext of ["ts", "tsx", "mts", "cts"]) {
+    files[`app.${ext}`] = 'import { Hson, type HsonData, type HsonFromSchema } from "hson-live"; import { S, Alias, type Generic, type Imported } from "./schema.js"; type Local<T> = HsonFromSchema<T>; type Chain = (Local<typeof Alias>);\n'
+      + forms.map((form, index) => `const value${index}: ${form} = Hson.data\`<co\`;`).join('\n');
+  }
+  const app = project("completion-associations", files);
+  for (const ext of ["ts", "tsx", "mts", "cts"]) {
+    const file = `app.${ext}`, text = app.text(file);
+    let start = 0;
+    for (const form of forms) {
+      const offset = text.indexOf('<co`', start) + 3; start = offset;
+      const entries = app.service.getCompletionsAtPosition(app.file(file), offset, {})?.entries ?? [];
+      assert.deepEqual(entries.map(entry => entry.name), ["count", "color"], `${ext}: ${form}`);
+      assert.deepEqual(entries[0]?.replacementSpan, { start: offset - 2, length: 2 });
+    }
+    const valid = text.replaceAll('<co`', '<count 1 color "blue" presentation <theme "dark">>`');
+    app.edit(file, valid);
+    assert.equal(app.errors(file).filter(error => error.source === "hson-schema").length, 0);
+    app.edit(file, valid.replaceAll('count 1', 'count "wrong"'));
+    assert.equal(app.errors(file).filter(error => error.source === "hson-schema").length, forms.length, ext);
+  }
+  const binding = app.text("binding.ts");
+  assert.deepEqual(app.service.getCompletionsAtPosition(app.file("binding.ts"), binding.lastIndexOf('`'), {})?.entries.map(entry => entry.name), ["count", "color"],
+    "An imported annotation retains its author's Schema despite a same-named consumer binding");
+  app.service.dispose();
+});
+
+check("production completion refreshes imported and local Schemas after unsaved edits and correction", () => {
+  const producer = 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`;';
+  const source = 'import { Hson, type HsonFromSchema } from "hson-live"; import { S } from "./schema.js"; const x: HsonFromSchema<typeof S> = Hson.data`<co`;';
+  const app = project("completion-refresh", { "schema.ts": producer, "app.ts": source });
+  const complete = (text = source) => app.service.getCompletionsAtPosition(app.file("app.ts"), text.lastIndexOf('`'), {})?.entries.map(entry => entry.name) ?? [];
+  assert.deepEqual(complete(), ["count", "color"]);
+  for (const invalid of [producer.replace('"number"', '"broken"'), producer.slice(0, producer.indexOf('content <')), producer + producer.replace('import { Hson } from "hson-live";', ''), producer.replace('const S', 'let S')]) {
+    app.edit("schema.ts", invalid);
+    assert.deepEqual(complete(), []);
+    app.edit("schema.ts", producer);
+    assert.deepEqual(complete(), ["count", "color"]);
+  }
+  app.edit("schema.ts", producer.replace('count "number"', 'cost "number"'));
+  assert.deepEqual(complete(), ["cost", "color"]);
+  const nested = source.replace('<co`', '<presentation <th`');
+  app.edit("app.ts", nested); assert.deepEqual(complete(nested), ["theme"]);
+  const used = source.replace('<co`', '<cost 1 co`');
+  app.edit("app.ts", used); assert.deepEqual(complete(used), ["color"]);
+  const local = producer.replace('export ', '') + source.replace('import { S } from "./schema.js";', '');
+  app.edit("app.ts", local); assert.deepEqual(complete(local), ["count", "color"]);
+  app.edit("app.ts", local.replace('color "string"', 'copper "string"'));
+  assert.deepEqual(complete(local.replace('color "string"', 'copper "string"')), ["count", "copper"]);
+  app.service.dispose();
+});
+
+check("production completion ignores comments, strings, expressions and unreliable associations", () => {
+  const prefix = 'import { Hson, type HsonFromSchema, type HsonData, type JsonFromSchema } from "hson-live"; const S = Hson.schema`<type "data" content <color "string">>`; ';
+  const sources = [
+    '// Hson.data`<co|`', 'const plain = "Hson.data<co|";',
+    'const x: HsonFromSchema<typeof S> = Hson.data`<color "co|">`;',
+    'const x: HsonFromSchema<typeof S> = Hson.data`< // co|\n>`;',
+    'const x: HsonFromSchema<typeof S> = Hson.data`<color ${Mat|}>`;',
+    'const x: HsonFromSchema<typeof Missing> = Hson.data`<co|`;',
+    'type Fake<T> = string; const x: Fake<typeof S> = Hson.data`<co|`;',
+    'const x: JsonFromSchema<typeof S> = Hson.data`<co|`;',
+    'type Cycle = Cycle; const x: Cycle = Hson.data`<co|`;',
+    'const x = Hson.data`<co|`;',
+    'const literal = "<ref \\"co|\\">";',
+    'const S2 = Hson.schema`<type "data" defs <Title "string"> // <ref "Ti|\ncontent "string">`;',
+    'const S2 = Hson.schema`<type "data" defs <Title "string"> content <exact "<ref \\"Ti|">>`;',
+  ];
+  const app = project("completion-nonslots", { "app.ts": prefix });
+  for (const marked of sources) {
+    const offset = prefix.length + marked.indexOf('|');
+    app.edit("app.ts", prefix + marked.replace('|', ''));
+    const entries = app.service.getCompletionsAtPosition(app.file("app.ts"), offset, {})?.entries ?? [];
+    assert.ok(!entries.some(entry => ["color", "Title"].includes(entry.name)), marked);
+    if (marked.includes('Mat|')) assert.ok(entries.some(entry => entry.name === "Math"), "ordinary expression completions survive");
+  }
+  app.edit("app.ts", prefix + 'const ordinary = { name: 1 }; ordinary.na');
+  assert.ok(app.service.getCompletionsAtPosition(app.file("app.ts"), (prefix + 'const ordinary = { name: 1 }; ordinary.na').length, {})?.entries.some(entry => entry.name === "name"));
+  app.service.dispose();
+});
+
+check("reference completion retains forward definitions and their authored ranges", () => {
+  const data = '<type "data" defs <First <ref "|"> Title "string"> content <ref "First">>';
+  const document = '<type "document" defs <First <tag "main" content <sequence «<ref "|">»>> Title "string" Card <tag "article" content "empty">> content <sequence «<ref "First">»>>';
+  const app = project("completion-forward-definitions", { "app.ts": '' });
+  const contexts: readonly (readonly [string, readonly [string, string]])[] = [[data, ["First", "Title"]], [document, ["First", "Card"]]];
+  for (const [body, expected] of contexts) {
+    for (const name of ["", "Missing", expected[1]]) {
+      const marked = 'import { Hson } from "hson-live"; const S = Hson.schema`' + body + '`;\nconst after = "untouched";';
+      const offset = marked.indexOf('|');
+      const source = marked.replace('|', name);
+      app.edit("app.ts", source);
+      const entries = app.service.getCompletionsAtPosition(app.file("app.ts"), offset + name.length, {})?.entries ?? [];
+      assert.deepEqual(entries.map(entry => entry.name), expected);
+      for (const entry of entries) assert.deepEqual(entry.replacementSpan, { start: offset, length: name.length });
+      const local = local_hson_schema_completion(app.file("app.ts"), source, offset + name.length);
+      assert.deepEqual(local.map(entry => entry.name), expected);
+      for (const definition of local) assert.equal(source.slice(definition.range.start, definition.range.end), definition.name,
+        "Probe coordinates must not shift the authored ranges of later definitions");
+      if (name !== expected[1]) assert.ok(local_hson_schema_diagnostics(app.file("app.ts"), source).some(issue => /ref|definition/i.test(issue.message)));
+    }
+  }
+  app.service.dispose();
+});
+
+check("reference insertions round trip through TypeScript raw templates and the Hson Schema parser", () => {
+  // Authored spellings are independent fixtures, not the completion encoder.
+  const names = [
+    { name: 'tick`name', authored: "'tick\\u0060name'" },
+    { name: '${Math.random()}', authored: "'\\u0024{Math.random()}'" },
+    { name: 'say "hi"', authored: "'say \"hi\"'" },
+    { name: 'slash\\tail', authored: "'slash\\\\tail'" },
+    { name: 'literal\\u0060', authored: "'literal\\\\u0060'" },
+    { name: 'unicode Ω😀', authored: "'unicode \\u03a9\\ud83d\\ude00'" },
+    { name: 'line\n\t\u0000end', authored: "'line\\n\\t\\u0000end'" },
+    { name: '\\`${literal}', authored: "'\\\\\\u0060\\u0024{literal}'" },
+  ];
+  const body = '<type "data" defs <' + names.map(item => item.authored + ' "string"').join(' ') + '> content <ref "">>';
+  const prefix = 'import { Hson } from "hson-live";\nconst S = Hson.schema`';
+  const suffix = '`;\nconst after = "untouched"; // preserve this\nconst adjacent = Hson.data`<value "keep">`;';
+  const source = prefix + body + suffix;
+  const cursor = source.lastIndexOf('<ref "') + 6;
+  const app = project("completion-template-encoding", { "app.ts": source });
+  const entries = app.service.getCompletionsAtPosition(app.file("app.ts"), cursor, {})?.entries ?? [];
+  assert.deepEqual(entries.map(entry => entry.name), names.map(item => item.name));
+  for (const entry of entries) {
+    assert.deepEqual(entry.replacementSpan, { start: cursor, length: 0 });
+    assert.ok(entry.insertText !== undefined);
+    const repaired = source.slice(0, cursor) + entry.insertText + source.slice(cursor);
+    assert.ok(repaired.startsWith(source.slice(0, cursor)));
+    assert.ok(repaired.endsWith(source.slice(cursor)), "Every host byte beyond the reference survives");
+    app.edit("app.ts", repaired);
+    assert.deepEqual(app.service.getSyntacticDiagnostics(app.file("app.ts")), [], entry.name);
+    const discovered = discover_hson_tagged_templates(app.file("app.ts"), repaired);
+    assert.equal(discovered.interpolated.length, 0, "Inserted names cannot become TS interpolation expressions");
+    assert.equal(discovered.sources.length, 2, "Inserted names cannot terminate the Schema template");
+    const site = discovered.sources.find(site => site.authoringKind === "schema");
+    assert.ok(site);
+    const raw = admit_hson_tagged_source(site);
+    const parsed = compile_hson_schema(raw);
+    assert.ok(parsed.ok, entry.name);
+    const reference = parsed.value.symbols.references[0];
+    assert.equal(reference?.name, entry.name, "Hson must decode exactly the original name, including literal escape sequences");
+    assert.equal(reference?.targetId, parsed.value.symbols.definitions.find(definition => definition.name === entry.name)?.id);
+    assert.deepEqual(parsed.value.symbols.definitions.map(definition => definition.name), names.map(item => item.name));
+    assert.equal(local_hson_schema_diagnostics(app.file("app.ts"), repaired).length, 0);
+  }
+  app.service.dispose();
+});
+
+check("unchanged production reference requests construct zero independent TypeScript programs", () => {
+  const source = 'import { Hson } from "hson-live"; const S = Hson.schema`<type "data" defs <First <ref ""> Title "string"> content <ref "First">>`;';
+  const app = project("completion-program-reuse", { "app.ts": source });
+  const cursor = source.indexOf('<ref "') + 6;
+  const complete = () => app.service.getCompletionsAtPosition(app.file("app.ts"), cursor, {})?.entries.map(entry => entry.name);
+  // TypeScript exposes these counters at runtime but omits their declaration.
+  const counters: unknown = Reflect.get(ts, "performance");
+  assert.ok(counters !== null && typeof counters === "object"
+    && "enable" in counters && typeof counters.enable === "function"
+    && "disable" in counters && typeof counters.disable === "function"
+    && "getCount" in counters && typeof counters.getCount === "function");
+  counters.enable();
+  try {
+    for (let index = 0; index < 5; index++) assert.deepEqual(complete(), ["First", "Title"]);
+    const before: unknown = counters.getCount("beforeProgram");
+    assert.equal(typeof before, "number");
+    for (let index = 0; index < 30; index++) assert.deepEqual(complete(), ["First", "Title"]);
+    assert.equal(counters.getCount("beforeProgram"), before, "Thirty unchanged requests must build zero new programs");
+    app.edit("app.ts", source.replace('Title "string"', 'Later "string"'));
+    assert.deepEqual(complete(), ["First", "Later"], "A new authored program refreshes completion evidence");
+    const refreshed: unknown = counters.getCount("beforeProgram");
+    for (let index = 0; index < 30; index++) assert.deepEqual(complete(), ["First", "Later"]);
+    assert.equal(counters.getCount("beforeProgram"), refreshed, "The edited program is reused too");
+  } finally { counters.disable(); app.service.dispose(); }
+});
+
 events.terminal("pass"); console.log(JSON.stringify({ schemaEditorView: "passed", checks, typescript: ts.version }));

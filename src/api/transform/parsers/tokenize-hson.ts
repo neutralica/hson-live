@@ -37,6 +37,8 @@ export type HsonGrammarCheckpoint = Readonly<{
   range: Readonly<{ start: number; end: number }>;
   openContainers: readonly ("object" | "array" | "element")[];
   rootType?: "data" | "document";
+  /** Interior of a scanner-proven quoted value, including an unfinished EOF value. */
+  quoted?: Readonly<{ complete: boolean; closingDelimiters: readonly string[] }>;
 }>;
 export type HsonInterpolationRole = "canonical-value" | "data-value" | "document-content" | "quoted-string";
 
@@ -148,6 +150,7 @@ class HsonScanner {
   ) {}
   private readonly editorPath: (string | number)[] = [];
   private readonly editorContainers: ("object" | "array" | "element")[] = [];
+  private readonly editorClosingDelimiters: string[] = [];
   private editorExisting: readonly string[] = [];
   private editorRootType: "data" | "document" | undefined;
   private editorCommentEof = false;
@@ -324,7 +327,9 @@ class HsonScanner {
     catch (error) {
       // The requested cursor ends inside this angle. Only the explicit semantic
       // tag mode may decide its unfinished grammar; canonical remains ambiguous.
-      if (read_transform_error_details(error)?.code !== "HSON_CONTAINER_UNTERMINATED") throw error;
+      const code = read_transform_error_details(error)?.code;
+      if (code !== "HSON_CONTAINER_UNTERMINATED"
+        && !(code === "HSON_STRING_UNTERMINATED" && this.editorMode === "schema" && this.editorCursor === this.source.length)) throw error;
       if (this.editorMode === "data" || this.editorMode === "schema") return CLOSE_KIND.obj;
       if (this.editorMode === "document") return CLOSE_KIND.elem;
       throw error;
@@ -334,6 +339,7 @@ class HsonScanner {
   /** Lower `name value` object members to the existing canonical token shape. */
   private scanObjectAfterOpen(openPos: Position, depth: number): void {
     this.editorContainers.push("object");
+    this.editorClosingDelimiters.push(">");
     const previousExisting = this.editorExisting;
     this.editorExisting = [];
     this.completionSlot("member");
@@ -350,6 +356,7 @@ class HsonScanner {
         },
       });
       this.editorContainers.pop();
+      this.editorClosingDelimiters.pop();
       this.editorExisting = previousExisting;
       return;
     }
@@ -504,6 +511,7 @@ class HsonScanner {
         });
         this.editorExisting = previousExisting;
         this.editorContainers.pop();
+        this.editorClosingDelimiters.pop();
         return;
       }
       if (this.peek() === ",") {
@@ -592,6 +600,7 @@ class HsonScanner {
   /** Existing named element syntax, selected only after a matching `/>`. */
   private scanElementAfterOpen(openPos: Position, depth: number): void {
     this.editorContainers.push("element");
+    this.editorClosingDelimiters.push("/>");
     this.skipTrivia();
     this.completionSlot("tag");
     if (this.slotHere() !== undefined) this.rejectSlot("an element name");
@@ -658,6 +667,7 @@ class HsonScanner {
           coverageEnd: closePos.index + 2,
         });
         this.editorContainers.pop();
+        this.editorClosingDelimiters.pop();
         return;
       }
 
@@ -843,6 +853,7 @@ class HsonScanner {
     this.assertNesting(depth);
     const opener = this.peek();
     const closer = opener === "«" ? "»" : "]";
+    this.editorClosingDelimiters.push(closer);
     const symbol: ArraySymbol = opener === "«" ? ARR_SYMBOL.guillemet : ARR_SYMBOL.bracket;
     const openPos = this.position();
     this.consumeExpected(opener);
@@ -905,6 +916,7 @@ class HsonScanner {
           coverageEnd: closePos.index + 1,
         });
         this.editorContainers.pop();
+        this.editorClosingDelimiters.pop();
         return;
       }
 
@@ -1094,6 +1106,7 @@ class HsonScanner {
       const ch = this.peek();
 
       if (ch === `"`) {
+        this.quotedValueCheckpoint(start.index + 1, true);
         this.consumeExpected(`"`);
         return { raw: raw.includes("\n") || raw.includes("\t")
           ? JSON.stringify(decode_hson_content_string(raw.slice(1))) : raw + `"` };
@@ -1115,11 +1128,23 @@ class HsonScanner {
       raw += this.consume();
     }
 
+    this.quotedValueCheckpoint(start.index + 1, false);
     const final = this.source[this.source.length - 1];
     const mixed = final === "'" && !raw.includes("\n");
     this.fail(mixed ? `mixed quote boundary in quoted string` : `unterminated quoted string`,
       mixed ? this.positionAt(this.source.length - 1) : start,
       mixed ? "HSON_QUOTE_BOUNDARY_MISMATCH" : "HSON_STRING_UNTERMINATED");
+  }
+
+  private quotedValueCheckpoint(start: number, complete: boolean): void {
+    const cursor = this.editorCursor;
+    if (this.editorMode !== "schema" || cursor === undefined || cursor < start || cursor > this.index) return;
+    // Without a closing quote, only an EOF cursor with an unambiguous value
+    // prefix is editable. Never consume a malformed suffix or another member.
+    if (!complete && (cursor !== this.index || /[\r\n<>«»]/.test(this.source.slice(start, this.index)))) return;
+    this.editorCheckpoint?.({ kind: "value", path: [...this.editorPath], existing: [...this.editorExisting],
+      range: { start, end: this.index }, openContainers: [...this.editorContainers],
+      ...(this.editorRootType === undefined ? {} : { rootType: this.editorRootType }), quoted: { complete, closingDelimiters: [...this.editorClosingDelimiters].reverse() } });
   }
 
   /** Attribute tokens retain their inner source text rather than outer quotes. */
@@ -1563,6 +1588,7 @@ class HsonScanner {
       }
       if (!this.startsWith("//")) return this.index !== start;
 
+      const commentStart = this.index;
       this.consumeExpected("/");
       this.consumeExpected("/");
       while (!this.atEnd() && !this.isNewline()) {
@@ -1573,7 +1599,7 @@ class HsonScanner {
         this.consume();
       }
       if (this.slotHere() !== undefined && !this.recoverRejectedSlots()) this.rejectSlot("a comment");
-      if (this.atEnd()) this.editorCommentEof = true;
+      if (this.atEnd() || this.editorCursor !== undefined && this.editorCursor >= commentStart && this.editorCursor <= this.index) this.editorCommentEof = true;
       if (!this.atEnd()) this.consume();
     }
   }

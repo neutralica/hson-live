@@ -341,7 +341,7 @@ export function discover_hson_tagged_templates(
   });
   if (typeof fileName !== "string"
     || typeof hostText !== "string"
-    || !/\.tsx?$/.test(fileName)) {
+    || !/\.(?:[cm]?ts|tsx)$/.test(fileName)) {
     return empty();
   }
 

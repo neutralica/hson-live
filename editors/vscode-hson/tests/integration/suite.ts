@@ -4,7 +4,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 
 async function localSchemaCompletions(document: vscode.TextDocument, offset: number): Promise<vscode.CompletionItem[]> {
-  const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', document.uri, document.positionAt(offset));
+  const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', document.uri, document.positionAt(offset), undefined, 100);
   return result?.items.filter(item => item.detail === 'Hson Schema definition') ?? [];
 }
 

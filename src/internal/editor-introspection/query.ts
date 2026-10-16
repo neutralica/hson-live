@@ -4,7 +4,7 @@ import { HSON_SCHEMA_DATA_ROOT_ORDER, type CompiledHsonSchema, type HsonSchemaDa
 
 export type HsonEditorCandidate = Readonly<{
   label: string;
-  kind: "member" | "literal" | "syntax";
+  kind: "member" | "literal" | "syntax" | "reference";
   insertText: string;
   detail: string;
   sortText: string;

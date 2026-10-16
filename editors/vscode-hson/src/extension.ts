@@ -3,14 +3,11 @@ import * as vscode from "vscode";
 import { spawn, type ChildProcess } from "node:child_process";
 import { local_hson_schema_declarations, local_hson_schema_diagnostics } from "./hson-schema-local.js";
 import {
-  local_hson_schema_completion,
   local_hson_schema_symbols,
   rename_hson_schema_definition,
-  schema_ref_completion_range,
   schema_target_at,
 } from "./hson-schema-symbols.js";
 import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_watch_output_state } from "./schema-tooling.js";
-import { HsonEditorCompletionCache } from "./editor-completion.js";
 
 import {
   type DiagnosticDocument,
@@ -98,7 +95,6 @@ function explicitAppearanceColor(
 
 export function activate(context: vscode.ExtensionContext): void {
   const structuralEvidence = new StructuralDocumentEvidenceCache(8);
-  const editorCompletion = new HsonEditorCompletionCache();
   const evidenceFor = (document: vscode.TextDocument, language: StructuralHostLanguage) => structuralEvidence.get(
     document.uri.toString(),
     document.version,
@@ -106,8 +102,7 @@ export function activate(context: vscode.ExtensionContext): void {
     language,
     document.getText(),
   );
-  context.subscriptions.push({ dispose: () => { structuralEvidence.clear(); editorCompletion.clear(); } },
-    vscode.workspace.onDidCloseTextDocument(document => editorCompletion.forget(document.fileName)));
+  context.subscriptions.push({ dispose: () => structuralEvidence.clear() });
   const structuralLanguage = (document: vscode.TextDocument): StructuralHostLanguage | undefined =>
     document.languageId === "typescript" || document.languageId === "typescriptreact" || document.languageId === "markdown"
       ? document.languageId : undefined;
@@ -367,34 +362,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const localSchemaSelector = ["typescript", "typescriptreact"];
   const localSymbols = (document: vscode.TextDocument) => local_hson_schema_symbols(document.fileName, document.getText());
   context.subscriptions.push(
-    vscode.languages.registerCompletionItemProvider(localSchemaSelector, {
-      provideCompletionItems(document, position) {
-        return editorCompletion.complete(document.fileName, document.getText(), document.version, document.offsetAt(position)).map(({ candidate, range }) => {
-          const kind = candidate.kind === "member" ? vscode.CompletionItemKind.Property
-            : candidate.kind === "literal" ? vscode.CompletionItemKind.Value : vscode.CompletionItemKind.Keyword;
-          const item = new vscode.CompletionItem(candidate.label, kind);
-          item.insertText = candidate.insertText;
-          item.detail = candidate.detail;
-          item.sortText = candidate.sortText;
-          item.range = new vscode.Range(document.positionAt(range.start), document.positionAt(range.end));
-          return item;
-        });
-      },
-    }),
-    vscode.languages.registerCompletionItemProvider(localSchemaSelector, {
-      provideCompletionItems(document, position) {
-        const offset = document.offsetAt(position);
-        const range = schema_ref_completion_range(document.getText(), offset);
-        if (range === undefined) return [];
-        return local_hson_schema_completion(document.fileName, document.getText(), offset).map(symbol => {
-          const item = new vscode.CompletionItem(symbol.name, vscode.CompletionItemKind.Reference);
-          item.detail = symbol.capability === "data" ? "Hson Schema definition" : "Hson Schema document definition";
-          item.range = new vscode.Range(document.positionAt(range.start), document.positionAt(range.end));
-          item.insertText = JSON.stringify(symbol.name).slice(1, -1);
-          return item;
-        });
-      },
-    }),
+    // Completions share the authored TypeScript program through the tsserver plugin.
     vscode.languages.registerDefinitionProvider(localSchemaSelector, {
       provideDefinition(document, position) {
         const target = schema_target_at(localSymbols(document), document.offsetAt(position));
