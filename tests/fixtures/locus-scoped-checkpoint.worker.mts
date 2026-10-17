@@ -1,0 +1,12 @@
+import { parentPort, workerData } from "node:worker_threads";
+import { scoped_checkpoint_cases } from "./locus-scoped-checkpoint-cases.mts";
+import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
+import { restore_semantic_checkpoint_manifest_internal } from "../../src/api/locus/locus.aggregate.persistence.ts";
+import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
+import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.ts";
+const adapter = new MemoryCheckpointAdapter();
+for (const [id, chunk] of workerData.chunks) adapter.chunks.set(id, chunk);
+const restored = internal_livemap_aggregate_authority(await restore_semantic_checkpoint_manifest_internal(workerData.state.checkpoint, adapter));
+let count = 0;
+await scoped_checkpoint_cases(async (_name, run) => { await run(); count++; });
+parentPort!.postMessage({ count, checkpoint: restored.captureSemanticCheckpoint(), quids: enumerate_livemap_issued_quids(restored.identityEpoch().issued()) });

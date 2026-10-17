@@ -88,7 +88,7 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
       assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_PART_SENTINEL|PRIVATE_LIBRARY_SENTINEL|hidden-event|"name":"parts"/);
       assert.equal(snapshot.libraries.find(e => e.name === "page")!.quads, undefined);
       assert.throws(() => admit(snapshot)); assert.throws(() => compose_client_projection_internal(snapshot, []));
-      assert.throws(() => capture(f.map, f.effective)); assert.throws(() => f.map.capture()); assert.throws(() => f.a.captureSemanticCheckpoint());
+      assert.throws(() => capture(f.map, f.effective)); assert.throws(() => f.map.capture()); assert.ok(f.a.captureSemanticCheckpoint().libraries.some(entry => entry.scopes !== undefined));
       assert.throws(() => f.a.captureDocumentSsr(f.pageId, []));
       assert.throws(() => Reflect.apply(prepare_echo_replica_internal, undefined, [{ now: {
         format: "hson-locus-session-now", sessionBinding: "a".repeat(32), libs: snapshot,

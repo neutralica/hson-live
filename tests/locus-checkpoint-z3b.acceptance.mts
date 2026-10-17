@@ -1,3 +1,4 @@
+import "./locus-scoped-checkpoint.acceptance.mts";
 import { encode_checkpoint_chunks } from "../src/api/locus/locus.checkpoint-chunks.ts";
 import { exact_tagged_payload, invalid_tagged_graphs } from "./helpers/tagged-codec-fixture.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";

@@ -566,7 +566,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
       assert.throws(() => make_portable_aggregate_commit(accepted), /Echo/);
       assert.throws(() => project_locus_live_transition_internal(accepted, f.effective), /Echo/);
       r.cap.replayScopedHosted(batch);
-      assert.throws(() => r.map.capture(), /Echo\/checkpoint/); assert.throws(() => r.a.captureSemanticCheckpoint(), /Echo\/checkpoint/);
+      assert.throws(() => r.map.capture(), /Echo\/checkpoint/); assert.ok(r.a.captureSemanticCheckpoint().libraries.some(entry => entry.scopes !== undefined));
       assert.throws(() => r.a.captureDocumentSsr(r.library, []), /inactive/);
       r.cap.dispose(); unchanged(r, () => assert.throws(() => r.cap.replayScopedHosted(batch), /disposed/));
     } finally { r.cap.dispose(); f.locus.dispose(); }

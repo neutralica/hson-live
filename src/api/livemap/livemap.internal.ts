@@ -36,6 +36,7 @@ export type LiveMapSemanticCheckpoint = Readonly<{
     name: string;
     root: HsonNode;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
+    scopes?: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
     css?: import("../../types/document-css.types.js").DocumentCssRecord;
   }>[];
 }>;

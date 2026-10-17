@@ -108,7 +108,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     assert.throws(() => make_portable_aggregate_commit(accepted!), /Echo/);
     assert.throws(() => project_locus_live_transition_internal(accepted!, effective), /Echo/);
     assert.throws(() => f.map.capture(), /Echo\/checkpoint/);
-    assert.throws(() => f.a.captureSemanticCheckpoint(), /Echo\/checkpoint/);
+    assert.ok(f.a.captureSemanticCheckpoint().libraries.some(entry => entry.scopes !== undefined));
     assert.throws(() => f.a.captureDocumentSsr(f.library, []), /inactive/);
     locus.dispose();
   });

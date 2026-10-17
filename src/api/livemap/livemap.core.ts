@@ -1,3 +1,4 @@
+import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
 import { encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
@@ -2376,6 +2377,16 @@ function make_livemap_registry_engine(
       const state = binding.scope === "hson-internal"
         ? systemState : require_library(binding.identity as LiveMapLibraryIdentity);
       if (state === undefined) throw new Error("Checkpoint system state is unavailable.");
+      if ("mode" in state) {
+        if (state.documentScopesUnavailable) throw new Error("Missing scoped checkpoint evidence.");
+        if (state.documentScopes !== undefined) {
+          const captured = capture_document_scoped_library({ owner: state.identity, root: state.root,
+            overlay: require_document_overlay(state.documentOverlay), issued: mapIdentityEpoch.issued(),
+            scopes: state.documentScopes, stylesheet: stylesheet(state.identity), identityEffects: [], initialStyles: [], steps: [],
+            changed: false, effects: undefined, assertCurrent: checkCapture });
+          return Object.freeze({ name: entry.name, ...captured });
+        }
+      }
       return Object.freeze({ name: entry.name, root: clone_hson_graph_without_quids("mode" in state ? validated_library_root(state) : state.root),
         ...(binding.scope === "hson-internal" ? {} : portable_quads(require_library(binding.identity as LiveMapLibraryIdentity))) });
     });
@@ -2387,8 +2398,18 @@ function make_livemap_registry_engine(
   }
 
   function install_semantic_checkpoint(checkpoint: LiveMapSemanticCheckpoint): void {
-    const checkRestore = capture_fence();
-    transitionController.assertPublicMutationAllowed();
+    const owner = transitionController.managedExecutionOwner();
+    const position = capture_fence(), generation = transitionController.generation;
+    const grant = owner === undefined ? undefined : transitionController.captureManagementFence(owner);
+    const checkRestore = () => {
+      grant?.(); position();
+      transitionController.assertPublicMutationAllowed();
+      transitionController.assertLocalIdentityAllowed();
+      if (transitionController.generation !== generation) throw new Error("Checkpoint restoration authority changed.");
+    };
+    checkRestore();
+    checkpoint = own_semantic_checkpoint(checkpoint);
+    checkRestore();
     const hosted = require_hosted_state();
     if (!Number.isSafeInteger(checkpoint.revision) || checkpoint.revision < 0
       || checkpoint.registry.format !== hosted.registry.format
@@ -2400,19 +2421,15 @@ function make_livemap_registry_engine(
       throw new Error("Semantic checkpoint is incompatible with this authority.");
     }
     const reserved = new Set<string>();
-    const foreignPayloads = disposable_document_quad_payloads(checkpoint.libraries.map(item => own_document_quads(item)));
+    const foreignPayloads = new Set([...disposable_document_quad_payloads(checkpoint.libraries.map(item => own_document_quads(item))),
+      ...checkpoint.libraries.flatMap(item => item.scopes?.subjects.map(subject => subject.name.slice(1)) ?? [])]);
+    const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: checkRestore,
+      readPart: () => { throw new Error("Checkpoint restoration cannot read Part definitions."); } };
     const candidates = checkpoint.libraries.map((item, index) => {
       const entry = hosted.registry.libraries[index];
       if (entry === undefined || item.name !== entry.name) throw new Error("Checkpoint Library order is invalid.");
       const binding = hosted.byName.get(entry.name);
       if (binding === undefined) throw new Error("Checkpoint Library binding is unavailable.");
-      const expectedFields = ["name", "root", ...(entry.mode === "document" ? ["css"] : []), ...(Object.hasOwn(item, "quads") ? ["quads"] : [])];
-      const fields = Reflect.ownKeys(item);
-      if (fields.length !== expectedFields.length || fields.some(key => typeof key !== "string" || !expectedFields.includes(key)
-        || !Object.getOwnPropertyDescriptor(item, key)?.enumerable || !Object.hasOwn(Object.getOwnPropertyDescriptor(item, key)!, "value"))
-        || (Object.hasOwn(item, "quads") && own_document_quads(item) === undefined)) throw new Error("Invalid checkpoint Library fields.");
-      admit_portable_hson_node(item.root, "Semantic checkpoint root");
-      decode_document_quads(own_document_quads(item), item.root, entry.mode);
       const prepared = prepare_livemap_root(item.root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("Checkpoint root mode disagrees with registry.");
       must_hson_schema_root(binding.schema, prepared.root);
@@ -2425,10 +2442,19 @@ function make_livemap_registry_engine(
           projectedValue: must_projected_root_value(prepared.root) });
       }
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
-      const addressState = reconstruct_document(prepared, own_document_quads(item), item.css, reserved, undefined, [], foreignPayloads);
-      return Object.freeze({ kind: "application" as const, state, prepared, addressState,
+      const scopedCandidate = item.scopes === undefined ? undefined : reconstruct_scoped_library(state,
+        { root: item.root, scopes: item.scopes, css: item.css }, scopedAuthority,
+        make_livemap_issued_quid_ledger([...enumerate_livemap_issued_quids(mapIdentityEpoch.issued()), ...reserved]), foreignPayloads);
+      if (scopedCandidate !== undefined) {
+        for (const quid of livemap_document_identity_quids(scopedCandidate.overlay)) reserved.add(quid);
+      }
+      const addressState = scopedCandidate === undefined
+        ? reconstruct_document(prepared, own_document_quads(item), item.css, reserved, undefined, [], foreignPayloads)
+        : { documentOverlay: scopedCandidate.overlay, documentQuads: scoped_aliases(scopedCandidate), stylesheet: scopedCandidate.stylesheet };
+      return Object.freeze({ kind: "application" as const, state, prepared,
+        root: scopedCandidate?.root ?? prepared.root, addressState, documentScopes: scopedCandidate?.scopes,
         css: addressState.stylesheet,
-        changed: !canonical_graph_equal(state.root, prepared.root)
+        changed: scopedCandidate !== undefined || state.documentScopes !== undefined || !canonical_graph_equal(state.root, prepared.root)
           || (prepared.mode === "document" && !portable_document_stylesheet_equal(stylesheet(state.identity),
             addressState.stylesheet!)),
         projectedValue: prepared.projectedOverlay === undefined
@@ -2440,13 +2466,15 @@ function make_livemap_registry_engine(
     const changedLibraries = candidates.flatMap((candidate) =>
       candidate.kind === "application" && candidate.changed ? [candidate.state.identity] : []);
     checkRestore();
+    mapIdentityEpoch.replace(reserved);
     for (const candidate of candidates) {
       if (candidate.kind === "system") {
         candidate.state.root = candidate.prepared.root;
         candidate.state.projectedValue = candidate.projectedValue;
       } else {
         Object.assign(candidate.state, {
-          root: candidate.prepared.root,
+          root: candidate.root,
+          documentScopes: candidate.documentScopes, documentScopesUnavailable: undefined,
           ...candidate.addressState,
           projectedOverlay: candidate.prepared.projectedOverlay,
           projectedValue: candidate.projectedValue,
@@ -2455,7 +2483,6 @@ function make_livemap_registry_engine(
       }
     }
     const previousRevision = mapRevision;
-    mapIdentityEpoch.replace(reserved);
     identityGeneration += 1;
     mapRevision = checkpoint.revision;
     hostedFence = Object.freeze({ ...checkpoint.authority });

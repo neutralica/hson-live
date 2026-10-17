@@ -1,11 +1,12 @@
-import { admit_public_livemap_root } from "../livemap/livemap.node-admission.js";
-import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
+import { own_semantic_checkpoint } from "../livemap/livemap.semantic-checkpoint.js";
+import { decode_document_scoped_library, document_scoped_libraries_semantically_equal, own_document_scopes } from "../livemap/livemap.document.scoped-portable.js";
+import { own_data_library_validation, assert_data_library_validation } from "../livemap/livemap.parts.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { document_quad_disposition } from "../livemap/livemap.document.quad.js";
 import { remap_portable_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import { assert_subject_free_portable_css_operation } from "../../internal/css/portable-document-operations.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
-import { assert_portable_document_css_correspondence, decode_document_quads } from "../livemap/livemap.document.quad.js";
+import { decode_document_quads } from "../livemap/livemap.document.quad.js";
 import { registry_from_entries } from "../livemap/livemap.hosted.js";
 import { hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { HsonNode } from "../../core/types.js";
@@ -122,7 +123,9 @@ type ValidatedHostedAggregateState = Readonly<{
 
 function exact_keys(value: Record<string, unknown>, keys: readonly string[]): boolean {
   const actual = Reflect.ownKeys(value);
-  return actual.length === keys.length && actual.every((key) => typeof key === "string" && keys.includes(key));
+  return actual.length === keys.length && actual.every((key) => typeof key === "string" && keys.includes(key)
+    && Object.getOwnPropertyDescriptor(value, key)?.enumerable
+    && Object.hasOwn(Object.getOwnPropertyDescriptor(value, key)!, "value"));
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -178,8 +181,9 @@ function checkpoint_id(): string {
   return id;
 }
 
-/** Roots retain canonical value/presence semantics; CSS retains its text contract. */
-function checkpoint_libraries_equal(
+/** Checkpoint meaning only, never proof of occurrence-lifetime continuity.
+ * Authoritative operations must retain their retirement/creation effects even when this returns true. @internal */
+export function checkpoint_libraries_equal(
   left: LiveMapSemanticCheckpoint["libraries"],
   right: LiveMapSemanticCheckpoint["libraries"],
 ): boolean {
@@ -189,6 +193,12 @@ function checkpoint_libraries_equal(
     if (other === undefined || library.name !== other.name
       || !canonical_hson_graph_equal(library.root, other.root)
       || Object.hasOwn(library, "css") !== Object.hasOwn(other, "css")) return false;
+    const leftScopes = own_document_scopes(library), rightScopes = own_document_scopes(other);
+    if (leftScopes !== undefined || rightScopes !== undefined) {
+      return leftScopes !== undefined && rightScopes !== undefined && document_scoped_libraries_semantically_equal(
+        { root: library.root, scopes: leftScopes, css: library.css },
+        { root: other.root, scopes: rightScopes, css: other.css });
+    }
     const leftQuads = own_document_quads(library) ?? [], rightQuads = own_document_quads(other) ?? [];
     if (leftQuads.length !== rightQuads.length) return false;
     const byPath = new Map(leftQuads.map(entry => [JSON.stringify(entry.path), entry]));
@@ -216,40 +226,18 @@ export async function write_semantic_checkpoint(
 ): Promise<void> {
   // Own the complete exact export candidate before the first adapter callback.
   // Storage awaits must never re-read caller-owned graphs or contract records.
-  if (checkpoint.registry.format !== "hson-hosted-registry") throw invalid_state();
-  const registry = registry_from_entries(checkpoint.registry.libraries);
-  if (registry.digest !== checkpoint.registry.digest || checkpoint.libraries.length !== registry.libraries.length) throw invalid_state();
-  checkpoint = Object.freeze({
-    authority: Object.freeze({ ...checkpoint.authority }), revision: checkpoint.revision, registry,
-    libraries: Object.freeze(checkpoint.libraries.map((library, index) => {
-      const entry = registry.libraries[index];
-      if (entry === undefined || library.name !== entry.name) throw invalid_state();
-      const root = admit_public_livemap_root(library.root, entry.mode === "document" ? "document" : "data", "Checkpoint export");
-      const quads = decode_document_quads(own_document_quads(library), root, entry.mode);
-      if (entry.mode === "document") assert_portable_document_css_correspondence(root, "document", quads,
-        encode_portable_document_stylesheet(decode_portable_document_stylesheet(library.css)));
-      return Object.freeze({ name: library.name, root,
-        ...(quads === undefined ? {} : { quads }),
-        ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(library.css)) } : {}) });
-    })),
-  });
-  for (let index = 0; index < checkpoint.registry.libraries.length; index++) {
-    const entry = checkpoint.registry.libraries[index];
-    const library = checkpoint.libraries[index];
-    if (entry === undefined || library?.name !== entry.name) throw invalid_state();
-    const validation = own_data_library_validation(entry);
-    assert_data_library_validation(validation, entry.mode, entry.scope);
-    validate_data_library(library.root, entry.mode, validation);
-  }
+  try { checkpoint = own_semantic_checkpoint(checkpoint); }
+  catch (cause) { throw invalid_state(cause); }
   const ownership = ownership_entries(runtimeOwnership);
   const present = new Set(checkpoint.registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name));
   if (ownership.some((entry) => !present.has(entry.name))) throw invalid_state();
   const id = checkpoint_id();
   const previous = await adapter.load(checkpoint.authority.logicalMapId);
+  const expectedId = previous === undefined ? undefined : active_checkpoint_id(previous.checkpoint);
   if (previous !== undefined) {
     if (previous.checkpoint.incarnationId !== checkpoint.authority.incarnationId
       || previous.checkpoint.rev > checkpoint.revision) throw invalid_state();
-    const validated = await validate_hosted_aggregate_state(checkpoint.authority.logicalMapId, previous, adapter, checkpoint.revision);
+    const validated = await validate_hosted_aggregate_state(checkpoint.authority.logicalMapId, previous, adapter, checkpoint.revision, true);
     const expected = validated.prefix;
     if (expected === undefined || expected.map.revision !== checkpoint.revision
       || JSON.stringify(expected.map.authority) !== JSON.stringify(checkpoint.authority)
@@ -259,7 +247,6 @@ export async function write_semantic_checkpoint(
       || !checkpoint_libraries_equal(expected.map.libraries, checkpoint.libraries)
       || JSON.stringify(expected.runtimeOwnership) !== JSON.stringify(ownership)) throw invalid_state();
   }
-  const expectedId = previous === undefined ? undefined : active_checkpoint_id(previous.checkpoint);
   const descriptors: CheckpointChunkDescriptor[] = [];
   const metadata: Omit<HostedRegistryEntry, "schema">[] = [];
   for (let index = 0; index < checkpoint.registry.libraries.length; index += 1) {
@@ -276,6 +263,7 @@ export async function write_semantic_checkpoint(
       admit_portable_hson_node(library.root, "Checkpoint QUAD root");
       parts.push(["quads", decode_document_quads(own_document_quads(library), library.root, entry.mode)]);
     }
+    if (library.scopes !== undefined) parts.push(["scopes", library.scopes]);
     for (const [part, value] of parts) {
       for (const { chunk, descriptor } of encode_checkpoint_chunks(id, checkpoint.revision, entry.name, part, value)) {
         if (descriptors.length >= CHECKPOINT_MAX_CHUNKS) throw new Error("Checkpoint chunk count exceeds its supported bound.");
@@ -377,7 +365,7 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
       }
       if (index === 0) throw invalid_state();
       const next = record(value.chunks[position]);
-      if (part === "css" && next !== undefined && next.owner === entry.name && next.part === "quads") parts.push("quads");
+      if (part === "css" && next !== undefined && next.owner === entry.name && (next.part === "quads" || next.part === "scopes")) parts.push(next.part);
     }
   }
   if (position !== value.chunks.length) throw invalid_state();
@@ -385,10 +373,12 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
   return value as LocusHostedAggregatePersistedManifest;
 }
 
-async function restore_manifest(
+/** Reconstruct a checkpoint only; this does not activate durable scoped authority or replay tails. @internal */
+export async function restore_semantic_checkpoint_manifest_internal(
   manifest: LocusHostedAggregatePersistedManifest,
   adapter: LocusHostedAggregatePersistenceAdapter,
 ): Promise<LiveMap> {
+  manifest = structuredClone(assert_checkpoint_manifest(manifest, manifest.logicalMapId));
   const libraries: Array<LiveMapSemanticCheckpoint["libraries"][number]> = [];
   const registryEntries: HostedRegistryEntry[] = [];
   let position = 0;
@@ -407,9 +397,10 @@ async function restore_manifest(
       }
       values.push(decoder.finish());
       const next = manifest.chunks[position];
-      if (part === "css" && next?.owner === fixed.name && next.part === "quads") parts.push("quads");
+      if (part === "css" && next?.owner === fixed.name && (next.part === "quads" || next.part === "scopes")) parts.push(next.part);
     }
-    const [schema, root, css, quads] = values;
+    const [schema, root, css, correspondence] = values;
+    const scoped = parts.at(-1) === "scopes";
     if (typeof schema !== "string" || hson_schema_source_digest(schema) !== fixed.schemaDigest
       || typeof root !== "object" || root === null || Array.isArray(root)) throw invalid_state();
     registryEntries.push(Object.freeze({
@@ -421,10 +412,13 @@ async function restore_manifest(
       rootCodec: fixed.rootCodec,
       ...(own_data_library_validation(fixed) === undefined ? {} : { validation: own_data_library_validation(fixed) }),
     }));
-    libraries.push(Object.freeze({ name: fixed.name, root: root as HsonNode,
-      ...(quads === undefined ? {} : { quads: decode_document_quads(quads, root as HsonNode, fixed.mode) }),
+    if (scoped) libraries.push(Object.freeze({ name: fixed.name,
+      ...decode_document_scoped_library({ root, scopes: correspondence, css }) }));
+    else libraries.push(Object.freeze({ name: fixed.name, root: root as HsonNode,
+      ...(parts.at(-1) !== "quads" ? {} : { quads: decode_document_quads(correspondence, root as HsonNode, fixed.mode) }),
       ...(fixed.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(css)) } : {}) }));
   }
+  if (position !== manifest.chunks.length) throw invalid_state();
   const registry: HostedRegistry = Object.freeze({ format: "hson-hosted-registry",
     libraries: Object.freeze(registryEntries), digest: manifest.registryDigest });
   const semantic: LiveMapSemanticCheckpoint = Object.freeze({
@@ -516,17 +510,21 @@ async function validate_hosted_aggregate_state(
   value: unknown,
   adapter: LocusHostedAggregatePersistenceAdapter,
   prefixRevision?: number,
+  checkpointOnlyScoped = false,
 ): Promise<ValidatedHostedAggregateState> {
   try {
     const state = record(value);
     if (state === undefined || !exact_keys(state, ["checkpoint", "commits"])) throw invalid_state();
     const checkpointValue = record(state.checkpoint);
     if (checkpointValue === undefined) throw invalid_state();
-    const checkpoint = assert_checkpoint_manifest(checkpointValue, requestedLogicalMapId);
+    const checkpoint = structuredClone(assert_checkpoint_manifest(checkpointValue, requestedLogicalMapId));
     if (!Array.isArray(state.commits)) throw invalid_state();
+    const commits = structuredClone(state.commits);
 
-    const map = await restore_manifest(checkpoint, adapter);
+    const map = await restore_semantic_checkpoint_manifest_internal(checkpoint, adapter);
     const aggregate = internal_livemap_aggregate_authority(map);
+    const scoped = aggregate.libraries().some(id => aggregate.documentScopes(id) !== undefined);
+    if (scoped && !checkpointOnlyScoped) throw new Error("Scoped durable authority recovery requires B2 transition tails.");
     const runtimeOwnership = new Map(checkpoint.locus.runtimeOwnership.map((entry) => [entry.name, entry.ownership] as const));
     const capturePrefix = () => Object.freeze({ map: aggregate.captureSemanticCheckpoint(),
       runtimeOwnership: Object.freeze([...runtimeOwnership].map(([name, ownership]) => Object.freeze({ name, ownership }))) });
@@ -539,7 +537,7 @@ async function validate_hosted_aggregate_state(
     let lastCoveredRev: number | undefined;
     let lastCoveredDigest: string | undefined;
     let crossedCheckpoint = false;
-    for (const item of state.commits) {
+    for (const item of commits) {
       const maybe = record(item);
       const commitRecord = maybe === undefined ? undefined : record(maybe.commit);
       if (commitRecord !== undefined && valid_revision(commitRecord.rev) && commitRecord.rev <= checkpoint.rev) {
@@ -555,6 +553,7 @@ async function validate_hosted_aggregate_state(
         lastCoveredRev = commitRecord.rev;
         continue;
       }
+      if (scoped) throw new Error("Scoped durable transition tails require B2.");
       crossedCheckpoint = true;
       if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
       const commit = assert_commit_fence(item, checkpoint, expectedPrevRev, expectedRegistryDigest);
@@ -707,6 +706,10 @@ function persistent_view(
 export async function create_persistent_locus_hosted_aggregate_internal(
   options: PersistentLocusHostedAggregateOptions,
 ): Promise<PersistentLocusHostedAggregate> {
+  const aggregate = internal_livemap_aggregate_authority(options.map);
+  if (options.scopedDocuments === true || aggregate.libraries().some(id => aggregate.documentScopes(id) !== undefined)) {
+    throw new Error("Scoped durable authority requires B2 transition tails and recovery.");
+  }
   set_initial_authority(options.map, options.logicalMapId, options.incarnationId);
   const { persistence, logicalMapId: _logicalMapId, incarnationId: _incarnationId, ...hostedOptions } = options;
   const durability = make_durability_gate(persistence);
@@ -715,8 +718,8 @@ export async function create_persistent_locus_hosted_aggregate_internal(
     ...durability,
     uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
   });
-  const snapshot = internal_livemap_aggregate_authority(locus.map).captureSemanticCheckpoint();
   try {
+    const snapshot = internal_livemap_aggregate_authority(locus.map).captureSemanticCheckpoint();
     await write_semantic_checkpoint(snapshot, persistence);
   } catch (cause) {
     locus.dispose();
@@ -738,6 +741,7 @@ export async function restore_persistent_locus_hosted_aggregate_internal(
   state: LocusHostedAggregatePersistedState,
   options: RestorePersistentLocusHostedAggregateOptions,
 ): Promise<PersistentLocusHostedAggregate> {
+  if (options.scopedDocuments === true) throw new Error("Scoped durable authority requires B2 transition tails and recovery.");
   const validated = await validate_hosted_aggregate_state(logicalMapId, state, options.persistence);
   const validatedPosition = internal_livemap_aggregate_authority(validated.map).hostedPosition();
   const { persistence, ...hostedOptions } = options;

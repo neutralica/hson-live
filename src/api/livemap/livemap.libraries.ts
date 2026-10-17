@@ -1,3 +1,4 @@
+import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { project_interaction_state_internal } from "../interactions/interactions.projection.js";
 import { render_portable_document_stylesheet, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { LiveMapCutOptions, LiveMapCut, LiveMapHtmlCut } from "../../types/livemap.types.js";
@@ -1022,6 +1023,7 @@ export function portable_aggregate_inputs_internal(
 export function make_livemap_mirror_from_semantic_checkpoint_internal(
   checkpoint: LiveMapSemanticCheckpoint,
 ): LiveMap {
+  checkpoint = own_semantic_checkpoint(checkpoint);
   if (checkpoint.registry.libraries.length !== checkpoint.libraries.length) {
     throw new Error("Semantic checkpoint registry is incomplete.");
   }
