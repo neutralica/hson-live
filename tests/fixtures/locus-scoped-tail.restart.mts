@@ -1,0 +1,15 @@
+import { isMainThread, parentPort, workerData } from "node:worker_threads";
+import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
+import { verify_scoped_tail_restart } from "./locus-scoped-tail-cases.mts";
+import type { CheckpointChunk } from "../../src/api/locus/locus.checkpoint-chunks.ts";
+import type { LocusHostedAggregatePersistedState } from "../../src/api/locus/locus.aggregate.persistence.ts";
+import type { LiveMapSemanticCheckpoint } from "../../src/api/livemap/livemap.internal.ts";
+let raw = "";
+if (isMainThread) for await (const piece of process.stdin) raw += String(piece);
+const input: { state: LocusHostedAggregatePersistedState; chunks: readonly [string, CheckpointChunk][];
+  expected: LiveMapSemanticCheckpoint; sourceIds: readonly string[] } = isMainThread ? JSON.parse(raw) : workerData;
+const adapter = new MemoryCheckpointAdapter();
+for (const [id, chunk] of input.chunks) adapter.chunks.set(id, chunk);
+adapter.seed(input.state.checkpoint.logicalMapId, input.state);
+await verify_scoped_tail_restart({ ...input, adapter });
+if (isMainThread) process.stdout.write("scoped-tail-restart-ok\n"); else parentPort!.postMessage("scoped-tail-restart-ok");

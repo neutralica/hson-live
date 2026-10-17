@@ -2,7 +2,7 @@ import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-sto
 import type { LiveMap } from "../../types/livemap.types.js";
 import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { make_portable_aggregate_commit } from "../livemap/livemap.hosted.js";
+import { encode_authoritative_scoped_commit } from "../livemap/livemap.hosted.js";
 import type { LocusEffectiveProjection } from "./locus.projection.js";
 import { projected_registry_digest, project_locus_live_transition_internal } from "./locus.live-projection.js";
 
@@ -30,29 +30,33 @@ export function prepare_locus_scoped_commit_internal(map: LiveMap,
     || effective.authority.incarnationId !== commit.authority.incarnationId)) {
     throw new Error("Scoped projection belongs to another authority.");
   }
+  if (effective === undefined) {
+    const encoded = encode_authoritative_scoped_commit(commit);
+    aggregate.assertPrepared(transition);
+    return encoded;
+  }
   const indices = commit.replay.operations.flatMap((entry, index) => entry.scoped === undefined ? [index] : []);
   const ordinary = Object.freeze({ ...commit,
     operations: Object.freeze(indices.map(index => commit.operations[index]!)),
     replay: Object.freeze({ operations: Object.freeze(indices.map(index => commit.replay.operations[index]!)) }),
   });
   // Existing feature grants and interaction filtering remain authoritative.
-  const ordinaryProjection = effective === undefined ? undefined : project_locus_live_transition_internal(ordinary, effective,
+  const ordinaryProjection = project_locus_live_transition_internal(ordinary, effective,
     aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) === undefined ? undefined : aggregate.systemRoot(aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!),
     aggregate.preparedSystemRoot(transition));
-  const ordinaryOperations = effective === undefined ? make_portable_aggregate_commit(ordinary)?.operations ?? []
-    : ordinaryProjection?.kind === "commit" ? ordinaryProjection.commit.operations : [];
+  const ordinaryOperations = ordinaryProjection.kind === "commit" ? ordinaryProjection.commit.operations : [];
   const operations: LocusPreparedScopedOperation[] = [];
   let ordinaryIndex = 0;
   for (let index = 0; index < commit.replay.operations.length; index++) {
     const entry = commit.replay.operations[index]!;
     if (entry.scoped !== undefined) {
-      if (effective === undefined || effective.includesLibrary(entry.library)) {
+      if (effective.includesLibrary(entry.library)) {
         operations.push(Object.freeze({ library: entry.library, domain: "document", effect: entry.scoped }));
       }
     } else {
       const semantic = commit.operations[index]!.operation;
       if ("domain" in semantic && semantic.domain === "graph" && semantic.op === "ensure-quid") continue;
-      if (effective !== undefined && (entry.library === INTERACTION_RESERVED_LIBRARY_KEY || !effective.includesLibrary(entry.library))) continue;
+      if (entry.library === INTERACTION_RESERVED_LIBRARY_KEY || !effective.includesLibrary(entry.library)) continue;
       const operation = ordinaryOperations[ordinaryIndex++];
       if (operation === undefined || operation.library !== entry.library) throw new Error("Incomplete projected operation order.");
       operations.push(operation);
@@ -61,6 +65,6 @@ export function prepare_locus_scoped_commit_internal(map: LiveMap,
   operations.push(...ordinaryOperations.slice(ordinaryIndex));
   aggregate.assertPrepared(transition);
   return Object.freeze({ authority: commit.authority,
-    registryDigest: effective === undefined ? commit.registryDigest : projected_registry_digest(effective),
+    registryDigest: projected_registry_digest(effective),
     prevRev: commit.prevRev, rev: commit.rev, operationCount: operations.length, operations: Object.freeze(operations) });
 }

@@ -1,3 +1,4 @@
+import { scoped_tail_cases } from "./locus-scoped-tail-cases.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority as authority, type LiveMapSemanticCheckpoint } from "../../src/api/livemap/livemap.internal.ts";
@@ -66,6 +67,7 @@ function replacePart(adapter: MemoryCheckpointAdapter, manifest: LocusHostedAggr
 }
 
 export async function scoped_checkpoint_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  await scoped_tail_cases(check);
   await check("B1 complete authority capture is coherent, detached, observational and QUID-free", async () => {
     const f = await fixture();
     try {
@@ -386,16 +388,16 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
       await write(checkpoint, adapter, ownership);
     } finally { f.l.dispose(); }
   });
-  await check("B1 production scoped persistence and unsupported tails remain guarded", async () => {
+  await check("B1 explicit scoped preparation and malformed tails remain guarded", async () => {
     const f = await fixture(), adapter = new MemoryCheckpointAdapter();
     try {
       const checkpoint = f.a.captureSemanticCheckpoint();
-      await assert.rejects(() => persist({ map: f.map, persistence: adapter }), /B2/);
+      await assert.rejects(() => persist({ map: f.map, persistence: adapter }), /explicit private scoped/);
       assert.equal(adapter.chunks.size, 0);
       await write(checkpoint, adapter, ownership);
-      await assert.rejects(() => resume(checkpoint.authority.logicalMapId, { persistence: adapter }), /invalid/);
+      const restored = await resume(checkpoint.authority.logicalMapId, { persistence: adapter }); assert.ok(restored); restored.dispose();
       let rejected = false;
-      const stop = f.l.on_commit(commit => { assert.throws(() => durable_aggregate_commit(commit), /Echo|scoped/); rejected = true; });
+      const stop = f.l.on_commit(commit => { assert.ok(durable_aggregate_commit(commit).commit.operationCount); rejected = true; });
       await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "next")); stop(); assert.equal(rejected, true);
       await assert.rejects(() => f.stage(w => page(w).css.stylesheet("main{color:red}")), /scoped evidence/);
       assert.equal(adapter.appendCalls.length, 0);

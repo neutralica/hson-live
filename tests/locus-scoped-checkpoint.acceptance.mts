@@ -8,8 +8,8 @@ import { write_semantic_checkpoint, checkpoint_libraries_equal } from "../src/ap
 import { enumerate_livemap_issued_quids } from "../src/api/livemap/livemap.identity-epoch.ts";
 import type { LiveMapSemanticCheckpoint } from "../src/api/livemap/livemap.internal.ts";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "locus.scoped-checkpoint", title: "Scoped semantic checkpoints B1",
-  category: "Locus", runtime: "node", tags: Object.freeze(["quad", "scope", "checkpoint", "authority", "worker", "css"]),
+  id: "locus.scoped-checkpoint", title: "Scoped checkpoints and durable recovery B1/B2",
+  category: "Locus", runtime: "node", tags: Object.freeze(["quad", "scope", "checkpoint", "authority", "worker", "css", "restart"]),
 });
 const events = create_test_event_emitter("locus.scoped-checkpoint");
 let cases = 0;
@@ -36,5 +36,30 @@ try {
   assert.equal(result.checkpoint.revision, checkpoint.revision);
   for (const quid of result.quids) assert.ok(!sourceQuids.has(quid));
 } finally { await worker.terminate(); }
-events.terminal("pass");
 console.log(`Scoped checkpoints passed (${cases} Node and ${cases} Worker groups, plus cross-Worker chunk restoration).`);
+
+// The terminated producer's exact persisted bytes cross both an actual Worker
+// and a fresh process; neither receives source runtime identities or objects.
+const { scoped_tail_fixture } = await import("./fixtures/locus-scoped-tail-cases.mts");
+const { spawn } = await import("node:child_process");
+const { fileURLToPath } = await import("node:url");
+const durable = await scoped_tail_fixture();
+const persisted = { state: durable.state, chunks: [...durable.adapter.chunks], expected: durable.expected, sourceIds: durable.sourceIds };
+const restartEntry = new URL("./fixtures/locus-scoped-tail.restart.mts", import.meta.url);
+const tailWorker = repository_typescript_worker(restartEntry, { workerData: persisted });
+try {
+  const result = await new Promise((resolve, reject) => {
+    tailWorker.once("message", resolve); tailWorker.once("error", reject);
+    tailWorker.once("exit", code => reject(Error(`Scoped tail Worker exited ${code}`)));
+  });
+  assert.equal(result, "scoped-tail-restart-ok");
+} finally { await tailWorker.terminate(); }
+const child = spawn(process.execPath, ["--import=tsx", fileURLToPath(restartEntry)], { stdio: ["pipe", "pipe", "pipe"] });
+let stdout = "", stderr = "";
+child.stdout.on("data", piece => { stdout += String(piece); }); child.stderr.on("data", piece => { stderr += String(piece); });
+const exited = new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
+child.stdin.end(JSON.stringify(persisted));
+assert.equal(await exited, 0, stderr); assert.equal(stdout.trim(), "scoped-tail-restart-ok");
+console.log("B2 persisted tails passed cross-Worker and fresh-process restart, authorization, Echo reconstruction and subsequent replay.");
+
+events.terminal("pass");

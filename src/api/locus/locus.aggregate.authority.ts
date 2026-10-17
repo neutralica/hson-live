@@ -248,6 +248,8 @@ export type LocusHostedAggregateAuthorityOptions<
   prepareGate?: (input: LocusHostedAggregateGateInput) => void;
   maxWireBytes?: number;
   maxHistoryBytes?: number;
+  /** Private durable scoped preparation; public transports remain closed. @internal */
+  scopedDocuments?: true;
   authorizeAction?: LocusActionAuthorizer<TActions>;
   sessionId?: LocusSessionId | (() => LocusSessionId);
   sessions?: LocusSessionOptions;
@@ -352,6 +354,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   let sessions!: ReturnType<typeof make_locus_session_manager>;
   const locus = create_locus_hosted_aggregate_internal({
     map: options.map,
+    ...(options.scopedDocuments === undefined ? {} : { scopedDocuments: options.scopedDocuments }),
     ...(options.actions === undefined ? {} : { actions: options.actions }),
     ...(options.gate === undefined ? {} : { gate: options.gate }),
     ...(options.prepareGate === undefined ? {} : { prepareGate: options.prepareGate }),

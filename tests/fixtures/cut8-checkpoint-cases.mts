@@ -149,7 +149,9 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
     await locus.stage(draft => { draft.lib("state").at(["negative"]).set(-0); });
     await locus.stage(draft => { draft.lib("state").at(["other"]).set(2); });
     assert.deepEqual(adapter.state(id)?.commits.map(record => [record.commit.prevRev, record.commit.rev]), [[0, 1], [1, 2]]);
-    assert.match(adapter.state(id)!.commits[0]!.commit.operations[0]!.payload, /-0/);
+    const operation = adapter.state(id)!.commits[0]!.commit.operations[0]!;
+    assert.ok(operation.domain !== "document");
+    assert.match(operation.payload, /-0/);
     assert_checkpoint_roots(adapter, id, initial);
     const expected = semantic(locus); locus.dispose();
     const reopenedAdapter = fresh(id), reopened = await resume(reopenedAdapter, id, data_fixture(0));

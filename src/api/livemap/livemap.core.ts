@@ -103,6 +103,7 @@ import {
   decode_hosted_root,
   decode_portable_aggregate_commit,
   decode_private_scoped_aggregate_commit,
+  encode_authoritative_scoped_commit,
   type PrivateScopedAggregateCommit,
   encode_hosted_root,
   HOSTED_MAX_ISSUED_QUIDS,
@@ -3113,15 +3114,16 @@ function make_livemap_registry_engine(
     if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
     const composition = clientComposition;
-    if (scoped && (composition === undefined || transitionController.managedExecutionOwner() !== clientManagementOwner)) {
+    if (durable && composition !== undefined) throw new Error("Durable replay requires full-map authority.");
+    if (scoped && !durable && (composition === undefined || transitionController.managedExecutionOwner() !== clientManagementOwner)) {
       throw new Error("Private scoped receiving requires the managed Echo projection.");
     }
     let decoded: readonly (import("./livemap.hosted.js").DecodedHostedOperation & Readonly<{
       scoped?: import("./livemap.document.scoped-effects.js").DocumentScopedEffect;
     }>)[];
     if (scoped) {
-      if ("format" in input || composition === undefined) throw new Error("Invalid private scoped receiving envelope.");
-      decoded = decode_private_scoped_aggregate_commit(input, composition.registry, composition.bindings);
+      if ("format" in input) throw new Error("Invalid private scoped receiving envelope.");
+      decoded = decode_private_scoped_aggregate_commit(input, composition?.registry ?? hosted.registry, composition?.bindings ?? hosted.byName);
     } else {
       if (!("format" in input)) throw new Error("Private scoped delivery remains inactive.");
       decoded = decode_portable_aggregate_commit(input, composition?.registry ?? hosted.registry, composition?.bindings ?? hosted.byName);
@@ -3192,6 +3194,16 @@ function make_livemap_registry_engine(
       composition === undefined ? undefined : input.rev, assertManagementCurrent);
     if (composition !== undefined) return transitionController.acceptAuthority(transition, "isolate").commit;
     const local = transition.commit.hosted;
+    if (durable && scoped) {
+      try {
+        if (local === undefined || !transition.commit.changed
+          || JSON.stringify(encode_authoritative_scoped_commit(local)) !== JSON.stringify(input)) {
+          throw new Error("Durable scoped replay did not reproduce its complete effects.");
+        }
+        assertManagementCurrent();
+      } catch (cause) { transitionController.discardAuthority(transition); throw cause; }
+      return transitionController.acceptAuthority(transition).commit;
+    }
     if (durable && !transition.commit.changed) {
       // The old runtime may have distinguished equal-content subjects only
       // through local identity. The decoded path effect is valid but collapses
@@ -3235,8 +3247,8 @@ function make_livemap_registry_engine(
     return replayed;
   }
 
-  function replay_durable_hosted_aggregate(input: PortableAggregateCommit): void {
-    replay_portable_hosted_aggregate(input, true);
+  function replay_durable_hosted_aggregate(input: PortableAggregateCommit | PrivateScopedAggregateCommit): void {
+    replay_portable_hosted_aggregate(input, true, undefined, !("format" in input));
   }
 
   function replay_hosted_aggregate(input: HostedAggregateCommit): LiveMapAggregateCommit {

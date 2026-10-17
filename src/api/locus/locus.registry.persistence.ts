@@ -83,6 +83,7 @@ async function persistent_view<
   options: DurableRegistryOptions<TMap, TActions>,
   initialize: boolean,
   runtimeOwnership = new Map<string, "private" | "shared">(),
+  scopedDocuments?: true,
 ): Promise<Locus<TMap, TActions>> {
   const exposureAuthority = internal_livemap_aggregate_authority(options.map);
   const suppliedAuthority = exposureAuthority.hostedPosition().authority;
@@ -116,9 +117,13 @@ async function persistent_view<
     try { return create_registry_locus_internal(managedOptions as LocusRegistryOptions<TMap, TActions>, {
     ...(initialize ? {} : { recoveryFloorRevision: options.map.rev }),
     runtimeOwnership,
+    ...(scopedDocuments === undefined ? {} : { scopedDocuments }),
     onDispose: (locus) => { checkpoints.delete(locus); },
     prepareGate: ({ commit, libraryOwnershipAdded }) => {
       if (!commit.changed) return;
+      if (commit.topology !== undefined && exposureAuthority.libraries().some(id => exposureAuthority.documentScopes(id) !== undefined)) {
+        throw new Error("Scoped durable topology additions require H0b.");
+      }
       const record = commit_record(commit, libraryOwnershipAdded);
       JSON.stringify(record);
       records.set(commit, record);
@@ -164,17 +169,28 @@ export async function resume_registry_locus<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: DurableRegistryOptions<TMap, TActions>,
+  internal: Readonly<{ scopedDocuments?: true }> = {},
 ): Promise<Locus<TMap, TActions>> {
   const initialAuthority = internal_livemap_aggregate_authority(options.map);
   const probe = Object.freeze({});
   initialAuthority.claimManagement(probe);
   initialAuthority.releaseManagement(probe);
   const initial = initialAuthority.hostedPosition();
+  const initialEpoch = initialAuthority.identityEpoch().current(), initialIssued = initialAuthority.identityEpoch().issued();
+  const assertInitialCurrent = () => {
+    const current = initialAuthority.hostedPosition();
+    if (current.revision !== initial.revision || current.registryDigest !== initial.registryDigest
+      || current.authority.logicalMapId !== initial.authority.logicalMapId || current.authority.incarnationId !== initial.authority.incarnationId
+      || initialAuthority.identityEpoch().current() !== initialEpoch || initialAuthority.identityEpoch().issued() !== initialIssued) {
+      throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID", "Deployment authority changed during durable restoration.");
+    }
+  };
   const logicalMapId = options.logicalMapId ?? initial.authority.logicalMapId;
   const restored = await load_persistent_locus_hosted_aggregate_internal(logicalMapId, {
     persistence: options.persistence as LocusHostedAggregatePersistenceAdapter,
   });
-  if (restored === undefined) return persistent_view(options, true);
+  try { assertInitialCurrent(); } catch (cause) { restored?.dispose(); throw cause; }
+  if (restored === undefined) return persistent_view(options, true, undefined, internal.scopedDocuments);
   const restoredCheckpoint = internal_livemap_aggregate_authority(restored.map).captureSemanticCheckpoint();
   const initialRegistry = initialAuthority.hostedRegistry();
   const originalNames = initialRegistry.libraries.filter((entry) => entry.scope !== "hson-internal");
@@ -203,6 +219,7 @@ export async function resume_registry_locus<
     throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
       `Hosted registry topology requires complete Locus ownership: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   }
+  try { assertInitialCurrent(); } catch (cause) { restored.dispose(); throw cause; }
   if (restoredCheckpoint.registry.digest !== initial.registryDigest) {
     const definitions: CanonicalLibraryDefinition[] = [];
     for (const [index, entry] of restoredCheckpoint.registry.libraries.entries()) {
@@ -219,5 +236,5 @@ export async function resume_registry_locus<
   // Rebind the durable authority fence and begin a fresh local identity epoch.
   internal_livemap_aggregate_authority(options.map).installSemanticCheckpoint(restoredCheckpoint);
   restored.dispose();
-  return persistent_view({ ...options, libraries: combinedCatalog }, false, runtimeOwnership);
+  return persistent_view({ ...options, libraries: combinedCatalog }, false, runtimeOwnership, internal.scopedDocuments);
 }

@@ -1,3 +1,4 @@
+import { remap_portable_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import { decode_document_scoped_library, own_document_scopes } from "./livemap.document.scoped-portable.js";
 import { encode_document_scoped_effects, validate_document_scoped_effects, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
@@ -480,6 +481,57 @@ export function decode_hosted_commit(
   }));
 }
 
+/** Encode immutable authoritative evidence independently of a pending transition.
+ * No authorization projection or live Library state participates. Disposable CSS
+ * labels are alpha-renamed so runtime QUID values never enter durable storage. @internal */
+export function encode_authoritative_scoped_commit(authority: HostedAggregateCommit): PrivateScopedAggregateCommit {
+  if (authority.topology !== undefined || authority.operations.length !== authority.replay.operations.length
+    || !authority.changed || authority.rev !== authority.prevRev + 1) {
+    throw new HostedAggregateRepresentationError("Incomplete authoritative scoped commit evidence.");
+  }
+  const operations: PrivateScopedAggregateOperation[] = [];
+  const batches = new Map<string, DocumentScopedEffect[]>();
+  for (const [index, evidence] of authority.replay.operations.entries()) {
+    const semantic = authority.operations[index]!;
+    if (semantic.library !== evidence.library) throw incompatible_graph();
+    if (evidence.scoped === undefined) {
+      const ordinary = make_portable_aggregate_commit({ ...authority, operations: [semantic], replay: { operations: [evidence] } });
+      if (ordinary !== undefined) operations.push(...ordinary.operations);
+      continue;
+    }
+    if (evidence.domain !== "graph" || !("domain" in semantic.operation) || semantic.operation.domain !== "graph"
+      || semantic.operation.op === "ensure-quid" || evidence.scoped.graph !== encode_scoped_effect_graph_operation(semantic.operation)) throw incompatible_graph();
+    const effect = { ...evidence.scoped, styles: evidence.scoped.styles.map(style => {
+      const names = new Map(style.subjects.map((subject, ordinal) => [subject.name, `_${ordinal.toString(36).padStart(9, "0")}`]));
+      return { css: remap_portable_document_css_identities(style.css, names),
+        subjects: style.subjects.map(subject => ({ ...subject, name: names.get(subject.name)! })) };
+    }) };
+    const batch = batches.get(evidence.library) ?? [];
+    if (batch.length > 0 && batch.at(-1)!.after !== effect.before) throw incompatible_graph();
+    batch.push(effect); batches.set(evidence.library, batch);
+    operations.push({ library: evidence.library, domain: "document", effect });
+  }
+  if (batches.size > 0 && operations.some(entry => entry.domain !== "data" && entry.domain !== "document")) {
+    throw new HostedAggregateRepresentationError("Missing complete scoped evidence in mixed authoritative transaction.");
+  }
+  for (const [library, batch] of batches) {
+    validate_document_scoped_effects(encode_document_scoped_effects(batch));
+    if (operations.some(entry => entry.library === library && entry.domain !== "document")) throw incompatible_graph();
+  }
+  // Own and recursively freeze the portable representation, not the source's
+  // runtime evidence. This encoder also works after preparation has ended.
+  const result: PrivateScopedAggregateCommit = JSON.parse(JSON.stringify({ authority: authority.authority,
+    registryDigest: authority.registryDigest, prevRev: authority.prevRev, rev: authority.rev,
+    operationCount: operations.length, operations }));
+  const freeze = (value: unknown): void => {
+    if (value === null || typeof value !== "object" || Object.isFrozen(value)) return;
+    Object.values(value).forEach(freeze); Object.freeze(value);
+  };
+  freeze(result);
+  assert_encoded_bound(result, HOSTED_MAX_COMMIT_BYTES, "Authoritative scoped commit");
+  return result;
+}
+
 /** Derive QUID-free semantic effects from a living authority transition. */
 export function make_portable_aggregate_commit(authority: HostedAggregateCommit): PortableAggregateCommit | undefined {
   if (authority.replay.operations.some(entry => entry.scoped !== undefined)) {
@@ -609,8 +661,8 @@ export function decode_portable_aggregate_commit(
   }));
 }
 
-/** Decode only at the private managed Echo boundary. Projection membership is
- * resolved from the receiver's fixed bindings, never from effect contents.
+/** Decode at the private managed Echo or full-map durable authority boundary.
+ * Membership is resolved from the owner's fixed bindings, never effect contents.
  * Shape/semantic validation does not authorize receipt of this position. @internal */
 export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggregateCommit,
   registry: HostedRegistry, bindings: ReadonlyMap<string, HostedRegistryBinding>):

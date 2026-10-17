@@ -78,6 +78,7 @@ export function create_registry_locus_internal<
     prepareGate?: (input: LocusHostedAggregateGateInput) => void;
     maxHistoryBytes?: number;
     recoveryFloorRevision?: number;
+    scopedDocuments?: true;
     afterRecoveryCut?: () => void | Promise<void>;
     runtimeOwnership?: Map<string, "private" | "shared">;
     onDispose?: (locus: Locus<TMap, TActions>) => void;
@@ -165,6 +166,7 @@ export function create_registry_locus_internal<
 
   const authority = create_locus_hosted_aggregate_authority_internal({
     map: options.map,
+    ...(internal.scopedDocuments === undefined ? {} : { scopedDocuments: internal.scopedDocuments }),
     ...(internal.runtimeOwnership === undefined ? {} : { runtimeOwnership: internal.runtimeOwnership }),
     libraries: options.libraries,
     ...(options.defaultProjection === undefined ? {} : { defaultProjection: options.defaultProjection }),

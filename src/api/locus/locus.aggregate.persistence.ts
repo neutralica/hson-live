@@ -15,8 +15,10 @@ import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   HostedAggregateCommit,
   PortableAggregateCommit,
+  PrivateScopedAggregateCommit,
+  PrivateScopedAggregateOperation,
 } from "../livemap/livemap.hosted.js";
-import { make_portable_aggregate_commit } from "../livemap/livemap.hosted.js";
+import { encode_authoritative_scoped_commit, make_portable_aggregate_commit } from "../livemap/livemap.hosted.js";
 import {
   internal_livemap_aggregate_authority,
 } from "../livemap/livemap.internal.js";
@@ -37,7 +39,9 @@ import {
 } from "./locus.aggregate.js";
 import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 
-export type LocusDurableAggregateCommit = Readonly<Omit<PortableAggregateCommit, "format"> & {
+export type LocusDurableAggregateCommit = Readonly<Omit<PortableAggregateCommit, "format" | "operations"> & {
+  operationCount?: number;
+  operations: readonly PrivateScopedAggregateOperation[];
   format: "hson-livemap-durable-commit";
 }>;
 
@@ -237,7 +241,7 @@ export async function write_semantic_checkpoint(
   if (previous !== undefined) {
     if (previous.checkpoint.incarnationId !== checkpoint.authority.incarnationId
       || previous.checkpoint.rev > checkpoint.revision) throw invalid_state();
-    const validated = await validate_hosted_aggregate_state(checkpoint.authority.logicalMapId, previous, adapter, checkpoint.revision, true);
+    const validated = await validate_hosted_aggregate_state(checkpoint.authority.logicalMapId, previous, adapter, checkpoint.revision);
     const expected = validated.prefix;
     if (expected === undefined || expected.map.revision !== checkpoint.revision
       || JSON.stringify(expected.map.authority) !== JSON.stringify(checkpoint.authority)
@@ -430,7 +434,9 @@ export async function restore_semantic_checkpoint_manifest_internal(
 
 function hosted_commit(commit: HostedAggregateCommit,
   libraryOwnershipAdded: readonly LocusDurableOwnershipEntry[] = []): LocusHostedAggregatePersistedCommit {
-  const projected = make_portable_aggregate_commit(commit);
+  const scoped = commit.replay.operations.some(entry => entry.scoped !== undefined);
+  const projected = scoped ? { format: "private", ...encode_authoritative_scoped_commit(commit) }
+    : make_portable_aggregate_commit(commit);
   if (projected === undefined) throw new Error("Runtime-local identity demand cannot become durable authority history.");
   const { format: _clientFormat, ...semantic } = projected;
   return Object.freeze({
@@ -452,9 +458,16 @@ export function durable_aggregate_commit(commit: HostedAggregateCommit,
   return hosted_commit(commit, ownership);
 }
 
-function durable_aggregate_commit_as_client(commit: LocusDurableAggregateCommit): PortableAggregateCommit {
-  const { format: _format, ...semantic } = commit;
-  return Object.freeze({ format: "hson-portable-aggregate-commit", ...semantic });
+function durable_aggregate_commit_as_client(commit: LocusDurableAggregateCommit): PortableAggregateCommit | PrivateScopedAggregateCommit {
+  const { format: _format, operationCount, operations, ...semantic } = commit;
+  if (operationCount !== undefined) return Object.freeze({ authority: semantic.authority,
+    registryDigest: semantic.registryDigest, prevRev: semantic.prevRev, rev: semantic.rev, operationCount, operations });
+  const ordinary: PortableAggregateCommit["operations"][number][] = [];
+  for (const operation of operations) {
+    if (operation.domain === "document") throw invalid_state();
+    ordinary.push(operation);
+  }
+  return Object.freeze({ format: "hson-portable-aggregate-commit", ...semantic, operations: Object.freeze(ordinary) });
 }
 
 function assert_commit_fence(
@@ -485,8 +498,11 @@ function assert_commit_fence(
   const topology = Object.hasOwn(commitRecord, "topology");
   if (!(topology
     ? exact_keys(commitRecord, ["format", "authority", "previousRegistryDigest", "registryDigest", "topology", "prevRev", "rev", "operations"])
-    : exact_keys(commitRecord, ["format", "authority", "registryDigest", "prevRev", "rev", "operations"]))
+    : exact_keys(commitRecord, ["format", "authority", "registryDigest", "prevRev", "rev", "operations", ...(Object.hasOwn(commitRecord, "operationCount") ? ["operationCount"] : [])]))
     || commitRecord.format !== "hson-livemap-durable-commit") throw invalid_state();
+  if (Object.hasOwn(commitRecord, "operationCount") && (!Number.isSafeInteger(commitRecord.operationCount)
+    || commitRecord.operationCount === 0 || !Array.isArray(commitRecord.operations)
+    || commitRecord.operationCount !== commitRecord.operations.length)) throw invalid_state();
   const authority = record(commitRecord.authority);
   if (authority === undefined
     || authority.logicalMapId !== checkpoint.logicalMapId
@@ -510,7 +526,6 @@ async function validate_hosted_aggregate_state(
   value: unknown,
   adapter: LocusHostedAggregatePersistenceAdapter,
   prefixRevision?: number,
-  checkpointOnlyScoped = false,
 ): Promise<ValidatedHostedAggregateState> {
   try {
     const state = record(value);
@@ -523,8 +538,6 @@ async function validate_hosted_aggregate_state(
 
     const map = await restore_semantic_checkpoint_manifest_internal(checkpoint, adapter);
     const aggregate = internal_livemap_aggregate_authority(map);
-    const scoped = aggregate.libraries().some(id => aggregate.documentScopes(id) !== undefined);
-    if (scoped && !checkpointOnlyScoped) throw new Error("Scoped durable authority recovery requires B2 transition tails.");
     const runtimeOwnership = new Map(checkpoint.locus.runtimeOwnership.map((entry) => [entry.name, entry.ownership] as const));
     const capturePrefix = () => Object.freeze({ map: aggregate.captureSemanticCheckpoint(),
       runtimeOwnership: Object.freeze([...runtimeOwnership].map(([name, ownership]) => Object.freeze({ name, ownership }))) });
@@ -553,11 +566,13 @@ async function validate_hosted_aggregate_state(
         lastCoveredRev = commitRecord.rev;
         continue;
       }
-      if (scoped) throw new Error("Scoped durable transition tails require B2.");
       crossedCheckpoint = true;
       if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
       const commit = assert_commit_fence(item, checkpoint, expectedPrevRev, expectedRegistryDigest);
       if (commit.topology !== undefined) {
+        if (aggregate.libraries().some(id => aggregate.documentScopes(id) !== undefined)) {
+          throw new Error("Scoped durable topology additions require H0b.");
+        }
         // Live topology admission and incremental wire codecs reject these too.
         // A complete checkpoint may carry correspondence; a tail cannot.
         for (const entry of commit.topology.operation.libraries) {
@@ -618,6 +633,7 @@ function set_initial_authority(
 
 function make_durability_gate(
   adapter: LocusHostedAggregatePersistenceAdapter,
+  map: LiveMap,
 ): Readonly<{
   prepareGate: NonNullable<LocusHostedAggregateOptions["prepareGate"]>;
   gate: NonNullable<LocusHostedAggregateOptions["gate"]>;
@@ -626,6 +642,10 @@ function make_durability_gate(
   return Object.freeze({
     prepareGate: ({ commit, libraryOwnershipAdded }) => {
       if (!commit.changed) return;
+      const authority = internal_livemap_aggregate_authority(map);
+      if (commit.topology !== undefined && authority.libraries().some(id => authority.documentScopes(id) !== undefined)) {
+        throw new Error("Scoped durable topology additions require H0b.");
+      }
       const record = durable_aggregate_commit(commit, libraryOwnershipAdded);
       JSON.stringify(record);
       records.set(commit, record);
@@ -707,12 +727,12 @@ export async function create_persistent_locus_hosted_aggregate_internal(
   options: PersistentLocusHostedAggregateOptions,
 ): Promise<PersistentLocusHostedAggregate> {
   const aggregate = internal_livemap_aggregate_authority(options.map);
-  if (options.scopedDocuments === true || aggregate.libraries().some(id => aggregate.documentScopes(id) !== undefined)) {
-    throw new Error("Scoped durable authority requires B2 transition tails and recovery.");
+  if (options.scopedDocuments !== true && aggregate.libraries().some(id => aggregate.documentScopes(id) !== undefined)) {
+    throw new Error("Scoped durable authority requires explicit private scoped preparation.");
   }
   set_initial_authority(options.map, options.logicalMapId, options.incarnationId);
   const { persistence, logicalMapId: _logicalMapId, incarnationId: _incarnationId, ...hostedOptions } = options;
-  const durability = make_durability_gate(persistence);
+  const durability = make_durability_gate(persistence, options.map);
   const locus = create_locus_hosted_aggregate_internal({
     ...hostedOptions,
     ...durability,
@@ -741,11 +761,10 @@ export async function restore_persistent_locus_hosted_aggregate_internal(
   state: LocusHostedAggregatePersistedState,
   options: RestorePersistentLocusHostedAggregateOptions,
 ): Promise<PersistentLocusHostedAggregate> {
-  if (options.scopedDocuments === true) throw new Error("Scoped durable authority requires B2 transition tails and recovery.");
   const validated = await validate_hosted_aggregate_state(logicalMapId, state, options.persistence);
   const validatedPosition = internal_livemap_aggregate_authority(validated.map).hostedPosition();
   const { persistence, ...hostedOptions } = options;
-  const durability = make_durability_gate(persistence);
+  const durability = make_durability_gate(persistence, validated.map);
   const locus = create_locus_hosted_aggregate_internal({
     ...hostedOptions,
     map: validated.map,

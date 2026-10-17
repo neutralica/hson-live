@@ -396,6 +396,7 @@ await case_("durable graph tails reject malformed current tagged content without
   for (const invalid of invalid_tagged_graphs) {
     const malformed = { ...valid, commits: valid.commits.map(record => ({ ...record,
       commit: { ...record.commit, operations: record.commit.operations.map(operation => {
+        assert.ok(operation.domain !== "document");
         const representation = JSON.parse(operation.payload);
         representation.content = exact_tagged_payload(invalid.value);
         return { ...operation, payload: JSON.stringify(representation) };
