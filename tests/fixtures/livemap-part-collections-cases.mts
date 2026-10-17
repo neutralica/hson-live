@@ -1,8 +1,9 @@
+import { client_projection_map } from "../helpers/client-projection.mts";
 import { without_structured_clone } from "../helpers/without-structured-clone.mts";
 import { admit_locus_local_initializers, install_client_local_initializers_internal } from "../../src/api/locus/locus.local-initializer.ts";
 import { encode_ssr_bootstrap, decode_ssr_bootstrap } from "../../src/api/ssr/ssr-bootstrap.ts";
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap } from "../../src/index.ts";
+import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonSchema } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import { add_livemap_part_collection_internal as collect, read_livemap_part_internal as read,
   compose_livemap_document_internal as compose, make_livemap_from_canonical_libraries_internal,
@@ -85,6 +86,125 @@ function sockets() {
 }
 
 export async function part_collection_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
+  // Internal authority probes must share the source runtime that creates their maps.
+  await check("public Parts final validation retains reentrancy and management fences", () => {
+    for (const effect of ["edit", "management"] as const) {
+      const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
+      const aggregate = owner(map), manager = {};
+      let captured = false, reentered = false, observations = 0, expected = map.capture();
+      const stop = map.commits.observe(() => observations++);
+      const definition = new Proxy({ parts: new Proxy({}, {
+        ownKeys(target) { captured = true; return Reflect.ownKeys(target); },
+      }) }, {
+        has(target, key) {
+          if (captured && key === "schema" && !reentered) {
+            reentered = true;
+            if (effect === "management") aggregate.claimManagement(manager);
+            else { map.lib("state").at(["count"]).set(2); expected = map.capture(); }
+          }
+          return Reflect.has(target, key);
+        },
+      });
+      try {
+        assert.throws(() => map.addLibraries({ earlier: { data: 2 }, parts: definition }),
+          effect === "edit" ? /changed during capture/ : /controlled by an exclusive Locus authority/);
+        assert.equal(reentered, true); assert.deepEqual(map.capture(), expected);
+        assert.equal(observations, effect === "edit" ? 1 : 0);
+        assert.throws(() => map.lib("earlier")); assert.throws(() => map.lib("parts"));
+      } finally { if (effect === "management" && reentered) aggregate.releaseManagement(manager); stop(); }
+      map.addLibraries({ earlier: { data: 2 }, parts: { parts: {} } });
+      const earlier = map.lib("earlier");
+      if (earlier.mode === "document") throw Error("Expected data Library");
+      assert.equal(earlier.snap(), 2);
+    }
+  });
+
+  await check("installed Parts reject direct, widened, replayed, and reconstructed Schema attachment atomically", () => {
+    const definitions = { collection: { parts: { p: { kind: "document", document: "<p/>" } } }, state: { data: 1 } } as const;
+    const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
+    const ordinary = hsonLiveMap.fromLibraries({ collection: { data: definitions.collection.parts }, state: { data: 1 } });
+    const replay = data(ordinary).schema.use(schema);
+    const initial = hsonLiveMap.fromLibraries(definitions);
+    const reconstructed = install_libraries_snapshot(initial.capture()).map;
+    const dynamic = hsonLiveMap.create(); dynamic.addLibraries(definitions);
+    for (const map of [initial, reconstructed, dynamic]) {
+      const aggregate = owner(map), name: string = "collection", library = data(map, name);
+      const contract = library.schema.get(), binding = aggregate.hostedRegistry().libraries.find(entry => entry.name === name)!;
+      const identity = aggregate.libraries()[0]!;
+      assert.ok(identity);
+      const attempts = [
+        () => library.schema.use(schema), () => map.lib(name).schema.use(ANY_DATA),
+        () => aggregate.useLibrarySchema(identity, schema, binding.schemaDigest), () => map.replay({ ...replay, prevRev: map.rev, rev: map.rev + 1 }),
+      ];
+      for (let repeat = 0; repeat < 2; repeat++) for (const attempt of attempts) {
+        atomic(map, attempt, /Part collections do not support supplemental Schema/);
+        assert.equal(library.schema.get(), contract);
+        assert.equal(aggregate.hostedRegistry().libraries.find(entry => entry.name === name)?.validation, validation);
+      }
+      // A pending batch prefix must never publish if an indirect attachment rejects.
+      atomic(map, () => map.batch(writer => {
+        const target = writer.lib(name);
+        if (target.mode === "document") throw Error("Expected data");
+        target.at(["p", "document"]).set('<p "discarded"/>');
+        library.schema.use(schema);
+      }));
+      library.at(["p"]).replace({ kind: "document", document: '<p "valid after rejection"/>', css: "p{color:red}" });
+      map.batch(writer => { const target = writer.lib(name);
+        if (target.mode === "document") throw Error("Expected data");
+        target.at(["p", "document"]).set('<p "staged after rejection"/>'); });
+      assert.equal(library.snap(["p", "document"]), '<p "staged after rejection"/>');
+      assert.equal(library.schema.get(), contract);
+      assert.equal(data(map, "state").snap(), 1);
+    }
+  });
+
+  await check("hosted, mirror, and client-local Parts retain the attachment restriction", async () => {
+    const map = hsonLiveMap.fromLibraries({ collection: { parts: { p: { kind: "document", document: "<p/>" } } } });
+    const aggregate = owner(map), checkpoint = aggregate.captureSemanticCheckpoint();
+    const mirror = make_livemap_mirror_from_semantic_checkpoint_internal(checkpoint);
+    atomic(mirror, () => data(mirror).schema.use(ANY_DATA), /Part collections/);
+    const snapshot = capture_selected_authority_projection_snapshot(map, await projection(map, ["collection"]));
+    const client = client_projection_map({ authority: snapshot, local: { local: { parts: { p: { kind: "document", document: "<p/>" } } } } });
+    atomic(client, () => data(client, "local").schema.use(ANY_DATA), /Part collections/);
+    atomic(client, () => data(client).schema.use(ANY_DATA), /Shared|Locus authority/);
+    data(client, "local").at(["p"]).replace({ kind: "document", document: "<aside/>" });
+    const locus = hsonLiveMap.locus.create({ shared: [{ name: "collection", definition: { parts: {} } }] });
+    try {
+      assert.equal("use" in locus.lib("collection").schema, false);
+      const authorityMap = locus_map_internal(locus), before = owner(authorityMap).hostedPosition();
+      atomic(authorityMap, () => data(authorityMap).schema.use(ANY_DATA));
+      assert.deepEqual(owner(authorityMap).hostedPosition(), before);
+      await locus.lib("collection").at([]).replace({ p: { kind: "document", document: "<p/>" } });
+      await locus.stage(writer => { writer.lib("collection").at(["p", "document"]).set("<aside/>"); });
+    } finally { locus.dispose(); }
+  });
+
+  await check("reconstructed and hosted contracts cannot claim Parts plus a supplemental Schema", () => {
+    const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
+    const ordinary = hsonLiveMap.fromLibraries({ collection: { data: { p: { kind: "document", document: "<p/>" } }, schema } });
+    const snapshot = ordinary.capture();
+    const entries = snapshot.registry.libraries.map(entry => ({ ...entry, validation }));
+    // The canonical registry owner rejects even internally reconstructed evidence.
+    assert.throws(() => make_hosted_registry(entries.map(entry => ({ name: entry.name, mode: entry.mode, validation,
+      identity: {}, schema }))), /Part collections/);
+    assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "collection", family: "data", schema,
+      root: graph({ p: { kind: "document", document: "<p/>" } }), validation }]), /Part collections/);
+    const forged = { ...snapshot, registry: { ...snapshot.registry, libraries: entries },
+      libraries: snapshot.libraries.map(entry => ({ ...entry, validation })) };
+    assert.throws(() => install_libraries_snapshot(forged), /Part collections|registry/i);
+  });
+
+  await check("ordinary data and document post-admission Schemas retain governance", () => {
+    const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } }, page: { document: "<main/>" } });
+    const state = map.lib("state"), page = map.lib("page");
+    assert.equal(state.schema.get(), ANY_DATA); assert.equal(page.schema.get(), ANY_DOCUMENT);
+    assert.equal(data(map, "state").schema.use(Hson.schema`<type "data" content <count "number">>` as HsonSchema<unknown, "data">).changed, true);
+    assert.equal(map.lib(String("page")).schema.use(Hson.schema`<type "document" tag "main" content "empty">`).changed, true);
+    atomic(map, () => state.at(["count"]).set("bad" as never));
+    atomic(map, () => page.at([0]).replace("<aside/>"));
+    state.at(["count"]).set(2);
+  });
+
   await check("one data Library admits two values in one transition without child registration or issuance", () => {
     const map = hsonLiveMap.fromLibraries({}), aggregate = owner(map), commits: LiveMapCommit[] = [];
     let attempts = 0;

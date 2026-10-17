@@ -8,6 +8,7 @@ import type {
   LiveMapDefinitions,
   LiveMapLibraryDefinition,
   LiveMapKnownDefinitions,
+  LiveMapPartsDefinitionCheck,
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { GovernorLibrarySelector, GovernorReadLibrarySelector, GovernorCut, GovernorCommits, EchoLibrary } from "./governor.types.js";
@@ -118,6 +119,21 @@ export type LocusRuntimeLibraryAdditions = Readonly<{
   private?: readonly LocusAuthorityLibraryDefinition[];
   shared?: readonly LocusAuthorityLibraryDefinition[];
 }>;
+
+/** Check only inferred Parts definitions; preserve the established grouped admission grammar. */
+type LocusInvalidPartsEntry<TEntry> = TEntry extends { readonly definition: infer TDefinition }
+  ? TDefinition extends LiveMapPartsDefinitionCheck<TDefinition> ? never : TEntry
+  : TEntry extends { readonly initializer: infer TInitializer }
+    ? TInitializer extends LiveMapPartsDefinitionCheck<TInitializer> ? never : TEntry
+    : never;
+
+export type LocusPartsEntriesCheck<TEntries> = TEntries extends readonly (infer TEntry)[]
+  ? [LocusInvalidPartsEntry<TEntry>] extends [never] ? unknown : never
+  : unknown;
+
+export type LocusPartsAdditionsCheck<TAdditions> = {
+  readonly [TGroup in keyof TAdditions]: LocusPartsEntriesCheck<TAdditions[TGroup]>;
+};
 
 export type LocusMapDefinitions<
   TPrivate extends readonly LocusAuthorityLibraryDefinition[],
@@ -469,7 +485,9 @@ export type Locus<
   lib: GovernorLibrarySelector<TMap>;
   cut: GovernorCut;
   commits: GovernorCommits;
-  addLibraries: (additions: LocusRuntimeLibraryAdditions) => Promise<void>;
+  addLibraries: <const TAdditions extends LocusRuntimeLibraryAdditions>(
+    additions: TAdditions & LocusPartsAdditionsCheck<NoInfer<TAdditions>>,
+  ) => Promise<void>;
   readonly logicalMapId: LocusLogicalMapId;
   readonly incarnationId: LocusIncarnationId;
   readonly rev: number;

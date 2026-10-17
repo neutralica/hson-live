@@ -260,7 +260,9 @@ type LiveMapMutationCandidateTuple<TValue extends readonly unknown[]> =
     : [];
 
 /** Remove `undefined` from write positions, accepting detached reads as proposals. */
-export type LiveMapWriteValue<TValue> = [Exclude<LiveMapMutationCandidateValue<TValue>, undefined>] extends [JsonValue]
+// Keep the Part contract when optional never fields fail JSON assignability
+// under consumers without exactOptionalPropertyTypes.
+export type LiveMapWriteValue<TValue> = [Exclude<LiveMapMutationCandidateValue<TValue>, undefined>] extends [JsonValue | LiveMapDocumentPart | LiveMapPartCollection]
   ? Exclude<LiveMapMutationCandidateValue<TValue> | TValue, undefined>
   : JsonValue;
 
@@ -1127,6 +1129,7 @@ export type LiveMapDataLibraryInput<
   data: JsonValue | string;
   schema: TSchema;
   document?: never;
+  parts?: never;
   css?: never;
 }>;
 
@@ -1138,18 +1141,58 @@ export type LiveMapDocumentLibraryInput<
   document: string | HsonNode;
   schema: TSchema;
   data?: never;
+  parts?: never;
   css?: never;
 }>;
 
-/** Established explicit-Schema library input. */
-export type LiveMapLibraryInput = LiveMapDataLibraryInput | LiveMapDocumentLibraryInput;
+/** Established data, document, or intrinsically governed Parts input. */
+export type LiveMapLibraryInput = LiveMapDataLibraryInput | LiveMapDocumentLibraryInput | LiveMapPartsLibraryInput;
+
+/** One governed Part definition. Authored Hson strings, including HsonAuthored, are accepted. */
+export type LiveMapDocumentPart = Readonly<{ kind: "document"; document: string; css?: string; schema?: never }>;
+
+/** Ordinary string-keyed data whose complete value is validated on every governed mutation. */
+export type LiveMapPartCollection = Readonly<Record<string, LiveMapDocumentPart>>;
+
+/** Explicit governed Parts admission; retains the ordinary data-object Library mode. */
+export type LiveMapPartsLibraryInput = Readonly<{
+  parts: LiveMapPartCollection;
+  schema?: never;
+  data?: never;
+  document?: never;
+  css?: never;
+}>;
 
 /** Runtime and construction input; omitted Schema selects the family top. */
 export type LiveMapLibraryDefinition =
+  | LiveMapPartsLibraryInput
   | Readonly<Omit<LiveMapDataLibraryInput, "schema"> & { schema?: HsonSchema<unknown, HsonSchemaMode> }>
   | Readonly<Omit<LiveMapDocumentLibraryInput, "schema"> & { schema?: HsonSchema<unknown, HsonSchemaMode> }>;
 
 export type LiveMapDefinitions = Readonly<Record<string, LiveMapLibraryDefinition>>;
+
+/** Inferred required keys distinguish presence from optional-never annotations in either compiler mode. */
+type LiveMapPartSchemaCheck<TInput> = [Extract<TInput, { readonly schema: unknown }>] extends [never] ? unknown : never;
+
+type LiveMapPartMembersCheck<TParts> = {
+  readonly [TKey in keyof TParts]: LiveMapPartSchemaCheck<TParts[TKey]>;
+};
+
+export type LiveMapPartsDefinitionCheck<TInput> = TInput extends { readonly parts: infer TParts }
+  ? LiveMapPartSchemaCheck<TInput> & Readonly<{ parts: LiveMapPartMembersCheck<TParts> }>
+  : unknown;
+
+export type LiveMapPartsDefinitionsCheck<TDefinitions> = {
+  readonly [TName in keyof TDefinitions]: LiveMapPartsDefinitionCheck<TDefinitions[TName]>;
+};
+
+/** Only Part-shaped write positions infer additional key evidence; ordinary proposals keep their signatures. */
+export type LiveMapPartWrite<TValue, TProposal, TResult> =
+  [NonNullable<TValue>] extends [LiveMapDocumentPart]
+    ? <const TInput extends TProposal>(value: TInput & LiveMapPartSchemaCheck<NoInfer<TInput>>) => TResult
+    : [NonNullable<TValue>, TProposal] extends [LiveMapPartCollection, LiveMapPartCollection]
+      ? <const TInput extends TProposal>(value: TInput & LiveMapPartMembersCheck<NoInfer<TInput>>) => TResult
+      : (value: TProposal) => TResult;
 
 /** Only keys named by the type itself establish static topology. */
 export type LiveMapKnownDefinitions<TLibraries extends LiveMapDefinitions> = {
@@ -1259,10 +1302,14 @@ type LiveMapLibraryPathHandleBase<
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapLibraryPathHandle<LiveMapPathValue<TValue, TPath>, TLibrary>;
-  set: (value: LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
-  replace: (value: LiveMapWriteValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  set: LiveMapPartWrite<TValue, LiveMapSetValue<TValue>, LiveMapCommit<TLibrary, LiveMapDataOp>>;
+  replace: LiveMapPartWrite<TValue, LiveMapWriteValue<TValue>, LiveMapCommit<TLibrary, LiveMapDataOp>>;
   delete: () => LiveMapCommit<TLibrary, LiveMapDataOp>;
-  update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  update: [NonNullable<TValue>] extends [LiveMapDocumentPart]
+    ? <const TInput extends LiveMapSetValue<TValue>>(
+        updater: (value: TValue) => TInput & LiveMapPartSchemaCheck<NoInfer<TInput>>,
+      ) => LiveMapCommit<TLibrary, LiveMapDataOp>
+    : (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
   feed: (listener: (event: LiveMapLibraryFeedEvent<TLibrary>) => void) => LiveMapDisposer;
   watch: (listener: (next: TValue) => void) => LiveMapDisposer;
   /** Observe the current runtime endpoint category. This is not permanent proof. */
@@ -1550,19 +1597,23 @@ type LiveMapDocumentSchemaUse<TSchema extends HsonSchema> =
   HsonNode extends DocumentSchemaGraph<TSchema> ? HsonSchema<unknown, "document"> : TSchema;
 
 type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
-  TInput extends LiveMapDataLibraryInput<infer TSchema>
-    ? LiveMapDataLibrary<DataSchemaValue<TSchema>, TLibrary, TSchema>
-    : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
-      ? LiveMapDocumentLibrary<DocumentSchemaGraph<TSchema>, TLibrary, TSchema>
-      : TInput extends { data: unknown }
-        ? "schema" extends keyof TInput
-          ? LiveMapDataLibrary<unknown, TLibrary, HsonSchema>
-          : LiveMapDataLibrary<JsonValue, TLibrary, typeof import("../api/schema/hson-schema.js").ANY_DATA>
-        : TInput extends { document: unknown }
+  TInput extends LiveMapPartsLibraryInput
+    ? Omit<LiveMapDataLibrary<LiveMapPartCollection, TLibrary, typeof import("../api/schema/hson-schema.js").ANY_DATA>, "schema"> & Readonly<{
+        schema: Readonly<{ get: () => HsonSchema<unknown, "data"> }>;
+      }>
+    : TInput extends LiveMapDataLibraryInput<infer TSchema>
+      ? LiveMapDataLibrary<DataSchemaValue<TSchema>, TLibrary, TSchema>
+      : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
+        ? LiveMapDocumentLibrary<DocumentSchemaGraph<TSchema>, TLibrary, TSchema>
+        : TInput extends { data: unknown }
           ? "schema" extends keyof TInput
-            ? LiveMapDocumentLibrary<unknown, TLibrary, HsonSchema>
-            : LiveMapDocumentLibrary<HsonNode, TLibrary, typeof import("../api/schema/hson-schema.js").ANY_DOCUMENT>
-          : never;
+            ? LiveMapDataLibrary<unknown, TLibrary, HsonSchema>
+            : LiveMapDataLibrary<JsonValue, TLibrary, typeof import("../api/schema/hson-schema.js").ANY_DATA>
+          : TInput extends { document: unknown }
+            ? "schema" extends keyof TInput
+              ? LiveMapDocumentLibrary<unknown, TLibrary, HsonSchema>
+              : LiveMapDocumentLibrary<HsonNode, TLibrary, typeof import("../api/schema/hson-schema.js").ANY_DOCUMENT>
+            : never;
 
 /** Document-root capabilities dispatched and guarded by the selected runtime mode. */
 type LiveMapDynamicDocumentCapabilities = Pick<LiveMapDocumentLibrary, "css">;
@@ -1597,11 +1648,12 @@ type LiveMapReceiverDefinitions<TMap> = TMap extends Readonly<{
 }> ? TLibraries : never;
 
 type LiveMapDefinitionWithSchema<TInput, TSchema extends HsonSchema> =
-  TInput extends Readonly<{ data: unknown }>
-    ? Readonly<Omit<TInput, "schema"> & { schema: Extract<TSchema, HsonSchema<unknown, "data">> }>
-    : TInput extends Readonly<{ document: unknown }>
-      ? Readonly<Omit<TInput, "schema"> & { schema: Extract<TSchema, HsonSchema<unknown, "document">> }>
-      : never;
+  TInput extends Readonly<{ parts: unknown }> ? TInput
+    : TInput extends Readonly<{ data: unknown }>
+      ? Readonly<Omit<TInput, "schema"> & { schema: Extract<TSchema, HsonSchema<unknown, "data">> }>
+      : TInput extends Readonly<{ document: unknown }>
+        ? Readonly<Omit<TInput, "schema"> & { schema: Extract<TSchema, HsonSchema<unknown, "document">> }>
+        : never;
 
 type LiveMapSchemaRefinements<TMap> = TMap extends Readonly<{
   [liveMapLibrarySchemaRefinementsType]: infer TRefinements;
@@ -1648,8 +1700,8 @@ export type LiveMapStagedDataPath<TValue, TResult> = Readonly<{
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapStagedDataPath<LiveMapPathValue<TValue, TPath>, TResult>;
-  set: (value: LiveMapSetValue<TValue>) => TResult;
-  replace: (value: LiveMapWriteValue<TValue>) => TResult;
+  set: LiveMapPartWrite<TValue, LiveMapSetValue<TValue>, TResult>;
+  replace: LiveMapPartWrite<TValue, LiveMapWriteValue<TValue>, TResult>;
   delete: () => TResult;
 }>;
 
@@ -1719,15 +1771,17 @@ type LiveMapStagedDocumentLibrary<TEvidence, TResult> = Readonly<{
 }>;
 
 type LiveMapStagedLibraryForInput<TInput, TResult> =
-  TInput extends LiveMapDataLibraryInput<infer TSchema>
-    ? LiveMapStagedDataLibrary<DataSchemaValue<TSchema>, TResult>
-    : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
-      ? LiveMapStagedDocumentLibrary<DocumentSchemaGraph<TSchema>, TResult>
-      : TInput extends Readonly<{ data: unknown }>
-        ? LiveMapStagedDataLibrary<JsonValue, TResult>
-        : TInput extends Readonly<{ document: unknown }>
-          ? LiveMapStagedDocumentLibrary<HsonNode, TResult>
-          : never;
+  TInput extends LiveMapPartsLibraryInput
+    ? LiveMapStagedDataLibrary<LiveMapPartCollection, TResult>
+    : TInput extends LiveMapDataLibraryInput<infer TSchema>
+      ? LiveMapStagedDataLibrary<DataSchemaValue<TSchema>, TResult>
+      : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
+        ? LiveMapStagedDocumentLibrary<DocumentSchemaGraph<TSchema>, TResult>
+        : TInput extends Readonly<{ data: unknown }>
+          ? LiveMapStagedDataLibrary<JsonValue, TResult>
+          : TInput extends Readonly<{ document: unknown }>
+            ? LiveMapStagedDocumentLibrary<HsonNode, TResult>
+            : never;
 
 type LiveMapDynamicStagedLibrary<TResult> =
   | LiveMapStagedDataLibrary<JsonValue, TResult>
@@ -1751,7 +1805,8 @@ export type LiveMapSynchronousAuthoring<TWriter, TResult> = <TCallback extends (
 ) => TResult;
 
 type LiveMapKnownFamilyNames<TMap, TFamily extends "data" | "document"> = {
-  [TName in LiveMapEffectiveKnownNames<TMap>]: LiveMapEffectiveDefinitions<TMap>[TName] extends Readonly<Record<TFamily, unknown>> ? TName : never;
+  [TName in LiveMapEffectiveKnownNames<TMap>]: LiveMapEffectiveDefinitions<TMap>[TName] extends
+    Readonly<Record<TFamily, unknown>> | (TFamily extends "data" ? Readonly<{ parts: unknown }> : never) ? TName : never;
 }[LiveMapEffectiveKnownNames<TMap>];
 
 export type LiveMapCutOptions<TData extends string = string, TDocument extends string = string> = Readonly<{
@@ -1805,7 +1860,7 @@ export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
   batch: LiveMapSynchronousAuthoring<LiveMapStagedWriter<this, void>, LiveMapCommit>;
   /** Admit one atomic batch of new libraries into this map's registry. */
   addLibraries<const TDefinitions extends LiveMapDefinitions>(
-    definitions: TDefinitions & (Extract<keyof LiveMapKnownDefinitions<TDefinitions>, keyof LiveMapKnownDefinitions<TLibraries>> extends never
+    definitions: TDefinitions & LiveMapPartsDefinitionsCheck<NoInfer<TDefinitions>> & (Extract<keyof LiveMapKnownDefinitions<TDefinitions>, keyof LiveMapKnownDefinitions<TLibraries>> extends never
       ? unknown : never),
   ): LiveMapCommit;
   /** Replay one portable local library-add commit at its recorded base revision. */
@@ -2246,9 +2301,13 @@ export type LiveMapPathObjectApi<
   values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
   entries: () => readonly LiveMapObjectEntry<TValue>[];
   /** Set one child key under this object path, creating that key if needed. */
-  setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => TCommit;
+  setKey: [NonNullable<TValue>] extends [LiveMapPartCollection]
+    ? <const TKey extends LiveMapObjectKey<TValue>, const TInput extends LiveMapObjectSetValue<TValue, NoInfer<TKey>>>(
+        key: TKey, value: TInput & LiveMapPartSchemaCheck<NoInfer<TInput>>,
+      ) => TCommit
+    : <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => TCommit;
   /** Shallow child-key writes under this object path, preserving unspecified siblings. */
-  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => TCommit,
+  setMany: LiveMapPartWrite<TValue, NoInfer<LiveMapObjectSetManyValues<TValue>>, TCommit>;
   clear: () => TCommit;
   deleteKey: (key: string) => TCommit;
   deleteMany: (keys: readonly string[]) => TCommit;

@@ -3,7 +3,7 @@ import type { JsonValue, HsonNode } from "../core/types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
   LiveMap, LiveMapKnownDefinitions, LiveMapKnownNames, LiveMapPathValue, LiveMapSetValue,
-  LiveMapWriteValue, LivePath, LiveMapRootMode, LiveMapCssOp,
+  LiveMapWriteValue, LiveMapPartWrite, LivePath, LiveMapRootMode, LiveMapCssOp,
   LiveMapDocumentContent, LiveMapDocumentAttrs, LiveMapDocumentAttributeValue,
   LiveMapDocumentCommitTarget, LiveMapCut, LiveMapHtmlCut, LiveMapCutOptions,
   LiveMapRegistryCommitObserverApi, LiveMapDocumentLibrary, LiveMapDataLibrary,
@@ -18,8 +18,8 @@ export type GovernorDataPath<TValue = JsonValue | undefined> = Readonly<{
   at: <const TPath extends LivePath>(path: TPath) => GovernorDataPath<LiveMapPathValue<TValue, TPath>>;
   watch: (listener: (value: TValue) => void) => () => void;
   kind: () => "missing" | "object" | "array" | "scalar";
-  set: (value: LiveMapSetValue<TValue>) => Promise<void>;
-  replace: (value: LiveMapWriteValue<TValue>) => Promise<void>;
+  set: LiveMapPartWrite<TValue, LiveMapSetValue<TValue>, Promise<void>>;
+  replace: LiveMapPartWrite<TValue, LiveMapWriteValue<TValue>, Promise<void>>;
   delete: () => Promise<void>;
 }>;
 
@@ -104,7 +104,8 @@ type DefinitionLibrary<TDefinition> =
     ? GovernorDataLibrary<DataSchemaValue<TSchema>, TSchema>
     : TDefinition extends { document: unknown; schema: infer TSchema extends HsonSchema }
       ? GovernorDocumentLibrary<DocumentSchemaGraph<TSchema>, TSchema>
-      : TDefinition extends { data: unknown } ? GovernorDataLibrary<JsonValue>
+      : TDefinition extends { parts: unknown } ? GovernorDataLibrary<import("./livemap.types.js").LiveMapPartCollection>
+        : TDefinition extends { data: unknown } ? GovernorDataLibrary<JsonValue>
         : TDefinition extends { document: unknown } ? GovernorDocumentLibrary : GovernorLibrary;
 
 export type GovernorLibrarySelector<TMap extends LiveMap> = {

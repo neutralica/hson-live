@@ -1,4 +1,4 @@
-import type { LiveMap, LiveMapDefinitions, LiveMapKnownDefinitions } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapDefinitions, LiveMapKnownDefinitions, LiveMapPartsDefinitionsCheck } from "../../types/livemap.types.js";
 import { admit_public_livemap_definitions, make_livemap_libraries } from "./livemap.libraries.js";
 
 export interface HsonLiveMapFacade {
@@ -12,7 +12,7 @@ export function create(): LiveMap<{}> {
 }
 
 /** Establish one named local Library registry. */
-export function fromLibraries<const TLibraries extends LiveMapDefinitions>(libraries: TLibraries): LiveMap<LiveMapKnownDefinitions<TLibraries>> {
+export function fromLibraries<const TLibraries extends LiveMapDefinitions>(libraries: TLibraries & LiveMapPartsDefinitionsCheck<NoInfer<TLibraries>>): LiveMap<LiveMapKnownDefinitions<TLibraries>> {
   return make_livemap_libraries(admit_public_livemap_definitions(libraries));
 }
 

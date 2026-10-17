@@ -21,3 +21,8 @@ import { encode_locus_message } from "hson-live/locus";
 // @ts-expect-error A document library cannot become a hosted Locus.
 hsonLiveMap.locus.create({ map: documentLibrary });
 void [decode_locus_bootstrap, encode_locus_message];
+
+const rootParts: import("hson-live").LiveMapPartCollection = { header: { kind: "document", document: "<h1/>" } };
+const rootPart: import("hson-live").LiveMapDocumentPart = rootParts.header!;
+declare const rootPartsInput: import("hson-live").LiveMapPartsLibraryInput;
+void [rootParts, rootPart, rootPartsInput];

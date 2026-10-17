@@ -1,3 +1,4 @@
+import "../public/parts-collection.js";
 import { ANY_DATA, ANY_DOCUMENT, Hson } from "hson-live/hson";
 import {
   hsonLiveMap,

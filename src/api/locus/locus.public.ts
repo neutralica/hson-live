@@ -1,7 +1,7 @@
 import type { LiveMap, LiveMapDefinitions } from "../../types/livemap.types.js";
 import type {
   Locus, LocusAuthorityLibraryDefinition, LocusLocalLibraryDefinition,
-  LocusDefinitionOptions, LocusDefinitionNameCheck, LocusMapDefinitions, LocusRegistryOptions, LocusResumeOptions,
+  LocusDefinitionOptions, LocusDefinitionNameCheck, LocusPartsEntriesCheck, LocusMapDefinitions, LocusRegistryOptions, LocusResumeOptions,
 } from "../../types/locus.core.types.js";
 import type { LocusActionPayloads } from "../../types/locus.protocol.types.js";
 import type { LocusLibraryCatalogEntry } from "../../types/locus.projection.types.js";
@@ -95,7 +95,11 @@ export function create<
   const TShared extends readonly LocusAuthorityLibraryDefinition[] = readonly [],
   const TLocal extends readonly LocusLocalLibraryDefinition[] = readonly [],
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: LocusDefinitionOptions<TPrivate, TShared, TLocal, TActions> & LocusDefinitionNameCheck<TPrivate, TShared, TLocal>):
+>(options: LocusDefinitionOptions<TPrivate, TShared, TLocal, TActions> & LocusDefinitionNameCheck<TPrivate, TShared, TLocal> & Readonly<{
+  private?: LocusPartsEntriesCheck<NoInfer<TPrivate>>;
+  shared?: LocusPartsEntriesCheck<NoInfer<TShared>>;
+  local?: LocusPartsEntriesCheck<NoInfer<TLocal>>;
+}>):
   Locus<LiveMap<LocusMapDefinitions<TPrivate, TShared>>, TActions> {
   if ("persistence" in options) throw new TypeError("Use hsonLiveMap.locus.resume for durable authority.");
   return create_registry_locus(construct_locus_definition(options)) as Locus<LiveMap<LocusMapDefinitions<TPrivate, TShared>>, TActions>;
@@ -107,7 +111,11 @@ export async function resume<
   const TShared extends readonly LocusAuthorityLibraryDefinition[] = readonly [],
   const TLocal extends readonly LocusLocalLibraryDefinition[] = readonly [],
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: LocusResumeOptions<TPrivate, TShared, TLocal, TActions> & LocusDefinitionNameCheck<TPrivate, TShared, TLocal>):
+>(options: LocusResumeOptions<TPrivate, TShared, TLocal, TActions> & LocusDefinitionNameCheck<TPrivate, TShared, TLocal> & Readonly<{
+  private?: LocusPartsEntriesCheck<NoInfer<TPrivate>>;
+  shared?: LocusPartsEntriesCheck<NoInfer<TShared>>;
+  local?: LocusPartsEntriesCheck<NoInfer<TLocal>>;
+}>):
   Promise<Locus<LiveMap<LocusMapDefinitions<TPrivate, TShared>>, TActions>> {
   if (typeof options?.logicalMapId !== "string" || options.logicalMapId.trim().length === 0) {
     throw new TypeError("Locus resume requires a stable logicalMapId.");

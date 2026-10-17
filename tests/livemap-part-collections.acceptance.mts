@@ -1,3 +1,4 @@
+import { public_parts_cases } from "./fixtures/public-parts-cases.mts";
 import assert from "node:assert/strict";
 import { part_collection_cases } from "./fixtures/livemap-part-collections-cases.mts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
@@ -7,14 +8,16 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "livemap.part-collect
   category: "LiveMap", runtime: "node", tags: Object.freeze(["livemap", "composition", "quad", "css", "worker", "atomicity"]) });
 const events = create_test_event_emitter("livemap.part-collections");
 let cases = 0;
-await part_collection_cases(async (name, run) => {
+const check = async (name: string, run: () => void | Promise<void>) => {
   events.case_begin(name, name);
   try { await run(); cases++; events.case_end(name, "pass"); }
   catch (error) {
     events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
     events.case_end(name, "fail"); events.terminal("fail"); throw error;
   }
-});
+};
+await public_parts_cases(check);
+await part_collection_cases(check);
 const worker = repository_typescript_worker(new URL("./fixtures/livemap-part-collections.worker.mts", import.meta.url));
 try {
   const result = await new Promise((resolve, reject) => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import ts from "typescript";
@@ -28,7 +28,7 @@ InteractionActivationOptions InteractionDescriptor InteractionFailure Interactio
 LiveHostApplication LiveHostApplicationContext LiveHostRuntime LiveHostConnection LiveHostConnectionRoute LiveHostCreateInput LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
 LiveHostLocusRegistryResult LiveHostPrincipal LiveHostRequestRoute LiveMap LiveMapDataLibrary LiveMapDataLibraryInput LiveMapDocumentAttributeNotFoundError LiveMapDocumentIdentityProvenanceError
 LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocumentLibrary LiveMapDocumentLibraryInput LiveMapDocumentLocation LiveMapDocumentQuadLocation LiveMapDocumentMode LiveMapDocumentMutationError LiveMapDocumentStagingError LiveMapInput
-LiveMapLibraryAddOperation LiveMapLibraryDefinition LiveMapDefinitions LiveMapDynamicLibrary LiveMapKnownNames LiveMapLibraryInput LiveMapLibrarySchemaUseOperation LiveMapStagedWriter LiveMapWithLibrarySchema LiveTree LiveTreeAlreadyAttachedError LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult LiveTreeLinkedIdentityRequiredError
+LiveMapLibraryAddOperation LiveMapLibraryDefinition LiveMapDefinitions LiveMapDynamicLibrary LiveMapKnownNames LiveMapLibraryInput LiveMapLibrarySchemaUseOperation LiveMapDocumentPart LiveMapPartCollection LiveMapPartsLibraryInput LiveMapStagedWriter LiveMapWithLibrarySchema LiveTree LiveTreeAlreadyAttachedError LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult LiveTreeLinkedIdentityRequiredError
 LiveTreeProtectedRootError LiveTreeQuidReuseError BrowserInteractionDescriptor Locus LocusActionContext LocusActionHandler LocusActionName LocusActionPayloads
 LocusActions LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError LocusDisconnectedError LocusHttpBinding
 LocusDuplicateActionIdError LocusAuthorityLibraryDefinition LocusLocalLibraryDefinition LocusRuntimeLibraryAdditions LocusDefinitionOptions LocusResumeOptions LocusResult LocusStage LocusWebSocketLike Mirror ReadonlyHsonNode HsonFromSchema JsonFromSchema SsrBootstrapCodecError SsrBootstrapCodecOptions
@@ -145,6 +145,60 @@ await check("internal CSS identity declarations emit and consume without private
     for (const module of modules) {
       const declaration = readFileSync(join(temporary, `${module}.d.ts`), "utf8");
       assert.doesNotMatch(declaration, /\bis_document_quad_name\b|\btranslate_document_css_identities\b/);
+    }
+  } finally { rmSync(temporary, { recursive: true, force: true }); }
+});
+
+await check("Parts declarations enforce inferred key absence in public and Worker consumers in both optional modes", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "hson-parts-declarations-"));
+  const diagnosticsText = (diagnostics: readonly ts.Diagnostic[]) => ts.formatDiagnostics(diagnostics, {
+    getCanonicalFileName: path => path, getCurrentDirectory: () => repositoryRoot, getNewLine: () => "\n",
+  });
+  try {
+    // Derive current declarations without rebuilding or replacing the installed distribution.
+    const config = ts.readConfigFile(join(repositoryRoot, "tsconfig.json"), ts.sys.readFile);
+    assert.equal(config.error, undefined);
+    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, repositoryRoot);
+    const output = join(temporary, "dist");
+    const producer = ts.createProgram(parsed.fileNames, { ...parsed.options,
+      noEmit: false, emitDeclarationOnly: true, declarationMap: false, sourceMap: false, outDir: output,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(producer);
+    assert.equal(diagnostics.length, 0, diagnosticsText(diagnostics));
+    const emitted = producer.emit();
+    assert.equal(emitted.emitSkipped, false); assert.equal(emitted.diagnostics.length, 0, diagnosticsText(emitted.diagnostics));
+    symlinkSync(join(repositoryRoot, "node_modules"), join(temporary, "node_modules"), "dir");
+    const manifest = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8")) as {
+      exports: Record<string, { types: string }>;
+    };
+    const paths = Object.fromEntries(Object.entries(manifest.exports).map(([name, entry]) =>
+      [name === "." ? "hson-live" : `hson-live${name.slice(1)}`, [join(temporary, entry.types)]]));
+    const consume = (family: "public" | "worker", exactOptionalPropertyTypes: boolean) => {
+      const directory = join(repositoryRoot, "tests/entrypoints", family);
+      const config = ts.readConfigFile(join(directory, "tsconfig.json"), ts.sys.readFile);
+      assert.equal(config.error, undefined);
+      const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, directory);
+      const consumer = ts.createProgram(parsed.fileNames, { ...parsed.options,
+        baseUrl: repositoryRoot, paths, exactOptionalPropertyTypes,
+      });
+      return ts.getPreEmitDiagnostics(consumer);
+    };
+    for (const family of ["public", "worker"] as const) for (const exact of [false, true]) {
+      const diagnostics = consume(family, exact);
+      assert.equal(diagnostics.length, 0, `${family}, exactOptionalPropertyTypes=${exact}\n${diagnosticsText(diagnostics)}`);
+    }
+    // Challenge the negative expectations against removal of the shared key-presence guard.
+    const typesPath = join(output, "types/livemap.types.d.ts"), original = readFileSync(typesPath, "utf8");
+    const source = ts.createSourceFile(typesPath, original, ts.ScriptTarget.Latest, true);
+    const guard = source.statements.find(statement => ts.isTypeAliasDeclaration(statement) && statement.name.text === "LiveMapPartSchemaCheck");
+    assert.ok(guard !== undefined);
+    const weakened = original.slice(0, guard.getStart(source)) + "type LiveMapPartSchemaCheck<TInput> = unknown;" + original.slice(guard.end);
+    writeFileSync(typesPath, weakened);
+    for (const family of ["public", "worker"] as const) {
+      const diagnostics = consume(family, false);
+      const unused = diagnostics.filter(item => item.code === 2578 && item.file?.fileName.endsWith("parts-collection.ts"));
+      assert.ok(unused.length >= 20, `${family}: removing the guard must invalidate admission and write negatives\n${diagnosticsText(diagnostics)}`);
+      assert.equal(diagnostics.length, unused.length, diagnosticsText(diagnostics));
     }
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 });

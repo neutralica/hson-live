@@ -20,7 +20,8 @@ import type {
   LiveMapInput,
   LiveMapDefinitions,
   LiveMapKnownDefinitions,
-  LiveMapLibraryInput,
+  LiveMapDataLibraryInput,
+  LiveMapDocumentLibraryInput,
   LiveMapLibraryOperation,
   LiveMapLibraryAddOperation,
   LiveMapLibrarySchemaUseOperation,
@@ -178,7 +179,9 @@ function realize_authored_definitions(definitions: readonly CanonicalLibraryDefi
       if (readExisting !== undefined) return readExisting(collection, member);
       throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
     }
-    if (definition.family !== "data" || definition.validation !== PART_COLLECTION_VALIDATION) throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
+    if (definition.family !== "data" || definition.validation !== PART_COLLECTION_VALIDATION) {
+      throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
+    }
     const parts = validate_data_library(definition.root, classify_live_root_mode(definition.root, "data"), definition.validation);
     const part = parts?.find(part => part.key === member);
     if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
@@ -813,12 +816,13 @@ function make_livemap_library_receiver(
     if (typeof member !== "string") throw new TypeError("Part member key must be a string.");
     const entry = named.get(collection);
     const contract = aggregate.hostedRegistry().libraries.find(candidate => candidate.name === collection);
-    if (entry === undefined || entry.family !== "data" || contract?.validation !== PART_COLLECTION_VALIDATION) {
-      throw new Error("Unknown Part collection.");
+    if (entry === undefined) throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
+    if (entry.family !== "data" || contract?.validation !== PART_COLLECTION_VALIDATION) {
+      throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
     }
     const parts = validate_data_library(aggregate.root(entry.identity), contract.mode, contract.validation);
     const part = parts?.find(candidate => candidate.key === member);
-    if (part === undefined) throw new Error("Unknown Part member.");
+    if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
     checkCapture();
     return part;
   };
@@ -1604,7 +1608,9 @@ function make_document_library(
   return selected;
 }
 
-function must_library_input(name: string, value: unknown): LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle; validation?: DataLibraryValidation }> {
+type NormalizedLibraryInput = LiveMapDataLibraryInput | LiveMapDocumentLibraryInput;
+
+function must_library_input(name: string, value: unknown): NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle; validation?: DataLibraryValidation }> {
   if (name === INTERACTION_RESERVED_LIBRARY_KEY) {
     throw new Error(`LiveMap Library name ${JSON.stringify(name)} is reserved for system state.`);
   }
@@ -1620,24 +1626,45 @@ function must_library_input(name: string, value: unknown): LiveMapLibraryInput &
   // classification, then retain only this stable envelope downstream.
   const hasData = Object.hasOwn(value, "data");
   const hasDocument = Object.hasOwn(value, "document");
+  const hasParts = Object.hasOwn(value, "parts");
+  // Inspect original own evidence too: a Proxy has trap can conceal a
+  // non-enumerable property that the normalization copy would omit.
+  if (hasParts && (Object.hasOwn(value, "schema") || "schema" in value)) {
+    throw new TypeError("Parts Library definitions do not support a supplemental Schema.");
+  }
   const selected: Record<string, unknown> = Object.assign(Object.create(null), value);
+  if (hasParts && (Object.hasOwn(value, "schema") || "schema" in value || Object.hasOwn(selected, "schema"))) {
+    throw new TypeError("Parts Library definitions do not support a supplemental Schema.");
+  }
   if (own_data_library_validation(selected) !== validation) throw new TypeError("Library validation contract changed during input capture.");
   const schemaValue = Object.hasOwn(selected, "schema") ? selected.schema : value.schema;
 
-  const schema = schemaValue === undefined ? (hasData ? ANY_DATA : ANY_DOCUMENT) : schemaValue;
+  const schema = schemaValue === undefined ? (hasData || hasParts ? ANY_DATA : ANY_DOCUMENT) : schemaValue;
   if (!(schema instanceof HsonSchemaHandle)) {
     throw new TypeError(`LiveMap Library ${JSON.stringify(name)} requires an HsonSchema.`);
   }
-  if (hasData === hasDocument || hasData !== Object.hasOwn(selected, "data")
-    || hasDocument !== Object.hasOwn(selected, "document")) {
+  if (Number(hasData) + Number(hasDocument) + Number(hasParts) !== 1 || hasData !== Object.hasOwn(selected, "data")
+    || hasDocument !== Object.hasOwn(selected, "document") || hasParts !== Object.hasOwn(selected, "parts")) {
     throw new TypeError(
-      `LiveMap Library ${JSON.stringify(name)} must specify exactly one of data or document.`,
+      `LiveMap Library ${JSON.stringify(name)} must specify exactly one of data, document, or parts.`,
     );
   }
+  if (hasParts) {
+    // Normalize at the shared admission owner; the existing contract owns validation
+    // on both admission and every subsequent governed transition.
+    const capturedParts = part_collection_definition_internal(selected.parts);
+    // Schema fallback getters and nested Parts reflection can change the original.
+    // Close all caller-controlled capture before this final presence check; only
+    // the owned capture may be accessed while constructing the admitted candidate.
+    if (Object.hasOwn(value, "schema") || "schema" in value) {
+      throw new TypeError("Parts Library definitions do not support a supplemental Schema.");
+    }
+    return Object.freeze({ ...capturedParts, schema: ANY_DATA });
+  }
   if (validation !== undefined && !hasData) throw new TypeError("Part validation requires a data Library.");
-  if (hasData) return Object.freeze(Object.assign(Object.create(null), selected, { schema })) as LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
+  if (hasData) return Object.freeze(Object.assign(Object.create(null), selected, { schema })) as NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
   // Node fields are inspected only by exact admission, never by a getter-reading guard.
-  if (typeof selected.document === "string" || typeof selected.document === "object" && selected.document !== null) return Object.freeze(Object.assign(Object.create(null), selected, { schema })) as LiveMapLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
+  if (typeof selected.document === "string" || typeof selected.document === "object" && selected.document !== null) return Object.freeze(Object.assign(Object.create(null), selected, { schema })) as NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
   throw new TypeError(`LiveMap document Library ${JSON.stringify(name)} requires Hson source or a canonical node.`);
 }
 
@@ -1645,7 +1672,7 @@ function is_record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function library_root(input: LiveMapLibraryInput): HsonNode {
+function library_root(input: NormalizedLibraryInput): HsonNode {
   if ("data" in input) {
     if (input.data === undefined) throw new TypeError("LiveMap data Library requires JSON material.");
     return hsonTransform.fromJson(input.data).toNode();

@@ -1,3 +1,4 @@
+import { ANY_DATA, hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
@@ -17,7 +18,7 @@ export type DataLibraryValidation = "hson-part-collection-v1";
 export const PART_COLLECTION_VALIDATION: DataLibraryValidation = "hson-part-collection-v1";
 
 /** The only Part value supported by this cut. Absence of CSS differs from empty CSS. @internal */
-export type DocumentPart = Readonly<{ kind: "document"; document: string; css?: string }>;
+export type DocumentPart = import("../../types/livemap.types.js").LiveMapDocumentPart;
 /** Detached operation-local consumer result. No facade, cache, or identity authority. @internal */
 export type ValidatedPart = Readonly<{
   key: string;
@@ -37,9 +38,12 @@ export function own_data_library_validation(input: object): DataLibraryValidatio
 }
 
 /** Contracts belong only to ordinary object data Libraries. @internal */
-export function assert_data_library_validation(validation: DataLibraryValidation | undefined, mode: string, scope?: string): void {
+export function assert_data_library_validation(validation: DataLibraryValidation | undefined, mode: string, scope?: string, schema?: string): void {
   if (validation !== undefined && (validation !== PART_COLLECTION_VALIDATION || mode !== "data-object" || scope !== undefined)) {
     throw new TypeError("Part collection validation requires an ordinary object data Library.");
+  }
+  if (validation !== undefined && schema !== undefined && hson_schema_source_digest(schema) !== hson_schema_digest(ANY_DATA)) {
+    throw new TypeError("Part collections do not support supplemental Schema attachment.");
   }
 }
 

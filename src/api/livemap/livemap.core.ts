@@ -1,7 +1,7 @@
 import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
 import { encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
-import { own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
+import { PART_COLLECTION_VALIDATION, own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
 import { prepare_document_scoped_library_styles, type PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
@@ -647,8 +647,9 @@ function make_livemap_registry_engine(
       },
       readPart: (collection: string, member: string) => {
         const binding = hostedBindingsByName?.get(collection);
-        if (binding === undefined || binding.mode !== "data-object" || binding.validation === undefined) {
-          throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
+        if (binding === undefined) throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
+        if (binding.mode !== "data-object" || binding.validation === undefined) {
+          throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
         }
         const library = require_library(binding.identity);
         const part = validate_data_library(library.root, library.mode, library.validation)?.find(part => part.key === member);
@@ -1064,7 +1065,10 @@ function make_livemap_registry_engine(
     }
     const readPartCandidate = (collection: string, member: string) => {
       const binding = hostedBindingsByName?.get(collection);
-      if (binding === undefined || binding.mode !== "data-object" || binding.validation === undefined) throw new Error(`Unknown or unavailable Part collection ${JSON.stringify(collection)}.`);
+      if (binding === undefined) throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
+      if (binding.mode !== "data-object" || binding.validation === undefined) {
+        throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
+      }
       const library = require_library(binding.identity);
       const value = partValues.get(library.identity);
       const root = value === undefined ? library.root : projected_value_to_hson_root(value);
@@ -1973,7 +1977,10 @@ function make_livemap_registry_engine(
       const binding = hosted.byName.get(collection);
       const source = definition === undefined ? binding === undefined ? undefined : require_library(binding.identity) : definition;
       const mode = definition === undefined ? binding?.mode : classify_live_root_mode(definition.root, definition.family);
-      if (source === undefined || mode !== "data-object" || source.validation === undefined) throw new Error(`Unknown or unavailable Part collection ${JSON.stringify(collection)}.`);
+      if (source === undefined) throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
+      if (mode !== "data-object" || source.validation === undefined) {
+        throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
+      }
       const part = validate_data_library(source.root, mode, source.validation)?.find(part => part.key === member);
       if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return part;
@@ -2125,6 +2132,9 @@ function make_livemap_registry_engine(
         );
       }
     } else transitionController.assertPublicMutationAllowed();
+    if (state.validation === PART_COLLECTION_VALIDATION) {
+      throw new TypeError("Part collections do not support supplemental Schema attachment.");
+    }
     if (!(schema instanceof HsonSchemaHandle)) throw new TypeError("LiveMap Library Schema attachment requires a genuine HsonSchema.");
     const family = state.mode === "document" ? "document" as const : "data" as const;
     must_hson_schema_family(schema, family);

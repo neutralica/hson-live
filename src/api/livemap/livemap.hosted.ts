@@ -241,7 +241,7 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
 /** Build a detached registry from validated semantic contract entries, defensively checking attached source. @internal */
 export function registry_from_entries(entries: readonly HostedRegistryEntry[]): HostedRegistry {
   for (const entry of entries) {
-    assert_data_library_validation(own_data_library_validation(entry), entry.mode, entry.scope);
+    assert_data_library_validation(own_data_library_validation(entry), entry.mode, entry.scope, entry.schema);
     if (hson_schema_source_digest(entry.schema) !== entry.schemaDigest) {
       throw new HostedAggregateRepresentationError("Hosted registry Schema identity disagrees with its validated definition.");
     }
@@ -783,7 +783,8 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
       ...(Object.hasOwn(item, "scope") ? ["scope"] : []), ...(Object.hasOwn(item, "validation") ? ["validation"] : [])], "Hosted registry entry");
     const scope = Object.getOwnPropertyDescriptor(item, "scope");
     if (scope !== undefined && scope.value !== "hson-internal") throw new HostedAggregateRepresentationError("Hosted registry Library scope is malformed.");
-    assert_data_library_validation(own_data_library_validation(item), String(item.mode), scope?.value);
+    assert_data_library_validation(own_data_library_validation(item), String(item.mode), scope?.value,
+      typeof item.schema === "string" ? item.schema : "");
     if (entry.rootCodec !== HOSTED_ROOT_FORMAT
       || (entry.scope !== undefined && entry.scope !== "hson-internal")) {
       throw new HostedAggregateRepresentationError("Hosted registry Library scope is malformed.");
