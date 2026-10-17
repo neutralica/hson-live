@@ -176,8 +176,6 @@ export async function scoped_tail_cases(check: (name: string, run: () => Promise
       f.adapter.failAppend = Error("storage unavailable");
       await assert.rejects(() => l.stage(w => page(w).content.replace(target, 1, connector())), /append/);
       assert.deepEqual(a.captureSemanticCheckpoint(), before); assert.equal(a.identityEpoch().issued(), ledger);
-      await assert.rejects(() => l.stage(w => page(w).css.stylesheet("main{color:red}")), /scoped evidence/);
-      await assert.rejects(() => l.stage(w => page(w).graph({ domain: "graph", op: "replace-root", mode: "document", root: node('<main/>') })), /scoped|root/i);
       await assert.rejects(() => l.add_libraries_internal({ added: { data: 1 } }, undefined,
         [{ name: "added", ownership: "private" }]), /H0b/);
       assert.deepEqual(a.captureSemanticCheckpoint(), before);

@@ -1,3 +1,4 @@
+import { normalize_document_root } from "./livemap.document.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
@@ -15,7 +16,7 @@ import { livemap_document_identity_quids, register_livemap_document_identity_at_
   livemap_document_identity_overlay_equal, type LiveMapDocumentIdentityEffect } from "./livemap.document.identity.js";
 import { document_path_is_prefix, compare_document_paths, resolve_document_path, validate_document_path } from "./livemap.document.path.js";
 import { admit_public_document_graph_operation, prepare_document_graph_operation } from "./livemap.document.mutation.js";
-import { canonical_graph_equal } from "./livemap.document.install.js";
+import { canonical_graph_equal, prepare_document_install } from "./livemap.document.install.js";
 
 type Composition = ReturnType<typeof expand_document_composition>;
 /** Borrowed transaction authority. The fence covers source reads and allocation callbacks. @internal */
@@ -169,6 +170,17 @@ export function retain_document_scoped_operation(context: DocumentScopedQuadCont
   return make_document_scoped_quads(next, bindings(surviving.document), surviving.occurrences.map(scope => ({ ...scope, bindings: bindings(scope.bindings) })));
 }
 
+/** Root replacement uses ordinary admission, retires all local subjects, and
+ * leaves the aggregate's issued ledger and other Libraries in the same epoch. */
+export function prepare_scoped_graph_operation(context: Pick<DocumentScopedQuadContext, "root" | "overlay">,
+  operation: DocumentGraphOp) {
+  if (operation.op !== "replace-root") return prepare_document_graph_operation(context.root, "document", operation, context.overlay);
+  const installed = prepare_document_install({ kind: "hson-document", mode: "document", rev: 0, root: operation.root }, "document");
+  const identityEffects: LiveMapDocumentIdentityEffect[] = [...livemap_document_identity_quids(context.overlay)]
+    .map(quid => ({ kind: "retired", quid, formerPath: context.overlay.pathForQuid(quid)! }));
+  return { ...installed, operation: { ...operation, root: installed.root }, identityEffects };
+}
+
 /** Runtime equality includes occurrence lifetime, even for identical portable coordinates. @internal */
 export function document_scoped_quads_equal(left: DocumentScopedQuads, right: DocumentScopedQuads): boolean {
   const byLifetime = new Map(right.occurrences.map(scope => [scope.lifetime, scope]));
@@ -197,7 +209,13 @@ export function prepare_document_scoped_operations(before: DocumentScopedQuadCon
     let operation = admit_public_document_graph_operation(input);
     const content = operation.op === "insert-content" ? operation.content : operation.op === "replace-content" ? operation.replacement : undefined;
     let composition: Composition | undefined;
-    if (is_Node(content) && has_part_connector(content)) {
+    if (operation.op === "replace-root") {
+      const root = normalize_document_root(operation.root);
+      composition = expand_document_composition("ingress", () => ({ root }),
+        document_composition_options(undefined), authority.readPart);
+      authority.assertCurrent();
+      operation = { ...operation, root: composition.root };
+    } else if (is_Node(content) && has_part_connector(content)) {
       composition = expand_document_composition("ingress", () => ({ root: { $_tag: ROOT_TAG, $_content: [content] } }),
         document_composition_options(undefined), authority.readPart);
       authority.assertCurrent();
@@ -207,17 +225,16 @@ export function prepare_document_scoped_operations(before: DocumentScopedQuadCon
         operation = { ...operation, replacement: output };
       } else if (operation.op === "insert-content") operation = { ...operation, content: output };
     }
-    if (operation.op === "replace-root") throw new Error("Root installation uses initial scoped composition preparation.");
-    const parent = insertion_owner(context, state, operation.target.path);
-    const planned = prepare_document_graph_operation(context.root, "document", operation, context.overlay);
+    const parent = operation.op === "replace-root" ? null : insertion_owner(context, state, operation.target.path);
+    const planned = prepare_scoped_graph_operation(context, operation);
     let next: DocumentScopedQuadContext = { ...context, root: planned.root, overlay: planned.overlay,
       issued: stage_livemap_identity_epoch(context.issued, livemap_document_identity_quids(context.overlay), livemap_document_identity_quids(planned.overlay)) };
     let nextScopes = retain_document_scoped_operation(context, state, operation, next);
     effects.push(...planned.identityEffects);
     let styles: readonly DocumentCompositionStyle[] = [];
-    if (composition !== undefined && (operation.op === "insert-content" || operation.op === "replace-content")) {
-      const prefix = [...operation.target.path, operation.index];
-      const relocate = (path: readonly number[]) => validate_document_path([...prefix, ...path.slice(1)]);
+    if (composition !== undefined && (operation.op === "replace-root" || operation.op === "insert-content" || operation.op === "replace-content")) {
+      const prefix = operation.op === "replace-root" ? undefined : [...operation.target.path, operation.index];
+      const relocate = (path: readonly number[]) => validate_document_path(prefix === undefined ? path : [...prefix, ...path.slice(1)]);
       const bindings = (entries: readonly ScopedQuadBindingRecord[]) => entries.map(binding => ({ ...binding, path: relocate(binding.path) }));
       const incoming: DocumentScopedQuadRecord = { document: bindings(composition.scoped.document), subjects: [],
         occurrences: composition.scoped.occurrences.map(scope => ({ root: relocate(scope.root),

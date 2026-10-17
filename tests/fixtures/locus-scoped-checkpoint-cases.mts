@@ -1,3 +1,4 @@
+import { h0a_cases } from "./locus-scoped-h0a-cases.mts";
 import { scoped_tail_cases } from "./locus-scoped-tail-cases.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
@@ -68,6 +69,7 @@ function replacePart(adapter: MemoryCheckpointAdapter, manifest: LocusHostedAggr
 
 export async function scoped_checkpoint_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   await scoped_tail_cases(check);
+  await h0a_cases(check);
   await check("B1 complete authority capture is coherent, detached, observational and QUID-free", async () => {
     const f = await fixture();
     try {
@@ -399,7 +401,7 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
       let rejected = false;
       const stop = f.l.on_commit(commit => { assert.ok(durable_aggregate_commit(commit).commit.operationCount); rejected = true; });
       await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "next")); stop(); assert.equal(rejected, true);
-      await assert.rejects(() => f.stage(w => page(w).css.stylesheet("main{color:red}")), /scoped evidence/);
+      await f.stage(w => page(w).css.stylesheet("main{color:red}"));
       assert.equal(adapter.appendCalls.length, 0);
       const forgedTail: any = { format: "hson-locus-durable-aggregate-record", logicalMapId: checkpoint.authority.logicalMapId,
         incarnationId: checkpoint.authority.incarnationId, mapKind: "hosted-aggregate", registryDigest: checkpoint.registry.digest,

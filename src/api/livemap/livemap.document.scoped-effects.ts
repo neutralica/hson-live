@@ -1,19 +1,20 @@
+import { map_scoped_css_operation } from "./livemap.document.scoped-css.js";
+import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
 import { is_document_quad_name } from "../../internal/document-quad-name.js";
-import { document_css_subject_identities, remap_portable_document_css_identities } from "../../internal/css/css-identity-translation.js";
+import { document_css_subject_identities, remap_portable_document_css_identities, translate_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import { merge_part_stylesheets, retire_part_styles_by_owner } from "../../internal/css/part-stylesheet.js";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal, type PortableDocumentStylesheetRecord } from "../../internal/css/portable-document-stylesheet.js";
-import type { LiveMapDocumentPath } from "../../types/livemap.types.js";
+import type { LiveMapCssOp, LiveMapDocumentPath } from "../../types/livemap.types.js";
 import type { DocumentCompositionStyle } from "./livemap.document.composition.js";
-import { document_scoped_quads_equal, materialize_document_scoped_record, retain_document_scoped_operation, type DocumentScopedCompositionAuthority } from "./livemap.document.scoped-composition.js";
+import { document_scoped_quads_equal, materialize_document_scoped_record, prepare_scoped_graph_operation, retain_document_scoped_operation, type DocumentScopedCompositionAuthority } from "./livemap.document.scoped-composition.js";
 import type { PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
 import { capture_document_scoped_library, decode_document_scoped_library, restore_document_scoped_library_styles, type PortableDocumentScopedLibrary } from "./livemap.document.scoped-portable.js";
 import { decode_document_scoped_quads, DOCUMENT_SCOPED_QUAD_LIMITS, type DocumentScopedQuadRecord, type ScopedQuadBindingRecord, type ScopedQuadOccurrenceRecord } from "./livemap.document.scoped-quad-codec.js";
 import { compare_document_paths, document_path_effect_for_graph_operation, document_path_is_prefix, transform_document_path, validate_document_path } from "./livemap.document.path.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
-import { prepare_document_graph_operation } from "./livemap.document.mutation.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
-import { livemap_document_identity_overlay_equal, livemap_document_identity_quids } from "./livemap.document.identity.js";
+import { build_livemap_document_identity_overlay, livemap_document_identity_overlay_equal, livemap_document_identity_quids } from "./livemap.document.identity.js";
 import { stage_livemap_identity_epoch } from "./livemap.identity-epoch.js";
 import { encode_scoped_effect_graph_operation, decode_scoped_effect_graph_operation, HOSTED_MAX_OPERATIONS } from "./livemap.hosted.js";
 import { HOSTED_MAX_SNAPSHOT_BYTES } from "./livemap.hosted-limits.internal.js";
@@ -25,11 +26,12 @@ type StyleEffect = Readonly<{ css: PortableDocumentStylesheetRecord; subjects: D
  * added and CSS subjects are AFTER coordinates. Movement and identity survival
  * use the existing graph path effects and private replacement lineage codec.
  * Digests are semantic pre/postconditions, not versions or authenticity proofs.
- * No graph snapshot, owner, issued ledger or occurrence token is transported. @internal */
+ * No extra graph snapshot, runtime owner, issued ledger or occurrence token is transported. @internal */
 export type DocumentScopedEffect = Readonly<{
   ordinal: number;
   before: string;
   after: string;
+  /** Legacy payload field: discriminated graph or CSS operation, using existing codecs. */
   graph: string;
   retired: readonly ScopedQuadOccurrenceRecord[];
   removed: readonly BindingEffect[];
@@ -185,7 +187,7 @@ export function validate_document_scoped_effects(input: unknown, startOrdinal = 
     const item = fields(value, ["ordinal", "before", "after", "graph", "retired", "removed", "created", "added", "styles"]);
     if (Object.is(item.ordinal, -0) || item.ordinal !== startOrdinal + ordinal || typeof item.graph !== "string" || typeof item.before !== "string"
       || typeof item.after !== "string" || !/^[a-f0-9]{64}$/.test(item.before) || !/^[a-f0-9]{64}$/.test(item.after)) fail();
-    decode_scoped_effect_graph_operation(item.graph);
+    decode_document_scoped_operation(item.graph);
     const styles = array(item.styles).map(value => {
       const style = fields(value, ["css", "subjects"]);
       const subjects = array(style.subjects).map(value => {
@@ -202,11 +204,12 @@ export function validate_document_scoped_effects(input: unknown, startOrdinal = 
 
 function applyPortable(before: PortableDocumentScopedLibrary, effect: DocumentScopedEffect): PortableDocumentScopedLibrary {
   if (fingerprint(before) !== effect.before) fail();
-  const operation = decode_scoped_effect_graph_operation(effect.graph);
-  const planned = prepare_document_graph_operation(before.root, "document", operation);
+  const operation = decode_document_scoped_operation(effect.graph);
+  if (operation.domain === "css") return applyPortableCss(before, effect, operation);
+  const planned = prepare_scoped_graph_operation({ root: before.root, overlay: build_livemap_document_identity_overlay(before.root, "document") }, operation);
   const baseline = retained(before.scopes, operation);
   if (!same(baseline.retired, effect.retired) || !same(baseline.removed, effect.removed)) fail();
-  const prefix = operation.op === "insert-content" || operation.op === "replace-content"
+  const prefix = operation.op === "replace-root" ? validate_document_path([]) : operation.op === "insert-content" || operation.op === "replace-content"
     ? validate_document_path([...operation.target.path, operation.index]) : undefined;
   const incoming = (path: LiveMapDocumentPath) => { if (prefix === undefined || !document_path_is_prefix(prefix, path)) fail(); };
   for (const scope of effect.created) incoming(scope.root);
@@ -270,9 +273,32 @@ export function replay_document_scoped_effects(before: PreparedDocumentScopedLib
   const foreign = new Set(effects.flatMap(effect => effect.styles.flatMap(style => style.subjects.map(s => s.name.slice(1)))));
   let current = before, changed = false;
   const identityEffects = [], steps = [];
+  const replayedEffects: DocumentScopedEffect[] = [];
   for (const [index, effect] of effects.entries()) {
-    const operation = decode_scoped_effect_graph_operation(effect.graph);
-    const planned = prepare_document_graph_operation(current.root, "document", operation, current.overlay);
+    const operation = decode_document_scoped_operation(effect.graph);
+    if (operation.domain === "css") {
+      // CSS cannot mint subjects or replace occurrence lifetimes.
+      const state = states[index]!;
+      const next = restore_document_scoped_library_styles({ ...current, identityEffects: [], steps: [], initialStyles: [],
+        changed: true, assertCurrent: authority.assertCurrent }, state);
+      let styleIndex = 0;
+      const local = map_scoped_css_operation(operation, css => {
+        const style = effect.styles[styleIndex++]; if (style === undefined) fail();
+        const associations = style.subjects.map(subject => {
+          const quid = current.overlay.quidAtPath(subject.path);
+          if (quid === undefined || !current.issued.has(quid)) fail();
+          return { ...subject, quid };
+        });
+        return translate_document_css_identities(css, "inbound", { associations, assertCurrent: authority.assertCurrent }, true);
+      });
+      const captured = capture_document_scoped_css_effect(current, next, local, effect.ordinal);
+      if (captured.before !== effect.before || captured.after !== effect.after) fail();
+      replayedEffects.push(captured);
+      changed ||= !portable_document_stylesheet_equal(current.stylesheet, next.stylesheet);
+      current = next; authority.assertCurrent(); continue;
+    }
+    replayedEffects.push(effect);
+    const planned = prepare_scoped_graph_operation(current, operation);
     const context = { owner: current.owner, root: planned.root, overlay: planned.overlay,
       issued: stage_livemap_identity_epoch(current.issued, livemap_document_identity_quids(current.overlay), livemap_document_identity_quids(planned.overlay)) };
     const retainedScopes = retain_document_scoped_operation(current, current.scopes, operation, context);
@@ -289,6 +315,111 @@ export function replay_document_scoped_effects(before: PreparedDocumentScopedLib
     current = next;
     authority.assertCurrent();
   }
-  return Object.freeze({ ...current, identityEffects: Object.freeze(identityEffects), steps: Object.freeze(steps), effects,
+  return Object.freeze({ ...current, identityEffects: Object.freeze(identityEffects), steps: Object.freeze(steps), effects: Object.freeze(replayedEffects),
     changed, assertCurrent: authority.assertCurrent });
+}
+
+/** The existing effect envelope retains its field spelling for B2 records. */
+export function decode_document_scoped_operation(payload: string): DocumentGraphOp | LiveMapCssOp {
+  const value: unknown = JSON.parse(payload);
+  if (value !== null && typeof value === "object" && "domain" in value && value.domain === "css") {
+    return canonical_portable_document_css_op(value);
+  }
+  return decode_scoped_effect_graph_operation(payload);
+}
+
+export function capture_document_scoped_css_effect(before: PreparedDocumentScopedLibrary, next: PreparedDocumentScopedLibrary,
+  operation: LiveMapCssOp, ordinal: number): DocumentScopedEffect {
+  const styles: StyleEffect[] = [];
+  const portable = map_scoped_css_operation(operation, css => {
+    const subjects = document_css_subject_identities(css, "outbound").map(quid => {
+      const path = before.overlay.pathForQuid(quid);
+      if (path === undefined || !before.issued.has(quid)) fail();
+      return { name: `_${quid}`, path, disposition: "disposable" as const };
+    }).sort((a, b) => compare_document_paths(a.path, b.path));
+    const translated = translate_document_css_identities(css, "outbound", {
+      associations: subjects.map(subject => ({ ...subject, quid: subject.name.slice(1) })), assertCurrent: before.assertCurrent,
+    }, true);
+    styles.push({ css: translated, subjects }); return translated;
+  });
+  const a = capture_document_scoped_library(before), b = capture_document_scoped_library(next);
+  const effect: DocumentScopedEffect = { ordinal, before: fingerprint(a), after: fingerprint(b), graph: JSON.stringify(portable),
+    retired: [], removed: [], created: [], added: [], styles };
+  if (fingerprint(applyPortable(a, effect)) !== effect.after) fail();
+  return freeze(effect);
+}
+
+function applyPortableCss(before: PortableDocumentScopedLibrary, effect: DocumentScopedEffect, operation: LiveMapCssOp): PortableDocumentScopedLibrary {
+  if (effect.retired.length || effect.removed.length || effect.created.length || effect.added.length) fail();
+  // Union correspondence by destination coordinate; no author names or runtime
+  // identity are inferred from labels. Each operation carrier is validated fully.
+  for (const style of effect.styles) decode_document_scoped_library({ root: before.root,
+    scopes: { ...before.scopes, subjects: style.subjects }, css: style.css });
+  const paths = new Map([...before.scopes.subjects, ...effect.styles.flatMap(style => style.subjects)]
+    .map(subject => [key(subject.path), subject.path]));
+  const subjects = [...paths.values()].sort(compare_document_paths).map((path, index) =>
+    ({ path, name: `_${index.toString(36).padStart(9, "0")}`, disposition: "disposable" as const }));
+  const labels = new Map(subjects.map(subject => [key(subject.path), subject.name]));
+  const remap = (css: PortableDocumentStylesheetRecord, table: DocumentScopedQuadRecord["subjects"]) =>
+    remap_portable_document_css_identities(css, new Map(table.map(subject => [subject.name, labels.get(key(subject.path))!])));
+  let index = 0;
+  const translated = map_scoped_css_operation(operation, css => {
+    const style = effect.styles[index++];
+    if (style === undefined || !same(style.css, css)) fail();
+    return remap(css, style.subjects);
+  });
+  if (index !== effect.styles.length) fail();
+  const css = encode_portable_document_stylesheet(apply_portable_document_css_op(
+    decode_portable_document_stylesheet(remap(before.css, before.scopes.subjects)), translated));
+  const demanded = new Set(document_css_subject_identities(css, "inbound"));
+  return decode_document_scoped_library({ root: before.root, scopes: { ...before.scopes,
+    subjects: subjects.filter(subject => demanded.has(subject.name)) }, css });
+}
+
+export function prepare_document_scoped_css_operation(before: PreparedDocumentScopedLibrary, operation: LiveMapCssOp,
+  ordinal: number): PreparedDocumentScopedLibrary {
+  before.assertCurrent();
+  const stylesheet = apply_portable_document_css_op(before.stylesheet, operation);
+  const next = { ...before, stylesheet, steps: [], identityEffects: [], initialStyles: [],
+    changed: !portable_document_stylesheet_equal(before.stylesheet, stylesheet) };
+  const effect = capture_document_scoped_css_effect(before, next, operation, ordinal);
+  return Object.freeze({ ...next, effects: Object.freeze([effect]) });
+}
+
+/** Compare immutable effect evidence with its semantic operation before durable
+ * encoding. CSS reference translation uses evidence only, never current state. */
+export function scoped_effect_matches_operation(effect: DocumentScopedEffect, operation: DocumentGraphOp | LiveMapCssOp): boolean {
+  if (operation.domain === "graph") return effect.graph === encode_scoped_effect_graph_operation(operation);
+  let index = 0;
+  const portable = map_scoped_css_operation(operation, css => {
+    const style = effect.styles[index++]; if (style === undefined) fail();
+    return translate_document_css_identities(css, "outbound", { associations: style.subjects.map(subject =>
+      ({ ...subject, quid: subject.name.slice(1) })), assertCurrent() {} }, true);
+  });
+  return index === effect.styles.length && same(portable, decode_document_scoped_operation(effect.graph));
+}
+
+/** Alpha-renaming must cover both the CSS payload and its correspondence carriers. */
+export function portable_document_scoped_effect(effect: DocumentScopedEffect): DocumentScopedEffect {
+  const styles = effect.styles.map(style => {
+    const names = new Map(style.subjects.map((subject, ordinal) => [subject.name, `_${ordinal.toString(36).padStart(9, "0")}`]));
+    return { css: remap_portable_document_css_identities(style.css, names),
+      subjects: style.subjects.map(subject => ({ ...subject, name: names.get(subject.name)! })) };
+  });
+  const operation = decode_document_scoped_operation(effect.graph);
+  let index = 0;
+  const graph = operation.domain === "graph" ? effect.graph : JSON.stringify(map_scoped_css_operation(operation, () => styles[index++]!.css));
+  return { ...effect, graph, styles };
+}
+
+/** Only for locally captured evidence; portable receipt first resolves paths and recaptures. */
+export function local_scoped_css_operation(effect: DocumentScopedEffect): LiveMapCssOp {
+  const operation = decode_document_scoped_operation(effect.graph);
+  if (operation.domain !== "css") fail();
+  let index = 0;
+  return map_scoped_css_operation(operation, css => {
+    const style = effect.styles[index++]; if (style === undefined) fail();
+    return translate_document_css_identities(css, "inbound", { associations: style.subjects.map(subject =>
+      ({ ...subject, quid: subject.name.slice(1) })), assertCurrent() {} }, true, true);
+  });
 }

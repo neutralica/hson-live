@@ -17,7 +17,7 @@ import type { DocumentQuadCorrespondence } from "./livemap.document.quad.js";
  */
 export type PreparedDocumentScopedLibrary = PreparedDocumentScopedComposition & Readonly<{
   stylesheet: PortableDocumentStylesheet;
-  /** Undefined for initial/restored or CSS-only preparation: never an empty
+  /** Undefined for initial/restored preparation: never an empty
    * incremental replacement for unavailable evidence. */
   effects: readonly DocumentScopedEffect[] | undefined;
 }>;

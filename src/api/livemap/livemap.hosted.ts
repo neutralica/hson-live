@@ -1,6 +1,5 @@
-import { remap_portable_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import { decode_document_scoped_library, own_document_scopes } from "./livemap.document.scoped-portable.js";
-import { encode_document_scoped_effects, validate_document_scoped_effects, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
+import { decode_document_scoped_operation, scoped_effect_matches_operation, portable_document_scoped_effect, encode_document_scoped_effects, validate_document_scoped_effects, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { clone_node } from "../../core/clone-node.js";
 import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "./livemap.parts.js";
@@ -307,10 +306,11 @@ export function make_hosted_commit(
       : decode_hosted_graph_operation(evidence.payload, binding.mode);
     semantic.push(Object.freeze({ library: binding.name, operation }));
     if (entry.scoped !== undefined) {
-      if (binding.mode !== "document" || evidence.domain !== "graph" || !("domain" in entry.operation)
-        || entry.operation.domain !== "graph" || entry.operation.op === "ensure-quid"
-        || entry.scoped.graph !== encode_scoped_effect_graph_operation(entry.operation)) {
-        throw new HostedAggregateRepresentationError("Scoped document graph and Library evidence disagree.");
+      if (binding.mode !== "document" || !("domain" in entry.operation)
+        || (entry.operation.domain !== "graph" && entry.operation.domain !== "css")
+        || entry.operation.domain === "graph" && entry.operation.op === "ensure-quid"
+        || !scoped_effect_matches_operation(entry.scoped, entry.operation)) {
+        throw new HostedAggregateRepresentationError("Scoped document operation and Library evidence disagree.");
       }
       const effects = scopedByLibrary.get(binding.name) ?? [];
       if (entry.scoped.ordinal !== effects.length || effects.length > 0 && effects.at(-1)?.after !== entry.scoped.before) {
@@ -499,13 +499,11 @@ export function encode_authoritative_scoped_commit(authority: HostedAggregateCom
       if (ordinary !== undefined) operations.push(...ordinary.operations);
       continue;
     }
-    if (evidence.domain !== "graph" || !("domain" in semantic.operation) || semantic.operation.domain !== "graph"
-      || semantic.operation.op === "ensure-quid" || evidence.scoped.graph !== encode_scoped_effect_graph_operation(semantic.operation)) throw incompatible_graph();
-    const effect = { ...evidence.scoped, styles: evidence.scoped.styles.map(style => {
-      const names = new Map(style.subjects.map((subject, ordinal) => [subject.name, `_${ordinal.toString(36).padStart(9, "0")}`]));
-      return { css: remap_portable_document_css_identities(style.css, names),
-        subjects: style.subjects.map(subject => ({ ...subject, name: names.get(subject.name)! })) };
-    }) };
+    if (!("domain" in semantic.operation) || evidence.domain !== semantic.operation.domain
+      || (semantic.operation.domain !== "graph" && semantic.operation.domain !== "css")
+      || semantic.operation.domain === "graph" && semantic.operation.op === "ensure-quid"
+      || !scoped_effect_matches_operation(evidence.scoped, semantic.operation)) throw incompatible_graph();
+    const effect = portable_document_scoped_effect(evidence.scoped);
     const batch = batches.get(evidence.library) ?? [];
     if (batch.length > 0 && batch.at(-1)!.after !== effect.before) throw incompatible_graph();
     batch.push(effect); batches.set(evidence.library, batch);
@@ -714,8 +712,9 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
     const ordinal = ordinals.get(operation.library) ?? 0;
     ordinals.set(operation.library, ordinal + 1);
     const scoped = validated.get(operation.library)![ordinal]!;
-    const graph = decode_scoped_effect_graph_operation(scoped.graph);
-    return Object.freeze({ library: bindings.get(operation.library)!, semantic: graph, graph, scoped });
+    const effectOperation = decode_document_scoped_operation(scoped.graph);
+    return Object.freeze({ library: bindings.get(operation.library)!, semantic: effectOperation,
+      ...(effectOperation.domain === "css" ? { css: effectOperation } : { graph: effectOperation }), scoped });
   }));
 }
 
@@ -1216,12 +1215,12 @@ function hosted_identity(label: string): string {
 /** Existing portable graph codec shared by private scoped effects. This does not
  * enable scoped state in hosted commits. @internal */
 export function encode_scoped_effect_graph_operation(operation: DocumentGraphOp): string {
-  if (operation.op === "replace-root" || operation.op === "ensure-quid") throw incompatible_graph();
+  if (operation.op === "ensure-quid") throw incompatible_graph();
   return encode_hosted_graph_operation(operation, true);
 }
 /** @internal */
 export function decode_scoped_effect_graph_operation(payload: string): DocumentGraphOp {
   const operation = decode_hosted_graph_operation(payload, "document", true);
-  if (operation.op === "replace-root" || operation.op === "ensure-quid") throw incompatible_graph();
+  if (operation.op === "ensure-quid") throw incompatible_graph();
   return operation;
 }

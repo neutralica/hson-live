@@ -1,7 +1,7 @@
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
-import { encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
+import { local_scoped_css_operation, prepare_document_scoped_css_operation, encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
 import { PART_COLLECTION_VALIDATION, own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
@@ -1025,6 +1025,7 @@ function make_livemap_registry_engine(
       if (transitionController.generation !== preparedGeneration) throw new Error("Scoped transition preparation changed.");
     };
     const scopedCandidates = new Map<LiveMapLibraryIdentity, PreparedDocumentScopedLibrary>();
+    const scopedOrdinals = new Map<LiveMapLibraryIdentity, number>();
     const unscopedConstructions = new Set<LiveMapLibraryIdentity>();
     const prevRev = mapRevision;
     const preparedIdentityGeneration = identityGeneration;
@@ -1275,8 +1276,60 @@ function make_livemap_registry_engine(
         || library.documentScopesUnavailable && transitionController.managedExecutionOwner() !== undefined)) {
         throw new Error("Scoped document effects require private Locus/Echo preparation.");
       }
-      if (scopedDocuments && library.mode === "document" && write.kind !== "graph") {
+      if (scopedDocuments && library.mode === "document" && write.kind !== "graph" && write.kind !== "css") {
         throw new Error("Missing scoped evidence for non-graph document operation.");
+      }
+      if ((write.kind === "graph" || write.kind === "css") && (scopedDocuments || receivingScoped?.has(write))) {
+        if (write.kind === "css" && target.path.length !== 0) throw new Error("CSS operations require a document Library root.");
+        const candidate = candidate_for(library.identity);
+        if (!is_aggregate_document_candidate(candidate)) throw new Error("Scoped operations require a document Library.");
+        assertScopedCurrent();
+        if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence from initial or local Part construction.");
+        const context = { owner: library.identity, root: candidate.root, overlay: candidate.overlay, issued: stagedIssuedLedger };
+        const previous = scopedCandidates.get(library.identity);
+        const before: PreparedDocumentScopedLibrary = previous === undefined ? {
+          ...context,
+          scopes: library.documentScopes ?? make_document_scoped_quads(context,
+            [...(library.documentQuads?.byName ?? [])].map(([name, quid]) => ({ name, quid, kind: "element" })), []),
+          stylesheet: stylesheet(library.identity), effects: undefined, identityEffects: [], initialStyles: [], steps: [],
+          changed: false, assertCurrent: assertScopedCurrent,
+        } : { ...previous, issued: stagedIssuedLedger };
+        const receiving = receivingScoped?.get(write);
+        const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: assertScopedCurrent, readPart: readPartCandidate };
+        const ordinal = scopedOrdinals.get(library.identity) ?? 0;
+        const next = receiving === undefined
+          ? write.kind === "css" ? prepare_document_scoped_css_operation(before, canonical_portable_document_css_op(write.operation), ordinal)
+          : prepare_document_scoped_library_styles(prepare_document_scoped_operations(before, before.scopes, [write.operation],
+            scopedAuthority), before.stylesheet, before, true)
+          : replay_document_scoped_effects(before, encode_document_scoped_effects([receiving]), scopedAuthority,
+            () => {}, ordinal); // Schema validates the complete transaction below.
+        if (!next.changed && receiving === undefined) {
+          scopedCandidates.set(library.identity, before);
+          continue;
+        }
+        const step = next.steps[0], effect = next.effects?.[0];
+        if (write.kind === "graph" && step === undefined || effect === undefined || next.effects?.length !== 1) throw new Error("Missing scoped document operation evidence.");
+        // Receiving CSS references have already been resolved and recaptured locally.
+        const operation = write.kind === "graph" ? step!.operation : local_scoped_css_operation(effect);
+        operations.push(Object.freeze({ target: aggregate_target(library.identity, write.kind === "css" ? [] : document_operation_path(step!.operation)),
+          operation, scoped: Object.freeze({ ...effect, ordinal }) }));
+        scopedOrdinals.set(library.identity, ordinal + 1);
+        if (step !== undefined) stage_interaction_paths(library, candidate.root, candidate.overlay, next.overlay, step.operation);
+        for (const quid of livemap_document_identity_quids(next.overlay)) {
+          if (candidate.overlay.pathForQuid(quid) === undefined) constructionClaims.push({ library: library.identity, quid });
+        }
+        stage_candidate_identity(livemap_document_identity_quids(candidate.overlay), livemap_document_identity_quids(next.overlay));
+        stagedIssuedLedger = merge_issued_ledgers(stagedIssuedLedger, next.issued);
+        candidate.root = next.root;
+        candidate.overlay = next.overlay;
+        if (step !== undefined) {
+          candidate.operations.push(step.operation);
+          if (step.operation.op === "replace-root") candidate.continuity = "same-epoch";
+        }
+        candidate.identityEffects.push(...next.identityEffects);
+        scopedCandidates.set(library.identity, next);
+        cssCandidates.set(library.identity, { before: stylesheet(library.identity), after: next.stylesheet });
+        continue;
       }
       if (write.kind === "css") {
         if (library.mode !== "document" || target.path.length !== 0) {
@@ -1297,45 +1350,6 @@ function make_livemap_registry_engine(
       if (write.kind === "graph") {
         if (!is_aggregate_document_candidate(candidate)) {
           throw new Error("Aggregate graph operations require a document library.");
-        }
-        if (scopedDocuments || receivingScoped?.has(write)) {
-          assertScopedCurrent();
-          if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence from initial or local Part construction.");
-          const context = { owner: library.identity, root: candidate.root, overlay: candidate.overlay, issued: stagedIssuedLedger };
-          const previous = scopedCandidates.get(library.identity);
-          const before: PreparedDocumentScopedLibrary = previous === undefined ? {
-            ...context,
-            scopes: library.documentScopes ?? make_document_scoped_quads(context,
-              [...(library.documentQuads?.byName ?? [])].map(([name, quid]) => ({ name, quid, kind: "element" })), []),
-            stylesheet: stylesheet(library.identity), effects: undefined, identityEffects: [], initialStyles: [], steps: [],
-            changed: false, assertCurrent: assertScopedCurrent,
-          } : { ...previous, issued: stagedIssuedLedger };
-          const receiving = receivingScoped?.get(write);
-          const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: assertScopedCurrent, readPart: readPartCandidate };
-          const next = receiving === undefined
-            ? prepare_document_scoped_library_styles(prepare_document_scoped_operations(before, before.scopes, [write.operation],
-              scopedAuthority), before.stylesheet, before, true)
-            : replay_document_scoped_effects(before, encode_document_scoped_effects([receiving]), scopedAuthority,
-              () => {}, candidate.operations.length); // Schema validates the complete transaction below.
-          if (!next.changed && receiving === undefined) continue;
-          const step = next.steps[0], effect = next.effects?.[0];
-          if (step === undefined || effect === undefined || next.effects?.length !== 1) throw new Error("Missing scoped document operation evidence.");
-          const ordinal = candidate.operations.length;
-          operations.push(Object.freeze({ target: aggregate_target(library.identity, document_operation_path(step.operation)),
-            operation: step.operation, scoped: Object.freeze({ ...effect, ordinal }) }));
-          stage_interaction_paths(library, candidate.root, candidate.overlay, next.overlay, step.operation);
-          for (const quid of livemap_document_identity_quids(next.overlay)) {
-            if (candidate.overlay.pathForQuid(quid) === undefined) constructionClaims.push({ library: library.identity, quid });
-          }
-          stage_candidate_identity(livemap_document_identity_quids(candidate.overlay), livemap_document_identity_quids(next.overlay));
-          stagedIssuedLedger = merge_issued_ledgers(stagedIssuedLedger, next.issued);
-          candidate.root = next.root;
-          candidate.overlay = next.overlay;
-          candidate.operations.push(step.operation);
-          candidate.identityEffects.push(...next.identityEffects);
-          scopedCandidates.set(library.identity, next);
-          cssCandidates.set(library.identity, { before: stylesheet(library.identity), after: next.stylesheet });
-          continue;
         }
         const admittedOperation = write.publicStaged === true
           ? admit_public_document_graph_operation(write.operation)
@@ -1592,7 +1606,8 @@ function make_livemap_registry_engine(
     }
     const afterActive = aggregate_quid_locations(afterStates);
     const nextQuadBindings = new Map([...candidates.values()].flatMap(candidate => is_aggregate_document_candidate(candidate)
-      ? [[candidate.library.identity, retain_document_quad_bindings(candidate.library.documentQuads, candidate.overlay)] as const] : []));
+      ? [[candidate.library.identity, scopedCandidates.has(candidate.library.identity) ? scoped_aliases(scopedCandidates.get(candidate.library.identity)!)
+        : retain_document_quad_bindings(candidate.library.documentQuads, candidate.overlay)] as const] : []));
     for (const [quid, beforeTarget] of beforeActive) {
       const afterTarget = afterActive.get(quid);
       if (afterTarget !== undefined && afterTarget.library !== beforeTarget.library) {
@@ -1608,7 +1623,7 @@ function make_livemap_registry_engine(
         && candidate.continuity !== "same-epoch");
     const retainsIdentityEpoch = [...candidates.values()].some((candidate) => is_aggregate_document_candidate(candidate)
       && candidate.operations.some((operation) => operation.op === "replace-root")
-      && candidate.continuity === "same-epoch");
+      && candidate.continuity === "same-epoch" && !scopedCandidates.has(candidate.library.identity));
     if (resetsIdentityEpoch && libraryRegistry.size() !== 1) {
       throw new Error("Whole-root replacement cannot reset a map-global QUID epoch across multiple application Libraries.");
     }
@@ -3142,10 +3157,12 @@ function make_livemap_registry_engine(
     let replayComposedDescriptors: OrderedProjectedValue | undefined;
     const receivingEffects = new Map<LiveMapAggregateWrite, import("./livemap.document.scoped-effects.js").DocumentScopedEffect>();
     const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
-      if (entry.css !== undefined) return Object.freeze({
-        target: aggregate_target(entry.library.identity as LiveMapLibraryIdentity, []),
-        kind: "css", operation: entry.css,
-      });
+      if (entry.css !== undefined) {
+        const write: LiveMapAggregateWrite = Object.freeze({ target: aggregate_target(entry.library.identity as LiveMapLibraryIdentity, []),
+          kind: "css", operation: entry.css });
+        if (entry.scoped !== undefined) receivingEffects.set(write, entry.scoped);
+        return write;
+      }
       const path = "path" in entry.semantic ? entry.semantic.path : (
         "target" in entry.semantic ? entry.semantic.target.path : []
       );
