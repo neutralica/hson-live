@@ -132,7 +132,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     validation?: import("./livemap.parts.js").DataLibraryValidation;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
-  }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => LiveMapAggregateCommit;
+  }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void, assertAcceptance?: () => void) => LiveMapAggregateCommit;
   /** Enforce the public mutation fence before decoding a public topology request. @internal */
   assertPublicMutationAllowed: () => void;
   /** Existing aggregate capture fence, also covering non-revisioned identity state. @internal */
@@ -215,6 +215,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     system: Readonly<{ format: "hson-exact-value"; payload: string }> | null;
   }>;
   captureManagedRestorationFence: (owner: object) => () => void;
+  /** Retain the grant across an installation that legitimately changes position. @internal */
+  captureManagementFence: (owner: object) => () => void;
   /** Bind a fixed authority-projected subset of this client map. @internal */
   configureClientComposition: (snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot, scoped?: boolean) => void;
   clientProjection: () => Readonly<{
@@ -241,14 +243,14 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   restoreClientHosted: (snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot) => void;
   restoreClientHostedManaged: (owner: object, snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot,
     afterTopologyInstall?: (projected: readonly Readonly<{ name: string; identity: LiveMapLibraryIdentity }>[],
-      retired: readonly LiveMapLibraryIdentity[]) => void, scoped?: boolean) => void;
+      retired: readonly LiveMapLibraryIdentity[]) => void, scoped?: boolean, assertAcceptance?: () => void) => void;
   /** Apply a transport snapshot while this aggregate is client-managed. @internal */
   restoreHostedManaged: (owner: object, snapshot: HostedLiveMapSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   replayClientHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit) => LiveMapAggregateCommit;
   /** Replay durable portable effects, including a revision whose effects collapse after identity reset. @internal */
   replayDurableHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit) => void;
-  replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit, authorityRev?: number, scoped?: boolean) => LiveMapAggregateCommit;
+  replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit, authorityRev?: number, scoped?: boolean, assertAcceptance?: () => void) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */
   replayHostedManaged: (owner: object, commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   /** Advance a managed replica through one effect-free authority revision. @internal */

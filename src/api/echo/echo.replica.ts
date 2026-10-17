@@ -7,7 +7,7 @@ export type EchoReplicaCapability<TMap> = Readonly<{
   readonly disposed: boolean;
   readonly failure: unknown;
   markRecovering: () => void;
-  markReady: () => void;
+  markReady: (assertAcceptance?: () => void) => void;
   markFailed: (failure: unknown) => void;
   waitUntilReady: () => Promise<void>;
   onStateChange: (listener: () => void) => LocusDisposer;

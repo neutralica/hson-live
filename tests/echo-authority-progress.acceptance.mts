@@ -127,15 +127,18 @@ await check("progress advances only managed authority position and Mirror bookke
   let commits = 0;
   let values = 0;
   const positions: number[] = [];
+  const installed: number[] = [];
   map.commits.observe(() => { commits += 1; });
   aggregate.watch(aggregate.libraries()[0]!, ["value"], () => { values += 1; });
   aggregate.observeAuthorityPosition((revision) => { positions.push(revision); });
+  aggregate.observeAuthorityPosition((revision) => { installed.push(revision); }, "installed");
   assert.equal(Reflect.has(map, "advanceHostedProgress"), false);
   assert.equal(Reflect.has(state, "advanceHostedProgress"), false);
   replica.advanceHostedProgress(progress(snapshot, 0));
   replica.advanceHostedProgress(progress(snapshot, 1));
   assert.equal(map.rev, 2);
   assert.deepEqual(positions, [1, 2]);
+  assert.deepEqual(installed, [1, 2]);
   assert.equal(commits, 0);
   assert.equal(values, 0);
   assert.equal(state.snap(["value"]), beforeValue);
@@ -649,6 +652,41 @@ await check("exact identity history derives generic client progress without rewr
   if (!("snap" in state)) throw new Error("Expected projected state Library.");
   assert.equal(state.snap(["value"]), 1);
   assert.deepEqual(internal_livemap_aggregate_authority(mirror).captureHosted().identity, clientIdentityBefore);
+});
+
+await check("flat live commit completion retains contiguous replay accepted by an installation observer", async () => {
+  const authority = make_map(), snapshot = internal_livemap_aggregate_authority(authority).captureHosted();
+  const origin = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
+  const first = live_committed_value(origin, 1), second = live_committed_value(origin, 2);
+  const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(authority), map: authority });
+  const pair = socket_pair(); bind_locus_websocket(server, pair.server);
+  const map = projected_client_map(authority), aggregate = internal_livemap_aggregate_authority(map);
+  const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), map });
+  try {
+    await client.connect();
+    const id = JSON.parse(pair.serverSent.find(raw => JSON.parse(raw).type === "recovery-caught-up")!).id;
+    let hit = false, reentrantError: unknown;
+    const off = aggregate.observeAuthorityPosition(() => {
+      if (hit) return; hit = true;
+      try { client.replica.replayHosted({ ...second.commit, format: "hson-portable-aggregate-commit" }, first.commit.rev); }
+      catch (error) { reentrantError = error; }
+    }, "installed");
+    const positions: number[] = [], stop = client.observeAuthorityPosition(revision => positions.push(revision));
+    pair.sendFromServer({ type: "commit", id, ...projection_fence(authority), commit: first });
+    await new Promise<void>(resolve => setImmediate(resolve)); off();
+    assert.equal(hit, true); assert.equal(reentrantError, undefined);
+    assert.equal(aggregate.clientProjection()!.revision, second.commit.rev);
+    assert.equal(client.lastAppliedRev, second.commit.rev); assert.deepEqual(positions, [second.commit.rev]);
+    const third = live_committed_value(origin, 3);
+    pair.sendFromServer({ type: "commit", id, ...projection_fence(authority), commit: third });
+    await new Promise<void>(resolve => setImmediate(resolve)); stop();
+    assert.equal(aggregate.clientProjection()!.revision, third.commit.rev);
+    assert.equal(client.lastAppliedRev, third.commit.rev);
+    assert.equal(client.replica.ready, true); assert.equal(client.diagnostics().status, "live");
+    assert.equal(client.session.status, "attached"); assert.deepEqual(positions, [second.commit.rev, third.commit.rev]);
+    const state = map.lib("state"); if (state.mode === "document") throw Error("Expected data Library.");
+    assert.equal(state.snap(["value"]), 3);
+  } finally { client.dispose(); server.dispose(); }
 });
 
 process.stdout.write(`1..${checks}\n`);

@@ -328,11 +328,12 @@ export function capture_locus_session_authority_projection_snapshot(
   map: LiveMap,
   sessions: LocusSessionManager,
   sessionId: string,
+  scoped = false,
 ): AuthorityProjectionSnapshot {
   try {
     const effective = sessions.projection(sessionId);
     if (effective === undefined) return fail();
-    return capture_selected_authority_projection_snapshot(map, effective);
+    return capture_selected_authority_projection_snapshot(map, effective, scoped);
   } catch { return fail(); }
 }
 

@@ -239,6 +239,7 @@ export function retain_client_local_seed_contracts_internal(map: LiveMap, initia
 export function install_client_local_initializers_internal(
   map: LiveMap,
   input: readonly LocusLocalInitializer[],
+  assertAcceptance?: () => void,
 ): void {
   const initializers = admit_locus_local_initializers(input);
   const aggregate = internal_livemap_aggregate_authority(map);
@@ -270,5 +271,5 @@ export function install_client_local_initializers_internal(
     definitions.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
     if (initializer.css !== undefined) css[initializer.name] = initializer.css;
   }
-  add_client_local_libraries_internal(map, Object.freeze(definitions), css, installContracts);
+  add_client_local_libraries_internal(map, Object.freeze(definitions), css, installContracts, assertAcceptance);
 }

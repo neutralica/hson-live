@@ -392,7 +392,9 @@ function make_livemap_registry_engine(
   // that a subject was never absent between two exact restorations.
   const publishInstalledPosition = (): void => {
     deliver_livemap_observers(aggregatePositionObservers.filter(observer => observer.phase === "installed"),
-      observer => observer.listener(mapRevision), "identity-installation");
+      // Reentrant observers can accept a newer authority cut. Each remaining
+      // observer sees that installed cut, including progress without graph work.
+      observer => observer.listener(clientComposition?.revision ?? mapRevision), "identity-installation");
   };
   const aggregateRestoreObservers: Array<(event: Readonly<{
     previousRevision: number;
@@ -701,6 +703,15 @@ function make_livemap_registry_engine(
     return () => {
       if (localIdentityTransactionActive || revision !== mapRevision || generation !== identityGeneration
         || registry !== hostedRegistry || authority !== hostedFence) throw new Error("LiveMap identity or authority changed during capture.");
+    };
+  }
+
+  function capture_managed_restoration_fence(owner: object): () => void {
+    const management = transitionController.captureManagementFence(owner), position = capture_fence();
+    const composition = clientComposition, generation = transitionController.generation;
+    return () => {
+      management(); position();
+      if (composition !== clientComposition || generation !== transitionController.generation) throw new Error("Receiving restoration authority changed.");
     };
   }
 
@@ -2091,8 +2102,11 @@ function make_livemap_registry_engine(
       afterInstall?.(prepared.identities)).commit;
   }
 
-  function add_client_local_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void): LiveMapAggregateCommit {
+  function add_client_local_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
+    assertAcceptance?: () => void): LiveMapAggregateCommit {
     const prepared = prepare_add_libraries(definitions, true);
+    try { assertAcceptance?.(); }
+    catch (cause) { transitionController.discardAuthority(prepared.transition); throw cause; }
     return transitionController.acceptAuthority(prepared.transition, "isolate", () =>
       afterInstall?.(prepared.identities)).commit;
   }
@@ -2818,6 +2832,7 @@ function make_livemap_registry_engine(
     afterTopologyInstall?: (projected: readonly Readonly<{ name: string; identity: LiveMapLibraryIdentity }>[],
       retired: readonly LiveMapLibraryIdentity[]) => void,
     scoped = false,
+    assertAcceptance?: () => void,
   ): void {
     // Capture the authentic grant before any caller-controlled snapshot access.
     const owner = transitionController.managedExecutionOwner();
@@ -2825,7 +2840,7 @@ function make_livemap_registry_engine(
     const checkGrant = transitionController.captureManagementFence(owner);
     const position = capture_fence(), generation = transitionController.generation;
     const checkRestore = () => {
-      checkGrant(); position();
+      checkGrant(); position(); assertAcceptance?.();
       if (generation !== transitionController.generation) throw new Error("Restoration preparation changed.");
     };
     const composition = clientComposition;
@@ -2909,6 +2924,9 @@ function make_livemap_registry_engine(
         const previous = retained ? require_library(oldBinding.identity as LiveMapLibraryIdentity) : undefined;
         const state = previous ?? make_livemap_library(prepared, schema, own_data_library_validation(entry));
         if (!scoped && previous?.documentScopes !== undefined) throw new Error("Scoped restoration requires private admission.");
+        if ((previous?.documentScopes !== undefined || previous?.documentScopesUnavailable) && encoded.scopes === undefined) {
+          throw new Error("Scoped restoration requires complete scoped evidence.");
+        }
         const scopedCandidate = encoded.scopes === undefined ? undefined : reconstruct_scoped_library(state,
           { root: prepared.root, scopes: encoded.scopes, css: encoded.css }, scopedAuthority,
           make_livemap_issued_quid_ledger([...enumerate_livemap_issued_quids(stagedIssued), ...reserved]), foreignPayloads);
@@ -3049,11 +3067,12 @@ function make_livemap_registry_engine(
     });
   }
 
-  function replay_portable_hosted_aggregate(input: PortableAggregateCommit | PrivateScopedAggregateCommit, durable: boolean, authorityRev?: number, scoped = false): LiveMapAggregateCommit | undefined {
+  function replay_portable_hosted_aggregate(input: PortableAggregateCommit | PrivateScopedAggregateCommit, durable: boolean, authorityRev?: number, scoped = false, assertAcceptance?: () => void): LiveMapAggregateCommit | undefined {
     // Capture before any input traps, getters, enumeration or serialization.
     const managementOwner = transitionController.managedExecutionOwner();
-    const assertManagementCurrent = managementOwner === undefined ? undefined
+    const checkManagement = managementOwner === undefined ? undefined
       : transitionController.captureManagementFence(managementOwner);
+    const assertManagementCurrent = () => { checkManagement?.(); assertAcceptance?.(); };
     if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
     const composition = clientComposition;
@@ -3173,8 +3192,8 @@ function make_livemap_registry_engine(
     return transitionController.acceptAuthority(transition).commit;
   }
 
-  function replay_client_hosted_aggregate(input: PortableAggregateCommit | PrivateScopedAggregateCommit, authorityRev?: number, scoped = false): LiveMapAggregateCommit {
-    const replayed = replay_portable_hosted_aggregate(input, false, authorityRev, scoped);
+  function replay_client_hosted_aggregate(input: PortableAggregateCommit | PrivateScopedAggregateCommit, authorityRev?: number, scoped = false, assertAcceptance?: () => void): LiveMapAggregateCommit {
+    const replayed = replay_portable_hosted_aggregate(input, false, authorityRev, scoped, assertAcceptance);
     if (replayed === undefined) throw new Error("Hosted client replay made no authority progress.");
     return replayed;
   }
@@ -3486,14 +3505,8 @@ function make_livemap_registry_engine(
       });
     },
     captureSelectedHosted: capture_selected_hosted,
-    captureManagedRestorationFence: (owner) => {
-      const management = transitionController.captureManagementFence(owner), position = capture_fence();
-      const composition = clientComposition, generation = transitionController.generation;
-      return () => {
-        management(); position();
-        if (composition !== clientComposition || generation !== transitionController.generation) throw new Error("Receiving restoration authority changed.");
-      };
-    },
+    captureManagementFence: (owner) => transitionController.captureManagementFence(owner),
+    captureManagedRestorationFence: capture_managed_restoration_fence,
     configureClientComposition: configure_client_composition,
     clientProjection: () => clientComposition === undefined ? undefined : Object.freeze({
       authority: clientComposition.authority,
@@ -3646,10 +3659,10 @@ function make_livemap_registry_engine(
     },
     restoreHosted: restore_hosted_aggregate,
     restoreClientHosted: restore_client_hosted_aggregate,
-    restoreClientHostedManaged: (owner, snapshot, afterTopologyInstall, scoped) => transitionController.runManaged(
+    restoreClientHostedManaged: (owner, snapshot, afterTopologyInstall, scoped, assertAcceptance) => transitionController.runManaged(
       owner,
       () => clientComposition === undefined ? restore_client_hosted_aggregate(snapshot)
-        : restore_client_projection(snapshot, afterTopologyInstall, scoped),
+        : restore_client_projection(snapshot, afterTopologyInstall, scoped, assertAcceptance),
     ),
     restoreHostedManaged: (owner, snapshot) => transitionController.runManaged(
       owner,
@@ -3658,35 +3671,43 @@ function make_livemap_registry_engine(
     replayHosted: replay_hosted_aggregate,
     replayClientHosted: replay_client_hosted_aggregate,
     replayDurableHosted: replay_durable_hosted_aggregate,
-    replayClientHostedManaged: (owner, commit, authorityRev, scoped) => transitionController.runManaged(
+    replayClientHostedManaged: (owner, commit, authorityRev, scoped, assertAcceptance) => transitionController.runManaged(
       owner,
-      () => replay_client_hosted_aggregate(commit, authorityRev, scoped),
+      () => replay_client_hosted_aggregate(commit, authorityRev, scoped, assertAcceptance),
     ),
     replayHostedManaged: (owner, commit) => transitionController.runManaged(
       owner,
       () => replay_hosted_aggregate(commit),
     ),
-    advanceHostedProgressManaged: (owner, progress) => transitionController.runManaged(owner, () => {
+    advanceHostedProgressManaged: (owner, input) => transitionController.runManaged(owner, () => {
+      // Retain the exact grant and installed cut before caller-controlled reads.
+      const assertCurrent = capture_managed_restoration_fence(owner);
       const hosted = require_hosted_state();
       const composition = clientComposition;
+      const progress = Object.freeze({ logicalMapId: input.logicalMapId, incarnationId: input.incarnationId,
+        registryDigest: input.registryDigest, prevRev: input.prevRev, rev: input.rev });
       if (progress.logicalMapId !== hosted.fence.logicalMapId
         || progress.incarnationId !== hosted.fence.incarnationId
         || progress.registryDigest !== (composition?.registry.digest ?? hosted.registry.digest)) {
         throw new Error("Hosted authority progress fence is incompatible.");
       }
       if (composition !== undefined) {
-        if (!Number.isSafeInteger(progress.prevRev) || progress.prevRev !== composition.revision
+        if (!Number.isSafeInteger(progress.prevRev) || !Number.isSafeInteger(progress.rev) || progress.prevRev !== composition.revision
           || progress.rev !== progress.prevRev + 1) {
           throw new LiveMapRevError(progress.prevRev, composition.revision);
         }
+        assertCurrent();
         clientComposition = Object.freeze({ ...composition, revision: progress.rev });
+        publishInstalledPosition();
         return progress.rev;
       }
       if (!Number.isSafeInteger(progress.prevRev) || !Number.isSafeInteger(progress.rev)
         || progress.prevRev !== mapRevision || progress.rev !== mapRevision + 1) {
         throw new LiveMapRevError(progress.prevRev, mapRevision);
       }
+      assertCurrent();
       mapRevision = progress.rev;
+      publishInstalledPosition();
       publishAuthorityPosition();
       return mapRevision;
     }),

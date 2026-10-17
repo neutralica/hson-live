@@ -19,17 +19,19 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMap | und
   captureHosted: () => HostedLiveMapSnapshot;
   hostedPosition: () => Readonly<{ authority: HostedAuthorityFence; revision: number; registryDigest: string }>;
   clientProjection: () => Readonly<{ authority: HostedAuthorityFence; registry: HostedRegistry; revision: number; libraries: readonly string[] }> | undefined;
-  restoreHosted: (snapshot: PortableAggregateSnapshot) => void;
-  replayHosted: (commit: PortableAggregateCommit, authorityRev?: number) => number;
+  restoreHosted: (snapshot: PortableAggregateSnapshot, assertAcceptance?: () => void) => void;
+  captureRestorationFence: () => () => void;
+  captureManagementFence: () => () => void;
+  replayHosted: (commit: PortableAggregateCommit, authorityRev?: number, assertAcceptance?: () => void) => number;
   /** Private scoped receiving seam; public delivery/restore formats stay closed. */
   replayScopedHosted: (commit: PrivateScopedAggregateCommit) => number;
   /** Complete private restoration under the existing projected contract. */
-  restoreScopedProjection: (snapshot: AuthorityProjectionSnapshot) => void;
+  restoreScopedProjection: (snapshot: AuthorityProjectionSnapshot, assertAcceptance?: () => void) => void;
   initializeScopedDocuments: (documents: readonly Readonly<{
     library: string; state: import("../livemap/livemap.document.scoped-portable.js").PortableDocumentScopedLibrary;
   }>[]) => void;
   installProjectedTopology: (operation: LiveMapLibraryAddOperation, expectedRegistryDigest: string,
-    system?: Readonly<{ format: "hson-exact-value"; payload: string }>) => void;
+    system?: Readonly<{ format: "hson-exact-value"; payload: string }>, assertAcceptance?: () => void) => void;
   advanceHostedProgress: (progress: Readonly<{
     logicalMapId: string;
     incarnationId: string;
@@ -49,7 +51,11 @@ export function create_echo_aggregate_replica_capability_internal(
   const disposeListeners = new Set<(reason: Error) => void>();
   const stateListeners = new Set<() => void>();
   let map = initialMap;
+  // A bootstrap invocation predates its map; retain the grant established at
+  // attachment so that its earlier management checks cannot adopt a renewal.
+  let attachedManagementFence: (() => void) | undefined;
   let ready = false;
+  let readinessPublication: (() => void) | undefined;
   let disposed = false;
   let failure: unknown;
   if (map !== undefined && management === undefined) internal_livemap_aggregate_authority(map).claimManagement(owner);
@@ -65,7 +71,9 @@ export function create_echo_aggregate_replica_capability_internal(
       if (disposed) throw terminalError();
       if (map === next) return;
       if (map !== undefined) throw new Error("Hosted aggregate replica already owns a mirror.");
-      internal_livemap_aggregate_authority(next).claimManagement(owner);
+      const aggregate = internal_livemap_aggregate_authority(next);
+      aggregate.claimManagement(owner);
+      attachedManagementFence = aggregate.captureManagementFence(owner);
       map = next;
     },
     captureHosted(): HostedLiveMapSnapshot {
@@ -79,15 +87,25 @@ export function create_echo_aggregate_replica_capability_internal(
     clientProjection() {
       return map === undefined ? undefined : internal_livemap_aggregate_authority(map).clientProjection();
     },
-    restoreHosted(snapshot): void {
+    captureManagementFence() {
+      if (disposed) throw terminalError();
+      const check = map === undefined ? () => attachedManagementFence?.() : internal_livemap_aggregate_authority(map).captureManagementFence(owner);
+      return () => { if (disposed) throw terminalError(); check(); };
+    },
+    captureRestorationFence() {
+      if (disposed) throw terminalError();
+      const check = map === undefined ? () => {} : internal_livemap_aggregate_authority(map).captureManagedRestorationFence(owner);
+      return () => { if (disposed) throw terminalError(); check(); };
+    },
+    restoreHosted(snapshot, assertAcceptance): void {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       if (internal_livemap_aggregate_authority(map).clientProjection() === undefined) {
         internal_livemap_aggregate_authority(map).restoreClientHostedManaged(owner, snapshot);
-      } else reconcile_client_projection_snapshot_internal(map, owner, snapshot);
+      } else reconcile_client_projection_snapshot_internal(map, owner, snapshot, false, assertAcceptance);
     },
-    replayHosted(commit, authorityRev): number {
+    replayHosted(commit, authorityRev, assertAcceptance): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
-      return internal_livemap_aggregate_authority(map).replayClientHostedManaged(owner, commit, authorityRev).rev;
+      return internal_livemap_aggregate_authority(map).replayClientHostedManaged(owner, commit, authorityRev, false, assertAcceptance).rev;
     },
     replayScopedHosted(commit): number {
       if (disposed) throw terminalError();
@@ -95,7 +113,7 @@ export function create_echo_aggregate_replica_capability_internal(
       const aggregate = internal_livemap_aggregate_authority(map);
       return aggregate.replayClientHostedManaged(owner, commit, aggregate.clientProjection()?.revision, true).rev;
     },
-    restoreScopedProjection(snapshot): void {
+    restoreScopedProjection(snapshot, assertAcceptance): void {
       if (disposed || map === undefined) throw terminalError();
       const aggregate = internal_livemap_aggregate_authority(map);
       const assertCurrent = aggregate.captureManagedRestorationFence(owner);
@@ -104,43 +122,71 @@ export function create_echo_aggregate_replica_capability_internal(
       const composition = authority_projection_as_client_composition_internal(admitted, true);
       if (admitted.projectionDigest !== expectedDigest) throw new Error("Scoped restoration projection is unauthorized.");
       assertCurrent();
-      reconcile_client_projection_snapshot_internal(map, owner, composition, true);
+      reconcile_client_projection_snapshot_internal(map, owner, composition, true, () => { assertCurrent(); assertAcceptance?.(); });
     },
     initializeScopedDocuments(documents): void {
       if (disposed) throw terminalError();
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       internal_livemap_aggregate_authority(map).initializeClientScopedDocumentsManaged(owner, documents);
     },
-    installProjectedTopology(operation, expectedRegistryDigest, system): void {
+    installProjectedTopology(operation, expectedRegistryDigest, system, assertAcceptance): void {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
-      install_client_projected_topology_internal(map, owner, operation, expectedRegistryDigest, system);
+      install_client_projected_topology_internal(map, owner, operation, expectedRegistryDigest, system, assertAcceptance);
     },
     advanceHostedProgress(progress): number {
+      if (disposed) throw terminalError();
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       return internal_livemap_aggregate_authority(map).advanceHostedProgressManaged(owner, progress);
     },
     markRecovering(): void {
       if (disposed) return;
       ready = false;
+      readinessPublication = undefined;
       failure = undefined;
       for (const listener of [...stateListeners]) listener();
     },
-    markReady(): void {
-      if (disposed) return;
+    markReady(assertAcceptance): void {
+      if (disposed) throw terminalError();
+      const check = assertAcceptance ?? (() => {
+        if (disposed || !ready) throw new Error("Replica readiness was interrupted.");
+      });
+      readinessPublication = check;
       ready = true;
       failure = undefined;
-      for (const waiter of [...readyWaiters]) waiter.resolve();
-      readyWaiters.clear();
-      for (const listener of [...stateListeners]) listener();
+      try {
+        for (const listener of [...stateListeners]) {
+          listener();
+          check();
+          if (readinessPublication !== check) throw new Error("Replica readiness publication was replaced.");
+        }
+        check();
+        if (readinessPublication !== check) throw new Error("Replica readiness publication was replaced.");
+        readinessPublication = undefined;
+        const waiters = [...readyWaiters];
+        readyWaiters.clear();
+        for (const waiter of waiters) waiter.resolve();
+      } catch (error) {
+        // A replacement publication owns its own readiness and waiter settlement.
+        if (readinessPublication === check) { readinessPublication = undefined; ready = false; }
+        throw error;
+      }
     },
     markFailed(reason): void {
       if (disposed) return;
       ready = false;
+      readinessPublication = undefined;
       failure ??= reason;
-      for (const listener of [...stateListeners]) listener();
+      const waiters = [...readyWaiters];
+      readyWaiters.clear();
+      const error = reason instanceof Error ? reason : new Error("Hosted aggregate replica failed.");
+      for (const waiter of waiters) waiter.reject(error);
+      for (const listener of [...stateListeners]) {
+        listener();
+        if (failure === undefined || ready || disposed) break;
+      }
     },
     waitUntilReady(): Promise<void> {
-      if (ready) return Promise.resolve();
+      if (ready && readinessPublication === undefined) return Promise.resolve();
       if (disposed) return Promise.reject(terminalError());
       return new Promise((resolve, reject) => readyWaiters.add(Object.freeze({ resolve, reject })));
     },
@@ -161,15 +207,19 @@ export function create_echo_aggregate_replica_capability_internal(
       if (disposed) return;
       disposed = true;
       ready = false;
+      readinessPublication = undefined;
       const reason = terminalError();
-      for (const listener of [...disposeListeners]) listener(reason);
+      const disposing = [...disposeListeners], changing = [...stateListeners], waiters = [...readyWaiters];
       disposeListeners.clear();
-      for (const listener of [...stateListeners]) listener();
       stateListeners.clear();
-      for (const waiter of [...readyWaiters]) waiter.reject(reason);
       readyWaiters.clear();
+      // Relinquish this lifetime and settle its promises before callbacks can
+      // throw or establish a replacement manager on the same map.
       if (management !== undefined) management.release();
       else if (map !== undefined) internal_livemap_aggregate_authority(map).releaseManagement(owner);
+      for (const waiter of waiters) waiter.reject(reason);
+      for (const listener of disposing) listener(reason);
+      for (const listener of changing) listener();
     },
   });
 }

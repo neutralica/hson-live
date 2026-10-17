@@ -938,17 +938,12 @@ export function create_locus_hosted_aggregate_authority_internal<
       // The transferred cut has no established continuity at an older revision.
       outcome = "reconcile";
       reason = "no_usable_revision";
-    } else if (cursor.lastAppliedRev === head) {
-      outcome = "current";
     } else {
-      const retained = replay_after(cursor.lastAppliedRev, head);
-      if (retained === undefined) {
-        outcome = "reconcile";
-        reason = "history_unavailable";
-      } else {
-        outcome = "replay";
-        replay = retained;
-      }
+      const planned = plan_locus_revision_recovery_internal(cursor.lastAppliedRev, head, historyBaseRevision,
+        history, entry => entry.envelope.commit);
+      outcome = planned.outcome;
+      if (planned.outcome === "reconcile") reason = "history_unavailable";
+      else if (planned.outcome === "replay") replay = planned.replay;
     }
 
     if (outcome === "reconcile") {
@@ -1028,19 +1023,6 @@ export function create_locus_hosted_aggregate_authority_internal<
     connection.subscription.live = true;
     connection.subscription.releaseRecoveryActivity?.();
     connection.subscription.releaseRecoveryActivity = undefined;
-  }
-
-  function replay_after(revision: number, head: number): readonly HostedHistoryEntry[] | undefined {
-    if (revision < historyBaseRevision) return undefined;
-    if (revision === head) return Object.freeze([]);
-    const result = history.filter((entry) => entry.envelope.commit.rev > revision && entry.envelope.commit.rev <= head);
-    if (result.length === 0 || result[0]?.envelope.commit.prevRev !== revision || result[result.length - 1]?.envelope.commit.rev !== head) {
-      return undefined;
-    }
-    for (let index = 1; index < result.length; index += 1) {
-      if (result[index]?.envelope.commit.prevRev !== result[index - 1]?.envelope.commit.rev) return undefined;
-    }
-    return Object.freeze([...result]);
   }
 
   function recovery_plan(
@@ -1868,4 +1850,23 @@ function exact_record(value: unknown, label: string): Record<string, unknown> {
 
 function required_string(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/** Existing retained-history cut selection, shared with private scoped recovery.
+ * Authority/session/projection admission precedes this revision-only decision.
+ * No capture, replay engine, or durable history representation lives here. @internal */
+export function plan_locus_revision_recovery_internal<T>(revision: number, head: number, base: number,
+  history: readonly T[], position: (entry: T) => Readonly<{ prevRev: number; rev: number }>):
+  Readonly<{ outcome: "current" }> | Readonly<{ outcome: "replay"; replay: readonly T[] }>
+  | Readonly<{ outcome: "reconcile"; reason: "history_unavailable" }> {
+  if (!Number.isSafeInteger(revision) || revision < 0 || revision > head) throw new Error("Invalid recovery revision.");
+  if (revision === head) return Object.freeze({ outcome: "current" });
+  const unavailable = Object.freeze({ outcome: "reconcile" as const, reason: "history_unavailable" as const });
+  if (revision < base) return unavailable;
+  const result = history.filter(entry => position(entry).rev > revision && position(entry).rev <= head);
+  if (result.length === 0 || position(result[0]!).prevRev !== revision || position(result[result.length - 1]!).rev !== head) return unavailable;
+  for (let index = 1; index < result.length; index++) {
+    if (position(result[index]!).prevRev !== position(result[index - 1]!).rev) return unavailable;
+  }
+  return Object.freeze({ outcome: "replay", replay: Object.freeze([...result]) });
 }

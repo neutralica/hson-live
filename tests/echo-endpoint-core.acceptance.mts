@@ -474,5 +474,38 @@ await check("the endpoint core operates without a map, registry, or synchronizat
   await assert.rejects(endpoint.waitUntilReady());
 });
 
+await check("terminal session disposal rejects endpoint readiness before lifecycle callbacks", async () => {
+  let callbackWaiter: Promise<void> | undefined;
+  let notify: ((event: EchoAttachmentEvent) => void) | undefined;
+  const endpoint = create_echo_endpoint_internal({
+    sessionRequired: true,
+    additionalReady: () => false,
+    operations: { async submit(request) { return { kind: "response", outcome: {
+      type: "session-created", id: request.id, sessionId: "disposed-session", credential: "credential",
+      epoch: 1, logicalMapId: "map", incarnationId: "incarnation",
+    } }; } },
+    attachment: { observe(listener) { notify = listener; return () => {}; } },
+    onReadyChange() {
+      if (endpoint.session.status === "disposed") {
+        callbackWaiter = endpoint.waitUntilReady(); void callbackWaiter.catch(() => {});
+      }
+    },
+  });
+  try {
+    endpoint.connect(); await endpoint.session.create();
+    const pending = endpoint.waitUntilReady(); void pending.catch(() => {});
+    endpoint.session.dispose();
+    await assert.rejects(pending, /disposed/i);
+    assert.ok(callbackWaiter); await assert.rejects(callbackWaiter, /disposed/i);
+    assert.equal(endpoint.session.status, "disposed"); assert.equal(endpoint.ready, false);
+    await assert.rejects(endpoint.waitUntilReady(), /disposed/i);
+    await assert.rejects(endpoint.session.create(), /disposed/i);
+    notify?.({ kind: "ended", sessionId: "disposed-session", epoch: 1 });
+    notify?.({ kind: "fenced", sessionId: "disposed-session", epoch: 1 });
+    assert.equal(endpoint.session.status, "disposed");
+    endpoint.session.dispose();
+  } finally { endpoint.dispose(); }
+});
+
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");

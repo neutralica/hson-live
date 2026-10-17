@@ -222,7 +222,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       } else if (event.kind === "fenced") {
         receive(Object.freeze({ type: "session-fenced", sessionId: event.sessionId, epoch: event.epoch,
           code: "LOCUS_SESSION_ATTACHMENT_FENCED" }));
-      } else if (event.kind === "ended" && sessionId === event.sessionId && sessionEpoch === event.epoch) {
+      } else if (event.kind === "ended" && !sessionDisposed && sessionId === event.sessionId && sessionEpoch === event.epoch) {
         sessionStatus = "ended";
         credential = undefined;
         const error = runtimeOptions.operationLossError?.("ended") ?? new LocusDisconnectedError();
@@ -460,7 +460,13 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     if (sessionDisposed) return;
     sessionDisposed = true;
     sessionStatus = "disposed";
-    rejectPendingSession(new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API was disposed."));
+    const error = new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API was disposed.");
+    rejectPendingSession(error);
+    if (runtimeOptions.sessionRequired) {
+      const waiters = [...readyWaiters];
+      readyWaiters.clear();
+      for (const waiter of waiters) waiter.reject(error);
+    }
     runtimeOptions.onReadyChange?.();
   }
 
@@ -550,6 +556,9 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   }
 
   function waitUntilReady(): Promise<void> {
+    if (runtimeOptions.sessionRequired && sessionDisposed) {
+      return Promise.reject(new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API was disposed."));
+    }
     if (isReady()) return Promise.resolve();
     if (disposed) return Promise.reject(new LocusDisconnectedError());
     return new Promise((resolve, reject) => readyWaiters.add(Object.freeze({ resolve, reject })));

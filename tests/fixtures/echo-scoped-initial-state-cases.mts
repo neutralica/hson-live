@@ -30,15 +30,15 @@ const page = (w: LocusHostedAggregateStageWriter) => { const d = w.lib("page"); 
 const listener = { event: "click", target: "element" as const, capture: false, once: false, passive: false,
   missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false };
 
-async function fixture() {
+async function fixture(flat = false) {
   const map = make_livemap_libraries({ parts: collection({
     leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', css: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
     panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', css: '@media screen{:scope{padding:3px}}' },
     secret: { kind: "document", document: '<strong "PRIVATE_PART_SENTINEL"/>' },
-  }), page: { document: '<main @:page <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <footer @:footer/>/>' },
-  data: { data: { n: 0 } }, zpage: { document: '<aside <hson-part lib="parts" at="leaf"/>/>' },
+  }), page: { document: flat ? '<main @:page <footer @:footer/>/>' : '<main @:page <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <footer @:footer/>/>' },
+  data: { data: { n: 0 } }, zpage: { document: flat ? '<aside/>' : '<aside <hson-part lib="parts" at="leaf"/>/>' },
   hidden: { document: '<p "PRIVATE_LIBRARY_SENTINEL"/>' } }, [], undefined,
-  { page: parse_document_stylesheet('main{margin:7px} [hson\\:quad="footer"]{border:0}', []) });
+  { page: parse_document_stylesheet(flat ? 'main{margin:7px}' : 'main{margin:7px} [hson\\:quad="footer"]{border:0}', []) });
   const a = authority(map);
   enable_interactions(map);
   const pageId = a.libraries()[1]!;
@@ -51,7 +51,7 @@ async function fixture() {
     () => ({ libraries: ["page", "data", "zpage"], systemFeatures: ["interactions"] }));
   const effective = await normalize_locus_effective_projection(policy, { libraries: ["parts", "page", "data", "zpage", "hidden"], systemFeatures: ["interactions"] });
   const batches: PrivateScopedAggregateCommit[] = [];
-  const l = locus({ map, scopedDocuments: true, prepareGate: ({ transition }) => { batches.push(prepare_locus_scoped_commit_internal(map, transition, effective)); } });
+  const l = locus({ map, ...(flat ? {} : { scopedDocuments: true }), prepareGate: ({ transition }) => { batches.push(prepare_locus_scoped_commit_internal(map, transition, effective)); } });
   const state = () => capture(map, effective, true);
   const fresh = (snapshot = state()) => receive(snapshot, local_initializers({ local: { data: { n: 5 } }, localPage: { document: '<nav @:local/>' } }));
   const stage = async (write: (w: LocusHostedAggregateStageWriter) => void) => { await l.stage(write); return batches.at(-1)!; };
@@ -348,3 +348,6 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
   });
 
 }
+
+// Shared private fixtures; importing these does not run the initial-state cases.
+export { fixture as scoped_initial_fixture, view as scoped_receiver_view, unchanged as assert_scoped_unchanged, page, node, listener };

@@ -275,9 +275,9 @@ export function commit_document_css_internal(document: LiveMapDocumentLibrary, o
   commit(operation);
 }
 const CLIENT_LIBRARY_RETIREMENT = new WeakMap<object, Set<() => void>>();
-const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot, scoped?: boolean) => void>();
+const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot, scoped?: boolean, assertAcceptance?: () => void) => void>();
 const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (definitions: readonly CanonicalLibraryDefinition[],
-  css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>, installed?: () => void) => LiveMapCommit>();
+  css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>, installed?: () => void, assertAcceptance?: () => void) => LiveMapCommit>();
 const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, definitions: readonly CanonicalLibraryDefinition[],
   css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Readonly<{
   transition: PreparedLiveMapAuthorityTransition;
@@ -352,8 +352,10 @@ export function install_client_projected_topology_internal(
   operation: LiveMapLibraryAddOperation,
   expectedDigest: string,
   system?: Readonly<{ format: "hson-exact-value"; payload: string }>,
+  assertAcceptance?: () => void,
 ): void {
   const aggregate = internal_livemap_aggregate_authority(map);
+  const assertCurrent = aggregate.captureManagedRestorationFence(owner);
   const current = aggregate.clientProjection();
   if (current === undefined) throw new Error("Projected topology requires a composed client LiveMap.");
   const definitions = topology_definitions(operation);
@@ -376,9 +378,11 @@ export function install_client_projected_topology_internal(
     installSystem = system === undefined ? undefined
       : aggregate.prepareClientProjectionSystemManaged(owner, decode_hosted_root(system),
         operation.operation.libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name));
+    assertCurrent(); assertAcceptance?.();
     if (JSON.stringify(prepared.transition.commit.topology) !== JSON.stringify(operation)) {
       throw new Error("Projected topology operation is noncanonical.");
     }
+    assertCurrent(); assertAcceptance?.();
   } catch (cause) {
     aggregate.discard(prepared.transition);
     throw cause;
@@ -417,10 +421,10 @@ export function client_library_source_internal(value: object): "authority-projec
 /** Admit authorized local initializers without exposing topology mutation on the public map. @internal */
 export function add_client_local_libraries_internal(map: LiveMap, definitions: readonly CanonicalLibraryDefinition[],
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
-  installed?: () => void): LiveMapCommit {
+  installed?: () => void, assertAcceptance?: () => void): LiveMapCommit {
   const admit = CLIENT_LOCAL_LIBRARY_ADMISSION.get(map);
   if (admit === undefined) throw new Error("Client-local topology admission requires a composed LiveMap.");
-  return admit(capture_library_definitions(definitions), css, installed);
+  return admit(capture_library_definitions(definitions), css, installed, assertAcceptance);
 }
 
 /** Observe terminal retirement of one projected document binding. @internal */
@@ -433,11 +437,11 @@ export function observe_client_library_retirement_internal(value: object, listen
 
 /** Reconcile only the managed authority partition of an existing composed map. @internal */
 export function reconcile_client_projection_snapshot_internal(
-  map: LiveMap, owner: object, snapshot: PortableAggregateSnapshot, scoped = false,
+  map: LiveMap, owner: object, snapshot: PortableAggregateSnapshot, scoped = false, assertAcceptance?: () => void,
 ): void {
   const reconcile = CLIENT_PROJECTION_RECONCILE.get(map);
   if (reconcile === undefined) throw new Error("Client projection reconciliation requires a composed LiveMap.");
-  reconcile(owner, snapshot, scoped);
+  reconcile(owner, snapshot, scoped, assertAcceptance);
 }
 
 /** True only for the dedicated local multi-library public facade. @internal */
@@ -702,7 +706,7 @@ function make_livemap_library_receiver(
       }
       installed?.();
     };
-    const commit = clientLocal ? aggregate.addClientLocalLibraries(definitions, afterInstall)
+    const commit = clientLocal ? aggregate.addClientLocalLibraries(definitions, afterInstall, beforeInstall)
       : aggregate.addLibraries(definitions, afterInstall, beforeInstall);
     return public_commit(commit);
   };
@@ -850,7 +854,7 @@ function make_livemap_library_receiver(
     return result;
   });
   if (clientSnapshot !== undefined) CLIENT_LOCAL_LIBRARY_ADMISSION.set(libraries,
-    (definitions, css, installed) => addLibrariesInternal(definitions, css, true, undefined, installed));
+    (definitions, css, installed, assertAcceptance) => addLibrariesInternal(definitions, css, true, assertAcceptance, installed));
   register_echo_map_capability_internal(libraries, Object.freeze({
     revision: () => aggregate.inspect().revision,
     documentMaps: () => Object.freeze([...named.values()]
@@ -906,7 +910,7 @@ function make_livemap_library_receiver(
       },
     });
   });
-  if (clientSnapshot !== undefined) CLIENT_PROJECTION_RECONCILE.set(libraries, (owner, snapshot, scoped) => {
+  if (clientSnapshot !== undefined) CLIENT_PROJECTION_RECONCILE.set(libraries, (owner, snapshot, scoped, assertAcceptance) => {
     const assertCurrent = aggregate.captureManagedRestorationFence(owner);
     const prior = aggregate.clientProjection();
     if (prior === undefined) throw new Error("Client projection is unavailable.");
@@ -943,7 +947,7 @@ function make_livemap_library_receiver(
       for (const facade of retiredFacades) {
         deliver_livemap_observers([...(CLIENT_LIBRARY_RETIREMENT.get(facade) ?? [])], listener => listener(), "library-retirement");
       }
-    }, scoped);
+    }, scoped, assertAcceptance);
   });
   return libraries as unknown as LiveMap;
 }
