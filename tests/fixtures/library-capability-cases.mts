@@ -33,22 +33,22 @@ export async function library_capability_cases() {
   const direct = hsonLiveMap.fromLibraries({ page: { document: page, schema: PageSchema } });
   const batch = hsonLiveMap.fromLibraries({ page: { document: page, schema: PageSchema } });
   direct.lib("page").at([1, 0]).asElement()!.attrs.set("title", "button");
-  batch.batch(w => { w.lib("page").at([1, 0]).attrs.set("title", "button"); });
+  batch.batch(w => { w.lib("page").at([1, 0]).asElement().attrs.set("title", "button"); });
   assert.equal(batch.lib("page").render(), direct.lib("page").render());
   const simple = hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' } });
-  simple.batch(w => { w.lib("page").at([0]).attrs.set("title", "button"); });
+  simple.batch(w => { w.lib("page").at([0]).asElement().attrs.set("title", "button"); });
   assert.equal(simple.lib("page").render(), '<main><button title="button"></button></main>');
   batch.batch(w => {
     w.lib("page").at([1]).insert(0, element("<i/>"));
-    w.lib("page").at([1, 1]).attrs.set("moved", true);
+    w.lib("page").at([1, 1]).asElement().attrs.set("moved", true);
     w.lib("page").at([1]).move(1, 0);
-    w.lib("page").at([1, 1]).attrs.set("inserted", true);
+    w.lib("page").at([1, 1]).asElement().attrs.set("inserted", true);
   });
   assert.match(batch.lib("page").render(), /<button moved="" title="button"><\/button><i inserted=""><\/i>/);
   const before = batch.lib("page").render(), rev = batch.rev;
   assert.throws(() => batch.batch(w => {
     w.lib("page").at([1, 0]).delete();
-    w.lib("page").at([1, 99]).attrs.set("invalid", true);
+    w.lib("page").at([1, 99]).asElement().attrs.set("invalid", true);
   }));
   assert.equal(batch.lib("page").render(), before); assert.equal(batch.rev, rev);
 
@@ -59,7 +59,7 @@ export async function library_capability_cases() {
     const admitted = await locus.addLibraries({ private: [{ name: "privatePage", definition: { document: "<aside/>" } }] });
     assert.equal(admitted.libraries.privatePage.render(), "<aside></aside>");
     await assert.rejects(locus.addLibraries({ shared: [{ name: "privatePage", definition: { data: 1 } }] }));
-    await locus.stage(w => { w.lib("page").at([1, 0]).attrs.set("title", "button"); });
+    await locus.stage(w => { w.lib("page").at([1, 0]).asElement().attrs.set("title", "button"); });
     const selected = locus.lib("page");
     if (selected.mode !== "document") throw Error("Expected document");
     assert.equal(selected.render(), direct.lib("page").render());
@@ -104,7 +104,7 @@ export async function collection_capability_cases() {
   local.batch(writer => {
     writer.lib("deck").at(["slides"]).array.push({ id: "two", column1: [] });
     writer.lib("deck").at(["slides"]).array.push({ id: "three", column1: [] });
-    writer.lib("page").at([1, 0]).attrs.set("title", "mixed");
+    writer.lib("page").at([1, 0]).asElement().attrs.set("title", "mixed");
   });
   assert.deepEqual(slides.array.map(slide => slide.id), ["one", "two", "three"]);
   assert.match(local.lib("page").render(), /title="mixed"/);
@@ -115,7 +115,7 @@ export async function collection_capability_cases() {
   }));
   assert.deepEqual(local.capture(), before);
   assert.throws(() => local.batch(writer => {
-    writer.lib("page").at([1, 0]).attrs.set("title", "rejected");
+    writer.lib("page").at([1, 0]).asElement().attrs.set("title", "rejected");
     Reflect.apply(writer.lib("deck").at(["slides"]).array.push, undefined, [{ id: 9, column1: [] }]);
   }));
   assert.deepEqual(local.capture(), before);
@@ -178,7 +178,7 @@ export async function collection_capability_cases() {
     await locus.stage(writer => {
       writer.lib("deck").at(["slides"]).array.push({ id: "two", column1: [] });
       writer.lib("deck").at(["slides"]).array.push({ id: "three", column1: [] });
-      writer.lib("page").at([1, 0]).attrs.set("title", "mixed");
+      writer.lib("page").at([1, 0]).asElement().attrs.set("title", "mixed");
     });
     assert.deepEqual(locus.lib("deck").at(["slides"]).array.map(slide => slide.id), ["one", "two", "three"]);
     const revision = locus.rev;

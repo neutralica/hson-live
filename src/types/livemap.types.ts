@@ -1721,6 +1721,9 @@ type LiveMapStagedDataLibrary<TValue, TResult> = Readonly<{
 }>;
 
 type LiveMapStagedDocumentLocation<TDescriptor, TResult> = Readonly<{
+  asElement: () => LiveMapStagedDocumentLocation<TDescriptor, TResult> & LiveMapStagedDocumentContent<TDescriptor, TResult> & LiveMapStagedDocumentAttrs<TDescriptor, TResult>;
+  asRoot: () => LiveMapStagedDocumentLocation<TDescriptor, TResult> & LiveMapStagedDocumentContent<TDescriptor, TResult>;
+  asText: () => LiveMapStagedDocumentLocation<TDescriptor, TResult>;
   at: <const TPath extends readonly number[]>(
     path: TPath & ([InternalDocumentDescriptorEndpoint<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>>] extends [never]
       ? never : unknown),
@@ -1732,10 +1735,8 @@ type LiveMapStagedDocumentLocation<TDescriptor, TResult> = Readonly<{
       delete: () => TResult;
     }>) & ([TDescriptor] extends [Readonly<{ kind: "element" }>]
   ? LiveMapStagedDocumentContent<TDescriptor, TResult> & LiveMapStagedDocumentAttrs<TDescriptor, TResult>
-  : [Exclude<TDescriptor, InternalDocumentMissingCoordinate>] extends [InternalDocumentUnschematized | InternalDocumentBroadSubtree | InternalDocumentRootDescriptor<HsonNode>]
-    ? LiveMapStagedDocumentContent<TDescriptor, TResult> & LiveMapStagedDocumentAttrs<TDescriptor, TResult>
-    : [TDescriptor] extends [InternalDocumentRootDescriptor<unknown>] ? LiveMapStagedDocumentContent<TDescriptor, TResult>
-      : Readonly<Record<never, never>>);
+  : [TDescriptor] extends [InternalDocumentRootDescriptor<unknown>] ? LiveMapStagedDocumentContent<TDescriptor, TResult>
+    : Readonly<Record<never, never>>);
 
 type LiveMapStagedDocumentContent<TDescriptor, TResult> = Readonly<{
   insert: (index: number, value: InternalDocumentInsertItem<TDescriptor>) => TResult;
@@ -1751,11 +1752,21 @@ type LiveMapStagedDocumentAttrs<TDescriptor, TResult> =
         ) => TResult;
         drop: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => TResult;
         replace: (values: InternalAttrsReplaceInput<TAttrs>) => TResult;
+        setMany: (values: InternalAttrsSetManyInput<TAttrs>) => TResult;
+        dropMany: (names: readonly InternalAttrsName<TAttrs>[]) => TResult;
+        clear: () => TResult;
+      }>; flags: Readonly<{
+        set: <const TNames extends string[]>(...names: TNames & {
+          [TIndex in keyof TNames]: TNames[TIndex] extends string ? InternalFlagNameAllowed<TAttrs, TNames[TIndex]> : never;
+        }) => TResult;
+        clear: <const TNames extends string[]>(...names: TNames & {
+          [TIndex in keyof TNames]: TNames[TIndex] extends string ? InternalFlagNameAllowed<TAttrs, TNames[TIndex]> : never;
+        }) => TResult;
       }> }>
     : never;
 
 /** Schema-preserving selected document observations and authority-safe commands. */
-export type AuthorityDocumentLocation<TDescriptor = unknown, TResult = Promise<void>> = Readonly<{
+export type AuthorityDocumentLocation<TDescriptor = unknown, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear"> = Readonly<{
   readonly rev: number;
   path: () => readonly number[];
   snap: () => (unknown extends TDescriptor ? InternalDocumentLegacyEndpoint : InternalDocumentDescriptorEndpoint<TDescriptor>);
@@ -1763,24 +1774,33 @@ export type AuthorityDocumentLocation<TDescriptor = unknown, TResult = Promise<v
   kind: () => "missing" | "root" | "element" | "text";
   at: <const TPath extends readonly number[]>(path: TPath &
     ([InternalDocumentDescriptorEndpoint<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>>] extends [never] ? never : unknown)) =>
-      AuthorityDocumentLocation<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>, TResult>;
-  id: (value: string) => AuthorityDocumentLocation<unknown, TResult> | undefined;
-  present: () => AuthorityDocumentLocation<TDescriptor, TResult> | undefined;
-  asElement: () => AuthorityDocumentLocation<TDescriptor, TResult> & AuthorityDocumentElement<TDescriptor, TResult> | undefined;
-  asRoot: () => AuthorityDocumentLocation<TDescriptor, TResult> & AuthorityDocumentContent<TDescriptor, TResult> | undefined;
-  asText: () => AuthorityDocumentLocation<TDescriptor, TResult> | undefined;
+      AuthorityDocumentLocation<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>, TResult, TFlagCommands>;
+  id: (value: string) => AuthorityDocumentLocation<unknown, TResult, TFlagCommands> | undefined;
+  present: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands> | undefined;
+  asElement: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands> & AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands> | undefined;
+  asRoot: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands> & AuthorityDocumentContent<TDescriptor, TResult> | undefined;
+  asText: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands> | undefined;
 }> & ([TResult] extends [never] ? {} : Readonly<{ replace: (value: InternalDocumentWritableItem<TDescriptor>) => TResult; delete: () => TResult }>)
-  & (unknown extends TDescriptor ? AuthorityDocumentElement<TDescriptor, TResult>
-    : [TDescriptor] extends [InternalDocumentUnschematized | InternalDocumentBroadSubtree | InternalDocumentRootDescriptor<HsonNode>] ? AuthorityDocumentElement<TDescriptor, TResult>
-    : [TDescriptor] extends [{ kind: "element" }] ? AuthorityDocumentElement<TDescriptor, TResult>
+  & ([TDescriptor] extends [{ kind: "element" }] ? AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands>
       : [TDescriptor] extends [InternalDocumentRootDescriptor<unknown>] ? AuthorityDocumentContent<TDescriptor, TResult> : {});
 
 type AuthorityDocumentContent<TDescriptor, TResult> = [TResult] extends [never] ? {}
   : LiveMapStagedDocumentContent<TDescriptor, TResult>;
-type AuthorityDocumentElement<TDescriptor, TResult> = AuthorityDocumentContent<TDescriptor, TResult> & {
-  readonly attrs: Pick<LiveMapLibraryDocumentElementCapabilities<string, TDescriptor>["attrs"], "get" | "has" | "keys">
+type AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands extends "set" | "clear"> = AuthorityDocumentContent<TDescriptor, TResult> & {
+  readonly attrs: Pick<LiveMapLibraryDocumentElementCapabilities<string, TDescriptor>["attrs"], "get" | "has" | "keys" | "must">
     & ([TResult] extends [never] ? {} : LiveMapStagedDocumentAttrs<TDescriptor, TResult>["attrs"]);
+  readonly flags: Pick<LiveMapLibraryDocumentElementCapabilities<string, TDescriptor>["flags"], "has">
+    & ([TResult] extends [never] ? {} : Pick<LiveMapStagedDocumentAttrs<TDescriptor, TResult>["flags"], TFlagCommands>);
 };
+/** An existing runtime QUAD lifetime; nested navigation remains relative to that subject. */
+export type AuthorityDocumentQuadLocation<TResult = Promise<void>> =
+  Pick<LiveMapDocumentQuadLocation, "active" | "rev" | "path" | "snap" | "dispose">
+  & AuthorityDocumentElement<unknown, TResult, "set" | "clear">
+  & ([TResult] extends [never] ? {} : Readonly<{
+    replace: (value: LiveMapDocumentContent) => TResult;
+    delete: () => TResult;
+  }>) & Readonly<{ at: (path: readonly number[]) => AuthorityDocumentQuadLocation<TResult> }>;
+
 export type AuthorityDocumentSelector<TEvidence, TResult = Promise<void>> =
   <const TPath extends readonly number[]>(path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never] ? never : unknown)) =>
     AuthorityDocumentLocation<InternalDocumentLogicalPathDescriptor<TEvidence, TPath>, TResult>;
@@ -1796,18 +1816,25 @@ type LiveMapStagedDocumentLibrary<TEvidence, TResult> = Readonly<{
   graph: (operation: LiveMapStagedDocumentGraphOperation) => TResult;
   /** Portable target operations needed by hosted document actions. */
   attrs: Readonly<{
-    set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => TResult;
-    drop: (target: LiveMapDocumentCommitTarget, name: string) => TResult;
-    replace: (target: LiveMapDocumentCommitTarget, attrs: LiveMapDocumentAttrs) => TResult;
+    set: (target: LiveMapDocumentRequestTarget, name: string, value: LiveMapDocumentAttributeValue) => TResult;
+    drop: (target: LiveMapDocumentRequestTarget, name: string) => TResult;
+    replace: (target: LiveMapDocumentRequestTarget, attrs: LiveMapDocumentAttrs) => TResult;
+    setMany: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) => TResult;
+    dropMany: (target: LiveMapDocumentRequestTarget, names: readonly string[]) => TResult;
+    clear: (target: LiveMapDocumentRequestTarget) => TResult;
   }>;
   content: Readonly<{
-    replace: (target: LiveMapDocumentCommitTarget, index: number, replacement: LiveMapDocumentContent) => TResult;
-    insert: (target: LiveMapDocumentCommitTarget, index: number, content: LiveMapDocumentContent) => TResult;
-    remove: (target: LiveMapDocumentCommitTarget, index: number) => TResult;
-    move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => TResult;
+    replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent) => TResult;
+    insert: (target: LiveMapDocumentRequestTarget, index: number, content: LiveMapDocumentContent) => TResult;
+    remove: (target: LiveMapDocumentRequestTarget, index: number) => TResult;
+    move: (target: LiveMapDocumentRequestTarget, from: number, to: number) => TResult;
+  }>;
+  flags: Readonly<{
+    set: (target: LiveMapDocumentRequestTarget, ...names: string[]) => TResult;
+    clear: (target: LiveMapDocumentRequestTarget, ...names: string[]) => TResult;
   }>;
   /** Portable CSS operations and complete authored stylesheet replacement. */
-  css: ((operation: LiveMapCssOp) => TResult) & Readonly<{ stylesheet: (text: string) => TResult }>;
+  css: ((operation: LiveMapCssOp) => TResult) & import("./document-css.types.js").DocumentCssCommands<TResult>;
 }>;
 
 type LiveMapStagedLibraryForInput<TInput, TResult> =

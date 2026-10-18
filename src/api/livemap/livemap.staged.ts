@@ -1,12 +1,13 @@
+import { normalize_document_request_target } from "./livemap.document.target.js";
+import { document_css_commands, capture_document_css_command } from "../../internal/document-css-commands.js";
 import { collection_commands } from "./livemap.collection-command.js";
-import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapDocumentRequestTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
-import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY, register_interaction_draft_internal } from "../../internal/interaction-storage.js";
-import { admit_public_document_graph_operation } from "./livemap.document.mutation.js";
+import { capture_document_attrs_command, type DocumentAttrsCommand, admit_public_document_graph_operation } from "./livemap.document.mutation.js";
 import { validate_document_path } from "./livemap.document.path.js";
 import { must_json_value, must_live_path } from "./livemap.guard.js";
 import type { InternalLiveMapAggregateAuthority } from "./livemap.internal.js";
@@ -21,16 +22,23 @@ type StagedDataPath = Readonly<{
   asObject: () => StagedDataPath;
 }>;
 
-type StagedDocumentLocation = Readonly<{
+export type StagedDocumentLocation = Readonly<{
+  asElement: () => StagedDocumentLocation;
+  asRoot: () => StagedDocumentLocation;
+  asText: () => StagedDocumentLocation;
   at: (path: readonly number[]) => StagedDocumentLocation;
   replace: (value: LiveMapDocumentContent) => void;
   delete: () => void;
   insert: (index: number, value: LiveMapDocumentContent) => void;
   move: (from: number, to: number) => void;
+  flags: Readonly<{ set: (...names: string[]) => void; clear: (...names: string[]) => void }>;
   attrs: Readonly<{
     set: (name: string, value: import("../../types/livemap.types.js").LiveMapDocumentAttributeValue) => void;
     drop: (name: string) => void;
     replace: (values: import("../../types/livemap.types.js").LiveMapDocumentAttrs) => void;
+    setMany: (values: import("../../types/livemap.types.js").LiveMapDocumentAttrs) => void;
+    dropMany: (names: readonly string[]) => void;
+    clear: () => void;
   }>;
 }>;
 
@@ -39,17 +47,21 @@ type StagedDocumentLibrary = Readonly<{
   at: (path: readonly number[]) => StagedDocumentLocation;
   graph: (operation: LiveMapGraphOp) => void;
   attrs: Readonly<{
-    set: (target: LiveMapDocumentCommitTarget, name: string, value: import("../../types/livemap.types.js").LiveMapDocumentAttributeValue) => void;
-    drop: (target: LiveMapDocumentCommitTarget, name: string) => void;
-    replace: (target: LiveMapDocumentCommitTarget, values: import("../../types/livemap.types.js").LiveMapDocumentAttrs) => void;
+    set: (target: LiveMapDocumentRequestTarget, name: string, value: import("../../types/livemap.types.js").LiveMapDocumentAttributeValue) => void;
+    drop: (target: LiveMapDocumentRequestTarget, name: string) => void;
+    replace: (target: LiveMapDocumentRequestTarget, values: import("../../types/livemap.types.js").LiveMapDocumentAttrs) => void;
+    setMany: (target: LiveMapDocumentRequestTarget, values: import("../../types/livemap.types.js").LiveMapDocumentAttrs) => void;
+    dropMany: (target: LiveMapDocumentRequestTarget, names: readonly string[]) => void;
+    clear: (target: LiveMapDocumentRequestTarget) => void;
   }>;
+  flags: Readonly<{ set: (target: LiveMapDocumentRequestTarget, ...names: string[]) => void; clear: (target: LiveMapDocumentRequestTarget, ...names: string[]) => void }>;
   content: Readonly<{
-    replace: (target: LiveMapDocumentCommitTarget, index: number, replacement: LiveMapDocumentContent) => void;
-    insert: (target: LiveMapDocumentCommitTarget, index: number, content: LiveMapDocumentContent) => void;
-    remove: (target: LiveMapDocumentCommitTarget, index: number) => void;
-    move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => void;
+    replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent) => void;
+    insert: (target: LiveMapDocumentRequestTarget, index: number, content: LiveMapDocumentContent) => void;
+    remove: (target: LiveMapDocumentRequestTarget, index: number) => void;
+    move: (target: LiveMapDocumentRequestTarget, from: number, to: number) => void;
   }>;
-  css: ((operation: LiveMapCssOp) => void) & Readonly<{ stylesheet: (text: string) => void }>;
+  css: ((operation: LiveMapCssOp) => void) & import("../../types/document-css.types.js").DocumentCssCommands<void>;
 }>;
 
 type StagedDataLibrary = Readonly<{
@@ -122,6 +134,19 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
       const path = captured.op === "replace-root" ? [] : captured.target.path;
       writes.push(Object.freeze({ target: aggregate.target(identity, path), kind: "graph", operation: captured, publicStaged: true, ...(logicalLocation === undefined ? {} : { logicalLocation }) }));
     };
+    const request_target = (input: LiveMapDocumentRequestTarget): LiveMapDocumentCommitTarget => {
+      assert_open();
+      const request = normalize_document_request_target(input, "replace-attrs");
+      return Object.freeze({ kind: "path", path: validate_document_path(request.path) });
+    };
+    const bulk = (input: LiveMapDocumentRequestTarget, command: DocumentAttrsCommand, logicalLocation?: readonly number[]): void => {
+      assert_open();
+      const target = request_target(input);
+      const attrsCommand = capture_document_attrs_command(command);
+      const captured = admit_public_document_graph_operation({ domain: "graph", op: "replace-attrs", target, attrs: {} });
+      writes.push(Object.freeze({ target: aggregate.target(identity, target.path), kind: "graph", operation: captured,
+        publicStaged: true, attrsCommand, ...(logicalLocation === undefined ? {} : { logicalLocation }) }));
+    };
     const location = (input: readonly number[]): StagedDocumentLocation => {
       assert_open();
       const path = validate_document_path(input);
@@ -134,12 +159,23 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
         return Object.freeze({ target: Object.freeze({ kind: "path" as const, path: validate_document_path(path.slice(0, -1)) }), index });
       };
       const logicalGraph = (operation: LiveMapGraphOp): void => graph(operation, path);
+      const refine = (assertDocumentShape: "element" | "root" | "text"): StagedDocumentLocation => {
+        assert_open();
+        writes.push(Object.freeze({ target: aggregate.target(identity, path), kind: "graph",
+          operation: Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs: {} }),
+          logicalLocation: path, assertDocumentShape }));
+        return location(path);
+      };
       const attrs: StagedDocumentLocation["attrs"] = Object.freeze({
         set: (name, value) => logicalGraph(Object.freeze({ domain: "graph", op: "set-attr", target, name, value })),
         drop: (name) => logicalGraph(Object.freeze({ domain: "graph", op: "remove-attr", target, name })),
         replace: (values) => logicalGraph(Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs: values })),
+        setMany: (values) => bulk(target, { kind: "setMany", values }, path),
+        dropMany: (names) => bulk(target, { kind: "dropMany", names }, path),
+        clear: () => logicalGraph({ domain: "graph", op: "replace-attrs", target, attrs: {} }),
       });
       return Object.freeze({
+        asElement: () => refine("element"), asRoot: () => refine("root"), asText: () => refine("text"),
         at: (child) => location([...path, ...validate_document_path(child)]),
         replace: (replacement) => {
           const slot = content_slot();
@@ -152,32 +188,45 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
         insert: (index, content) => logicalGraph(Object.freeze({ domain: "graph", op: "insert-content", target, index, content })),
         move: (from, to) => logicalGraph(Object.freeze({ domain: "graph", op: "move-content", target, from, to })),
         attrs,
+        flags: Object.freeze({
+          set: (...names: string[]) => bulk(target, { kind: "setFlags", names }, path),
+          clear: (...names: string[]) => bulk(target, { kind: "clearFlags", names }, path),
+        }),
       });
     };
     const css = Object.assign((operation: LiveMapCssOp) => {
       assert_open();
       writes.push(Object.freeze({ target: aggregate.target(identity, []), kind: "css",
         operation: canonical_portable_document_css_op(operation) }));
-    }, { stylesheet: (text: string) => {
-      css({ domain: "css", kind: "replace", stylesheet: parse_document_stylesheet(text, []) });
-    } });
+    }, document_css_commands(command => {
+      assert_open();
+      writes.push(Object.freeze({ target: aggregate.target(identity, []), kind: "css",
+        operation: Object.freeze({ domain: "css", kind: "clear-all" }), cssCommand: capture_document_css_command(command) }));
+    }, assert_open));
     const staged: StagedDocumentLibrary = Object.freeze({
       mode: "document",
       at: location,
       graph,
       attrs: Object.freeze({
-        set: (target: LiveMapDocumentCommitTarget, name: string, value: import("../../types/livemap.types.js").LiveMapDocumentAttributeValue) => graph(Object.freeze({ domain: "graph", op: "set-attr", target, name, value })),
-        drop: (target: LiveMapDocumentCommitTarget, name: string) => graph(Object.freeze({ domain: "graph", op: "remove-attr", target, name })),
-        replace: (target: LiveMapDocumentCommitTarget, values: import("../../types/livemap.types.js").LiveMapDocumentAttrs) => graph(Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs: values })),
+        set: (target: LiveMapDocumentRequestTarget, name: string, value: import("../../types/livemap.types.js").LiveMapDocumentAttributeValue) => graph(Object.freeze({ domain: "graph", op: "set-attr", target: request_target(target), name, value })),
+        drop: (target: LiveMapDocumentRequestTarget, name: string) => graph(Object.freeze({ domain: "graph", op: "remove-attr", target: request_target(target), name })),
+        setMany: (target: LiveMapDocumentRequestTarget, values: import("../../types/livemap.types.js").LiveMapDocumentAttrs) => bulk(target, { kind: "setMany", values }),
+        dropMany: (target: LiveMapDocumentRequestTarget, names: readonly string[]) => bulk(target, { kind: "dropMany", names }),
+        clear: (target: LiveMapDocumentRequestTarget) => graph({ domain: "graph", op: "replace-attrs", target: request_target(target), attrs: {} }),
+        replace: (target: LiveMapDocumentRequestTarget, values: import("../../types/livemap.types.js").LiveMapDocumentAttrs) => graph(Object.freeze({ domain: "graph", op: "replace-attrs", target: request_target(target), attrs: values })),
+      }),
+      flags: Object.freeze({
+        set: (target: LiveMapDocumentRequestTarget, ...names: string[]) => bulk(target, { kind: "setFlags", names }),
+        clear: (target: LiveMapDocumentRequestTarget, ...names: string[]) => bulk(target, { kind: "clearFlags", names }),
       }),
       content: Object.freeze({
-        replace(target: LiveMapDocumentCommitTarget, index: number, replacement: LiveMapDocumentContent) {
+        replace(target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent) {
           if (arguments.length !== 3) throw new TypeError("Document content replacement requires exactly three arguments; caller-authored lineage is unsupported.");
-          return graph(Object.freeze({ domain: "graph", op: "replace-content", target, index, replacement }));
+          return graph(Object.freeze({ domain: "graph", op: "replace-content", target: request_target(target), index, replacement }));
         },
-        insert: (target: LiveMapDocumentCommitTarget, index: number, content: LiveMapDocumentContent) => graph(Object.freeze({ domain: "graph", op: "insert-content", target, index, content })),
-        remove: (target: LiveMapDocumentCommitTarget, index: number) => graph(Object.freeze({ domain: "graph", op: "remove-content", target, index })),
-        move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => graph(Object.freeze({ domain: "graph", op: "move-content", target, from, to })),
+        insert: (target: LiveMapDocumentRequestTarget, index: number, content: LiveMapDocumentContent) => graph(Object.freeze({ domain: "graph", op: "insert-content", target: request_target(target), index, content })),
+        remove: (target: LiveMapDocumentRequestTarget, index: number) => graph(Object.freeze({ domain: "graph", op: "remove-content", target: request_target(target), index })),
+        move: (target: LiveMapDocumentRequestTarget, from: number, to: number) => graph(Object.freeze({ domain: "graph", op: "move-content", target: request_target(target), from, to })),
       }),
       css,
     });

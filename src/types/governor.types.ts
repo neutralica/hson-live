@@ -6,7 +6,7 @@ import type {
   LiveMap, LiveMapKnownDefinitions, LiveMapKnownNames, LiveMapPathValue, LiveMapSetValue,
   LiveMapWriteValue, LiveMapPartWrite, LivePath, LiveMapRootMode, LiveMapCssOp,
   LiveMapDocumentContent, LiveMapDocumentAttrs, LiveMapDocumentAttributeValue,
-  LiveMapDocumentCommitTarget, LiveMapCut, LiveMapHtmlCut, LiveMapCutOptions,
+  LiveMapDocumentRequestTarget, LiveMapCut, LiveMapHtmlCut, LiveMapCutOptions,
   LiveMapRegistryCommitObserverApi, LiveMapDocumentLibrary, LiveMapDataLibrary,
 } from "./livemap.types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
@@ -48,29 +48,34 @@ export type LocusDocumentLibrary<TEvidence = HsonNode, TSchema extends HsonSchem
   render: LiveMapDocumentLibrary<TEvidence, string, TSchema>["render"];
   commits: LiveMapDocumentLibrary<TEvidence, string, TSchema>["commits"];
   at: import("./livemap.types.js").AuthorityDocumentSelector<TEvidence>;
+  q: (name: string) => import("./livemap.types.js").AuthorityDocumentQuadLocation | undefined;
   schema: Readonly<{ get: LiveMapDocumentLibrary<TEvidence, string, TSchema>["schema"]["get"] }>;
-  css: ((operation: LiveMapCssOp) => Promise<void>) & Readonly<{
-    snapshot: LiveMapDocumentLibrary<TEvidence, string, TSchema>["css"]["snapshot"];
-    has: LiveMapDocumentLibrary<TEvidence, string, TSchema>["css"]["has"];
-    list: LiveMapDocumentLibrary<TEvidence, string, TSchema>["css"]["list"];
-    get: LiveMapDocumentLibrary<TEvidence, string, TSchema>["css"]["get"];
-    stylesheet: (text: string) => Promise<void>;
-  }>;
+  css: ((operation: LiveMapCssOp) => Promise<void>) & import("./document-css.types.js").DocumentCssCommands<Promise<void>>
+    & import("./document-css.types.js").DocumentCssRead;
   document: Readonly<{
     root: () => HsonNode;
     content: (() => readonly LiveMapDocumentContent[]) & Readonly<{
-      replace: (target: LiveMapDocumentCommitTarget, index: number, value: LiveMapDocumentContent) => Promise<void>;
-      insert: (target: LiveMapDocumentCommitTarget, index: number, value: LiveMapDocumentContent) => Promise<void>;
-      remove: (target: LiveMapDocumentCommitTarget, index: number) => Promise<void>;
-      move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => Promise<void>;
+      replace: (target: LiveMapDocumentRequestTarget, index: number, value: LiveMapDocumentContent) => Promise<void>;
+      insert: (target: LiveMapDocumentRequestTarget, index: number, value: LiveMapDocumentContent) => Promise<void>;
+      remove: (target: LiveMapDocumentRequestTarget, index: number) => Promise<void>;
+      move: (target: LiveMapDocumentRequestTarget, from: number, to: number) => Promise<void>;
+    }>;
+    flags: Readonly<{
+      has: LiveMapDocumentLibrary<TEvidence, string, TSchema>["document"]["flags"]["has"];
+      set: (target: LiveMapDocumentRequestTarget, ...names: string[]) => Promise<void>;
+      clear: (target: LiveMapDocumentRequestTarget, ...names: string[]) => Promise<void>;
     }>;
     attrs: Readonly<{
       get: LiveMapDocumentLibrary<TEvidence, string, TSchema>["document"]["attrs"]["get"];
       has: LiveMapDocumentLibrary<TEvidence, string, TSchema>["document"]["attrs"]["has"];
       keys: LiveMapDocumentLibrary<TEvidence, string, TSchema>["document"]["attrs"]["keys"];
-      set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => Promise<void>;
-      drop: (target: LiveMapDocumentCommitTarget, name: string) => Promise<void>;
-      replace: (target: LiveMapDocumentCommitTarget, values: LiveMapDocumentAttrs) => Promise<void>;
+      must: LiveMapDocumentLibrary<TEvidence, string, TSchema>["document"]["attrs"]["must"];
+      setMany: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) => Promise<void>;
+      dropMany: (target: LiveMapDocumentRequestTarget, names: readonly string[]) => Promise<void>;
+      clear: (target: LiveMapDocumentRequestTarget) => Promise<void>;
+      set: (target: LiveMapDocumentRequestTarget, name: string, value: LiveMapDocumentAttributeValue) => Promise<void>;
+      drop: (target: LiveMapDocumentRequestTarget, name: string) => Promise<void>;
+      replace: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) => Promise<void>;
     }>;
   }>;
 }>;
@@ -97,7 +102,14 @@ export type ReadDataLibrary<TValue = JsonValue | undefined, TSchema extends Hson
 export type ReadDocumentLibrary<TEvidence = HsonNode, TSchema extends HsonSchema = HsonSchema> =
   Pick<LocusDocumentLibrary<TEvidence, TSchema>, "mode" | "rev" | "root" | "render" | "commits" | "schema"> & Readonly<{
     at: import("./livemap.types.js").AuthorityDocumentSelector<TEvidence, never>;
-    css: Pick<LocusDocumentLibrary<TEvidence, TSchema>["css"], "snapshot" | "has" | "list" | "get">;
+    q: (name: string) => import("./livemap.types.js").AuthorityDocumentQuadLocation<never> | undefined;
+    css: import("./document-css.types.js").DocumentCssRead;
+    document: Readonly<{
+      root: LiveMapDocumentLibrary["root"];
+      content: () => readonly LiveMapDocumentContent[];
+      attrs: Pick<LiveMapDocumentLibrary["document"]["attrs"], "get" | "has" | "keys" | "must">;
+      flags: Pick<LiveMapDocumentLibrary["document"]["flags"], "has">;
+    }>;
   }>;
 export type ReadLibrary = ReadDataLibrary | ReadDocumentLibrary;
 
@@ -151,8 +163,19 @@ export type EchoLocalDataLibrary = Readonly<Pick<LiveMapDataLibrary, "mode" | "r
   source: "client-local";
 }>;
 
-export type EchoProjectedDocumentLibrary = LocusDocumentLibrary & Readonly<{ source: "authority-projected" }>;
-export type EchoLocalDocumentLibrary = Readonly<Pick<LiveMapDocumentLibrary, "mode" | "rev" | "root" | "at" | "render" | "css" | "commits" | "schema"> & {
+export type EchoDocumentLocation = import("./livemap.types.js").AuthorityDocumentLocation<unknown, Promise<void>, "set">;
+export type EchoProjectedDocumentLibrary = Omit<LocusDocumentLibrary, "at" | "document" | "css" | "q"> & Readonly<{
+  source: "authority-projected";
+  css: ((operation: LiveMapCssOp) => Promise<void>) & import("./document-css.types.js").DocumentCssRead
+    & Pick<import("./document-css.types.js").DocumentCssCommands<Promise<void>>, "clearAll" | "atProperty" | "keyframes">
+    & Readonly<{ stylesheet: (text: string) => Promise<void> }>;
+  at: (path: readonly number[]) => EchoDocumentLocation;
+  q: (name: string) => import("./livemap.types.js").AuthorityDocumentQuadLocation<never> | undefined;
+  document: Omit<LocusDocumentLibrary["document"], "flags"> & Readonly<{
+    flags: Pick<LocusDocumentLibrary["document"]["flags"], "has" | "set">;
+  }>;
+}>;
+export type EchoLocalDocumentLibrary = Readonly<Pick<LiveMapDocumentLibrary, "mode" | "rev" | "root" | "at" | "render" | "css" | "commits" | "schema" | "q"> & {
   source: "client-local";
   document: Omit<LiveMapDocumentLibrary["document"], "byQuid">;
 }>;

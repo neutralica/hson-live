@@ -169,6 +169,31 @@ export function make_livemap_document_mutation_api(
   });
 }
 
+/** Candidate-relative bulk intent; lowered to the existing replace-attrs operation. @internal */
+export type DocumentAttrsCommand =
+  | Readonly<{ kind: "setMany"; values: LiveMapDocumentAttrs }>
+  | Readonly<{ kind: "dropMany" | "setFlags" | "clearFlags"; names: readonly string[] }>;
+
+export function capture_document_attrs_command(command: DocumentAttrsCommand): DocumentAttrsCommand {
+  return command.kind === "setMany"
+    ? Object.freeze({ kind: command.kind, values: normalize_attrs_bag(command.values) })
+    : Object.freeze({ kind: command.kind, names: command.kind === "dropMany"
+      ? normalize_attr_names(command.names) : normalize_flag_names(command.names, true) });
+}
+
+export function lower_document_attrs_command(
+  root: HsonNode, overlay: LiveMapDocumentIdentityOverlay,
+  target: LiveMapDocumentCommitTarget, command: DocumentAttrsCommand,
+): LiveMapGraphReplaceAttrsOp {
+  const { attrs } = read_document_attrs({ mode: "document", root: () => root, overlay: () => overlay }, target);
+  const captured = capture_document_attrs_command(command);
+  const next = captured.kind === "setMany" ? plan_public_attrs_set_many(attrs, captured.values)
+    : captured.kind === "dropMany" ? plan_public_attrs_drop_many(attrs, captured.names)
+    : captured.kind === "setFlags" ? plan_public_flags_set(attrs, captured.names)
+    : plan_public_flags_clear(attrs, captured.names);
+  return Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs: next });
+}
+
 function set_many_document_attrs(
   controller: LiveMapDocumentMutationController,
   targetInput: unknown,
@@ -210,7 +235,7 @@ function clear_document_flags(
 }
 
 function read_document_attrs(
-  controller: LiveMapDocumentMutationController,
+  controller: Pick<LiveMapDocumentMutationController, "root" | "mode" | "overlay">,
   targetInput: unknown,
 ): Readonly<{ target: LiveMapDocumentRequestTarget; attrs: LiveMapDocumentAttrs }> {
   const operation = "replace-attrs";

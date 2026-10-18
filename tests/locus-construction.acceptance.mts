@@ -35,8 +35,8 @@ const stopAuthorityCommits = locus.commits.observe((commit) => authorityCommits.
 await locus.lib("count").at(["value"]).set(2);
 await locus.stage((loc) => { loc.lib("count").at(["value"]).set(3); });
 const page = locus.lib("page");
-await page.at([]).attrs.set("title", "owned");
-assert.equal(page.at([]).attrs.get("title"), "owned");
+await page.at([]).asElement()!.attrs.set("title", "owned");
+assert.equal(page.at([]).asElement()!.attrs.get("title"), "owned");
 assert.deepEqual(authorityCommits, [2, 3, 4]);
 stopAuthorityCommits();
 assert.deepEqual(locus.cut().libs.libraries.map((entry) => entry.name),
@@ -50,7 +50,7 @@ locus.dispose();
 
 const pathAuthority = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main <p/>/>" } }] });
 await pathAuthority.lib("page").at([0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
-assert.equal(pathAuthority.lib("page").at([0]).attrs.get("title"), "replaced");
+assert.equal(pathAuthority.lib("page").at([0]).asElement()!.attrs.get("title"), "replaced");
 pathAuthority.dispose();
 
 const styled = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
@@ -68,7 +68,7 @@ const combinedValue = node_to_json_value(decode_hosted_root(combinedSystem.root)
 if (typeof combinedValue !== "object" || combinedValue === null || Array.isArray(combinedValue)
   || !Array.isArray(combinedValue.descriptors)) throw new Error("Initial interaction descriptors are missing.");
 assert.equal(combinedValue.descriptors.length, 1);
-  assert.equal("clearAll" in combined.lib("page").css, false);
+  assert.equal(typeof combined.lib("page").css.clearAll, "function");
 combined.dispose();
 const combinedStorage = new MemoryCheckpointAdapter();
 const combinedDurable = await hsonLiveMap.locus.resume({ ...combinedDefinition, persistence: combinedStorage });

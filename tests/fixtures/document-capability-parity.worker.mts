@@ -1,0 +1,11 @@
+import { parentPort } from "node:worker_threads";
+import { document_capability_parity_cases, document_css_parity_cases, document_read_authority_cases, document_echo_submission_cases, document_shape_cases, document_schema_atomicity_cases, document_identity_authority_cases, document_scoped_guard_cases } from "./document-capability-parity-cases.mts";
+await document_capability_parity_cases();
+await document_css_parity_cases();
+await document_read_authority_cases();
+await document_echo_submission_cases();
+await document_shape_cases();
+await document_schema_atomicity_cases();
+await document_identity_authority_cases();
+await document_scoped_guard_cases();
+parentPort!.postMessage("pass");

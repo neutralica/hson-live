@@ -1,3 +1,5 @@
+import { read_document_quad } from "../../internal/governed-document.js";
+import { document_css_reads } from "../../internal/document-css-commands.js";
 import { read_data_location, read_document_location } from "../../internal/library-observation.js";
 import type { JsonValue } from "../../core/types.js";
 import { hson_data_text, type ExactDataCarrier } from "../data/hson-data.js";
@@ -119,9 +121,14 @@ export function create_registry_locus_internal<
       mode: "document" as const, get rev() { return selected.rev; }, root: () => selected.root(),
       render: mark_browser_html_producer(() => selected.render()), commits: selected.commits,
       schema: Object.freeze({ get: () => selected.schema.get() }),
-      css: Object.freeze({ snapshot: () => selected.css.snapshot(), has: (key: string) => selected.css.has(key),
-        list: () => selected.css.list(), get: (key: string) => selected.css.get(key) }),
+      css: document_css_reads(selected.css),
+      document: Object.freeze({ root: () => selected.root(), content: () => selected.document.content(),
+        attrs: Object.freeze({ get: selected.document.attrs.get, has: selected.document.attrs.has,
+          keys: selected.document.attrs.keys, must: selected.document.attrs.must }),
+        flags: Object.freeze({ has: selected.document.flags.has }),
+      }),
       at: (path: readonly number[]) => read_document_location(selected.at(path)),
+      q: (name: string) => { const subject = selected.q(name); return subject === undefined ? undefined : read_document_quad(subject); },
     });
   }) as ReadLibrarySelector<TMap>;
 

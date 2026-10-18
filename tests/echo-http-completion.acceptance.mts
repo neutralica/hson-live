@@ -69,7 +69,7 @@ try {
   if (page.mode !== "document" || page.source !== "authority-projected") throw new Error("Expected projected document.");
   holdCommit = true;
   const epoch = echo.session.epoch;
-  const pending = page.at([]).attrs.set("title", "restored");
+  const pending = page.at([]).asElement()!.attrs.set("title", "restored");
   let settlements = 0;
   void pending.then(() => { settlements += 1; }, () => { settlements += 1; });
   for (let turn = 0; turn < 100 && (heldCommits === 0 || authority.pendingRevisionWaits() === 0); turn++) {
@@ -88,7 +88,7 @@ try {
   assert.equal(echo.session.epoch, epoch);
   assert.equal(echo.sync.status, "caught_up");
   assert.equal(settlements, 1);
-  assert.equal(page.at([]).attrs.get("title"), "restored");
+  assert.equal(page.at([]).asElement()!.attrs.get("title"), "restored");
   echo.dispose();
 } finally {
   transport.dispose();

@@ -88,3 +88,27 @@ export type DocumentCssHandle = DocumentCssRuleFacade & Readonly<{
   keyframes: KeyframesManager;
   snapshot: () => string;
 }>;
+
+/** The existing stylesheet authoring vocabulary with command results and no state reads. */
+type CssCommandMethods<T, TResult> = { readonly [K in keyof T]: T[K] extends (...args: infer TArgs) => unknown ? (...args: TArgs) => TResult : never };
+export type DocumentCssRuleCommands<TResult> = Readonly<{
+  rule: (ruleKey: string, selector: string) => CssCommandMethods<Pick<DocumentCssRuleHandle, "setProp" | "setMany" | "remove" | "clear" | "drop">, TResult>
+    & Pick<DocumentCssRuleHandle, "ruleKey" | "selector"> & { readonly set: CssCommandMethods<DocumentCssSetSurface, TResult> };
+  sel: (selector: string) => ReturnType<DocumentCssRuleCommands<TResult>["rule"]>;
+  var: CssCommandMethods<Pick<DocumentCssVarFacade, "set" | "remove" | "clear">, TResult>;
+  scope: (scopeName: string, atRule: string) => DocumentCssRuleCommands<TResult>;
+  media: (query: DocumentCssMediaQuery) => DocumentCssRuleCommands<TResult>;
+  supports: (condition: DocumentCssSupportsQuery) => DocumentCssRuleCommands<TResult>;
+  layer: (name: string) => DocumentCssRuleCommands<TResult>;
+}>;
+export type DocumentCssCommands<TResult> = DocumentCssRuleCommands<TResult>
+  & CssCommandMethods<Pick<DocumentCssHandle, "stylesheet" | "drop" | "clearAll">, TResult>
+  & Readonly<{
+    atProperty: CssCommandMethods<Pick<PropertyManager, "register" | "registerMany" | "unregister">, TResult>;
+    keyframes: CssCommandMethods<Pick<KeyframesManager, "set" | "setMany" | "delete">, TResult>;
+  }>;
+export type DocumentCssRead = Pick<DocumentCssHandle, "snapshot" | "has" | "list" | "get"> & Readonly<{
+  var: Pick<DocumentCssVarFacade, "name" | "key" | "value" | "list">;
+  atProperty: Pick<PropertyManager, "has" | "get">;
+  keyframes: Pick<KeyframesManager, "has" | "get">;
+}>;

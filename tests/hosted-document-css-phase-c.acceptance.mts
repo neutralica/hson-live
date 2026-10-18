@@ -79,7 +79,7 @@ await locus.stage(draft => { const selected=draft.lib("page"); if ("graph" in se
 assert.equal(locus.rev, noopRev);
 assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, fidelityRecord);
 assert.throws(() => clientPage.css.clearAll(), /hosted|managed|projection|authority/i);
-assert.equal("clearAll" in managedPage.css, false);
+assert.equal(typeof managedPage.css.clearAll, "function", "Governed CSS authoring is exposed through authority submission");
 localPage.css.stylesheet("body { color: green; }");
 const localCss = localPage.css.snapshot();
 const localRev = client.rev;

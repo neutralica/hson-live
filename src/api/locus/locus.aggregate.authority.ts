@@ -1774,9 +1774,9 @@ function document_action_target(
   const attrs: LocusDocumentActionTarget["document"]["attrs"] = Object.freeze({
     set(request, name, value) { draft.attrs.set(target(request), name, value); return commit(); },
     drop(request, name) { draft.attrs.drop(target(request), name); return commit(); },
-    setMany(request, values) { for (const [name, value] of Object.entries(values)) draft.attrs.set(target(request), name, value); return commit(); },
-    dropMany(request, names) { for (const name of names) draft.attrs.drop(target(request), name); return commit(); },
-    clear(request) { draft.attrs.replace(target(request), Object.freeze({})); return commit(); },
+    setMany(request, values) { draft.attrs.setMany(target(request), values); return commit(); },
+    dropMany(request, names) { draft.attrs.dropMany(target(request), names); return commit(); },
+    clear(request) { draft.attrs.clear(target(request)); return commit(); },
     replace(request, values) { draft.attrs.replace(target(request), values); return commit(); },
   });
   const content: LocusDocumentActionTarget["document"]["content"] = Object.freeze({

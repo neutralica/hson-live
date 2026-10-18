@@ -96,6 +96,7 @@ export type {
   LiveMapDataLibrary,
   LiveMapDocumentLibrary,
   LiveMapDocumentLocation,
+  AuthorityDocumentQuadLocation,
   LiveMapDocumentQuadLocation,
   LiveMapRegistryCommitObserverApi,
   LiveMap,

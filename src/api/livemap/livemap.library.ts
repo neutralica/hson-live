@@ -121,11 +121,14 @@ export type LiveMapAggregateWrite =
     publicStaged?: true;
     /** Selected logical coordinates, lowered against the current candidate. */
     logicalLocation?: readonly number[];
+    assertDocumentShape?: "element" | "root" | "text";
+    attrsCommand?: import("./livemap.document.mutation.js").DocumentAttrsCommand;
   }>
   | Readonly<{
     target: LiveMapAuthorityTarget;
     kind: "css";
     operation: LiveMapCssOp;
+    cssCommand?: import("../../internal/document-css-commands.js").DocumentCssCommand;
   }>
   | Readonly<{
     target: LiveMapAuthorityTarget;

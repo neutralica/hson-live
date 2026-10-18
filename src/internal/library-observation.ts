@@ -32,7 +32,7 @@ export function read_data_location(raw: LiveMapLibraryPathHandle): ReadDataLocat
   }) as unknown as ReadDataLocation;
 }
 
-export function read_document_location(raw: ReturnType<LiveMapDocumentLibrary["at"]>): AuthorityDocumentLocation<unknown, never> {
+export function read_document_location(raw: ReturnType<LiveMapDocumentLibrary["at"]>): NonNullable<ReturnType<AuthorityDocumentLocation<unknown, never>["asElement"]>> {
   const element = () => {
     const value = raw.asElement();
     if (value === undefined) throw new Error("Document location is not an element.");
@@ -51,6 +51,8 @@ export function read_document_location(raw: ReturnType<LiveMapDocumentLibrary["a
       get: (name: string) => element().attrs.get(name),
       has: (name: string) => element().attrs.has(name),
       keys: () => element().attrs.keys(),
+      must: Object.freeze({ get: (name: string) => element().attrs.must.get(name) }),
     }),
-  }) as unknown as AuthorityDocumentLocation<unknown, never>;
+    flags: Object.freeze({ has: (name: string) => element().flags.has(name) }),
+  }) as unknown as NonNullable<ReturnType<AuthorityDocumentLocation<unknown, never>["asElement"]>>;
 }

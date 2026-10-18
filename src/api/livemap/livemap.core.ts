@@ -1,3 +1,5 @@
+import { read_livemap_document_logical_location } from "./livemap.document.location.js";
+import { lower_document_css_command } from "../../internal/document-css-commands.js";
 import { plan_collection_command } from "./livemap.collection-command.js";
 import { governed_document_element_target, governed_document_slot, governed_document_remove_slot, governed_document_insert_slot, governed_document_move_target } from "../../internal/governed-document.js";
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
@@ -82,6 +84,7 @@ import { classify_live_root_mode, prepare_livemap_root } from "./livemap.documen
 import { admit_owned_livemap_root, admit_public_livemap_root } from "./livemap.node-admission.js";
 import {
   admit_public_document_graph_operation,
+  lower_document_attrs_command,
   prepare_document_graph_operation,
   type PreparedDocumentMutation
 } from "./livemap.document.mutation.js";
@@ -1278,6 +1281,14 @@ function make_livemap_registry_engine(
         continue;
       }
       const library = require_library(write.target.library);
+      if (write.kind === "graph" && write.assertDocumentShape !== undefined) {
+        const candidate = candidate_for(library.identity);
+        if (!is_aggregate_document_candidate(candidate) || write.logicalLocation === undefined) throw new Error("Document refinement requires logical coordinates.");
+        const value = read_livemap_document_logical_location(candidate.root, "document", write.logicalLocation);
+        const shape = value === undefined ? "missing" : is_ordinary_element_node(value) ? "element" : is_Node(value) ? "root" : "text";
+        if (shape !== write.assertDocumentShape) throw new Error(`Document location is not ${write.assertDocumentShape}.`);
+        continue;
+      }
       if (write.kind === "graph" && write.logicalLocation !== undefined) {
         const candidate = candidate_for(library.identity);
         if (!is_aggregate_document_candidate(candidate)) throw new Error("Logical document commands require a document Library.");
@@ -1300,10 +1311,28 @@ function make_livemap_registry_engine(
         }
         write = { ...write, operation: lowered, target: aggregate_target(library.identity, document_operation_path(lowered)) };
       }
+      if (write.kind === "graph" && write.attrsCommand !== undefined) {
+        const candidate = candidate_for(library.identity);
+        if (!is_aggregate_document_candidate(candidate) || write.operation.op !== "replace-attrs") {
+          throw new Error("Bulk attribute commands require a document element.");
+        }
+        write = { ...write, operation: lower_document_attrs_command(candidate.root, candidate.overlay,
+          write.operation.target, write.attrsCommand) };
+      }
       const target = aggregate_target(library.identity, write.target.path);
       if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined
         || library.documentScopesUnavailable && transitionController.managedExecutionOwner() !== undefined)) {
         throw new Error("Scoped document effects require private Locus/Echo preparation.");
+      }
+      if (write.kind === "css" && write.cssCommand !== undefined) {
+        if (scopedDocuments) {
+          assertScopedCurrent();
+          if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence from initial or local Part construction.");
+        }
+        if (library.mode !== "document" || target.path.length !== 0) throw new Error("CSS commands require a document Library root.");
+        const operation = lower_document_css_command(cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity), write.cssCommand);
+        if (operation === undefined) continue;
+        write = { ...write, operation };
       }
       if (scopedDocuments && library.mode === "document" && write.kind !== "graph" && write.kind !== "css") {
         throw new Error("Missing scoped evidence for non-graph document operation.");

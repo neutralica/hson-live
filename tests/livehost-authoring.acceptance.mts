@@ -113,7 +113,7 @@ try {
   const first = await response(deck.requests[0]!);
   assert.match(await first.text(), /Home/);
   assert.equal(first.headers.get("content-type"), "text/html; charset=utf-8");
-  await home.at([]).attrs.set("data-version", "new");
+  await home.at([]).asElement()!.attrs.set("data-version", "new");
   await home.css.stylesheet("main { color: blue; }");
   const second = await response(deck.requests[0]!);
   const updated = await second.text();

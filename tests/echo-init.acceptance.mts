@@ -269,11 +269,11 @@ for (const [expected, advance, truncateHistory] of [
   assert.equal(echo.sync.appliedRev, locus.rev);
   await projectedPage.css({ domain: "css", kind: "clear-all" });
   assert.equal(projectedPage.css.snapshot(), "");
-  await projectedPage.at([]).attrs.set("title", "governed");
-  assert.equal(projectedPage.at([]).attrs.get("title"), "governed");
-  await projectedPage.at([]).insert(0, { $_tag: "p", $_content: [] });
+  await projectedPage.at([]).asElement()!.attrs.set("title", "governed");
+  assert.equal(projectedPage.at([]).asElement()!.attrs.get("title"), "governed");
+  await projectedPage.at([]).asElement()!.insert(0, { $_tag: "p", $_content: [] });
   await projectedPage.at([0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
-  assert.equal(projectedPage.at([0]).attrs.get("title"), "replaced");
+  assert.equal(projectedPage.at([0]).asElement()!.attrs.get("title"), "replaced");
   await projectedPage.at([0]).delete();
   echo.dispose(); detach(); locus.dispose();
 }

@@ -34,4 +34,4 @@ export type {
 } from "../../types/echo.types.js";
 export { EchoSyncError, EchoSessionError } from "./echo.error.js";
 
-export type { EchoLibrary, EchoProjectedDataLibrary, EchoProjectedDataPath, EchoLocalDataLibrary, EchoProjectedDocumentLibrary, EchoLocalDocumentLibrary } from "../../types/governor.types.js";
+export type { EchoLibrary, EchoDocumentLocation, EchoProjectedDataLibrary, EchoProjectedDataPath, EchoLocalDataLibrary, EchoProjectedDocumentLibrary, EchoLocalDocumentLibrary } from "../../types/governor.types.js";
