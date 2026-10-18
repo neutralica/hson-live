@@ -176,8 +176,8 @@ export async function scoped_tail_cases(check: (name: string, run: () => Promise
       f.adapter.failAppend = Error("storage unavailable");
       await assert.rejects(() => l.stage(w => page(w).content.replace(target, 1, connector())), /append/);
       assert.deepEqual(a.captureSemanticCheckpoint(), before); assert.equal(a.identityEpoch().issued(), ledger);
-      await assert.rejects(() => l.add_libraries_internal({ added: { data: 1 } }, undefined,
-        [{ name: "added", ownership: "private" }]), /H0b/);
+      await assert.rejects(() => l.add_libraries_internal({ added: { document: '<hson-part lib="missing" at="bad"/>' } }, undefined,
+        [{ name: "added", ownership: "private" }]), /Unknown Part/);
       assert.deepEqual(a.captureSemanticCheckpoint(), before);
       await l.stage(w => page(w).content.replace(target, 1, connector()));
       assert.equal(l.rev, before.revision + 1);

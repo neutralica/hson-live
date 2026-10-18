@@ -285,18 +285,18 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     for (const hosted of variants) assert.throws(() => encode(f.map, { ...transition, commit: { ...transition.commit, hosted } }), /another authority/);
     f.a.discard(transition); f.a.releaseManagement(owner); assert.equal(f.map.rev, 0);
   });
-  await check("CSS mixed preparation succeeds while missing initial occurrence evidence still rejects", async () => {
+  await check("CSS mixed preparation and dynamic occurrence evidence support subsequent writes", async () => {
     const f = fixture(); let gates = 0;
     const locus = create({ map: f.map, scopedDocuments: true, gate() { gates++; } });
     await locus.stage(writer => { insert(writer); document(writer).css.stylesheet("main{color:red}"); });
     assert.equal(gates, 1); assert.equal(f.map.rev, 1); locus.dispose();
     gates = 0;
-    // Legacy incremental construction still has no complete scoped evidence.
+    // Dynamic construction now installs the same complete evidence as initial composition.
     const initial = hsonLiveMap.fromLibraries({ parts: collection({ leaf: { kind: "document", document: '<b/>' } }) });
     initial.addLibraries({ page: { document: '<main <hson-part lib="parts" at="leaf"/>/>' } });
     const blocked = create({ map: initial, scopedDocuments: true, gate() { gates++; } });
-    await assert.rejects(blocked.stage(writer => document(writer).attrs.set({ kind: "path", path: path([0]) }, "title", "new")), /Missing scoped predecessor/);
-    assert.equal(gates, 0); blocked.dispose();
+    await blocked.stage(writer => document(writer).attrs.set({ kind: "path", path: path([0]) }, "title", "new"));
+    assert.equal(gates, 1); blocked.dispose();
   });
   await check("durable suspension reserves the complete batch and queues the next revision", async () => {
     const f = fixture();

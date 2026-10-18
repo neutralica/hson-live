@@ -58,6 +58,15 @@ export function decode_document_scoped_library(input: unknown): PortableDocument
   return Object.freeze({ root, scopes, css: canonicalCss });
 }
 
+/** Stable path-ordered CSS labels for durable topology, independent of runtime issuance. @internal */
+export function normalize_document_scoped_library_subjects(input: PortableDocumentScopedLibrary): PortableDocumentScopedLibrary {
+  const value = decode_document_scoped_library(input);
+  const names = new Map(value.scopes.subjects.map((subject, index) => [subject.name, `_${index.toString(36).padStart(9, "0")}`]));
+  return decode_document_scoped_library({ root: value.root,
+    scopes: { ...value.scopes, subjects: value.scopes.subjects.map(subject => ({ ...subject, name: names.get(subject.name)! })) },
+    css: remap_portable_document_css_identities(value.css, names) });
+}
+
 /** The Library authority authenticates the candidate before entering this pure capture. @internal */
 export function capture_document_scoped_library(candidate: PreparedDocumentScopedLibrary): PortableDocumentScopedLibrary {
   candidate.assertCurrent();
@@ -110,4 +119,25 @@ export function own_document_scopes(input: object): unknown | undefined {
   }
   if (Object.hasOwn(input, "quads")) throw new TypeError("Conflicting flat/scoped correspondence.");
   return field.value;
+}
+
+/** The topology operation declares its contract separately from its evidence.
+ * Historical flat operations have neither field; scoped evidence is never
+ * admitted under that contract, even when its namespace is explicitly empty. @internal
+ */
+export function own_topology_document_scopes(input: object): unknown | undefined {
+  const contract = Object.getOwnPropertyDescriptor(input, "documentContract");
+  const scopes = own_document_scopes(input);
+  if (contract === undefined) {
+    if (scopes !== undefined) throw new TypeError("Scoped topology requires an explicit document contract.");
+    return undefined;
+  }
+  const mode = Object.getOwnPropertyDescriptor(input, "mode");
+  const css = Object.getOwnPropertyDescriptor(input, "css");
+  if (!contract.enumerable || !Object.hasOwn(contract, "value") || contract.value !== "scoped"
+    || mode?.value !== "document" || scopes === undefined
+    || !css?.enumerable || !Object.hasOwn(css, "value") || css.value === undefined) {
+    throw new TypeError("Scoped topology requires a document and complete scopes/CSS evidence.");
+  }
+  return scopes;
 }

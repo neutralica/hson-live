@@ -32,14 +32,16 @@ export const element = (source: string): HsonNode => {
   const first = hsonTransform.fromHson(source).toNode().$_content[0]; if (!is_Node(first)) throw Error("element"); return first;
 };
 export function atomic(map: LiveMap, run: () => unknown, reason?: RegExp) {
-  const before = map.capture(), aggregate = owner(map), ledger = aggregate.identityEpoch().issued();
+  const aggregate = owner(map), capture = () => aggregate.libraries().some(id => aggregate.documentScopes(id) !== undefined)
+    ? aggregate.captureSemanticCheckpoint() : map.capture();
+  const before = capture(), ledger = aggregate.identityEpoch().issued();
   const registry = aggregate.hostedRegistry(), epoch = aggregate.identityEpoch(), position = aggregate.hostedPosition();
   const ids = aggregate.libraries(), roots = ids.map(id => aggregate.root(id));
   const overlays = ids.map((id,index) => registry.libraries[index]?.mode === "document" ? aggregate.documentOverlay(id) : aggregate.projectedOverlay(id));
   let events = 0, positions = 0;
   const off = map.commits.observe(() => events++), stop = aggregate.observeAuthorityPosition(() => positions++);
   try { if (reason) assert.throws(run, reason); else assert.throws(run); } finally { off(); stop(); }
-  assert.deepEqual(map.capture(), before); assert.equal(aggregate.identityEpoch().issued(), ledger);
+  assert.deepEqual(capture(), before); assert.equal(aggregate.identityEpoch().issued(), ledger);
   assert.equal(aggregate.hostedRegistry(), registry); assert.equal(aggregate.identityEpoch(), epoch); assert.deepEqual(aggregate.hostedPosition(), position);
   ids.forEach((id,index) => {
     assert.equal(aggregate.root(id), roots[index]);
@@ -397,15 +399,16 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
         throw error;
       }finally{off();}
       assert.equal(commits,1);assert.equal(map.rev,1);assert.equal(aggregate.root(aggregate.libraries()[0]!),root);
-      assert.deepEqual(map.capture().libraries[0],before.libraries[0]);assert.doesNotMatch(doc(map).css.snapshot(),/unvisited/);
+      assert.equal(JSON.stringify(aggregate.captureSemanticCheckpoint().libraries[0]!.root),JSON.stringify(root));assert.doesNotMatch(doc(map).css.snapshot(),/unvisited/);
       const graph=aggregate.root(aggregate.libraries()[1]!);
       const main=graph.$_content[0];if(!is_Node(main)||!is_Node(main.$_content[0]))throw Error("main");
       const [a,b]=main.$_content[0].$_content;if(!is_Node(a)||!is_Node(b))throw Error("links");
       assert.notEqual(a,b);assert.notEqual(a.$_attrs,b.$_attrs);assert.notEqual(a.$_attrs?.style,b.$_attrs?.style);assert.notEqual(a.$_content,b.$_content);
-      doc(map).document.attrs.set({kind:"path",path:[0,0,0]},'title','Edited');assert.equal(doc(map).document.attrs.get({kind:"path",path:[0,0,1]},'title'),undefined);
-      if(!css)assert.match(doc(map).render(),/color.*blue/);
+      assert.throws(()=>doc(map).document.attrs.set({kind:"path",path:[0,0,0]},'title','Edited'),/complete scoped effects/);
+      assert.equal(doc(map).document.attrs.get({kind:"path",path:[0,0,1]},'title'),undefined);
+      if(!css){assert.throws(()=>doc(map).render(),/Scoped/);assert.match(realize_document(doc(map).root(),""),/color.*blue/);}
       else assert.match(doc(map).css.snapshot(),/@layer first/);
-      assert.equal(aggregate.documentOverlay(aggregate.libraries()[1]!).size,css?2:0);
+      assert.equal(aggregate.documentOverlay(aggregate.libraries()[1]!).size,2);
     }
     const structural=hsonLiveMap.fromLibraries({parts:collection({x:part('<section <style "p{color:red}"/>/>')}),page:{document:'<hson-part lib="parts" at="x"/>'}});
     assert.deepEqual(leaves(doc(structural).root()),['p{color:red}']);assert.equal(doc(structural).css.snapshot(),'');
@@ -462,14 +465,14 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
   });
   check("retained authority coverage: a completed inner styled admission survives outer allocation rejection", () => {
     const map=hsonLiveMap.fromLibraries({parts:collection({x:part('<p/>','p{color:red}')})}),aggregate=owner(map);
-    let entered=false,after:ReturnType<LiveMap["capture"]>|undefined;
+    let entered=false,after:ReturnType<typeof aggregate.captureSemanticCheckpoint>|undefined;
     allocator(aggregate.identityEpoch().owner,()=>{
-      if(!entered){entered=true;map.addLibraries({inner:{document:'<hson-part lib="parts" at="x"/>'}});after=map.capture();}
+      if(!entered){entered=true;map.addLibraries({inner:{document:'<hson-part lib="parts" at="x"/>'}});after=aggregate.captureSemanticCheckpoint();}
       return mint_hson_node_quid();
     });
     try{assert.throws(()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>'}}),/changed|stale/);}
     finally{allocator(aggregate.identityEpoch().owner,undefined);}
-    assert.equal(entered,true);assert.deepEqual(map.capture(),after);assert.equal(map.rev,1);assert.equal(aggregate.identityEpoch().issued().size,1);
+    assert.equal(entered,true);assert.deepEqual(aggregate.captureSemanticCheckpoint(),after);assert.equal(map.rev,1);assert.equal(aggregate.identityEpoch().issued().size,1);
     assert.match(doc(map,"inner").css.snapshot(),/color:red/);assert.throws(()=>map.lib("bad"));
   });
 }

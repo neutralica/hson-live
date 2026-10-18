@@ -18,11 +18,11 @@ import type {
   PrivateScopedAggregateCommit,
   PrivateScopedAggregateOperation,
 } from "../livemap/livemap.hosted.js";
-import { encode_authoritative_scoped_commit, make_portable_aggregate_commit } from "../livemap/livemap.hosted.js";
+import { encode_authoritative_topology_commit, encode_authoritative_scoped_commit, make_portable_aggregate_commit } from "../livemap/livemap.hosted.js";
 import {
   internal_livemap_aggregate_authority,
 } from "../livemap/livemap.internal.js";
-import { make_livemap_mirror_from_semantic_checkpoint_internal } from "../livemap/livemap.libraries.js";
+import { replay_durable_library_add_internal, make_livemap_mirror_from_semantic_checkpoint_internal } from "../livemap/livemap.libraries.js";
 import type { LiveMapSemanticCheckpoint } from "../livemap/livemap.internal.js";
 import type { HostedRegistry, HostedRegistryEntry } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
@@ -435,7 +435,7 @@ export async function restore_semantic_checkpoint_manifest_internal(
 function hosted_commit(commit: HostedAggregateCommit,
   libraryOwnershipAdded: readonly LocusDurableOwnershipEntry[] = []): LocusHostedAggregatePersistedCommit {
   const scoped = commit.replay.operations.some(entry => entry.scoped !== undefined);
-  const projected = scoped ? { format: "private", ...encode_authoritative_scoped_commit(commit) }
+  const projected = commit.topology !== undefined ? { format: "private", ...encode_authoritative_topology_commit(commit) } : scoped ? { format: "private", ...encode_authoritative_scoped_commit(commit) }
     : make_portable_aggregate_commit(commit);
   if (projected === undefined) throw new Error("Runtime-local identity demand cannot become durable authority history.");
   const { format: _clientFormat, ...semantic } = projected;
@@ -570,24 +570,17 @@ async function validate_hosted_aggregate_state(
       if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
       const commit = assert_commit_fence(item, checkpoint, expectedPrevRev, expectedRegistryDigest);
       if (commit.topology !== undefined) {
-        if (aggregate.libraries().some(id => aggregate.documentScopes(id) !== undefined)) {
-          throw new Error("Scoped durable topology additions require H0b.");
-        }
-        // Live topology admission and incremental wire codecs reject these too.
-        // A complete checkpoint may carry correspondence; a tail cannot.
         for (const entry of commit.topology.operation.libraries) {
-          if (entry.css !== undefined) assert_subject_free_portable_css_operation({ domain: "css", kind: "replace", stylesheet: entry.css });
+          if (own_document_scopes(entry) === undefined && entry.css !== undefined) {
+            assert_subject_free_portable_css_operation({ domain: "css", kind: "replace", stylesheet: entry.css });
+          }
         }
         const additions = ownership_entries(record(maybe?.locus)?.libraryOwnershipAdded);
         for (const entry of additions) {
           if (runtimeOwnership.has(entry.name)) throw invalid_state();
           runtimeOwnership.set(entry.name, entry.ownership);
         }
-        const replayed = map.replay(Object.freeze({ kind: "map", changed: true,
-          prevRev: commit.prevRev, rev: commit.rev,
-          operations: Object.freeze([commit.topology]) }));
-        if (replayed.operations.length !== 1
-          || JSON.stringify(replayed.operations[0]) !== JSON.stringify(commit.topology)) throw invalid_state();
+        replay_durable_library_add_internal(map, commit.topology);
       } else {
         // Portable writes are admitted against the topology reached so far.
         aggregate.replayDurableHosted(durable_aggregate_commit_as_client(commit));
@@ -642,10 +635,6 @@ function make_durability_gate(
   return Object.freeze({
     prepareGate: ({ commit, libraryOwnershipAdded }) => {
       if (!commit.changed) return;
-      const authority = internal_livemap_aggregate_authority(map);
-      if (commit.topology !== undefined && authority.libraries().some(id => authority.documentScopes(id) !== undefined)) {
-        throw new Error("Scoped durable topology additions require H0b.");
-      }
       const record = durable_aggregate_commit(commit, libraryOwnershipAdded);
       JSON.stringify(record);
       records.set(commit, record);

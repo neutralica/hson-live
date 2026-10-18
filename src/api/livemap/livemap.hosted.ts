@@ -1,4 +1,4 @@
-import { decode_document_scoped_library, own_document_scopes } from "./livemap.document.scoped-portable.js";
+import { decode_document_scoped_library, own_document_scopes, own_topology_document_scopes } from "./livemap.document.scoped-portable.js";
 import { decode_document_scoped_operation, scoped_effect_matches_operation, portable_document_scoped_effect, encode_document_scoped_effects, validate_document_scoped_effects, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { clone_node } from "../../core/clone-node.js";
@@ -372,6 +372,8 @@ function capture_part_topology(topology: LiveMapLibraryAddOperation): LiveMapLib
   };
   freeze(detached);
   for (const entry of detached.operation.libraries) {
+    const scopes = own_topology_document_scopes(entry);
+    if (scopes !== undefined) decode_document_scoped_library({ root: decode_hosted_root(entry.root), scopes, css: entry.css });
     const validation = own_data_library_validation(entry);
     if (validation !== undefined) validate_data_library(decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES), entry.mode, validation);
   }
@@ -530,31 +532,36 @@ export function encode_authoritative_scoped_commit(authority: HostedAggregateCom
   return result;
 }
 
+/** Complete source-free topology for durable authority, never public transport. @internal */
+export function encode_authoritative_topology_commit(authority: HostedAggregateCommit): Omit<PortableAggregateCommit, "format"> {
+  if (authority.topology === undefined) throw new HostedAggregateRepresentationError("Missing topology evidence.");
+  const topology = capture_part_topology(authority.topology);
+  for (const entry of topology.operation.libraries) {
+    if (own_topology_document_scopes(entry) === undefined && entry.css !== undefined) {
+      assert_subject_free_portable_css_operation({ domain: "css", kind: "replace", stylesheet: entry.css });
+    }
+  }
+  if (authority.previousRegistryDigest === undefined || authority.operations.length !== 0
+    || authority.replay.operations.length !== 0 || !authority.changed
+    || authority.rev !== authority.prevRev + 1) {
+    throw new HostedAggregateRepresentationError("Hosted topology commit evidence is inconsistent.");
+  }
+  const commit = Object.freeze({ authority: authority.authority, previousRegistryDigest: authority.previousRegistryDigest,
+    registryDigest: authority.registryDigest, topology, prevRev: authority.prevRev, rev: authority.rev, operations: Object.freeze([]) });
+  assert_encoded_bound(commit, HOSTED_MAX_COMMIT_BYTES, "Authoritative topology commit");
+  return commit;
+}
+
 /** Derive QUID-free semantic effects from a living authority transition. */
 export function make_portable_aggregate_commit(authority: HostedAggregateCommit): PortableAggregateCommit | undefined {
   if (authority.replay.operations.some(entry => entry.scoped !== undefined)) {
     throw new HostedAggregateRepresentationError("Scoped document delivery requires coordinated Echo support.");
   }
   if (authority.topology !== undefined) {
-    const topology = capture_part_topology(authority.topology);
-    for (const entry of topology.operation.libraries) {
-      if (entry.css !== undefined) assert_subject_free_portable_css_operation({ domain: "css", kind: "replace", stylesheet: entry.css });
+    if (authority.topology.operation.libraries.some(entry => own_document_scopes(entry) !== undefined)) {
+      throw new HostedAggregateRepresentationError("Scoped document delivery requires coordinated Echo support.");
     }
-    if (authority.previousRegistryDigest === undefined || authority.operations.length !== 0
-      || authority.replay.operations.length !== 0 || !authority.changed
-      || authority.rev !== authority.prevRev + 1) {
-      throw new HostedAggregateRepresentationError("Hosted topology commit evidence is inconsistent.");
-    }
-    const commit: PortableAggregateCommit = Object.freeze({
-      format: PORTABLE_AGGREGATE_COMMIT_FORMAT,
-      authority: authority.authority,
-      previousRegistryDigest: authority.previousRegistryDigest,
-      registryDigest: authority.registryDigest,
-      topology,
-      prevRev: authority.prevRev,
-      rev: authority.rev,
-      operations: Object.freeze([]),
-    });
+    const commit = Object.freeze({ format: PORTABLE_AGGREGATE_COMMIT_FORMAT, ...encode_authoritative_topology_commit(authority) });
     assert_encoded_bound(commit, HOSTED_MAX_COMMIT_BYTES, "Hosted topology commit");
     return commit;
   }

@@ -121,9 +121,6 @@ async function persistent_view<
     onDispose: (locus) => { checkpoints.delete(locus); },
     prepareGate: ({ commit, libraryOwnershipAdded }) => {
       if (!commit.changed) return;
-      if (commit.topology !== undefined && exposureAuthority.libraries().some(id => exposureAuthority.documentScopes(id) !== undefined)) {
-        throw new Error("Scoped durable topology additions require H0b.");
-      }
       const record = commit_record(commit, libraryOwnershipAdded);
       JSON.stringify(record);
       records.set(commit, record);

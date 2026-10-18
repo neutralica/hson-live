@@ -119,6 +119,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     hsonSchema: HsonSchema;
     family: "data" | "document";
     validation?: import("./livemap.parts.js").DataLibraryValidation;
+    scopes?: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
+    compositionScopes?: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
     compositionStyles?: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[];
@@ -131,6 +133,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     hsonSchema: HsonSchema;
     family: "data" | "document";
     validation?: import("./livemap.parts.js").DataLibraryValidation;
+    scopes?: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
+    compositionScopes?: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void, assertAcceptance?: () => void) => LiveMapAggregateCommit;
@@ -181,9 +185,11 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     hsonSchema: HsonSchema;
     family: "data" | "document";
     validation?: import("./livemap.parts.js").DataLibraryValidation;
+    scopes?: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
+    compositionScopes?: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
-  }>[]) => Readonly<{
+  }>[], assertEntryCurrent?: () => void) => Readonly<{
     transition: PreparedLiveMapAuthorityTransition;
     identities: readonly LiveMapLibraryIdentity[];
   }>;

@@ -499,15 +499,17 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     }
   });
 
-  await check("public dynamic Locus admission preserves subject CSS delivery guard atomically", async () => {
+  await check("public dynamic Locus admits complete subject CSS while session delivery stays guarded", async () => {
     const parts = { styled: { kind: "document" as const, document: '<p @:label/>', css: '[hson\\:quad="label"]{color:red}' } };
-    const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts } }] });
+    const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts } }], authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
       const revision = locus.rev;
-      await assert.rejects(locus.addLibraries({ shared: [{ name: "page", definition: {
+      await locus.addLibraries({ shared: [{ name: "page", definition: {
         document: '<main <hson-part lib="parts" at="styled"/>/>',
-      } }] }), /subject-owned CSS|correspondence/);
-      assert.equal(locus.rev, revision); assert.throws(() => locus.lib("page"));
+      } }] });
+      assert.equal(locus.rev, revision + 1);
+      const session = await locus.session.create({ libraries: ["page"] });
+      assert.throws(() => session.now(), /projection snapshot/);
     } finally { locus.dispose(); }
   });
 

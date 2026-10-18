@@ -5,25 +5,33 @@ import { part_collection_definition_internal as collection } from "../../src/api
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { set_livemap_quid_candidate_source_for_tests as allocator } from "../../src/api/livemap/livemap.quid-allocation.ts";
 import { encode_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
-import { document_css_subject_identities } from "../../src/internal/css/css-identity-translation.ts";
+import { document_css_subject_identities, translate_document_css_identities } from "../../src/internal/css/css-identity-translation.ts";
 import { make_portable_aggregate_commit, type HostedAggregateCommit } from "../../src/api/livemap/livemap.hosted.ts";
 import { durable_aggregate_commit } from "../../src/api/locus/locus.aggregate.persistence.ts";
 import { parse_part_stylesheet } from "../../src/internal/css/part-stylesheet.ts";
 import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
-import { read_livemap_part_internal as readPart } from "../../src/api/livemap/livemap.libraries.ts";
-import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
+import { read_livemap_part_internal as readPart, make_livemap_mirror_from_semantic_checkpoint_internal } from "../../src/api/livemap/livemap.libraries.ts";
+import { parse_authored_document_library, document_quad_disposition } from "../../src/api/livemap/livemap.document.quad.ts";
 import { expand_document_composition, document_composition_options } from "../../src/api/livemap/livemap.document.composition.ts";
 import { validate_document_path as path } from "../../src/api/livemap/livemap.document.path.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
 import type { HsonNode } from "../../src/core/types.ts";
 import type { LiveMap, LiveMapInput, LiveMapDocumentLibrary, LiveMapDocumentCommitTarget } from "../../src/types/livemap.types.ts";
-// These retained CSS tests exercise the established flat cut/replay/SSR contract.
-// Initial authored Parts now retain scopes and intentionally reject those public
-// paths. Create legacy flattened input through local Library-add, then restore it.
-function legacy_flat_styled_map(input: LiveMapInput): LiveMap {
-  const source = hsonLiveMap.fromLibraries({});
-  source.addLibraries(input);
-  return install_libraries_snapshot({ ...source.capture(), revision: 0 }).map;
+// Explicitly model historical flat snapshots for the retained flat CSS/SSR tests.
+// Dynamic admission now retains scopes; only this fixture discards namespace
+// semantics after projecting complete flat subject correspondence.
+export function legacy_flat_styled_map(input: LiveMapInput): LiveMap {
+  const source = hsonLiveMap.fromLibraries(input), a = owner(source), snapshot = a.captureSemanticCheckpoint();
+  const libraries = snapshot.libraries.map((entry, index) => {
+    if (entry.scopes === undefined) return entry;
+    const id = a.libraries()[index]!, overlay = a.documentOverlay(id);
+    const css = encode_portable_document_stylesheet(a.stylesheet(id));
+    const quads = a.projectDocumentCorrespondence(id, document_css_subject_identities(css, "outbound"));
+    const associations = (quads ?? []).map(item => ({ ...item, quid: overlay.quidAtPath(item.path)!, disposition: document_quad_disposition(item) }));
+    return { name: entry.name, root: entry.root, ...(quads === undefined ? {} : { quads }),
+      css: translate_document_css_identities(css, "outbound", { associations, assertCurrent() {} }, true) };
+  });
+  return make_livemap_mirror_from_semantic_checkpoint_internal({ ...snapshot, libraries });
 }
 const part = (document: string, css: string) => ({ kind: "document", document, css });
 function page(map: LiveMap): LiveMapDocumentLibrary { const value = map.lib("page"); if (value.mode !== "document") throw Error("document"); return value; }
@@ -235,12 +243,12 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     finally { allocator(aggregate.identityEpoch().owner, undefined); }
     assert.equal(aggregate.identityEpoch().issued().size, 1); assert.equal(aggregate.documentOverlay(identity(map)).quidAtPath(path([0])), "987654321"); assert.throws(() => map.lib("bad"));
   });
-  check("styled local topology remains rejected by incremental portable and durable codecs", () => {
+  check("styled local topology is durable while public incremental delivery stays guarded", () => {
     const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<button/>', 'button{color:red}') }) });
     let commit: HostedAggregateCommit | undefined; const off = owner(map).observe(value => { commit = value.hosted; });
     try { map.addLibraries({ page: { document: '<hson-part lib="parts" at="x"/>' } }); } finally { off(); }
-    assert.ok(commit); assert.throws(() => make_portable_aggregate_commit(commit!), /subject-owned CSS/);
-    assert.throws(() => durable_aggregate_commit(commit!, [{ name: "page", ownership: "shared" }]), /subject-owned CSS/);
+    assert.ok(commit); assert.throws(() => make_portable_aggregate_commit(commit!), /Echo/);
+    assert.ok(durable_aggregate_commit(commit!, [{ name: "page", ownership: "shared" }]).commit.topology!.operation.libraries[0]!.scopes);
   });
   check("moving roots retains style; nested owned contributions retire atomically with their parent", () => {
     const map = legacy_flat_styled_map({ parts: collection({ outer: part('<section <hson-part at="inner"/>/>', 'button{color:red}'), inner: part('<button/>', '&{padding:7px}') }),

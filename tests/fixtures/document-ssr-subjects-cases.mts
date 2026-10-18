@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { make_livemap_from_authored_libraries_internal as authored,
   capture_document_ssr_internal as capture, render_document_ssr_internal as render,
-  cut_document_ssr_internal as cut, compose_livemap_document_internal as compose } from "../../src/api/livemap/livemap.libraries.ts";
+  cut_document_ssr_internal as cut } from "../../src/api/livemap/livemap.libraries.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { lookup_document_quad_internal as lookup } from "../../src/api/livemap/livemap.document.quad.ts";
 import { validate_document_path as path } from "../../src/api/livemap/livemap.document.path.ts";
@@ -16,6 +16,8 @@ import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import type { LiveMap, LiveMapCutOptions, LiveMapDynamicLibrary } from "../../src/types/livemap.types.ts";
 import type { InternalLiveMapAggregateAuthority } from "../../src/api/livemap/livemap.internal.ts";
 import type { LiveMapLibraryIdentity } from "../../src/api/livemap/livemap.library.ts";
+import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
+import { document_subject_ownership_cases } from "./document-subject-ownership-cases.mts";
 
 type DocumentSsrSubjectFixture = {
   map: LiveMap;
@@ -53,7 +55,29 @@ export function ssr_subject_fixture(): DocumentSsrSubjectFixture {
   return { map, page, aggregate, library, demanded };
 }
 
+/** Historical flat final-document state. No installed scopes are removed to
+ * manufacture this fixture; current composition is exercised separately. */
+export function flat_final_subject_fixture(): DocumentSsrSubjectFixture {
+  const map = authored({
+    layout: { document: '<html <head/> <body <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>/>' },
+    components: collection({ button: { kind: "document", document: '<button @:source/>' } }),
+    final: { document: '<html <head/> <body <button/> <button/>/>/>' },
+  });
+  const page = map.lib("final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;
+  if (page.mode !== "document") throw Error("document");
+  assert.ok(canonical_hson_graph_equal(page.root(), map.lib("layout").root()),
+    "Historical flat state has the same realized graph as Part composition.");
+  assert.equal(aggregate.documentScopes(library), undefined);
+  assert.equal(aggregate.documentOverlay(library).size, 0);
+  const demanded = ["345678901", "456789012"];
+  aggregate.acquireLocalDocumentIdentity(library, path([0,0,1,0,0]), demanded[0]!);
+  aggregate.acquireLocalDocumentIdentity(library, path([0,0,1,0,1]), demanded[1]!);
+  page.css.stylesheet('[hson\\:quid="345678901"]{color:red}[hson\\:quid="456789012"]{color:blue}');
+  return { map, page, aggregate, library, demanded };
+}
+
 export function document_ssr_subject_cases(check: (name: string, run: () => void) => void) {
+  document_subject_ownership_cases(check);
   check("flat authored QUAD subjects retain ordinary capture and SSR without occurrence scopes", () => {
     const map = authored({ page: { document: '<html @:page <head/> <body <p @:firstChild "Flat"/>/>/>' } });
     const page = map.lib("page"), aggregate = owner(map), library = aggregate.libraries()[0]!;
@@ -315,19 +339,12 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     assert.equal(map.rev,0); assert.deepEqual(map.capture(),before);
     assert.match(cut(map,{html:"page"},["012345678"]).html,/hson:quad="_012345678"/);
   });
-  check("final-only composed page projects receiving subjects without source component Libraries", () => {
-    const map = authored({layout:{document:'<html <head/> <body <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>/>'},
-      components:collection({button:{kind:"document",document:'<button @:source/>'}})});
-    const sourceQuid = "012345678";
-    assert.equal(owner(map).identityEpoch().issued().has(sourceQuid),false);
-    const page = compose(map,"layout","final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;
-    const demanded = ["345678901","456789012"];
-    aggregate.acquireLocalDocumentIdentity(library,path([0,0,1,0,0]),demanded[0]!);
-    aggregate.acquireLocalDocumentIdentity(library,path([0,0,1,0,1]),demanded[1]!);
-    page.css.stylesheet('[hson\\:quid="345678901"]{color:red}[hson\\:quid="456789012"]{color:blue}');
+  check("historical flat final page projects receiving subjects without source component Libraries", () => {
+    const { map, aggregate, library, demanded } = flat_final_subject_fixture();
     const layout = aggregate.libraries()[0]!, scopes = aggregate.documentScopes(layout);
     assert.equal(scopes?.occurrences.length,2,"Initial layout retains both actual Part occurrences.");
-    assert.equal(aggregate.documentScopes(library),undefined,"The final Library uses the existing flat composition contract.");
+    const sourceQuids = scopes!.occurrences.map(scope => scope.rootQuid);
+    assert.equal(aggregate.documentScopes(library),undefined,"The historical final Library has the flat document contract.");
     assert.throws(() => map.capture(), /Scoped document capture/);
     assert.throws(() => aggregate.captureDocumentSsr(layout,[]), /Scoped document SSR/);
     // Observe every source Library without requesting unsupported portable state
@@ -351,11 +368,12 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
       assert.ok(result.html.includes(`hson:quad="_${quid}"`));
       assert.ok(result.html.includes(`[hson\\:quad="_${quid}"]`));
     }
-    assert.equal(result.html.includes(sourceQuid),false); assert.deepEqual(observe(),before);
+    for (const quid of sourceQuids) assert.equal(result.html.includes(quid),false);
+    assert.deepEqual(observe(),before);
     assert.equal(aggregate.documentScopes(layout),scopes,"SSR preserves the exact source occurrence lifetimes.");
     const receiving = install_libraries_snapshot(result.libs).map;
     assert.throws(() => receiving.lib("components")); assert.throws(() => receiving.lib("layout"));
-    assert.equal(owner(receiving).identityEpoch().issued().has(sourceQuid),false);
+    for (const quid of sourceQuids) assert.equal(owner(receiving).identityEpoch().issued().has(quid),false);
     assert.equal(receiving.capture().libraries.length,1);
     // Portable state admission is tested here; projected-marker graft/CSS rebinding is outside this cut.
   });

@@ -1,3 +1,4 @@
+import { make_livemap_mirror_from_semantic_checkpoint_internal } from "../../src/api/livemap/livemap.libraries.ts";
 import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { document_q_cases } from "./livemap-document-q-cases.mts";
 import assert from "node:assert/strict";
@@ -373,13 +374,13 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     assert.ok(lookup(page, "page")); assert.equal(lookup(page, "button"), undefined);
     assert.equal(reverse(page, source.quid), undefined);
     assert.deepEqual(map.lib("parts").root(), original);
-    assert.equal(internal_livemap_aggregate_authority(map).identityEpoch().issued().size, ledger.length + 1);
+    assert.equal(internal_livemap_aggregate_authority(map).identityEpoch().issued().size, ledger.length + 5);
     const first = acquire_document_identity(page.document, target(0, 0, 0, 0, 0));
     const second = acquire_document_identity(page.document, target(0, 0, 1, 0, 0));
     assert.notEqual(first.snap()?.$_meta?.quid, source.quid);
     assert.notEqual(first.snap()?.$_meta?.quid, second.snap()?.$_meta?.quid);
-    const cut = map.cut({ data: [], documents: ["result"], html: "result" });
-    const received = install_libraries_snapshot(cut.libs).map;
+    assert.throws(() => map.cut({ data: [], documents: ["result"], html: "result" }), /Scoped/);
+    const received = make_livemap_mirror_from_semantic_checkpoint_internal(internal_livemap_aggregate_authority(map).captureSemanticCheckpoint());
     assert.deepEqual(doc(received, "result").root(), page.root());
     assert.equal(lookup(doc(received, "result"), "button"), undefined);
     assert.throws(() => map.capture(), /Echo\/checkpoint/);

@@ -1237,6 +1237,10 @@ export type LiveMapLibraryAddOperation = Readonly<{
       validation?: "hson-part-collection-v1";
       schema: import("../api/transform/transform.types.js").HsonSchemaData;
       root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+      /** Scoped additions require complete scopes and CSS. Absence retains the historic flat contract. @internal */
+      documentContract?: "scoped";
+      /** Complete private topology evidence; public transport remains guarded. @internal */
+      scopes?: import("../api/livemap/livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
       quads?: PortableDocumentQuads;
       css?: import("./document-css.types.js").DocumentCssRecord;
     }>[];

@@ -1,9 +1,8 @@
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import assert from "node:assert/strict";
 import type { LiveMapSnapshot } from "../../src/types/livemap.types.ts";
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
-import { ssr_subject_fixture } from "./document-ssr-subjects-cases.mts";
-import { cut_document_ssr_internal, restore_portable_document_receiver_internal, make_livemap_from_authored_libraries_internal, compose_livemap_document_internal } from "../../src/api/livemap/livemap.libraries.ts";
+import { ssr_subject_fixture, flat_final_subject_fixture } from "./document-ssr-subjects-cases.mts";
+import { cut_document_ssr_internal, restore_portable_document_receiver_internal } from "../../src/api/livemap/livemap.libraries.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { lookup_document_quad_internal as lookup } from "../../src/api/livemap/livemap.document.quad.ts";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.ts";
@@ -96,13 +95,8 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
     const candidate = aggregate.preparePortableDocumentHandoff(aggregate.libraries()[0]!, two.correspondence);
     candidate.acceptCss(); assert.equal(one.document.css.snapshot().includes('hson\\:quid'), true);
   });
-  check("final-only composed receiver binds two independently owned component subjects", () => {
-    const map = make_livemap_from_authored_libraries_internal({ layout: { document:'<html <head/> <body <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>/>' }, components:collection({button:{kind:"document",document:'<button @:source/>'}}) });
-    const page = compose_livemap_document_internal(map, "layout", "final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;
-    const demanded = ["345678901", "456789012"];
-    aggregate.acquireLocalDocumentIdentity(library, validate_document_path([0,0,1,0,0]), demanded[0]!);
-    aggregate.acquireLocalDocumentIdentity(library, validate_document_path([0,0,1,0,1]), demanded[1]!);
-    page.css.stylesheet('[hson\\:quid="345678901"]{color:red}[hson\\:quid="456789012"]{color:blue}');
+  check("historical flat final receiver binds two independently owned component subjects", () => {
+    const { map, demanded } = flat_final_subject_fixture();
     const cut = cut_document_ssr_internal(map, {html:"final",documents:["final"],data:[]}, demanded);
     const receiver = restore_portable_document_receiver_internal(cut.libs), owning = owner(receiver.map);
     assert.equal(receiver.correspondence.associations.length, 2);
