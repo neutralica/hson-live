@@ -41,12 +41,12 @@ export function make_livemap_array_api<
     items: readonly OrderedProjectedValue[] = [],
   ) => projected.commit([{ kind: "splice", path: handlePath, start, deleteCount, items }]);
   const materializeArray = (value: readonly OrderedProjectedValue[]) => (
-    materialize_projected_value(ordered_projected_array(value)) as LiveMapArrayShape<TValue>
+    materialize_projected_value(ordered_projected_array(value)) as unknown as readonly LiveMapArrayItem<TValue>[]
   );
 
   return {
     is: () => Array.isArray(projected.read(handlePath)),
-    toArray: () => materializeArray(read()),
+    toArray: () => materializeArray(read()) as LiveMapArrayShape<TValue>,
     slice: (start, end) => materializeArray(arraySlice(read(), handlePath, start, end)),
     take: (count) => materializeArray(read().slice(0, arrayCount(count, handlePath))),
     drop: (count) => materializeArray(read().slice(arrayCount(count, handlePath))),
@@ -60,6 +60,7 @@ export function make_livemap_array_api<
       const itemCount = arrayCount(count, handlePath);
       return materializeArray(itemCount === 0 ? value : value.slice(0, -itemCount));
     },
+    map: (callback) => materializeArray(read()).map(callback),
     length: () => read().length,
     isEmpty: () => read().length === 0,
     at: (index) => {

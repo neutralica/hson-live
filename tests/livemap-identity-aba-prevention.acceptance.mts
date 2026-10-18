@@ -106,7 +106,7 @@ check("disposing one data handle leaves another and the issued ledger", () => {
 check("a projected move preserves the active identity lifetime", () => {
   const map = data();
   const handle = acquire_projected_identity(map, ["items", 0]);
-  map.at(["items"]).asArray()!.move(0, 1);
+  map.at(["items"]).asArray()!.array.move(0, 1);
   assert.deepEqual(handle.path(), ["items", 1]);
   assert.equal(livemap_identity_epoch_accounting(map).issued, 1);
 });

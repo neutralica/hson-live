@@ -1,3 +1,5 @@
+import { collection_commands } from "../livemap/livemap.collection-command.js";
+import { collection_observations } from "../../internal/library-observation.js";
 import type { JsonValue } from "../../core/types.js";
 import type {
   LiveMap, LiveMapDefinitions, LiveMapCssOp, LiveMapDocumentAttributeValue, LiveMapDocumentAttrs,
@@ -5,7 +7,7 @@ import type {
   LiveMapStagedWriter, LivePath, LiveMapDataLibrary, LiveMapDocumentLibrary,
 } from "../../types/livemap.types.js";
 import type { LocusRuntimeLibraryAdditions, LocusStage } from "../../types/locus.core.types.js";
-import type { GovernorLibrarySelector } from "../../types/governor.types.js";
+import type { LocusLibrarySelector } from "../../types/governor.types.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
@@ -24,8 +26,8 @@ export function make_locus_stage<TMap extends LiveMap>(
   submitLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>,
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>,
   assertSubmissionAllowed: () => void,
-): Readonly<{ stage: LocusStage<TMap>; lib: GovernorLibrarySelector<TMap>;
-  addLibraries: (additions: LocusRuntimeLibraryAdditions) => Promise<void> }> {
+): Readonly<{ stage: LocusStage<TMap>; lib: LocusLibrarySelector<TMap>;
+  addLibraries: import("../../types/locus.core.types.js").Locus<TMap>["addLibraries"] }> {
   const selected_document = (writer: Writer, name: string): Document => {
     const selected = writer.lib(name);
     if (selected.mode !== "document") throw new Error(`Staged Library ${JSON.stringify(name)} is not a document.`);
@@ -36,23 +38,37 @@ export function make_locus_stage<TMap extends LiveMap>(
     if (selected.mode === "document") throw new Error(`Staged Library ${JSON.stringify(name)} is not data.`);
     return selected;
   };
-  const data_path = (name: string, path: LivePath) => {
+  const data_path = (name: string, path: LivePath): import("../../types/governor.types.js").LocusDataLocation => {
     const stable = must_live_path(path);
-    const raw = (map.lib(name) as LiveMapDataLibrary).at(stable);
+    const owner = map.lib(name) as LiveMapDataLibrary;
+    const raw = owner.at(stable);
+    const observations = collection_observations(raw);
+    const commands = collection_commands(command => submit(writer => {
+      if (map.lib(name) !== owner) throw new Error("Stale Library handle.");
+      raw.snap();
+      const location = selected_data(writer, name).at(stable);
+      Reflect.apply(Reflect.get(Reflect.get(location, command.collection), command.method), undefined, command.args);
+    }), cause => Promise.reject(cause));
     return Object.freeze({
       get rev() { return raw.rev; },
       path: () => raw.path(),
       snap: () => raw.snap(),
       data: () => raw.data(),
       watch: (listener: (value: JsonValue | undefined) => void) => raw.watch(listener),
+      ...(observations.array === undefined ? {} : { array: Object.freeze({ ...observations.array, ...commands.array }) }),
+      ...(observations.object === undefined ? {} : { object: Object.freeze({ ...observations.object, ...commands.object }) }),
       kind: () => raw.kind(),
+      present: () => raw.present() === undefined ? undefined : data_path(name, stable),
+      asArray: () => raw.asArray() === undefined ? undefined : data_path(name, stable),
+      asObject: () => raw.asObject() === undefined ? undefined : data_path(name, stable),
+      asScalar: () => raw.asScalar() === undefined ? undefined : data_path(name, stable),
       at: (child: LivePath) => data_path(name, [...stable, ...must_live_path(child)]),
       set: (value: JsonValue) => submit(writer => { selected_data(writer, name).at(stable).set(value); }),
       replace: (value: JsonValue) => submit(writer => { selected_data(writer, name).at(stable).replace(value); }),
       delete: () => submit(writer => { selected_data(writer, name).at(stable).delete(); }),
-    });
+    }) as unknown as import("../../types/governor.types.js").LocusDataLocation;
   };
-  const document_location = (name: string, path: readonly number[]) => {
+  const document_location = (name: string, path: readonly number[]): import("../../types/governor.types.js").LocusDocumentLocation => {
     const stable = validate_document_path(path);
     const document = map.lib(name) as LiveMapDocumentLibrary;
     const raw = document.at(stable);
@@ -60,8 +76,12 @@ export function make_locus_stage<TMap extends LiveMap>(
       get rev() { return raw.rev; },
       path: () => raw.path(),
       snap: () => raw.snap(),
-      watch: (listener: (value: unknown) => void) => raw.watch(listener),
+      watch: raw.watch.bind(raw),
       kind: () => raw.kind(),
+      present: () => raw.present() === undefined ? undefined : document_location(name, stable),
+      asElement: () => raw.asElement() === undefined ? undefined : document_location(name, stable),
+      asRoot: () => raw.asRoot() === undefined ? undefined : document_location(name, stable),
+      asText: () => raw.asText() === undefined ? undefined : document_location(name, stable),
       id: (id: string) => {
         const found = raw.id(id);
         return found === undefined ? undefined : document_location(name, found.path());
@@ -98,7 +118,7 @@ export function make_locus_stage<TMap extends LiveMap>(
       }),
     });
   };
-  const addLibraries = (additions: LocusRuntimeLibraryAdditions): Promise<void> => {
+  const addLibraries = (additions: LocusRuntimeLibraryAdditions) => {
         try { assertSubmissionAllowed(); }
         catch (cause) { return Promise.reject(cause); }
         if (typeof additions !== "object" || additions === null || Array.isArray(additions)
@@ -128,7 +148,11 @@ export function make_locus_stage<TMap extends LiveMap>(
           }
         }
         if (Object.keys(definitions).length === 0) return Promise.reject(new TypeError("Locus runtime addition requires a Library."));
-        return submitLibraries(definitions, ownership, css);
+        return submitLibraries(definitions, ownership, css).then(() => {
+          const libraries: Record<string, ReturnType<typeof lib>> = Object.create(null);
+          for (const name of Object.keys(definitions)) libraries[name] = lib(name);
+          return Object.freeze({ libraries: Object.freeze(libraries) });
+        });
       };
   const lib = (name: string) => {
         const selected = map.lib(name);
@@ -185,5 +209,5 @@ export function make_locus_stage<TMap extends LiveMap>(
         register_governed_document(handle, document);
         return handle;
       };
-  return Object.freeze({ stage: submit as LocusStage<TMap>, lib: lib as GovernorLibrarySelector<TMap>, addLibraries });
+  return Object.freeze({ stage: submit as LocusStage<TMap>, lib: lib as LocusLibrarySelector<TMap>, addLibraries: addLibraries as import("../../types/locus.core.types.js").Locus<TMap>["addLibraries"] });
 }

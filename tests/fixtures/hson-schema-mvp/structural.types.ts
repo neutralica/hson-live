@@ -133,8 +133,8 @@ treeView.bind.path(lib.at(["slides", 0]), (_target, current, previous) => {
   const before: Slide | undefined = previous;
   void [exact, before];
 });
-lib.at([]).getKey("slides");
-const helper = lib.at([]).pick(["slides"]);
+lib.at([]).object.getKey("slides");
+const helper = lib.at([]).object.pick(["slides"]);
 const helperSlides: readonly Slide[] = helper.slides;
 void [narrow, recursive, deepAge, mutualKind, two, helperSlides];
 

@@ -357,8 +357,8 @@ check("LiveMap splice and move regenerate dense indexes and preserve addressabil
     schema,
   } });
   const data = map.lib("data");
-  data.at(["items"]).asArray()!.splice(1, 1, "x", "y");
-  data.at(["items"]).asArray()!.move(3, 0);
+  data.at(["items"]).asArray()!.array.splice(1, 1, "x", "y");
+  data.at(["items"]).asArray()!.array.move(3, 0);
   assert.deepEqual(data.snap(), { items: ["c", "a", "x", "y"] });
   const root = data.root();
   const nestedArray = (() => {

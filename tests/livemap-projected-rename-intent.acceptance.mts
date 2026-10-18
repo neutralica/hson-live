@@ -34,7 +34,7 @@ const RenameSchema = Hson.schema`<type "data" content <
 const library = (value: string | Record<string, unknown>): LiveMapDataLibrary<unknown> => hsonLiveMap.fromLibraries({ state: { data: value as JsonValue, schema: RenameSchema } }).lib("state");
 const rename = (value: string | Record<string, unknown>, from: string, to: string) => {
   const target = library(value);
-  const commit = target.at([]).asObject()!.renameKey(from, to);
+  const commit = target.at([]).asObject()!.object.renameKey(from, to);
   return { target, commit };
 };
 
@@ -59,7 +59,7 @@ check("rename preserves descendant values", () => {
 });
 check("nested rename is path-authoritative", () => {
   const target = library({ outer: { source: 1, kept: 2 } });
-  const commit = target.at(["outer"]).asObject()!.renameKey("source", "destination");
+  const commit = target.at(["outer"]).asObject()!.object.renameKey("source", "destination");
   assert.equal(commit.operations[0]?.library, "state");
   assert.deepEqual(target.snap(), { outer: { destination: 1, kept: 2 } });
 });
@@ -79,7 +79,7 @@ check("same-name rename is a no-op after source validation", () => {
 check("missing source rejects atomically", () => {
   const target = library({ kept: 1 });
   const before = target.root();
-  assert.throws(() => target.at([]).asObject()!.renameKey("missing", "destination"));
+  assert.throws(() => target.at([]).asObject()!.object.renameKey("missing", "destination"));
   assert.equal(canonical_hson_graph_equal(target.root(), before), true);
   assert.equal(target.rev, 0);
 });
@@ -87,7 +87,7 @@ for (const [name, from, to] of [
   ["invalid source", 1, "destination"], ["invalid destination", "source", null],
 ] as const) check(`${name} rejects`, () => {
   const target = library({ source: 1 });
-  assert.throws(() => target.at([]).asObject()!.renameKey(from as never, to as never));
+  assert.throws(() => target.at([]).asObject()!.object.renameKey(from as never, to as never));
   assert.equal(target.rev, 0);
 });
 check("changed rename advances exactly one revision", () => {

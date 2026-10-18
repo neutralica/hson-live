@@ -57,7 +57,7 @@ const stopCommits = clientMap.commits.observe((commit) => observedCommits.push(c
 assert.throws(() => clientMap.addLibraries({ preferences: { data: { theme: "dark" } } }), /managed|authority|controlled/i);
 assert.throws(() => clientMap.addLibraries({ localPage: { document: Hson.document`<main/>` } }), /managed|authority|controlled/i);
 const replaySource = hsonLiveMap.create();
-const topologyCommit = replaySource.addLibraries({ replayed: { data: { value: 1 } } });
+const topologyCommit = replaySource.addLibraries({ replayed: { data: { value: 1 } } }).commit;
 assert.throws(() => clientMap.replay(topologyCommit), /managed|authority|controlled/i);
 stopCommits();
 assert.equal(clientMap.rev, beforeClientRev);

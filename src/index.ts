@@ -133,6 +133,12 @@ export type {
   LiveMapLibraryDefinition,
   LiveMapDefinitions,
   LiveMapLibraryAddOperation,
+  LiveMapLibraryAdmission,
+  LiveMapAdmittedLibraries,
+  LibraryArrayRead,
+  LibraryObjectRead,
+  LibraryArrayCommands,
+  LibraryObjectCommands,
   LiveMapLibrarySchemaUseOperation,
   LiveMapDynamicLibrary,
   LiveMapKnownNames,
@@ -223,3 +229,6 @@ export type {
 } from "./types/livehost.types.js";
 
 export type { ReadonlyHsonNode } from "./core/types.js";
+
+export type { LocusLibraryAdmission } from "./types/locus.core.types.js";
+export type { LocusLibrary, LocusDataLibrary, LocusDataLocation, LocusDocumentLibrary, LocusDocumentLocation, ReadLibrary, ReadDataLibrary, ReadDataLocation, ReadDocumentLibrary } from "./types/governor.types.js";

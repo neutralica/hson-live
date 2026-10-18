@@ -738,12 +738,15 @@ function make_livemap_library_receiver(
       : aggregate.addLibraries(definitions, afterInstall, beforeInstall);
     return public_commit(commit);
   };
-  const addLibraries = (inputs: LiveMapDefinitions): LiveMapCommit => {
+  const addLibraries = (inputs: LiveMapDefinitions) => {
     aggregate.assertPublicMutationAllowed();
     const checkCapture = aggregate.captureFence();
     const definitions = realize_authored_definitions(public_library_definitions(inputs), readPart);
     checkCapture();
-    return addLibrariesInternal(definitions, {}, false, checkCapture);
+    const commit = addLibrariesInternal(definitions, {}, false, checkCapture);
+    const admitted: Record<string, ReturnType<typeof selected>> = Object.create(null);
+    for (const definition of definitions) admitted[definition.name] = selected(definition.name);
+    return Object.freeze({ commit, libraries: Object.freeze(admitted) });
   };
 
   const lib = Object.freeze((name: string) => selected(name));
@@ -1225,8 +1228,8 @@ function make_data_library(
       asObject: () => currentKind() === "object" ? handle<TValue>(stablePath) : undefined,
       asArray: () => currentKind() === "array" ? handle<TValue>(stablePath) : undefined,
       asScalar: () => currentKind() === "scalar" ? handle<TValue>(stablePath) : undefined,
-      ...(currentKind() === "object" ? objectCapabilities : {}),
-      ...(currentKind() === "array" ? arrayCapabilities : {}),
+      ...(currentKind() === "object" ? { object: Object.freeze(objectCapabilities) } : {}),
+      ...(currentKind() === "array" ? { array: Object.freeze(arrayCapabilities) } : {}),
     };
     return Object.freeze(facade) as unknown as LiveMapLibraryPathHandle<TValue>;
   };
@@ -1288,7 +1291,7 @@ function omit_object_discriminant<TValue, TCommit>(
 function omit_array_collisions<TValue, TCommit>(
   api: ReturnType<typeof make_livemap_array_api<TValue, TCommit>>,
 ) {
-  const { is: _is, at: _at, replace: _replace, ...capabilities } = api;
+  const { is: _is, ...capabilities } = api;
   return capabilities;
 }
 

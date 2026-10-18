@@ -79,7 +79,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     const fragment = Hson.document`<button @:same/>`;
     const source = Hson.document`<main ${fragment} ${undefined} ${fragment}/>`;
     const map = fixture();
-    unchanged(map, () => map.addLibraries({ incoming: { document: source } }), /duplicate.*QUAD/i);
+    unchanged(map, () => map.addLibraries({ incoming: { document: source } }).commit, /duplicate.*QUAD/i);
     assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source } }), error => {
       const details = read_transform_error_details(error);
       assert.equal(details?.code, "HSON_LIBRARY_QUAD_DUPLICATE");
@@ -87,7 +87,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
       assert.equal(details?.related?.[0]?.source.index, source.indexOf("@:same"));
       return true;
     });
-    unchanged(map, () => map.addLibraries({ incoming: { document: '<main @:bad-name/>' } }));
+    unchanged(map, () => map.addLibraries({ incoming: { document: '<main @:bad-name/>' } }).commit);
     assert.throws(() => Hson.document`<main ${'<p @:bad-name/>'}/>`, error => {
       const details = read_transform_error_details(error);
       assert.equal(details?.code, "HSON_INTERPOLATION_CANDIDATE_INVALID");
@@ -358,7 +358,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
   check("ordinary restoration and replay replace or preserve registry state through their owner", () => {
     const map = fixture(), aggregate = internal_livemap_aggregate_authority(map);
     const plain = hsonLiveMap.fromLibraries({ page: { document: '<main <button "Confirm"/> <aside/>/>' } });
-    const addition = plain.addLibraries({ next: { document: '<aside/>' } });
+    const addition = plain.addLibraries({ next: { document: '<aside/>' } }).commit;
     map.replay(addition);
     assert.ok(lookup(doc(map), "confirm"));
     internal_livemap_aggregate_authority(fixture()).setInitialHostedAuthority({ logicalMapId: "map", incarnationId: "run" });
@@ -398,7 +398,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     const captured = map.capture();
     assert.deepEqual(install_libraries_snapshot(captured).map.capture(), captured);
     assert.equal(internal_livemap_aggregate_authority(map).identityEpoch().issued().size, 0);
-    const commit = map.addLibraries({ next: { document: '<aside/>' } });
+    const commit = map.addLibraries({ next: { document: '<aside/>' } }).commit;
     const replica = install_libraries_snapshot(captured).map;
     replica.replay(commit);
     assert.deepEqual(replica.capture(), map.capture());

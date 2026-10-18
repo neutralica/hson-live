@@ -41,7 +41,8 @@ void capture.libraries;
 const empty = hsonLiveMap.create();
 void empty.capture();
 const added = empty.addLibraries({ runtimePage: { document: Hson.document`<main/>` }, runtimeState: { data: 1 } });
-void added.operations;
+void added.commit.operations;
+void added.libraries.runtimePage.render();
 const runtimePage = empty.lib("runtimePage");
 if (runtimePage.mode === "document") { void runtimePage.document.root(); void runtimePage.render(); }
 const scalar = hsonLiveMap.fromLibraries({ value: { data: 1, schema: ANY_DATA } });
@@ -130,3 +131,17 @@ const optionalCut = selections.cut(optionalSelection);
 void optionalCut.libs;
 // @ts-expect-error Optional HTML does not guarantee an HTML result.
 void optionalCut.html;
+
+const optionalDefinitions: { state: { data: number }; optionalPage?: { document: string } } = { state: { data: 1 } };
+const optionalReceipt = hsonLiveMap.create().addLibraries(optionalDefinitions);
+optionalReceipt.libraries.state.snap();
+optionalReceipt.commit.operations;
+// @ts-expect-error Worker consumers must narrow optional admitted membership.
+optionalReceipt.libraries.optionalPage.render();
+optionalReceipt.libraries.optionalPage?.render();
+map.batch(writer => {
+  const items = writer.lib("state").at(["items"]);
+  items.asArray().array.push(3);
+  // @ts-expect-error Staged refinement supplies commands, not live observations.
+  items.asArray().snap();
+});

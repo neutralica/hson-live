@@ -18,6 +18,10 @@ const testEvents = create_test_event_emitter("core.public-entrypoint-surface");
 const repositoryRoot = resolve(import.meta.dirname, "..");
 
 const ROOT_EXPORTS = `
+LibraryArrayCommands LibraryArrayRead LibraryObjectCommands LibraryObjectRead
+LiveMapAdmittedLibraries LiveMapLibraryAdmission LocusLibraryAdmission
+LocusLibrary LocusDataLibrary LocusDataLocation LocusDocumentLibrary LocusDocumentLocation
+ReadLibrary ReadDataLibrary ReadDataLocation ReadDocumentLibrary
 ANY_DATA ANY_DOCUMENT AsyncLiveTree AsyncLiveTreeAttrs AsyncLiveTreeClasslist AsyncLiveTreeFlags AsyncLiveTreeForm AsyncLiveTreeId AsyncLiveTreeText LocusInteractionDescriptor
 AuthorityProjectionSnapshot BinaryDecodeOptions BrowserRealizationHtml DataLiveMapMode DecodedSsrBootstrap DetachedLiveContent DocumentContinuation DocumentContinuationError
 DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsrError Echo EchoActionFn EchoActionPromise EchoActionRequest

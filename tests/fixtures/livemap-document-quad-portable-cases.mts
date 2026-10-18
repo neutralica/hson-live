@@ -418,7 +418,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   await check("absent QUAD fields ignore inherited data and getters across construction restoration addition and replay", async () => {
     const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
     const snapshot = structuredClone(plain.capture()), source = hsonLiveMap.create(), initial = source.capture();
-    const commit = source.addLibraries({ added: { document: '<aside/>' } });
+    const commit = source.addLibraries({ added: { document: '<aside/>' } }).commit;
     const projected = capture_selected_authority_projection_snapshot(plain, await projection(plain, ["page"]));
     const original = Object.getOwnPropertyDescriptor(Object.prototype, "quads");
     let reads = 0;
@@ -457,7 +457,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const definition = accessor({ name: "added", family: "document" as const, root: decode_hosted_root(plain.capture().libraries[0]!.root),
       schema: owner(plain).librarySchema(owner(plain).libraries()[0]!) });
     atomic(plain, () => addCanonical(plain, [definition]));
-    const source = hsonLiveMap.create(), initial = source.capture(), commit = structuredClone(source.addLibraries({ added: { document: '<main/>' } }));
+    const source = hsonLiveMap.create(), initial = source.capture(), commit = structuredClone(source.addLibraries({ added: { document: '<main/>' } }).commit);
     const operation = commit.operations[0]!.operation;
     if (!("kind" in operation) || operation.kind !== "library-add") throw Error("Expected addition");
     accessor(operation.libraries[0]!); assert.throws(() => install_libraries_snapshot(initial).map.replay(commit));

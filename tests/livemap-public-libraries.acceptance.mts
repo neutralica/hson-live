@@ -190,7 +190,7 @@ check("fromLibraries establishes fixed named data and document Libraries", () =>
 check("addLibraries admits runtime libraries while lib remains a selector", () => {
   const map = create_map();
   const page = map.lib("page");
-  const commit = map.addLibraries({ extra: { data: { primary: "green" }, schema: ColorsSchema } });
+  const commit = map.addLibraries({ extra: { data: { primary: "green" }, schema: ColorsSchema } }).commit;
   assert.deepEqual([commit.changed, commit.prevRev, commit.rev, map.rev], [true, 0, 1, 1]);
   assert.equal(commit.operations.length, 1);
   assert.equal(Reflect.get(commit.operations[0]!.operation, "kind"), "library-add");
@@ -291,7 +291,7 @@ check("document Libraries admit empty graph owners and reject empty source", () 
   const cutReceived = install_libraries_snapshot(map.cut().libs).map;
   assert.deepEqual(cutReceived.lib("empty").root(), map.lib("empty").root());
   const source = hsonLiveMap.create();
-  const commit = source.addLibraries({ empty: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocumentSchema } });
+  const commit = source.addLibraries({ empty: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocumentSchema } }).commit;
   const replica = hsonLiveMap.create();
   replica.replay(commit);
   assert.deepEqual(replica.lib("empty").root(), map.lib("empty").root());

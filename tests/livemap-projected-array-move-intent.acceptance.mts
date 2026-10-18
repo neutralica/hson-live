@@ -29,7 +29,7 @@ const ItemsSchema = Hson.schema`<type "data" content <items <array "any">>>`;
 const library = (value: string | { items: readonly unknown[] }): LiveMapDataLibrary<unknown> => hsonLiveMap.fromLibraries({ state: { data: value as JsonValue, schema: ItemsSchema } }).lib("state");
 const moved = (items: readonly unknown[], from: number, to: number) => {
   const target = library({ items });
-  const commit = target.at(["items"]).asArray()!.move(from, to);
+  const commit = target.at(["items"]).asArray()!.array.move(from, to);
   return { target, commit };
 };
 
@@ -62,20 +62,20 @@ for (const [name, from, to] of [
 check("out-of-range source rejects atomically", () => {
   const target = library({ items: [1, 2] });
   const before = target.root();
-  assert.throws(() => target.at(["items"]).asArray()!.move(2, 0));
+  assert.throws(() => target.at(["items"]).asArray()!.array.move(2, 0));
   assert.equal(canonical_hson_graph_equal(target.root(), before), true);
   assert.equal(target.rev, 0);
 });
 check("out-of-range destination rejects atomically", () => {
   const target = library({ items: [1, 2] });
   const before = target.root();
-  assert.throws(() => target.at(["items"]).asArray()!.move(0, 2));
+  assert.throws(() => target.at(["items"]).asArray()!.array.move(0, 2));
   assert.equal(canonical_hson_graph_equal(target.root(), before), true);
   assert.equal(target.rev, 0);
 });
 check("nested ordered objects move without rematerialization", () => {
   const target = library('{"items":[{"10":10,"2":2,"1":1},{"kept":true}]}');
-  target.at(["items"]).asArray()!.move(0, 1);
+  target.at(["items"]).asArray()!.array.move(0, 1);
   assert.equal(canonical_hson_graph_equal(target.root(), library('{"items":[{"kept":true},{"10":10,"2":2,"1":1}]}').root()), true);
 });
 check("moved values preserve positive and negative zero", () => {
@@ -85,7 +85,7 @@ check("moved values preserve positive and negative zero", () => {
 });
 check("dangerous keys inside a moved object remain data", () => {
   const target = library('{"items":[{"__proto__":1,"constructor":2},false]}');
-  target.at(["items"]).asArray()!.move(0, 1);
+  target.at(["items"]).asArray()!.array.move(0, 1);
   assert.equal(canonical_hson_graph_equal(target.root(), library('{"items":[false,{"__proto__":1,"constructor":2}]}').root()), true);
 });
 check("an array inside an object moves as one subtree", () => {

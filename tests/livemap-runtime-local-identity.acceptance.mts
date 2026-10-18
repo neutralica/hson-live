@@ -181,7 +181,7 @@ check("portable registry capture restores without an overlay-only acquired QUID"
 check("graph transition before demand resolves the new current path", () => {
   const registry = hsonLiveMap.fromLibraries({ state: { data: { first: {}, second: {} }, schema: DataSchema } });
   const map = registry.lib("state");
-  map.at([]).asObject()!.renameKey("first", "moved");
+  map.at([]).asObject()!.object.renameKey("first", "moved");
   assert.equal(map.rev, 1);
   set_livemap_projected_quid_candidate_source_for_tests(map, () => Q2);
   assert.throws(() => acquire_projected_identity(map, ["first"]));

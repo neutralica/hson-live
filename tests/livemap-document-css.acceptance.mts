@@ -146,7 +146,7 @@ addMap.addLibraries({ page: { document: "<html <head/> <body/>/>" } });
 const added = addMap.lib("page");
 assert.equal(added.mode, "document");
 if (added.mode === "document") assert.equal(added.css.snapshot(), "");
-const addedCommits: Array<ReturnType<typeof addMap.addLibraries>> = [];
+const addedCommits: Array<ReturnType<typeof addMap.addLibraries>["commit"]> = [];
 addMap.commits.observe((commit) => { addedCommits.push(commit); });
 addMap.lib("page").css.stylesheet("body { margin: 0; }");
 assert.equal(addMap.rev, 2);

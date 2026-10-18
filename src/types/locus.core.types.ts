@@ -11,7 +11,7 @@ import type {
   LiveMapPartsDefinitionCheck,
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
-import type { GovernorLibrarySelector, GovernorReadLibrarySelector, GovernorCut, GovernorCommits, EchoLibrary } from "./governor.types.js";
+import type { LocusLibrarySelector, ReadLibrarySelector, LibraryCut, LibraryCommits, EchoLibrary } from "./governor.types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
 import type {
   LocusActionAuthorizer,
@@ -52,7 +52,7 @@ export type LocusStage<TMap extends LiveMap> =
 export type LocusActionContext<
   TMap extends LiveMap = LiveMap,
 > = Readonly<{
-  lib: GovernorReadLibrarySelector<TMap>;
+  lib: ReadLibrarySelector<TMap>;
   stage: LiveMapStagedWriter<TMap, void>;
   seq: LocusSeq;
   origin: LocusActionOrigin;
@@ -118,6 +118,28 @@ export type LocusLocalLibraryDefinition = Readonly<{ name: string } & (
 export type LocusRuntimeLibraryAdditions = Readonly<{
   private?: readonly LocusAuthorityLibraryDefinition[];
   shared?: readonly LocusAuthorityLibraryDefinition[];
+}>;
+
+type LocusAdmissionEntries<TAdditions> = {
+  [TGroup in keyof TAdditions]: NonNullable<TAdditions[TGroup]> extends readonly (infer TEntry extends LocusAuthorityLibraryDefinition)[] ? TEntry : never;
+}[keyof TAdditions];
+type AdmissionIsUnion<TValue, TWhole = TValue> = TValue extends unknown
+  ? [TWhole] extends [TValue] ? false : true : never;
+/** Only required tuple entries with one literal name establish certain membership. */
+type LocusCertainTupleNames<TEntries> = [TEntries] extends [readonly [infer TEntry extends LocusAuthorityLibraryDefinition, ...infer TRest]]
+  ? (string extends TEntry["name"] ? never : true extends AdmissionIsUnion<TEntry["name"]> ? never : TEntry["name"])
+    | LocusCertainTupleNames<TRest>
+  : never;
+type LocusCertainAdmissionNames<TAdditions> = {
+  [TGroup in keyof TAdditions]: undefined extends TAdditions[TGroup] ? never : LocusCertainTupleNames<TAdditions[TGroup]>;
+}[keyof TAdditions];
+export type LocusLibraryAdmission<TAdditions extends LocusRuntimeLibraryAdditions> = Readonly<{
+  libraries: {
+    readonly [TEntry in LocusAdmissionEntries<TAdditions>
+      as string extends TEntry["name"] ? never : TEntry["name"]]: import("./governor.types.js").DefinitionLibrary<TEntry["definition"]>
+        | (TEntry["name"] extends LocusCertainAdmissionNames<TAdditions> ? never : undefined);
+  } & (string extends LocusAdmissionEntries<TAdditions>["name"]
+    ? Readonly<Record<string, import("./governor.types.js").LocusLibrary | undefined>> : {});
 }>;
 
 /** Check only inferred Parts definitions; preserve the established grouped admission grammar. */
@@ -438,8 +460,8 @@ export type Echo<
 }> & (TMap extends LiveMap ? Readonly<{
   readonly rev: number;
   lib: (name: string) => EchoLibrary;
-  cut: GovernorCut;
-  commits: GovernorCommits;
+  cut: LibraryCut;
+  commits: LibraryCommits;
   sync: EchoSync;
 }> : Readonly<{}>);
 
@@ -482,12 +504,12 @@ export type Locus<
   TMap extends LiveMap = LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
-  lib: GovernorLibrarySelector<TMap>;
-  cut: GovernorCut;
-  commits: GovernorCommits;
+  lib: LocusLibrarySelector<TMap>;
+  cut: LibraryCut;
+  commits: LibraryCommits;
   addLibraries: <const TAdditions extends LocusRuntimeLibraryAdditions>(
     additions: TAdditions & LocusPartsAdditionsCheck<NoInfer<TAdditions>>,
-  ) => Promise<void>;
+  ) => Promise<LocusLibraryAdmission<TAdditions>>;
   readonly logicalMapId: LocusLogicalMapId;
   readonly incarnationId: LocusIncarnationId;
   readonly rev: number;

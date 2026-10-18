@@ -160,7 +160,7 @@ check("data paths remain selected from their named library", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { items: ["first"] }, schema: DataSchema } });
   const state = map.lib("state");
   assert.equal(state.at(["items", 0]).snap(), "first");
-  assert.equal(typeof state.at(["items"]).asArray()!.push, "function");
+  assert.equal(typeof state.at(["items"]).asArray()!.array.push, "function");
 });
 
 process.stdout.write(`1..${checks}\n`);

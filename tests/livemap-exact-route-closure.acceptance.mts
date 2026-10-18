@@ -80,7 +80,7 @@ check("integer-like order remains exact across registry capture", () => {
   const target = registry('{}');
   target.restore(source.capture());
   same(source, target);
-  assert.deepEqual(source.lib("state").at([]).asObject()!.keys(), ["10", "2", "1"]);
+  assert.deepEqual(source.lib("state").at([]).asObject()!.object.keys(), ["10", "2", "1"]);
 });
 check("dangerous names retain ordinary data semantics", () => {
   const source = registry('{"__proto__":"data","constructor":-0,"prototype":true}');
@@ -134,8 +134,8 @@ check("detached root mutation cannot bypass commits", () => {
 check("plain object materialization can lose integer-key order", () => {
   const source = registry('{"10":10,"2":2,"1":1}');
   const target = registry(source.lib("state").snap() as Record<string, unknown>);
-  assert.deepEqual(source.lib("state").at([]).asObject()!.keys(), ["10", "2", "1"]);
-  assert.deepEqual(target.lib("state").at([]).asObject()!.keys(), ["1", "2", "10"]);
+  assert.deepEqual(source.lib("state").at([]).asObject()!.object.keys(), ["10", "2", "1"]);
+  assert.deepEqual(target.lib("state").at([]).asObject()!.object.keys(), ["1", "2", "10"]);
   assert.equal(canonical_hson_graph_equal(root(source), root(target)), false);
 });
 check("document attribute equality is unordered by name", () => {

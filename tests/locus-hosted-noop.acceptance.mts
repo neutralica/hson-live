@@ -335,7 +335,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     if (nestedGrouped === undefined) throw new Error("Nested grouped stage was not attempted.");
     await assert.rejects(nestedGrouped, /active stage/i);
     assert.equal(locus.rev, 3);
-    let nestedAddition: Promise<void> | undefined;
+    let nestedAddition: Promise<unknown> | undefined;
     await locus.stage(() => {
       nestedAddition = locus.addLibraries({ shared: [{ name: "later",
         definition: { data: { value: 1 } } }] });

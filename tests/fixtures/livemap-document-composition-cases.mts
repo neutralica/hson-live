@@ -140,7 +140,7 @@ export function document_composition_cases(check: (name: string, run: () => void
   check("missing and unavailable Parts fail immediately and do not publish a delayed consumer", () => {
     const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<p/>') }) });
     for (const connector of ['<hson-part lib="missing" at="x"/>', '<hson-part lib="parts" at="missing"/>', '<hson-part at="x"/>', '<hson-part lib="parts"/>']) {
-      atomic(map, () => map.addLibraries({ bad: { document: connector } })); assert.throws(() => map.lib("bad"));
+      atomic(map, () => map.addLibraries({ bad: { document: connector } }).commit); assert.throws(() => map.lib("bad"));
     }
     map.addLibraries({ missing: collection({ x: part('<i/>') }) }); assert.throws(() => map.lib("bad"));
     // One topology candidate resolves definitions regardless of entry order.
@@ -167,10 +167,10 @@ export function document_composition_cases(check: (name: string, run: () => void
       malformed: part('<p "%{bad.name}"/>'), script: part('<script "%{code}"/>'), handler: part('<p onclick="%{code}"/>') }) });
     for (const source of ['<hson-part lib="parts" at="x"/>', '<hson-part lib="parts" at="x" required="ok" extra="x"/>',
       '<hson-part lib="parts" at="malformed"/>',
-      '<hson-part lib="parts" at="x" required="ok" "content"/>', '<hson-part lib="parts" at="script" code="bad"/>', '<hson-part lib="parts" at="handler" code="bad"/>']) atomic(map, () => map.addLibraries({ bad: { document: source } }));
+      '<hson-part lib="parts" at="x" required="ok" "content"/>', '<hson-part lib="parts" at="script" code="bad"/>', '<hson-part lib="parts" at="handler" code="bad"/>']) atomic(map, () => map.addLibraries({ bad: { document: source } }).commit);
     assert.throws(() => collection({ style: part('<p style="color:%{color}"/>') }));
     const opaque: HsonNode = { $_tag: "hson-part", $_attrs: { lib: "parts", at: "x", style: { color: "red" } }, $_content: [] };
-    atomic(map, () => map.addLibraries({ bad: { document: { $_tag: ROOT_TAG, $_content: [opaque] } } }), /parameter/);
+    atomic(map, () => map.addLibraries({ bad: { document: { $_tag: ROOT_TAG, $_content: [opaque] } } }).commit, /parameter/);
   });
   check("ordinary runtime insertion and replacement realize before the first publication", () => {
     const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<section <button "%{value}"/>/>') }), page: { document: '<main <i/>/>' } });
@@ -210,7 +210,7 @@ export function document_composition_cases(check: (name: string, run: () => void
   });
   check("cycles, malformed Part roots, schemas and bounded traversal fail atomically", () => {
     const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<p <hson-part at="y"/>/>'), y: part('<i <hson-part at="x"/>/>') }) });
-    atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }), /cycle/);
+    atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /cycle/);
     assert.throws(() => collection({ bad: part('<p/> <q/>') }), /one ordinary/);
     const shell = parse_authored_document_library('<main <hson-part lib="parts" at="x"/>/>');
     assert.throws(() => expand_document_composition("shell", () => ({ root: shell.root }), document_composition_options({ maxDepth: 2 }),
@@ -331,10 +331,10 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
     for (const [a,b] of [['<section <hson-part at="a"/>/>','<aside/>'], ['<section <hson-part at="b"/>/>','<aside <hson-part at="a"/>/>'],
       ['<section <hson-part lib="other" at="b"/>/>','<aside <hson-part lib="parts" at="a"/>/>']]) {
       const map=hsonLiveMap.fromLibraries({parts:collection({a:part(a),b:part(b)}),other:collection({b:part(b)})});
-      atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="a"/>'}}),/cycle/);
+      atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="a"/>'}}).commit,/cycle/);
     }
     const map=hsonLiveMap.fromLibraries({parts:collection({one:part('<p/>')}),ordinary:{data:{one:part('<p/>')}},other:{document:'<p/>'}});
-    for(const controls of ['lib="ordinary" at="one"','lib="other" at="one"','LIB="parts" AT="one"','lib="parts" at="One"','lib="parts" quad="one"','lib="" at="one"']) atomic(map,()=>map.addLibraries({bad:{document:`<hson-part ${controls}/>`}}));
+    for(const controls of ['lib="ordinary" at="one"','lib="other" at="one"','LIB="parts" AT="one"','lib="parts" at="One"','lib="parts" quad="one"','lib="" at="one"']) atomic(map,()=>map.addLibraries({bad:{document:`<hson-part ${controls}/>`}}).commit);
     assert.throws(()=>map.addLibraries({bad:{document:'<hson-part lib="parts" lib="other" at="one"/>'}}));
     const privateCycle=source('<section <hson-part @:loop at="safe"/>/>');
     assert.throws(()=>expand_document_composition("shell",()=>source('<hson-part @:slot lib="parts" at="outer"/>'),
@@ -354,13 +354,13 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
     assert.equal(doc(map,"valid").schema.get(),schema);
     atomic(map,()=>doc(map,"valid").document.content.replace({kind:"path",path:[]},0,element('<i/>')));
     map.lib("parts").at(["x","document"]).set('<i/>');
-    atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>',schema}}));
+    atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>',schema}}).commit);
   });
   check("retained authority coverage: prepared discard stale reuse exclusive management and both incomplete identity phases", () => {
     const map=hsonLiveMap.fromLibraries({parts:collection({x:part('<p/>')}),page:{document:'<main/>'}}),aggregate=owner(map),manager={};
     aggregate.claimManagement(manager);
     try {
-      atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>'}}),/exclusive/);
+      atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>'}}).commit,/exclusive/);
       const discarded=hostedAdd(map,manager,{discarded:{document:'<aside/>'}});aggregate.discard(discarded.transition);
       atomic(map,()=>aggregate.accept(discarded.transition,"isolate",discarded.afterInstall),/discarded/);
       const stale=hostedAdd(map,manager,{stale:{document:'<i/>'}}),accepted=hostedAdd(map,manager,{accepted:{document:'<footer/>'}});

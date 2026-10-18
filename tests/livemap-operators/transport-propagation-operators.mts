@@ -54,7 +54,7 @@ export const transport_propagation_operators: readonly DeterministicLiveMapOpera
   }),
   lifecycle_operator("transport/rename-capture", "capture semantic rename", "Rename survives complete registry capture.", "Source key exists.", "change", () => {
     const source = registry({ a: 1, b: 2 }); const target = registry({ a: 1, b: 2 }); const before = witness(target);
-    source.lib("state").at([]).asObject()!.renameKey("a", "d"); target.restore(source.capture());
+    source.lib("state").at([]).asObject()!.object.renameKey("a", "d"); target.restore(source.capture());
     assert.deepEqual(target.lib("state").snap(), { d: 1, b: 2 });
     return result("change", before, "rename a→d", witness(target), target.rev);
   }),
@@ -92,13 +92,13 @@ export const transport_propagation_operators: readonly DeterministicLiveMapOpera
   lifecycle_operator("propagation/rename", "publish rename intent", "Selected root feed reports semantic rename.", "Source key exists.", "change", () => {
     const map = registry({ a: 1 }); const before = witness(map); let kind: string | undefined;
     map.lib("state").at([]).feed((event) => { kind = event.op.kind; });
-    map.lib("state").at([]).asObject()!.renameKey("a", "d"); assert.equal(kind, "rename");
+    map.lib("state").at([]).asObject()!.object.renameKey("a", "d"); assert.equal(kind, "rename");
     return result("change", before, "rename a→d", witness(map), map.rev, 1, ["kind=rename"]);
   }),
   lifecycle_operator("propagation/move", "publish move intent", "Selected array feed reports semantic movement.", "Array has two items.", "change", () => {
     const map = registry({ items: [1, 2] }); const before = witness(map); let kind: string | undefined;
     map.lib("state").at(["items"]).feed((event) => { kind = event.op.kind; });
-    map.lib("state").at(["items"]).asArray()!.move(0, 1); assert.equal(kind, "move");
+    map.lib("state").at(["items"]).asArray()!.array.move(0, 1); assert.equal(kind, "move");
     return result("change", before, "move 0→1", witness(map), map.rev, 1, ["kind=move"]);
   }),
   lifecycle_operator("propagation/detached-feed", "detach feed payload", "Listener mutation cannot alter canonical state.", "Feed receives an object value.", "change", () => {

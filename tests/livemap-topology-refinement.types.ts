@@ -5,7 +5,7 @@ const initialState = { count: 0 };
 const schema = Hson.schema`<type "data" content <count "number">>`;
 
 const map = hsonLiveMap.create();
-const commit = map.addLibraries({ home: { document: mainShell } });
+const commit = map.addLibraries({ home: { document: mainShell } }).commit;
 void commit.operations;
 map.lib("home").css.stylesheet("body { margin: 0; }");
 map.addLibraries({ state: { data: initialState, schema } });

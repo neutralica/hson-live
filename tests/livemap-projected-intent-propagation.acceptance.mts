@@ -37,28 +37,28 @@ check("rename intent reaches the named registry commit stream", () => {
   const map = registry({ source: 1 });
   let observed: string | undefined;
   map.commits.observe((commit) => { const op = commit.operations[0]?.operation; observed = op !== undefined && "kind" in op ? op.kind : undefined; });
-  state(map).at([]).asObject()!.renameKey("source", "destination");
+  state(map).at([]).asObject()!.object.renameKey("source", "destination");
   assert.equal(observed, "rename");
 });
 check("move intent reaches the named registry commit stream", () => {
   const map = registry({ items: [1, 2] });
   let observed: string | undefined;
   map.commits.observe((commit) => { const op = commit.operations[0]?.operation; observed = op !== undefined && "kind" in op ? op.kind : undefined; });
-  state(map).at(["items"]).asArray()!.move(0, 1);
+  state(map).at(["items"]).asArray()!.array.move(0, 1);
   assert.equal(observed, "move");
 });
 check("rename intent reaches a selected path feed", () => {
   const map = registry({ source: 1 });
   let observed: string | undefined;
   state(map).at([]).feed((event) => { observed = event.op.kind; });
-  state(map).at([]).asObject()!.renameKey("source", "destination");
+  state(map).at([]).asObject()!.object.renameKey("source", "destination");
   assert.equal(observed, "rename");
 });
 check("move intent reaches a selected array feed", () => {
   const map = registry({ items: [1, 2] });
   let observed: string | undefined;
   state(map).at(["items"]).feed((event) => { observed = event.op.kind; });
-  state(map).at(["items"]).asArray()!.move(0, 1);
+  state(map).at(["items"]).asArray()!.array.move(0, 1);
   assert.equal(observed, "move");
 });
 check("feed mutation cannot alter canonical rename state", () => {
@@ -66,13 +66,13 @@ check("feed mutation cannot alter canonical rename state", () => {
   state(map).at([]).feed((event) => {
     if (event.op.kind === "rename") (event.op.next as { destination: { value: number } }).destination.value = 9;
   });
-  state(map).at([]).asObject()!.renameKey("source", "destination");
+  state(map).at([]).asObject()!.object.renameKey("source", "destination");
   assert.deepEqual(state(map).snap(), { destination: { value: 1 } });
 });
 check("rename restores as an exact named library state", () => {
   const source = registry({ source: 1 });
   const target = registry({ source: 1 });
-  state(source).at([]).asObject()!.renameKey("source", "destination");
+  state(source).at([]).asObject()!.object.renameKey("source", "destination");
   target.restore(source.capture());
   assert.deepEqual(state(target).snap(), state(source).snap());
   assert.equal(canonical_hson_graph_equal(state(target).root(), state(source).root()), true);
@@ -80,7 +80,7 @@ check("rename restores as an exact named library state", () => {
 check("move restores as an exact named library state", () => {
   const source = registry({ items: [1, 2, 3] });
   const target = registry({ items: [1, 2, 3] });
-  state(source).at(["items"]).asArray()!.move(0, 2);
+  state(source).at(["items"]).asArray()!.array.move(0, 2);
   target.restore(source.capture());
   assert.deepEqual(state(target).snap(), { items: [2, 3, 1] });
 });
@@ -88,8 +88,8 @@ check("path watch sees one changed rename and no no-op move", () => {
   const map = registry({ items: [1, 2], source: 1 });
   let calls = 0;
   state(map).at([]).watch(() => { calls += 1; });
-  state(map).at(["items"]).asArray()!.move(0, 0);
-  state(map).at([]).asObject()!.renameKey("source", "destination");
+  state(map).at(["items"]).asArray()!.array.move(0, 0);
+  state(map).at([]).asObject()!.object.renameKey("source", "destination");
   assert.equal(calls, 1);
 });
 check("same-position move publishes neither a commit nor feed", () => {
@@ -98,7 +98,7 @@ check("same-position move publishes neither a commit nor feed", () => {
   let feeds = 0;
   map.commits.observe(() => { commits += 1; });
   state(map).at(["items"]).feed(() => { feeds += 1; });
-  state(map).at(["items"]).asArray()!.move(0, 0);
+  state(map).at(["items"]).asArray()!.array.move(0, 0);
   assert.deepEqual([commits, feeds, map.rev], [0, 0, 0]);
 });
 check("malformed exact move indexes reject", () => {
@@ -117,8 +117,8 @@ check("malformed exact rename witnesses reject", () => {
 });
 check("rename and move preserve strict canonical graph equality through restore", () => {
   const source = registry({ source: { items: [1, 2, 3] } });
-  state(source).at([]).asObject()!.renameKey("source", "destination");
-  state(source).at(["destination", "items"]).asArray()!.move(0, 2);
+  state(source).at([]).asObject()!.object.renameKey("source", "destination");
+  state(source).at(["destination", "items"]).asArray()!.array.move(0, 2);
   const target = registry({ source: { items: [1, 2, 3] } });
   target.restore(source.capture());
   assert.equal(canonical_hson_graph_equal(state(source).root(), state(target).root()), true);

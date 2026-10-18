@@ -112,7 +112,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     const rejected=hsonLiveMap.fromLibraries({});
     for(const [css,reason] of invalid){
       assert.throws(()=>parse_part_stylesheet(css),reason,css);
-      atomic(rejected,()=>rejected.addLibraries({parts:collection({x:part('<section <button class="b"/>/>',css)}),page:{document:'<hson-part lib="parts" at="x"/>'}}),reason);
+      atomic(rejected,()=>rejected.addLibraries({parts:collection({x:part('<section <button class="b"/>/>',css)}),page:{document:'<hson-part lib="parts" at="x"/>'}}).commit,reason);
     }
   });
   check("equivalent replacement and colon-bearing nested selectors share source-free scoped ownership", () => {
@@ -219,7 +219,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     assert.equal(page(map).q("root"), undefined); assert.equal(page(map).q("child"), undefined);
     assert.equal(install_libraries_snapshot(map.cut({ documents: ["page"], data: [] }).libs).map.lib("page").mode, "document");
     const invalid = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<p/>', '[hson\\:quad="absent"]{color:red}') }) });
-    atomic(invalid, () => invalid.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }), /subject/);
+    atomic(invalid, () => invalid.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /subject/);
   });
   check("replacing an occurrence retires its old globals before admitting the new contribution", () => {
     const map = legacy_flat_styled_map({ parts: collection({ x: part('<section <button/>/>', 'button{color:red}@keyframes owned{from{opacity:0}}') }),
@@ -233,7 +233,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
   });
   check("failed realized Schema checks and identity-only reentrancy never publish the outer candidate", () => {
     const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<button/>', 'button{color:red}') }), page: { document: '<aside/>' } });
-    atomic(map, () => map.addLibraries({ bad: { document: '<main <hson-part lib="parts" at="x"/>/>', schema: Hson.schema`<type "document" tag "main" content "empty">` } }));
+    atomic(map, () => map.addLibraries({ bad: { document: '<main <hson-part lib="parts" at="x"/>/>', schema: Hson.schema`<type "document" tag "main" content "empty">` } }).commit);
     let entered = false; const aggregate = owner(map);
     allocator(aggregate.identityEpoch().owner, () => {
       if (!entered) { entered = true; aggregate.acquireLocalDocumentIdentity(identity(map), path([0]), "987654321"); }
@@ -289,13 +289,13 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     for (const global of ['@keyframes repeated{from{opacity:0}}', '@property --repeated{syntax:"*";inherits:false}']) {
       const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<p/>', `p{color:red}${global}`) }) });
       let allocations = 0; allocator(owner(map).identityEpoch().owner, () => { allocations++; throw Error("unexpected allocation"); });
-      try { atomic(map, () => map.addLibraries({ bad: { document: '<main <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>' } }), /Duplicate @/); }
+      try { atomic(map, () => map.addLibraries({ bad: { document: '<main <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>' } }).commit, /Duplicate @/); }
       finally { allocator(owner(map).identityEpoch().owner, undefined); }
       assert.equal(allocations, 0);
     }
     const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<p/>', 'p{color:red}') }), state: { data: { count: 0 } } });
     allocator(owner(map).identityEpoch().owner, () => "invalid");
-    try { atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }), /QUID/); }
+    try { atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /QUID/); }
     finally { allocator(owner(map).identityEpoch().owner, undefined); }
     let inner = false;
     allocator(owner(map).identityEpoch().owner, () => { if (!inner) { inner = true; const state = map.lib("state"); state.at(["count"]).set(1); } return "123456789"; });
@@ -321,7 +321,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     for(const invalid of [local("absent"),'[hson\\:quid="123456789"]','[hson\\:quad]','[hson\\:quad^="label"]','[hson\\:quad="label" i]','[x|hson\\:quad="label"]',':future([hson\\:quad="label"])']) {
       const m=hsonLiveMap.fromLibraries({});
       let calls=0;allocator(owner(m).identityEpoch().owner,()=>{calls++;return "123456789";});
-      try{atomic(m,()=>m.addLibraries({parts:collection({x:part('<p @:label/>',invalid+'{color:red}')}),bad:{document:'<hson-part lib="parts" at="x"/>'}}));}finally{allocator(owner(m).identityEpoch().owner,undefined);}
+      try{atomic(m,()=>m.addLibraries({parts:collection({x:part('<p @:label/>',invalid+'{color:red}')}),bad:{document:'<hson-part lib="parts" at="x"/>'}}).commit);}finally{allocator(owner(m).identityEpoch().owner,undefined);}
       assert.equal(calls,0);
     }
   });

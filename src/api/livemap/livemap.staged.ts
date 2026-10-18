@@ -1,3 +1,4 @@
+import { collection_commands } from "./livemap.collection-command.js";
 import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
@@ -16,6 +17,8 @@ type StagedDataPath = Readonly<{
   set: (value: JsonValue) => void;
   replace: (value: JsonValue) => void;
   delete: () => void;
+  asArray: () => StagedDataPath;
+  asObject: () => StagedDataPath;
 }>;
 
 type StagedDocumentLocation = Readonly<{
@@ -80,7 +83,20 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   const data_path = (identity: LiveMapLibraryIdentity, path: LivePath): StagedDataPath => {
     const stablePath = must_live_path(path);
     const target = aggregate.target(identity, stablePath);
+    const require_shape = (collection: "array" | "object"): StagedDataPath => {
+      assert_open();
+      writes.push(Object.freeze({ target, kind: "collection", command: Object.freeze({
+        collection, method: "assert-shape", args: Object.freeze<[]>([]),
+      }) }));
+      return data_path(identity, stablePath);
+    };
     return Object.freeze({
+      asArray: () => require_shape("array"),
+      asObject: () => require_shape("object"),
+      ...collection_commands(command => {
+        assert_open();
+        writes.push(Object.freeze({ target, kind: "collection", command }));
+      }),
       at(child: LivePath) {
         assert_open();
         return data_path(identity, [...stablePath, ...must_live_path(child)]);
@@ -100,11 +116,11 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
     });
   };
   const document_library = (identity: LiveMapLibraryIdentity): StagedDocumentLibrary => {
-    const graph = (operation: LiveMapGraphOp): void => {
+    const graph = (operation: LiveMapGraphOp, logicalLocation?: readonly number[]): void => {
       assert_open();
       const captured = admit_public_document_graph_operation(operation);
       const path = captured.op === "replace-root" ? [] : captured.target.path;
-      writes.push(Object.freeze({ target: aggregate.target(identity, path), kind: "graph", operation: captured, publicStaged: true }));
+      writes.push(Object.freeze({ target: aggregate.target(identity, path), kind: "graph", operation: captured, publicStaged: true, ...(logicalLocation === undefined ? {} : { logicalLocation }) }));
     };
     const location = (input: readonly number[]): StagedDocumentLocation => {
       assert_open();
@@ -117,23 +133,24 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
         if (index === undefined) throw new Error("Document content index is unavailable.");
         return Object.freeze({ target: Object.freeze({ kind: "path" as const, path: validate_document_path(path.slice(0, -1)) }), index });
       };
+      const logicalGraph = (operation: LiveMapGraphOp): void => graph(operation, path);
       const attrs: StagedDocumentLocation["attrs"] = Object.freeze({
-        set: (name, value) => graph(Object.freeze({ domain: "graph", op: "set-attr", target, name, value })),
-        drop: (name) => graph(Object.freeze({ domain: "graph", op: "remove-attr", target, name })),
-        replace: (values) => graph(Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs: values })),
+        set: (name, value) => logicalGraph(Object.freeze({ domain: "graph", op: "set-attr", target, name, value })),
+        drop: (name) => logicalGraph(Object.freeze({ domain: "graph", op: "remove-attr", target, name })),
+        replace: (values) => logicalGraph(Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs: values })),
       });
       return Object.freeze({
         at: (child) => location([...path, ...validate_document_path(child)]),
         replace: (replacement) => {
           const slot = content_slot();
-          graph(Object.freeze({ domain: "graph", op: "replace-content", target: slot.target, index: slot.index, replacement }));
+          logicalGraph(Object.freeze({ domain: "graph", op: "replace-content", target: slot.target, index: slot.index, replacement }));
         },
         delete: () => {
           const slot = content_slot();
-          graph(Object.freeze({ domain: "graph", op: "remove-content", target: slot.target, index: slot.index }));
+          logicalGraph(Object.freeze({ domain: "graph", op: "remove-content", target: slot.target, index: slot.index }));
         },
-        insert: (index, content) => graph(Object.freeze({ domain: "graph", op: "insert-content", target, index, content })),
-        move: (from, to) => graph(Object.freeze({ domain: "graph", op: "move-content", target, from, to })),
+        insert: (index, content) => logicalGraph(Object.freeze({ domain: "graph", op: "insert-content", target, index, content })),
+        move: (from, to) => logicalGraph(Object.freeze({ domain: "graph", op: "move-content", target, from, to })),
         attrs,
       });
     };

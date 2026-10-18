@@ -38,13 +38,13 @@ const map = admit_exact_runtime_livemap_libraries({
 
 const state = map.lib("state");
 assert.equal(state.at(["nested"]).kind(), "object");
-state.at(["nested"]).setKey("value", 2);
+state.at(["nested"]).object.setKey("value", 2);
 assert.equal(state.at(["nested", "value"]).snap(), 2);
 assert.equal(state.at(["nested"]).asArray(), undefined);
 
 const sequence = map.lib("sequence");
 assert.equal(sequence.at(["flags"]).kind(), "array");
-sequence.at(["flags"]).push(2);
+sequence.at(["flags"]).array.push(2);
 assert.deepEqual(sequence.at(["flags"]).snap(), [1, 2]);
 assert.equal(sequence.at(["flags"]).asObject(), undefined);
 
@@ -59,10 +59,10 @@ const staleArray = dynamic.at(["choice"]).asArray();
 assert.notEqual(staleArray, undefined);
 dynamic.at(["choice"]).replace({ value: 3 });
 const revisionBeforeStaleUse = map.rev;
-assert.throws(() => staleArray!.push(4), /array/i);
+assert.throws(() => staleArray!.array.push(4), /array/i);
 assert.equal(map.rev, revisionBeforeStaleUse);
 assert.deepEqual(dynamic.at(["choice"]).snap(), { value: 3 });
-dynamic.at(["choice"]).asObject()!.setKey("value", 4);
+dynamic.at(["choice"]).asObject()!.object.setKey("value", 4);
 assert.deepEqual(dynamic.at(["choice"]).snap(), { value: 4 });
 
 const page = map.lib("page");

@@ -1,3 +1,5 @@
+import { read_data_location } from "../../internal/library-observation.js";
+import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import type { LiveMap, LiveMapDocumentLibrary, LiveMapDataLibrary, LivePath,
   LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentAttrs, LiveMapDocumentAttributeValue,
   LiveMapDocumentCommitTarget } from "../../types/livemap.types.js";
@@ -25,7 +27,7 @@ export function make_echo_library_selector(
     if (source === "client-local") {
       const local = raw.mode === "document"
         ? Object.freeze({ source, mode: raw.mode, get rev() { return raw.rev; }, root: () => raw.root(),
-          at: raw.at.bind(raw), render: raw.render.bind(raw),
+          at: raw.at.bind(raw), render: mark_browser_html_producer(() => raw.render()),
           document: Object.freeze({ root: raw.document.root.bind(raw.document), content: raw.document.content,
             attrs: raw.document.attrs, flags: raw.document.flags }),
           css: raw.css, commits: raw.commits, schema: raw.schema })
@@ -37,15 +39,7 @@ export function make_echo_library_selector(
     }
     if (raw.mode !== "document") {
       const data = raw as LiveMapDataLibrary;
-      const at = (path: LivePath) => {
-        const stable = must_live_path(path);
-        const location = data.at(stable);
-        return Object.freeze({ get rev() { return location.rev; }, path: () => location.path(),
-          snap: () => location.snap(), data: () => location.data(),
-          watch: location.watch.bind(location), kind: () => location.kind(),
-          at: (child: LivePath) => at([...stable, ...must_live_path(child)]),
-        });
-      };
+      const at = (path: LivePath) => read_data_location(data.at(must_live_path(path)));
       const projected = Object.freeze({ source, mode: data.mode, get rev() { return data.rev; },
         root: () => data.root(), snap: data.snap.bind(data), at,
         schema: Object.freeze({ get: () => data.schema.get() }) });
@@ -56,12 +50,16 @@ export function make_echo_library_selector(
     const authority = ensureDocumentAuthority(document) ?? echo_document_authority_for(document);
     if (authority === undefined) throw new Error("Projected document authority is unavailable.");
     const enqueue = authority.enqueue;
-    const location = (path: readonly number[]) => {
+    const location = (path: readonly number[]): import("../../types/governor.types.js").LocusDocumentLocation => {
       const stable = validate_document_path(path);
       const rawLocation = document.at(stable);
       return Object.freeze({
         get rev() { return rawLocation.rev; }, path: () => rawLocation.path(),
         snap: () => rawLocation.snap(), watch: rawLocation.watch.bind(rawLocation), kind: () => rawLocation.kind(),
+        present: () => rawLocation.present() === undefined ? undefined : location(stable),
+        asElement: () => rawLocation.asElement() === undefined ? undefined : location(stable),
+        asRoot: () => rawLocation.asRoot() === undefined ? undefined : location(stable),
+        asText: () => rawLocation.asText() === undefined ? undefined : location(stable),
         at: (child: readonly number[]) => location([...stable, ...child]),
         id: (id: string) => { const found = rawLocation.id(id); return found === undefined ? undefined : location(found.path()); },
         replace: (value: LiveMapDocumentContent) => enqueue(() => {
@@ -126,7 +124,7 @@ export function make_echo_library_selector(
       })),
     });
     const governed = Object.freeze({ source, mode: "document" as const,
-      get rev() { return document.rev; }, root: () => document.root(), render: () => document.render(),
+      get rev() { return document.rev; }, root: () => document.root(), render: mark_browser_html_producer(() => document.render()),
       commits: document.commits, schema: Object.freeze({ get: () => document.schema.get() }),
       at: location, css,
       document: Object.freeze({ root: () => document.document.root(),

@@ -349,7 +349,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
   assert.deepEqual(livemap_identity_epoch_accounting(ui), accounting);
 
   const replica = create_echo_aggregate_replica_capability_internal(client);
-  const commit = server.addLibraries({ zzAdded: { data: fixture.expectedJson } });
+  const commit = server.addLibraries({ zzAdded: { data: fixture.expectedJson } }).commit;
   const added = commit.operations[0];
   assert.ok(added && "kind" in added.operation && added.operation.kind === "library-add");
   const topology: LiveMapLibraryAddOperation = { library: added.library, operation: added.operation };

@@ -188,9 +188,9 @@ check("named data library rejects reserved names before state, revision, or publ
   let publications = 0;
   const stop = map.commits.observe(() => { publications += 1; });
   const before = state.snap();
-  assert.throws(() => state.at([]).asObject()!.setMany({ _hson_root: 1 }), /Reserved Hson prefix/);
+  assert.throws(() => state.at([]).asObject()!.object.setMany({ _hson_root: 1 }), /Reserved Hson prefix/);
   assert.throws(() => state.at(["nested"]).replace({ _hson_obj: 1 }), /Reserved Hson prefix/);
-  assert.throws(() => state.at(["nested"]).asObject()!.setMany({ _hson_arr: 1 }), /Reserved Hson prefix/);
+  assert.throws(() => state.at(["nested"]).asObject()!.object.setMany({ _hson_arr: 1 }), /Reserved Hson prefix/);
   const aggregate = internal_livemap_aggregate_authority(map);
   const library = aggregate.libraries()[0];
   if (library === undefined) throw new Error("Expected state library.");

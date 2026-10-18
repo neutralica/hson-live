@@ -134,7 +134,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     atomic(map, () => document.document.content.remove(target(0, 0), 1));
     atomic(map, () => document.document.content.replace(target(0, 0), 1, { $_tag: "section", $_content: [] }));
     atomic(map, () => map.batch(draft => {
-      draft.lib("page").at([0, 0, 1]).delete();
+      draft.lib("page").at([1]).delete();
       draft.lib("page").css.stylesheet(`${selector("999999999")}{color:red}`);
     }));
     for (const cssFirst of [false, true]) {
@@ -145,7 +145,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
         const selected = draft.lib("page");
         if (selected.mode !== "document") throw Error("document");
         if (cssFirst) selected.css.stylesheet(".ordinary{color:blue}");
-        selected.at([0, 0, 1]).delete();
+        selected.at([1]).delete();
         if (!cssFirst) selected.css.stylesheet(".ordinary{color:blue}");
       }); } finally { stop(); }
       assert.equal(events, 1); assert.equal(aggregate.documentOverlay(aggregate.libraries()[0]!).pathForQuid(quid), undefined);
@@ -166,7 +166,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
       order: scopes.order.map(entry => entry.kind === "group" ? { ...entry,
         entries: entry.entries.map(child => child.kind === "rule" ? { ...child, ruleKey: "same" } : child) } : entry) };
     atomic(map, () => map.batch(draft => draft.lib("page").css({ domain: "css", kind: "replace", stylesheet: collision })));
-    map.batch(draft => { draft.lib("page").css.stylesheet(""); draft.lib("page").at([0, 0, 0]).delete(); });
+    map.batch(draft => { draft.lib("page").css.stylesheet(""); draft.lib("page").at([0]).delete(); });
     atomic(map, () => page(map).css.stylesheet(`${selector("123456789")}{color:red}`));
     const names = authored({ page: { document: '<main <button @:_123456789/> <aside/>/>' } });
     const aggregate = owner(names); aggregate.acquireLocalDocumentIdentity(aggregate.libraries()[0]!, path([0, 0, 1]), "123456789");
@@ -262,7 +262,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     JSON.stringify = function(value, replacer, space) {
       if (value?.format === "hson-livemap-libraries-snapshot" && !mutated) {
         mutated = true;
-        map.batch(draft => { draft.lib("page").at([0, 0, 0]).delete(); draft.lib("page").css.stylesheet(""); });
+        map.batch(draft => { draft.lib("page").at([0]).delete(); draft.lib("page").css.stylesheet(""); });
       }
       return Reflect.apply(stringify, JSON, [value, replacer, space]);
     };

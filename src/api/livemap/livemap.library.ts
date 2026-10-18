@@ -86,6 +86,11 @@ export type LiveMapAggregateWrite =
   }>
   | Readonly<{
     target: LiveMapAuthorityTarget;
+    kind: "collection";
+    command: import("./livemap.collection-command.js").CollectionCommand;
+  }>
+  | Readonly<{
+    target: LiveMapAuthorityTarget;
     kind: "splice";
     start: number;
     deleteCount: number;
@@ -114,6 +119,8 @@ export type LiveMapAggregateWrite =
     operation: import("../../types/livemap.types.js").LiveMapGraphOp;
     /** Public staged commands are checked again at the transition boundary. */
     publicStaged?: true;
+    /** Selected logical coordinates, lowered against the current candidate. */
+    logicalLocation?: readonly number[];
   }>
   | Readonly<{
     target: LiveMapAuthorityTarget;

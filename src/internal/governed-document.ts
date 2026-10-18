@@ -30,7 +30,7 @@ function target(request: LiveMapDocumentRequestTarget): LiveMapDocumentCommitTar
   return Object.freeze({ kind: "path" as const, path: validate_document_path(request.path) });
 }
 
-function content(document: LiveMapDocumentLibrary, path: readonly number[]) {
+function content(document: Pick<LiveMapDocumentLibrary, "root" | "mode">, path: readonly number[]) {
   const root = document.root();
   const pathEdges = edges(path);
   const endpoint = resolve_internal_document_location(root, document.mode, pathEdges);
@@ -39,18 +39,18 @@ function content(document: LiveMapDocumentLibrary, path: readonly number[]) {
 }
 
 /** Lower selected logical locations into the canonical hosted action vocabulary. */
-export function governed_document_element_target(document: LiveMapDocumentLibrary, path: readonly number[]) {
+export function governed_document_element_target(document: Pick<LiveMapDocumentLibrary, "root" | "mode">, path: readonly number[]) {
   return target(lower_internal_document_element_target(
     resolve_internal_document_location(document.root(), document.mode, edges(path))));
 }
 
-export function governed_document_slot(document: LiveMapDocumentLibrary, path: readonly number[]) {
+export function governed_document_slot(document: Pick<LiveMapDocumentLibrary, "root" | "mode">, path: readonly number[]) {
   if (path.length === 0) throw new Error("Document root is not a replaceable content slot.");
   const slot = lower_internal_document_content_slot(resolve_internal_document_location(document.root(), document.mode, edges(path)));
   return Object.freeze({ target: target(slot.target), index: slot.index });
 }
 
-export function governed_document_remove_slot(document: LiveMapDocumentLibrary, path: readonly number[]) {
+export function governed_document_remove_slot(document: Pick<LiveMapDocumentLibrary, "root" | "mode">, path: readonly number[]) {
   if (path.length === 0) throw new Error("Document root is not a removable content slot.");
   const index = path[path.length - 1];
   if (index === undefined) throw new Error("Document content index is unavailable.");
@@ -60,7 +60,7 @@ export function governed_document_remove_slot(document: LiveMapDocumentLibrary, 
   throw new Error("Document content location is not removable.");
 }
 
-export function governed_document_insert_slot(document: LiveMapDocumentLibrary, path: readonly number[],
+export function governed_document_insert_slot(document: Pick<LiveMapDocumentLibrary, "root" | "mode">, path: readonly number[],
   index: number, value: LiveMapDocumentContent) {
   const lowering = lower_internal_document_content_insert(content(document, path), index, value);
   if (lowering.kind === "content-insert") return Object.freeze({ target: target(lowering.target), index: lowering.index,
@@ -70,6 +70,6 @@ export function governed_document_insert_slot(document: LiveMapDocumentLibrary, 
   throw new Error("Document content location is not insertable.");
 }
 
-export function governed_document_move_target(document: LiveMapDocumentLibrary, path: readonly number[]) {
+export function governed_document_move_target(document: Pick<LiveMapDocumentLibrary, "root" | "mode">, path: readonly number[]) {
   return target(lower_internal_document_content_target(content(document, path)));
 }

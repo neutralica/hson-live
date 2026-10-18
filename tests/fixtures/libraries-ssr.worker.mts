@@ -20,7 +20,7 @@ const state = installed.lib("state");
 if (state.mode === "document") throw new Error("Expected installed data Library.");
 const runtime = hsonLiveMap.create();
 const runtimeCommit = runtime.addLibraries({ runtimePage: { document: Hson.document`<main "worker"/>` },
-  runtimeData: { data: true } });
+  runtimeData: { data: true } }).commit;
 const runtimeReplay = hsonLiveMap.create();
 runtimeReplay.replay(runtimeCommit);
 parentPort?.postMessage(Object.freeze({

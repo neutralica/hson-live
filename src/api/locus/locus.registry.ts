@@ -1,3 +1,4 @@
+import { read_data_location, read_document_location } from "../../internal/library-observation.js";
 import type { JsonValue } from "../../core/types.js";
 import { hson_data_text, type ExactDataCarrier } from "../data/hson-data.js";
 import type {
@@ -31,7 +32,7 @@ import { LocusProjectionUnavailableError } from "./locus.projection.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 import { register_locus_semantic_attachment_internal } from "./locus.transport.internal.js";
 import { make_locus_stage } from "./locus.stage.js";
-import type { GovernorReadLibrarySelector } from "../../types/governor.types.js";
+import type { ReadLibrarySelector } from "../../types/governor.types.js";
 import { register_locus_map_internal } from "../../internal/governor-maps.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 
@@ -112,11 +113,7 @@ export function create_registry_locus_internal<
     if (selected.mode !== "document") return Object.freeze({
       mode: selected.mode, get rev() { return selected.rev; }, root: () => selected.root(),
       snap: selected.snap.bind(selected), schema: Object.freeze({ get: () => selected.schema.get() }),
-      at: (path: import("../../types/livemap.types.js").LivePath) => {
-        const raw = selected.at(path);
-        return Object.freeze({ get rev() { return raw.rev; }, path: () => raw.path(), snap: () => raw.snap(),
-          data: () => raw.data(), watch: raw.watch.bind(raw), kind: () => raw.kind() });
-      },
+      at: (path: import("../../types/livemap.types.js").LivePath) => read_data_location(selected.at(path)),
     });
     return Object.freeze({
       mode: "document" as const, get rev() { return selected.rev; }, root: () => selected.root(),
@@ -124,13 +121,9 @@ export function create_registry_locus_internal<
       schema: Object.freeze({ get: () => selected.schema.get() }),
       css: Object.freeze({ snapshot: () => selected.css.snapshot(), has: (key: string) => selected.css.has(key),
         list: () => selected.css.list(), get: (key: string) => selected.css.get(key) }),
-      at: (path: readonly number[]) => {
-        const raw = selected.at(path);
-        return Object.freeze({ get rev() { return raw.rev; }, path: () => raw.path(), snap: () => raw.snap(),
-          watch: raw.watch.bind(raw), kind: () => raw.kind() });
-      },
+      at: (path: readonly number[]) => read_document_location(selected.at(path)),
     });
-  }) as GovernorReadLibrarySelector<TMap>;
+  }) as ReadLibrarySelector<TMap>;
 
   for (const [name, handler] of Object.entries(options.actions ?? {})) {
     if (handler === undefined) continue;

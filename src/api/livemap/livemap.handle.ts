@@ -181,8 +181,8 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
       write_link_target(target, event.value, event.op.kind === "replace" ? "replace" : "set");
       });
     },
-    ...(currentKind() === "object" ? objectCapabilities : {}),
-    ...(currentKind() === "array" ? arrayCapabilities : {}),
+    ...(currentKind() === "object" ? { object: Object.freeze(objectCapabilities) } : {}),
+    ...(currentKind() === "array" ? { array: Object.freeze(arrayCapabilities) } : {}),
   } as LiveMapPathHandle<TValue>;
 
   pathHandleInternals.set(handle, { core, path: handlePath });
@@ -202,7 +202,7 @@ function omit_object_discriminant<TValue>(api: ReturnType<typeof make_livemap_ob
 }
 
 function omit_array_collisions<TValue>(api: ReturnType<typeof make_livemap_array_api<TValue>>) {
-  const { is: _is, at: _at, replace: _replace, ...capabilities } = api;
+  const { is: _is, ...capabilities } = api;
   return capabilities;
 }
 

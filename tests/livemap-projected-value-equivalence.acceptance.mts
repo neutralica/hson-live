@@ -351,7 +351,7 @@ check("generic replace of an existing scalar property uses canonical Transform s
 check("generic setMany constructs every scalar relationship canonically", () => {
   assert_mutation_equivalence(
     { left: 1, kept: true },
-    (state) => { state.at([]).asObject()!.setMany({ left: -2, added: "new" }); },
+    (state) => { state.at([]).asObject()!.object.setMany({ left: -2, added: "new" }); },
     { left: -2, kept: true, added: "new" },
   );
 });

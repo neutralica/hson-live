@@ -1,6 +1,6 @@
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapDocumentLibrary } from "../../types/livemap.types.js";
-import type { GovernorDocumentLibrary, EchoProjectedDocumentLibrary, EchoLocalDocumentLibrary } from "../../types/governor.types.js";
+import type { LocusDocumentLibrary, EchoProjectedDocumentLibrary, EchoLocalDocumentLibrary } from "../../types/governor.types.js";
 import { selected_governed_document } from "../../internal/governed-document.js";
 import type {
   CollectionMirror,
@@ -17,13 +17,13 @@ import {
 /** Canonical LiveMap-authoritative Mirror facade. */
 export interface Mirror {
   (map: LiveMapDocumentLibrary): DocumentMirror;
-  (map: GovernorDocumentLibrary | EchoProjectedDocumentLibrary | EchoLocalDocumentLibrary): DocumentMirror;
+  (map: LocusDocumentLibrary | EchoProjectedDocumentLibrary | EchoLocalDocumentLibrary): DocumentMirror;
   collection: <TItem extends JsonValue>(
     options: CollectionMirrorOptions<TItem>,
   ) => CollectionMirror<TItem>;
 }
 
-const reflectDocument = (map: LiveMapDocumentLibrary | GovernorDocumentLibrary | EchoProjectedDocumentLibrary | EchoLocalDocumentLibrary): DocumentMirror => {
+const reflectDocument = (map: LiveMapDocumentLibrary | LocusDocumentLibrary | EchoProjectedDocumentLibrary | EchoLocalDocumentLibrary): DocumentMirror => {
   const selected = selected_governed_document(map);
   if (selected !== undefined) return reflect_document(selected);
   if (!("document" in map)) throw new TypeError("Mirror requires a selected document Library.");

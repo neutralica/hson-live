@@ -167,7 +167,7 @@ check("scalar object wrappers close through a LiveMap set", () => {
 });
 check("array index wrappers close through a LiveMap splice", () => {
   const map = hson.liveMap.fromLibraries({ state: { data: { items: [0] }, schema: Hson.schema`<type "data" content <items <array "any">>>` } });
-  map.lib("state").at(["items"]).asArray()!.splice(0, 1, -0, own_data([["__proto__", "data"]]) as JsonValue);
+  map.lib("state").at(["items"]).asArray()!.array.splice(0, 1, -0, own_data([["__proto__", "data"]]) as JsonValue);
   assert_closed_graph(map.lib("state").root(), parse_json({ items: [-0, own_data([["__proto__", "data"]]) as JsonValue] }), "array index closure");
 });
 

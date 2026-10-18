@@ -88,7 +88,7 @@ hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: valid
 map.lib("parts").at(["header"]).set(validPart);
 map.lib("parts").at(["header"]).replace(validPart);
 map.lib("parts").at([]).replace(validCollection);
-map.lib("parts").at([]).asObject()?.setKey("header", validPart);
+map.lib("parts").at([]).asObject()?.object.setKey("header", validPart);
 map.batch(writer => { writer.lib("parts").at(["header"]).set(validPart); });
 void locus.lib("parts").at(["header"]).replace(validPart);
 void locus.stage(writer => { writer.lib("parts").at(["header"]).replace(validPart); });
@@ -101,7 +101,7 @@ map.lib("parts").at([]).replace(invalidParts);
 // Indexed collection-root patches retain the existing generic JSON proposal type;
 // member writes and complete replacements retain the Part definition type.
 // @ts-expect-error Collection object helpers retain Part member write types.
-map.lib("parts").at([]).asObject()?.setKey("header", invalidPart);
+map.lib("parts").at([]).asObject()?.object.setKey("header", invalidPart);
 // @ts-expect-error Staged member patches retain the forbidden field.
 map.batch(writer => { writer.lib("parts").at(["header"]).set(invalidPart); });
 // @ts-expect-error Staged collection replacement retains the forbidden field.
@@ -473,9 +473,10 @@ hsonLiveMap.fromLibraries({ parts: { parts: {} } });
 hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: {} } }] });
 
 // @ts-expect-error Object helpers must retain key-presence evidence for new members.
-map.lib("parts").at([]).asObject()?.setKey("header", undefinedMemberSchema);
+map.lib("parts").at([]).asObject()?.object.setKey("header", undefinedMemberSchema);
+map.lib("parts").at(["header"]).asObject()?.object.setMany({ document: "<header/>" });
 // @ts-expect-error Part object patch helpers reject schema even when undefined.
-map.lib("parts").at(["header"]).asObject()?.setMany({ schema: undefined });
+map.lib("parts").at(["header"]).asObject()?.object.setMany({ schema: undefined });
 declare const maybeUndefinedMember: typeof validPart | typeof undefinedMemberSchema;
 // @ts-expect-error Collection admission also checks member unions.
 hsonLiveMap.fromLibraries({ parts: { parts: { header: maybeUndefinedMember } } });

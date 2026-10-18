@@ -77,7 +77,7 @@
     const runtimeCommit = runtimeMap.addLibraries({ runtimePage: { document: Hson.document`<main "browser"/>` },
       runtimeData: { data: true } });
     const runtimeReplica = hsonLiveMap.create();
-    runtimeReplica.replay(runtimeCommit);
+    runtimeReplica.replay(runtimeCommit.commit);
     const runtimeAdmissionPassed = runtimeMap.rev === 1
       && runtimeMap.lib("runtimePage").render() === "<main>browser</main>"
       && runtimeReplica.capture().registry.digest === runtimeMap.capture().registry.digest;

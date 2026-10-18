@@ -166,7 +166,7 @@ check("public initial roots and library additions reject repairs without publica
     unchanged(map, before); assert.equal(notifications, 0);
   }
   const canonical = root(node("p", elem(str("x"))));
-  const accepted = map.addLibraries({ accepted: { document: canonical } });
+  const accepted = map.addLibraries({ accepted: { document: canonical } }).commit;
   assert.equal(accepted.rev, before.revision + 1); assert.equal(notifications, 1);
   canonical.$_content.length = 0;
   same(internal_livemap_aggregate_authority(map).root(internal_livemap_aggregate_authority(map).libraries()[1]), root(node("p", elem(str("x")))));

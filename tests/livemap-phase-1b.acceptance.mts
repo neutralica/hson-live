@@ -85,7 +85,7 @@ check("empty map admits a document and data atomically with top Schemas", () => 
   const stop = map.commits.observe((commit) => observations.push({
     rev: commit.rev, names: map.capture().registry.libraries.map((entry) => entry.name),
   }));
-  const commit = map.addLibraries({ page: { document: page }, state: { data: { count: 0 } } });
+  const commit = map.addLibraries({ page: { document: page }, state: { data: { count: 0 } } }).commit;
   stop();
   assert.deepEqual([commit.prevRev, commit.rev, commit.changed], [0, 1, true]);
   assert.equal(commit.operations.length, 1);
@@ -103,7 +103,7 @@ check("empty map admits a document and data atomically with top Schemas", () => 
   assert.equal(map.capture().revision, 1);
   let emptyObservations = 0;
   const stopEmpty = map.commits.observe(() => { emptyObservations += 1; });
-  assert.deepEqual(map.addLibraries({}).operations, []);
+  assert.deepEqual(map.addLibraries({}).commit.operations, []);
   stopEmpty();
   assert.equal(map.rev, 1);
   assert.equal(emptyObservations, 0);
@@ -115,7 +115,7 @@ check("existing handles survive unrelated admission and explicit Schema governs"
   const state = map.lib("state");
   const root = state.at([]);
   const epoch = livemap_identity_epoch_accounting(state).epoch;
-  const commit = map.addLibraries({ page: { document: page }, exact: { data: { count: 4 }, schema } });
+  const commit = map.addLibraries({ page: { document: page }, exact: { data: { count: 4 }, schema } }).commit;
   assert.equal(commit.rev, 1);
   assert.equal(map.lib("state"), state);
   assert.equal(livemap_identity_epoch_accounting(state).epoch, epoch);
@@ -130,7 +130,7 @@ check("primitive data families remain scalar under runtime admission", () => {
   const map = hsonLiveMap.create();
   const commit = map.addLibraries({
     text: { data: '"hello"' }, number: { data: 3 }, flag: { data: true }, empty: { data: null },
-  });
+  }).commit;
   assert.equal(commit.rev, 1);
   for (const [name, value, mode] of [
     ["text", "hello", "data-string"], ["number", 3, "data-number"],
@@ -179,7 +179,7 @@ check("failed admission leaves revision, registry, observers and identity alone"
 check("portable replay and fresh install preserve topology guarantees", () => {
   const map = hsonLiveMap.create();
   const before = map.capture();
-  const commit = map.addLibraries({ page: { document: page }, state: { data: { count: 0 } } });
+  const commit = map.addLibraries({ page: { document: page }, state: { data: { count: 0 } } }).commit;
   const after = map.capture();
   const installed = install_libraries_snapshot(after).map;
   assert.equal(installed.rev, 1);
@@ -219,7 +219,7 @@ check("topology tagged payload contradictions reject atomically and valid retry 
   const epoch = livemap_identity_epoch_accounting(existing);
   let published = 0;
   const stop = target.commits.observe(() => { published += 1; });
-  const valid = source.addLibraries({ added: { data: { items: ["a", "b"] } } });
+  const valid = source.addLibraries({ added: { data: { items: ["a", "b"] } } }).commit;
   const operation = valid.operations[0];
   assert.ok(operation && "kind" in operation.operation && operation.operation.kind === "library-add");
   for (const kind of ["empty metadata", "nested empty metadata", "permuted array"] as const) {
@@ -243,7 +243,7 @@ check("forward replay and compatible restore preserve shared library handles", (
   const source = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
   const initial = source.capture();
   const state = source.lib("state");
-  const transition = source.addLibraries({ page: { document: page } });
+  const transition = source.addLibraries({ page: { document: page } }).commit;
   const later = source.capture();
   const replica = install_libraries_snapshot(initial).map;
   replica.replay(transition);
@@ -283,7 +283,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
     const beforeIdentity = engine.inspect().libraries[0]!.identity;
     const beforeRoot = control.root();
     const beforeAccounting = livemap_identity_epoch_accounting(control);
-    const commit = source.addLibraries({ ordered: { data: fixture.expectedJson } });
+    const commit = source.addLibraries({ ordered: { data: fixture.expectedJson } }).commit;
     const stop = forbid_structural_js_enumeration();
     try {
       const replayed = receiver.replay(commit);

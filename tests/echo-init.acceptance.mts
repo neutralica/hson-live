@@ -521,7 +521,7 @@ for (const stage of ["message", "close"] as const) {
   assert.throws(() => echo_map_internal(echo).addLibraries({ ui: { data: { value: 99 } } }), /managed|authority|controlled/i);
   assert.throws(() => echo_map_internal(echo).addLibraries({ extraPage: { document: "<main/>" } }), /managed|authority|controlled/i);
   const replaySource = hsonLiveMap.create();
-  const topologyCommit = replaySource.addLibraries({ replayedLocal: { data: { value: 99 } } });
+  const topologyCommit = replaySource.addLibraries({ replayedLocal: { data: { value: 99 } } }).commit;
   assert.throws(() => echo_map_internal(echo).replay(topologyCommit), /managed|authority|controlled/i);
   stopTopologyCommits();
   assert.equal(echo.rev, beforeTopologyRev);

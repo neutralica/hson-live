@@ -284,7 +284,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       const candidate = { good: parts()["二"], late: bad };
       assert.throws(() => hsonLiveMap.fromLibraries({ collection: { data: candidate, validation } } as never));
       const map = fixture(); atomic(map, () => collect(map, "next", candidate));
-      atomic(map, () => map.addLibraries({ next: { data: candidate, validation } } as never));
+      atomic(map, () => map.addLibraries({ next: { data: candidate, validation } } as never).commit);
       assert.throws(() => map.lib("next"));
     }
   });
@@ -310,16 +310,16 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const invalid = { kind: "document", document: '<p' };
     const failures = [() => doc.set('<p'), () => doc.replace('<p/> <q/>'), () => doc.update(() => '<p'),
       () => doc.delete(), () => member.set({ css: '@import "x";' }), () => member.replace(invalid),
-      () => member.update(() => invalid), () => member.setKey("document", '<p'),
-      () => member.setMany({ document: '<p' }), () => member.clear(), () => member.deleteKey("kind"),
-      () => member.deleteMany(["kind", "document"]), () => member.renameKey("document", "unsupported"),
-      () => library.at([]).asObject()!.setKey("late", invalid), () => library.at([]).asObject()!.setMany({ good: parts()["二"], late: invalid })];
+      () => member.update(() => invalid), () => member.object.setKey("document", '<p'),
+      () => member.object.setMany({ document: '<p' }), () => member.object.clear(), () => member.object.deleteKey("kind"),
+      () => member.object.deleteMany(["kind", "document"]), () => member.object.renameKey("document", "unsupported"),
+      () => library.at([]).asObject()!.object.setKey("late", invalid), () => library.at([]).asObject()!.object.setMany({ good: parts()["二"], late: invalid })];
     for (const fail of failures) atomic(map, fail);
-    doc.set('<section @:label/>'); member.setKey("css", ""); member.deleteKey("css");
-    library.at([]).asObject()!.setKey("extra", { kind: "document", document: '<div/>' });
-    library.at([]).asObject()!.renameKey("extra", "new/葉"); library.at(["new/葉"]).delete();
-    library.at([]).asObject()!.deleteMany(["二"]); assert.equal(owner(map).libraries().length, 1);
-    library.at([]).asObject()!.clear(); assert.deepEqual(library.snap(), {}); assert.equal(owner(map).identityEpoch().issued().size, 0);
+    doc.set('<section @:label/>'); member.object.setKey("css", ""); member.object.deleteKey("css");
+    library.at([]).asObject()!.object.setKey("extra", { kind: "document", document: '<div/>' });
+    library.at([]).asObject()!.object.renameKey("extra", "new/葉"); library.at(["new/葉"]).delete();
+    library.at([]).asObject()!.object.deleteMany(["二"]); assert.equal(owner(map).libraries().length, 1);
+    library.at([]).asObject()!.object.clear(); assert.deepEqual(library.snap(), {}); assert.equal(owner(map).identityEpoch().issued().size, 0);
   });
   await check("root set replace update and batches validate final state including coordinated incomplete edits", () => {
     const map = fixture(), library = data(map);
@@ -342,7 +342,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   await check("ordinary Library uniqueness and aggregate authority fences apply uniformly", () => {
     const map = fixture(), aggregate = owner(map), manager = {};
     atomic(map, () => collect(map, "collection", parts()));
-    atomic(map, () => map.addLibraries({ collection: { data: {} } } as never));
+    atomic(map, () => map.addLibraries({ collection: { data: {} } } as never).commit);
     aggregate.claimManagement(manager);
     try { atomic(map, () => collect(map, "next", parts())); atomic(map, () => data(map).at(["二", "document"]).set('<p/>')); }
     finally { aggregate.releaseManagement(manager); }
@@ -486,7 +486,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       for (const outbound of [() => map.capture(), () => map.cut(), () => aggregate.captureHosted(),
         () => aggregate.captureSelectedHosted(["collection"], false), () => aggregate.captureSemanticCheckpoint(), () => aggregate.inspect(),
         () => library.snap(), () => library.root(), () => handle.snap(), () => handle.data(),
-        () => handle.toObject(), () => handle.values(), () => handle.entries(), () => handle.pick(["bad"]),
+        () => handle.object.toObject(), () => handle.object.values(), () => handle.object.entries(), () => handle.object.pick(["bad"]),
         () => read(map, "collection", "bad")]) assert.throws(outbound);
       assert.equal(aggregate.hostedPosition().revision, revision); assert.equal(aggregate.identityEpoch().issued(), ledger);
       assert.equal(map.cut({ data: [], documents: [] }).libs.libraries.length, 0);

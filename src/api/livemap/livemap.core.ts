@@ -1,3 +1,5 @@
+import { plan_collection_command } from "./livemap.collection-command.js";
+import { governed_document_element_target, governed_document_slot, governed_document_remove_slot, governed_document_insert_slot, governed_document_move_target } from "../../internal/governed-document.js";
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
@@ -928,10 +930,15 @@ function make_livemap_registry_engine(
   }
 
   function aggregate_write_ops(
-    write: Extract<LiveMapAggregateWrite, { kind: "set" | "set-key" | "replace" | "delete" | "splice" | "rename" | "move" }>,
+    write: Extract<LiveMapAggregateWrite, { kind: "set" | "set-key" | "replace" | "delete" | "splice" | "rename" | "move" | "collection" }>,
     value: OrderedProjectedValue,
   ): readonly LiveMapCoreWriteOp[] {
     const path = clone_live_path(must_live_path(write.target.path));
+    if (write.kind === "collection") {
+      return plan_collection_command(value, path, write.command).flatMap(op => aggregate_write_ops({
+        ...op, target: { ...write.target, path: op.path },
+      }, value));
+    }
     if (write.kind === "set-key") {
       const parent = ordered_projected_value_at(value, path);
       if (!is_ordered_projected_object(parent)) throw new Error(`LiveMap set-key path is not an object: ${format_live_path(path)}`);
@@ -1220,7 +1227,7 @@ function make_livemap_registry_engine(
       candidates.set(library.identity, candidate);
     }
 
-    for (const write of writes) {
+    for (let write of writes) {
       if (write.target.domain === "system") {
         const system = require_system(write.target.system);
         systemCandidate ??= {
@@ -1271,6 +1278,28 @@ function make_livemap_registry_engine(
         continue;
       }
       const library = require_library(write.target.library);
+      if (write.kind === "graph" && write.logicalLocation !== undefined) {
+        const candidate = candidate_for(library.identity);
+        if (!is_aggregate_document_candidate(candidate)) throw new Error("Logical document commands require a document Library.");
+        const document = { mode: "document" as const, root: () => candidate.root };
+        const path = write.logicalLocation;
+        const operation = write.operation;
+        let lowered: LiveMapGraphOp;
+        switch (operation.op) {
+          case "set-attr": case "remove-attr": case "replace-attrs":
+            lowered = { ...operation, target: governed_document_element_target(document, path) }; break;
+          case "replace-content":
+            lowered = { ...operation, ...governed_document_slot(document, path) }; break;
+          case "remove-content":
+            lowered = { ...operation, ...governed_document_remove_slot(document, path) }; break;
+          case "insert-content":
+            lowered = { ...operation, ...governed_document_insert_slot(document, path, operation.index, operation.content) }; break;
+          case "move-content":
+            lowered = { ...operation, target: governed_document_move_target(document, path) }; break;
+          default: throw new Error("Unsupported logical document command.");
+        }
+        write = { ...write, operation: lowered, target: aggregate_target(library.identity, document_operation_path(lowered)) };
+      }
       const target = aggregate_target(library.identity, write.target.path);
       if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined
         || library.documentScopesUnavailable && transitionController.managedExecutionOwner() !== undefined)) {
