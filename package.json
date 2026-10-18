@@ -256,6 +256,8 @@
     "test:livemap-part-collections": "node --import=tsx tests/livemap-part-collections.acceptance.mts",
     "test:livemap-document-composition": "node --import=tsx tests/livemap-document-composition.acceptance.mts",
     "test:echo-scoped-reconciliation": "node --import=tsx tests/echo-scoped-reconciliation.acceptance.mts",
+    "test:echo-receiving-handoff-browser": "node --import=tsx scripts/run-echo-receiving-handoff-browser.mjs",
+    "test:echo-receiving-handoff": "node --import=tsx tests/echo-receiving-handoff.acceptance.mts",
     "test:echo-scoped-initial-state": "node --import=tsx tests/echo-scoped-initial-state.acceptance.mts",
     "test:echo-scoped-replay": "node --import=tsx tests/echo-scoped-replay.acceptance.mts",
     "test:locus-scoped-preparation": "node --import=tsx tests/locus-scoped-preparation.acceptance.mts",

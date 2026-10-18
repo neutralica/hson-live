@@ -3,8 +3,8 @@ import { lower_document_css_command } from "../../internal/document-css-commands
 import { plan_collection_command } from "./livemap.collection-command.js";
 import { governed_document_element_target, governed_document_slot, governed_document_remove_slot, governed_document_insert_slot, governed_document_move_target } from "../../internal/governed-document.js";
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
-import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
-import { make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
+import { decode_document_scoped_quads, document_scoped_quads_semantically_equal, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
+import { encode_document_scoped_quads, make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
 import { local_scoped_css_operation, prepare_document_scoped_css_operation, encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
 import { PART_COLLECTION_VALIDATION, own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
@@ -28,7 +28,7 @@ import {
   type DocumentQuadBindings,
   type DocumentQuadCorrespondence,
 } from "./livemap.document.quad.js";
-import type { PortableQuadRestoration, PortableDocumentHandoff } from "./livemap.internal.js";
+import type { PortableQuadRestoration, PortableDocumentHandoff, ReceivingDocumentHandoff, ReceivingDocumentHandoffOwner } from "./livemap.internal.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 // Registry LiveMap transition and aggregate authority.
@@ -311,6 +311,8 @@ function make_livemap_registry_engine(
   const portableRestorations = new WeakMap<PortableQuadRestoration, ReadonlyMap<LiveMapLibraryIdentity,
     import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheetRecord>>();
   const portableHandoffs = new WeakSet<PortableDocumentHandoff>();
+  let claimInitialHandoff: InternalLiveMapAggregateAuthority["claimClientDocumentHandoff"] | undefined;
+  let releaseInitialHandoff = () => {};
   let localIdentityTransactionActive = false;
   /** Revision zero represents the initial graph before any changed commit. */
   const transitionController = make_livemap_transition_controller(() => mapRevision);
@@ -391,6 +393,7 @@ function make_livemap_registry_engine(
     phase: "published" | "installed";
   }>> = [];
   const publishAuthorityPosition = (revision = mapRevision): void => {
+    releaseInitialHandoff();
     deliver_livemap_observers(aggregatePositionObservers.filter(observer => observer.phase === "published"),
       observer => observer.listener(revision), "authority-position");
   };
@@ -398,6 +401,7 @@ function make_livemap_registry_engine(
   // can be queued/reentrant, so its live-state observers are too late to prove
   // that a subject was never absent between two exact restorations.
   const publishInstalledPosition = (): void => {
+    releaseInitialHandoff();
     deliver_livemap_observers(aggregatePositionObservers.filter(observer => observer.phase === "installed"),
       // Reentrant observers can accept a newer authority cut. Each remaining
       // observer sees that installed cut, including progress without graph work.
@@ -2006,6 +2010,112 @@ function make_livemap_registry_engine(
       bindings,
     });
     hostedFence = clientComposition.authority;
+    retain_initial_document_handoff(snapshot);
+  }
+
+  /** Capture only admitted original correspondence, never regenerate labels from the receiver.
+   * The enclosing aggregate's existing revision/identity fences bound this one installation. */
+  function retain_initial_document_handoff(snapshot: PortableAggregateSnapshot): void {
+    const composition = clientComposition!, checkInstallation = capture_fence();
+    const epoch = mapIdentityEpoch.current(), ledger = mapIdentityEpoch.issued();
+    let admission: readonly Readonly<{
+      name: string; identity: LiveMapLibraryIdentity; quads: PortableDocumentQuads | undefined;
+      scopes: DocumentScopedQuadRecord | undefined;
+      css: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
+    }>[] | undefined = snapshot.libraries.flatMap(entry => {
+      const binding = composition.bindings.get(entry.name);
+      if (binding?.scope !== undefined || entry.mode !== "document") return [];
+      if (binding === undefined) throw new Error("Receiving handoff Library is unavailable.");
+      const identity = binding.identity as LiveMapLibraryIdentity, state = require_library(identity);
+      const scopes = entry.scopes === undefined ? undefined : decode_document_scoped_quads(entry.scopes, state.root);
+      const markers = scopes === undefined ? own_document_quads(entry)
+        : scopes.subjects.length === 0 ? undefined : [...scopes.subjects].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+      const quads = decode_document_quads(markers, state.root, "document");
+      return [Object.freeze({ name: entry.name, identity, quads, scopes, css: decode_portable_document_stylesheet(entry.css) })];
+    });
+    let claimed = false;
+    releaseInitialHandoff = () => { admission = undefined; };
+    claimInitialHandoff = (owner, projection) => {
+      const checkManagement = transitionController.captureManagementFence(owner);
+      if (claimed || admission === undefined || clientManagementOwner !== owner) throw new Error("Initial receiving handoff is unavailable.");
+      checkInstallation();
+      const issued = new WeakMap<object, string>();
+      const assertCurrent = () => {
+        try {
+          projection.assertCurrent();
+          checkManagement(); checkInstallation();
+          if (admission === undefined || composition !== clientComposition
+            || epoch !== mapIdentityEpoch.current() || ledger !== mapIdentityEpoch.issued()) throw new Error("Receiving handoff has expired.");
+        } catch (cause) { releaseInitialHandoff(); throw cause; }
+      };
+      const capability: ReceivingDocumentHandoffOwner = Object.freeze({
+        prepare: (name) => {
+          assertCurrent();
+          const entry = admission?.find(entry => entry.name === name);
+          if (entry === undefined) throw new Error("Receiving handoff requires an initially projected document Library.");
+          const state = require_library(entry.identity), overlay = require_document_overlay(state.documentOverlay);
+          const identityAt = (path: LiveMapDocumentPath): string => {
+            const quid = overlay.quidAtPath(path), currentPath = quid === undefined ? undefined : overlay.pathForQuid(quid);
+            if (quid === undefined || !mapIdentityEpoch.issued().has(quid)
+              || currentPath === undefined || !document_path_equal(currentPath, path)
+              || !is_ordinary_element_node(resolve_document_path(state.root, "document", path))) {
+              throw new Error("Receiving handoff requires an installed owner-issued subject at its exact path.");
+            }
+            return quid;
+          };
+          const subjects = Object.freeze((entry.quads ?? []).map(entry => {
+            const quid = identityAt(entry.path);
+            const disposition = document_quad_disposition(entry);
+            if (disposition === "disposable" && quid === entry.name.slice(1)) throw new Error("A portable label cannot supply receiving identity.");
+            return Object.freeze({ name: entry.name, path: entry.path, quid, disposition });
+          }));
+          if (entry.scopes !== undefined) {
+            if (state.documentScopes === undefined || !document_scoped_quads_semantically_equal(entry.scopes,
+              encode_document_scoped_quads(state.documentScopes, { owner: entry.identity, root: state.root, overlay,
+                issued: mapIdentityEpoch.issued() }, subjects.map(subject => subject.quid)))) {
+              throw new Error("Receiving handoff scoped associations disagree with admission.");
+            }
+          } else {
+            if (state.documentScopes !== undefined) throw new Error("Receiving handoff document contract changed.");
+            for (const subject of subjects) {
+              const authored = resolve_document_quad(state.root, overlay, state.documentQuads, subject.name, undefined);
+              if (subject.disposition === "authored" ? authored?.quid !== subject.quid
+                : authored !== undefined || state.documentQuads?.byQuid.has(subject.quid)) {
+                throw new Error("Receiving handoff authored association disagrees with admission.");
+              }
+            }
+          }
+          const paths = [...subjects.map(subject => subject.path), ...(entry.scopes?.document.map(binding => binding.path) ?? []),
+            ...(entry.scopes?.occurrences.flatMap(scope => [scope.root, ...scope.bindings.map(binding => binding.path)]) ?? [])];
+          const identities = Object.freeze([...new Map(paths.map(path => [JSON.stringify(path), path])).values()]
+            .map(path => Object.freeze({ path, quid: identityAt(path) })));
+          const portable = encode_portable_document_stylesheet(entry.css);
+          const translated = document_css_mentions_subject_identity(portable)
+            ? translate_document_css_identities(portable, "inbound", { associations: subjects, assertCurrent }, true) : portable;
+          if (!portable_document_stylesheet_equal(stylesheet(entry.identity), decode_portable_document_stylesheet(translated))) {
+            throw new Error("Receiving handoff stylesheet disagrees with admission.");
+          }
+          const evidence: ReceivingDocumentHandoff = Object.freeze({ libraryName: name, authority: composition.authority,
+            revision: composition.revision, registryDigest: composition.registry.digest, projectionDigest: projection.digest,
+            quads: document_css_subject_identities(portable, "inbound").length ? entry.quads : undefined,
+            subjects, identities, scopes: entry.scopes, portableCss: render_portable_document_stylesheet(entry.css),
+            receivingCss: render_portable_document_stylesheet(stylesheet(entry.identity)), assertCurrent });
+          assertCurrent();
+          issued.set(evidence, name);
+          return evidence;
+        },
+        assert: (candidate, name) => {
+          if (typeof candidate !== "object" || candidate === null || issued.get(candidate) !== name) {
+            throw new Error("Receiving handoff belongs to another owner or Library.");
+          }
+          assertCurrent();
+        },
+        release: releaseInitialHandoff,
+      });
+      claimed = true;
+      assertCurrent();
+      return capability;
+    };
   }
 
   function install_hosted_registry(bindingsInput: readonly HostedRegistryBinding[]): HostedRegistry {
@@ -3772,6 +3882,10 @@ function make_livemap_registry_engine(
       if (!portableHandoffs.has(candidate)) throw new Error("Portable handoff candidate belongs to another Library authority.");
       candidate.assertCurrent();
     },
+    claimClientDocumentHandoff: (owner, projection) => {
+      if (claimInitialHandoff === undefined) throw new Error("Receiving handoff requires an initial client composition.");
+      return claimInitialHandoff(owner, projection);
+    },
     preparePortableDocumentHandoff: (identity, restoration) => {
       // The installation capability proves completeness, including disposable
       // subjects that deliberately have no retained authored QUAD registration.
@@ -3950,7 +4064,7 @@ function make_livemap_registry_engine(
     },
     releaseManagement: (owner) => {
       transitionController.releaseManagement(owner);
-      if (clientManagementOwner === owner) clientManagementOwner = undefined;
+      if (clientManagementOwner === owner) { releaseInitialHandoff(); clientManagementOwner = undefined; }
     },
     commit: (writes) => transitionController.acceptAuthority(prepare_authority_transition(writes)).commit,
     commitDocumentMutation: commit_aggregate_document_mutation,

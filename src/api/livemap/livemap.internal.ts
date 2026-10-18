@@ -77,6 +77,35 @@ export type PortableDocumentHandoff = Readonly<{
   acceptCss: () => void;
 }>;
 
+/** Original SSR correspondence backed by one receiving installation. No mutation authority.
+ * Authenticate through the issuing owner's assert before use, and recheck after any await.
+ * Aggregate position, management, identity or attachment changes permanently expire it. @internal */
+export type ReceivingDocumentHandoff = Readonly<{
+  libraryName: string;
+  authority: HostedAuthorityFence;
+  revision: number;
+  registryDigest: string;
+  projectionDigest: string;
+  /** Exactly the marker table used by hosted SSR; absent without CSS subject demand. */
+  quads: import("../../types/livemap.types.js").PortableDocumentQuads | undefined;
+  subjects: readonly import("./livemap.document.quad.js").DocumentQuadCorrespondence[];
+  /** Includes unmarked authored subjects and occurrence roots at canonical content paths. */
+  identities: readonly Readonly<{ path: LiveMapDocumentPath; quid: string }>[];
+  /** Original namespaces also identify authored subjects without HTML markers. */
+  scopes: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord | undefined;
+  portableCss: string;
+  receivingCss: string;
+  assertCurrent: () => void;
+}>;
+
+/** Single receiving owner's bounded admission lifetime, never a label registry. @internal */
+export type ReceivingDocumentHandoffOwner = Readonly<{
+  prepare: (libraryName: string) => ReceivingDocumentHandoff;
+  assert: (candidate: unknown, libraryName: string) => void;
+  /** Forget admission evidence when the handoff finishes or is abandoned; never renew it. */
+  release: () => void;
+}>;
+
 const INTERNAL_OWNERS = new WeakMap<object, InternalLiveMapOwner>();
 
 const INTERNAL_AUTHORITY_POSITION_OBSERVERS = new WeakMap<object, (listener: (revision: number) => void) => () => void>();
@@ -178,6 +207,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   restorePortableLibrariesWithCorrespondence: (snapshot: LiveMapSnapshot) => PortableQuadRestoration;
   assertPortableDocumentHandoff: (candidate: PortableDocumentHandoff) => void;
   preparePortableDocumentHandoff: (library: LiveMapLibraryIdentity, restoration: PortableQuadRestoration) => PortableDocumentHandoff;
+  /** Transfer initial correspondence once to the original Echo management lease. */
+  claimClientDocumentHandoff: (owner: object, projection: Readonly<{ digest: string; assertCurrent: () => void }>) => ReceivingDocumentHandoffOwner;
   /** Stage one topology batch under Locus management without installing it. @internal */
   prepareAddLibrariesManaged: (owner: object, definitions: readonly Readonly<{
     name: string;

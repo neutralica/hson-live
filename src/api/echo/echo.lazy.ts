@@ -72,6 +72,7 @@ export function create_lazy_replica_echo_internal<
 >(
   options: ReplicaOptions<TMap>,
   management: EchoMapManagementLease,
+  releaseHandoff?: () => void,
 ): Readonly<{
   echo: Echo<TMap, TActions>;
   rawSession: EchoSession;
@@ -120,6 +121,8 @@ export function create_lazy_replica_echo_internal<
   let established = false;
   let reconnecting: Promise<EchoSessionResult> | undefined;
   const stopShellConnection = connection.onAvailabilityChange((connected) => {
+    // Fence before later availability listeners can reenter or throw during cancellation.
+    if (previouslyConnected && !connected) releaseHandoff?.();
     if (connected && !previouslyConnected && shellStatus === "failed" && strategy === undefined) {
       shellStatus = "idle";
       shellFailure = undefined;
@@ -259,11 +262,16 @@ export function create_lazy_replica_echo_internal<
   });
 
   const echo = connection.echo;
+  const stopHandoffLoss = connection.onAttachmentLost(() => releaseHandoff?.());
+  const stopHandoffStatus = connection.onReadyChange(() => {
+    if (echo.session.status === "disposed") releaseHandoff?.();
+  });
   const lib = make_echo_library_selector(options.map, (selected) => {
     if (strategy === undefined) throw new Error("Echo replica library authority is not ready.");
     return strategy.ensureDocumentAuthority(selected);
   });
   const disconnectReplica = (): void => {
+    releaseHandoff?.();
     if (connection.available && echo.session.status === "attached") {
       void connection.endpoint.detachSession().catch(() => {});
     }
@@ -317,6 +325,8 @@ export function create_lazy_replica_echo_internal<
         deferred.dispose();
       }
       stopShellConnection();
+      stopHandoffLoss();
+      stopHandoffStatus();
       echo.dispose();
     },
   };
