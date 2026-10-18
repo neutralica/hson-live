@@ -147,7 +147,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
         await locus.addLibraries(batch ? { [ownership]: [{ name: "parts", definition: parts }], shared: ownership === "shared" ? [{ name: "parts", definition: parts }, ...defs] : defs } : { shared: defs });
         assert.equal(map.rev, 1); assert.equal(state(map).scopes.occurrences.length, 5);
         const session = await locus.session.create({ libraries: ["page"] });
-        assert.throws(() => session.now(), /Scoped|projection|unavailable/i);
+        assert.equal(session.now().libs.libraries[0]!.scopes!.occurrences.length, 5);
       } finally { locus.dispose(); }
     }
   });
@@ -164,21 +164,21 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
         authority(nextMap).captureSemanticCheckpoint().libraries)); }
       finally { restarted.dispose(); }
       const session = await locus.session.create({ libraries: ["page", "later", "parts", "hidden"] });
-      assert.throws(() => session.now(), /projection snapshot/);
+      assert.deepEqual(session.now().libs.libraries.map(e => e.name), ["later", "page"]);
       assert.throws(() => session.now({ html: "page" }), /projection snapshot/);
     } finally { locus.dispose(); }
   });
-  await check("H0b active public transport guards reject scoped additions without changing authority or session state", async () => {
+  await check("H0b invalid scoped additions preserve authority and session state", async () => {
     const map = initial(), { locus } = create_registry_locus_internal({ map, libraries: initialCatalog,
       authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
       const session = await locus.session.create({ libraries: ["initial"] }, { resumable: true });
       const sessionBefore = session.now(), verify = preserved(map);
-      await assert.rejects(locus.addLibraries({ shared: [{ name: "earlier", definition: { data: 1 } }, { name: "page", definition: page }] }), /Echo/);
+      await assert.rejects(locus.addLibraries({ shared: [{ name: "earlier", definition: { data: 1 } }, { name: "page", definition: { document: '<hson-part lib="parts" at="missing"/>' } }] }), /Unknown Part/);
       verify(); assert.deepEqual(session.now(), sessionBefore); assert.throws(() => locus.lib("earlier"));
     } finally { locus.dispose(); }
   });
-  await check("H0b authenticated reauthorization reconstructs fresh scoped receivers while existing registry-change guards remain closed", async () => {
+  await check("H0b authenticated reauthorization reconstructs scoped receivers with management fencing", async () => {
     const map = initial(), a = authority(map), sessions = make_locus_session_manager();
     const policy = make_locus_hosted_projection_policy(a.hostedRegistry(), a.hostedPosition().authority,
       initialCatalog, undefined, () => ({ libraries: ["initial"] }));
@@ -193,7 +193,9 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_UNUSED_PART|PRIVATE_LIBRARY|"name":"parts"/);
       const verify = preserved(receiver);
       assert.throws(() => reconcile_client_projection_snapshot_internal(receiver, {}, incoming, true));
-      assert.throws(() => reconcile_client_projection_snapshot_internal(receiver, manager, incoming, true), /current authorized registry/); verify();
+      verify();
+      reconcile_client_projection_snapshot_internal(receiver, manager, incoming, true);
+      assert.ok(equal(state(map), state(receiver)));
       const fresh = compose_client_projection_internal(snapshot, local_initializers({ local: { data: 9 } }), true);
       const fa = authority(fresh), owner = {}; fa.claimManagement(owner);
       try {
@@ -203,8 +205,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
         assert.notEqual(fa.documentScopes(id(fresh, "page")), oldScopes); assert.ok(equal(state(map), state(fresh)));
         const retiring = fresh.lib("page"), retiringId = id(fresh, "page"), quids = issued(fa.identityEpoch().issued());
         const narrowed = await projection(map, ["initial"]); sessions.update_projection("topology", authorized, narrowed);
-        // Existing ordinary reconciliation may remove a projected scoped Library;
-        // admitting a new scoped contract remains behind the private registry guard.
+        // Authorized reconciliation removes projected scopes and retains client-local state.
         reconcile_client_projection_snapshot_internal(fresh, owner, composition(captureSession(map, sessions, "topology")), false);
         assert.throws(() => fresh.lib("page")); assert.throws(() => fa.documentScopes(retiringId)); assert.throws(() => retiring.root());
         assert.equal(fa.identityEpoch().current(), epoch); assert.ok(quids.every(quid => fa.identityEpoch().issued().has(quid)));

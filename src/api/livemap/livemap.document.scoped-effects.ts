@@ -26,7 +26,7 @@ type StyleEffect = Readonly<{ css: PortableDocumentStylesheetRecord; subjects: D
  * added and CSS subjects are AFTER coordinates. Movement and identity survival
  * use the existing graph path effects and private replacement lineage codec.
  * Digests are semantic pre/postconditions, not versions or authenticity proofs.
- * No extra graph snapshot, runtime owner, issued ledger or occurrence token is transported. @internal */
+ * No extra graph snapshot, runtime owner, issued ledger or occurrence token is transported. */
 export type DocumentScopedEffect = Readonly<{
   ordinal: number;
   before: string;
@@ -328,6 +328,7 @@ export function decode_document_scoped_operation(payload: string): DocumentGraph
   return decode_scoped_effect_graph_operation(payload);
 }
 
+/** @internal */
 export function capture_document_scoped_css_effect(before: PreparedDocumentScopedLibrary, next: PreparedDocumentScopedLibrary,
   operation: LiveMapCssOp, ordinal: number): DocumentScopedEffect {
   const styles: StyleEffect[] = [];
@@ -376,6 +377,7 @@ function applyPortableCss(before: PortableDocumentScopedLibrary, effect: Documen
     subjects: subjects.filter(subject => demanded.has(subject.name)) }, css });
 }
 
+/** @internal */
 export function prepare_document_scoped_css_operation(before: PreparedDocumentScopedLibrary, operation: LiveMapCssOp,
   ordinal: number): PreparedDocumentScopedLibrary {
   before.assertCurrent();

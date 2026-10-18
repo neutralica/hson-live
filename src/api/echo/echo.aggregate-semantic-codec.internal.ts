@@ -277,13 +277,13 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
   let reconciliation: AuthorityProjectionSnapshot | undefined;
   if (Object.hasOwn(value, "reconciliation")) {
     if (topology !== undefined || system !== undefined) throw new Error("Hosted projection reconciliation is ambiguous.");
-    reconciliation = admit_authority_projection_snapshot(value.reconciliation);
-    const composition = authority_projection_as_client_composition_internal(reconciliation);
+    reconciliation = admit_authority_projection_snapshot(value.reconciliation, true);
+    const composition = authority_projection_as_client_composition_internal(reconciliation, true);
     if (reconciliation.authority.logicalMapId !== logicalMapId
       || reconciliation.authority.incarnationId !== incarnationId
       || reconciliation.revision !== authorityRev || reconciliation.projectionDigest !== projectionDigest
       || composition.registryDigest !== registryDigest
-      || JSON.stringify(reconciliation.libraries.map(({ root: _root, css: _css, schema: _schema, ...entry }) => { delete entry.quads; return entry; }))
+      || JSON.stringify(reconciliation.libraries.map(({ root: _root, css: _css, schema: _schema, ...entry }) => { delete entry.quads; delete entry.scopes; return entry; }))
         !== JSON.stringify(libraries.map(({ schema: _schema, ...entry }) => entry))
       || JSON.stringify(reconciliation.systemFeatures) !== JSON.stringify(systemFeatures)
       || JSON.stringify(reconciliation.writableDocuments) !== JSON.stringify(writableDocuments)) {

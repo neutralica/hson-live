@@ -1320,12 +1320,19 @@ function make_livemap_registry_engine(
           write.operation.target, write.attrsCommand) };
       }
       const target = aggregate_target(library.identity, write.target.path);
-      if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined
+      const incoming = write.kind !== "graph" ? undefined : write.operation.op === "insert-content" ? write.operation.content
+        : write.operation.op === "replace-content" ? write.operation.replacement
+        : write.operation.op === "replace-root" ? write.operation.root : undefined;
+      // Batch permission does not give a flat Library a scoped topology contract.
+      // Installed empty scopes and a Part admitted earlier in this batch retain provenance.
+      const scoped = receivingScoped?.has(write) || scopedDocuments && (library.documentScopes !== undefined
+        || scopedCandidates.has(library.identity) || is_Node(incoming) && has_part_connector(incoming));
+      if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined || scopedCandidates.has(library.identity)
         || library.documentScopesUnavailable && transitionController.managedExecutionOwner() !== undefined)) {
         throw new Error("Scoped document effects require private Locus/Echo preparation.");
       }
       if (write.kind === "css" && write.cssCommand !== undefined) {
-        if (scopedDocuments) {
+        if (scoped) {
           assertScopedCurrent();
           if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence from initial or local Part construction.");
         }
@@ -1334,10 +1341,10 @@ function make_livemap_registry_engine(
         if (operation === undefined) continue;
         write = { ...write, operation };
       }
-      if (scopedDocuments && library.mode === "document" && write.kind !== "graph" && write.kind !== "css") {
+      if (scoped && library.mode === "document" && write.kind !== "graph" && write.kind !== "css") {
         throw new Error("Missing scoped evidence for non-graph document operation.");
       }
-      if ((write.kind === "graph" || write.kind === "css") && (scopedDocuments || receivingScoped?.has(write))) {
+      if ((write.kind === "graph" || write.kind === "css") && scoped) {
         if (write.kind === "css" && target.path.length !== 0) throw new Error("CSS operations require a document Library root.");
         const candidate = candidate_for(library.identity);
         if (!is_aggregate_document_candidate(candidate)) throw new Error("Scoped operations require a document Library.");
@@ -1348,8 +1355,10 @@ function make_livemap_registry_engine(
         const before: PreparedDocumentScopedLibrary = previous === undefined ? {
           ...context,
           scopes: library.documentScopes ?? make_document_scoped_quads(context,
-            [...(library.documentQuads?.byName ?? [])].map(([name, quid]) => ({ name, quid, kind: "element" })), []),
-          stylesheet: stylesheet(library.identity), effects: undefined, identityEffects: [], initialStyles: [], steps: [],
+            [...(retain_document_quad_bindings(library.documentQuads, candidate.overlay)?.byName ?? [])]
+              .map(([name, quid]) => ({ name, quid, kind: "element" })), []),
+          stylesheet: cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity),
+          effects: undefined, identityEffects: [], initialStyles: [], steps: [],
           changed: false, assertCurrent: assertScopedCurrent,
         } : { ...previous, issued: stagedIssuedLedger };
         const receiving = receivingScoped?.get(write);
@@ -3002,9 +3011,11 @@ function make_livemap_registry_engine(
       throw new Error("Client projection restore requires Echo management.");
     }
     assert_portable_aggregate_snapshot_shape(snapshot, scoped);
-    if (scoped && (snapshot.authority.incarnationId !== composition.authority.incarnationId
-      || snapshot.registryDigest !== composition.registry.digest || snapshot.revision < composition.revision)) {
-      throw new Error("Private scoped restoration requires its current authorized registry and authority.");
+    // Echo validates projection/registry changes against the authorized session plan.
+    // Within an incarnation, restoration still cannot move its authority cursor back.
+    if (scoped && snapshot.authority.incarnationId === composition.authority.incarnationId
+      && snapshot.revision < composition.revision) {
+      throw new Error("Scoped restoration cannot regress its current authority revision.");
     }
     if (snapshot.authority.logicalMapId !== composition.authority.logicalMapId) {
       throw new Error("Client projection snapshot authority is incompatible.");

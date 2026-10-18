@@ -20,14 +20,14 @@ export function prepare_echo_replica_internal<TActions extends LocusActionPayloa
     throw new TypeError("Echo replica creation requires retained-session now state.");
   }
   const now = admit_locus_session_now(options.now);
-  const map = compose_client_projection_internal(now.libs, now.local);
+  const map = compose_client_projection_internal(now.libs, now.local, true);
   const management = acquire_echo_map_management_internal(map);
   try {
     const prepared = create_lazy_replica_echo_internal<LiveMap, TActions>({
       map,
       transport: options.transport,
       session: { credential: options.credential },
-      initialStateFingerprint: authority_projection_state_fingerprint_internal(now.libs),
+      initialStateFingerprint: authority_projection_state_fingerprint_internal(now.libs, true),
       initialInitializerDigest: now.initializerDigest,
       initialSessionBinding: now.sessionBinding,
       ...(options.clientId === undefined ? {} : { clientId: options.clientId }),

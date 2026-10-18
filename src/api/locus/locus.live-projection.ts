@@ -3,7 +3,7 @@ import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { HsonNode } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
-import { decode_hosted_root, encode_hosted_root, make_portable_aggregate_commit, make_hosted_registry, type HostedAggregateCommit, type PortableAggregateCommit, type PortableAggregateOperation, type HostedRegistryBinding } from "../livemap/livemap.hosted.js";
+import { decode_hosted_root, encode_hosted_root, make_portable_aggregate_commit, encode_authoritative_scoped_commit, encode_authoritative_topology_commit, make_hosted_registry, type HostedAggregateCommit, type PortableAggregateCommit, type PrivateScopedAggregateOperation, type HostedRegistryBinding } from "../livemap/livemap.hosted.js";
 import { encode_livemap_replay_transport } from "../livemap/livemap.transport.js";
 import { project_authority_snapshot } from "./locus.authority-projection-snapshot.js";
 import { HsonSchema } from "../schema/hson-schema.js";
@@ -22,7 +22,7 @@ export type LocusLiveProjectedCommit = Readonly<{
   topology?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation;
   prevRev: number;
   rev: number;
-  operations: readonly PortableAggregateOperation[];
+  operations: readonly PrivateScopedAggregateOperation[];
 }>;
 
 export type LocusLiveProjectedEvent =
@@ -58,7 +58,7 @@ function exact_record(value: unknown, keys: readonly string[]): Record<string, u
 export function decode_locus_live_projected_envelope_internal(
   input: unknown,
   expected: Readonly<{ logicalMapId: string; incarnationId: string; registryDigest: string }>,
-): PortableAggregateCommit {
+): Omit<PortableAggregateCommit, "operations"> & Readonly<{ operations: readonly PrivateScopedAggregateOperation[] }> {
   const envelope = exact_record(input, ["format", "logicalMapId", "incarnationId", "registryDigest", "commit"]);
   if (envelope.format !== LOCUS_LIVE_PROJECTED_WIRE_FORMAT
     || envelope.logicalMapId !== expected.logicalMapId
@@ -77,7 +77,7 @@ export function decode_locus_live_projected_envelope_internal(
     || (!topology && commit.registryDigest !== expected.registryDigest)) {
     throw new Error("Projected live commit fence is incompatible.");
   }
-  return Object.freeze({ ...commit, format: "hson-portable-aggregate-commit" }) as PortableAggregateCommit;
+  return Object.freeze({ ...commit, format: "hson-portable-aggregate-commit" }) as Omit<PortableAggregateCommit, "operations"> & Readonly<{ operations: readonly PrivateScopedAggregateOperation[] }>;
 }
 
 /** Pure per-revision projection. Later replay can supply the same before/after cuts. */
@@ -132,8 +132,11 @@ export function project_locus_live_transition_internal(
     throw new Error("Live projection authority transition is incompatible.");
   }
   const registryDigest = projected_registry_digest(effective);
-  const complete = make_portable_aggregate_commit(authority);
-  if (complete?.topology !== undefined) {
+  const complete = authority.topology !== undefined
+    ? encode_authoritative_topology_commit(authority)
+    : authority.replay.operations.some(entry => entry.scoped !== undefined)
+      ? encode_authoritative_scoped_commit(authority) : make_portable_aggregate_commit(authority);
+  if (complete !== undefined && "topology" in complete && complete.topology !== undefined) {
     const visible = complete.topology.operation.libraries.filter((entry) => effective.includesLibrary(entry.name));
     if (visible.length === 0) return Object.freeze({ kind: "progress", progress: Object.freeze({
       logicalMapId: effective.authority.logicalMapId, incarnationId: effective.authority.incarnationId,
@@ -152,7 +155,7 @@ export function project_locus_live_transition_internal(
       operations: Object.freeze([]),
     }) });
   }
-  const operations: PortableAggregateOperation[] = complete?.operations.filter((entry) =>
+  const operations: PrivateScopedAggregateOperation[] = complete?.operations.filter((entry) =>
     entry.library !== INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME && effective.includesLibrary(entry.library)) ?? [];
   if (effective.hasSystemFeature("interactions")) {
     if (beforeSystemRoot === undefined || afterSystemRoot === undefined) throw new Error("Projected interaction state is unavailable.");

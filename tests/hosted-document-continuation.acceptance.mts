@@ -41,6 +41,27 @@ import { authority_projection_as_client_composition_internal } from "../src/api/
 
 install_fake_document();
 
+// State-only scoped admission must stop before any DOM graft or identity handoff.
+{
+  const locus = hsonLiveMap.locus.create({
+    private: [{ name: "parts", definition: { parts: { item: { kind: "document", document: '<b @:root/>' } } } }],
+    shared: [{ name: "page", definition: { document: '<main <hson-part lib="parts" at="item"/>/>' } }],
+    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
+  });
+  const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://guard.invalid/locus", fetch: async () => {
+    throw Error("Scoped continuation must reject before connecting");
+  } });
+  try {
+    const session = await locus.session.create({ libraries: ["page"] });
+    const root = new FakeElement("main"), before = root.replaceWrites;
+    await assert.rejects(continue_hosted_document({ now: session.now(), credential: session.credential!,
+      transport, document: "page", root: root as unknown as Element }), /projection snapshot/);
+    assert.equal(root.replaceWrites, before); assert.equal(root.childNodes.length, 0);
+    assert.equal(root.listeners.size, 0);
+    assert.throws(() => session.now({ html: "page" }), /projection snapshot/);
+  } finally { transport.dispose(); locus.dispose(); }
+}
+
 // Receiving QUAD identities are issued by the projected LiveMap before grafting.
 for (const addressedRoot of [false, true]) {
   const map = make_livemap_from_authored_libraries_internal({ page: { document: `<main ${addressedRoot ? '@:root ' : ''}<button @:confirm/>/>` } });

@@ -1,3 +1,5 @@
+import { is_Node } from "../../core/node-guards.js";
+import { has_part_connector } from "../livemap/livemap.document.composition.js";
 import { prepare_locus_scoped_commit_internal } from "./locus.scoped-preparation.internal.js";
 import type { JsonValue } from "../../core/types.js";
 import { ExactDataCarrier } from "../data/hson-data.js";
@@ -63,8 +65,8 @@ export type LocusHostedAggregatePreaccept = Readonly<{
 
 export type LocusHostedAggregateOptions = Readonly<{
   map: LiveMap;
-  /** Private producer acceptance only. Public factories never enable this before Echo support. @internal */
-  scopedDocuments?: true;
+  /** Public delivery selects scoped preparation only when the transaction needs it. @internal */
+  scopedDocuments?: true | "auto";
   actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
   /** The existing Locus pre-accept/durability boundary, at aggregate granularity. */
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
@@ -139,7 +141,7 @@ export function create_locus_hosted_aggregate_internal(
     let preaccept: LocusHostedAggregatePreaccept | void;
     try {
       if (hosted.replay.operations.some(entry => entry.scoped !== undefined)) {
-        if (options.scopedDocuments !== true) throw new Error("Scoped document publication requires Echo support.");
+        if (options.scopedDocuments === undefined) throw new Error("Scoped document publication requires Echo support.");
         prepare_locus_scoped_commit_internal(options.map, transition);
       }
       options.prepareGate?.(gateInput);
@@ -213,7 +215,15 @@ export function create_locus_hosted_aggregate_internal(
       const writes = accumulator.writes();
       if (writes.length === 0) return Object.freeze({ result, commit: undefined });
 
-      const transition = aggregate.prepareManaged(owner, writes, options.scopedDocuments);
+      const scoped = options.scopedDocuments === true || options.scopedDocuments === "auto" && writes.some(write => {
+        if (write.target.library !== undefined && aggregate.documentScopes(write.target.library) !== undefined) return true;
+        if (write.kind !== "graph") return false;
+        const op = write.operation;
+        const content = op.op === "insert-content" ? op.content : op.op === "replace-content" ? op.replacement
+          : op.op === "replace-root" ? op.root : undefined;
+        return is_Node(content) && has_part_connector(content);
+      });
+      const transition = aggregate.prepareManaged(owner, writes, scoped ? true : undefined);
       return Object.freeze({ result, commit: await accept_prepared(transition) });
     };
     const next = tail.then(run, run);

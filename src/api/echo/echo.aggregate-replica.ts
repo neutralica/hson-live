@@ -59,7 +59,7 @@ export type EchoAggregateClientOptions<TActions extends LocusActionPayloads = Lo
   initialStateFingerprint?: string;
   initialInitializerDigest?: string;
   initialSessionBinding?: string;
-  /** Private recovery over an already composed scoped map. Public transport codecs remain closed. */
+  /** Internal direct-replay harness publishes installed progress synchronously. */
   scopedReconciliation?: boolean;
   /** @internal Already-admitted session-authorized initializer definitions. */
   initializers?: readonly import("../../types/locus.projection.types.js").LocusLocalInitializer[];
@@ -648,19 +648,19 @@ function create_registry_echo_semantic_client_internal<
       if (!recoveryCurrent(active)) throw new Error("Hosted recovery attachment changed during restoration.");
     };
     const scoped = options.scopedReconciliation === true;
-    const snapshot = admit_authority_projection_snapshot(input, scoped);
+    const snapshot = admit_authority_projection_snapshot(input, true);
     if (active.outcome !== "reconcile" || snapshot.revision !== active.headRev
       || active.projectionDigest !== snapshot.projectionDigest
       || snapshot.authority.logicalMapId !== clientLogicalMapId
       || snapshot.authority.incarnationId !== endpoint.session.incarnationId) {
       throw new Error("Hosted projected snapshot fence is incompatible.");
     }
-    const composition = authority_projection_as_client_composition_internal(snapshot, scoped);
+    const composition = authority_projection_as_client_composition_internal(snapshot, true);
     assertAcceptance();
     if (active.registryDigest !== composition.registryDigest) throw new Error("Hosted projected snapshot registry is incompatible.");
     if (map === undefined) {
       if (composition.registry.libraries.length > 0 || initializers.length > 0) {
-        const created = make_livemap_client_composition_from_portable_aggregate_internal(composition);
+        const created = make_livemap_client_composition_from_portable_aggregate_internal(composition, true);
         install_client_local_initializers_internal(created, initializers);
         assertAcceptance();
         replica.attachMap(created);
@@ -689,8 +689,8 @@ function create_registry_echo_semantic_client_internal<
     assertInstalledCut();
     // Private scoped replacement retains the already-verified projection contract.
     if (map !== undefined && !scoped) {
-      if (client_projection_identity_internal(map) === undefined) bind_client_projection_identity_internal(map, snapshot);
-      else replace_client_projection_identity_internal(map, projectionDigest, snapshot);
+      if (client_projection_identity_internal(map) === undefined) bind_client_projection_identity_internal(map, snapshot, true);
+      else replace_client_projection_identity_internal(map, projectionDigest, snapshot, true);
     }
     incarnationId = snapshot.authority.incarnationId;
     registryDigest = composition.registryDigest;
@@ -730,13 +730,13 @@ function create_registry_echo_semantic_client_internal<
       if (message.topology !== undefined || message.system !== undefined) {
         throw new Error("Hosted projection reconciliation is ambiguous.");
       }
-      const snapshot = admit_authority_projection_snapshot(message.reconciliation);
-      const composition = authority_projection_as_client_composition_internal(snapshot);
+      const snapshot = admit_authority_projection_snapshot(message.reconciliation, true);
+      const composition = authority_projection_as_client_composition_internal(snapshot, true);
       if (snapshot.authority.logicalMapId !== clientLogicalMapId
         || snapshot.authority.incarnationId !== incarnationId
         || snapshot.revision !== authorityRev || snapshot.projectionDigest !== nextDigest
         || composition.registryDigest !== message.registryDigest
-        || JSON.stringify(snapshot.libraries.map(({ root: _root, css: _css, schema: _schema, ...entry }) => { delete entry.quads; return entry; }))
+        || JSON.stringify(snapshot.libraries.map(({ root: _root, css: _css, schema: _schema, ...entry }) => { delete entry.quads; delete entry.scopes; return entry; }))
           !== JSON.stringify(message.libraries.map(({ schema: _schema, ...entry }) => entry))
         || JSON.stringify(snapshot.systemFeatures) !== JSON.stringify(message.systemFeatures)
         || JSON.stringify(snapshot.writableDocuments) !== JSON.stringify(message.writableDocuments)) {
@@ -744,13 +744,13 @@ function create_registry_echo_semantic_client_internal<
       }
       if (map === undefined) {
         if (composition.registry.libraries.length > 0 || initializers.length > 0) {
-          const created = make_livemap_client_composition_from_portable_aggregate_internal(composition);
+          const created = make_livemap_client_composition_from_portable_aggregate_internal(composition, true);
           install_client_local_initializers_internal(created, initializers);
           assertAcceptance();
           replica.attachMap(created);
           map = created;
           observeInstalledPosition(created);
-          bind_client_projection_identity_internal(created, snapshot);
+          bind_client_projection_identity_internal(created, snapshot, true);
         }
       } else {
         replica.restoreHosted(composition, assertAcceptance);

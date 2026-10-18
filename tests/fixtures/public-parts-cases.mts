@@ -95,7 +95,13 @@ export async function public_parts_cases(check: (name: string, run: () => void |
               assert.throws(() => selected.render(), /Scoped|scope|unavailable/i);
               if (destination === "shared") {
                 const hosted = await locus.session.create({ libraries: ["page"] });
-                assert.throws(() => hosted.now(), /Authority projection snapshot is malformed/);
+                const snapshot = hosted.now().libs;
+                const projected = snapshot.libraries.find(entry => entry.name === "page")!;
+                assert.equal(projected.scopes!.occurrences.length, 5);
+                assert.match(JSON.stringify(projected.css), /purple/);
+                assert.doesNotMatch(JSON.stringify(projected.root), /hson-part|%\{/);
+                if (ownership === "private") assert.ok(!snapshot.libraries.some(entry => entry.name === "parts"));
+                assert.throws(() => hosted.now({ html: "page" }), /projection snapshot/);
               }
             }
             // Project definitions independently; private definitions must remain private.
@@ -499,7 +505,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     }
   });
 
-  await check("public dynamic Locus admits complete subject CSS while session delivery stays guarded", async () => {
+  await check("public dynamic Locus delivers complete scoped subject CSS while HTML stays guarded", async () => {
     const parts = { styled: { kind: "document" as const, document: '<p @:label/>', css: '[hson\\:quad="label"]{color:red}' } };
     const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts } }], authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
@@ -509,7 +515,12 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       } }] });
       assert.equal(locus.rev, revision + 1);
       const session = await locus.session.create({ libraries: ["page"] });
-      assert.throws(() => session.now(), /projection snapshot/);
+      const snapshot = session.now().libs;
+      assert.deepEqual(snapshot.libraries.map(entry => entry.name), ["page"]);
+      assert.equal(snapshot.libraries[0]!.scopes!.occurrences.length, 1);
+      assert.match(JSON.stringify(snapshot.libraries[0]!.css), /red/);
+      assert.doesNotMatch(JSON.stringify(snapshot), /"name":"parts"|hson-part/);
+      assert.throws(() => session.now({ html: "page" }), /projection snapshot/);
     } finally { locus.dispose(); }
   });
 

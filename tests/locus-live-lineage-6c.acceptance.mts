@@ -60,6 +60,8 @@ for (const lineage of [
   [{ source: [], destination: [] }, { source: [], destination: [] }],
 ]) {
   const operation = decoded.operations[0]!;
+  assert.equal(operation.domain, "graph");
+  if (operation.domain !== "graph") throw Error("Expected flat graph effect");
   const payload = JSON.parse(operation.payload);
   payload.lineage = lineage;
   const damaged = { ...decoded, operations: [{ ...operation, payload: JSON.stringify(payload) }] };

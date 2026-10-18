@@ -9,6 +9,7 @@ import { admit_authority_projection_snapshot } from "../../src/api/locus/locus.a
 import { DocumentSsrError } from "../../src/internal/document-cut.error.ts";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.ts";
 import { normalize_document_root } from "../../src/api/livemap/livemap.document.ts";
+import { encode_hosted_root } from "../../src/api/livemap/livemap.hosted.ts";
 
 async function hosted_subject_fixture(page: string, css?: string) {
   const locus = hsonLiveMap.locus.create({
@@ -31,8 +32,8 @@ async function hosted_subject_fixture(page: string, css?: string) {
   }
 }
 
-/** Actual occurrences remain installed, but public scoped delivery is temporarily
- * unavailable until coordinated Cut 3H activation. This fixture never flattens them. */
+/** Actual occurrences support H1 state-only delivery while hosted HTML/SSR stays
+ * unavailable. This fixture never flattens them. */
 export function hosted_styled_part_fixture() {
   return hosted_subject_fixture('<html <head/> <body <hson-part @:a lib="PRIVATE_PARTS_SENTINEL" at="button" id="hosted-a"/> <hson-part @:b lib="PRIVATE_PARTS_SENTINEL" at="button" id="hosted-b"/> <button id="hosted-outside" "Outside"/>/>/>');
 }
@@ -47,7 +48,7 @@ export async function hosted_flat_subject_fixture(document = '<button @:a id="ho
 }
 
 export async function hosted_styled_part_ssr_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
-  await check("styled Part occurrences retain complete state and reject public hosted delivery until Cut 3H", async () => {
+  await check("styled Part occurrences deliver coherent scoped state while hosted HTML and SSR remain unavailable", async () => {
     const { locus, session } = await hosted_styled_part_fixture();
     try {
       const map = locus_map_internal(locus), aggregate = owner(map);
@@ -73,7 +74,20 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       const css = locus.lib("page").css.snapshot();
       assert.equal((css.match(/color:rgb\(12,34,56\)/g) ?? []).length, 2);
       for (const scope of scopes.occurrences) assert.ok(css.includes(`@scope ([hson\\:quid="${scope.rootQuid}"])`));
-      assert.throws(() => session.now(), /^Error: Authority projection snapshot is malformed\.$/);
+      const now = session.now(), page = now.libs.libraries[0]!;
+      assert.equal("html" in now, false);
+      assert.deepEqual(now.libs.libraries.map(entry => entry.name), ["page"]);
+      assert.equal(now.libs.revision, locus.rev);
+      assert.deepEqual(now.libs.authority, aggregate.hostedPosition().authority);
+      assert.deepEqual(page.root, encode_hosted_root(state.root));
+      assert.deepEqual(page.scopes, state.scopes);
+      assert.deepEqual(page.css, state.css);
+      assert.equal(page.quads, undefined);
+      assert.ok(page.scopes);
+      assert.deepEqual(page.scopes.subjects.map(subject => subject.path), state.scopes.occurrences.map(scope => scope.root));
+      assert.deepEqual(page.css?.order.map(entry => entry.owner),
+        page.scopes.subjects.map(subject => `[hson\\:quad="${subject.name}"]`));
+      assert.doesNotMatch(JSON.stringify(now), /PRIVATE_PARTS_SENTINEL|PRIVATE_UNUSED_SENTINEL|UNGRANTED_DOCUMENT_SENTINEL/);
       assert.throws(() => session.now({ html: "page" }), /^Error: Authority projection snapshot is malformed\.$/);
       assert.throws(() => map.capture(), /Scoped document capture/);
       assert.throws(() => map.cut({ documents: ["page"], data: [], html: "page" }), /Scoped document/);
@@ -82,7 +96,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       assert.deepEqual(aggregate.scopedDocumentState(identity), state);
     } finally { locus.dispose(); }
   });
-  await check("repeated rejected scoped hosted captures publish nothing and preserve occurrence lifetimes", async () => {
+  await check("repeated rejected scoped hosted HTML captures publish nothing and preserve occurrence lifetimes", async () => {
     const { locus, session } = await hosted_styled_part_fixture();
     const map = locus_map_internal(locus), aggregate = owner(map), before = aggregate.inspect();
     const identity = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(entry => entry.name === "page")]!;

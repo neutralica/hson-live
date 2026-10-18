@@ -381,7 +381,7 @@ export function install_client_projected_topology_internal(
   const assertCurrent = aggregate.captureManagedRestorationFence(owner);
   const current = aggregate.clientProjection();
   if (current === undefined) throw new Error("Projected topology requires a composed client LiveMap.");
-  const definitions = topology_definitions(operation);
+  const definitions = topology_definitions(operation, true);
   const newBindings = operation.operation.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: HsonSchemaHandle.fromHson(entry.schema), identity: Object.freeze({}),
     ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
@@ -1020,10 +1020,10 @@ export function make_livemap_mirror_from_portable_aggregate_internal(
 
 /** Construct the authority-owned partition of one composed Echo LiveMap. @internal */
 export function make_livemap_client_composition_from_portable_aggregate_internal(
-  snapshot: PortableAggregateSnapshot,
+  snapshot: PortableAggregateSnapshot, scoped = false,
 ): LiveMap {
-  const admitted = portable_aggregate_inputs_internal(snapshot);
-  return make_livemap_from_canonical_libraries_internal(admitted.inputs, admitted.systems, snapshot);
+  const admitted = portable_aggregate_inputs_internal(snapshot, scoped);
+  return make_livemap_from_canonical_libraries_internal(admitted.inputs, admitted.systems, snapshot, undefined, scoped);
 }
 
 /** Structurally admit one authority partition without constructing its runtime. @internal */

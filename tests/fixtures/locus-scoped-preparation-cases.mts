@@ -61,6 +61,53 @@ function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
 }
 
 export async function locus_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  await check("mixed preparation keeps flat effects ordinary and rejection preserves every identity and topology owner", async () => {
+    for (const cssOnly of [false, true]) {
+      const map = hsonLiveMap.fromLibraries({ parts: collection({ x: { kind: "document", document: '<b @:root/>', css: ':scope{padding:3px}' } }),
+        page: { document: '<main <hson-part @:part lib="parts" at="x"/>/>' }, flat: { document: '<html <head/> <body/>/>' } });
+      const a = authority(map), ids = ["page", "flat"].map(name => a.libraries()[a.hostedRegistry().libraries.findIndex(e => e.name === name)]!);
+      const ledger = a.identityEpoch().issued();
+      let gates = 0, observations = 0;
+      const stop = map.commits.observe(() => observations++);
+      const locus = create({ map, scopedDocuments: true, prepareGate(input) {
+        gates++;
+        assert.equal(map.rev, 0); assert.equal(observations, 0);
+        assert.equal(a.identityEpoch().issued(), ledger);
+        assert.equal(a.documentScopes(ids[1]!), undefined);
+        assert.equal(a.documentScopes(ids[0]!)!.occurrences.length, 1);
+        assert.deepEqual(input.commit.replay.operations.map(entry => [entry.library, entry.scoped !== undefined]), [["page", true], ["flat", false]]);
+        assert.deepEqual(encode(map, input.transition).operations.map(entry => entry.domain), ["document", cssOnly ? "css" : "graph"]);
+      } });
+      try {
+        await locus.stage(w => {
+          const page = w.lib("page"), flat = w.lib("flat");
+          if (page.mode !== "document" || flat.mode !== "document") throw Error("Expected documents");
+          if (cssOnly) { page.css.sel("main").setProp("color", "blue"); flat.css.sel("body").setProp("color", "red"); }
+          else { page.at([]).asElement().attrs.set("title", "s"); flat.at([]).asElement().attrs.set("title", "f"); }
+        });
+        assert.equal(gates, 1); assert.equal(map.rev, 1); assert.equal(observations, 1);
+        assert.equal(a.documentScopes(ids[1]!), undefined);
+        assert.equal(a.captureSemanticCheckpoint().libraries.find(entry => entry.name === "flat")!.scopes, undefined);
+        const before = ids.map(id => ({ root: a.root(id), graph: JSON.stringify(a.root(id)), overlay: a.documentOverlay(id),
+          css: a.stylesheet(id), scopes: a.documentScopes(id) }));
+        const issued = a.identityEpoch().issued(), epoch = a.identityEpoch().current();
+        await assert.rejects(locus.stage(w => {
+          const page = w.lib("page"), flat = w.lib("flat");
+          if (page.mode !== "document" || flat.mode !== "document") throw Error("Expected documents");
+          flat.css.clearAll(); page.at([0]).replace(node('<hson-part lib="parts" at="x"/>'));
+          page.css.clearAll(); flat.at([99]).asElement().attrs.set("invalid", true);
+        }));
+        assert.equal(a.identityEpoch().issued(), issued); assert.equal(a.identityEpoch().current(), epoch);
+        assert.equal(map.rev, 1); assert.equal(observations, 1); assert.equal(gates, 1);
+        ids.forEach((id, index) => {
+          const state = before[index]!;
+          assert.equal(a.root(id), state.root); assert.equal(JSON.stringify(a.root(id)), state.graph);
+          assert.equal(a.documentOverlay(id), state.overlay); assert.equal(a.stylesheet(id), state.css);
+          assert.equal(a.documentScopes(id), state.scopes);
+        });
+      } finally { stop(); locus.dispose(); }
+    }
+  });
   await check("actual Locus preparation carries complete ordered Library evidence and excludes private definitions", async () => {
     const f = fixture(), effective = await projection(f), initial = f.a.scopedDocumentState(f.library);
     const r = hsonLiveMap.fromLibraries({ page: { document: '<aside/>' } }), ra = authority(r), rl = ra.libraries()[0]!;
@@ -106,7 +153,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     assert.ok(!wire.includes('"library":"parts"') && !wire.includes('"at"') && !wire.includes('"lineage":['));
     assert.throws(() => encode(f.map, gate.transition), /stale/);
     assert.throws(() => make_portable_aggregate_commit(accepted!), /Echo/);
-    assert.throws(() => project_locus_live_transition_internal(accepted!, effective), /Echo/);
+    assert.equal(project_locus_live_transition_internal(accepted!, effective).kind, "commit");
     assert.throws(() => f.map.capture(), /Echo\/checkpoint/);
     assert.ok(f.a.captureSemanticCheckpoint().libraries.some(entry => entry.scopes !== undefined));
     assert.throws(() => f.a.captureDocumentSsr(f.library, []), /inactive/);

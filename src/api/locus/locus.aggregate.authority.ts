@@ -248,8 +248,8 @@ export type LocusHostedAggregateAuthorityOptions<
   prepareGate?: (input: LocusHostedAggregateGateInput) => void;
   maxWireBytes?: number;
   maxHistoryBytes?: number;
-  /** Private durable scoped preparation; public transports remain closed. @internal */
-  scopedDocuments?: true;
+  /** Prepare complete scoped evidence before authority acceptance. @internal */
+  scopedDocuments?: true | "auto";
   authorizeAction?: LocusActionAuthorizer<TActions>;
   sessionId?: LocusSessionId | (() => LocusSessionId);
   sessions?: LocusSessionOptions;
@@ -598,7 +598,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         return Object.freeze({ changed: true, sequence, digest: next.digest, authorityRev: locus.rev });
       }
       if (connection === undefined || connection.subscription.recoveryId === undefined) throw new LocusProjectionUnavailableError();
-      const snapshot = capture_selected_authority_projection_snapshot(options.map, next);
+      const snapshot = capture_selected_authority_projection_snapshot(options.map, next, true);
       const topology = projection_change_topology(added, snapshot);
       const event: LocusHostedProjectionChange = Object.freeze({
         type: "projection-change", id: connection.subscription.recoveryId,
@@ -887,9 +887,9 @@ export function create_locus_hosted_aggregate_authority_internal<
     let reason: HostedReconcileReason | undefined;
     let snapshot: AuthorityProjectionSnapshot | undefined;
     let replay: readonly HostedHistoryEntry[] = Object.freeze([]);
-    const headSnapshot = capture_locus_session_authority_projection_snapshot(options.map, sessions, connection.sessionId);
+    const headSnapshot = capture_locus_session_authority_projection_snapshot(options.map, sessions, connection.sessionId, true);
     const head = headSnapshot.revision;
-    const projectedRegistryDigest = authority_projection_as_client_composition_internal(headSnapshot).registryDigest;
+    const projectedRegistryDigest = authority_projection_as_client_composition_internal(headSnapshot, true).registryDigest;
     const replayRegistryDigest = projected_registry_digest(replayProjection);
     if ((cursor?.initialInitializerDigest !== undefined && cursor.initialSessionBinding === undefined)
       || (cursor?.initialSessionBinding !== undefined
@@ -937,7 +937,7 @@ export function create_locus_hosted_aggregate_authority_internal<
       reason = "incarnation_mismatch";
     } else if (cursor.initialStateFingerprint !== undefined
       && (cursor.lastAppliedRev !== head
-        || cursor.initialStateFingerprint !== authority_projection_state_fingerprint_internal(headSnapshot))) {
+        || cursor.initialStateFingerprint !== authority_projection_state_fingerprint_internal(headSnapshot, true))) {
       // The transferred cut has no established continuity at an older revision.
       outcome = "reconcile";
       reason = "no_usable_revision";

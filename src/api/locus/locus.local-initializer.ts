@@ -76,7 +76,7 @@ export function admit_locus_session_now(input: unknown): LocusSessionNow {
   if (typeof value.sessionBinding !== "string" || !/^[a-f0-9]{32}$/u.test(value.sessionBinding)) {
     throw new Error("Locus session now binding is malformed.");
   }
-  const libs = admit_authority_projection_snapshot(value.libs);
+  const libs = admit_authority_projection_snapshot(value.libs, true);
   const local = admit_locus_local_initializers(value.local);
   const initializerDigest = locus_local_initializer_digest(local);
   if (value.initializerDigest !== initializerDigest) throw new Error("Locus session local initializer set is inconsistent.");

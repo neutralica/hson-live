@@ -28,12 +28,8 @@ const clientProjectionIdentity = new WeakMap<LiveMap, Readonly<{
   incarnationId: string;
   systemFeatures: AuthorityProjectionSnapshot["systemFeatures"];
 }>>();
-/** Same projection family, private per-document content extension. Public ingress stays flat. @internal */
-export type ScopedAuthorityProjectionSnapshot = Readonly<Omit<AuthorityProjectionSnapshot, "libraries"> & {
-  libraries: readonly (AuthorityProjectionSnapshot["libraries"][number] & Readonly<{
-    scopes?: import("../livemap/livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
-  }>)[];
-}>;
+/** Scoped admission view of the shared projection family. @internal */
+export type ScopedAuthorityProjectionSnapshot = AuthorityProjectionSnapshot;
 const admittedSnapshots = new WeakMap<object, ScopedAuthorityProjectionSnapshot>();
 const admittedScopedSnapshots = new WeakMap<object, ScopedAuthorityProjectionSnapshot>();
 
@@ -49,9 +45,9 @@ export function bind_client_projection_identity_internal(map: LiveMap, snapshot:
 
 /** Replace a verified Echo contract after an authorized projected fallback. @internal */
 export function replace_client_projection_identity_internal(
-  map: LiveMap, previousDigest: string | undefined, snapshot: AuthorityProjectionSnapshot,
+  map: LiveMap, previousDigest: string | undefined, snapshot: AuthorityProjectionSnapshot, scoped = false,
 ): void {
-  const admitted = admit_authority_projection_snapshot(snapshot);
+  const admitted = admit_authority_projection_snapshot(snapshot, scoped);
   if (clientProjectionIdentity.get(map)?.digest !== previousDigest) fail();
   clientProjectionIdentity.set(map, Object.freeze({ digest: admitted.projectionDigest,
     incarnationId: admitted.authority.incarnationId, systemFeatures: admitted.systemFeatures }));

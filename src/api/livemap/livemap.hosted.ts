@@ -172,8 +172,7 @@ export type PortableAggregateCommit = Readonly<{
   operations: readonly PortableAggregateOperation[];
 }>;
 
-/** Private Cut 3D/3E evidence. Uses the containing hosted position; it is not
- * a public wire format, checkpoint, or an independent replay authority. @internal */
+/** Complete scoped evidence within the existing hosted position and wire envelope. */
 export type PrivateScopedAggregateOperation = PortableAggregateOperation | Readonly<{
   library: string;
   domain: "document";
@@ -318,18 +317,18 @@ export function make_hosted_commit(
       }
       effects.push(entry.scoped); scopedByLibrary.set(binding.name, effects);
       replay.push(Object.freeze({ ...evidence, scoped: entry.scoped }));
-    } else replay.push(evidence);
+    } else {
+      if (scopedByLibrary.has(binding.name)) throw new HostedAggregateRepresentationError("Missing complete scoped document evidence.");
+      replay.push(evidence);
+    }
   }
   for (const [library, effects] of scopedByLibrary) {
-    if (replay.some(entry => entry.library === library && entry.scoped === undefined)) {
-      throw new HostedAggregateRepresentationError("Missing complete scoped document evidence.");
-    }
     // Validate the shared incremental representation, including contiguous ordinals.
     const captured = validate_document_scoped_effects(encode_document_scoped_effects(effects));
     let ordinal = 0;
     for (let index = 0; index < replay.length; index++) {
       const entry = replay[index]!;
-      if (entry.library === library) replay[index] = Object.freeze({ ...entry, scoped: captured[ordinal++]! });
+      if (entry.library === library && entry.scoped !== undefined) replay[index] = Object.freeze({ ...entry, scoped: captured[ordinal++]! });
     }
   }
   const commit: HostedAggregateCommit = Object.freeze({
@@ -497,6 +496,7 @@ export function encode_authoritative_scoped_commit(authority: HostedAggregateCom
     const semantic = authority.operations[index]!;
     if (semantic.library !== evidence.library) throw incompatible_graph();
     if (evidence.scoped === undefined) {
+      if (batches.has(evidence.library)) throw new HostedAggregateRepresentationError("Missing scoped document evidence.");
       const ordinary = make_portable_aggregate_commit({ ...authority, operations: [semantic], replay: { operations: [evidence] } });
       if (ordinary !== undefined) operations.push(...ordinary.operations);
       continue;
@@ -507,16 +507,13 @@ export function encode_authoritative_scoped_commit(authority: HostedAggregateCom
       || !scoped_effect_matches_operation(evidence.scoped, semantic.operation)) throw incompatible_graph();
     const effect = portable_document_scoped_effect(evidence.scoped);
     const batch = batches.get(evidence.library) ?? [];
+    if (effect.ordinal !== batch.length) throw new HostedAggregateRepresentationError("Missing complete scoped evidence in authoritative transaction.");
     if (batch.length > 0 && batch.at(-1)!.after !== effect.before) throw incompatible_graph();
     batch.push(effect); batches.set(evidence.library, batch);
     operations.push({ library: evidence.library, domain: "document", effect });
   }
-  if (batches.size > 0 && operations.some(entry => entry.domain !== "data" && entry.domain !== "document")) {
-    throw new HostedAggregateRepresentationError("Missing complete scoped evidence in mixed authoritative transaction.");
-  }
-  for (const [library, batch] of batches) {
+  for (const batch of batches.values()) {
     validate_document_scoped_effects(encode_document_scoped_effects(batch));
-    if (operations.some(entry => entry.library === library && entry.domain !== "document")) throw incompatible_graph();
   }
   // Own and recursively freeze the portable representation, not the source's
   // runtime evidence. This encoder also works after preparation has ended.
@@ -689,9 +686,11 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
   for (const operation of input.operations) {
     const entry = exact_record(operation, "Private scoped operation");
     if (entry.domain !== "document") {
-      // Every document operation in this cut needs complete scoped evidence.
-      // Data/system replay still uses its existing exact portable decoder.
-      if (entry.domain !== "data") throw new HostedAggregateRepresentationError("Missing scoped document evidence.");
+      // Flat Libraries retain ordinary effects. Once this Library gains scopes,
+      // every subsequent document effect must retain that evidence.
+      if (typeof entry.library === "string" && effects.has(entry.library)) {
+        throw new HostedAggregateRepresentationError("Missing scoped document evidence.");
+      }
       if (operation.domain === "document") throw incompatible_graph();
       ordinary.push(operation);
       continue;

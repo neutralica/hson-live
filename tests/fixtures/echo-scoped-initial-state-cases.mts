@@ -91,7 +91,7 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
       assert.throws(() => capture(f.map, f.effective)); assert.throws(() => f.map.capture()); assert.ok(f.a.captureSemanticCheckpoint().libraries.some(entry => entry.scopes !== undefined));
       assert.throws(() => f.a.captureDocumentSsr(f.pageId, []));
       assert.throws(() => Reflect.apply(prepare_echo_replica_internal, undefined, [{ now: {
-        format: "hson-locus-session-now", sessionBinding: "a".repeat(32), libs: snapshot,
+        format: "hson-locus-session-now", sessionBinding: "a".repeat(32), libs: { ...snapshot, libraries: snapshot.libraries.map(({ scopes: _scopes, ...entry }) => entry) },
         local: [], initializerDigest: locus_local_initializer_digest([]),
       } }]), /projection snapshot/);
       assert.doesNotMatch(JSON.stringify(f.a.root(f.pageId)), /"quid"|"quad"|hson-part/);

@@ -83,7 +83,7 @@ async function persistent_view<
   options: DurableRegistryOptions<TMap, TActions>,
   initialize: boolean,
   runtimeOwnership = new Map<string, "private" | "shared">(),
-  scopedDocuments?: true,
+  scopedDocuments?: true | "auto",
 ): Promise<Locus<TMap, TActions>> {
   const exposureAuthority = internal_livemap_aggregate_authority(options.map);
   const suppliedAuthority = exposureAuthority.hostedPosition().authority;
@@ -166,7 +166,7 @@ export async function resume_registry_locus<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: DurableRegistryOptions<TMap, TActions>,
-  internal: Readonly<{ scopedDocuments?: true }> = {},
+  internal: Readonly<{ scopedDocuments?: true | "auto" }> = {},
 ): Promise<Locus<TMap, TActions>> {
   const initialAuthority = internal_livemap_aggregate_authority(options.map);
   const probe = Object.freeze({});

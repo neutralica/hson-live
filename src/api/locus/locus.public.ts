@@ -121,7 +121,7 @@ export async function resume<
     throw new TypeError("Locus resume requires a stable logicalMapId.");
   }
   if (options.persistence === undefined) throw new TypeError("Locus persistence adapter is required.");
-  return resume_registry_locus({ ...construct_locus_definition(options), persistence: options.persistence }) as
+  return resume_registry_locus({ ...construct_locus_definition(options), persistence: options.persistence }, { scopedDocuments: "auto" }) as
     Promise<Locus<LiveMap<LocusMapDefinitions<TPrivate, TShared>>, TActions>>;
 }
 

@@ -67,7 +67,7 @@ export function create_registry_locus<
 >(
   options: LocusRegistryOptions<TMap, TActions>,
 ): Locus<TMap, TActions> {
-  return create_registry_locus_internal(options).locus;
+  return create_registry_locus_internal(options, { scopedDocuments: "auto" }).locus;
 }
 
 /** Shared in-package composition point for the ordinary and durable Locus views. */
@@ -81,7 +81,7 @@ export function create_registry_locus_internal<
     prepareGate?: (input: LocusHostedAggregateGateInput) => void;
     maxHistoryBytes?: number;
     recoveryFloorRevision?: number;
-    scopedDocuments?: true;
+    scopedDocuments?: true | "auto";
     afterRecoveryCut?: () => void | Promise<void>;
     runtimeOwnership?: Map<string, "private" | "shared">;
     onDispose?: (locus: Locus<TMap, TActions>) => void;
@@ -235,11 +235,11 @@ export function create_registry_locus_internal<
   };
 
   function with_client_capture<TResult>(sessionId: LocusSessionId, key: object,
-    consume: (snapshot: AuthorityProjectionSnapshot, effective: import("./locus.projection.js").LocusEffectiveProjection) => TResult): TResult {
+    consume: (snapshot: AuthorityProjectionSnapshot, effective: import("./locus.projection.js").LocusEffectiveProjection) => TResult, scoped: boolean): TResult {
     if (disposed || authority.sessions.key(sessionId) !== key) throw new LocusProjectionUnavailableError();
     const effective = authority.sessions.projection(sessionId);
     if (effective === undefined) throw new LocusProjectionUnavailableError();
-    const projected = capture_selected_authority_projection_snapshot(options.map, effective);
+    const projected = capture_selected_authority_projection_snapshot(options.map, effective, scoped);
     const result = consume(projected, effective);
     // Synchronous revocation observers can fence capture or rendering while it is built.
     if (authority.sessions.key(sessionId) !== key || authority.sessions.projection(sessionId) !== effective) throw new LocusProjectionUnavailableError();
@@ -270,7 +270,7 @@ export function create_registry_locus_internal<
           initializerDigest: effective.initializerDigest,
         });
         return html === undefined ? base : Object.freeze({ ...base, ...cut_hosted_projection(snapshot, html) });
-      });
+      }, html === undefined);
     }
     const session: LocusSession = Object.freeze({
       get credential() {

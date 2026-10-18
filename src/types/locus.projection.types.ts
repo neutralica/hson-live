@@ -55,6 +55,8 @@ export type AuthorityProjectionSnapshot = Readonly<{
     validation?: "hson-part-collection-v1";
     root: Readonly<{ format: "hson-exact-value"; payload: string }>;
     quads?: PortableDocumentQuads;
+    /** Complete portable scoped topology; runtime QUIDs are reconstructed by Echo. */
+    scopes?: import("../api/livemap/livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
     css?: import("./document-css.types.js").DocumentCssRecord;
   }>[];
   systemFeatures: readonly LocusProjectionSystemFeature[];

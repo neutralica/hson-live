@@ -22,8 +22,8 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMap | und
   restoreHosted: (snapshot: PortableAggregateSnapshot, assertAcceptance?: () => void) => void;
   captureRestorationFence: () => () => void;
   captureManagementFence: () => () => void;
-  replayHosted: (commit: PortableAggregateCommit, authorityRev?: number, assertAcceptance?: () => void) => number;
-  /** Private scoped receiving seam; public delivery/restore formats stay closed. */
+  replayHosted: (commit: Omit<PortableAggregateCommit, "operations"> & Pick<PrivateScopedAggregateCommit, "operations">, authorityRev?: number, assertAcceptance?: () => void) => number;
+  /** Replay complete scoped evidence under the containing hosted position. */
   replayScopedHosted: (commit: PrivateScopedAggregateCommit) => number;
   /** Complete private restoration under the existing projected contract. */
   restoreScopedProjection: (snapshot: AuthorityProjectionSnapshot, assertAcceptance?: () => void) => void;
@@ -101,11 +101,23 @@ export function create_echo_aggregate_replica_capability_internal(
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       if (internal_livemap_aggregate_authority(map).clientProjection() === undefined) {
         internal_livemap_aggregate_authority(map).restoreClientHostedManaged(owner, snapshot);
-      } else reconcile_client_projection_snapshot_internal(map, owner, snapshot, false, assertAcceptance);
+      } else reconcile_client_projection_snapshot_internal(map, owner, snapshot, true, assertAcceptance);
     },
     replayHosted(commit, authorityRev, assertAcceptance): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
-      return internal_livemap_aggregate_authority(map).replayClientHostedManaged(owner, commit, authorityRev, false, assertAcceptance).rev;
+      const aggregate = internal_livemap_aggregate_authority(map);
+      const assertCurrent = aggregate.captureManagedRestorationFence(owner);
+      const check = () => { assertCurrent(); assertAcceptance?.(); };
+      if (commit.format !== "hson-portable-aggregate-commit") throw new Error("Hosted receiving envelope is malformed.");
+      const ordinary = commit.operations.filter(entry => entry.domain !== "document");
+      check();
+      if (ordinary.length === commit.operations.length) {
+        return aggregate.replayClientHostedManaged(owner, { ...commit, operations: ordinary }, authorityRev, false, check).rev;
+      }
+      return aggregate.replayClientHostedManaged(owner, {
+        authority: commit.authority, registryDigest: commit.registryDigest,
+        prevRev: commit.prevRev, rev: commit.rev, operationCount: commit.operations.length, operations: commit.operations,
+      }, authorityRev, true, check).rev;
     },
     replayScopedHosted(commit): number {
       if (disposed) throw terminalError();

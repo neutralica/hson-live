@@ -98,7 +98,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     receiving.dispose();
     assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<hson-part lib="hidden" at="used"/>' } }), /collection/);
   });
-  await check("initial Locus construction retains authored and Part CSS while public scoped delivery remains closed", async () => {
+  await check("initial Locus construction delivers scoped state and owned CSS while scoped HTML remains closed", async () => {
     const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: collection({ x: { kind: "document", document: '<section <button "Shared"/>/>', css: 'button{color:red}' },
       unused: { kind: "document", document: '<p "PRIVATE_UNVISITED"/>' } }) }],
       shared: [{ name: "page", definition: { document: '<html <head/> <body <hson-part lib="parts" at="x"/>/>/>' }, css: 'body{margin:0}' }], defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
@@ -106,7 +106,15 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       const selected = locus.lib("page"); if (selected.mode !== "document") throw Error("document");
       assert.match(selected.css.snapshot(), /body\{margin:0/); assert.match(selected.css.snapshot(), /button:where\(:scope,:scope \*\)\{color:red/);
       const session = await locus.session.create({ libraries: ["page"] });
-      assert.throws(() => session.now(), /projection snapshot/);
+      const snapshot = session.now().libs;
+      assert.deepEqual(snapshot.libraries.map(entry => entry.name), ["page"]);
+      const projected = snapshot.libraries[0]!;
+      assert.equal(projected.scopes!.occurrences.length, 1);
+      assert.deepEqual(decode_hosted_root(projected.root), selected.root());
+      assert.match(JSON.stringify(projected.css), /margin/);
+      assert.match(JSON.stringify(projected.css), /red/);
+      assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_UNVISITED|hson-part|"name":"parts"/);
+      assert.throws(() => selected.render(), /scoped/i);
       assert.throws(() => session.now({ html: "page" }), /projection snapshot/);
     } finally { locus.dispose(); }
   });

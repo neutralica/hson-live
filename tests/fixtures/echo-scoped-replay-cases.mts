@@ -558,13 +558,13 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
       assert.equal(r.a.clientProjection()!.revision, batch.rev);
     } finally { r.cap.dispose(); f.locus.dispose(); }
   });
-  await check("private receiver preserves all public scoped activation fences and ordinary Echo replay", async () => {
+  await check("scoped receiver preserves standalone snapshot and SSR fences alongside hosted replay", async () => {
     const f = await fixture(), r = f.receive();
     try {
       const { batch, accepted } = await f.stage(w => insert(w));
-      unchanged(r, () => assert.throws(() => r.cap.replayHosted(batch as never), /inactive/));
+      unchanged(r, () => assert.throws(() => r.cap.replayHosted(batch as never), /envelope/));
       assert.throws(() => make_portable_aggregate_commit(accepted), /Echo/);
-      assert.throws(() => project_locus_live_transition_internal(accepted, f.effective), /Echo/);
+      assert.throws(() => project_locus_live_transition_internal(accepted, f.effective), /interaction state/);
       r.cap.replayScopedHosted(batch);
       assert.throws(() => r.map.capture(), /Echo\/checkpoint/); assert.ok(r.a.captureSemanticCheckpoint().libraries.some(entry => entry.scopes !== undefined));
       assert.throws(() => r.a.captureDocumentSsr(r.library, []), /inactive/);

@@ -6,19 +6,19 @@ import type { LiveMapDocumentPath } from "../../types/livemap.types.js";
 import { compare_document_paths, document_path_is_prefix, resolve_document_path, validate_document_path } from "./livemap.document.path.js";
 import { qualify_livemap_document } from "./livemap.node-admission.js";
 
-/** Private coordinates only; no field grants receiving QUID authority. @internal */
+/** Portable coordinates only; no field grants receiving QUID authority. */
 export type ScopedQuadBindingRecord = Readonly<{
   name: string;
   kind: "element" | "part";
   path: LiveMapDocumentPath;
 }>;
-/** @internal */
+/** One occurrence namespace and its containing occurrence. */
 export type ScopedQuadOccurrenceRecord = Readonly<{
   root: LiveMapDocumentPath;
   parent: LiveMapDocumentPath | null;
   bindings: readonly ScopedQuadBindingRecord[];
 }>;
-/** Authored names and disposable subject labels occupy independent domains. @internal */
+/** Authored names and disposable subject labels occupy independent domains. */
 export type DocumentScopedQuadRecord = Readonly<{
   document: readonly ScopedQuadBindingRecord[];
   occurrences: readonly ScopedQuadOccurrenceRecord[];
