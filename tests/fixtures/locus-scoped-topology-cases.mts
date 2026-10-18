@@ -165,7 +165,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       finally { restarted.dispose(); }
       const session = await locus.session.create({ libraries: ["page", "later", "parts", "hidden"] });
       assert.deepEqual(session.now().libs.libraries.map(e => e.name), ["later", "page"]);
-      assert.throws(() => session.now({ html: "page" }), /projection snapshot/);
+      assert.throws(() => session.now({ html: "page" }), /browser-parser realization/);
     } finally { locus.dispose(); }
   });
   await check("H0b invalid scoped additions preserve authority and session state", async () => {

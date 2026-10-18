@@ -14,6 +14,7 @@ import { second_repair_fixture, selector_fixture, styled_fixture } from "../test
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { document_css_subject_identities } from "../src/internal/css/css-identity-translation.ts";
 import { encode_portable_document_stylesheet } from "../src/internal/css/portable-document-stylesheet.ts";
+import { fixture as scoped_fixture, node as scoped_node } from "../tests/fixtures/locus-scoped-ssr-cases.mts";
 import { hosted_flat_subject_fixture } from "../tests/fixtures/hosted-styled-part-ssr-cases.mts";
 
 // Source-only Chrome acceptance: no build and no writes to tracked distribution.
@@ -34,9 +35,19 @@ selectorPages.set("/selectors-restored", restoredSelectors.cut({html:"page", doc
 selectorPage.q("ancestor").delete();
 selectorPages.set("/selectors-retired", selectors.cut({html:"page", documents:["page"], data:[]}));
 const secondRepair=second_repair_fixture().cut({html:"page",documents:["page"],data:[]});
-// Public scoped Part delivery is closed until Cut 3H. Exercise first paint on
-// genuinely flat authored subjects, without converting a scoped document.
+// Keep the flat first-paint acceptance alongside genuine hosted scoped output.
 const hosted = await hosted_flat_subject_fixture();
+const scoped = await scoped_fixture();
+const scopedPages = new Map([["/hosted-scoped", scoped.session.now({html:"page"})]]);
+await scoped.locus.stage(w => {
+  w.lib("page").css.sel("#left button").setProp("padding", "11px");
+  w.lib("page").css.sel("#left span").setProp("color", "rgb(70,80,90)");
+});
+scopedPages.set("/hosted-scoped-changed", scoped.session.now({html:"page"}));
+await scoped.locus.stage(w => { w.lib("page").at([1,0]).replace(scoped_node('<hson-part lib="parts" at="bare"/>')); });
+scopedPages.set("/hosted-scoped-retired", scoped.session.now({html:"page"}));
+await scoped.locus.stage(w => { w.lib("page").at([1,2]).delete(); w.lib("page").at([1,1]).delete(); w.lib("page").at([1,0]).delete(); });
+scopedPages.set("/hosted-scoped-empty", scoped.session.now({html:"page"}));
 const bundle = await build({ entryPoints: ["tests/browser/document-portable-graft.entry.mjs"], bundle: true,
   write: false, platform: "browser", format: "iife", logLevel: "silent" });
 const browserSource = bundle.outputFiles[0].text;
@@ -53,6 +64,8 @@ function assert_ordinary_rule_order(css) {
 try {
   server = createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    const scopedPage = scopedPages.get(request.url);
+    if (scopedPage) { response.end(scopedPage.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
     if (request.url === "/graft") { response.end("<!doctype html><html><head></head><body></body></html>"); return; }
     if (request.url === "/hosted-flat") { response.end(hosted.cut.html + '<script>document.documentElement.dataset.executed="yes"</script>'); return; }
     if (request.url === "/composed") { response.end(componentCut.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
@@ -153,6 +166,32 @@ try {
   console.log(`Chrome flat hosted-subject JavaScript-disabled first paint: ${JSON.stringify(hostedEvidence)}`);
   assert.deepEqual(hostedEvidence, {a:{color:'rgb(12, 34, 56)',quad:'a'},b:{color:'rgb(12, 34, 56)',quad:'b'},
     outside:{color:'rgb(0, 0, 0)',quad:null},carriers:2,foreign:0,styles:1,executed:null});
+  for (const [path, captured] of scopedPages) {
+    await command("Page.navigate", {url: new URL(path, url).href});
+    let loaded = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      loaded = await evaluate(`document.readyState === "complete" && location.pathname === ${JSON.stringify(path)} && !!document.getElementById("outside")`);
+      if (loaded) break; await delay(50);
+    }
+    assert.equal(loaded, true);
+    const visual = await evaluate(`(() => {
+      const read = id => { const element = document.getElementById(id); if (!element) return null;
+        const css = getComputedStyle(element), button = element.querySelector('button'), label = element.querySelector('span');
+        return {border:css.borderTopWidth,margin:css.marginLeft,padding:getComputedStyle(button).paddingLeft,color:getComputedStyle(label).color}; };
+      return {left:read('left'),right:read('right'),outside:getComputedStyle(document.getElementById('outside')).color,
+        connectors:document.querySelectorAll('hson-part').length, executed:document.documentElement.dataset.executed ?? null,
+        styles:document.querySelectorAll('[data-hson-managed-document-css]').length,
+        markers:[...document.querySelectorAll('*')].filter(e=>e.hasAttribute('hson:quad')).map(e=>e.getAttribute('hson:quad')),
+        foreign:[...document.querySelectorAll('*')].some(e=>e.hasAttribute('hson:quid'))};
+    })()`);
+    const empty = path.endsWith('empty'), retired = path.endsWith('retired'), changed = path.endsWith('changed');
+    assert.deepEqual(visual.left, empty || retired ? null : {border:'3px',margin:'11px',padding:changed?'11px':'7px',color:changed?'rgb(70, 80, 90)':'rgb(10, 20, 30)'});
+    assert.deepEqual(visual.right, empty ? null : {border:'3px',margin:'13px',padding:'7px',color:'rgb(10, 20, 30)'});
+    assert.equal(visual.outside, 'rgb(40, 50, 60)');
+    assert.equal(visual.connectors, 0); assert.equal(visual.executed, null); assert.equal(visual.foreign, false); assert.equal(visual.styles, 1);
+    assert.deepEqual(visual.markers.sort(), captured.libs.libraries.find(e=>e.name==='page').scopes.subjects.map(s=>s.name).sort());
+    console.log(`Chrome scoped hosted JavaScript-disabled first paint ${path}: ${JSON.stringify(visual)}`);
+  }
   await command("Page.navigate", {url: new URL("/composed", url).href});
   let composedReady = false;
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -252,6 +291,7 @@ try {
 
 } finally {
   hosted.locus.dispose();
+  scoped.locus.dispose();
   if (socket) { socket.terminate(); }
   if (chrome && chrome.exitCode === null) {
     const closed = new Promise(resolve => chrome.once("close",resolve)); chrome.kill("SIGTERM"); await closed;

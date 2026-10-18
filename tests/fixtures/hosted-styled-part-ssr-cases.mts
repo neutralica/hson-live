@@ -32,8 +32,7 @@ async function hosted_subject_fixture(page: string, css?: string) {
   }
 }
 
-/** Actual occurrences support H1 state-only delivery while hosted HTML/SSR stays
- * unavailable. This fixture never flattens them. */
+/** Actual scoped occurrences exercise hosted first paint without flattening. */
 export function hosted_styled_part_fixture() {
   return hosted_subject_fixture('<html <head/> <body <hson-part @:a lib="PRIVATE_PARTS_SENTINEL" at="button" id="hosted-a"/> <hson-part @:b lib="PRIVATE_PARTS_SENTINEL" at="button" id="hosted-b"/> <button id="hosted-outside" "Outside"/>/>/>');
 }
@@ -48,7 +47,7 @@ export async function hosted_flat_subject_fixture(document = '<button @:a id="ho
 }
 
 export async function hosted_styled_part_ssr_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
-  await check("styled Part occurrences deliver coherent scoped state while hosted HTML and SSR remain unavailable", async () => {
+  await check("styled Part occurrences deliver coherent scoped state and hosted HTML", async () => {
     const { locus, session } = await hosted_styled_part_fixture();
     try {
       const map = locus_map_internal(locus), aggregate = owner(map);
@@ -88,7 +87,10 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       assert.deepEqual(page.css?.order.map(entry => entry.owner),
         page.scopes.subjects.map(subject => `[hson\\:quad="${subject.name}"]`));
       assert.doesNotMatch(JSON.stringify(now), /PRIVATE_PARTS_SENTINEL|PRIVATE_UNUSED_SENTINEL|UNGRANTED_DOCUMENT_SENTINEL/);
-      assert.throws(() => session.now({ html: "page" }), /^Error: Authority projection snapshot is malformed\.$/);
+      const rendered = session.now({ html: "page" });
+      assert.deepEqual(rendered.libs, now.libs);
+      assert.match(rendered.html, /<button hson:quad=/);
+      assert.doesNotMatch(rendered.html, /hson-part|hson:quid|PRIVATE_UNUSED_SENTINEL/);
       assert.throws(() => map.capture(), /Scoped document capture/);
       assert.throws(() => map.cut({ documents: ["page"], data: [], html: "page" }), /Scoped document/);
       assert.throws(() => aggregate.captureDocumentSsr(identity, []), /Scoped document SSR/);
@@ -96,7 +98,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       assert.deepEqual(aggregate.scopedDocumentState(identity), state);
     } finally { locus.dispose(); }
   });
-  await check("repeated rejected scoped hosted HTML captures publish nothing and preserve occurrence lifetimes", async () => {
+  await check("repeated scoped hosted HTML captures publish nothing and preserve occurrence lifetimes", async () => {
     const { locus, session } = await hosted_styled_part_fixture();
     const map = locus_map_internal(locus), aggregate = owner(map), before = aggregate.inspect();
     const identity = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(entry => entry.name === "page")]!;
@@ -107,7 +109,8 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
     const stop = aggregate.observeAuthorityPosition(() => { observations++; }, "installed");
     allocation(aggregate.identityEpoch().owner, () => { allocations++; throw Error("Unexpected scoped capture allocation"); });
     try {
-      for (let repeat = 0; repeat < 3; repeat++) assert.throws(() => session.now({ html: "page" }), /^Error: Authority projection snapshot is malformed\.$/);
+      const expected = session.now({ html: "page" });
+      for (let repeat = 0; repeat < 3; repeat++) assert.deepEqual(session.now({ html: "page" }), expected);
       assert.equal(allocations, 0); assert.equal(commits, 0); assert.equal(observations, 0);
       assert.equal(aggregate.root(identity), root); assert.equal(aggregate.documentOverlay(identity), overlay);
       assert.equal(aggregate.identityEpoch().issued(), ledger); assert.equal(aggregate.documentScopes(identity), scopes);

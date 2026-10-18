@@ -48,7 +48,12 @@ export function cut_hosted_projection(
     throw new DocumentSsrError("bootstrap", "The session document could not be decoded.", cause);
   }
   const css = render_portable_document_stylesheet(decode_portable_document_stylesheet(library.css));
+  // Scoped capture already supplies portable CSS labels and exact paths. Feed
+  // only that correspondence to the established derived HTML marker planner;
+  // the transferable sibling retains its complete scoped topology unchanged.
+  const quads = library.scopes === undefined ? library.quads
+    : [...library.scopes.subjects].sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
   return Object.freeze({ html: realize_document(root, css,
-    document_css_subject_identities(library.css!, "inbound").length ? { quads: library.quads } : undefined),
+    document_css_subject_identities(library.css!, "inbound").length ? { quads } : undefined),
     libs: snapshot, document: selected });
 }

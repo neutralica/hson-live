@@ -98,7 +98,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     receiving.dispose();
     assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<hson-part lib="hidden" at="used"/>' } }), /collection/);
   });
-  await check("initial Locus construction delivers scoped state and owned CSS while scoped HTML remains closed", async () => {
+  await check("initial Locus construction delivers coherent scoped HTML and owned CSS", async () => {
     const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: collection({ x: { kind: "document", document: '<section <button "Shared"/>/>', css: 'button{color:red}' },
       unused: { kind: "document", document: '<p "PRIVATE_UNVISITED"/>' } }) }],
       shared: [{ name: "page", definition: { document: '<html <head/> <body <hson-part lib="parts" at="x"/>/>/>' }, css: 'body{margin:0}' }], defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
@@ -115,7 +115,10 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       assert.match(JSON.stringify(projected.css), /red/);
       assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_UNVISITED|hson-part|"name":"parts"/);
       assert.throws(() => selected.render(), /scoped/i);
-      assert.throws(() => session.now({ html: "page" }), /projection snapshot/);
+      const cut = session.now({ html: "page" });
+      assert.deepEqual(cut.libs, snapshot);
+      assert.match(cut.html, /<button>Shared<\/button>/);
+      assert.doesNotMatch(cut.html, /PRIVATE_UNVISITED|hson-part/);
     } finally { locus.dispose(); }
   });
   await check("managed authored topology retains complete scopes and occurrence CSS before publication", async () => {

@@ -137,7 +137,9 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         assert.deepEqual(document(a.echo).root(), locus.lib("page").root());
         assert.throws(() => a.echo.lib("parts")); assert.throws(() => a.echo.lib("hidden")); assert.throws(() => denied.echo.lib("page"));
         privateAbsent(JSON.stringify(now));
-        assert.throws(() => a.session.now({ html: "page" }), /scoped|Echo|projection/i);
+        // This fragment has CSS but no explicit html/head, which remains invalid SSR.
+        assert.throws(() => a.session.now({ html: "page" }), /browser-parser realization/);
+        assert.match(a.session.now({ html: "bare" }).html, /Bare/);
         assert.throws(() => document(a.echo).render(), /scoped/i);
         assert.throws(() => locus.cut({ html: "page" }), /scoped|Echo/i);
         const idsA = subjectIds(document(a.echo).css.snapshot()), idsB = subjectIds(document(b.echo).css.snapshot());
@@ -229,7 +231,10 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         await caught(active.echo, locus);
         assert.equal(active.session.now().libs.libraries.find(e => e.name === "flat")!.scopes!.occurrences.length, 2);
         assert.equal(subject.active, true); assert.match(document(active.echo, "flat").css.snapshot(), /padding:3px/);
-        assert.throws(() => active.session.now({ html: "flat" }));
+        const rendered = active.session.now({ html: "flat" });
+        assert.deepEqual(rendered.libs, active.session.now().libs);
+        assert.match(rendered.html, /padding:3px/);
+        assert.doesNotMatch(rendered.html, /hson-part/);
       } finally { active.dispose(); locus.dispose(); }
     });
 

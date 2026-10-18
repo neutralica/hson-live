@@ -101,7 +101,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
                 assert.match(JSON.stringify(projected.css), /purple/);
                 assert.doesNotMatch(JSON.stringify(projected.root), /hson-part|%\{/);
                 if (ownership === "private") assert.ok(!snapshot.libraries.some(entry => entry.name === "parts"));
-                assert.throws(() => hosted.now({ html: "page" }), /projection snapshot/);
+                assert.throws(() => hosted.now({ html: "page" }), /browser-parser realization/);
               }
             }
             // Project definitions independently; private definitions must remain private.
@@ -505,7 +505,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     }
   });
 
-  await check("public dynamic Locus delivers complete scoped subject CSS while HTML stays guarded", async () => {
+  await check("public dynamic Locus delivers scoped subject CSS while CSS fragments still require a document shell", async () => {
     const parts = { styled: { kind: "document" as const, document: '<p @:label/>', css: '[hson\\:quad="label"]{color:red}' } };
     const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts } }], authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
@@ -520,7 +520,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       assert.equal(snapshot.libraries[0]!.scopes!.occurrences.length, 1);
       assert.match(JSON.stringify(snapshot.libraries[0]!.css), /red/);
       assert.doesNotMatch(JSON.stringify(snapshot), /"name":"parts"|hson-part/);
-      assert.throws(() => session.now({ html: "page" }), /projection snapshot/);
+      assert.throws(() => session.now({ html: "page" }), /browser-parser realization/);
     } finally { locus.dispose(); }
   });
 
