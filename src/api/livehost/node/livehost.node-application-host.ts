@@ -452,7 +452,6 @@ async function write_web_response(
   } catch (cause) {
     if (target.headersSent) {
       if (!target.destroyed) target.destroy();
-      return;
     }
     throw cause;
   } finally {
@@ -827,7 +826,23 @@ export async function start_node_application_host(
           application_context(normalized.value, authorization.value),
         );
         await write_web_response(response, webResponse, request.method === "HEAD");
-      } catch {
+      } catch (error) {
+        // The local-app runner pipes stderr, but does not install an event logger.
+        // Report before response-state checks, including disconnected/streaming requests.
+        if (deployment.mode === "development") {
+          try {
+            // DOM APIs throw the reason directly; Node APIs may wrap it in AbortError.cause.
+            const cancelled = lifetime.signal.aborted && (error === lifetime.signal.reason
+              || error instanceof Error && error.name === "AbortError" && error.cause === lifetime.signal.reason);
+            if (!cancelled) {
+              const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+              if (options.log === undefined) console.error(`LiveHost ${registered.application.name} ${key}:`, detail);
+              else log({ type: "http-dispatch", application: registered.application.name, route: key,
+                correlationId: normalized.value.correlationId, transport: "http", outcome: "rejected",
+                code: "NODE_HOST_APPLICATION_REQUEST_FAILED", error: detail });
+            }
+          } catch { /* Diagnostics must not interrupt response completion or cleanup. */ }
+        }
         if (response.destroyed || response.writableEnded) return;
         if (response.headersSent) {
           response.destroy();

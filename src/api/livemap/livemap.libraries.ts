@@ -62,7 +62,7 @@ import {
 import type { LiveMapAggregateCommit, LiveMapLibraryIdentity } from "./livemap.library.js";
 import { make_livemap_registry_authority, type InitialSystemState } from "./livemap.core.js";
 import { classify_live_root_mode, is_data_livemap_mode, normalize_document_root } from "./livemap.document.js";
-import { realize_document } from "../../internal/document-cut.js";
+import { realize_document, realize_captured_document } from "../../internal/document-cut.js";
 import { make_livemap_document_css } from "./livemap.css.js";
 import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { make_livemap_document_mutation_api } from "./livemap.document.mutation.js";
@@ -1623,11 +1623,11 @@ function make_document_library(
     },
     proxy: (path: readonly number[] = []) => Object.freeze({ $_: wrap_location(raw_at(path)) }),
     render: mark_browser_html_producer(() => {
-      const captured = aggregate.captureSelectedHosted([library.name], false).libraries[0];
+      // Legacy flat captures stay flat; explicit empty scope state remains scoped.
+      const scoped = aggregate.documentScopes(library.identity) !== undefined;
+      const captured = aggregate.captureSelectedHosted([library.name], false, scoped).libraries[0];
       if (captured?.css === undefined) throw new Error("Document render capture is unavailable.");
-      return realize_document(decode_hosted_root(captured.root, HOSTED_MAX_SNAPSHOT_BYTES),
-        render_portable_document_stylesheet(decode_portable_document_stylesheet(captured.css)),
-        document_css_subject_identities(captured.css, "inbound").length ? { quads: captured.quads } : undefined);
+      return realize_captured_document(captured);
     }),
     document: documentApi,
     commits: document_commits,

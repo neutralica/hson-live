@@ -114,8 +114,8 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       assert.match(JSON.stringify(projected.css), /margin/);
       assert.match(JSON.stringify(projected.css), /red/);
       assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_UNVISITED|hson-part|"name":"parts"/);
-      assert.throws(() => selected.render(), /scoped/i);
       const cut = session.now({ html: "page" });
+      assert.equal(selected.render(), cut.html);
       assert.deepEqual(cut.libs, snapshot);
       assert.match(cut.html, /<button>Shared<\/button>/);
       assert.doesNotMatch(cut.html, /PRIVATE_UNVISITED|hson-part/);

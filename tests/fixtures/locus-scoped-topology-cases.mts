@@ -218,7 +218,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
     map.addLibraries({ page: { document: '<main @:root <hson-part @:slot lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/>/>' },
       parts: { parts: { panel: { kind: "document", document: '<section @:root <hson-part at="leaf"/>/>' }, leaf: { kind: "document", document: '<button @:root/>' } } } });
     assert.equal(state(map).scopes.occurrences.length, 4); assert.equal(state(map).css.order.length, 0);
-    const doc = map.lib("page"); if (doc.mode !== "document") throw Error(); assert.throws(() => doc.render(), /Scoped/);
+    const doc = map.lib("page"); if (doc.mode !== "document") throw Error(); assert.doesNotMatch(doc.render(), /hson-part|hson:quid/);
   });
   await check("H0b invalid final definitions, duplicate names, missing Parts and schema failures preserve the complete map", async () => {
     const map = initial(); map.addLibraries({ page });

@@ -12,7 +12,8 @@ function classification(all: Receiver, flat: Receiver, occurrences: number) {
   assert.match(document(all.echo, "flat").render(), /<html/);
   assert.match(document(flat.echo, "flat").render(), /<html/);
   assert.deepEqual(document(all.echo, "flat").root(), document(flat.echo, "flat").root());
-  assert.throws(() => document(all.echo).render(), /scoped/i);
+  if (document(all.echo).css.snapshot() === "") assert.equal(document(all.echo).render(), all.session.now({ html: "page" }).html);
+  else assert.throws(() => document(all.echo).render(), /browser-parser realization/);
   assert.throws(() => all.echo.lib("parts"));
   assert.throws(() => flat.echo.lib("page"));
   for (const raw of all.frames) {

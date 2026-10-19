@@ -24,6 +24,7 @@ import {
   type NodeRequestContext,
 } from "hson-live/livehost/node";
 import WebSocket from "ws";
+import { request_diagnostics_acceptance } from "./fixtures/livehost-request-diagnostics-cases.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livehost.node-hosting",
@@ -917,6 +918,8 @@ check("generic LiveHost layer has no Node or ws dependency", async () => {
     assert.equal(source.includes("ServerResponse"), false);
   }
 });
+
+check("development request errors reach the extension process output without leaking to HTTP", request_diagnostics_acceptance);
 
 await sequence;
 process.stdout.write(`1..${checks}\n`);

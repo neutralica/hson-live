@@ -62,8 +62,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     assert.equal(parts.mode, "data-object");
     assertDeck(page);
     assert.deepEqual(parts.snap(), deckParts);
+    assert.throws(() => page.render(), /browser-parser realization/);
     if (!dynamic) {
-      assert.throws(() => page.render(), /Scoped document capture/);
       assert.throws(() => map.capture(), /Echo\/checkpoint|scoped/i);
     }
   });
@@ -92,7 +92,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
             if (admission === "initial") assertDeck(selected);
             else assert.match(JSON.stringify(selected.root()), /Dynamic paragraph/);
             if (admission === "initial") {
-              assert.throws(() => selected.render(), /Scoped|scope|unavailable/i);
+              assert.throws(() => selected.render(), /browser-parser realization/);
               if (destination === "shared") {
                 const hosted = await locus.session.create({ libraries: ["page"] });
                 const snapshot = hosted.now().libs;

@@ -84,7 +84,9 @@ export function document_subject_ownership_cases(check: (name: string, run: () =
       assert.equal(a.documentScopes(source), sourceScopes); assert.equal(a.documentOverlay(source), sourceOverlay); assert.equal(a.root(source), sourceRoot);
       for (const scope of sourceScopes.occurrences) assert.ok(ledger.has(scope.rootQuid) && a.identityEpoch().issued().has(scope.rootQuid));
       rejects_unchanged(map, () => a.captureDocumentSsr(library, []), /Scoped document SSR/);
-      rejects_unchanged(map, () => page.render(), /Scoped document capture/);
+      const beforeRender = observe(map);
+      assert.match(page.render(), /<button><\/button>/);
+      assert.deepEqual(observe(map), beforeRender);
     }
   });
   check("sparse acquisition succeeds while live duplicates and retired Part subjects reject atomically", () => {

@@ -38,16 +38,24 @@ const secondRepair=second_repair_fixture().cut({html:"page",documents:["page"],d
 // Keep the flat first-paint acceptance alongside genuine hosted scoped output.
 const hosted = await hosted_flat_subject_fixture();
 const scoped = await scoped_fixture();
-const scopedPages = new Map([["/hosted-scoped", scoped.session.now({html:"page"})]]);
+const scopedPages = new Map();
+function capture_scoped_pages(suffix = "") {
+  const captured = scoped.session.now({html:"page"});
+  const html = scoped.locus.lib("page").render();
+  assert.equal(html, captured.html);
+  scopedPages.set(`/hosted-scoped${suffix}`, captured);
+  scopedPages.set(`/library-scoped${suffix}`, { ...captured, html });
+}
+capture_scoped_pages();
 await scoped.locus.stage(w => {
   w.lib("page").css.sel("#left button").setProp("padding", "11px");
   w.lib("page").css.sel("#left span").setProp("color", "rgb(70,80,90)");
 });
-scopedPages.set("/hosted-scoped-changed", scoped.session.now({html:"page"}));
+capture_scoped_pages("-changed");
 await scoped.locus.stage(w => { w.lib("page").at([1,0]).replace(scoped_node('<hson-part lib="parts" at="bare"/>')); });
-scopedPages.set("/hosted-scoped-retired", scoped.session.now({html:"page"}));
+capture_scoped_pages("-retired");
 await scoped.locus.stage(w => { w.lib("page").at([1,2]).delete(); w.lib("page").at([1,1]).delete(); w.lib("page").at([1,0]).delete(); });
-scopedPages.set("/hosted-scoped-empty", scoped.session.now({html:"page"}));
+capture_scoped_pages("-empty");
 const bundle = await build({ entryPoints: ["tests/browser/document-portable-graft.entry.mjs"], bundle: true,
   write: false, platform: "browser", format: "iife", logLevel: "silent" });
 const browserSource = bundle.outputFiles[0].text;

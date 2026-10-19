@@ -11,6 +11,28 @@ import { plan_portable_document_subjects } from "./browser-realization/portable-
 import { decode_hosted_root, HOSTED_MAX_SNAPSHOT_BYTES } from "../api/livemap/livemap.hosted.js";
 import { document_css_subject_identities } from "./css/css-identity-translation.js";
 
+/** Realize the same captured graph, managed CSS and correspondence for local and hosted HTML. */
+export function realize_captured_document(library: Readonly<{
+  root: AuthorityProjectionSnapshot["libraries"][number]["root"];
+  css?: AuthorityProjectionSnapshot["libraries"][number]["css"];
+  quads?: PortableDocumentQuads;
+  scopes?: AuthorityProjectionSnapshot["libraries"][number]["scopes"];
+}>): BrowserRealizationHtml {
+  let root: HsonNode;
+  try {
+    root = decode_hosted_root(library.root, HOSTED_MAX_SNAPSHOT_BYTES);
+  } catch (cause) {
+    throw new DocumentSsrError("bootstrap", "The session document could not be decoded.", cause);
+  }
+  const css = render_portable_document_stylesheet(decode_portable_document_stylesheet(library.css));
+  // Scoped capture supplies portable CSS labels and exact paths. The captured
+  // topology stays intact; only its correspondence feeds the HTML marker planner.
+  const quads = library.scopes === undefined ? library.quads
+    : [...library.scopes.subjects].sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  return realize_document(root, css,
+    document_css_subject_identities(library.css!, "inbound").length ? { quads } : undefined);
+}
+
 export function realize_document(root: HsonNode, css = "", subjects?: Readonly<{ quads?: PortableDocumentQuads }>): BrowserRealizationHtml {
   try {
     const browser = plan_browser_realization(root);
@@ -41,19 +63,6 @@ export function cut_hosted_projection(
   if (library === undefined) {
     throw new DocumentSsrError("select", "The requested session HTML document is unavailable.");
   }
-  let root: HsonNode;
-  try {
-    root = decode_hosted_root(library.root, HOSTED_MAX_SNAPSHOT_BYTES);
-  } catch (cause) {
-    throw new DocumentSsrError("bootstrap", "The session document could not be decoded.", cause);
-  }
-  const css = render_portable_document_stylesheet(decode_portable_document_stylesheet(library.css));
-  // Scoped capture already supplies portable CSS labels and exact paths. Feed
-  // only that correspondence to the established derived HTML marker planner;
-  // the transferable sibling retains its complete scoped topology unchanged.
-  const quads = library.scopes === undefined ? library.quads
-    : [...library.scopes.subjects].sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
-  return Object.freeze({ html: realize_document(root, css,
-    document_css_subject_identities(library.css!, "inbound").length ? { quads } : undefined),
+  return Object.freeze({ html: realize_captured_document(library),
     libs: snapshot, document: selected });
 }

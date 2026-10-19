@@ -157,8 +157,8 @@ export function document_composition_cases(check: (name: string, run: () => void
       const root = doc(map).root(), outer = root.$_content[0]; if (!is_Node(outer)) throw Error("outer");
       assert.equal(outer.$_attrs?.title, value); assert.equal(outer.$_attrs?.["data-note"], `prefix:${value}:end`);
       assert.deepEqual(leaves(root), [String(value)]);
-      assert.throws(() => doc(map).render(), /Scoped document capture/);
       const html = realize_document(root, ""); assert.doesNotMatch(html, /<雪|<script|hson-part/);
+      assert.equal(doc(map).render(), html);
       if (typeof value === "string" && value) { assert.match(html, /&lt;/); assert.match(html, /&amp;/); assert.match(html, /&quot;/); }
     }
   });
@@ -406,7 +406,7 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
       assert.notEqual(a,b);assert.notEqual(a.$_attrs,b.$_attrs);assert.notEqual(a.$_attrs?.style,b.$_attrs?.style);assert.notEqual(a.$_content,b.$_content);
       assert.throws(()=>doc(map).document.attrs.set({kind:"path",path:[0,0,0]},'title','Edited'),/complete scoped effects/);
       assert.equal(doc(map).document.attrs.get({kind:"path",path:[0,0,1]},'title'),undefined);
-      if(!css){assert.throws(()=>doc(map).render(),/Scoped/);assert.match(realize_document(doc(map).root(),""),/color.*blue/);}
+      if(!css){assert.equal(doc(map).render(),realize_document(doc(map).root(),""));assert.match(doc(map).render(),/color.*blue/);}
       else assert.match(doc(map).css.snapshot(),/@layer first/);
       assert.equal(aggregate.documentOverlay(aggregate.libraries()[1]!).size,2);
     }

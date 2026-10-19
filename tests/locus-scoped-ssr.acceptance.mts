@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { scoped_ssr_cases, definition, page } from "./fixtures/locus-scoped-ssr-cases.mts";
 import { scoped_ssr_http } from "./fixtures/locus-scoped-ssr-http.mts";
+import { library_render_scoped_cases } from "./fixtures/library-render-scoped-cases.mts";
 import { hsonLiveMap } from "hson-live/livemap";
 import { FileCheckpointAdapter } from "./helpers/file-checkpoint-adapter.mts";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -13,6 +14,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.scoped-ssr", t
   category: "Locus", runtime: "node", tags: Object.freeze(["public-api", "scope", "ssr", "worker", "security", "http", "http2", "recovery"]) });
 let count = 0;
 await scoped_ssr_cases(async (name, run) => { await run(); count++; console.log(`ok - ${name}`); });
+await library_render_scoped_cases(async (name, run) => { await run(); count++; console.log(`ok - ${name}`); });
 const worker = repository_typescript_worker(new URL("./fixtures/locus-scoped-ssr.worker.mts", import.meta.url));
 try {
   assert.equal(await new Promise((resolve, reject) => {

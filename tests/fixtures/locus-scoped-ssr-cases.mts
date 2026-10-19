@@ -5,6 +5,9 @@ import { encode_ssr_bootstrap, decode_ssr_bootstrap } from "../../src/api/ssr/in
 import { hsonLiveHost } from "../../src/api/livehost/index.ts";
 import type { LocusSessionHtmlNow, LocusProjectionAuthorizer } from "../../src/api/locus/index.ts";
 import { deferred, MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
+import { locus_map_internal } from "../../src/internal/governor-maps.ts";
+import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
+import { set_livemap_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.quid-allocation.ts";
 
 export const page = { document: '<html @:page <head/> <body <hson-part @:left lib="parts" at="panel" id="left"/> <hson-part @:right lib="parts" at="panel" id="right"/> <hson-part lib="parts" at="global"/> <p @:outside id="outside" "Outside"/>/>/>' };
 const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection }) => ({
@@ -53,6 +56,35 @@ export async function fixture() {
 }
 
 export async function scoped_ssr_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  await check("Library rendering is observational before any hosted session exists", async () => {
+    const locus = hsonLiveMap.locus.create(definition);
+    const map = locus_map_internal(locus), aggregate = internal_livemap_aggregate_authority(map);
+    const pageOwner = aggregate.inspect().libraries.find(entry => entry.mode === "document" && aggregate.documentQuad(entry.identity, "outside", undefined))!.identity;
+    const subject = aggregate.documentQuad(pageOwner, "outside", undefined)!;
+    await locus.stage(w => { w.lib("page").css.sel(`[hson\\:quid="${subject.quid}"]`).setProp("background-color", "orange"); });
+    let publications = 0, allocations = 0;
+    const stops = [map.commits.observe(() => publications++), aggregate.observe(() => publications++),
+      aggregate.observeAuthorityPosition(() => publications++), locus.lib("page").commits.observe(() => publications++)];
+    const checkpoint = aggregate.captureSemanticCheckpoint(), ledger = aggregate.identityEpoch().issued();
+    const epoch = aggregate.identityEpoch().current(), revision = locus.rev;
+    const installed = aggregate.inspect().libraries.filter(entry => entry.mode === "document").map(({ identity: id }) => ({ id, root: aggregate.root(id),
+      overlay: aggregate.documentOverlay(id), css: aggregate.stylesheet(id), scopes: aggregate.documentScopes(id) }));
+    set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => { allocations++; throw Error("render allocated identity"); });
+    try {
+      for (let repeat = 0; repeat < 3; repeat++) for (const name of ["page", "flat", "bare"] as const) locus.lib(name).render();
+      assert.match(locus.lib("page").render(), /background-color:orange/);
+      assert.deepEqual(aggregate.captureSemanticCheckpoint(), checkpoint);
+      assert.equal(aggregate.identityEpoch().issued(), ledger); assert.equal(aggregate.identityEpoch().current(), epoch);
+      assert.equal(locus.rev, revision); assert.equal(publications, 0); assert.equal(allocations, 0);
+      for (const state of installed) {
+        assert.equal(aggregate.root(state.id), state.root); assert.equal(aggregate.documentOverlay(state.id), state.overlay);
+        assert.equal(aggregate.stylesheet(state.id), state.css); assert.equal(aggregate.documentScopes(state.id), state.scopes);
+      }
+    } finally {
+      set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined);
+      stops.forEach(stop => stop()); locus.dispose();
+    }
+  });
   await check("public scoped SSR, recursive repeated Parts, native CSS and transferable state", async () => {
     const { locus, session } = await fixture();
     try {

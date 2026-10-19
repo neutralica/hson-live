@@ -140,7 +140,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         // This fragment has CSS but no explicit html/head, which remains invalid SSR.
         assert.throws(() => a.session.now({ html: "page" }), /browser-parser realization/);
         assert.match(a.session.now({ html: "bare" }).html, /Bare/);
-        assert.throws(() => document(a.echo).render(), /scoped/i);
+        assert.throws(() => document(a.echo).render(), /browser-parser realization/);
         assert.throws(() => locus.cut({ html: "page" }), /scoped|Echo/i);
         const idsA = subjectIds(document(a.echo).css.snapshot()), idsB = subjectIds(document(b.echo).css.snapshot());
         assert.ok(idsA.length > 0); for (const id of idsA) assert.ok(!idsB.includes(id));
