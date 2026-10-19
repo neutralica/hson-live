@@ -134,7 +134,7 @@ export function project_locus_live_transition_internal(
   const registryDigest = projected_registry_digest(effective);
   const complete = authority.topology !== undefined
     ? encode_authoritative_topology_commit(authority)
-    : authority.replay.operations.some(entry => entry.scoped !== undefined)
+    : authority.replay.operations.some(entry => entry.scoped !== undefined || entry.flat !== undefined)
       ? encode_authoritative_scoped_commit(authority) : make_portable_aggregate_commit(authority);
   if (complete !== undefined && "topology" in complete && complete.topology !== undefined) {
     const visible = complete.topology.operation.libraries.filter((entry) => effective.includesLibrary(entry.name));

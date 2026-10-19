@@ -1,3 +1,4 @@
+import { livemap_document_identity_effects_for } from "./livemap.document.identity.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import {
   read_hson_node_quid,
@@ -45,7 +46,7 @@ export type LiveMapDocumentIdentityCommitReservation = Readonly<{
 export type LiveMapDocumentIdentityParticipant = Readonly<{
   /** Existing runtime namespace, including retired/pending identities. @internal */
   quidUnavailable?: (quid: string) => boolean;
-  preflight: (operations: readonly LiveMapGraphOp[]) => LiveMapDocumentIdentityCommitReservation;
+  preflight: (operations: readonly LiveMapGraphOp[], introduced?: ReadonlySet<string>) => LiveMapDocumentIdentityCommitReservation;
   preflightLocalIdentity: (path: LiveMapDocumentPath, quid: string) => LiveMapDocumentIdentityCommitReservation;
   verifyExisting: (path: LiveMapDocumentPath, quid: string) => void;
   realize: (path: LiveMapDocumentPath) => void;
@@ -222,9 +223,11 @@ export function preflight_livemap_document_identity_replay(
   commit: LiveMapGraphCommit<LiveMapGraphOp>,
 ): LiveMapDocumentIdentityCommitReservation | undefined {
   if (!commit.ops.some((operation) => operation.op === "ensure-quid")) return undefined;
-  const participant = participantForAuthority.get(authority);
+  const owner = authorityForOwner.get(authority);
+  const participant = owner === undefined ? undefined : participantForAuthority.get(owner);
   if (participant === undefined) return undefined;
-  const reservation = participant.preflight(commit.ops);
+  const introduced = new Set((livemap_document_identity_effects_for(commit) ?? []).filter(effect => effect.kind === "introduced").map(effect => effect.quid));
+  const reservation = participant.preflight(commit.ops, introduced);
   reservationForCommit.set(commit, reservation);
   return reservation;
 }

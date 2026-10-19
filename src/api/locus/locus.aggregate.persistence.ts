@@ -4,7 +4,6 @@ import { own_data_library_validation, assert_data_library_validation } from "../
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { document_quad_disposition } from "../livemap/livemap.document.quad.js";
 import { remap_portable_document_css_identities } from "../../internal/css/css-identity-translation.js";
-import { assert_subject_free_portable_css_operation } from "../../internal/css/portable-document-operations.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { decode_document_quads } from "../livemap/livemap.document.quad.js";
 import { registry_from_entries } from "../livemap/livemap.hosted.js";
@@ -434,7 +433,7 @@ export async function restore_semantic_checkpoint_manifest_internal(
 
 function hosted_commit(commit: HostedAggregateCommit,
   libraryOwnershipAdded: readonly LocusDurableOwnershipEntry[] = []): LocusHostedAggregatePersistedCommit {
-  const scoped = commit.replay.operations.some(entry => entry.scoped !== undefined);
+  const scoped = commit.replay.operations.some(entry => entry.scoped !== undefined || entry.flat !== undefined);
   const projected = commit.topology !== undefined ? { format: "private", ...encode_authoritative_topology_commit(commit) } : scoped ? { format: "private", ...encode_authoritative_scoped_commit(commit) }
     : make_portable_aggregate_commit(commit);
   if (projected === undefined) throw new Error("Runtime-local identity demand cannot become durable authority history.");
@@ -570,11 +569,6 @@ async function validate_hosted_aggregate_state(
       if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
       const commit = assert_commit_fence(item, checkpoint, expectedPrevRev, expectedRegistryDigest);
       if (commit.topology !== undefined) {
-        for (const entry of commit.topology.operation.libraries) {
-          if (own_document_scopes(entry) === undefined && entry.css !== undefined) {
-            assert_subject_free_portable_css_operation({ domain: "css", kind: "replace", stylesheet: entry.css });
-          }
-        }
         const additions = ownership_entries(record(maybe?.locus)?.libraryOwnershipAdded);
         for (const entry of additions) {
           if (runtimeOwnership.has(entry.name)) throw invalid_state();

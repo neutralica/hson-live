@@ -140,7 +140,7 @@ export async function scoped_tail_cases(check: (name: string, run: () => Promise
     assert.ok(canonical_graph_equal(state.root, a.scopedDocumentState(library).root));
     assert.match(JSON.stringify(a.scopedDocumentState(library).css), /margin|border/);
     const effect = commit.operations[0]!; assert.equal(effect.domain, "document");
-    if (effect.domain !== "document") throw Error();
+    if (effect.domain !== "document" || !("retired" in effect.effect)) throw Error();
     assert.equal(effect.effect.retired.length, 2); assert.equal(effect.effect.created.length, 2);
     assert.equal(effect.effect.styles.length, 2);
     assert.throws(() => a.replayDurableHosted(input));

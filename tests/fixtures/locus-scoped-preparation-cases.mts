@@ -405,7 +405,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     assert.deepEqual(evidence.map(batch => [batch.prevRev, batch.rev]), [[0, 1], [1, 2], [2, 3]]);
     for (const batch of evidence.slice(1)) {
       const entry = batch.operations[0]!; assert.equal(entry.domain, "document");
-      if (entry.domain !== "document") throw Error();
+      if (entry.domain !== "document" || !("retired" in entry.effect)) throw Error();
       assert.equal(entry.effect.retired.length, 2); assert.equal(entry.effect.created.length, 2);
       assert.equal(entry.effect.before, entry.effect.after); assert.equal(entry.effect.styles.length, 2);
     }
@@ -417,7 +417,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     const a = authority(map);
     const locus = create({ map, scopedDocuments: true, prepareGate(input) {
       const entries = encode(map, input.transition).operations;
-      assert.deepEqual(entries.map(entry => [entry.library, entry.domain === "document" ? entry.effect.ordinal : -1]),
+      assert.deepEqual(entries.map(entry => [entry.library, entry.domain === "document" && "ordinal" in entry.effect ? entry.effect.ordinal : -1]),
         [["page", 0], ["second", 0], ["page", 1]]);
     } });
     await locus.stage(writer => {

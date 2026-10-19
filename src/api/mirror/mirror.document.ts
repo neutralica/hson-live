@@ -493,25 +493,22 @@ function reflect_document_binding_in_runtime(
 
   const dispose_binding = (): void => {
     if (currentStatus === "disposed") return;
-    const disposeObserver = off;
-    off = undefined;
-    disposeObserver?.();
-    offAuthorityPosition?.();
-    offAuthorityPosition = undefined;
-    offIdentityParticipant?.();
-    offIdentityParticipant = undefined;
-    offRetirement?.();
-    offRetirement = undefined;
-    for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
+    currentStatus = "disposed";
+    const failures: unknown[] = [];
+    const clean = (run: () => void): void => { try { run(); } catch (cause) { failures.push(cause); } };
+    const callbacks = [off, offAuthorityPosition, offIdentityParticipant, offRetirement];
+    off = offAuthorityPosition = offIdentityParticipant = offRetirement = undefined;
+    for (const callback of callbacks) if (callback !== undefined) clean(callback);
+    for (const registration of registrations) clean(() => unregister_document_binding_node(registration.node, owner));
     if (rootRegistration !== undefined) {
-      unregister_document_binding_node(projectedRoot, owner);
+      clean(() => unregister_document_binding_node(projectedRoot, owner));
       rootRegistration = undefined;
     }
     byPath.clear();
     byQuid.clear();
-    release_borrowed_carrier();
+    clean(release_borrowed_carrier);
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
-    currentStatus = "disposed";
+    if (failures.length) throw new AggregateError(failures, "Document Mirror disposal failed.");
   };
 
   const delegate_remove = (registration: ProjectedRegistration): boolean => {
@@ -746,6 +743,7 @@ function reflect_document_binding_in_runtime(
   const preflight_identity_operations = (
     operations: readonly LiveMapGraphOp[],
     localClaim?: Readonly<{ path: LiveMapDocumentPath; quid: string }>,
+    introduced?: ReadonlySet<string>,
   ): LiveMapDocumentIdentityCommitReservation => {
     type Pending = { registration: ProjectedRegistration; path: LiveMapDocumentPath };
     type Claim = {
@@ -764,6 +762,7 @@ function reflect_document_binding_in_runtime(
     const stage_claim = (claimPath: LiveMapDocumentPath, quid: string): void => {
       const pendingTarget = pending.find((entry) => document_path_equal(entry.path, claimPath));
       if (pendingTarget === undefined) {
+        if (introduced?.has(quid)) return; // Fresh structural subjects are installed by the existing structural planner.
         throw new DocumentMirrorError(
           DOCUMENT_MIRROR_TARGET_MISSING_ERROR_CODE,
           "Map-local identity target has no exact projected correspondence.",
@@ -1305,7 +1304,7 @@ function reflect_document_binding_in_runtime(
     }
     if (borrowed) assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree),
       livemap_document_identity_overlay_for(map.document).quidAtPath(validate_document_path([0])));
-    consume_identity_effects(commit);
+    const identityEffects = consume_identity_effects(commit);
     const hasIdentityRegistration = commit.ops.some((operation) => operation.op === "ensure-quid");
     const identityReservation = livemap_document_identity_reservation_for(commit);
     if (hasIdentityRegistration && identityReservation === undefined) {
@@ -1358,6 +1357,7 @@ function reflect_document_binding_in_runtime(
           const registration = document_binding_for_node(node);
           return registration?.owner === owner ? registration.persistedQuid : undefined;
         },
+        new Set(identityEffects.filter(effect => effect.kind === "introduced").map(effect => effect.quid)),
       );
       let appliedIdentityClaims: readonly LiveMapDocumentIdentityAppliedClaim[] = Object.freeze([]);
       const restoreCorrespondence = capture_correspondence();
@@ -1435,7 +1435,7 @@ function reflect_document_binding_in_runtime(
     // revision recheck then closes the capture-to-subscribe initialization gap.
     offIdentityParticipant = register_livemap_document_identity_participant(map.document, Object.freeze({
       quidUnavailable: (quid: string) => runtime.issuedQuids.has(quid) || runtime.pendingQuidClaims.has(quid) || runtime.quidToNode.has(quid),
-      preflight: preflight_identity_operations,
+      preflight: (operations, introduced) => preflight_identity_operations(operations, undefined, introduced),
       preflightLocalIdentity: (path: LiveMapDocumentPath, quid: string) =>
         preflight_identity_operations(Object.freeze([]), Object.freeze({ path, quid })),
       verifyExisting: verify_existing_identity,

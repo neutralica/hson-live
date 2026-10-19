@@ -48,8 +48,8 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const style = f.doc.querySelector(marker), authoredStyle = f.doc.querySelector('head style');
     const unrelated = f.doc.getElementById('unrelated'), unrelatedHtml = unrelated.outerHTML;
     let quidsBeforeStyleSwitch = false, allCarriersAtStyleSwitch = false;
-    const text = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
-    Object.defineProperty(style, 'textContent', { configurable: true, get() { return text.get.call(this); }, set(value) {
+    const text = Object.getOwnPropertyDescriptor(Node.prototype, 'nodeValue');
+    Object.defineProperty(style.firstChild, 'nodeValue', { configurable: true, get() { return text.get.call(this); }, set(value) {
       if (value === f.handoff.receivingCss) {
         quidsBeforeStyleSwitch = f.correspondence.associations.every(entry => f.root.querySelector(`[hson\\:quid="${entry.quid}"]`) || f.root.getAttribute('hson:quid') === entry.quid);
         allCarriersAtStyleSwitch = f.doc.querySelectorAll('[hson\\:quad]').length === 7;
@@ -64,7 +64,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     elementPrototype.removeAttribute = function(name) { originalRemove.call(this, name);
       if (this.ownerDocument === f.doc && name === 'hson:quad') { synchronousFlushes++; equal(visual(f.doc), before, 'flush during carrier consumption'); } };
     let continued;
-    try { continued = f.run(); } finally { elementPrototype.removeAttribute = originalRemove; delete style.textContent; }
+    try { continued = f.run(); } finally { elementPrototype.removeAttribute = originalRemove; delete style.firstChild.nodeValue; }
     assert(quidsBeforeStyleSwitch && allCarriersAtStyleSwitch && synchronousFlushes === 7, 'ordered coherent transition');
     assert(continued.tree.dom.el() === f.root, 'borrowed root retained');
     elements.forEach((element, index) => assert([f.root, ...f.root.querySelectorAll('*')][index] === element, 'original Element identity'));
@@ -133,16 +133,16 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const f = await page(html, libs), before = snapshot(f.root), elements = [...f.root.querySelectorAll('*')], computed = visual(f.doc);
     const style = f.doc.querySelector(marker), element = f.doc.getElementById('second-child');
     let once = false;
-    const set = element.setAttribute, remove = element.removeAttribute, text = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+    const set = element.setAttribute, remove = element.removeAttribute, text = Object.getOwnPropertyDescriptor(Node.prototype, 'nodeValue');
     if (kind === 'metadata') element.setAttribute = function(name, value) { set.call(this, name, value); if (!once && name === 'hson:quid') { once = true; throw Error('metadata write fault'); } };
     if (kind === 'wrong-metadata') element.setAttribute = function(name, value) { set.call(this, name, name === 'hson:quid' ? '000000000' : value); };
     if (kind === 'silent-removal') element.removeAttribute = function(name) { if (name !== 'hson:quad') remove.call(this, name); };
-    if (kind === 'silent-style') Object.defineProperty(style, 'textContent', { configurable:true, get() {return text.get.call(this);}, set(_value) {} });
+    if (kind === 'silent-style') Object.defineProperty(style.firstChild, 'nodeValue', { configurable:true, get() {return text.get.call(this);}, set(_value) {} });
     if (kind === 'carrier-removal') element.removeAttribute = function(name) { remove.call(this, name); if (!once && name === 'hson:quad') { once = true; throw Error('carrier removal fault'); } };
-    if (kind === 'style') Object.defineProperty(style, 'textContent', { configurable:true, get() {return text.get.call(this);}, set(value) { text.set.call(this,value); if (!once) { once=true; throw Error('style realization fault'); } } });
+    if (kind === 'style') Object.defineProperty(style.firstChild, 'nodeValue', { configurable:true, get() {return text.get.call(this);}, set(value) { text.set.call(this,value); if (!once) { once=true; throw Error('style realization fault'); } } });
     if (kind === 'adoption') fault(point => { if (point === 'after-links') throw Error('adoption fault'); });
     try { rejects(kind === 'late-interaction' ? () => graft({map:f.map,document:f.selected,root:f.root,interactions:{local:{}}}, f.handoff) : f.run, 'injected fault must reject'); }
-    finally { delete element.setAttribute; delete element.removeAttribute; delete style.textContent; fault(undefined); }
+    finally { delete element.setAttribute; delete element.removeAttribute; delete style.firstChild.nodeValue; fault(undefined); }
     unchanged(f, before, elements); equal(visual(f.doc), computed, 'rollback preserves usable styling');
     equal(f.selected.css.snapshot(), f.handoff.receivingCss, 'accepted CSS authority retained');
     f.correspondence.assertCurrent();
@@ -169,9 +169,9 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const buttons=doc=>[...doc.querySelectorAll('button')].map(button=>{const css=doc.defaultView.getComputedStyle(button);return [css.color,css.paddingLeft];});
     const buttonStyles=buttons(f.doc);equal(buttonStyles,[...Array(3).fill(['rgb(60, 70, 80)','11px']),['rgb(0, 0, 0)','6px']],'bare and nested selectors style nested Part descendants without leaking');
     rejects(() => f.map.lib('parts'), 'no source Part collection'); rejects(() => f.map.lib('layout'), 'no source layout Library');
-    const text=Object.getOwnPropertyDescriptor(Node.prototype,'textContent'),prototype=f.doc.defaultView.Element.prototype,remove=prototype.removeAttribute;
+    const text=Object.getOwnPropertyDescriptor(Node.prototype,'nodeValue'),prototype=f.doc.defaultView.Element.prototype,remove=prototype.removeAttribute;
     let switches=0,removals=0;
-    Object.defineProperty(style,'textContent',{configurable:true,get(){return text.get.call(this);},set(value){
+    Object.defineProperty(style.firstChild,'nodeValue',{configurable:true,get(){return text.get.call(this);},set(value){
       if(value===f.handoff.receivingCss){
         switches++;
         assert(f.doc.querySelectorAll('[hson\\:quad]').length===3,'all portable carriers remain at switch');
@@ -183,7 +183,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     }});
     prototype.removeAttribute=function(name){remove.call(this,name);if(name==='hson:quad'){removals++;equal(visual(f.doc),before,'synchronous carrier removal style flush');}};
     let continued;
-    try {continued=f.run();} finally {prototype.removeAttribute=remove;delete style.textContent;}
+    try {continued=f.run();} finally {prototype.removeAttribute=remove;delete style.firstChild.nodeValue;}
     assert(switches===1&&removals===3,'one synchronous CSS handoff consumes all three root carriers');
     elements.forEach((element,index)=>assert([f.root,...f.root.querySelectorAll('*')][index]===element,'all original Elements retained'));
     assert(f.doc.querySelector(marker)===style&&f.doc.querySelectorAll(marker).length===1,'one original managed style retained');

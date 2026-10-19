@@ -137,8 +137,8 @@ try {
   });
   await librariesLocus.stage((draft) => {
     draft.lib("state").at(["count"]).set(1);
-    draft.lib("page").at([0]).attrs.set("data-recovered", "page");
-    draft.lib("admin").at([0]).attrs.set("data-recovered", "admin");
+    draft.lib("page").at([]).asElement().attrs.set("data-recovered", "page");
+    draft.lib("admin").at([]).asElement().attrs.set("data-recovered", "admin");
   });
 
   librariesSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });

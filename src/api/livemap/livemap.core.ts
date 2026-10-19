@@ -1,3 +1,5 @@
+import { canonical_flat_correspondence, flat_document_fingerprint, type DocumentFlatEffect } from "./livemap.document.flat-effects.js";
+import { encode_scoped_effect_graph_operation } from "./livemap.hosted.js";
 import { read_livemap_document_logical_location } from "./livemap.document.location.js";
 import { lower_document_css_command } from "../../internal/document-css-commands.js";
 import { plan_collection_command } from "./livemap.collection-command.js";
@@ -89,7 +91,7 @@ import {
   type PreparedDocumentMutation
 } from "./livemap.document.mutation.js";
 import { document_path_equal, resolve_document_path, validate_document_path } from "./livemap.document.path.js";
-import { livemap_document_identity_quid_unavailable, register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
+import { preflight_livemap_document_identity_replay, livemap_document_identity_quid_unavailable, register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
 import {
   clone_live_root,
   overwrite_hson_node,
@@ -996,6 +998,7 @@ function make_livemap_registry_engine(
     receivingScoped?: ReadonlyMap<LiveMapAggregateWrite, import("./livemap.document.scoped-effects.js").DocumentScopedEffect>,
     receivingRevision?: number,
     entryManagementFence?: () => void,
+    receivingFlat: ReadonlyMap<LiveMapLibraryIdentity, DocumentFlatEffect> = new Map(),
   ): import("./livemap.authority.js").PreparedLiveMapAuthorityTransition {
     const managementOwner = transitionController.managedExecutionOwner();
     // Replay must retain the grant captured before caller-controlled decoding.
@@ -1054,6 +1057,7 @@ function make_livemap_registry_engine(
     const initialActiveQuids = aggregate_quid_locations(libraryRegistry.all());
     let stagedIssuedLedger = mapIdentityEpoch.issued();
     const operations: LiveMapAggregateOperation[] = [];
+    const receivingFlatCssPositions = new Map<LiveMapLibraryIdentity, number>();
     const merge_issued_ledgers = (
       left: LiveMapIssuedQuidLedger,
       right: LiveMapIssuedQuidLedger,
@@ -1071,6 +1075,12 @@ function make_livemap_registry_engine(
       candidates.set(identity, candidate);
       return candidate;
     };
+    for (const [identity, effect] of receivingFlat) {
+      const state = require_library(identity);
+      if (state.mode !== "document" || state.documentScopes !== undefined || state.documentScopesUnavailable) throw new Error("Flat replay requires never-scoped document ownership.");
+      const before = portable_quads(state);
+      if (flat_document_fingerprint(state.root, before.css!, before.quads) !== effect.before) throw new Error("Stale flat document correspondence.");
+    }
     const partValues = new Map<LiveMapLibraryIdentity, OrderedProjectedValue>();
     for (const write of writes) {
       if (write.target.domain !== "application") continue;
@@ -1402,6 +1412,13 @@ function make_livemap_registry_engine(
         cssCandidates.set(library.identity, { before: stylesheet(library.identity), after: next.stylesheet });
         continue;
       }
+      if (write.kind === "css" && receivingFlat.has(library.identity)) {
+        // Keep the accepted cross-Library position while deferring correspondence
+        // translation until the complete graph candidate has been authenticated.
+        receivingFlatCssPositions.set(library.identity, operations.length);
+        operations.push({ target, operation: write.operation });
+        continue;
+      }
       if (write.kind === "css") {
         if (library.mode !== "document" || target.path.length !== 0) {
           throw new Error("CSS operations require a document Library root.");
@@ -1586,6 +1603,46 @@ function make_livemap_registry_engine(
       }
     }
 
+    // Authenticate every completed flat candidate before any receiving identity demand.
+    for (const [identity, effect] of receivingFlat) {
+      const candidate = candidate_for(identity);
+      if (!is_aggregate_document_candidate(candidate)) throw new Error("Flat effect requires a document.");
+      const final = canonical_flat_correspondence(candidate.root, effect.css, effect.subjects);
+      if (JSON.stringify(final) !== JSON.stringify({ css: effect.css, subjects: effect.subjects })
+        || flat_document_fingerprint(candidate.root, effect.css, effect.subjects) !== effect.after) throw new Error("Invalid final flat correspondence.");
+      const authored = [...(retain_document_quad_bindings(candidate.library.documentQuads, candidate.overlay)?.byName ?? [])]
+        .map(([name, quid]) => ({ name, path: candidate.overlay.pathForQuid(quid)! })).sort((a,b) => a.name < b.name ? -1 : 1);
+      if (JSON.stringify(authored) !== JSON.stringify(effect.subjects.filter(s => document_quad_disposition(s) === "authored"))) throw new Error("Flat replay cannot introduce or reassign authored QUADs.");
+      if (candidate.library.hsonSchema !== undefined) must_hson_schema_root(candidate.library.hsonSchema, candidate.root);
+    }
+    for (const [identity, effect] of receivingFlat) {
+      const candidate = candidate_for(identity);
+      if (!is_aggregate_document_candidate(candidate)) throw new Error("Flat effect requires a document.");
+      const foreign = new Set(effect.subjects.filter(s => document_quad_disposition(s) === "disposable").map(s => s.name.slice(1)));
+      const associations = effect.subjects.map(subject => {
+        let quid = candidate.overlay.quidAtPath(subject.path);
+        if (quid === undefined) {
+          quid = allocate_livemap_quid(mapIdentityEpoch.owner,
+            value => stagedIssuedLedger.has(value) || foreign.has(value) || livemap_document_identity_quid_unavailable(identity, value),
+            value => ({ claimed: true, value }));
+          if (quid === undefined) throw new Error("No available receiving flat subject identity.");
+          const registered = register_livemap_document_identity_at_path(candidate.overlay, quid, subject.path);
+          candidate.overlay = registered.overlay;
+          candidate.identityEffects.push(...registered.effects);
+          candidate.operations.push({ domain: "graph", op: "ensure-quid", target: { kind: "path", path: subject.path }, quid });
+          stagedIssuedLedger = merge_issued_ledgers(stagedIssuedLedger, make_livemap_issued_quid_ledger([quid]));
+          constructionClaims.push({ library: identity, quid });
+        } else if (!stagedIssuedLedger.has(quid)) throw new Error("Flat correspondence requires active receiving issuance.");
+        return { ...subject, quid, disposition: document_quad_disposition(subject) };
+      });
+      const translated = translate_document_css_identities(effect.css, "inbound", { associations, assertCurrent: assertPreparationCurrent }, true);
+      const after = decode_portable_document_stylesheet(translated);
+      cssCandidates.set(identity, { before: stylesheet(identity), after });
+      const position = receivingFlatCssPositions.get(identity);
+      if (position === undefined) throw new Error("Flat correspondence requires its accepted CSS operation.");
+      operations[position] = { target: aggregate_target(identity, []), operation: { domain: "css", kind: "replace", stylesheet: translated } };
+    }
+
     for (const candidate of candidates.values()) {
       aggregateSchemaValidations += 1;
       if (is_aggregate_document_candidate(candidate)) {
@@ -1714,13 +1771,26 @@ function make_livemap_registry_engine(
     for (const state of afterStates) {
       if (scopedCandidates.has(state.identity)) continue; // Complete scoped capture already validated this candidate.
       if (candidates.has(state.identity) || cssCandidates.has(state.identity)) portable_quads(state, finalLedger);
-      // Portable replay has no managed execution owner, but shares the live
-      // hosted support boundary. Full snapshot/checkpoint reconstruction is separate.
-      if ((hostedIncremental || transitionController.managedExecutionOwner() !== undefined) && state.mode === "document"
+      if (state.mode === "document"
         && (candidates.has(state.identity) || cssCandidates.has(state.identity))
-        && [state.stylesheet, require_library(state.identity).stylesheet].some(css => css !== undefined
-          && document_css_subject_identities(encode_portable_document_stylesheet(css), "outbound").length > 0)) {
-        throw new Error("Hosted incremental subject-owned CSS requires correspondence ordering and is unsupported.");
+        && (receivingFlat.has(state.identity) || [state.stylesheet, require_library(state.identity).stylesheet].some(css => css !== undefined
+          && document_css_subject_identities(encode_portable_document_stylesheet(css), "outbound").length > 0))) {
+        const index = operations.findIndex(entry => entry.target.domain === "application" && entry.target.library === state.identity);
+        // Planning can touch a styled document without accepting any operation.
+        // Received correspondence still has to reproduce an accepted effect.
+        if (index < 0 && !receivingFlat.has(state.identity)) continue;
+        if (hostedIncremental && !receivingFlat.has(state.identity)) throw new Error("Hosted incremental subject-owned CSS requires authenticated flat correspondence.");
+        const previous = require_library(state.identity), before = portable_quads(previous), final = portable_quads(state, finalLedger);
+        const graphs = operations.filter(entry => entry.target.domain === "application" && entry.target.library === state.identity)
+          .flatMap(entry => "domain" in entry.operation && entry.operation.domain === "graph" && entry.operation.op !== "ensure-quid"
+            ? [encode_scoped_effect_graph_operation(entry.operation)] : []);
+        const effect: DocumentFlatEffect = { kind: "flat", before: flat_document_fingerprint(previous.root, before.css!, before.quads),
+          after: flat_document_fingerprint(state.root, final.css!, final.quads), graphs,
+          ...canonical_flat_correspondence(state.root, final.css!, final.quads) };
+        const received = receivingFlat.get(state.identity);
+        if (received !== undefined && JSON.stringify(effect) !== JSON.stringify(received)) throw new Error("Flat replay does not reproduce accepted transaction effects.");
+        if (index < 0) throw new Error("Flat correspondence requires an accepted document operation.");
+        operations[index] = { ...operations[index]!, flat: effect };
       }
     }
     assertPreparationCurrent();
@@ -1766,6 +1836,12 @@ function make_livemap_registry_engine(
         : library.root);
     }
     documentRootByAggregate.set(commit, documentRoots);
+    const replayReservations: import("./livemap.document.registration.js").LiveMapDocumentIdentityCommitReservation[] = [];
+    const releaseReplay = () => {
+      const errors: unknown[] = [];
+      for (const reservation of replayReservations.splice(0)) try { reservation.release(); } catch (error) { errors.push(error); }
+      if (errors.length) throw new AggregateError(errors, "Receiving identity reservation cleanup failed.");
+    };
     const prepared = transitionController.prepareAuthority({
       commit,
       assertManagementCurrent,
@@ -1783,6 +1859,16 @@ function make_livemap_registry_engine(
       install: () => {
         // A reservation retains the candidate, not a revoked management grant.
         assertManagementCurrent?.();
+        try {
+          for (const identity of receivingFlat.keys()) {
+            const documentCommit = documentCommits.get(identity);
+            if (documentCommit !== undefined) {
+              const reservation = preflight_livemap_document_identity_replay(identity, documentCommit);
+              if (reservation !== undefined) replayReservations.push(reservation);
+            }
+          }
+          assertPreparationCurrent();
+        } catch (cause) { releaseReplay(); throw cause; }
         if (resetsIdentityEpoch) mapIdentityEpoch.replace(afterActive.keys());
         else mapIdentityEpoch.install(nextLedger!);
         for (const candidate of candidates.values()) {
@@ -1819,30 +1905,32 @@ function make_livemap_registry_engine(
       },
       notify: (acceptedCommit) => {
         enqueuePublication(() => {
-          aggregateAcceptedTransitions += 1;
-          aggregatePublications += 1;
-          deliver_livemap_observers(aggregateWatches, watch => {
-            if (require_library(watch.library).mode === "document") return;
-            if (!acceptedCommit.operations.some((operation) => (
-              operation.target.library === watch.library && paths_overlap(watch.path, operation.target.path)
-            ))) return;
-            watch.listener(aggregate_snap(watch.library, watch.path));
-          }, "watch");
-          deliver_livemap_observers(aggregateFeeds, feed => {
-            if (require_library(feed.library).mode === "document") return;
-            const operations = acceptedCommit.operations.filter((operation) => (
-              operation.target.library === feed.library && paths_overlap(feed.path, operation.target.path)
-            ));
-            if (operations.length === 0) return;
-            feed.listener(Object.freeze({
-              commit: acceptedCommit,
-              path: feed.path,
-              operations: Object.freeze(operations),
-              value: aggregate_snap(feed.library, feed.path),
-            }));
-          }, "feed");
-          deliver_livemap_observers(aggregateObservers, observer => observer(acceptedCommit), "commit");
-          publishAuthorityPosition(acceptedCommit.rev);
+          try {
+            aggregateAcceptedTransitions += 1;
+            aggregatePublications += 1;
+            deliver_livemap_observers(aggregateWatches, watch => {
+              if (require_library(watch.library).mode === "document") return;
+              if (!acceptedCommit.operations.some((operation) => (
+                operation.target.library === watch.library && paths_overlap(watch.path, operation.target.path)
+              ))) return;
+              watch.listener(aggregate_snap(watch.library, watch.path));
+            }, "watch");
+            deliver_livemap_observers(aggregateFeeds, feed => {
+              if (require_library(feed.library).mode === "document") return;
+              const operations = acceptedCommit.operations.filter((operation) => (
+                operation.target.library === feed.library && paths_overlap(feed.path, operation.target.path)
+              ));
+              if (operations.length === 0) return;
+              feed.listener(Object.freeze({
+                commit: acceptedCommit,
+                path: feed.path,
+                operations: Object.freeze(operations),
+                value: aggregate_snap(feed.library, feed.path),
+              }));
+            }, "feed");
+            deliver_livemap_observers(aggregateObservers, observer => observer(acceptedCommit), "commit");
+            publishAuthorityPosition(acceptedCommit.rev);
+          } finally { releaseReplay(); }
         });
       },
     });
@@ -2242,10 +2330,6 @@ function make_livemap_registry_engine(
       }
       if (css !== undefined) {
         if (family !== "document") throw new TypeError("Initial CSS requires a document Library.");
-        if (candidate === undefined && transitionController.managedExecutionOwner() !== undefined
-          && document_css_subject_identities(encode_portable_document_stylesheet(css), "inbound").length > 0) {
-          throw new Error("Hosted incremental subject-owned CSS topology is unsupported without correspondence ordering.");
-        }
       }
       candidateAuthority.assertCurrent();
       if (state.mode !== "document") state.projectedValue = must_projected_root_value(state.root);
@@ -2287,7 +2371,12 @@ function make_livemap_registry_engine(
           schema: hsonSchema.toHson(),
           ...(state.validation === undefined ? {} : { validation: state.validation }),
           root: encode_hosted_root(clone_hson_graph_without_quids(validated_library_root(state))),
-          ...(state.documentScopes === undefined ? portable_quads(state, nextLedger, css !== undefined)
+          ...(state.documentScopes === undefined ? (() => {
+            const captured = portable_quads(state, nextLedger, css !== undefined);
+            if (captured.css === undefined) return captured;
+            const normalized = canonical_flat_correspondence(state.root, captured.css, captured.quads);
+            return { css: normalized.css, ...(normalized.subjects.length ? { quads: normalized.subjects } : {}) };
+          })()
             : (() => {
               const captured = capture_document_scoped_library({ owner: state.identity, root: state.root,
                 overlay: require_document_overlay(state.documentOverlay), issued: nextLedger, scopes: state.documentScopes,
@@ -3355,6 +3444,7 @@ function make_livemap_registry_engine(
     }
     let decoded: readonly (import("./livemap.hosted.js").DecodedHostedOperation & Readonly<{
       scoped?: import("./livemap.document.scoped-effects.js").DocumentScopedEffect;
+      flat?: DocumentFlatEffect;
     }>)[];
     if (scoped) {
       if ("format" in input) throw new Error("Invalid private scoped receiving envelope.");
@@ -3376,7 +3466,9 @@ function make_livemap_registry_engine(
     let replaySharedRoot: OrderedProjectedValue | undefined;
     let replayComposedDescriptors: OrderedProjectedValue | undefined;
     const receivingEffects = new Map<LiveMapAggregateWrite, import("./livemap.document.scoped-effects.js").DocumentScopedEffect>();
+    const receivingFlat = new Map<LiveMapLibraryIdentity, DocumentFlatEffect>();
     const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
+      if (entry.flat !== undefined) receivingFlat.set(entry.library.identity as LiveMapLibraryIdentity, entry.flat);
       if (entry.css !== undefined) {
         const write: LiveMapAggregateWrite = Object.freeze({ target: aggregate_target(entry.library.identity as LiveMapLibraryIdentity, []),
           kind: "css", operation: entry.css });
@@ -3428,7 +3520,7 @@ function make_livemap_registry_engine(
     });
     if (composition !== clientComposition) throw new Error("Echo receiving projection changed during decoding.");
     const transition = prepare_authority_transition(writes, [], true, false, receivingEffects,
-      composition === undefined ? undefined : input.rev, assertManagementCurrent);
+      composition === undefined ? undefined : input.rev, assertManagementCurrent, receivingFlat);
     if (composition !== undefined) return transitionController.acceptAuthority(transition, "isolate").commit;
     const local = transition.commit.hosted;
     if (durable && scoped) {

@@ -140,8 +140,8 @@ export function create_locus_hosted_aggregate_internal(
     let releaseReservation: (() => void) | undefined;
     let preaccept: LocusHostedAggregatePreaccept | void;
     try {
-      if (hosted.replay.operations.some(entry => entry.scoped !== undefined)) {
-        if (options.scopedDocuments === undefined) throw new Error("Scoped document publication requires Echo support.");
+      if (hosted.replay.operations.some(entry => entry.scoped !== undefined || entry.flat !== undefined)) {
+        if (options.scopedDocuments === undefined && hosted.replay.operations.some(entry => entry.scoped !== undefined)) throw new Error("Scoped document publication requires Echo support.");
         prepare_locus_scoped_commit_internal(options.map, transition);
       }
       options.prepareGate?.(gateInput);

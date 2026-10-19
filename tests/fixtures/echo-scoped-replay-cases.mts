@@ -243,13 +243,14 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
     try {
       const { batch } = await f.stage(w => { insert(w); insert(w, 1); });
       const doc = batch.operations.filter(op => op.domain === "document"), system = batch.operations.filter(op => op.domain !== "document");
+      const firstEffect = doc[0]!.effect; assert.ok("graph" in firstEffect);
       const variants = [
         { ...batch, operations: [...doc].reverse() },
         { ...batch, operations: [doc[0]!, doc[0]!] },
         { ...batch, operations: [doc[1]!] },
         { ...batch, operations: [doc[0]!] }, // Missing final effect still has ordinal zero.
         { ...batch, operations: [...doc] }, // Missing authorized system effects.
-        { ...batch, operations: [{ library: "page", domain: "graph", kind: "insert-content", format: "hson-hosted-client-graph-op", payload: doc[0]!.effect.graph }] },
+        { ...batch, operations: [{ library: "page", domain: "graph", kind: "insert-content", format: "hson-hosted-client-graph-op", payload: firstEffect.graph }] },
       ];
       for (const variant of variants) unchanged(r, () => assert.throws(() => r.cap.replayScopedHosted(variant as PrivateScopedAggregateCommit)));
       for (const edit of [
@@ -259,7 +260,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
         (e: Record<string, unknown>) => { const graph = JSON.parse(String(e.graph)); graph.index = 999; e.graph = JSON.stringify(graph); },
       ]) {
         const input = copy(batch), first = input.operations[0]!;
-        if (first.domain !== "document") throw Error(); edit(first.effect as unknown as Record<string, unknown>);
+        if (first.domain !== "document" || !("graph" in first.effect)) throw Error(); edit(first.effect as unknown as Record<string, unknown>);
         unchanged(r, () => assert.throws(() => r.cap.replayScopedHosted(input)));
       }
       assert.ok(system.length > 0); delivered(f, r, batch);
@@ -288,7 +289,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
     const f = await fixture(), r = f.receive();
     try {
       const { batch } = await f.stage(w => insert(w));
-      const renamed = { ...batch, operations: batch.operations.map(op => op.domain !== "document" ? op : {
+      const renamed = { ...batch, operations: batch.operations.map(op => op.domain !== "document" || !("styles" in op.effect) ? op : {
         ...op, effect: { ...op.effect, styles: op.effect.styles.map(style => {
           const names = new Map(style.subjects.map((subject, index) => [subject.name, index === 0 ? "_abcdefghj" : "_kmnpqrstv"]));
           return { css: remap_portable_document_css_identities(style.css, names), subjects: style.subjects.map(s => ({ ...s, name: names.get(s.name)! })) };
@@ -308,7 +309,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
         page(w).attrs.set({ kind: "path", path: path([0, 0, 0]) }, "data-hson-quid", "abcdefghj");
       });
       const forged = copy(batch), first = forged.operations[0]!;
-      if (first.domain !== "document") throw Error();
+      if (first.domain !== "document" || !("graph" in first.effect)) throw Error();
       const graph = JSON.parse(first.effect.graph), content = decode_exact_hson_value(graph.content);
       assert.ok(is_Node(content)); assign_hson_node_quid(content, "abcdefghj");
       Object.assign(first.effect, { graph: JSON.stringify({ ...graph, content: encode_exact_hson_value(content) }) });
@@ -323,7 +324,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
     const f = await fixture(), r = f.receive();
     try {
       const { batch } = await f.stage(w => insert(w)), first = batch.operations[0]!;
-      if (first.domain !== "document") throw Error();
+      if (first.domain !== "document" || !("graph" in first.effect)) throw Error();
       const labels = new Set(first.effect.styles.flatMap(style => style.subjects.map(s => s.name.slice(1))));
       let allocations = 0;
       allocator(r.a.identityEpoch().owner, () => allocations++ === 0 ? [...labels][0]! : `y${String(allocations).padStart(8, "0")}`);

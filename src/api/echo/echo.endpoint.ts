@@ -238,9 +238,9 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   function disconnect(): void {
     if (!active || disposed) return;
     active = false;
-    stopAttachmentEvents?.();
+    const stop = stopAttachmentEvents;
     stopAttachmentEvents = undefined;
-    interrupt();
+    try { stop?.(); } finally { interrupt(); }
   }
 
   function interrupt(): void {
@@ -608,10 +608,12 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     waitUntilReady,
     dispose: () => {
       if (disposed) return;
-      if (active) disconnect();
+      let failure: unknown;
+      try { if (active) disconnect(); } catch (cause) { failure = cause; }
       disposed = true;
-      stopAttachmentEvents?.();
+      const stop = stopAttachmentEvents;
       stopAttachmentEvents = undefined;
+      try { stop?.(); } catch (cause) { failure ??= cause; }
       const error = new LocusDisconnectedError();
       rejectEndpointOperations(error);
       rejectPendingSession(new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API was disposed."));
@@ -621,7 +623,8 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       sessionDisposed = true;
       sessionStatus = "disposed";
       credential = undefined;
-      runtimeOptions.onReadyChange?.();
+      try { runtimeOptions.onReadyChange?.(); } catch (cause) { failure ??= cause; }
+      if (failure !== undefined) throw failure;
     },
   });
 }

@@ -938,17 +938,21 @@ function create_registry_echo_semantic_client_internal<
     dispose: () => {
       if (status === "closed") return;
       status = "closed";
-      syncSubscription?.cancel();
+      const failures: unknown[] = [];
+      const clean = (run: () => void): void => { try { run(); } catch (cause) { failures.push(cause); } };
+      const subscription = syncSubscription;
       syncSubscription = undefined;
-      if (ownsConnection) disconnect();
+      clean(() => subscription?.cancel());
+      if (ownsConnection) clean(disconnect);
       const error = new Error("Hosted aggregate Echo is closed.");
-      interruptRecovery(error);
-      if (ownsConnection) options.connection.echo.dispose();
-      while (compositionDisposers.length > 0) compositionDisposers.pop()?.();
+      clean(() => interruptRecovery(error));
+      if (ownsConnection) clean(options.connection.echo.dispose);
+      while (compositionDisposers.length > 0) clean(compositionDisposers.pop()!);
       for (const waiter of readyWaiters) waiter.reject(error);
       readyWaiters.clear();
-      replica.dispose();
+      clean(replica.dispose);
       authorityPositionListeners.clear();
+      if (failures.length) throw new AggregateError(failures, "Echo synchronization disposal failed.");
     },
     diagnostics: () => Object.freeze({
       status,

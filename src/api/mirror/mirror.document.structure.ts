@@ -92,6 +92,7 @@ export function plan_document_structural_transaction(
   canonicalFinalRoot: HsonNode,
   operations: readonly DocumentGraphOp[],
   persistedQuidForExisting: PersistedQuidLookup,
+  introducedIdentities?: ReadonlySet<string>,
 ): DocumentStructuralPlan {
   const root = shadow_existing(projectedRoot, persistedQuidForExisting);
   const runtime = runtime_for_node(projectedRoot) ?? default_livetree_runtime();
@@ -133,6 +134,7 @@ export function plan_document_structural_transaction(
           );
         }
         target.persistedQuid = operation.quid;
+        if (target.fresh) assign_hson_node_quid(target.node, operation.quid);
         break;
       case "insert-content":
         add_ordinary_owner(affectedOwners, target);
@@ -169,7 +171,7 @@ export function plan_document_structural_transaction(
     }
   }
 
-  validate_shadow_against_canonical(root, canonicalFinalRoot);
+  validate_shadow_against_canonical(root, canonicalFinalRoot, introducedIdentities);
   const oldNodes = new Set(collect_subtree_nodes(projectedRoot, "pre"));
   const finalNodes = new Set<HsonNode>();
   collect_shadow_nodes(root, finalNodes);
@@ -621,16 +623,25 @@ function reconcile_owner_dom(owner: HsonNode, runtime: LiveTreeRuntime): void {
   }
 }
 
-function validate_shadow_against_canonical(shadow: ShadowNode, canonical: HsonNode): void {
+function validate_shadow_against_canonical(shadow: ShadowNode, canonical: HsonNode, introducedIdentities?: ReadonlySet<string>): void {
   if (shadow.node.$_tag !== canonical.$_tag) throw content_mismatch();
   if (!canonical_public_attrs_equal(shadow.attrs, must_attrs(canonical.$_attrs ?? {}))) throw content_mismatch();
   const canonicalQuid = is_ordinary_element_node(canonical) ? canonical.$_meta?.[HSON_META_QUID] : undefined;
+  // Portable scoped inserts omit local identities. Only fresh planned nodes
+  // may receive identities proven introduced by this accepted commit and
+  // present at the exact final canonical coordinate. Existing or supplied
+  // identities still require exact equality; normal runtime collision checks follow.
+  if (shadow.fresh && shadow.persistedQuid === undefined && canonicalQuid !== undefined
+    && introducedIdentities?.has(canonicalQuid)) {
+    shadow.persistedQuid = canonicalQuid;
+    assign_hson_node_quid(shadow.node, canonicalQuid);
+  }
   if (shadow.persistedQuid !== canonicalQuid) throw content_mismatch();
   if (shadow.content.length !== canonical.$_content.length) throw content_mismatch();
   for (let index = 0; index < shadow.content.length; index += 1) {
     const planned = shadow.content[index];
     const expected = canonical.$_content[index];
-    if (is_shadow_node(planned) && is_Node(expected)) validate_shadow_against_canonical(planned, expected);
+    if (is_shadow_node(planned) && is_Node(expected)) validate_shadow_against_canonical(planned, expected, introducedIdentities);
     else if (is_shadow_node(planned) || is_Node(expected) || !Object.is(planned, expected)) throw content_mismatch();
   }
 }

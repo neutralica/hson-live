@@ -11,7 +11,7 @@ import {
 } from "../runtime/livetree-runtime.js";
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
 import { is_runtime_infrastructure, mark_runtime_infrastructure } from "../../../internal/browser-realization/browser-realization-dom.js";
-import { MANAGED_DOCUMENT_CSS_MARKER } from "../../../internal/browser-realization/managed-document-css.js";
+import { MANAGED_DOCUMENT_CSS_MARKER, write_managed_document_css } from "../../../internal/browser-realization/managed-document-css.js";
 import { document_css_state_internal, observe_client_library_retirement_internal } from "../../livemap/livemap.libraries.js";
 import { document_css_subject_identities } from "../../../internal/css/css-identity-translation.js";
 import { encode_portable_document_stylesheet } from "../../../internal/css/portable-document-stylesheet.js";
@@ -87,7 +87,7 @@ export function bind_document_css_tree(
       const needsPlacement = style === undefined || style.parentNode !== head;
       style ??= head.ownerDocument.createElement("style");
       if (style.getAttribute(MANAGED_DOCUMENT_CSS_MARKER) !== "managed") style.setAttribute(MANAGED_DOCUMENT_CSS_MARKER, "managed");
-      if (style.textContent !== next) style.textContent = next;
+      write_managed_document_css(style, next);
       if (needsPlacement) {
         const runtimeHost = Array.from(head.childNodes).find(is_runtime_infrastructure);
         head.insertBefore(style, runtimeHost ?? null);

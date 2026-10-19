@@ -41,3 +41,11 @@ export function plan_managed_document_css(plan: BrowserRealizationPlan, css: str
   children[headIndex] = updatedHead;
   return Object.freeze({ ...plan, roots: Object.freeze([Object.freeze({ ...root, children: Object.freeze(children) })]) });
 }
+
+/** Retain a compatible native CSS text node while switching its selectors. */
+export function write_managed_document_css(style: HTMLStyleElement, css: string): void {
+  if (style.textContent === css) return;
+  const text = style.childNodes[0];
+  if (style.childNodes.length === 1 && text?.nodeType === 3) text.nodeValue = css;
+  else style.textContent = css;
+}

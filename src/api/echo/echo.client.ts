@@ -84,13 +84,17 @@ export function create_echo_semantic_connection_internal<TActions extends LocusA
   };
   const dispose = (): void => {
     if (disposed) return;
-    disconnect();
     disposed = true;
-    endpoint.dispose();
-    release_echo_transport_owner_internal(options.transport);
-    availabilityListeners.clear();
-    readyListeners.clear();
-    attachmentLostListeners.clear();
+    try { endpoint.dispose(); }
+    finally {
+      available = false;
+      try { release_echo_transport_owner_internal(options.transport); }
+      finally {
+        availabilityListeners.clear();
+        readyListeners.clear();
+        attachmentLostListeners.clear();
+      }
+    }
   };
   const echo = Object.freeze({
     clientId: endpoint.clientId,

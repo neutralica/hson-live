@@ -1,3 +1,4 @@
+import { is_flat_document_effect, validate_flat_document_effect, type DocumentFlatEffect } from "./livemap.document.flat-effects.js";
 import { decode_document_scoped_library, own_document_scopes, own_topology_document_scopes } from "./livemap.document.scoped-portable.js";
 import { decode_document_scoped_operation, scoped_effect_matches_operation, portable_document_scoped_effect, encode_document_scoped_effects, validate_document_scoped_effects, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
@@ -118,6 +119,7 @@ export type HostedReplayOperation = Readonly<{
   library: string;
   /** Private complete document effect under the containing commit position. @internal */
   scoped?: DocumentScopedEffect;
+  flat?: DocumentFlatEffect;
   domain: "data" | "graph" | "css";
   kind: string;
   format: "structural-json" | typeof HOSTED_GRAPH_OP_FORMAT | "hson-document-css-op";
@@ -176,7 +178,7 @@ export type PortableAggregateCommit = Readonly<{
 export type PrivateScopedAggregateOperation = PortableAggregateOperation | Readonly<{
   library: string;
   domain: "document";
-  effect: DocumentScopedEffect;
+  effect: DocumentScopedEffect | DocumentFlatEffect;
 }>;
 /** @internal */
 export type PrivateScopedAggregateCommit = Readonly<{
@@ -277,6 +279,7 @@ export function make_hosted_commit(
       projected?: LiveMapProjectedDataOp;
       /** @internal */
       scoped?: DocumentScopedEffect;
+      flat?: DocumentFlatEffect;
     }>[];
   }>,
 ): HostedAggregateCommit {
@@ -319,7 +322,7 @@ export function make_hosted_commit(
       replay.push(Object.freeze({ ...evidence, scoped: entry.scoped }));
     } else {
       if (scopedByLibrary.has(binding.name)) throw new HostedAggregateRepresentationError("Missing complete scoped document evidence.");
-      replay.push(evidence);
+      replay.push(Object.freeze({ ...evidence, ...(entry.flat === undefined ? {} : { flat: entry.flat }) }));
     }
   }
   for (const [library, effects] of scopedByLibrary) {
@@ -342,7 +345,7 @@ export function make_hosted_commit(
     replay: Object.freeze({ operations: Object.freeze(replay) }),
   });
   assert_encoded_bound(commit, HOSTED_MAX_COMMIT_BYTES, "Hosted commit");
-  if (scopedByLibrary.size > 0) {
+  if (scopedByLibrary.size > 0 || replay.some(entry => entry.flat !== undefined)) {
     // Semantic operations were decoded into owned data above. The durable gate
     // must not be able to change them independently of the complete effects.
     const pending: unknown[] = [commit], seen = new Set<object>();
@@ -492,9 +495,28 @@ export function encode_authoritative_scoped_commit(authority: HostedAggregateCom
   }
   const operations: PrivateScopedAggregateOperation[] = [];
   const batches = new Map<string, DocumentScopedEffect[]>();
+  const flat = new Map<string, DocumentFlatEffect>();
+  for (const entry of authority.replay.operations) {
+    if (entry.flat === undefined) continue;
+    if (flat.has(entry.library)) throw incompatible_graph();
+    const effect = validate_flat_document_effect(entry.flat);
+    const graphs = authority.operations.filter(operation => operation.library === entry.library)
+      .flatMap(({ operation }) => "domain" in operation && operation.domain === "graph" && operation.op !== "ensure-quid"
+        ? [encode_scoped_effect_graph_operation(operation)] : []);
+    if (JSON.stringify(graphs) !== JSON.stringify(effect.graphs)) throw incompatible_graph();
+    flat.set(entry.library, effect);
+  }
+  const emittedFlat = new Set<string>();
   for (const [index, evidence] of authority.replay.operations.entries()) {
     const semantic = authority.operations[index]!;
     if (semantic.library !== evidence.library) throw incompatible_graph();
+    const flatEffect = flat.get(evidence.library);
+    if (flatEffect !== undefined) {
+      if (evidence.scoped !== undefined || batches.has(evidence.library)) throw incompatible_graph();
+      if (!emittedFlat.has(evidence.library)) operations.push({ library: evidence.library, domain: "document", effect: flatEffect });
+      emittedFlat.add(evidence.library);
+      continue;
+    }
     if (evidence.scoped === undefined) {
       if (batches.has(evidence.library)) throw new HostedAggregateRepresentationError("Missing scoped document evidence.");
       const ordinary = make_portable_aggregate_commit({ ...authority, operations: [semantic], replay: { operations: [evidence] } });
@@ -535,7 +557,7 @@ export function encode_authoritative_topology_commit(authority: HostedAggregateC
   const topology = capture_part_topology(authority.topology);
   for (const entry of topology.operation.libraries) {
     if (own_topology_document_scopes(entry) === undefined && entry.css !== undefined) {
-      assert_subject_free_portable_css_operation({ domain: "css", kind: "replace", stylesheet: entry.css });
+      assert_portable_document_css_correspondence(decode_hosted_root(entry.root), entry.mode, own_document_quads(entry), entry.css);
     }
   }
   if (authority.previousRegistryDigest === undefined || authority.operations.length !== 0
@@ -551,7 +573,7 @@ export function encode_authoritative_topology_commit(authority: HostedAggregateC
 
 /** Derive QUID-free semantic effects from a living authority transition. */
 export function make_portable_aggregate_commit(authority: HostedAggregateCommit): PortableAggregateCommit | undefined {
-  if (authority.replay.operations.some(entry => entry.scoped !== undefined)) {
+  if (authority.replay.operations.some(entry => entry.scoped !== undefined || entry.flat !== undefined)) {
     throw new HostedAggregateRepresentationError("Scoped document delivery requires coordinated Echo support.");
   }
   if (authority.topology !== undefined) {
@@ -668,7 +690,7 @@ export function decode_portable_aggregate_commit(
  * Shape/semantic validation does not authorize receipt of this position. @internal */
 export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggregateCommit,
   registry: HostedRegistry, bindings: ReadonlyMap<string, HostedRegistryBinding>):
-  readonly (DecodedHostedOperation & Readonly<{ scoped?: DocumentScopedEffect }>)[] {
+  readonly (DecodedHostedOperation & Readonly<{ scoped?: DocumentScopedEffect; flat?: DocumentFlatEffect }>)[] {
   const record = exact_record(input, "Private scoped commit");
   exact_keys(record, ["authority", "registryDigest", "prevRev", "rev", "operationCount", "operations"], "Private scoped commit");
   const authority = exact_record(record.authority, "Private scoped authority");
@@ -682,13 +704,14 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
   }
   assert_encoded_bound(input, HOSTED_MAX_COMMIT_BYTES, "Private scoped commit");
   const effects = new Map<string, DocumentScopedEffect[]>();
+  const flat = new Map<string, DocumentFlatEffect>();
   const ordinary: PortableAggregateOperation[] = [];
   for (const operation of input.operations) {
     const entry = exact_record(operation, "Private scoped operation");
     if (entry.domain !== "document") {
       // Flat Libraries retain ordinary effects. Once this Library gains scopes,
       // every subsequent document effect must retain that evidence.
-      if (typeof entry.library === "string" && effects.has(entry.library)) {
+      if (typeof entry.library === "string" && (effects.has(entry.library) || flat.has(entry.library))) {
         throw new HostedAggregateRepresentationError("Missing scoped document evidence.");
       }
       if (operation.domain === "document") throw incompatible_graph();
@@ -702,6 +725,12 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
     }
     const batch = effects.get(binding.name) ?? [];
     if (operation.domain !== "document") throw incompatible_graph();
+    if (is_flat_document_effect(operation.effect)) {
+      if (flat.has(binding.name) || batch.length || ordinary.some(item => item.library === binding.name)) throw incompatible_graph();
+      flat.set(binding.name, validate_flat_document_effect(operation.effect));
+      continue;
+    }
+    if (flat.has(binding.name)) throw incompatible_graph();
     batch.push(operation.effect);
     effects.set(binding.name, batch);
   }
@@ -713,14 +742,23 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
   }, registry, bindings);
   let ordinaryIndex = 0;
   const ordinals = new Map<string, number>();
-  return Object.freeze(input.operations.map(operation => {
-    if (operation.domain !== "document") return decoded[ordinaryIndex++]!;
+  return Object.freeze(input.operations.flatMap((operation): (DecodedHostedOperation & { scoped?: DocumentScopedEffect; flat?: DocumentFlatEffect })[] => {
+    if (operation.domain !== "document") return [decoded[ordinaryIndex++]!];
+    const flatEffect = flat.get(operation.library);
+    if (flatEffect !== undefined) {
+      const library = bindings.get(operation.library)!;
+      const css: import("../../types/livemap.types.js").LiveMapCssOp = { domain: "css", kind: "replace", stylesheet: flatEffect.css };
+      return [...flatEffect.graphs.map(payload => {
+        const graph = decode_scoped_effect_graph_operation(payload);
+        return { library, semantic: graph, graph };
+      }), { library, semantic: css, css, flat: flatEffect }];
+    }
     const ordinal = ordinals.get(operation.library) ?? 0;
     ordinals.set(operation.library, ordinal + 1);
     const scoped = validated.get(operation.library)![ordinal]!;
     const effectOperation = decode_document_scoped_operation(scoped.graph);
-    return Object.freeze({ library: bindings.get(operation.library)!, semantic: effectOperation,
-      ...(effectOperation.domain === "css" ? { css: effectOperation } : { graph: effectOperation }), scoped });
+    return [Object.freeze({ library: bindings.get(operation.library)!, semantic: effectOperation,
+      ...(effectOperation.domain === "css" ? { css: effectOperation } : { graph: effectOperation }), scoped })];
   }));
 }
 

@@ -1,6 +1,9 @@
+import { prepare_portable_native_handoff } from "./continuation.portable.js";
+import { capture_startup_dom } from "./continuation.startup-dom.js";
+import type { ReceivingDocumentHandoff, ReceivingDocumentHandoffOwner } from "../livemap/livemap.internal.js";
 import type { HsonData } from "../transform/transform.types.js";
 import type { HsonNode } from "../../core/types.js";
-import { prepare_echo_replica_internal } from "../echo/echo.replica-preparation.js";
+import { echo_receiving_document_handoff_internal, prepare_echo_replica_internal } from "../echo/echo.replica-preparation.js";
 import { echo_document_authority_for } from "../echo/echo.document-authority.js";
 import { admit_authority_projection_snapshot, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
@@ -22,6 +25,14 @@ import {
 import { DocumentContinuationError } from "./continuation.error.js";
 import type { HostedDocumentContinuation } from "./continuation.types.js";
 import type { HostedContinuationOptions } from "./continue-hosted-document.lazy.js";
+
+type HostedStartupPoint = "adopted" | "native" | "mirror" | "recovered" | "publish";
+let startupFaultHook: ((point: HostedStartupPoint, echo: ReturnType<typeof prepare_echo_replica_internal>["echo"]) => void) | undefined;
+
+/** @internal Deterministic startup fault seam; not a package export. */
+export function set_hosted_startup_fault_hook_for_tests(hook: typeof startupFaultHook): void {
+  startupFaultHook = hook;
+}
 
 export async function continue_hosted_document(options: HostedContinuationOptions): Promise<HostedDocumentContinuation> {
   return continue_hosted_document_internal(options);
@@ -59,10 +70,10 @@ export function prepare_hosted_document_internal(options: HostedContinuationOpti
     if (resolved.aggregate === undefined) {
       throw new TypeError("Hosted continuation requires a projected library registry.");
     }
-    const snapshot = admit_authority_projection_snapshot(options.now.libs);
+    const snapshot = admit_authority_projection_snapshot(options.now.libs, true);
     const aggregate = internal_livemap_aggregate_authority(resolved.aggregate);
     const projection = aggregate.clientProjection();
-    const current = aggregate.captureSelectedHosted(snapshot.libraries.map((entry) => entry.name), false);
+    const current = aggregate.captureSelectedHosted(snapshot.libraries.map((entry) => entry.name), false, true);
     const currentLibraries = new Map(current.libraries.map((entry) => [entry.name, entry]));
     const selectedName = continuation_document_library_name(resolved.aggregate, resolved.selected);
     if (projection === undefined
@@ -77,6 +88,9 @@ export function prepare_hosted_document_internal(options: HostedContinuationOpti
     if (echo_document_authority_for(resolved.selected) === undefined) {
       throw new Error("Selected document is not governed by the supplied Echo replica.");
     }
+    const handoffOwner = echo_receiving_document_handoff_internal(echo);
+    const handoff = handoffOwner.prepare(selectedName);
+    handoffOwner.assert(handoff, selectedName);
     const revision = resolved.selected.rev;
     const canonicalRoot = capture_continuation_document_root(resolved.selected);
     const root = options.root;
@@ -88,7 +102,7 @@ export function prepare_hosted_document_internal(options: HostedContinuationOpti
         state = "starting";
         try {
           const continuation = await start_hosted_document({
-            prepared: replica, resolved, revision, canonicalRoot, root, interactions, releaseRoot,
+            prepared: replica, resolved, revision, canonicalRoot, root, interactions, releaseRoot, handoffOwner, handoff,
           });
           state = "started";
           return continuation;
@@ -120,21 +134,40 @@ type HostedStart = Readonly<{
   root: Element;
   interactions: HostedContinuationOptions["interactions"];
   releaseRoot: () => void;
+  handoffOwner: ReceivingDocumentHandoffOwner;
+  handoff: ReceivingDocumentHandoff;
 }>;
 
 async function start_hosted_document(context: HostedStart): Promise<HostedDocumentContinuation> {
-  const { prepared, resolved, revision, canonicalRoot, root, interactions, releaseRoot } = context;
+  const { prepared, resolved, revision, canonicalRoot, root, interactions, releaseRoot, handoffOwner, handoff } = context;
   const echo = prepared.echo;
   let adoption: ExactDocumentAdoption | undefined;
   let reflect: ReturnType<typeof reflect_existing_document_in_runtime> | undefined;
   let disposeInteractions: (() => void) | undefined;
   let disposeCssBinding: (() => void) | undefined;
+  let nativeHandoff: ReturnType<typeof prepare_portable_native_handoff> | undefined;
+  let restoreDom: (() => void) | undefined;
   try {
+    restoreDom = capture_startup_dom(root);
+    const assertHandoff = (): void => handoffOwner.assert(handoff, handoff.libraryName);
     try {
-      adoption = adopt_exact_existing_document(canonicalRoot, root, resolved.selected.css.snapshot());
+      assertHandoff();
+      adoption = adopt_exact_existing_document(canonicalRoot, root, handoff.portableCss, { quads: handoff.quads });
+      startupFaultHook?.("adopted", echo);
+      assertHandoff();
       if (resolved.selected.rev !== revision) {
         throw new Error("Canonical document revision changed during exact DOM adoption.");
       }
+    } catch (cause) {
+      throw new DocumentContinuationError("adopt", cause);
+    }
+    try {
+      nativeHandoff = prepare_portable_native_handoff(adoption, {
+        portableCss: handoff.portableCss, receivingCss: handoff.receivingCss, assertCurrent: assertHandoff,
+      });
+      nativeHandoff.apply();
+      startupFaultHook?.("native", echo);
+      assertHandoff();
     } catch (cause) {
       throw new DocumentContinuationError("adopt", cause);
     }
@@ -150,6 +183,20 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
     } catch (cause) {
       throw new DocumentContinuationError("mirror", cause);
     }
+    // Consume authenticated admission synchronously, before attachment can replay
+    // newer authority. The existing Mirror and CSS binding own later revisions.
+    assertHandoff();
+    try {
+      disposeCssBinding = bind_document_css_tree(reflect.tree, resolved.selected,
+        adoption.managedStyle, true, () => reflect!.tree);
+    } catch (cause) {
+      throw new DocumentContinuationError("adopt", cause);
+    }
+    assertHandoff();
+    startupFaultHook?.("mirror", echo);
+    assertHandoff();
+    nativeHandoff.finish();
+    handoffOwner.release();
     try {
       await prepared.attach();
       await prepared.complete();
@@ -167,6 +214,7 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
     } catch (cause) {
       throw new DocumentContinuationError("mirror", cause);
     }
+    startupFaultHook?.("recovered", echo);
     if (interactions !== undefined) {
       try {
         const dispatch = async (actionKey: string, payload: HsonData): Promise<void> => {
@@ -194,13 +242,6 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
         throw new DocumentContinuationError("interactions", cause);
       }
     }
-    try {
-      disposeCssBinding = bind_document_css_tree(reflect.tree, resolved.selected,
-        adoption.managedStyle, true, () => reflect!.tree);
-    } catch (cause) {
-      throw new DocumentContinuationError("adopt", cause);
-    }
-    adoption.commit(() => reflect!.tree);
     let disposed = false;
     const selected = echo.lib(continuation_document_library_name(resolved.aggregate, resolved.selected));
     if (selected.mode !== "document" || selected.source !== "authority-projected") {
@@ -222,17 +263,29 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
         if (failure !== undefined) throw failure;
       },
     });
-    schedule_continuation_runtime_activation(adoption.activateRuntimeManagers, "promise-resolution");
+    startupFaultHook?.("publish", echo);
+    let published = false;
+    schedule_continuation_runtime_activation(() => { if (published) adoption!.activateRuntimeManagers(); }, "promise-resolution");
     activate_continuation_root(root);
+    adoption.commit(() => reflect!.tree);
+    published = true;
+    restoreDom = undefined;
+    nativeHandoff = undefined;
     return result;
   } catch (cause) {
-    try { disposeInteractions?.(); } catch { /* Preserve construction failure. */ }
-    try { disposeCssBinding?.(); } catch { /* Preserve construction failure. */ }
-    try { reflect?.dispose(); } catch { /* Preserve construction failure. */ }
-    try { adoption?.abort(reflect?.tree); } catch { /* Preserve construction failure. */ }
+    const failures: unknown[] = [];
+    try { disposeInteractions?.(); } catch (failure) { failures.push(failure); }
+    try { disposeCssBinding?.(); } catch (failure) { failures.push(failure); }
+    try { reflect?.dispose(); } catch (failure) { failures.push(failure); }
+    try { adoption?.abort(reflect?.tree); } catch (failure) { failures.push(failure); }
+    try { await prepared.detach(); } catch (failure) { failures.push(failure); }
+    try { echo.dispose(); } catch (failure) { failures.push(failure); }
+    handoffOwner.release();
+    try { nativeHandoff?.rollback(); } catch (failure) { failures.push(failure); }
+    try { restoreDom?.(); } catch (failure) { failures.push(failure); }
+    try { nativeHandoff?.finish(); } catch (failure) { failures.push(failure); }
     releaseRoot();
-    try { await prepared.detach(); } catch { /* Preserve construction failure. */ }
-    echo.dispose();
+    if (failures.length) throw new AggregateError([cause, ...failures], "Hosted continuation rollback failed.");
     throw cause;
   }
 }

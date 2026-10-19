@@ -149,9 +149,9 @@ try {
   let recoveryRejected = false;
   try { await continue_hosted_document({ now: state.quadHostedCut, credential: state.quadCredential,
     transport: failingTransport, document: "page", root: quadRoot }); }
-  catch (error) { recoveryRejected = error.phase === "mirror" || error.phase === "recover"; }
+  catch (error) { recoveryRejected = error.phase === "adopt" && error.cause?.message === "root identity native fault"; }
   delete quadRoot.setAttribute; failingTransport.dispose();
-  check("failed root rebase rolls back native state and bindings", recoveryRejected
+  check("failed native identity handoff rolls back native state and bindings", recoveryRejected
     && quadRoot.getAttribute("data-stale-recovered") === null && quadRoot.getAttribute("hson:quid") === null
     && quadRoot.querySelector("#hosted-quad") === initialQuadButton && get_node_for_el(quadRoot) === undefined);
   const quadTransport = hsonLiveMap.echo.transport.websocket({ url: state.quadSocketUrl });

@@ -1,3 +1,4 @@
+import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { inspect_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import type { HsonNode } from "../../core/types.js";
 import { clone_livemap_document_exact_view, livemap_document_identity_overlay_for } from "../livemap/livemap.document.identity.js";
@@ -33,8 +34,8 @@ export function continuation_document_library_name(
   map: LiveMap,
   selected: LiveMapDocumentLibrary,
 ): string {
-  for (const entry of map.capture().libraries) {
-    if (entry.mode === "document" && map.lib(entry.name) === selected) return entry.name;
+  for (const entry of internal_livemap_aggregate_authority(map).hostedRegistry().libraries) {
+    if (entry.scope === undefined && entry.mode === "document" && map.lib(entry.name) === selected) return entry.name;
   }
   throw new Error("Continuation document is not in the fixed Library registry.");
 }

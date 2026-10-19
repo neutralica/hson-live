@@ -16,6 +16,7 @@ const browser = new Set([
   "test:stylesheet-ingress-browser",
   "test:echo-http-browser",
   "test:echo-receiving-handoff-browser",
+  "test:hosted-continuation-browser",
 ]);
 const network = new Set(["test:livehost-node-http2", "test:livehost-node-hosting", "test:echo-http", "test:echo-http2", "test:echo-http-completion", "test:echo-http-redirect"]);
 const environmentDependent = new Set([...browser, ...network]);

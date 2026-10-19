@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { hsonLiveMap } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
@@ -12,14 +14,14 @@ import { document_css_subject_identities } from "../../src/internal/css/css-iden
 import { assert_subject_free_portable_css_operation } from "../../src/internal/css/portable-document-operations.ts";
 import { create_persistent_locus_hosted_aggregate_internal as host, load_persistent_locus_hosted_aggregate_internal as load,
   write_semantic_checkpoint, durable_aggregate_commit,
-  type LocusHostedAggregatePersistedCommit } from "../../src/api/locus/locus.aggregate.persistence.ts";
+  } from "../../src/api/locus/locus.aggregate.persistence.ts";
 import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
 import { create_locus_hosted_aggregate_authority_internal } from "../../src/api/locus/locus.aggregate.authority.ts";
 import { create_echo_aggregate_client_internal } from "../../src/api/echo/echo.aggregate-replica.ts";
 import { bind_locus_websocket } from "../../src/api/locus/locus.websocket.ts";
 import { test_echo_transport } from "../helpers/echo-websocket-transport.mts";
 import type { LocusWebSocketLike } from "../../src/index.ts";
-import { decode_portable_aggregate_commit, decode_hosted_root, make_portable_aggregate_commit, type HostedAggregateCommit } from "../../src/api/livemap/livemap.hosted.ts";
+import { encode_authoritative_scoped_commit, decode_portable_aggregate_commit, decode_hosted_root, make_portable_aggregate_commit, type HostedAggregateCommit } from "../../src/api/livemap/livemap.hosted.ts";
 import type { LiveMap } from "../../src/types/livemap.types.ts";
 
 const selector = (quid: string) => `[hson\\:quid="${quid}"]`;
@@ -285,131 +287,57 @@ export async function document_css_subject_cases(check: (name: string, run: () =
       assert.equal(adapter.chunks.size, count);
     } finally { restored.dispose(); }
   });
-  await check("hosted incremental subject CSS is rejected before durable append while full recovery remains portable", async () => {
-    const map = fixture(), adapter = new MemoryCheckpointAdapter();
-    owner(map).restorePortableLibraries({ ...map.capture(), revision: 0 });
-    const locus = await host({ map, persistence: adapter, logicalMapId: "css-subject-host", incarnationId: "run" });
-    try {
-      const before = map.capture(), appends = adapter.appendCalls.length;
-      await assert.rejects(() => locus.stage(draft => {
-        const selected = draft.lib("page"); if (selected.mode !== "document") throw Error("document");
-        selected.attrs.set(target(0, 0, 0), "title", "unsupported");
-      }), /incremental subject-owned CSS/);
-      assert.deepEqual(map.capture(), before); assert.equal(adapter.appendCalls.length, appends);
-      const css = { domain: "css" as const, kind: "replace" as const, stylesheet: before.libraries[0]!.css! };
-      assert.throws(() => assert_subject_free_portable_css_operation(css), /incremental subject-owned CSS/);
-      assert.throws(() => assert_subject_free_portable_css_operation({ ...css, stylesheet: parse_document_stylesheet(`${selector("123456789")}{color:red}`, []) }));
-    } finally { locus.dispose(); }
-    const local = fixture(), aggregate = owner(local);
-    let hosted: HostedAggregateCommit | undefined;
-    const stop = aggregate.observe(commit => { hosted = commit.hosted; });
-    try { local.batch(draft => draft.lib("page").css.stylesheet(`${selector("123456789")}{color:green}`)); } finally { stop(); }
-    const captured = hosted; assert.ok(captured);
-    assert.throws(() => make_portable_aggregate_commit(captured), /incremental subject-owned CSS/);
-    const initial = hsonLiveMap.create(), receiving = owner(initial), manager = {}, entry = local.capture().libraries[0]!;
-    receiving.claimManagement(manager);
-    try {
-      atomic(initial, () => receiving.prepareAddLibrariesManaged(manager, [{ name: "added", family: "document",
-        root: decode_hosted_root(entry.root), quads: entry.quads,
-        hsonSchema: aggregate.librarySchema(aggregate.libraries()[0]!), css: decode_portable_document_stylesheet(entry.css) }]));
-    } finally { receiving.releaseManagement(manager); }
-  });
-  await check("durable replay enforces the live subject-CSS incremental boundary without rejecting identity-free tails or full checkpoints", async () => {
-    for (const styled of [false, true]) {
-      const map = authored({ page: { document: '<main <button @:authored/>/>' } }), aggregate = owner(map);
-      if (styled) page(map).css.stylesheet(`${selector(lookup(page(map), "authored")!.quid)}{color:red}`);
-      else page(map).css.stylesheet('::part(hson\\:quid){color:red}.hson\\:quid{color:red}:future(foo){color:blue}');
-      aggregate.restorePortableLibraries({ ...map.capture(), revision: 0 });
-      const logicalMapId = `css-subject-tail-${styled}`, adapter = new MemoryCheckpointAdapter();
-      aggregate.setInitialHostedAuthority({ logicalMapId, incarnationId: "run" });
-      await write_semantic_checkpoint(aggregate.captureSemanticCheckpoint(), adapter);
-      const initial = map.capture(), sender = lookup(page(map), "authored")!.quid;
-      const restored = await load(logicalMapId, { persistence: adapter }); assert.ok(restored);
-      try {
-        assert.notEqual(lookup(page(restored.map), "authored")!.quid, sender);
-        if (styled) assertCurrentCss(restored.map);
-      } finally { restored.dispose(); }
+  await check("hosted flat correspondence survives durable append, tail restoration and fresh receiver issuance", async () => {
+    for (const named of [false, true]) {
+      const map = named ? authored({ page: { document: '<main <button @:authored/> <aside/> <span/>/>' } }) : fixture();
+      if (named) page(map).css.stylesheet(`${selector(lookup(page(map), "authored")!.quid)}{color:red}`);
+      owner(map).restorePortableLibraries({ ...map.capture(), revision: 0 });
+      const initial = map.capture(), sender = assertCurrentCss(map)[0]!, adapter = new MemoryCheckpointAdapter();
+      const logicalMapId = `flat-tail-${named}`;
+      const locus = await host({ map, persistence: adapter, logicalMapId, incarnationId: "run" });
       let hosted: HostedAggregateCommit | undefined;
-      const stop = aggregate.observe(commit => { hosted = commit.hosted; });
-      // This local edit is semantically valid. Its hosted incremental transport
-      // is unsupported when the affected Library already owns subject CSS.
-      try { page(map).document.attrs.set(target(0, 0, 0), "title", "safe-local-edit"); } finally { stop(); }
-      assert.ok(hosted);
-      const portable = make_portable_aggregate_commit(hosted); assert.ok(portable);
-      const receiver = install_libraries_snapshot(initial).map, receiving = owner(receiver);
-      receiving.setInitialHostedAuthority({ logicalMapId, incarnationId: "run" });
-      if (styled) {
-        for (const replay of [() => receiving.replayDurableHosted(portable), () => receiving.replayClientHosted(portable)]) {
-          atomic(receiver, replay, /Hosted incremental subject-owned CSS.*unsupported/);
-        }
-      } else {
-        receiving.replayDurableHosted(portable);
-        assert.equal(page(receiver).document.attrs.get(target(0, 0, 0), "title"), "safe-local-edit");
-      }
-      // Seed a fully fenced canonical tail, without going through live managed
-      // authoring. The loader must apply the same support boundary in scratch state.
-      await adapter.appendCommit(durable_aggregate_commit(hosted));
-      const stored = adapter.state(logicalMapId), appends = adapter.appendCalls.length;
-      if (styled) {
-        let recovered: unknown;
-        const unsupportedTail = (error: unknown) => error instanceof Error && "code" in error && error.code === "LOCUS_PERSISTED_STATE_INVALID"
-          && error.cause instanceof Error && /Hosted incremental subject-owned CSS.*unsupported/.test(error.cause.message);
-        await assert.rejects(async () => { recovered = await load(logicalMapId, { persistence: adapter }); },
-          unsupportedTail);
-        assert.equal(recovered, undefined);
-        const chunks = adapter.chunks.size, manifests = adapter.checkpointCalls.length;
-        await assert.rejects(() => write_semantic_checkpoint(aggregate.captureSemanticCheckpoint(), adapter), unsupportedTail);
-        assert.equal(adapter.chunks.size, chunks); assert.equal(adapter.checkpointCalls.length, manifests);
-      } else {
-        const recovered = await load(logicalMapId, { persistence: adapter }); assert.ok(recovered);
-        try {
-          assert.equal(page(recovered.map).document.attrs.get(target(0, 0, 0), "title"), "safe-local-edit");
-          assert.notEqual(lookup(page(recovered.map), "authored")!.quid, sender);
-        } finally { recovered.dispose(); }
-      }
-      assert.deepEqual(adapter.state(logicalMapId), stored); assert.equal(adapter.appendCalls.length, appends);
-      // A complete checkpoint of the same final state is supported separately;
-      // the refused history above is never discarded or rewritten to recover it.
-      const completeAdapter = styled ? new MemoryCheckpointAdapter() : adapter;
-      await write_semantic_checkpoint(aggregate.captureSemanticCheckpoint(), completeAdapter);
-      const complete = await load(logicalMapId, { persistence: completeAdapter }); assert.ok(complete);
+      const stop = owner(map).observe(commit => { hosted = commit.hosted; });
       try {
-        assert.equal(page(complete.map).document.attrs.get(target(0, 0, 0), "title"), "safe-local-edit");
-        assert.notEqual(lookup(page(complete.map), "authored")!.quid, sender);
-        if (styled) { assertCurrentCss(complete.map); assertCurrentCss(install_libraries_snapshot(complete.map.capture()).map); }
-      } finally { complete.dispose(); }
+        await locus.stage(draft => { const selected = draft.lib("page"); if (selected.mode !== "document") throw Error("document"); selected.attrs.set(target(0,0,0), "title", "accepted"); });
+        assert.ok(hosted); assert.equal(locus.rev, 1); assert.equal(adapter.appendCalls.length, 1);
+        const portable = encode_authoritative_scoped_commit(hosted);
+        assert.equal(JSON.stringify(portable).includes(sender), false);
+        const receiver = install_libraries_snapshot(initial).map, receiving = owner(receiver);
+        receiving.setInitialHostedAuthority({ logicalMapId, incarnationId: "run" });
+        const receivingId = assertCurrentCss(receiver)[0]!;
+        assert.notEqual(receivingId, sender);
+        receiving.replayDurableHosted(portable);
+        assert.equal(page(receiver).document.attrs.get(target(0,0,0), "title"), "accepted");
+        assert.equal(assertCurrentCss(receiver)[0], receivingId);
+        atomic(receiver, () => receiving.replayDurableHosted(portable));
+        const child = spawnSync(globalThis.process.execPath, ["--import=tsx", fileURLToPath(new URL("./flat-correspondence-restart.mts", import.meta.url))], {
+          input: JSON.stringify({ logicalMapId, sender, states: [...adapter.states], chunks: [...adapter.chunks], manifests: [...adapter.manifests] }), encoding: "utf8", timeout: 30000,
+        });
+        assert.equal(child.status, 0, child.stderr); assert.equal(child.stdout, "fresh flat tail restored");
+        const restored = await load(logicalMapId, { persistence: adapter }); assert.ok(restored);
+        try {
+          assert.equal(page(restored.map).document.attrs.get(target(0,0,0), "title"), "accepted");
+          assert.notEqual(assertCurrentCss(restored.map)[0], sender);
+          await restored.checkpoint();
+        } finally { restored.dispose(); }
+      } finally { stop(); locus.dispose(); }
     }
   });
-  await check("durable topology replay rejects subject-CSS additions while ordinary local topology remains supported", async () => {
-    const entry = fixture().capture().libraries[0]!, map = hsonLiveMap.create(), aggregate = owner(map);
-    const logicalMapId = "css-subject-topology-tail", adapter = new MemoryCheckpointAdapter();
+  await check("flat subject CSS topology uses complete existing graph correspondence through durable restoration", async () => {
+    const source = fixture(), entry = source.capture().libraries[0]!;
+    const map = hsonLiveMap.create(), aggregate = owner(map), adapter = new MemoryCheckpointAdapter();
+    const logicalMapId = "flat-topology";
     aggregate.setInitialHostedAuthority({ logicalMapId, incarnationId: "run" });
     await write_semantic_checkpoint(aggregate.captureSemanticCheckpoint(), adapter);
     let hosted: HostedAggregateCommit | undefined;
     const stop = aggregate.observe(commit => { hosted = commit.hosted; });
-    try {
-      map.replay({ kind: "map", changed: true, prevRev: 0, rev: 1, operations: [{ library: "page", operation: {
-        kind: "library-add", libraries: [{ name: "page", mode: "document", schema: entry.schema, root: entry.root,
-          quads: entry.quads, css: entry.css }],
-      } }] });
-    } finally { stop(); }
-    const captured = hosted;
-    assertCurrentCss(map); assert.ok(captured?.topology); assert.ok(captured.previousRegistryDigest);
-    assert.throws(() => durable_aggregate_commit(captured, [{ name: "page", ownership: "shared" }]), /incremental subject-owned CSS/);
-    // Model an externally supplied, structurally fenced tail bypassing the writer.
-    const record: LocusHostedAggregatePersistedCommit = {
-      format: "hson-locus-durable-aggregate-record", logicalMapId, incarnationId: "run", mapKind: "hosted-aggregate",
-      registryDigest: captured.registryDigest, locus: { libraryOwnershipAdded: [{ name: "page", ownership: "shared" }] },
-      commit: { format: "hson-livemap-durable-commit", authority: captured.authority,
-        previousRegistryDigest: captured.previousRegistryDigest, registryDigest: captured.registryDigest,
-        prevRev: captured.prevRev, rev: captured.rev, topology: captured.topology, operations: [] },
-    };
-    await adapter.appendCommit(record);
-    const stored = adapter.state(logicalMapId);
-    await assert.rejects(() => load(logicalMapId, { persistence: adapter }), (error: unknown) => error instanceof Error
-      && "code" in error && error.code === "LOCUS_PERSISTED_STATE_INVALID" && error.cause instanceof Error
-      && /Portable incremental subject-owned CSS.*unsupported/.test(error.cause.message));
-    assert.deepEqual(adapter.state(logicalMapId), stored);
+    try { map.replay({ kind: "map", changed: true, prevRev: 0, rev: 1, operations: [{ library: "page", operation: {
+      kind: "library-add", libraries: [{ name: "page", mode: "document", schema: entry.schema, root: entry.root, quads: entry.quads, css: entry.css }],
+    } }] }); } finally { stop(); }
+    assert.ok(hosted); await adapter.appendCommit(durable_aggregate_commit(hosted, [{ name: "page", ownership: "shared" }]));
+    const restored = await load(logicalMapId, { persistence: adapter }); assert.ok(restored);
+    try { assertCurrentCss(restored.map); assert.equal(owner(restored.map).documentScopes(owner(restored.map).libraries()[0]!), undefined); }
+    finally { restored.dispose(); }
   });
   await check("actual Echo full recovery and contraction rebind selected CSS without disclosing private Libraries", async () => {
     const map = fixture(); map.addLibraries({ extra: { document: '<aside/>' }, hidden: { data: { PRIVATE_PART_SENTINEL: true } } });

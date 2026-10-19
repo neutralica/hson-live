@@ -35,36 +35,11 @@ export function prepare_locus_scoped_commit_internal(map: LiveMap,
     aggregate.assertPrepared(transition);
     return encoded;
   }
-  const indices = commit.replay.operations.flatMap((entry, index) => entry.scoped === undefined ? [index] : []);
-  const ordinary = Object.freeze({ ...commit,
-    operations: Object.freeze(indices.map(index => commit.operations[index]!)),
-    replay: Object.freeze({ operations: Object.freeze(indices.map(index => commit.replay.operations[index]!)) }),
-  });
-  // Existing feature grants and interaction filtering remain authoritative.
-  const ordinaryProjection = project_locus_live_transition_internal(ordinary, effective,
+  const projected = project_locus_live_transition_internal(commit, effective,
     aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) === undefined ? undefined : aggregate.systemRoot(aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!),
     aggregate.preparedSystemRoot(transition));
-  const ordinaryOperations = ordinaryProjection.kind === "commit" ? ordinaryProjection.commit.operations : [];
-  const operations: LocusPreparedScopedOperation[] = [];
-  let ordinaryIndex = 0;
-  for (let index = 0; index < commit.replay.operations.length; index++) {
-    const entry = commit.replay.operations[index]!;
-    if (entry.scoped !== undefined) {
-      if (effective.includesLibrary(entry.library)) {
-        operations.push(Object.freeze({ library: entry.library, domain: "document", effect: entry.scoped }));
-      }
-    } else {
-      const semantic = commit.operations[index]!.operation;
-      if ("domain" in semantic && semantic.domain === "graph" && semantic.op === "ensure-quid") continue;
-      if (entry.library === INTERACTION_RESERVED_LIBRARY_KEY || !effective.includesLibrary(entry.library)) continue;
-      const operation = ordinaryOperations[ordinaryIndex++];
-      if (operation === undefined || operation.library !== entry.library) throw new Error("Incomplete projected operation order.");
-      operations.push(operation);
-    }
-  }
-  operations.push(...ordinaryOperations.slice(ordinaryIndex));
+  const operations = projected.kind === "commit" ? projected.commit.operations : [];
   aggregate.assertPrepared(transition);
-  return Object.freeze({ authority: commit.authority,
-    registryDigest: projected_registry_digest(effective),
+  return Object.freeze({ authority: commit.authority, registryDigest: projected_registry_digest(effective),
     prevRev: commit.prevRev, rev: commit.rev, operationCount: operations.length, operations: Object.freeze(operations) });
 }

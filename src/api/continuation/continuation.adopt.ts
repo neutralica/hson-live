@@ -172,8 +172,9 @@ function cleanup_new_adoption(
   runtime: LiveTreeRuntime,
   claim: SilentRuntimeDocumentClaim,
 ): void {
-  for (const node of [...linkedNodes].reverse()) unlinkNode(node);
-  for (const node of collect_subtree_nodes(root, "post")) {
+  const nodes = [...new Set([...linkedNodes, ...collect_subtree_nodes(root, "post")])];
+  for (const node of [...nodes].reverse()) unlinkNode(node);
+  for (const node of nodes) {
     const quid = runtime.nodeToQuid.get(node);
     if (quid !== undefined) {
       if (runtime.quidToNode.get(quid) === node) runtime.quidToNode.delete(quid);
@@ -181,7 +182,7 @@ function cleanup_new_adoption(
       runtime.issuedQuids.delete(quid);
     }
   }
-  release_nodes_runtime(collect_subtree_nodes(root, "post"), runtime);
+  release_nodes_runtime(nodes, runtime);
   release_subtree_ownership(root);
   claim.rollback();
 }
@@ -290,11 +291,16 @@ export function adopt_exact_existing_document(
       if (managedStyle !== undefined) unmark_runtime_infrastructure(managedStyle);
       const currentRoot = subject_for_tree(currentTree);
       const currentNodes = collect_subtree_nodes(currentRoot, "post");
+      const failures: unknown[] = [];
       for (const node of currentNodes) {
-        const element = get_el_for_node(node), quid = runtime.nodeToQuid.get(node);
-        if (quid !== undefined && element?.getAttribute("hson:quid") === quid) element.removeAttribute("hson:quid");
+        try {
+          const element = get_el_for_node(node), quid = runtime.nodeToQuid.get(node);
+          if (quid !== undefined && element?.getAttribute("hson:quid") === quid) element.removeAttribute("hson:quid");
+        } catch (cause) { failures.push(cause); }
       }
-      cleanup_new_adoption(currentRoot, [...linkedNodes, ...currentNodes], runtime, claim);
+      try { cleanup_new_adoption(currentRoot, [...linkedNodes, ...currentNodes], runtime, claim); }
+      catch (cause) { failures.push(cause); }
+      if (failures.length) throw new AggregateError(failures, "Exact document adoption cleanup failed.");
     },
     activateRuntimeManagers(): void {
       claim.activate();

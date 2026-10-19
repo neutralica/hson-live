@@ -56,7 +56,7 @@ export async function h0a_tail_fixture() {
     assert.equal(state.commits.length, 6);
     for (const tail of state.commits) {
       const pageEffects = tail.commit.operations.filter(op => op.library === "page" && op.domain === "document");
-      assert.deepEqual(pageEffects.map(op => op.domain === "document" ? op.effect.ordinal : -1), pageEffects.map((_, i) => i));
+      assert.deepEqual(pageEffects.map(op => op.domain === "document" && "ordinal" in op.effect ? op.effect.ordinal : -1), pageEffects.map((_, i) => i));
     }
     const encoded = JSON.stringify(state.commits);
     for (const quid of sourceIds) assert.ok(!encoded.includes(quid));

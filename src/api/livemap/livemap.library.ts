@@ -40,6 +40,7 @@ export type LiveMapAggregateOperation = Readonly<{
   target: LiveMapAuthorityTarget;
   /** Complete operation-local scoped effects; never graph semantics. @internal */
   scoped?: import("./livemap.document.scoped-effects.js").DocumentScopedEffect;
+  flat?: import("./livemap.document.flat-effects.js").DocumentFlatEffect;
   operation: LiveMapAnyOp | LiveMapCssOp;
   /** Carrier-native evidence for exact data transport. @internal */
   projected?: LiveMapProjectedDataOp;

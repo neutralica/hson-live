@@ -315,19 +315,21 @@ export function create_lazy_replica_echo_internal<
     actionStatus: echo.actionStatus,
     dispose(): void {
       if (disposed) return;
-      disconnectReplica();
       disposed = true;
       shellStatus = "disposed";
-      if (strategy === undefined) management.release();
-      else strategy.dispose();
+      const failures: unknown[] = [];
+      const clean = (run: () => void): void => { try { run(); } catch (cause) { failures.push(cause); } };
+      clean(disconnectReplica);
+      clean(() => { if (strategy === undefined) management.release(); else strategy.dispose(); });
       for (const deferred of deferredDocumentAuthorities) {
-        unregister_echo_document_authority(deferred.map, deferred.authority);
-        deferred.dispose();
+        clean(() => unregister_echo_document_authority(deferred.map, deferred.authority));
+        clean(deferred.dispose);
       }
-      stopShellConnection();
-      stopHandoffLoss();
-      stopHandoffStatus();
-      echo.dispose();
+      clean(stopShellConnection);
+      clean(stopHandoffLoss);
+      clean(stopHandoffStatus);
+      clean(echo.dispose);
+      if (failures.length) throw new AggregateError(failures, "Echo replica disposal failed.");
     },
   };
   const governedEcho = Object.freeze(publicEcho) as unknown as Echo<TMap, TActions>;
