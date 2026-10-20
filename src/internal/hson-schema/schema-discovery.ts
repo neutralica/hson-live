@@ -44,7 +44,7 @@ export function discover_hson_schema_declarations(
     const tagged = typescript.isTaggedTemplateExpression(declaration.initializer) ? declaration.initializer : undefined;
     if (tagged === undefined || !typescript.isPropertyAccessExpression(tagged.tag) || tagged.tag.name.text !== "schema"
       || !typescript.isIdentifier(tagged.tag.expression)
-      || !is_official_hson_package_binding(tagged.tag.expression, "Hson", checker, true)) continue;
+      || !is_official_hson_package_binding(tagged.tag.expression, "Hson", checker, true, typescript)) continue;
     const ambiguous = (counts.get(declaration.name.text) ?? 0) > 1;
     const complete = typescript.isNoSubstitutionTemplateLiteral(tagged.template) && !tagged.template.isUnterminated;
     let source: string | undefined;

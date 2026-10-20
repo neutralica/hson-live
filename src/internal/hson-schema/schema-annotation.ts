@@ -33,7 +33,7 @@ export function resolve_hson_schema_annotation(
     const { node, parameters } = current;
     if (typescript.isIdentifier(node.typeName)) {
       for (const [name, kind] of [["HsonData", "data"], ["HsonDocument", "document"], ["HsonFromSchema", "hson"], ["JsonFromSchema", "projected"]] as const) {
-        if (!is_official_hson_package_binding(node.typeName, name, checker, true)) continue;
+        if (!is_official_hson_package_binding(node.typeName, name, checker, true, typescript)) continue;
         // Bare HsonData/HsonDocument intentionally request no Schema proof.
         if (node.typeArguments?.length !== 1) return undefined;
         const argument = node.typeArguments[0];

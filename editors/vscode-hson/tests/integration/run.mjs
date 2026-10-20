@@ -56,10 +56,15 @@ await writeFile(join(workspaceDir, "static-syntax.ts"), 'import { hsonTransform 
 await writeFile(join(workspaceDir, "schema-symbols.ts"), 'import { Hson } from "hson-live";\nexport const SymbolSchema = Hson.schema`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>`;\nconst ordinary = "Age";\n');
 await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.ts"), "export {};\n");
 await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.json"), "{}\n");
+// Keep opened fixtures inside the isolated workspace: parent projects in the
+// developer checkout must not enter the server when the suite restarts it.
+for (const name of ["diagnostics-alias.ts", "diagnostics-smoke.ts"]) {
+  await writeFile(join(workspaceDir, name), await readFile(resolve(here, "../fixtures", name)));
+}
 const declarativeFixture = resolve(here, "../fixtures/declarative-schema");
 const declarativeWorkspace = join(workspaceDir, "declarative-schema");
 await mkdir(declarativeWorkspace);
-for (const name of ["schema.ts", "schema.UserSchema.hson-schema.generated.ts", "schema.UserSchema.hson-schema.generated.json", "candidate.ts"]) {
+for (const name of ["schema.ts", "candidate.ts"]) {
   await writeFile(join(declarativeWorkspace, name), await readFile(join(declarativeFixture, name)));
 }
 await writeFile(join(declarativeWorkspace, "tsconfig.json"), JSON.stringify({
@@ -70,6 +75,7 @@ await writeFile(join(declarativeWorkspace, "tsconfig.json"), JSON.stringify({
     strict: true,
     exactOptionalPropertyTypes: true,
     noUncheckedIndexedAccess: true,
+    noPropertyAccessFromIndexSignature: true,
     noEmit: true,
     baseUrl: ".",
     paths: {

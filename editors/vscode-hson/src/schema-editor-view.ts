@@ -109,9 +109,9 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
           }
         }
       }
-      const attachments = library_schema_attachment_plan(source, checker, schemaFacts);
+      const attachments = library_schema_attachment_plan(source, checker, schemaFacts, typescript);
       if (schemas.length === 0 && attachments.edits.length === 0) continue;
-      const plan = schema_source_plan(source, schemas);
+      const plan = schema_source_plan(source, schemas, typescript);
       const edits = [...plan.edits, ...attachments.edits];
       const mapping = new SchemaSourceMapping(source.text, edits);
       const key = canonical(source.fileName);

@@ -310,6 +310,41 @@ try {
     assert.ok(broad.some(error => JSON.stringify(error.start) === JSON.stringify(location(withoutAttachment, withoutAttachment.indexOf("exactPage:")))), JSON.stringify(broad));
     await editConsumer(consumer);
     assert.equal((await diagnostics("consumer.ts")).length, 3);
+    await editConsumer(consumer.replaceAll('doc.must("home")', 'doc["home"]'));
+    assert.equal((await diagnostics("consumer.ts")).length, 3);
+    await editConsumer(consumer);
+  });
+  await check("bundled tsserver completes final Library families, members and required reads", async () => {
+    const prefix = `import { Hson, hsonLiveMap } from "hson-live";
+import { Thing, Page } from "./schema.js";
+const loc = hsonLiveMap.locus.create({
+  deck: { data: { name: "Ada" }, schema: Thing },
+  page: { document: Hson.document\`<main "hello"/>\`, schema: Page },
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button/>\` } } },
+});
+`;
+    for (const [expression, present, absent] of [
+      ["loc.", ["doc", "data", "parts", "admit"], ["lib", "addLibraries"]],
+      ["loc.data.", ["deck", "must"], ["page", "components"]],
+      ["loc.doc.", ["page"], ["deck"]],
+      ["loc.parts.components.", ["submit", "snap", "hson"], ["render"]],
+      ['loc.data.must("deck", Thing).snap().', ["name"], []],
+      ["loc.doc.page.at([0]).must.", ["snap", "hson"], ["render", "data"]],
+      ["loc.parts.components.schema.", ["get"], ["use"]],
+    ]) {
+      const text = prefix + expression;
+      await editConsumer(text);
+      const completion = await request("completionInfo", { file: file("consumer.ts"), ...location(text, text.length) });
+      const names = completion.entries.map(entry => entry.name);
+      for (const name of present) assert.ok(names.includes(name), `${expression}: missing ${name}`);
+      for (const name of absent) assert.ok(!names.includes(name), `${expression}: obsolete/unsupported ${name}`);
+    }
+    const invalid = prefix + 'loc.admit({ incoming: { data: { name: 42 }, schema: Thing } });';
+    await editConsumer(invalid);
+    assert.equal((await diagnostics("consumer.ts")).filter(error => error.code === 95002).length, 1);
+    await editConsumer(invalid.replace('name: 42', 'name: "new"'));
+    assert.equal((await diagnostics("consumer.ts")).length, 0);
+    await editConsumer(consumer);
   });
   await check("bundled diagnostics underline authored static candidates and clear on unsaved repair", async () => {
     const text = 'import { Hson, hsonLiveMap, type HsonAuthored, type HsonFromSchema } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;\ntype PageHson = HsonFromSchema<typeof S>; const bad: HsonAuthored = Hson.document`<html <body/>/>`;\nconst certified: PageHson = S.certify(bad); S.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<html <body/> <head/>/>`, schema: S } });\n';

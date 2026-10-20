@@ -8,6 +8,8 @@ import {
   type HostSourceRange,
 } from "./embedded-hson-source.js";
 
+const defaultTs = ts;
+
 const supportedPackageSpecifiers: ReadonlySet<string> = new Set([
   "hson-live",
   "hson-live/hson",
@@ -19,15 +21,16 @@ export function is_official_hson_package_binding(
   expected: "Hson" | "HsonData" | "HsonDocument" | "HsonAuthored" | "HsonFromSchema" | "JsonFromSchema",
   checker: ts.TypeChecker,
   requireResolvedOrigin = false,
+  typescript: typeof ts = defaultTs,
 ): boolean {
   const symbol = checker.getSymbolAtLocation(identifier);
   if (symbol === undefined || symbol.declarations?.length !== 1) return false;
   const declaration = symbol.declarations[0];
-  if (declaration === undefined || !ts.isImportSpecifier(declaration)) return false;
+  if (declaration === undefined || !typescript.isImportSpecifier(declaration)) return false;
   const clause = declaration.parent.parent;
   const imported = clause.parent;
-  const officialImport = ts.isImportDeclaration(imported)
-    && ts.isStringLiteral(imported.moduleSpecifier)
+  const officialImport = typescript.isImportDeclaration(imported)
+    && typescript.isStringLiteral(imported.moduleSpecifier)
     && supportedPackageSpecifiers.has(imported.moduleSpecifier.text)
     && (declaration.propertyName?.text ?? declaration.name.text) === expected
     && (expected !== "Hson" || !declaration.isTypeOnly && !clause.isTypeOnly);
@@ -36,25 +39,30 @@ export function is_official_hson_package_binding(
   return target.declarations?.some(item => official_declaration_origin(item.getSourceFile().fileName, expected)) === true;
 }
 
-function official_declaration_origin(fileName: string, expected: "Hson" | "HsonData" | "HsonDocument" | "HsonAuthored" | "HsonFromSchema" | "JsonFromSchema"): boolean {
+/** Package ownership and package-relative location, shared by official binding recognizers. */
+export function hson_package_declaration_path(fileName: string): string | undefined {
   let directory = dirname(resolve(fileName));
   while (true) {
     const manifestPath = resolve(directory, "package.json");
     if (existsSync(manifestPath)) {
       try {
         const manifest: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
-        if (typeof manifest !== "object" || manifest === null || !("name" in manifest) || manifest.name !== "hson-live") return false;
-      } catch { return false; }
-      const path = relative(directory, resolve(fileName)).split(sep).join("/");
-      return expected === "Hson"
-        ? ["src/index.ts", "src/hson-authoring.ts", "dist/index.d.ts", "dist/hson-authoring.d.ts"].includes(path)
-        : ["src/index.ts", "src/hson-authoring.ts", "src/api/transform/transform.types.ts",
-          "dist/index.d.ts", "dist/hson-authoring.d.ts", "dist/api/transform/transform.types.d.ts"].includes(path);
+        if (typeof manifest !== "object" || manifest === null || !("name" in manifest) || manifest.name !== "hson-live") return undefined;
+      } catch { return undefined; }
+      return relative(directory, resolve(fileName)).split(sep).join("/");
     }
     const parent = dirname(directory);
-    if (parent === directory) return false;
+    if (parent === directory) return undefined;
     directory = parent;
   }
+}
+
+function official_declaration_origin(fileName: string, expected: "Hson" | "HsonData" | "HsonDocument" | "HsonAuthored" | "HsonFromSchema" | "JsonFromSchema"): boolean {
+  const path = hson_package_declaration_path(fileName);
+  return path !== undefined && (expected === "Hson"
+    ? ["src/index.ts", "src/hson-authoring.ts", "dist/index.d.ts", "dist/hson-authoring.d.ts"].includes(path)
+    : ["src/index.ts", "src/hson-authoring.ts", "src/api/transform/transform.types.ts",
+      "dist/index.d.ts", "dist/hson-authoring.d.ts", "dist/api/transform/transform.types.d.ts"].includes(path));
 }
 
 export type InterpolatedEmbeddedHsonTemplate = Readonly<{
@@ -84,6 +92,7 @@ export function create_hson_source_program(
   fileName: string,
   hostText: string,
   typeOptions: Pick<ts.CompilerOptions, "strictNullChecks" | "noImplicitAny"> = {},
+  ts: typeof defaultTs = defaultTs,
 ): ts.Program {
   const options: ts.CompilerOptions = {
     jsx: ts.JsxEmit.Preserve,
@@ -154,13 +163,14 @@ export function read_supported_hson_import_symbols(
   checker: ts.TypeChecker,
   diagnostics: readonly ts.Diagnostic[],
   facade: "Hson" | "hson" | "hsonTransform" | "hsonLiveMap" | "hsonLiveTree" = "Hson",
+  typescript: typeof ts = defaultTs,
 ): ReadonlySet<ts.Symbol> {
   const symbols = new Set<ts.Symbol>();
   for (const statement of sourceFile.statements) {
-    if (!ts.isImportDeclaration(statement)
+    if (!typescript.isImportDeclaration(statement)
       || statement.importClause === undefined
       || statement.importClause.isTypeOnly
-      || !ts.isStringLiteral(statement.moduleSpecifier)
+      || !typescript.isStringLiteral(statement.moduleSpecifier)
       || !(facade === "Hson" ? supportedPackageSpecifiers.has(statement.moduleSpecifier.text)
         : facade === "hson" ? statement.moduleSpecifier.text === "hson-live"
         : facade === "hsonTransform" ? ["hson-live", "hson-live/transform"].includes(statement.moduleSpecifier.text)
@@ -171,12 +181,12 @@ export function read_supported_hson_import_symbols(
     }
     const bindings = statement.importClause.namedBindings;
     if (facade === "hsonLiveMap" && statement.moduleSpecifier.text === "hson-live/livemap"
-      && bindings !== undefined && ts.isNamespaceImport(bindings)) {
+      && bindings !== undefined && typescript.isNamespaceImport(bindings)) {
       const symbol = checker.getSymbolAtLocation(bindings.name);
       if (symbol !== undefined) symbols.add(symbol);
       continue;
     }
-    if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
+    if (bindings === undefined || !typescript.isNamedImports(bindings)) continue;
     for (const element of bindings.elements) {
       if (element.isTypeOnly) continue;
       const importedName = element.propertyName?.text ?? element.name.text;
@@ -334,6 +344,7 @@ export function discover_hson_tagged_templates(
   sourceProgram?: ts.Program,
   // Opt-in diagnostics only. Recovered templates never enter either admitted result list.
   onDocumentQuadRecovery?: (source: InterpolatedEmbeddedHsonTemplate) => void,
+  ts: typeof defaultTs = defaultTs,
 ): HsonTaggedTemplateDiscoveryResult {
   const empty = (): HsonTaggedTemplateDiscoveryResult => Object.freeze({
     sources: Object.freeze([]),
@@ -345,13 +356,13 @@ export function discover_hson_tagged_templates(
     return empty();
   }
 
-  const program = sourceProgram ?? create_hson_source_program(fileName, hostText);
+  const program = sourceProgram ?? create_hson_source_program(fileName, hostText, {}, ts);
   const sourceFile = program.getSourceFile(fileName);
   if (sourceFile === undefined) return empty();
   const diagnostics = program.getSyntacticDiagnostics(sourceFile);
   if (diagnostics.some((diagnostic) => diagnostic.start === undefined)) return empty();
   const checker = program.getTypeChecker();
-  const importSymbols = read_supported_hson_import_symbols(sourceFile, checker, diagnostics);
+  const importSymbols = read_supported_hson_import_symbols(sourceFile, checker, diagnostics, "Hson", ts);
   if (importSymbols.size === 0) return empty();
 
   const sources: HsonTaggedTemplateSource[] = [];

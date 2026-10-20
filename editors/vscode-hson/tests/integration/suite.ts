@@ -161,6 +161,53 @@ export async function run(): Promise<void> {
     return;
   }
 
+  const libraryUri = vscode.Uri.file(join(workspace, "declarative-schema", "libraries.ts"));
+  const libraryPrefix = `import { Hson, hsonLiveMap } from "hson-live";
+import { UserSchema } from "./schema.js";
+const loc = hsonLiveMap.locus.create({
+  deck: { data: { user: { age: 37 } }, schema: UserSchema },
+  page: { document: Hson.document\`<main/>\` },
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button/>\` } } },
+});
+`;
+  await vscode.workspace.fs.writeFile(libraryUri, Buffer.from(libraryPrefix));
+  const libraryDocument = await vscode.workspace.openTextDocument(libraryUri);
+  await vscode.window.showTextDocument(libraryDocument);
+  for (const [expression, present, absent] of [
+    ["loc.", ["doc", "data", "parts", "admit"], ["lib", "addLibraries"]],
+    ["loc.data.", ["deck", "must"], ["page", "components"]],
+    ["loc.doc.page.", ["snap", "hson", "render"], ["data"]],
+    ["loc.parts.components.", ["submit", "snap", "hson"], ["render"]],
+    ['loc.data.must("deck", UserSchema).snap().user.', ["age"], []],
+    ["loc.doc.page.at([0]).must.", ["snap", "hson"], ["render", "data"]],
+    ["loc.parts.components.schema.", ["get"], ["use"]],
+  ] satisfies readonly (readonly [string, readonly string[], readonly string[]])[]) {
+    const text = libraryPrefix + expression;
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(libraryUri, new vscode.Range(libraryDocument.positionAt(0), libraryDocument.positionAt(libraryDocument.getText().length)), text);
+    assert.equal(await vscode.workspace.applyEdit(edit), true);
+    let names: string[] = [];
+    await waitFor(async () => {
+      const completions = await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider", libraryUri, libraryDocument.positionAt(text.length));
+      names = completions?.items.map(item => typeof item.label === "string" ? item.label : item.label.label) ?? [];
+      return present.every(name => names.includes(name));
+    }, `Library completion ${expression}: missing ${present.join(", ")}`);
+    for (const name of absent) assert.ok(!names.includes(name), `${expression}: unsupported completion ${name}`);
+  }
+  const invalidAdmission = libraryPrefix + 'loc.admit({ incoming: { data: { user: { age: "wrong" } }, schema: UserSchema } });';
+  const replaceLibrary = async (text: string): Promise<void> => {
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(libraryUri, new vscode.Range(libraryDocument.positionAt(0), libraryDocument.positionAt(libraryDocument.getText().length)), text);
+    assert.equal(await vscode.workspace.applyEdit(edit), true);
+  };
+  const admissionDiagnostics = () => vscode.languages.getDiagnostics(libraryUri).filter(diagnostic => diagnostic.source === "hson-schema" && diagnostic.code === 95002
+    && diagnostic.message.startsWith("Static Hson does not satisfy UserSchema:"));
+  await replaceLibrary(invalidAdmission);
+  await waitFor(async () => admissionDiagnostics().length === 1, "flat admission candidate diagnostic", 30_000);
+  await replaceLibrary(invalidAdmission.replace('age: "wrong"', "age: 38"));
+  await waitFor(async () => admissionDiagnostics().length === 0, "unsaved admission correction", 30_000);
+  process.stdout.write("ok - real VS Code final Library families, Parts, checked Schema selection, required reads and flat admission diagnostics\n");
+
   const structuralUri = vscode.Uri.file(join(workspace, "hson-structural-editing.ts"));
   const markdownStructuralUri = vscode.Uri.file(join(workspace, "hson-structural-editing.md"));
   const saveTypeScriptUri = vscode.Uri.file(join(workspace, "hson-format-on-save.ts"));
@@ -542,7 +589,7 @@ export function application() {
 
   const generatedSchemaDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "declarative-schema", "schema.ts")));
   await vscode.window.showTextDocument(generatedSchemaDocument);
-  assert.match(generatedSchemaDocument.getText(), /__HsonSchema<__UserSchemaEvidence/);
+  assert.match(generatedSchemaDocument.getText(), /UserSchema = Hson\.schema`/);
   const generatedAgeDefinition = generatedSchemaDocument.getText().indexOf('Age "number"');
   const generatedAgeReference = generatedSchemaDocument.getText().indexOf('ref "Age"') + 5;
   assert.deepEqual((await localSchemaCompletions(generatedSchemaDocument, generatedAgeReference)).map(item => item.label), ["Age", "User"]);
@@ -554,16 +601,16 @@ export function application() {
   assert.ok((generatedHover?.length ?? 0) > 0);
   const generatedRename = await vscode.commands.executeCommand<vscode.WorkspaceEdit>('vscode.executeDocumentRenameProvider', generatedSchemaDocument.uri, generatedSchemaDocument.positionAt(generatedAgeDefinition), "Years");
   assert.ok(generatedRename);
-  process.stdout.write("ok - real VS Code generated HsonSchema generic remains discoverable for completion, definition, references, rename, and hover without reload\n");
+  process.stdout.write("ok - real VS Code authored HsonSchema remains discoverable for completion, definition, references, rename, and hover without reload\n");
 
-  const fixturePath = join(__dirname, "..", "tests", "fixtures", "diagnostics-alias.ts");
+  const fixturePath = join(workspace, "diagnostics-alias.ts");
   const alias = await vscode.workspace.openTextDocument(vscode.Uri.file(fixturePath));
   await vscode.window.showTextDocument(alias);
   const aliasDiagnostics = await diagnosticsFor(alias.uri, 1);
   assert.equal(aliasDiagnostics.length, 1);
   assert.equal(alias.getText(aliasDiagnostics[0]?.range), "+");
 
-  const smokePath = join(__dirname, "..", "tests", "fixtures", "diagnostics-smoke.ts");
+  const smokePath = join(workspace, "diagnostics-smoke.ts");
   const smoke = await vscode.workspace.openTextDocument(vscode.Uri.file(smokePath));
   assert.equal(smoke.languageId, "typescript");
   assert.equal(smoke.uri.scheme, "file");
@@ -592,7 +639,8 @@ export function application() {
   await vscode.commands.executeCommand("typescript.restartTsServer");
   await vscode.commands.executeCommand("vscode.executeHoverProvider", declarative.uri, new vscode.Position(0, 0));
   const associationDiagnostics = () => vscode.languages.getDiagnostics(declarative.uri)
-    .filter(diagnostic => diagnostic.source === "ts" && diagnostic.code === 2322);
+    .filter(diagnostic => diagnostic.source === "hson-schema" && diagnostic.code === 95002
+      && diagnostic.message.startsWith("Static Hson does not satisfy UserSchema:"));
   const waitAssociationDiagnostics = async (count: number): Promise<readonly vscode.Diagnostic[]> => {
     const deadline = Date.now() + 30_000;
     while (associationDiagnostics().length !== count && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
@@ -600,7 +648,7 @@ export function application() {
     return associationDiagnostics();
   };
   const invalidAssociation = (await waitAssociationDiagnostics(1))[0]!;
-  assert.match(invalidAssociation.message, /HsonData/);
+  assert.match(invalidAssociation.message, /Static Hson does not satisfy UserSchema/);
   const invalidValue = declarative.getText().indexOf('"37"');
   assert.ok(invalidValue >= 0);
   const correct = new vscode.WorkspaceEdit();
@@ -609,7 +657,7 @@ export function application() {
   assert.equal(declarative.isDirty, true, "declarative candidate correction remains unsaved");
   await vscode.commands.executeCommand("typescript.restartTsServer");
   await waitAssociationDiagnostics(0);
-  process.stdout.write("ok - real VS Code declarative HsonSchema: fresh generated association diagnoses invalid Hson and clears after unsaved correction\n");
+  process.stdout.write("ok - real VS Code authored HsonSchema: candidate diagnostic clears after unsaved correction\n");
 
   await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);
   await waitFor(async () => (await lifecycle()).at(-1) === "start", "local host did not start for extension deactivation coverage");

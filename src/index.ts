@@ -119,6 +119,8 @@ export type {
   LiveMapDocumentMode,
   LiveMap,
   LiveMapStagedWriter,
+  LiveMapStagedDataLibrary,
+  LiveMapStagedDocumentLibrary,
   LiveMapDataLibrary,
   LiveMapDataLibraryInput,
   LiveMapDocumentLibrary,

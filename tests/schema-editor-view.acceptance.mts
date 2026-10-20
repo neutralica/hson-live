@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
+import { createRequire } from "node:module";
+import { static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
+import { library_source_definitions } from "../src/internal/hson-schema/library-source.ts";
 import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
 import { SchemaSourceMapping } from "../src/internal/hson-schema/source-mapping.ts";
 import { discover_hson_tagged_templates, read_supported_hson_import_symbols } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
@@ -39,23 +42,23 @@ function bytes(directory: string): Map<string, Buffer> {
   } };
   visit(directory); return output;
 }
-function project(name: string, files: Record<string, string>, extraOptions: ts.CompilerOptions = {}) {
+function project(name: string, files: Record<string, string>, extraOptions: ts.CompilerOptions = {}, typescript: typeof ts = ts) {
   const directory = join(temporary, name); mkdirSync(directory, { recursive: true });
   writeFileSync(join(directory, "package.json"), '{"type":"module"}');
   for (const [file, source] of Object.entries(files)) { mkdirSync(dirname(join(directory, file)), { recursive: true }); writeFileSync(join(directory, file), source); }
-  const options: ts.CompilerOptions = { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, noEmit: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: [], baseUrl: directory,
+  const options: ts.CompilerOptions = { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, noEmit: true, target: typescript.ScriptTarget.ESNext, module: typescript.ModuleKind.NodeNext, moduleResolution: typescript.ModuleResolutionKind.NodeNext, types: [], baseUrl: directory,
     paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")] }, ...extraOptions };
   const live = new Map<string, string>(); const versions = new Map<string, number>(); let revision = 0;
   const roots = Object.keys(files).filter(file => /\.[cm]?tsx?$/.test(file)).map(file => join(directory, file));
   const host: ts.LanguageServiceHost = {
     getCompilationSettings: () => options, getScriptFileNames: () => roots, getProjectVersion: () => String(revision),
     getScriptVersion: file => String(versions.get(file) ?? 0),
-    getScriptSnapshot: file => { const text = live.get(file) ?? (existsSync(file) ? readFileSync(file, "utf8") : undefined); return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text); },
-    getCurrentDirectory: () => directory, getDefaultLibFileName: ts.getDefaultLibFilePath, useCaseSensitiveFileNames: () => true,
-    fileExists: ts.sys.fileExists, readFile: ts.sys.readFile, readDirectory: ts.sys.readDirectory, directoryExists: ts.sys.directoryExists, getDirectories: ts.sys.getDirectories,
+    getScriptSnapshot: file => { const text = live.get(file) ?? (existsSync(file) ? readFileSync(file, "utf8") : undefined); return text === undefined ? undefined : typescript.ScriptSnapshot.fromString(text); },
+    getCurrentDirectory: () => directory, getDefaultLibFileName: typescript.getDefaultLibFilePath, useCaseSensitiveFileNames: () => true,
+    fileExists: typescript.sys.fileExists, readFile: typescript.sys.readFile, readDirectory: typescript.sys.readDirectory, directoryExists: typescript.sys.directoryExists, getDirectories: typescript.sys.getDirectories,
   };
-  const underlying = ts.createLanguageService(host);
-  const service = create_schema_language_service(ts, underlying, host, join(directory, "tsconfig.json"));
+  const underlying = typescript.createLanguageService(host);
+  const service = create_schema_language_service(typescript, underlying, host, join(directory, "tsconfig.json"));
   const file = (name: string) => join(directory, name);
   const text = (name: string) => live.get(file(name)) ?? readFileSync(file(name), "utf8");
   return { directory, service, underlying, host, file, text, options,
@@ -284,6 +287,12 @@ check("unsaved direct Schema attachment refines immediately and stale proofs are
   test.edit("index.ts", attached.replaceAll('doc.must("home")', "doc.home"));
   assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
 
+  test.edit("index.ts", attached.replaceAll('doc.must("home")', 'doc["home"]'));
+  assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
+
+  test.edit("index.ts", attached.replaceAll('doc.must("home")', '["doc"]["must"]("home")').replaceAll("map.[", "map["));
+  assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
+
   test.edit("index.ts", broad);
   assert.ok(test.errors("index.ts").some(error => error.code === 2322), messages(test.errors("index.ts")));
 
@@ -294,6 +303,310 @@ check("unsaved direct Schema attachment refines immediately and stale proofs are
   test.edit("index.ts", attached.replace('content "string"', 'content <'));
   assert.ok(test.errors("index.ts").length > 0, "Invalid unsaved Schema text must withdraw attachment evidence.");
   test.service.dispose();
+});
+
+check("final Library authoring uses source and emitted entrypoints under both strict optional modes", () => {
+  for (const output of ["src", "dist"]) for (const exactOptionalPropertyTypes of [false, true]) {
+    const extension = output === "src" ? "ts" : "d.ts";
+    const prefix = `import { Hson, hsonLiveMap, type HsonData, type HsonDocument } from "hson-live";
+const S = Hson.schema\`<type "data" content <name "string" values <array "number">>>\`;
+const P = Hson.schema\`<type "document" tag "main" content "string">\`;
+const loc = hsonLiveMap.locus.create({
+  deck: { data: { name: "Ada", values: [1] }, schema: S },
+  page: { document: Hson.document\`<main "body"/>\`, schema: P, access: "shared" },
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button "submit"/>\` }, snap: { kind: "document", document: Hson.document\`<span/>\` } } },
+});
+const selected = loc.data.must("deck", S);
+const optional = loc.data("deck", S);
+const value: string = selected.snap().name;
+const numbers: readonly number[] = selected.at(["values"]).snap();
+const leaf: number | undefined = selected.at(["values", 0]).snap();
+const required: number = selected.at(["values", 0]).must.snap();
+const canonical: HsonData = selected.hson();
+const markup: string = loc.doc["page"].snap();
+const document: HsonDocument = loc.doc.page.hson();
+const complete: string = loc.doc.page.render();
+const fragment: string = loc.doc.page.at([0]).must.snap();
+const fragmentHson: HsonDocument = loc.doc.page.at([0]).must.hson();
+loc.parts.components.submit.snap();
+loc.parts.components.at(["snap"]).snap();
+// @ts-expect-error Optional lookup does not prove presence.
+optional.snap();
+// @ts-expect-error Checked selection cannot change the permanent owner evidence.
+loc.data.deck.at(["missing"]);
+// @ts-expect-error Part definitions cannot render independently.
+loc.parts.components.submit.render();
+// @ts-expect-error Parts cannot attach a supplemental Schema.
+loc.parts.components.schema.use(S);
+// @ts-expect-error Locus does not expose local Schema mutation.
+loc.data.deck.schema.use(S);
+// @ts-expect-error Selected document locations do not render.
+loc.doc.page.at([0]).render();
+// @ts-expect-error Removed family-neutral selectors stay removed.
+loc.lib;
+// @ts-expect-error Removed admission batching stays removed.
+loc.admit.batch;
+async function admit() {
+  const receipt = await loc.admit({ incoming: { data: { name: "new", values: [] }, schema: S } });
+  // @ts-expect-error Admission does not return a selection receipt.
+  receipt.libraries;
+  // @ts-expect-error Runtime admission does not rewrite construction-time names.
+  loc.data.incoming;
+  const incoming: string = loc.data.must("incoming", S).snap().name;
+}
+`;
+    const test = project(`library-final-${output}-${exactOptionalPropertyTypes}`, { "index.ts": prefix }, {
+      exactOptionalPropertyTypes, noPropertyAccessFromIndexSignature: true,
+      paths: Object.fromEntries([
+        ["hson-live", `${output}/index.${extension}`],
+        ["hson-live/hson", `${output}/hson-authoring.${extension}`],
+        ["hson-live/livemap", `${output}/api/livemap/index.${extension}`],
+      ].map(([name, path]) => [name!, [join(root, path!)]])),
+    });
+    assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
+    const completions = (expression: string) => {
+      const text = prefix + expression;
+      test.edit("index.ts", text);
+      return test.service.getCompletionsAtPosition(test.file("index.ts"), text.length, {})?.entries.map(entry => entry.name) ?? [];
+    };
+    for (const name of ["doc", "data", "parts"]) assert.ok(completions("loc.").includes(name), name);
+    assert.ok(!completions("loc.").includes("lib"));
+    assert.ok(completions("loc.data.").includes("deck"));
+    assert.ok(!completions("loc.data.").includes("page"));
+    assert.ok(!completions("loc.data.").includes("incoming"));
+    assert.ok(completions("loc.parts.components.").includes("submit"));
+    for (const name of ["snap", "hson"]) assert.ok(completions('loc.doc.page.at([0]).must.').includes(name));
+    assert.ok(completions('loc.data.must("deck", S).snap().').includes("name"));
+    assert.ok(completions('loc.data.must("deck", S).snap().').includes("values"));
+    assert.ok(!completions("loc.parts.components.submit.").includes("render"));
+    assert.ok(!completions("loc.parts.components.schema.").includes("use"));
+    test.service.dispose();
+  }
+});
+
+check("flat construction and admission candidates share official source evidence without certifying checked lookups", () => {
+  const prefix = `import { Hson, hsonLiveMap } from "hson-live";
+const S = Hson.schema\`<type "data" content <name "string">>\`;
+const P = Hson.schema\`<type "document" tag "main" content "empty">\`;
+`;
+  const cases: readonly (readonly [string, number])[] = [
+    ['hsonLiveMap.locus.create({ deck: { data: { name: 42 }, schema: S } });', 1],
+    ['hsonLiveMap.locus.create({ page: { document: Hson.document`<aside/>`, schema: P } }, {});', 1],
+    ['hsonLiveMap.locus.resume({ deck: { data: { name: 42 }, schema: S } }, {});', 1],
+    ['const loc = hsonLiveMap.locus.create({}); loc.admit({ deck: { data: { name: 42 }, schema: S } });', 1],
+    ['const map = hsonLiveMap.create(); map.addLibraries({ deck: { data: { name: 42 }, schema: S } });', 1],
+    ['const map = hsonLiveMap.fromLibraries({ deck: { data: { name: 42 } } }); map.data["deck"].schema.use(S);', 1],
+    ['const loc = hsonLiveMap.locus.create({ deck: { data: { name: 42 } } }); loc.data.must("deck", S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ deck: { data: { name: 42 } } }); map.data("deck", S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ deck: { data: { name: 42 } } }); map.data("deck")?.schema.use(S);', 0],
+    ['declare const rest: object; const map = hsonLiveMap.fromLibraries({ deck: { data: { name: 42 }, ...rest } }); map.data.deck.schema.use(S);', 0],
+    ['declare const value: unknown; hsonLiveMap.locus.create({ deck: { data: value, schema: S } });', 0],
+    ['const loc = { admit(defs: unknown) {} }; loc.admit({ deck: { data: { name: 42 }, schema: S } });', 0],
+    ['const other = { locus: { create(defs: unknown) {} } }; other.locus.create({ deck: { data: { name: 42 }, schema: S } });', 0],
+    ['const value = Hson.data`<name 42>`;', 0],
+  ];
+  for (const [index, [body, expected]] of cases.entries()) {
+    const test = project(`library-candidate-${index}`, { "index.ts": prefix + body });
+    const errors = test.errors("index.ts").filter(error => ts.flattenDiagnosticMessageText(error.messageText, "\n").startsWith("Static Hson"));
+    assert.equal(errors.length, expected, `${body}\n${messages(test.errors("index.ts"))}`);
+    test.service.dispose();
+  }
+});
+
+check("official candidates reject consumer filename collisions with the supplied host AST", () => {
+  const hostPath = process.env["HSON_TEST_HOST_TYPESCRIPT"];
+  const hosts: readonly (typeof ts)[] = hostPath === undefined ? [ts] : [ts, createRequire(import.meta.url)(hostPath)];
+  for (const host of hosts) for (const entrypoint of ["hson-live", "hson-live/livemap"]) {
+    const test = project(`host-ownership-${host.version}-${entrypoint.replaceAll("/", "-")}`, {
+      "src/types/locus.core.types.ts": 'export interface Other { admit(definitions: unknown): void }',
+      "dist/types/livemap.types.d.ts": 'export interface OtherMap { addLibraries(definitions: unknown): void }',
+      "index.ts": `import { Hson, type HsonData } from "hson-live/hson";
+import { hsonLiveMap } from "${entrypoint}";
+import type { Other } from "./src/types/locus.core.types.js";
+import type { OtherMap } from "./dist/types/livemap.types.js";
+const S = Hson.schema\`<type "data" content <name "string">>\`;
+declare const other: Other;
+declare const otherMap: OtherMap;
+other.admit({ fake: { data: { name: 42 }, schema: S } });
+otherMap.addLibraries({ fake: { data: { name: 42 }, schema: S } });
+const loc = hsonLiveMap.locus.create({});
+loc.admit({ actual: { data: { name: 42 }, schema: S } });
+const map = hsonLiveMap.fromLibraries({ actual: { data: { name: 42 } } });
+map.data["actual"].schema.use(S);
+const exact: typeof S = map.data.actual.schema.get();
+const value: HsonData<typeof S> = Hson.data\`<name 42>\`;
+S.certify(Hson.data\`<name 43>\`);
+`,
+    }, {}, host);
+    const diagnostics = test.errors("index.ts");
+    const candidates = diagnostics.filter(diagnostic => diagnostic.code === 95002);
+    assert.equal(candidates.length, 4, `${host.version}: ${messages(diagnostics)}`);
+    assert.ok(candidates.every(diagnostic => diagnostic.source === "hson-schema"
+      && diagnostic.start !== undefined && diagnostic.start >= test.text("index.ts").indexOf("loc.admit")));
+    assert.ok(!diagnostics.some(diagnostic => diagnostic.code !== 95002), messages(diagnostics));
+    const program = host.createProgram(test.host.getScriptFileNames(), test.options);
+    const staticCandidates = static_schema_candidate_diagnostics(host, program);
+    assert.equal(staticCandidates.length, 4, `${host.version}: ${JSON.stringify(staticCandidates)}`);
+    assert.ok(staticCandidates.every(diagnostic => diagnostic.start >= test.text("index.ts").indexOf("loc.admit")));
+    if (host === ts) {
+      const config = test.file("tsconfig.json");
+      writeFileSync(config, JSON.stringify({ compilerOptions: { ...test.options, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext" }, files: [test.file("index.ts")] }));
+      for (const cli of [["--import=tsx", "scripts/hson-schema.mts"], ["dist/hson-schema.mjs"]]) {
+        const generated = spawnSync(process.execPath, [...cli, "generate", "--project", config], { cwd: root, encoding: "utf8" });
+        assert.notEqual(generated.status, 0, "Official invalid candidates still fail generation");
+        const manifest = JSON.parse(readFileSync(test.file(".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
+        assert.equal(manifest.diagnostics.filter((message: string) => message.includes("Static Hson does not satisfy")).length, 4, JSON.stringify(manifest.diagnostics));
+      }
+    }
+    test.edit("index.ts", test.text("index.ts").replaceAll('name: 42', 'name: "ok"').replace('<name 42>', '<name "ok">').replace('<name 43>', '<name "ok">'));
+    assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
+    const completionSource = 'import { Hson, type HsonData } from "hson-live"; const S = Hson.schema`<type "data" defs <Age "number" User <content <age <ref "Age">>>> content <ref "User">>`; const value: HsonData<typeof S> = Hson.data`<ag`;';
+    test.edit("index.ts", completionSource);
+    const complete = (offset: number) => test.service.getCompletionsAtPosition(test.file("index.ts"), offset, {})?.entries.map(entry => entry.name) ?? [];
+    assert.deepEqual(complete(completionSource.indexOf('<ref "Age"') + 6), ["Age", "User"], `${host.version}: Schema reference completion`);
+    assert.deepEqual(complete(completionSource.indexOf('<ag`') + 3), ["age"], `${host.version}: governed data completion`);
+    test.service.dispose();
+  }
+});
+
+check("constructor ownership uses official called declarations without instantiating signatures", () => {
+  const hostPath = process.env["HSON_TEST_HOST_TYPESCRIPT"];
+  const hosts: readonly (typeof ts)[] = hostPath === undefined ? [ts] : [ts, createRequire(import.meta.url)(hostPath)];
+  for (const host of hosts) for (const installation of ["source", "package", "symlink", "reexport", "lookalike", "typed-replacement", "dynamic"] as const) {
+    const official = !["lookalike", "typed-replacement", "dynamic"].includes(installation);
+    const calls: readonly (readonly [string, boolean])[] = [
+      ['api.locus.create({ bad: { data: { name: 42 }, schema: S } })', official],
+      ['api["locus"]["resume"]({ bad: { data: { name: 42 }, schema: S } }, {})', official],
+      ['api.fromLibraries({ bad: { data: { name: 42 }, schema: S } })', official],
+      ['namespace.locus.create({ bad: { data: { name: 42 }, schema: S } })', official],
+      ['namespace.fromLibraries({ bad: { data: { name: 42 }, schema: S } })', official],
+      ['rootApi.locus.create({ bad: { data: { name: 42 }, schema: S } })', true],
+      ['unrelated.locus.create({ bad: { data: { name: 42 }, schema: S } })', false],
+      ['unrelated.create({ bad: { data: { name: 42 }, schema: S } })', false],
+      ['collision.create({ bad: { data: { name: 42 }, schema: S } })', false],
+      ['collision.resume({ bad: { data: { name: 42 }, schema: S } }, {})', false],
+      ['collision.fromLibraries({ bad: { data: { name: 42 }, schema: S } })', false],
+      ['typed.locus.create({ bad: { data: { name: 42 }, schema: S } })', false],
+      ['api["locus"][key]({ bad: { data: { name: 42 }, schema: S } })', false],
+    ];
+    const test = project(`constructor-${host.version}-${installation}`, {
+      "src/api/locus/locus.public.ts": `export const collision = {
+  create(definitions: unknown) {}, resume(definitions: unknown, options: unknown) {}, fromLibraries(definitions: unknown) {}
+};`,
+      "bridge.ts": `import { hsonLiveMap as mapValue, locus as locusValue, fromLibraries as localValue } from ${JSON.stringify(join(root, "dist/api/livemap/index.js"))};
+export { mapValue as hsonLiveMap, locusValue as locus, localValue as fromLibraries };`,
+      "replacement.ts": `import { hsonLiveMap as original } from ${JSON.stringify(join(root, "dist/api/livemap/index.js"))};
+const unrelated: typeof original.locus.create = () => { throw new Error("This is not a Hson operation"); };
+const unrelatedResume: typeof original.locus.resume = () => { throw new Error("Not Hson"); };
+const unrelatedLocal: typeof original.fromLibraries = () => { throw new Error("Not Hson"); };
+const replacement = { ...original, locus: { ...original.locus, create: unrelated, resume: unrelatedResume }, fromLibraries: unrelatedLocal };
+declare const uncertain: boolean;
+export const hsonLiveMap: typeof original = ${installation === "dynamic" ? "uncertain ? original : replacement" : "replacement"};
+export const locus = ${installation === "dynamic" ? "uncertain ? original.locus : replacement.locus" : "replacement.locus"};
+export const fromLibraries = ${installation === "dynamic" ? "uncertain ? original.fromLibraries : unrelatedLocal" : "unrelatedLocal"};`,
+      "node_modules/lookalike/package.json": '{"name":"hson-lookalike","type":"module"}',
+      "node_modules/lookalike/dist/api/locus/locus.public.d.ts": `export declare const locus: {
+  create(definitions: unknown): unknown; resume(definitions: unknown, options: unknown): unknown;
+};
+export declare function fromLibraries(definitions: unknown): unknown;
+export declare const hsonLiveMap: { locus: typeof locus; fromLibraries: typeof fromLibraries };`,
+      "index.ts": `import { Hson, hsonLiveMap as rootApi } from "hson-live";
+import { hsonLiveMap as api } from "hson-live/livemap";
+import * as namespace from "hson-live/livemap";
+import { collision } from "./src/api/locus/locus.public.js";
+const S = Hson.schema\`<type "data" content <name "string">>\`;
+const unrelated = { create(definitions: unknown) {}, locus: collision };
+declare const typed: typeof rootApi;
+declare const key: "create";
+${calls.map(([call], index) => `const probe${index} = ${call};`).join("\n")}
+function shadow(rootApi: typeof import("hson-live").hsonLiveMap) {
+  const probeShadow = rootApi.locus.create({ bad: { data: { name: 42 }, schema: S } });
+}
+const loc = rootApi.locus.create({});
+loc.admit({ bad: { data: { name: 42 }, schema: S } });
+const local = rootApi.fromLibraries({});
+local.addLibraries({ bad: { data: { name: 42 }, schema: S } });
+`,
+    }, { paths: installation === "symlink" ? {} : {
+      "hson-live": [join(root, installation === "source" ? "src/index.ts" : "dist/index.d.ts")],
+      "hson-live/livemap": [installation === "reexport" ? "./bridge.ts"
+        : installation === "typed-replacement" || installation === "dynamic" ? "./replacement.ts"
+        : installation === "lookalike" ? "./node_modules/lookalike/dist/api/locus/locus.public.d.ts"
+        : join(root, installation === "source" ? "src/api/livemap/index.ts" : "dist/api/livemap/index.d.ts")],
+    } }, host);
+    if (installation === "symlink") symlinkSync(root, test.file("node_modules/hson-live"), "dir");
+    const program = host.createProgram(test.host.getScriptFileNames(), test.options);
+    const source = program.getSourceFile(test.file("index.ts"))!;
+    const checker = program.getTypeChecker();
+    const bindings = read_supported_hson_import_symbols(source, checker, [], "hsonLiveMap", host);
+    const resolveSignature = checker.getResolvedSignature;
+    const signatureCalls: string[] = [];
+    checker.getResolvedSignature = (...args) => {
+      signatureCalls.push(args[0].getText(source));
+      return resolveSignature(...args);
+    };
+    try {
+      const visit = (node: ts.Node): void => {
+        if (host.isVariableDeclaration(node) && host.isIdentifier(node.name) && node.name.text.startsWith("probe") && node.initializer !== undefined) {
+          const index = Number(node.name.text.slice(5));
+          const selected = library_source_definitions(node.initializer, checker, bindings, false, host);
+          assert.equal(selected !== undefined, node.name.text === "probeShadow" ? false : calls[index]![1],
+            `${host.version}/${installation}: ${node.initializer.getText(source)}`);
+        }
+        host.forEachChild(node, visit);
+      };
+      visit(source);
+      assert.equal(signatureCalls.length, 0, "Constructor identity does not resolve generic call signatures");
+      for (const statement of source.statements) if (host.isExpressionStatement(statement)) {
+        assert.ok(library_source_definitions(statement.expression, checker, bindings, false, host), statement.getText(source));
+      }
+      assert.equal(signatureCalls.length, 2, "Both official admission forms still resolve signatures");
+      assert.ok(signatureCalls[0]!.startsWith("loc.admit("));
+      assert.ok(signatureCalls[1]!.startsWith("local.addLibraries("));
+    } finally {
+      checker.getResolvedSignature = resolveSignature;
+    }
+    const diagnostics = static_schema_candidate_diagnostics(host, program);
+    assert.equal(diagnostics.length, calls.filter(([, recognized]) => recognized).length + 2,
+      `${host.version}/${installation}: ${JSON.stringify(diagnostics)}`);
+    if (host === ts && ["package", "reexport", "lookalike", "typed-replacement", "dynamic"].includes(installation)) {
+      const config = test.file("tsconfig.json");
+      writeFileSync(config, JSON.stringify({ compilerOptions: {
+        ...test.options, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext",
+      }, files: test.host.getScriptFileNames() }));
+      for (const cli of [["--import=tsx", "scripts/hson-schema.mts"], ["dist/hson-schema.mjs"]]) {
+        const generated = spawnSync(process.execPath, [...cli, "generate", "--project", config], { cwd: root, encoding: "utf8" });
+        assert.notEqual(generated.status, 0, "Official invalid constructors/admissions still fail generation");
+        const manifest = JSON.parse(readFileSync(test.file(".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
+        assert.equal(manifest.diagnostics.filter((message: string) => message.includes("Static Hson does not satisfy")).length,
+          diagnostics.length, `${installation}: ${JSON.stringify(manifest.diagnostics)}`);
+      }
+      if (installation === "typed-replacement" || installation === "dynamic") {
+        // Isolate the reviewer's counterexample: only the substituted operations
+        // receive invalid candidates, so both CLIs must succeed without diagnostics.
+        writeFileSync(test.file("index.ts"), `import { Hson } from "hson-live";
+import { hsonLiveMap as api } from "hson-live/livemap";
+import * as namespace from "hson-live/livemap";
+const S = Hson.schema\`<type "data" content <name "string">>\`;
+api.locus.create({ bad: { data: { name: 42 }, schema: S } });
+namespace.locus.create({ bad: { data: { name: 42 }, schema: S } });
+api.fromLibraries({ bad: { data: { name: 42 }, schema: S } });
+namespace.fromLibraries({ bad: { data: { name: 42 }, schema: S } });
+`);
+        const isolated = host.createProgram(test.host.getScriptFileNames(), test.options);
+        assert.deepEqual(host.getPreEmitDiagnostics(isolated), [], "Replacement fixture is valid TypeScript");
+        assert.deepEqual(static_schema_candidate_diagnostics(host, isolated), []);
+        assert.equal(test.errors("index.ts").filter(diagnostic => diagnostic.code === 95002).length, 0);
+        for (const cli of [["--import=tsx", "scripts/hson-schema.mts"], ["dist/hson-schema.mjs"]]) {
+          const generated = spawnSync(process.execPath, [...cli, "generate", "--project", config], { cwd: root, encoding: "utf8" });
+          assert.equal(generated.status, 0, generated.stdout + generated.stderr);
+          const manifest = JSON.parse(readFileSync(test.file(".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
+          assert.deepEqual(manifest.diagnostics, []);
+        }
+      }
+    }
+    test.service.dispose();
+  }
 });
 
 check("canonical LiveMap namespace and aliases establish the same import binding as named imports", () => {

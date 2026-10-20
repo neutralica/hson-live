@@ -6,7 +6,7 @@ import { HsonEditorCompletionCache } from "./editor-completion.js";
 /** Only this boundary translates positions. Neither service ever writes authored source. */
 export function create_schema_language_service(typescript: typeof ts, service: ts.LanguageService, host: ts.LanguageServiceHost, projectPath: string, registerEvidence?: (file: string, text: string | undefined) => void): ts.LanguageService {
   const view = install_live_schema_view(typescript, host, projectPath, registerEvidence);
-  const completion = new HsonEditorCompletionCache();
+  const completion = new HsonEditorCompletionCache(typescript);
   const hsonCompletions = (file: string, offset: number) => {
     const program = view.authoredService.getProgram();
     const source = program?.getSourceFile(file);

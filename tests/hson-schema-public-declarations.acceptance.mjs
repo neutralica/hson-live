@@ -29,7 +29,7 @@ for (const file of ["scripts/hson-schema.mts", "scripts/build-hson-schema-cli.mj
 const producer = join(temporary, "producer");
 const consumer = join(temporary, "consumer");
 const options = {
-  strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true,
+  strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, noPropertyAccessFromIndexSignature: true,
   target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext",
   lib: ["ESNext", "WebWorker"], types: [], skipLibCheck: false,
   declaration: true, outDir: "out",
@@ -58,7 +58,9 @@ function declarations(directory) {
 
 project(producer, `
 import { Hson } from "hson-live/hson";
-import { hsonLiveMap } from "hson-live/livemap";
+import { hsonLiveMap, type LiveMap } from "hson-live/livemap";
+import type { LocusActionContext } from "hson-live/locus";
+import type { Echo } from "hson-live/echo";
 export const S = Hson.schema\`<type "data" content <name "string" format <union [<exact "hson">, <exact "html">]>>>\`;
 export const Page = Hson.schema\`<type "document" tag "main" content "string">\`;
 export const Any = Hson.schema\`<type "data">\`;
@@ -89,12 +91,38 @@ export const treeValue = map.data.must("tree").at(["children", 0, "value"]).snap
 export const alias = S;
 export const pageAlias = Page;
 const attached = hsonLiveMap.fromLibraries({ main: { data: { name: "Ada", format: "hson" } }, page: { document: '<main "body"/>' } });
-attached.data.main.schema.use(S);
-attached.doc.page.schema.use(Page);
-export const library = attached.data.main;
-export const page = attached.doc.page;
+attached.data["main"].schema.use(S);
+attached["doc"].page.schema.use(Page);
+export const library = attached.data["main"];
+export const page = attached.doc["page"];
 export const text = attached.doc.page.at([0]);
 export function getText() { attached.doc.page.schema.use(Page); return attached.doc.page.at([0]); }
+export const checked = map.data.must("main", S);
+export const optional = map.data("main", S);
+export const loc = hsonLiveMap.locus.create({
+  deck: { data: certificate, schema: S },
+  page: { document: documentCertificate, schema: Page, access: "shared" },
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button/>\` } } },
+});
+export const governed = loc.data.must("deck", S);
+export const governedPage = loc.doc.page;
+export const part = loc.parts.components.submit;
+export const required = loc.data.deck.at(["name"]).must;
+export function getLocus() { return loc; }
+export function getGoverned() { return loc.data.must("deck", S); }
+export function getIncoming(name: string) { return loc.data.must(name, S); }
+export function findIncoming(name: string) { return loc.data(name, S); }
+export function getRead(ctx: LocusActionContext) { return ctx.data.must("incoming", S); }
+export function getStaged(ctx: LocusActionContext) { const stage = ctx.stage; return stage.data.must("incoming", S); }
+export function getEcho(echo: Echo<LiveMap>) { return echo.data.must("incoming", S); }
+export function lookupWrongFamily() { return loc.doc("page", S); }
+declare const optionalDefinitions: { deck?: { data: { name: string; format: "hson" | "html" }; schema: typeof S } };
+export const uncertainMap = hsonLiveMap.fromLibraries(optionalDefinitions);
+export const uncertain = uncertainMap.data.deck;
+const privateLocus = hsonLiveMap.locus.create({ deck: { data: certificate, schema: S },
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button/>\` } } } });
+export const privatePart = privateLocus.parts.components.submit;
+export const privateGoverned = privateLocus.data.deck;
 `);
 check("Worker producer generates evidence and emits public declarations", () => {
   const before = readFileSync(join(producer, "index.ts"), "utf8");
@@ -116,8 +144,8 @@ check("isolated stock TypeScript consumes only published Worker declarations", (
   cpSync(join(producer, "out"), join(published, "dist"), { recursive: true });
   writeFileSync(join(published, "package.json"), JSON.stringify({ name: "schema-producer", type: "module", exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } } }));
   project(consumer, `
-import { authoredPlain, authoredNamed, S, Twin, Tree, alias, Page, pageAlias, library, page, text, getText, certificate, documentCertificate, getCertificate, certificates, certificateObject, Certificates, map, getMap, snapshot, treeValue, treeLibrary } from "schema-producer";
-import type { HsonAuthored, HsonDocument, HsonCanonical, JsonFromSchema, HsonFromSchema } from "hson-live/hson";
+import { authoredPlain, authoredNamed, S, Twin, Tree, alias, Page, pageAlias, library, page, text, getText, certificate, documentCertificate, getCertificate, certificates, certificateObject, Certificates, map, getMap, snapshot, treeValue, treeLibrary, checked, optional, loc, governed, governedPage, part, required, getLocus, getGoverned, privateGoverned, getIncoming, findIncoming, getRead, getStaged, getEcho, lookupWrongFamily, uncertain } from "schema-producer";
+import type { HsonAuthored, HsonDocument, HsonCanonical, JsonValue, JsonFromSchema, HsonFromSchema } from "hson-live/hson";
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Assert<T extends true> = T;
 type Shape = { readonly name: string; readonly format: "hson" | "html" };
@@ -171,6 +199,49 @@ const body: string = text.snap();
 const returned: string = getText().snap();
 const schema: typeof S = library.schema.get();
 const pageSchema: typeof Page = page.schema.get();
+const checkedValue: Shape = checked.snap();
+const optionalValue: Shape | undefined = optional?.snap();
+const governedValue: Shape = governed.snap();
+const returnedGoverned: Shape = getGoverned().snap();
+const returnedLocus: Shape = getLocus().data.deck.snap();
+const privateOwnerValue: Shape = privateGoverned.snap();
+const dynamicValue: Shape = getIncoming("incoming").snap();
+const dynamicOptional: Shape | undefined = findIncoming("incoming")?.snap();
+// @ts-expect-error Dynamic callable selection still needs a presence check.
+findIncoming("incoming").snap();
+declare const read: ReturnType<typeof getRead>;
+const readValue: Shape = read.snap();
+// @ts-expect-error Read contexts cannot mutate data.
+read.at(["name"]).set("new");
+declare const staged: ReturnType<typeof getStaged>;
+staged.at(["name"]).set("new");
+// @ts-expect-error Staging does not acquire read capability.
+staged.snap();
+declare const echo: ReturnType<typeof getEcho>;
+const echoValue: Shape = echo.snap();
+if (echo.source === "authority-projected") {
+  // @ts-expect-error Projected Echo data is read-only.
+  echo.at(["name"]).set("new");
+}
+const mismatchedDocument: string | undefined = lookupWrongFamily()?.snap();
+const uncertainValue: JsonValue | undefined = uncertain?.snap();
+// @ts-expect-error Optional construction membership remains uncertain in publication.
+uncertain.snap();
+const requiredValue: string = required.snap();
+const governedMarkup: string = governedPage.snap();
+const completeMarkup: string = governedPage.render();
+const governedHson: HsonDocument = governedPage.hson();
+const partDefinition = part.snap();
+// @ts-expect-error Parts are source definitions with no standalone renderer.
+part.render();
+// @ts-expect-error Locus retains its authority-specific Schema restrictions.
+governed.schema.use(S);
+// @ts-expect-error Optional checked selection does not become a required read.
+optional.snap();
+// @ts-expect-error Locus has no legacy selector.
+loc.lib;
+// @ts-expect-error Parts cannot attach supplemental Schema.
+loc.parts.components.schema.use(S);
 // @ts-expect-error Structural projections reject invalid literals.
 const invalid: JsonFromSchema<typeof S> = { name: "Ada", format: "json" };
 // @ts-expect-error Reads retain precise property names.
@@ -182,8 +253,10 @@ page.at([1]);
 // @ts-expect-error Text endpoints have no attribute API.
 text.attrs;
 `);
-  const output = run([join(root, "node_modules/typescript/bin/tsc"), "-p", join(consumer, "tsconfig.json"), "--pretty", "false", "--listFiles"]);
-  assert.doesNotMatch(output, /lib\.dom\.|@types\/|producer\/\.hson|producer\/index\.ts|hson-live\/src\//);
+  for (const exact of ["false", "true"]) {
+    const output = run([join(root, "node_modules/typescript/bin/tsc"), "-p", join(consumer, "tsconfig.json"), "--exactOptionalPropertyTypes", exact, "--pretty", "false", "--listFiles"]);
+    assert.doesNotMatch(output, /lib\.dom\.|@types\/|producer\/\.hson|producer\/index\.ts|hson-live\/src\//);
+  }
   const declaration = readFileSync(join(consumer, "out/index.d.ts"), "utf8");
   assert.doesNotMatch(declaration, /Evidence|Proof|__Identity|__Value|Definition\d|HSON_|MutationCandidate|internal\//);
   assert.match(declaration, /readonly format: \(?"hson"\)? \| \(?"html"\)?/);
@@ -217,5 +290,113 @@ map.data.must("state").at(["values"]).replace([42]);
 `);
   const files = run([join(root, "node_modules/typescript/bin/tsc"), "-p", join(rootConsumer, "tsconfig.json"), "--pretty", "false", "--listFiles"]);
   assert.doesNotMatch(files, /lib\.dom\.|@types\//);
+});
+check("async and generator returns and required callable Parts publish through source and packaged tooling", () => {
+  const source = `
+import { Hson } from "hson-live/hson";
+import { hsonLiveMap } from "hson-live/livemap";
+export const S = Hson.schema\`<type "data" content <name "string">>\`;
+export const value = 1;
+export const promised = Promise.resolve(value);
+export async function load() { return value; }
+export async function loadPromise() { return promised; }
+export function* generate() { yield "first"; return value; }
+export async function* generateAsync() { yield "first"; return value; }
+export class Loader {
+  async load() { return value; }
+  *generate() { yield "first"; return value; }
+  async *generateAsync() { yield "first"; return value; }
+}
+export const loc = hsonLiveMap.locus.create({ components: { parts: {
+  submit: { kind: "document", document: Hson.document\`<button/>\` },
+} } });
+export const direct = loc.parts.components.submit;
+export const requiredPart = loc.parts.must("components").submit;
+export const bracketPart = loc["parts"]["must"]("components")["submit"];
+const privateLoc = hsonLiveMap.locus.create({ components: { parts: {
+  submit: { kind: "document", document: Hson.document\`<button/>\` },
+} } });
+export const privateRequiredPart = privateLoc.parts.must("components").submit;
+`;
+  for (const [name, cli] of [
+    ["source", ["--import", join(root, "node_modules/tsx/dist/loader.mjs"), join(root, "scripts/hson-schema.mts")]],
+    ["package", [join(installed, "dist/hson-schema.mjs")]],
+  ]) {
+    const directory = join(temporary, `returns-${name}`);
+    project(directory, source);
+    for (const action of ["generate", "build"]) run([...cli, action, "--project", join(directory, "tsconfig.json")]);
+    const declaration = readFileSync(join(directory, "out/index.d.ts"), "utf8");
+    assert.match(declaration, /load\(\): Promise</);
+    assert.doesNotMatch(declaration, /StaticPath|LIVEMAP_INVALID|hson-live[^"\n]*internal\/|__hson_assert|\.hson\//);
+    const reader = join(temporary, `returns-consumer-${name}`);
+    project(reader, `
+import { value, load, loadPromise, generate, generateAsync, Loader, direct, requiredPart, bracketPart, privateRequiredPart } from "../returns-${name}/out/index.js";
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type Assert<T extends true> = T;
+const loaded: Promise<typeof value> = load();
+const flattened: Promise<number> = loadPromise();
+type GeneratorReturn = Assert<Equal<ReturnType<typeof generate>, Generator<string, number, unknown>>>;
+type AsyncGeneratorReturn = Assert<Equal<ReturnType<typeof generateAsync>, AsyncGenerator<string, number, unknown>>>;
+const method: Promise<typeof value> = new Loader().load();
+const iterator: Generator<string, number, unknown> = new Loader().generate();
+const asyncIterator: AsyncGenerator<string, number, unknown> = new Loader().generateAsync();
+type RequiredPart = Assert<Equal<typeof direct, typeof requiredPart>>;
+type BracketPart = Assert<Equal<typeof direct, typeof bracketPart>>;
+type PrivatePart = Assert<Equal<typeof direct, typeof privateRequiredPart>>;
+const definition: ReturnType<typeof direct.snap> = requiredPart.snap();
+// @ts-expect-error A Part definition location is not a rendered occurrence.
+requiredPart.render();
+// @ts-expect-error Required Part selection does not grant supplemental Schema attachment.
+requiredPart.schema.use();
+`);
+    for (const exact of ["false", "true"]) run([join(root, "node_modules/typescript/bin/tsc"), "-p", join(reader, "tsconfig.json"), "--exactOptionalPropertyTypes", exact, "--pretty", "false"]);
+  }
+});
+check("Parts-only projects publish required and direct members without authored Schema origins", () => {
+  const source = `
+import { Hson } from "hson-live/hson";
+import { hsonLiveMap } from "hson-live/livemap";
+const loc = hsonLiveMap.locus.create({
+  components: {
+    parts: {
+      submit: {
+        kind: "document",
+        document: Hson.document\`<button/>\`,
+      },
+    },
+  },
+});
+export const part = loc.parts.must("components").submit;
+export const direct = loc.parts.components.submit;
+`;
+  for (const [name, cli] of [
+    ["source", ["--import", join(root, "node_modules/tsx/dist/loader.mjs"), join(root, "scripts/hson-schema.mts")]],
+    ["package", [join(installed, "dist/hson-schema.mjs")]],
+  ]) {
+    const directory = join(temporary, `parts-only-${name}`);
+    project(directory, source);
+    for (const action of ["generate", "build"]) run([...cli, action, "--project", join(directory, "tsconfig.json")]);
+    const manifest = JSON.parse(readFileSync(join(directory, ".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
+    assert.equal(manifest.sources.flatMap(record => record.schemas).length, 0, "The entire Parts fixture has no authored Schema origins");
+    const declaration = readFileSync(join(directory, "out/index.d.ts"), "utf8");
+    assert.doesNotMatch(declaration, /StaticPath|LIVEMAP_INVALID|hson-live[^"\n]*internal\/|__hson_assert|hson-schema\.generated/);
+    const reader = join(temporary, `parts-only-consumer-${name}`);
+    project(reader, `
+import { part, direct } from "../parts-only-${name}/out/index.js";
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type Assert<T extends true> = T;
+type SameDefinitionLocation = Assert<Equal<typeof part, typeof direct>>;
+type NotAny = Assert<Equal<0 extends (1 & typeof part) ? true : false, false>>;
+export const definition: ReturnType<typeof direct.snap> = part.snap();
+export const canonical: ReturnType<typeof direct.hson> = part.hson();
+// @ts-expect-error A Part definition does not acquire occurrence rendering.
+part.render();
+// @ts-expect-error Parts do not acquire supplemental Schema attachment.
+part.schema.use();
+// @ts-expect-error Inventory selection does not expose owner-level authority.
+part.admit({});
+`);
+    for (const exact of ["false", "true"]) run([join(root, "node_modules/typescript/bin/tsc"), "-p", join(reader, "tsconfig.json"), "--exactOptionalPropertyTypes", exact, "--pretty", "false"]);
+  }
 });
 events.terminal("pass");

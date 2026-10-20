@@ -1,6 +1,8 @@
-import ts from "typescript";
+import defaultTs from "typescript";
+import type ts from "typescript";
 import { resolve_immutable_schema } from "./schema-identity.js";
 import { read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { library_source_definitions, library_source_fields, library_source_selection } from "./library-source.js";
 
 export type SchemaSourceEdit = Readonly<{ start: number; end: number; text: string }>;
 export type SchemaSourceAssociation = Readonly<{ declaration: ts.VariableDeclaration; text: string }>;
@@ -41,7 +43,7 @@ export function schema_type_association(
 }
 
 /** Edits use UTF-16 offsets in the original TypeScript SourceFile text. */
-export function schema_association_edits(associations: readonly SchemaSourceAssociation[]): readonly SchemaSourceEdit[] {
+export function schema_association_edits(associations: readonly SchemaSourceAssociation[], ts: typeof defaultTs = defaultTs): readonly SchemaSourceEdit[] {
   const edits: SchemaSourceEdit[] = [];
   for (const association of associations) {
     const { declaration, text } = association;
@@ -63,7 +65,7 @@ export function schema_association_edits(associations: readonly SchemaSourceAsso
 /** Shared alias allocation and association/import planning for compiler and editor views. */
 export function schema_source_plan(source: ts.SourceFile, schemas: readonly Readonly<{
   declaration: ts.VariableDeclaration; name: string; specifier: string;
-}>[]): Readonly<{ edits: readonly SchemaSourceEdit[]; generatedNames: readonly string[] }> {
+}>[], ts: typeof defaultTs = defaultTs): Readonly<{ edits: readonly SchemaSourceEdit[]; generatedNames: readonly string[] }> {
   const names = new Set<string>();
   const visit = (node: ts.Node): void => { if (ts.isIdentifier(node)) names.add(node.text); ts.forEachChild(node, visit); };
   visit(source);
@@ -82,7 +84,7 @@ export function schema_source_plan(source: ts.SourceFile, schemas: readonly Read
     imports.push(association.reexport);
     return { declaration: schema.declaration, text: association.schemaAssociation };
   });
-  const edits = [...schema_association_edits(associations)];
+  const edits = [...schema_association_edits(associations, ts)];
   if (imports.length > 0) edits.push({ start: source.text.length, end: source.text.length, text: `\n${generated_exports_block(imports, schemaTypeName)}` });
   return { edits, generatedNames };
 }
@@ -95,8 +97,9 @@ export function library_schema_attachment_plan(
   source: ts.SourceFile,
   checker: ts.TypeChecker,
   schemas: readonly PreciseSchemaFact[],
+  ts: typeof defaultTs = defaultTs,
 ): Readonly<{ edits: readonly SchemaSourceEdit[]; generatedNames: readonly string[]; attachments: readonly LibrarySchemaAttachmentFact[] }> {
-  const hsonLiveMapSymbols = read_supported_hson_import_symbols(source, checker, [], "hsonLiveMap");
+  const hsonLiveMapSymbols = read_supported_hson_import_symbols(source, checker, [], "hsonLiveMap", ts);
   if (hsonLiveMapSymbols.size === 0 || schemas.length === 0) return { edits: [], generatedNames: [], attachments: [] };
   const facts = new Map<ts.Declaration, PreciseSchemaFact>(schemas.map(fact => [fact.declaration, fact]));
   const names = new Set<string>();
@@ -109,11 +112,11 @@ export function library_schema_attachment_plan(
 
   const visit = (node: ts.Node): void => {
     if (ts.isExpressionStatement(node)) {
-      const recognized = recognize_library_schema_attachment(node.expression, checker, facts, hsonLiveMapSymbols);
+      const recognized = recognize_library_schema_attachment(node.expression, checker, facts, hsonLiveMapSymbols, ts);
       if (recognized !== undefined) {
         attachments.push({ statement: node, ...recognized });
         const proof = `${helper}(${recognized.map.getText(source)}, ${JSON.stringify(recognized.library.text)}, ${recognized.schema.getText(source)});`;
-        const owner = direct_statement_owner(node);
+        const owner = direct_statement_owner(node, ts);
         if (owner === undefined) {
           edits.push({ start: node.getEnd(), end: node.getEnd(), text: `\n${proof}` });
         } else {
@@ -137,7 +140,7 @@ export function library_schema_attachment_plan(
   return { edits, generatedNames: [helper], attachments };
 }
 
-function direct_statement_owner(statement: ts.ExpressionStatement): DirectStatementOwner | undefined {
+function direct_statement_owner(statement: ts.ExpressionStatement, ts: typeof defaultTs): DirectStatementOwner | undefined {
   const parent = statement.parent;
   if (ts.isIfStatement(parent) && (parent.thenStatement === statement || parent.elseStatement === statement)) return parent;
   if ((ts.isForStatement(parent) || ts.isForInStatement(parent) || ts.isForOfStatement(parent)
@@ -152,49 +155,39 @@ function recognize_library_schema_attachment(
   checker: ts.TypeChecker,
   schemas: ReadonlyMap<ts.Declaration, PreciseSchemaFact>,
   hsonLiveMapSymbols: ReadonlySet<ts.Symbol>,
+  ts: typeof defaultTs,
 ): Readonly<{ map: ts.Identifier; library: ts.StringLiteral; schema: ts.Identifier; mode: "data" | "document" }> | undefined {
   if (!ts.isCallExpression(expression) || expression.arguments.length !== 1
     || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "use") return undefined;
   const schemaMember = expression.expression.expression;
   if (!ts.isPropertyAccessExpression(schemaMember) || schemaMember.name.text !== "schema") return undefined;
-  const selected = direct_family_selection(schemaMember.expression);
-  if (selected === undefined) return undefined;
+  const selected = library_source_selection(schemaMember.expression, checker, ts);
+  if (selected === undefined || selected.library === undefined || !selected.required || selected.checked || selected.family === "parts") return undefined;
   const { map, library } = selected;
   const schema = expression.arguments[0];
   if (!ts.isStringLiteral(library) || !ts.isIdentifier(schema)
     || !ts.isIdentifier(expression.expression.name) || !official_schema_use(expression.expression.name, checker)) return undefined;
-  const fact = schema_fact(schema, checker, schemas);
+  const fact = schema_fact(schema, checker, schemas, ts);
   if (fact === undefined) return undefined;
-  const admitted = tightening_admission(map, library.text, checker, hsonLiveMapSymbols);
+  const admitted = tightening_admission(map, library.text, checker, hsonLiveMapSymbols, ts);
   if (admitted === undefined || admitted !== fact.mode || selected.family !== (admitted === "document" ? "doc" : "data")) return undefined;
   return { map, library, schema, mode: admitted };
 }
 
 /** Recognize required direct family selection without treating optional lookup as proof. */
-export function direct_family_selection(expression: ts.Expression): Readonly<{
+export function direct_family_selection(expression: ts.Expression, checker: ts.TypeChecker, ts: typeof defaultTs = defaultTs): Readonly<{
   map: ts.Identifier; library: ts.StringLiteral; facade: ts.Expression; family: "doc" | "data";
 }> | undefined {
-  let namespace: ts.Expression;
-  let library: ts.StringLiteral;
-  if (ts.isCallExpression(expression) && expression.arguments.length === 1
-    && ts.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "must"
-    && ts.isStringLiteral(expression.arguments[0])) {
-    namespace = expression.expression.expression;
-    library = expression.arguments[0];
-  } else if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.name)) {
-    namespace = expression.expression;
-    if (["must", "name", "length", "then", "toJSON", "call", "apply", "bind", "prototype", "constructor"].includes(expression.name.text)) return undefined;
-    library = ts.factory.createStringLiteral(expression.name.text);
-  } else return undefined;
-  if (!ts.isPropertyAccessExpression(namespace) || !ts.isIdentifier(namespace.expression)
-    || (namespace.name.text !== "doc" && namespace.name.text !== "data")) return undefined;
-  return { map: namespace.expression, library, facade: expression, family: namespace.name.text };
+  const selected = library_source_selection(expression, checker, ts);
+  return selected === undefined || selected.library === undefined || !selected.required || selected.family === "parts" ? undefined
+    : { ...selected, library: selected.library, family: selected.family };
 }
 
 function schema_fact(
   identifier: ts.Identifier,
   checker: ts.TypeChecker,
   schemas: ReadonlyMap<ts.Declaration, PreciseSchemaFact>,
+  ts: typeof defaultTs,
 ): PreciseSchemaFact | undefined {
   return resolve_immutable_schema(ts, checker, identifier, declaration => schemas.get(declaration));
 }
@@ -204,27 +197,24 @@ function tightening_admission(
   library: string,
   checker: ts.TypeChecker,
   hsonLiveMapSymbols: ReadonlySet<ts.Symbol>,
+  ts: typeof defaultTs,
 ): "data" | "document" | undefined {
   const symbol = checker.getSymbolAtLocation(map);
   if (symbol === undefined || symbol.declarations?.length !== 1) return undefined;
   const declaration = symbol.declarations[0];
   if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined
     || !ts.isIdentifier(declaration.name) || !ts.isCallExpression(declaration.initializer)) return undefined;
-  const construction = declaration.initializer;
-  if (!ts.isPropertyAccessExpression(construction.expression) || construction.expression.name.text !== "fromLibraries"
-    || !ts.isIdentifier(construction.expression.expression)
-    || !hsonLiveMapSymbols.has(checker.getSymbolAtLocation(construction.expression.expression) as ts.Symbol)
-    || construction.arguments.length !== 1 || !ts.isObjectLiteralExpression(construction.arguments[0])) return undefined;
-  const property = construction.arguments[0].properties.find(item => property_name(item.name) === library);
-  if (property === undefined || !ts.isPropertyAssignment(property) || !ts.isObjectLiteralExpression(property.initializer)) return undefined;
-  const definition = property.initializer;
-  const mode = definition.properties.some(item => property_name(item.name) === "document") ? "document" as const
-    : definition.properties.some(item => property_name(item.name) === "data") ? "data" as const : undefined;
+  const construction = library_source_definitions(declaration.initializer, checker, hsonLiveMapSymbols, true, ts);
+  const definition = construction === undefined ? undefined : library_source_fields(construction, ts)?.get(library);
+  if (definition === undefined || !ts.isObjectLiteralExpression(definition)) return undefined;
+  const fields = library_source_fields(definition, ts);
+  if (fields === undefined || fields.has("parts") || fields.has("document") === fields.has("data")) return undefined;
+  const mode = fields.has("document") ? "document" : "data";
   if (mode === undefined) return undefined;
-  const schemaProperty = definition.properties.find(item => property_name(item.name) === "schema");
+  const schemaProperty = fields.get("schema");
   if (schemaProperty === undefined) return mode;
-  if (!ts.isPropertyAssignment(schemaProperty) || !ts.isIdentifier(schemaProperty.initializer)) return undefined;
-  return official_family_any(schemaProperty.initializer, mode, checker) ? mode : undefined;
+  if (!ts.isIdentifier(schemaProperty)) return undefined;
+  return official_family_any(schemaProperty, mode, checker, ts) ? mode : undefined;
 }
 
 function official_schema_use(identifier: ts.Identifier, checker: ts.TypeChecker): boolean {
@@ -232,7 +222,7 @@ function official_schema_use(identifier: ts.Identifier, checker: ts.TypeChecker)
   return symbol?.declarations?.some(declaration => /(?:\/src\/types\/livemap\.types\.ts|\/dist\/(?:index|api\/livemap\/index|types\/livemap\.types)\.d\.ts)$/.test(declaration.getSourceFile().fileName.replaceAll("\\", "/"))) === true;
 }
 
-function official_family_any(identifier: ts.Identifier, mode: "data" | "document", checker: ts.TypeChecker): boolean {
+function official_family_any(identifier: ts.Identifier, mode: "data" | "document", checker: ts.TypeChecker, ts: typeof defaultTs): boolean {
   const symbol = checker.getSymbolAtLocation(identifier);
   if (symbol === undefined || symbol.declarations?.length !== 1) return false;
   const declaration = symbol.declarations[0];
@@ -243,10 +233,6 @@ function official_family_any(identifier: ts.Identifier, mode: "data" | "document
     && ts.isImportDeclaration(importDeclaration) && ts.isStringLiteral(importDeclaration.moduleSpecifier)
     && ["hson-live", "hson-live/livemap"].includes(importDeclaration.moduleSpecifier.text)
     && checker.getAliasedSymbol(symbol).declarations?.some(item => /(?:^|\/)hson-schema\.[^/]+$/.test(item.getSourceFile().fileName.replaceAll("\\", "/"))) === true;
-}
-
-function property_name(name: ts.PropertyName | undefined): string | undefined {
-  return name !== undefined && (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) ? name.text : undefined;
 }
 
 export function apply_source_edits(source: string, edits: readonly SchemaSourceEdit[]): string {

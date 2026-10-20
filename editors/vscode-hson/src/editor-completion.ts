@@ -17,6 +17,7 @@ type CachedDocument = Readonly<{
 
 /** Version-scoped discovery and bounded Schema compilation, with no workspace execution. */
 export class HsonEditorCompletionCache {
+  constructor(private readonly typescript: typeof ts = ts) {}
   private readonly documents = new Map<string, CachedDocument>();
   private readonly schemas = new Map<string, CompiledHsonSchema | null>();
   private sourceProgram: ts.Program | undefined;
@@ -32,10 +33,10 @@ export class HsonEditorCompletionCache {
     }
     let cached = this.documents.get(fileName);
     if (cached === undefined || cached.version !== version || cached.text !== text || sourceProgram !== undefined && cached.program !== sourceProgram) {
-      const program = sourceProgram ?? create_hson_source_program(fileName, text);
+      const program = sourceProgram ?? create_hson_source_program(fileName, text, {}, this.typescript);
       const file = program.getSourceFile(fileName);
       if (file === undefined || file.text !== text) return [];
-      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program), schemaDeclarations: new Map() };
+      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program, undefined, this.typescript), schemaDeclarations: new Map() };
       this.documents.set(fileName, cached);
       if (this.documents.size > 8) {
         const oldest = this.documents.keys().next().value;
@@ -95,6 +96,7 @@ export class HsonEditorCompletionCache {
   }
 
   private resolveSchema(document: CachedDocument, tagStart: number): CompiledHsonSchema | null | undefined {
+    const ts = this.typescript;
     let tagged: ts.TaggedTemplateExpression | undefined;
     const visit = (node: ts.Node): void => {
       if (ts.isTaggedTemplateExpression(node) && node.tag.getStart(document.file) === tagStart) tagged = node;

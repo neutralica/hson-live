@@ -88,6 +88,8 @@ export type {
   LiveMapDynamicLibrary,
   LiveMapCommit,
   LiveMapStagedWriter,
+  LiveMapStagedDataLibrary,
+  LiveMapStagedDocumentLibrary,
   LiveMapLibraryPathHandle,
   LiveMapLibraryFeedEvent,
   LiveMapLibraryObjectPathHandle,

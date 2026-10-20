@@ -117,6 +117,6 @@ function is_official_member_tag(typescript: typeof ts, checker: ts.TypeChecker, 
     && official_binding(typescript, checker, tagged.tag.expression, "Hson");
 }
 
-function official_binding(_typescript: typeof ts, checker: ts.TypeChecker, identifier: ts.Identifier, expected: "Hson" | "HsonData" | "HsonDocument"): boolean {
-  return is_official_hson_package_binding(identifier, expected, checker, true);
+function official_binding(typescript: typeof ts, checker: ts.TypeChecker, identifier: ts.Identifier, expected: "Hson" | "HsonData" | "HsonDocument"): boolean {
+  return is_official_hson_package_binding(identifier, expected, checker, true, typescript);
 }
