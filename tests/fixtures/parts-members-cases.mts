@@ -19,7 +19,7 @@ export async function parts_member_cases() {
   const member = parts.heading, explicit = parts.at(["heading"]);
   assert.deepEqual(member.path(), ["heading"]);
   assert.deepEqual(member.snap(), explicit.snap());
-  assert.equal(member.data(), explicit.data());
+  assert.equal(member.hson(), explicit.hson());
   assert.equal(member.kind(), "object");
   assert.equal("render" in member, false); assert.equal("schema" in member, false);
   assert.equal("q" in member, false); assert.equal("template" in member, false);
@@ -43,7 +43,7 @@ export async function parts_member_cases() {
   const unwatch = member.watch(value => watched.push(value));
   const unfeed = member.feed(event => fed.push(event.value));
   member.delete();
-  assert.equal(member.snap(), undefined); assert.equal(member.data(), undefined);
+  assert.equal(member.snap(), undefined); assert.equal(member.hson(), undefined);
   assert.equal(member.at(["document"]).snap(), undefined);
   assert.throws(() => parts.heading, /Unknown Part member/);
   parts.at([]).object.setKey("heading", replacement);
@@ -165,42 +165,73 @@ export async function parts_member_cases() {
 }
 
 export async function parts_member_echo_cases() {
-  const locus = hsonLiveMap.locus.create({ components: { ...definitions.components, access: "shared" } }, {
-    local: [{ name: "widgets", initializer: definitions.components }],
-    authorizeProjection: () => ({ libraries: ["components", "widgets"] }),
+  const locus = hsonLiveMap.locus.create({ components: { ...definitions.components, access: "shared" }, page: { document: '<main <b "text"/>/>', access: "shared" } }, {
+    local: [{ name: "widgets", initializer: definitions.components }, { name: "localPage", initializer: { document: '<main <i "local"/>/>' } }],
+    authorizeProjection: () => ({ libraries: ["components", "widgets", "page", "localPage"] }),
   });
-  const session = await locus.session.create({ libraries: ["components", "widgets"] });
+  const session = await locus.session.create({ libraries: ["components", "widgets", "page", "localPage"] });
   const binding = bind_locus_http(locus, { endpoint: "/parts" });
   const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://parts.test/parts",
     fetch: (input, init) => binding.handle(new Request(input, init), {}) });
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport });
   try {
     const parts = echo.parts.must("components"), widgets = echo.parts.must("widgets");
+    const document = echo.doc.must("page"), documentMust = document.must, fragmentMust = document.at([0]).must;
+    assert.equal(documentMust.snap(), "<main><b>text</b></main>"); assert.equal(fragmentMust.snap(), "<b>text</b>");
+    assert.equal(fragmentMust.hson(), Hson.document`<b "text"/>`);
+    const localDocument = echo.doc.must("localPage"), localDocumentMust = localDocument.at([0]).must;
+    if (localDocument.source !== "client-local") throw Error("Expected client-local document");
+    assert.equal(localDocumentMust.snap(), "<i>local</i>");
+    localDocument.at([0]).replace("changed");
+    assert.equal(localDocumentMust.snap(), "changed"); assert.equal(localDocumentMust.hson(), Hson.document`"changed"`);
+    const element = document.at([0]).asElement()!, elementMust = element.must;
+    await locus.doc.page.at([0]).replace("after");
+    await until(() => fragmentMust.snap() === "after");
+    assert.equal(element.snap(), undefined); assert.throws(elementMust.snap);
+
     const projected = Reflect.get(parts, "heading"), local = Reflect.get(widgets, "heading");
     assert.equal(parts.source, "authority-projected"); assert.equal(widgets.source, "client-local");
     assert.equal("set" in projected, false); assert.equal("setMany" in projected.asObject().object, false);
     assert.equal("schema" in projected, false); assert.equal("schema" in local, false);
+    const projectedMust = projected.must, localMust = local.must;
+    assert.deepEqual(projectedMust.snap(), heading); assert.deepEqual(localMust.snap(), heading);
+    assert.equal(projectedMust.hson(), projected.hson());
+    assert.equal("replace" in projectedMust, false);
     local.replace(replacement); assert.deepEqual(local.snap(), replacement);
     assert.throws(() => local.set({ document: "<p/><p/>" }));
     const changes: unknown[] = [], stop = projected.watch((value: unknown) => changes.push(value));
     await locus.parts.components.heading.delete();
     await until(() => projected.snap() === undefined);
+    assert.throws(projectedMust.snap); assert.throws(projectedMust.hson);
     assert.throws(() => Reflect.get(parts, "heading"), /Unknown Part member/);
     await locus.parts.components.at([]).object.setKey("heading", replacement);
     await until(() => projected.snap()?.document === replacement.document);
     assert.deepEqual(changes, [undefined, replacement]); stop();
+    assert.deepEqual(projectedMust.snap(), replacement); assert.deepEqual(localMust.snap(), replacement);
     await session.update({ libraries: ["widgets"] });
     await until(() => echo.parts("components") === undefined);
-    assert.throws(() => projected.snap()); assert.throws(() => Reflect.get(parts, "heading"));
-    await session.update({ libraries: ["components", "widgets"] });
+    assert.throws(documentMust.snap); assert.throws(fragmentMust.hson);
+    assert.throws(() => projected.snap()); assert.throws(projectedMust.snap); assert.throws(projectedMust.hson); assert.throws(() => Reflect.get(parts, "heading"));
+    await session.update({ libraries: ["components", "widgets", "page", "localPage"] });
     await until(() => echo.parts("components") !== undefined);
     assert.notEqual(echo.parts.must("components"), parts);
     assert.deepEqual(Reflect.get(echo.parts.must("components"), "heading").snap(), replacement);
-    assert.throws(() => projected.snap()); assert.throws(() => Reflect.get(parts, "heading"));
+    assert.throws(documentMust.snap); assert.throws(fragmentMust.hson);
+    assert.throws(() => projected.snap()); assert.throws(projectedMust.snap); assert.throws(projectedMust.hson); assert.throws(() => Reflect.get(parts, "heading"));
     assert.equal(echo.parts.must("widgets"), widgets); assert.deepEqual(local.snap(), replacement);
+    const activeDocument = echo.doc.must("page"), activeFragment = activeDocument.at([0]);
+    const activeProjected = Reflect.get(echo.parts.must("components"), "heading").must;
+    const activeLocalDocument = echo.doc.must("localPage"), activeLocalFragment = activeLocalDocument.at([0]);
     assert.equal(session.revoke(), true);
     echo.disconnect(); await until(() => echo.session.status !== "attached");
     await assert.rejects(echo.session.reattach());
+    const retained = Reflect.get(echo.parts.must("widgets"), "heading").must;
+    echo.dispose();
+    assert.throws(retained.snap, /disposed/i);
+    assert.throws(retained.hson, /disposed/i);
+    for (const read of [activeDocument.snap, activeDocument.must.hson, activeFragment.must.snap,
+      activeProjected.snap, activeProjected.hson, activeLocalDocument.must.snap, activeLocalFragment.hson,
+      activeLocalFragment.must.snap]) assert.throws(read, /disposed/i);
   } finally { echo.dispose(); transport.dispose(); binding.dispose(); locus.dispose(); }
 }
 

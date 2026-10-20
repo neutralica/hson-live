@@ -1,3 +1,4 @@
+import { document_hson_value } from "./helpers/document-hson-value.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -80,22 +81,22 @@ check("insertion shifts fresh discovery without moving an old location", () => {
   const page = registry('<main <item id="x"/> <item/>/>').doc.must("page");
   const old = page.at([]).id("x");
   page.document.content.insert(target(0, 0), 0, item());
-  assert.equal((old?.snap() as HsonNode)?.$_attrs?.id, undefined);
+  assert.equal((document_hson_value(old?.hson()) as HsonNode)?.$_attrs?.id, undefined);
   assert.deepEqual(page.at([]).id("x")?.path(), [1]);
 });
 check("movement leaves returned locations at their coordinates", () => {
   const page = registry('<main <item id="x"/> <item/>/>').doc.must("page");
   const old = page.at([]).id("x");
   page.document.content.move(target(0, 0), 0, 1);
-  assert.equal(tag(old?.snap()), "item");
-  assert.equal((old?.snap() as HsonNode)?.$_attrs?.id, undefined);
+  assert.equal(tag(document_hson_value(old?.hson())), "item");
+  assert.equal((document_hson_value(old?.hson()) as HsonNode)?.$_attrs?.id, undefined);
   assert.deepEqual(page.at([]).id("x")?.path(), [1]);
 });
 check("removal leaves old coordinate passive and fresh discovery missing", () => {
   const page = registry('<main <item/> <item id="x"/>/>').doc.must("page");
   const old = page.at([]).id("x");
   page.document.content.remove(target(0, 0), 1);
-  assert.equal(old?.snap(), undefined);
+  assert.equal(document_hson_value(old?.hson()), undefined);
   assert.equal(page.at([]).id("x"), undefined);
 });
 check("replacement is visible to fresh discovery", () => {
@@ -112,7 +113,7 @@ check("registry restore refreshes canonical discovery", () => {
   page.document.content.move(target(0, 0), 0, 1);
   const moved = page.at([]).id("x");
   map.restore(initial);
-  assert.equal((moved?.snap() as HsonNode)?.$_attrs?.id, undefined);
+  assert.equal((document_hson_value(moved?.hson()) as HsonNode)?.$_attrs?.id, undefined);
   assert.deepEqual(page.at([]).id("x")?.path(), [0]);
 });
 check("discovery neither mints QUIDs nor advances revision", () => {

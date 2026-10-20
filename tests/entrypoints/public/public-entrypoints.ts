@@ -1062,21 +1062,21 @@ const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<main/>`
   publicDocumentMap.debug.node([]);
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof publicDocumentMap.document ? true : false = false;
   bindingTree.bind.path(publicDocumentMap.at([]), (_tree, value, previous) => {
-    type DocumentBindingValue = Expect<Equal<typeof value, HsonNode | Primitive | undefined>>;
-    type DocumentBindingPrevious = Expect<typeof previous extends HsonNode | Primitive | undefined ? true : false>;
+    type DocumentBindingValue = Expect<Equal<typeof value, string | undefined>>;
+    type DocumentBindingPrevious = Expect<typeof previous extends string | undefined ? true : false>;
     return undefined;
   });
   bindingTree.bind.paths([publicDocumentMap.at([]), projectedPathMap.at(["required", "leaf"])], (_tree, values) => {
     type DocumentProjectedTuple = Expect<Equal<
       typeof values,
-      readonly [HsonNode | Primitive | undefined, string]
+      readonly [string | undefined, string]
     >>;
     return undefined;
   });
   bindingTree.bind.paths([projectedPathMap.at(["literal"]), publicDocumentMap.at([])], (_tree, values) => {
     type ProjectedDocumentTuple = Expect<Equal<
       typeof values,
-      readonly ["ready", HsonNode | Primitive | undefined]
+      readonly ["ready", string | undefined]
     >>;
     return undefined;
   });
@@ -1087,9 +1087,7 @@ const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<main/>`
   bindingTree.bind.attrsPaths([publicDocumentMap.at([])], (values) => ({ "data-document": values[0] !== undefined }));
   bindingTree.bind.css(publicDocumentMap.at([]), (value) => ({ opacity: value === undefined ? 0 : 1 }));
   bindingTree.bind.cssPaths([publicDocumentMap.at([])], (values) => ({ opacity: values[0] === undefined ? 0 : 1 }));
-  // @ts-expect-error Broad document locations can contain Hson and require a text formatter.
   bindingTree.bind.text(publicDocumentMap.at([]));
-  // @ts-expect-error Broad document locations can contain Hson and require an attribute formatter.
   bindingTree.bind.attr(publicDocumentMap.at([]), "data-document");
   void documentAcquisitionIsPublic;
 }

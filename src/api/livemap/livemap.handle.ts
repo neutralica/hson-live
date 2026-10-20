@@ -1,3 +1,4 @@
+import { required_reads } from "../../internal/required-reads.js";
 import { data_path_kind, data_location_check, require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
 // handle-api.ts
 
@@ -89,15 +90,17 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
   const objectCapabilities = omit_object_discriminant(objectApi);
   const arrayCapabilities = omit_array_collisions(arrayApi);
 
+  const hson = () => {
+    if (check?.() === false) return undefined;
+    const value = livemap_projected_propagation(core)?.read(handlePath);
+    return value === undefined ? undefined : hson_data_text_from_value(value);
+  };
   const handle = {
     get rev() { return core.rev; },
     path: () => clone_live_path(handlePath),
     snap: () => read() as TValue,
-    data: () => {
-      if (check?.() === false) return undefined;
-      const value = livemap_projected_propagation(core)?.read(handlePath);
-      return value === undefined ? undefined : hson_data_text_from_value(value);
-    },
+    hson,
+    must: required_reads(() => read() as TValue, hson),
     at: ((path: LivePath) => {
       const childPath = [...handlePath, ...must_live_path(path)];
       return make_livemap_path_handle(core, childPath, listener => core.at(childPath).watch(listener), check);

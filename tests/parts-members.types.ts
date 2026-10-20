@@ -34,8 +34,7 @@ parts.heading.snap() satisfies LiveMapDocumentPart;
 parts.unknown;
 // @ts-expect-error A definition cannot render.
 parts.heading.render();
-// @ts-expect-error No required-read namespace before Cut 5.
-parts.heading.must.snap();
+parts.heading.must.snap() satisfies LiveMapDocumentPart;
 // @ts-expect-error No member-level Schema attachment.
 parts.heading.schema.use(ANY_DATA);
 // @ts-expect-error Parts cannot attach supplemental Schema.

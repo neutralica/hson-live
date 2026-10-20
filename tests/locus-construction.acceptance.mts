@@ -32,7 +32,7 @@ assert.deepEqual(authorityCommits, [2, 3, 4]);
 stopAuthorityCommits();
 assert.deepEqual(locus.cut().libs.libraries.map((entry) => entry.name),
   ["secret", "count", "page", "@hson/canonical-interactions"]);
-assert.equal(Hson.data.materialize(locus.data.must("count").at(["value"]).data()!), 3);
+assert.equal(Hson.data.materialize(locus.data.must("count").at(["value"]).hson()!), 3);
 const session = await locus.session.create({ libraries: ["count", "page", "secret", "ui"] });
 assert.deepEqual(session.now().libs.libraries.map((entry) => entry.name), ["count", "page"]);
 assert.deepEqual(session.now().local.map((entry) => entry.name), ["ui"]);

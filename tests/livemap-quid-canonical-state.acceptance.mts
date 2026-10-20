@@ -2,7 +2,7 @@ import { capture_internal_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element, registry_for_document_library } from "./helpers/mirror-unit6.mts";
+import { element, raw_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { canonical_hson_graph_difference, canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { decode_view_state_snapshot, encode_view_state_snapshot } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
@@ -96,7 +96,7 @@ check("view-state codec transfers only portable document state", () => {
 
 check("ordinary Hson serialization omits runtime QUID claims", () => {
   const source = element(`<main @${Q1}/>`);
-  const ordinary = source.at([]).snap();
+  const ordinary = raw_node(source.root(), []);
   if (!is_Node(ordinary)) throw new Error("Missing document element");
   const serialized = serialize_hson(ordinary);
   assert.equal(serialized.includes(Q1), false);

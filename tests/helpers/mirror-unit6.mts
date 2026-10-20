@@ -113,9 +113,8 @@ export function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {
 }
 
 export function projected_element(source: string): HsonNode {
-  const projected = element(source).at([]).snap();
-  if (!is_Node(projected)) throw new Error("Expected one projected document element");
-  return projected;
+  // Exact-runtime fixtures inspect the graph; portable Hson deliberately drops QUIDs.
+  return raw_node(element(source).root(), []);
 }
 
 export function mount(root: HsonNode): FakeElement {

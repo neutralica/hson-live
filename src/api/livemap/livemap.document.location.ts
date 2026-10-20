@@ -1,3 +1,4 @@
+import { required_reads } from "../../internal/required-reads.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import { STR_TAG } from "../../core/constants.js";
 import type {
@@ -108,6 +109,7 @@ export function make_livemap_document_quad_location(
   commit: <TOp extends LiveMapGraphOp>(value: LiveMapGraphCommit<TOp>) => LiveMapCommit<string, TOp>,
   revision: () => number,
   guardedEdit: <T>(run: () => T, assertSubject: () => void) => T,
+  representations: (path: readonly number[]) => Pick<LiveMapDocumentQuadLocation, "snap" | "hson">,
 ): LiveMapDocumentQuadLocation {
   const relative = (offset: readonly number[]): LiveMapDocumentQuadLocation => {
     const path = (): readonly number[] | undefined => {
@@ -125,11 +127,13 @@ export function make_livemap_document_quad_location(
       current("get-attr");
       return guardedEdit(run, () => { current("get-attr"); });
     };
+    const snap = () => { const resolved = path(); return resolved === undefined ? undefined : representations(resolved).snap(); };
+    const hson = () => { const resolved = path(); return resolved === undefined ? undefined : representations(resolved).hson(); };
     return Object.freeze({
       get active() { return currentPath() !== undefined; },
       get rev() { current("get-attr"); return revision(); },
       path: () => current("get-attr").path(),
-      snap: () => { const resolved = path(); return resolved === undefined ? undefined : at(resolved).snap(); },
+      snap, hson, must: required_reads(snap, hson),
       at: (child) => { current("get-attr"); return relative([...offset, ...must_document_logical_path(child)]); },
       dispose,
       replace: (value) => edit(() => commit(current("replace-content").replace(value))),

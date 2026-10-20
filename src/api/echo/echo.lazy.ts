@@ -269,7 +269,7 @@ export function create_lazy_replica_echo_internal<
   const families = make_echo_library_selector(options.map, (selected) => {
     if (strategy === undefined) throw new Error("Echo replica library authority is not ready.");
     return strategy.ensureDocumentAuthority(selected);
-  });
+  }, () => { if (disposed) throw new Error("Disposed Echo authority."); });
   const disconnectReplica = (): void => {
     releaseHandoff?.();
     if (connection.available && echo.session.status === "attached") {

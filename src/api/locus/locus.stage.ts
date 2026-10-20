@@ -1,3 +1,4 @@
+import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { admit_public_livemap_definitions, require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
@@ -27,6 +28,7 @@ export function make_locus_stage<TMap extends LiveMap>(
   submitLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>,
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>,
   assertSubmissionAllowed: () => void,
+  assertReadable: () => void,
 ): Pick<import("../../types/locus.core.types.js").Locus<TMap>, "stage" | "doc" | "data" | "parts" | "admit"> {
   const selected_document = (writer: Writer, name: string): Document => {
     const selected = writer.doc.must(name);
@@ -50,11 +52,12 @@ export function make_locus_stage<TMap extends LiveMap>(
       const location = selected_data(writer, name).at(stable);
       Reflect.apply(Reflect.get(Reflect.get(location, command.collection), command.method), undefined, command.args);
     }), cause => Promise.reject(cause));
+    const snap = () => { assertReadable(); return raw.snap(); };
+    const hson = () => { assertReadable(); return raw.hson(); };
     return Object.freeze({
       get rev() { return raw.rev; },
       path: () => raw.path(),
-      snap: () => raw.snap(),
-      data: () => raw.data(),
+      snap, hson, must: required_reads(snap, hson),
       watch: (listener: (value: JsonValue | undefined) => void) => raw.watch(listener),
       ...(observations.array === undefined ? {} : { array: Object.freeze({ ...observations.array, ...commands.array }) }),
       ...(observations.object === undefined ? {} : { object: Object.freeze({ ...observations.object, ...commands.object }) }),
@@ -69,11 +72,10 @@ export function make_locus_stage<TMap extends LiveMap>(
       delete: () => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).delete(); }),
     }) as unknown as import("../../types/governor.types.js").LocusDataLocation;
   };
-  const document_location = (name: string, path: readonly number[], document: LiveMapDocumentLibrary): NonNullable<ReturnType<import("../../types/governor.types.js").LocusDocumentLocation["asElement"]>> => {
+  const document_location = (name: string, path: readonly number[], document: LiveMapDocumentLibrary, retained?: ReturnType<LiveMapDocumentLibrary["at"]>): NonNullable<ReturnType<import("../../types/governor.types.js").LocusDocumentLocation["asElement"]>> => {
     const stable = validate_document_path(path);
-    const raw = document.at(stable);
-    const read = read_document_location(raw);
-    const at = (path: readonly number[]) => document_location(name, path, document);
+    const raw = retained ?? document.at(stable);
+    const read = read_document_location(raw, assertReadable);
     const edit = (run: (location: import("../livemap/livemap.staged.js").StagedDocumentLocation) => void) => submit(writer => {
       if (require_livemap_library_internal(map, name) !== document) throw new Error("Stale Library handle.");
       document.root();
@@ -82,12 +84,12 @@ export function make_locus_stage<TMap extends LiveMap>(
     return Object.freeze({
       ...read,
       get rev() { return raw.rev; },
-      present: () => raw.present() === undefined ? undefined : at(stable),
-      asElement: () => raw.asElement() === undefined ? undefined : at(stable),
-      asRoot: () => raw.asRoot() === undefined ? undefined : at(stable),
-      asText: () => raw.asText() === undefined ? undefined : at(stable),
-      id: (id: string) => { const found = raw.id(id); return found === undefined ? undefined : at(found.path()); },
-      at: (child: readonly number[]) => { raw.snap(); return at([...stable, ...validate_document_path(child)]); },
+      present: () => { const checked = raw.present(); return checked === undefined ? undefined : document_location(name, stable, document, checked); },
+      asElement: () => { const checked = raw.asElement(); return checked === undefined ? undefined : document_location(name, stable, document, checked); },
+      asRoot: () => { const checked = raw.asRoot(); return checked === undefined ? undefined : document_location(name, stable, document, checked); },
+      asText: () => { const checked = raw.asText(); return checked === undefined ? undefined : document_location(name, stable, document, checked); },
+      id: (id: string) => { const found = raw.id(id); return found === undefined ? undefined : document_location(name, found.path(), document, found); },
+      at: (child: readonly number[]) => { raw.snap(); return document_location(name, [...stable, ...validate_document_path(child)], document, raw.at(child)); },
       replace: (value: LiveMapDocumentContent) => edit(location => location.replace(value)),
       delete: () => edit(location => location.delete()),
       insert: (index: number, value: LiveMapDocumentContent) => edit(location => location.insert(index, value)),
@@ -118,7 +120,9 @@ export function make_locus_stage<TMap extends LiveMap>(
         if (selected.mode !== "document") {
           const data = selected as LiveMapDataLibrary;
           const handle = Object.freeze({ mode: data.mode, get rev() { return data.rev; }, root: () => data.root(),
-            snap: data.snap.bind(data), schema: Object.freeze({ get: () => data.schema.get() }),
+            snap: (path?: LivePath) => { assertReadable(); return path === undefined ? data.snap() : data.snap(path); },
+            hson: () => { assertReadable(); return data.hson(); },
+            must: required_reads(() => { assertReadable(); return data.snap(); }, () => { assertReadable(); return data.hson(); }), schema: Object.freeze({ get: () => data.schema.get() }),
             at: (path: LivePath) => data_path(name, path, data) });
           return resolve_livemap_library_internal(map, name)?.family === "parts"
             ? make_parts_facade(handle, key => data.snap([key]) !== undefined) : handle;
@@ -159,6 +163,8 @@ export function make_locus_stage<TMap extends LiveMap>(
           mode: "document" as const,
           get rev() { return document.rev; },
           root: () => document.root(),
+          snap: () => { assertReadable(); return document.snap(); }, hson: () => { assertReadable(); return document.hson(); },
+          must: required_reads(() => { assertReadable(); return document.snap(); }, () => { assertReadable(); return document.hson(); }), watch: document.watch.bind(document),
           render: mark_browser_html_producer(() => document.render()),
           commits: document.commits,
           schema: Object.freeze({ get: () => document.schema.get() }),
@@ -168,7 +174,7 @@ export function make_locus_stage<TMap extends LiveMap>(
             return subject === undefined ? undefined : write_document_quad(subject, (current, run) => edit(draft => {
               run(draft.at(current.path()) as import("../livemap/livemap.staged.js").StagedDocumentLocation);
               current.path(); // Reject retirement or disposal during argument capture.
-            }));
+            }), assertReadable);
           },
           css,
           document: Object.freeze({ root: () => document.document.root(),

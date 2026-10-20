@@ -1,3 +1,4 @@
+import { document_hson_value } from "./helpers/document-hson-value.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { ANY_DOCUMENT, Hson, hsonLiveMap, type HsonAuthored, type HsonSchema } from "../src/index.ts";
@@ -50,10 +51,10 @@ check("broad composed documents retain logical, relative, and proxy paths", () =
     explicit: { document, schema: ANY_DOCUMENT },
   });
   for (const page of [map.doc.must("home"), map.doc.must("explicit")]) {
-    assert.equal(tag(page.at([]).snap()), "html");
-    assert.equal(tag(page.at([0]).snap()), "head");
-    assert.equal(tag(page.at([1]).snap()), "body");
-    assert.equal(tag(page.at([1, 0]).snap()), "section");
+    assert.equal(tag(document_hson_value(page.at([]).hson())), "html");
+    assert.equal(tag(document_hson_value(page.at([0]).hson())), "head");
+    assert.equal(tag(document_hson_value(page.at([1]).hson())), "body");
+    assert.equal(tag(document_hson_value(page.at([1, 0]).hson())), "section");
     assert.equal(page.at([1, 0, 0]).snap(), "slide00");
     assert.equal(page.at([1]).at([0]), page.at([1, 0]));
     assert.equal(page.at([]).at([1, 0]), page.at([1, 0]));
@@ -72,9 +73,9 @@ check("broad composed documents retain logical, relative, and proxy paths", () =
 check("one-library document locations read root, child, and nested paths", () => {
   const map = tree("<main <item <item/>/>/>");
   const page = map.doc.must("page");
-  assert.equal(tag(page.at([]).snap()), "main");
-  assert.equal(tag(page.at([0]).snap()), "item");
-  assert.equal(tag(page.at([0, 0]).snap()), "item");
+  assert.equal(tag(document_hson_value(page.at([]).hson())), "main");
+  assert.equal(tag(document_hson_value(page.at([0]).hson())), "item");
+  assert.equal(tag(document_hson_value(page.at([0, 0]).hson())), "item");
   assert.equal(page.at([0, 1]).snap(), undefined);
   assert.deepEqual(page.at([0]).at([0]).path(), [0, 0]);
   assert.equal(page.at([0]).at([0]), page.at([0, 0]));
@@ -82,9 +83,9 @@ check("one-library document locations read root, child, and nested paths", () =>
 
 check("multi-node root and text leaves keep their logical coordinates", () => {
   const multi = hsonLiveMap.fromLibraries({ page: { document: "<item/> <item/>", schema: MultiSchema } }).doc.must("page");
-  assert.equal(tag(multi.at([]).snap()), "_hson_root");
-  assert.equal(tag(multi.at([0]).snap()), "item");
-  assert.equal(tag(multi.at([1]).snap()), "item");
+  assert.equal(tag(document_hson_value(multi.at([]).hson())), "_hson_root");
+  assert.equal(tag(document_hson_value(multi.at([0]).hson())), "item");
+  assert.equal(tag(document_hson_value(multi.at([1]).hson())), "item");
   const text = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>', schema: TextSchema } }).doc.must("page");
   assert.equal(text.at([0]).snap(), "hello");
   assert.equal(text.at([0, 0]).snap(), undefined);
@@ -94,10 +95,10 @@ check("reads are detached, do not mint QUIDs, and do not advance revision", () =
   const map = tree("<main <item/>/>");
   const page = map.doc.must("page");
   const before = map.rev;
-  const read = page.at([0]).snap();
+  const read = document_hson_value(page.at([0]).hson());
   if (!is_Node(read)) throw new Error("Expected item node.");
   read.$_tag = "changed";
-  assert.equal(tag(page.at([0]).snap()), "item");
+  assert.equal(tag(document_hson_value(page.at([0]).hson())), "item");
   assert.equal(page.document.byQuid("000000001"), undefined);
   assert.equal(map.rev, before);
 });
@@ -106,11 +107,11 @@ check("fixed coordinates resolve their current occupant after insert, move, and 
   const map = tree("<main <item id=\"first\"/> <item id=\"second\"/>/>");
   const page = map.doc.must("page");
   const atOne = page.at([1]);
-  assert.equal((atOne.snap() as HsonNode).$_attrs?.id, "second");
+  assert.equal((document_hson_value(atOne.hson()) as HsonNode).$_attrs?.id, "second");
   page.document.content.insert({ kind: "path", path: [0, 0] }, 0, item());
-  assert.equal((atOne.snap() as HsonNode).$_attrs?.id, "first");
+  assert.equal((document_hson_value(atOne.hson()) as HsonNode).$_attrs?.id, "first");
   page.document.content.move({ kind: "path", path: [0, 0] }, 0, 2);
-  assert.equal((atOne.snap() as HsonNode).$_attrs?.id, "second");
+  assert.equal((document_hson_value(atOne.hson()) as HsonNode).$_attrs?.id, "second");
   page.at([1]).delete();
   assert.equal(atOne.snap() === undefined, false);
 });
@@ -119,7 +120,7 @@ check("location replacement stays within the selected document Schema", () => {
   const map = tree("<main <item/>/>");
   const page = map.doc.must("page");
   page.at([0]).replace({ $_tag: "item", $_attrs: { id: "replacement" }, $_content: [] });
-  assert.equal((page.at([0]).snap() as HsonNode).$_attrs?.id, "replacement");
+  assert.equal((document_hson_value(page.at([0]).hson()) as HsonNode).$_attrs?.id, "replacement");
   assert.equal(map.rev, 1);
 });
 
@@ -129,12 +130,12 @@ check("map restore refreshes existing document locations and watchers", () => {
   const location = page.at([0]);
   const snapshot = map.capture();
   const seen: unknown[] = [];
-  location.watch((next) => seen.push(is_Node(next) ? next.$_attrs?.id : undefined));
+  location.watch((next) => seen.push(next));
   page.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "after");
-  assert.equal((location.snap() as HsonNode).$_attrs?.id, "after");
+  assert.equal((document_hson_value(location.hson()) as HsonNode).$_attrs?.id, "after");
   map.restore(snapshot);
-  assert.equal((location.snap() as HsonNode).$_attrs?.id, "before");
-  assert.deepEqual(seen, ["after", "before"]);
+  assert.equal((document_hson_value(location.hson()) as HsonNode).$_attrs?.id, "before");
+  assert.deepEqual(seen, ['<item id="after"></item>', '<item id="before"></item>']);
 });
 
 check("local identity acquisition does not publish document watch events", () => {

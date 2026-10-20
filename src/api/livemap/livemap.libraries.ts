@@ -1,3 +1,5 @@
+import { document_markup, document_hson } from "../../internal/document-representation.js";
+import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
 import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
@@ -1186,6 +1188,10 @@ function make_data_library(
     throw new Error(`LiveMap Library ${JSON.stringify(library.name)} is not a data Library.`);
   }
   const snap = (path: LivePath = []): JsonValue | undefined => aggregate.snap(library.identity, path);
+  const canonical = (path: LivePath = []) => {
+    const value = ordered_projected_value_at(projected_value_from_hson_node(aggregate.root(library.identity)), path);
+    return value === undefined ? undefined : hson_data_text_from_value(value);
+  };
   const public_data_commit = (commit: LiveMapAggregateCommit): LiveMapCommit<string, LiveMapDataOp> =>
     public_commit(commit) as LiveMapCommit<string, LiveMapDataOp>;
   const handle = <TValue = JsonValue | undefined>(path: LivePath, check?: DataLocationCheck): LiveMapLibraryPathHandle<TValue> => {
@@ -1211,18 +1217,13 @@ function make_data_library(
     const objectCapabilities = omit_object_discriminant(objectApi);
     const arrayCapabilities = omit_array_collisions(arrayApi);
     const currentKind = () => data_path_kind(read());
+    const hson = () => check?.() === false ? undefined : canonical(stablePath);
     const facade = {
       get rev() { aggregate.librarySchema(library.identity); return aggregate.inspect().revision; },
       path: () => { aggregate.librarySchema(library.identity); return clone_live_path(stablePath); },
       snap: () => read() as TValue,
-      data: () => {
-        if (check?.() === false) return undefined;
-        const value = ordered_projected_value_at(
-          projected_value_from_hson_node(aggregate.root(library.identity)),
-          stablePath,
-        );
-        return value === undefined ? undefined : hson_data_text_from_value(value);
-      },
+      hson,
+      must: required_reads(() => read() as TValue, hson),
       at: ((child: LivePath) => handle([...stablePath, ...must_live_path(child)], check)) as unknown as LiveMapLibraryPathHandle<TValue>["at"],
       watch: (listener: (next: TValue) => void) => {
         const stopWatch = aggregate.watch(library.identity, stablePath, (next) => listener((check === undefined ? next : read()) as TValue));
@@ -1291,6 +1292,8 @@ function make_data_library(
     get rev() { aggregate.librarySchema(library.identity); return aggregate.inspect().revision; },
     root: () => clone_node(aggregate.root(library.identity)),
     snap: library_snap,
+    hson: () => canonical(),
+    must: required_reads(() => library_snap(), canonical),
     at: library_at as LiveMapDataLibrary["at"],
     schema: Object.freeze({
       get: () => aggregate.librarySchema(library.identity) as HsonSchemaHandle<unknown, "data">,
@@ -1489,7 +1492,8 @@ function make_document_library(
     }),
     (path, listener) => {
       const stopCommit = aggregate.observe((commit) => {
-        if (!commit.operations.some((operation) => operation.target.library === library.identity)) return;
+        if (commit.css?.library !== library.identity
+          && !commit.operations.some((operation) => operation.target.library === library.identity)) return;
         listener(read_livemap_document_logical_location(root(), "document", path));
       });
       const stopRestore = aggregate.observeRestore((event) => {
@@ -1513,34 +1517,39 @@ function make_document_library(
     }),
     (path, listener) => raw_at(path).watch(listener),
   );
-  const wrap_location = (raw: ReturnType<typeof raw_at>): ReturnType<LiveMapDocumentLibrary["at"]> => {
-    const existing = wrappedLocations.get(raw);
+  const wrap_location = (raw: ReturnType<typeof raw_at>, check?: () => boolean): ReturnType<LiveMapDocumentLibrary["at"]> => {
+    const existing = check === undefined ? wrappedLocations.get(raw) : undefined;
     if (existing !== undefined) return existing as ReturnType<LiveMapDocumentLibrary["at"]>;
+    const read = () => check?.() === false ? undefined : raw.snap();
+    const snap = () => check?.() === false ? undefined : document_markup(root(), raw.path());
+    const hson = () => document_hson(read());
+    const refine = (predicate: (value: HsonNode | Primitive | undefined) => boolean) =>
+      wrap_location(raw, () => check?.() !== false && predicate(raw.snap()));
     const wrapped = Object.freeze({
       get rev() { return raw.rev; },
       path: () => raw.path(),
-      snap: () => raw.snap(),
-      watch: (listener: (next: HsonNode | Primitive | undefined) => void) => raw.watch(listener),
-      at: (path: readonly number[]) => wrap_location(raw.at(path)),
+      snap, hson, must: required_reads(snap, hson),
+      watch: (listener: (next: string | undefined) => void) => raw.watch(() => listener(snap())),
+      at: (path: readonly number[]) => wrap_location(raw.at(path), check),
       id: (value: string) => {
         const found = raw.id(value);
-        return found === undefined ? undefined : wrap_location(found);
+        return found === undefined ? undefined : wrap_location(found, check);
       },
       kind: () => {
-        const value = raw.snap();
+        const value = read();
         if (value === undefined) return "missing" as const;
         if (is_ordinary_element_node(value)) return "element" as const;
         return is_Node(value) ? "root" as const : "text" as const;
       },
-      present: () => raw.snap() === undefined ? undefined : wrap_location(raw),
-      asElement: () => is_ordinary_element_node(raw.snap()) ? wrap_location(raw) : undefined,
+      present: () => read() === undefined ? undefined : refine(value => value !== undefined),
+      asElement: () => is_ordinary_element_node(read()) ? refine(is_ordinary_element_node) : undefined,
       asRoot: () => {
-        const value = raw.snap();
-        return is_Node(value) && !is_ordinary_element_node(value) ? wrap_location(raw) : undefined;
+        const value = read();
+        return is_Node(value) && !is_ordinary_element_node(value) ? refine(value => is_Node(value) && !is_ordinary_element_node(value)) : undefined;
       },
       asText: () => {
-        const value = raw.snap();
-        return value !== undefined && !is_Node(value) ? wrap_location(raw) : undefined;
+        const value = read();
+        return value !== undefined && !is_Node(value) ? refine(value => value !== undefined && !is_Node(value)) : undefined;
       },
       replace: (value: LiveMapDocumentContent) => multi_commit(raw.replace(value)),
       delete: () => multi_commit(raw.delete()),
@@ -1564,7 +1573,7 @@ function make_document_library(
         clear: (...names: string[]) => multi_commit(raw.flags.clear(...names)),
       }),
     });
-    wrappedLocations.set(raw, wrapped);
+    if (check === undefined) wrappedLocations.set(raw, wrapped);
     return wrapped as ReturnType<LiveMapDocumentLibrary["at"]>;
   };
 
@@ -1617,8 +1626,12 @@ function make_document_library(
   register_livemap_document_identity_authority(documentApi, controller, library.identity);
   register_livemap_identity_epoch_owner(documentApi, controller.identityEpoch);
 
+  const snap = () => document_markup(root())!;
+  const hson = () => document_hson(root())!;
   const facade: LiveMapDocumentLibrary = {
     mode: "document" as const,
+    snap, hson, must: required_reads(snap, hson),
+    watch: listener => raw_at([]).watch(() => listener(snap())),
     get rev() { aggregate.librarySchema(library.identity); return aggregate.inspect().revision; },
     css: make_livemap_document_css(
       () => aggregate.stylesheet(library.identity),
@@ -1657,6 +1670,7 @@ function make_document_library(
           return internal_document_subject_logical_path(root(), "document", path);
         },
         retire, quad_at, multi_commit, () => aggregate.inspect().revision, quad_edit,
+        path => ({ snap: () => document_markup(root(), path), hson: () => document_hson(quad_at(path).snap()) }),
       );
     },
     proxy: (path: readonly number[] = []) => Object.freeze({ $_: wrap_location(raw_at(path)) }),

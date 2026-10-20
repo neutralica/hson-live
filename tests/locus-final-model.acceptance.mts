@@ -31,7 +31,7 @@ const definition = [{ "A": { data: { value: 1 }, access: "shared" } }, { logical
 const read = (locus: ReturnType<typeof hsonLiveMap.locus.create>, name: string) => {
   const library = locus.data.must(name);
   if (String(library.mode) === "document") throw new Error("Expected data Library.");
-  return Hson.data.materialize(library.at(["value"]).data()!);
+  return Hson.data.materialize(library.at(["value"]).hson()!);
 };
 
 const fresh = hsonLiveMap.locus.create({ "secret": { data: { value: 1 }, access: "private" }, "public": { data: { value: 2 }, access: "shared" } }, { local: [{ name: "ui", initializer: { data: { selected: false } } }] });

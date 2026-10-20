@@ -171,8 +171,8 @@ check("named data library exact reads preserve source order and values", () => {
     data: '{"value":{"10":-0,"2":{"__proto__":true},"tail":[1,{"constructor":2,"prototype":3}]}}',
     schema: Hson.schema`<type "data" content <value "any">>`,
   } });
-  const exact = map.data.must("state").at([]).data();
-  const nested = map.data.must("state").at(["value"]).data()!;
+  const exact = map.data.must("state").at([]).hson();
+  const nested = map.data.must("state").at(["value"]).hson()!;
   assert.equal(typeof exact, "string");
   assert.equal(typeof nested, "string");
   assert.deepEqual(entries(nested).map(([name]) => name), ["10", "2", "tail"]);
@@ -201,7 +201,7 @@ check("named data library rejects reserved names before state, revision, or publ
   assert.equal(map.rev, 0);
   assert.deepEqual(state.snap(), before);
   assert.equal(publications, 0);
-  assert.equal(state.at([]).data(), Hson.data`<nested <value 1>>`);
+  assert.equal(state.at([]).hson(), Hson.data`<nested <value 1>>`);
   stop();
 });
 

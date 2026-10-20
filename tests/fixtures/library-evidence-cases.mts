@@ -28,7 +28,7 @@ export async function library_evidence_cases() {
   const parent = state.at(["parent"]).asObject()!;
   const object = parent.at(["value"]).asObject()!;
   const count = object.at(["count"]);
-  array.snap(); array.data(); array.array.map(x => x); object.object.keys(); count.snap();
+  array.snap(); array.hson(); array.array.map(x => x); object.object.keys(); count.snap();
   assert.deepEqual(map.capture(), before);
   assert.equal(aggregate.identityEpoch().issued(), issued);
   assert.deepEqual(enumerate_livemap_issued_quids(aggregate.identityEpoch().issued()), issuedBefore);
@@ -37,7 +37,7 @@ export async function library_evidence_cases() {
   const stopChild = child.watch(next => descendants.push(next));
   value.replace({ count: 2 });
   assert.equal(array.snap(), undefined);
-  assert.equal(array.data(), undefined);
+  assert.equal(array.hson(), undefined);
   assert.equal(child.snap(), undefined);
   assert.equal(array.at([]).snap(), undefined);
   assert.equal(array.asObject(), undefined);

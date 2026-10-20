@@ -1,3 +1,4 @@
+import { document_hson_value } from "./helpers/document-hson-value.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -30,13 +31,13 @@ const registry = (document: string, schema = Items) => hsonLiveMap.fromLibraries
 
 check("logical root resolves the ordinary document element", () => {
   const page = registry('<main <item id="a"/>/>').doc.must("page");
-  assert.equal((page.at([]).snap() as { $_tag: string }).$_tag, "main");
+  assert.equal((document_hson_value(page.at([]).hson()) as { $_tag: string }).$_tag, "main");
   assert.equal(page.at([]).asElement()?.kind(), "element");
 });
 
 check("logical child paths hide physical content carriers", () => {
   const page = registry('<main <item id="a"/> <item id="b"/>/>').doc.must("page");
-  assert.equal((page.at([0]).snap() as { $_tag: string }).$_tag, "item");
+  assert.equal((document_hson_value(page.at([0]).hson()) as { $_tag: string }).$_tag, "item");
   assert.equal(page.at([0]).asElement()?.attrs.get("id"), "a");
   assert.equal(page.at([1]).asElement()?.attrs.get("id"), "b");
 });
@@ -44,7 +45,7 @@ check("logical child paths hide physical content carriers", () => {
 check("nested logical traversal descends through each canonical carrier", () => {
   const page = element('<main <section <item id="nested"/>/>/>');
   assert.equal(page.at([0, 0]).asElement()?.attrs.get("id"), "nested");
-  assert.equal((page.at([0]).snap() as { $_tag: string }).$_tag, "section");
+  assert.equal((document_hson_value(page.at([0]).hson()) as { $_tag: string }).$_tag, "section");
 });
 
 check("multi-node document root is an ordered content container", () => {
@@ -91,7 +92,7 @@ check("empty element content materializes on the first valid insertion", () => {
   const page = registry('<main/>').doc.must("page");
   const commit = page.at([]).asElement()!.insert(0, projected_element('<item/>'));
   assert.equal(commit.operations[0]?.operation.op, "insert-content");
-  assert.equal((page.at([0]).snap() as { $_tag: string }).$_tag, "item");
+  assert.equal((document_hson_value(page.at([0]).hson()) as { $_tag: string }).$_tag, "item");
 });
 
 check("invalid insertion index leaves an empty element unchanged", () => {

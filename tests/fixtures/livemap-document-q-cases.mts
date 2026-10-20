@@ -1,3 +1,4 @@
+import { document_hson_value } from "../helpers/document-hson-value.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform, LiveMapDocumentMutationError } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
@@ -259,9 +260,9 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     try {
       for (const [name, tag] of [["constructor", "main"], ["__proto__", "button"], ["_subject", "aside"]]) {
         const location = selected.q(name!); assert.ok(location); assert.equal(location.active, true);
-        const snapshot = location.snap(); assert.ok(snapshot && typeof snapshot === "object"); assert.equal(snapshot.$_tag, tag);
+        const snapshot = document_hson_value(location.hson()); assert.ok(snapshot && typeof snapshot === "object"); assert.equal(snapshot.$_tag, tag);
         snapshot.$_tag = "changed";
-        const again = location.snap(); assert.ok(again && typeof again === "object"); assert.equal(again.$_tag, tag);
+        const again = document_hson_value(location.hson()); assert.ok(again && typeof again === "object"); assert.equal(again.$_tag, tag);
       }
       for (const name of ["absent", "toString", "", "bad name"]) assert.equal(selected.q(name), undefined);
       assert.throws(() => Reflect.apply(selected.q, selected, [null]), TypeError);
@@ -283,13 +284,13 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
       location.flags.set("disabled"); assert.equal(location.flags.has("disabled"), true); location.flags.clear("disabled");
       root.move(0, 1); assert.deepEqual(location.path(), [1]); assert.deepEqual(text.path(), [1, 0]);
       assert.deepEqual(fixed.path(), [0]);
-      const stationary = fixed.snap(); assert.ok(stationary && typeof stationary === "object"); assert.equal(stationary.$_tag, "aside");
+      const stationary = document_hson_value(fixed.hson()); assert.ok(stationary && typeof stationary === "object"); assert.equal(stationary.$_tag, "aside");
       assert.equal(fixed.asElement()!.attrs.get("title"), undefined);
       location.attrs.setMany({ title: "Moved", id: "same" }); text.replace("Proceed");
       assert.equal(selected.at([1]).asElement()!.attrs.get("title"), "Moved"); assert.equal(text.snap(), "Proceed");
       location.insert(1, hsonTransform.fromHson('<b/>').toNode().$_content[0]!);
       location.move(1, 0);
-      const newOccupant = text.snap(); assert.ok(newOccupant && typeof newOccupant === "object"); assert.equal(newOccupant.$_tag, "b");
+      const newOccupant = document_hson_value(text.hson()); assert.ok(newOccupant && typeof newOccupant === "object"); assert.equal(newOccupant.$_tag, "b");
       location.at([0]).delete(); assert.equal(text.snap(), "Proceed");
       assert.equal(location.attrs.must.get("id"), "same"); assert.ok(location.attrs.keys().includes("id"));
       location.attrs.dropMany(["id"]); location.attrs.drop("title"); location.attrs.replace({ title: "Last" }); location.attrs.clear();

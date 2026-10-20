@@ -4,7 +4,7 @@ import { require_livemap_library_internal, resolve_livemap_library_internal } fr
 import { empty_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import { capture_document_attrs_command } from "../livemap/livemap.document.mutation.js";
 import { document_css_reads, document_css_commands, capture_document_css_command, lower_document_css_command } from "../../internal/document-css-commands.js";
-import { read_data_location, read_document_location } from "../../internal/library-observation.js";
+import { read_data_location, read_document_location, type DataLocationObservations } from "../../internal/library-observation.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import type { LiveMap, LiveMapDocumentLibrary, LiveMapDataLibrary, LivePath,
   LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentAttrs, LiveMapDocumentAttributeValue,
@@ -22,7 +22,36 @@ import { must_live_path } from "../livemap/livemap.guard.js";
 export function make_echo_library_selector(
   map: LiveMap,
   ensureDocumentAuthority: (selected: LiveMapDocumentLibrary) => EchoDocumentAuthority,
+  assertReadable: () => void,
 ) {
+  const representations = <T, H>(raw: { snap: () => T; hson: () => H }) => {
+    const snap = () => { assertReadable(); return raw.snap(); };
+    const hson = () => { assertReadable(); return raw.hson(); };
+    return { snap, hson, must: required_reads(snap, hson) };
+  };
+  const local_data_location = <T extends DataLocationObservations>(raw: T): T => {
+    const refine = <U extends DataLocationObservations>(checked: U | undefined) =>
+      checked === undefined ? undefined : local_data_location(checked);
+    return Object.freeze({
+      ...raw, get rev() { return raw.rev; }, ...representations(raw),
+      at: (path: LivePath) => local_data_location(raw.at(path)),
+      present: () => refine(raw.present()), asArray: () => refine(raw.asArray()),
+      asObject: () => refine(raw.asObject()), asScalar: () => refine(raw.asScalar()),
+    }) as T;
+  };
+  const local_document_location = (raw: ReturnType<LiveMapDocumentLibrary["at"]>): ReturnType<LiveMapDocumentLibrary["at"]> => {
+    const refine = (checked: ReturnType<LiveMapDocumentLibrary["at"]> | undefined) =>
+      checked === undefined ? undefined : local_document_location(checked);
+    return Object.freeze({
+      ...raw, get rev() { return raw.rev; }, ...representations(raw),
+      at: (path: readonly number[]) => local_document_location(raw.at(path)),
+      id: (id: string) => refine(raw.id(id)), present: () => refine(raw.present()),
+      asElement: () => refine(raw.asElement()), asRoot: () => refine(raw.asRoot()), asText: () => refine(raw.asText()),
+    }) as ReturnType<LiveMapDocumentLibrary["at"]>;
+  };
+  const local_quad = (raw: NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>>): NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>> =>
+    Object.freeze({ ...raw, get active() { return raw.active; }, get rev() { return raw.rev; },
+      ...representations(raw), at: (path: readonly number[]) => local_quad(raw.at(path)) });
   const selected = new Map<string, Readonly<{ raw: LiveMapDataLibrary | LiveMapDocumentLibrary; handle: EchoLibrary }>>();
   const select = (name: string): EchoLibrary => {
     const raw = require_livemap_library_internal(map, name);
@@ -34,12 +63,15 @@ export function make_echo_library_selector(
     if (source === "client-local") {
       const local = raw.mode === "document"
         ? Object.freeze({ source, mode: raw.mode, get rev() { return raw.rev; }, root: () => raw.root(),
-          at: raw.at.bind(raw), render: mark_browser_html_producer(() => raw.render()),
+          at: (path: readonly number[]) => local_document_location(raw.at(path)), ...representations(raw), watch: raw.watch.bind(raw),
+          render: mark_browser_html_producer(() => raw.render()),
           document: Object.freeze({ root: raw.document.root.bind(raw.document), content: raw.document.content,
             attrs: raw.document.attrs, flags: raw.document.flags }),
-          q: raw.q.bind(raw), css: raw.css, commits: raw.commits, schema: raw.schema })
+          q: (name: string) => { const subject = raw.q(name); return subject === undefined ? undefined : local_quad(subject); },
+          css: raw.css, commits: raw.commits, schema: raw.schema })
         : Object.freeze({ source, mode: raw.mode, get rev() { return raw.rev; }, root: () => raw.root(),
-          snap: raw.snap.bind(raw), at: raw.at.bind(raw), schema: raw.schema });
+          ...representations(raw), snap: (path?: LivePath) => { assertReadable(); return path === undefined ? raw.snap() : raw.snap(path); },
+          at: (path: LivePath) => local_data_location(raw.at(path)), schema: raw.schema });
       if (raw.mode === "document") register_governed_document(local, raw);
       const handle = raw.mode !== "document" && local.mode !== "document" && parts
         ? make_parts_facade(local, key => raw.snap([key]) !== undefined) : local;
@@ -48,9 +80,10 @@ export function make_echo_library_selector(
     }
     if (raw.mode !== "document") {
       const data = raw as LiveMapDataLibrary;
-      const at = (path: LivePath) => read_data_location(data.at(must_live_path(path)));
+      const at = (path: LivePath) => read_data_location(data.at(must_live_path(path)), assertReadable);
       const projected = Object.freeze({ source, mode: data.mode, get rev() { return data.rev; },
-        root: () => data.root(), snap: data.snap.bind(data), at,
+        root: () => data.root(), ...representations(data),
+        snap: (path?: LivePath) => { assertReadable(); return path === undefined ? data.snap() : data.snap(path); }, at,
         schema: Object.freeze({ get: () => data.schema.get() }) });
       const handle = parts ? make_parts_facade(projected, key => data.snap([key]) !== undefined) : projected;
       selected.set(name, Object.freeze({ raw, handle: handle as EchoLibrary }));
@@ -65,18 +98,18 @@ export function make_echo_library_selector(
       if (command.kind === "setMany") throw new Error("Expected semantic flag names.");
       return Object.freeze(Object.fromEntries(command.names.map(name => [name, name])));
     };
-    const location = (path: readonly number[]): NonNullable<ReturnType<import("../../types/governor.types.js").EchoDocumentLocation["asElement"]>> => {
+    const location = (path: readonly number[], retained?: ReturnType<LiveMapDocumentLibrary["at"]>): NonNullable<ReturnType<import("../../types/governor.types.js").EchoDocumentLocation["asElement"]>> => {
       const stable = validate_document_path(path);
-      const rawLocation = document.at(stable);
+      const rawLocation = retained ?? document.at(stable);
       return Object.freeze({
         get rev() { return rawLocation.rev; }, path: () => rawLocation.path(),
-        snap: () => rawLocation.snap(), watch: rawLocation.watch.bind(rawLocation), kind: () => rawLocation.kind(),
-        present: () => rawLocation.present() === undefined ? undefined : location(stable),
-        asElement: () => rawLocation.asElement() === undefined ? undefined : location(stable),
-        asRoot: () => rawLocation.asRoot() === undefined ? undefined : location(stable),
-        asText: () => rawLocation.asText() === undefined ? undefined : location(stable),
-        at: (child: readonly number[]) => location([...stable, ...child]),
-        id: (id: string) => { const found = rawLocation.id(id); return found === undefined ? undefined : location(found.path()); },
+        ...representations(rawLocation), watch: rawLocation.watch.bind(rawLocation), kind: () => rawLocation.kind(),
+        present: () => { const checked = rawLocation.present(); return checked === undefined ? undefined : location(stable, checked); },
+        asElement: () => { const checked = rawLocation.asElement(); return checked === undefined ? undefined : location(stable, checked); },
+        asRoot: () => { const checked = rawLocation.asRoot(); return checked === undefined ? undefined : location(stable, checked); },
+        asText: () => { const checked = rawLocation.asText(); return checked === undefined ? undefined : location(stable, checked); },
+        at: (child: readonly number[]) => location([...stable, ...child], rawLocation.at(child)),
+        id: (id: string) => { const found = rawLocation.id(id); return found === undefined ? undefined : location(found.path(), found); },
         replace: (value: LiveMapDocumentContent) => enqueue(() => {
           const slot = governed_document_slot(document, stable);
           return Object.freeze({ name: "document.content.replace" as const,
@@ -155,10 +188,11 @@ export function make_echo_library_selector(
       })),
     });
     const governed = Object.freeze({ source, mode: "document" as const,
-      get rev() { return document.rev; }, root: () => document.root(), render: mark_browser_html_producer(() => document.render()),
+      get rev() { return document.rev; }, root: () => document.root(), ...representations(document), watch: document.watch.bind(document),
+      render: mark_browser_html_producer(() => document.render()),
       commits: document.commits, schema: Object.freeze({ get: () => document.schema.get() }),
       at: location, css,
-      q: (name: string) => { const subject = document.q(name); return subject === undefined ? undefined : read_document_quad(subject); },
+      q: (name: string) => { const subject = document.q(name); return subject === undefined ? undefined : read_document_quad(subject, assertReadable); },
       document: Object.freeze({ root: () => document.document.root(),
         content, flags: Object.freeze({ has: document.document.flags.has,
           set: (target: LiveMapDocumentRequestTarget, ...names: string[]) => enqueue(() => {
@@ -193,3 +227,4 @@ export function make_echo_library_selector(
     return binding === undefined ? undefined : { ...binding, handle: select(name) };
   });
 }
+import { required_reads } from "../../internal/required-reads.js";

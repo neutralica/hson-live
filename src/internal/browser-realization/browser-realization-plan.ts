@@ -80,6 +80,8 @@ export class BrowserRealizationIncompatibilityError extends Error {
   }
 }
 
+type PlanningCapability = "dom" | "ssr" | "snapshot";
+
 type TextAtom = Readonly<{
   kind: "text-atom";
   value: string;
@@ -203,6 +205,29 @@ export function plan_browser_realization(
   return plan;
 }
 
+/** Contextual source representation, without SSR topology or parser-closure claims. @internal */
+export function plan_browser_snapshot(
+  value: HsonNode | Primitive,
+  ancestors: readonly HsonNode[] = [],
+): readonly BrowserRealizationNode[] {
+  let namespace: BrowserNamespace = "html";
+  let context: BrowserParserContext = "ordinary";
+  let host = "";
+  for (const ancestor of ancestors) {
+    if (ancestor.$_tag.startsWith(HSON_SYS_PREFIX)) continue;
+    const names = browser_element_namespace(namespace, ancestor.$_tag);
+    context = snapshot_parser_context(names.namespace, names.localName);
+    host = names.localName;
+    namespace = names.childNamespace;
+  }
+  return Object.freeze(plan_atoms(flatten_value(value, "0"), namespace, context, "", host, "snapshot"));
+}
+
+function snapshot_parser_context(namespace: BrowserNamespace, name: string): BrowserParserContext {
+  return namespace !== "html" ? "ordinary"
+    : ATOMIC_CONTEXT.get(name) ?? (UNSUPPORTED_RAWTEXT_HOSTS.has(name) || name === "plaintext" ? "rawtext" : "ordinary");
+}
+
 /** Standards-defined HTML voidness shared by planning and serialization. @internal */
 export function is_html_void_element(localName: string): boolean {
   return HTML_VOID_ELEMENTS.has(localName);
@@ -242,9 +267,9 @@ function plan_atoms(
   parserContext: BrowserParserContext,
   fingerprint: string,
   atomicHost?: string,
-  capability: "dom" | "ssr" = "ssr",
+  capability: PlanningCapability = "ssr",
 ): BrowserRealizationNode[] {
-  if (parserContext !== "ordinary") return plan_atomic(atoms, parserContext, atomicHost ?? "", fingerprint);
+  if (parserContext !== "ordinary" && capability !== "snapshot") return plan_atomic(atoms, parserContext, atomicHost ?? "", fingerprint);
   const result: BrowserRealizationNode[] = [];
   let previousWasText = false;
   let textOrdinal = 0;
@@ -253,6 +278,11 @@ function plan_atoms(
     if (atom.kind === "element-atom") {
       result.push(plan_element(atom.node, atom.path, parentNamespace, capability));
       previousWasText = false;
+      continue;
+    }
+    if (capability === "snapshot") {
+      result.push(Object.freeze({ kind: "text", value: atom.value, path: atom.path, parserContext,
+        ...(atom.canonicalNode === undefined ? {} : { canonicalNode: atom.canonicalNode }) }));
       continue;
     }
     assert_parser_transportable_string(atom.value, atom.path, "text");
@@ -281,7 +311,7 @@ function plan_element(
   node: HsonNode,
   path: string,
   parentNamespace: BrowserNamespace,
-  capability: "dom" | "ssr",
+  capability: PlanningCapability,
 ): BrowserRealizationElement {
   if (node.$_tag.startsWith(HSON_SYS_PREFIX)) {
     throw incompatible("a reserved virtual node reached native element planning", path);
@@ -305,17 +335,17 @@ function plan_element(
   }
   attrs.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
 
-  const parserContext = names.namespace === "html"
+  const parserContext = capability === "snapshot" ? snapshot_parser_context(names.namespace, names.localName) : names.namespace === "html"
     ? ATOMIC_CONTEXT.get(names.localName) ?? "ordinary"
     : "ordinary";
   const atoms = flatten_content(node.$_content, `${path}.c`);
-  validate_document_structure(names.namespace, names.localName, atoms, path);
-  const elementFingerprint = browser_realization_fingerprint(node, names.namespace);
+  if (capability !== "snapshot") validate_document_structure(names.namespace, names.localName, atoms, path);
+  const elementFingerprint = capability === "snapshot" ? "" : browser_realization_fingerprint(node, names.namespace);
   let children = plan_atoms(atoms, names.childNamespace, parserContext, elementFingerprint, names.localName, capability);
-  if (names.namespace === "html" && names.localName === "table") {
+  if (capability !== "snapshot" && names.namespace === "html" && names.localName === "table") {
     children = derive_table_wrappers(children, path);
   }
-  if (names.namespace === "html" && names.localName === "pre"
+  if (capability !== "snapshot" && names.namespace === "html" && names.localName === "pre"
     && children[0]?.kind === "text" && children[0].value.startsWith("\n")) {
     children.unshift(marker_node("pre-leading-newline", elementFingerprint, `${path}.pre`, 0));
   }

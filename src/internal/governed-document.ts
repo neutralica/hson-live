@@ -1,3 +1,4 @@
+import { required_reads } from "./required-reads.js";
 import type { LiveMapDocumentLibrary, LiveMapDocumentContent, LiveMapDocumentRequestTarget,
   LiveMapDocumentCommitTarget } from "../types/livemap.types.js";
 import { validate_document_path } from "../api/livemap/livemap.document.path.js";
@@ -77,11 +78,14 @@ export function governed_document_move_target(document: Pick<LiveMapDocumentLibr
 /** Preserve the existing QUAD lifetime while exposing only observation authority. */
 export function read_document_quad(
   raw: import("../types/livemap.types.js").LiveMapDocumentQuadLocation,
+  assertReadable: () => void = () => {},
 ): import("../types/livemap.types.js").AuthorityDocumentQuadLocation<never> {
+  const snap = () => { assertReadable(); return raw.snap(); };
+  const hson = () => { assertReadable(); return raw.hson(); };
   return Object.freeze({
     get active() { return raw.active; }, get rev() { return raw.rev; },
-    path: () => raw.path(), snap: () => raw.snap(), dispose: () => raw.dispose(),
-    at: (path: readonly number[]) => read_document_quad(raw.at(path)),
+    path: () => raw.path(), snap, hson, must: required_reads(snap, hson), dispose: () => raw.dispose(),
+    at: (path: readonly number[]) => read_document_quad(raw.at(path), assertReadable),
     attrs: Object.freeze({ get: raw.attrs.get, has: raw.attrs.has, keys: raw.attrs.keys, must: raw.attrs.must }),
     flags: Object.freeze({ has: raw.flags.has }),
   });
@@ -92,11 +96,12 @@ export function write_document_quad(
   raw: import("../types/livemap.types.js").LiveMapDocumentQuadLocation,
   edit: (subject: import("../types/livemap.types.js").LiveMapDocumentQuadLocation,
     run: (location: import("../api/livemap/livemap.staged.js").StagedDocumentLocation) => void) => Promise<void>,
+  assertReadable: () => void = () => {},
 ): import("../types/livemap.types.js").AuthorityDocumentQuadLocation {
-  const read = read_document_quad(raw);
+  const read = read_document_quad(raw, assertReadable);
   return Object.freeze({
     ...read, get active() { return raw.active; }, get rev() { return raw.rev; },
-    at: (path: readonly number[]) => write_document_quad(raw.at(path), edit),
+    at: (path: readonly number[]) => write_document_quad(raw.at(path), edit, assertReadable),
     replace: value => edit(raw, location => location.replace(value)),
     delete: () => edit(raw, location => location.delete()),
     insert: (index, value) => edit(raw, location => location.insert(index, value)),

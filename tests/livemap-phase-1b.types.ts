@@ -8,7 +8,6 @@ known.doc.must("page").document.root();
 known.data.must("state").snap();
 // @ts-expect-error A known data library has no document operations.
 known.data.must("state").document;
-// @ts-expect-error A known document library has no projected data read.
 known.doc.must("page").snap();
 
 const dynamic = hsonLiveMap.create();
@@ -19,7 +18,6 @@ dynamic.commits.observe((commit) => {
 });
 const selected = dynamic.doc.must("page");
 selected.document.root();
-// @ts-expect-error Family selection excludes data reads.
 selected.snap();
 // @ts-expect-error The compressed form has no runtime kind evidence.
 dynamic.addLibraries({ compressed: Hson.document`<main/>` });

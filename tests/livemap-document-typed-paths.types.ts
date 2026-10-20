@@ -8,7 +8,7 @@ import type { Evidence as MainDocumentEvidence } from "./fixtures/hson-schema-do
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends
   (<T>() => T extends B ? 1 : 2) ? true : false;
 type Expect<T extends true> = T;
-type BroadEndpoint = HsonNode | string | undefined;
+type BroadEndpoint = string | undefined;
 
 function makeDoc(): HsonAuthored {
   return Hson.document`<main <hr/> <p "x"/> />`;
@@ -43,7 +43,7 @@ if (false) {
 
   const direct = map.doc.must("direct");
   const root = direct.at([]).snap();
-  type Root = Expect<Equal<typeof root, HsonNode>>;
+  type Root = Expect<Equal<typeof root, string>>;
   const child = direct.at([0]).snap();
   type Child = Expect<Equal<typeof child, BroadEndpoint>>;
   direct.at([1]);
@@ -78,7 +78,7 @@ if (false) {
   const proxy = home.proxy([1, 0]).$_.snap();
   type Proxy = Expect<Equal<typeof proxy, BroadEndpoint>>;
   const proxyRoot = home.proxy().$_.snap();
-  type ProxyRoot = Expect<Equal<typeof proxyRoot, HsonNode>>;
+  type ProxyRoot = Expect<Equal<typeof proxyRoot, string>>;
   const proxyRelative = home.proxy().$_.at([1]).at([0]).snap();
   type ProxyRelative = Expect<Equal<typeof proxyRelative, BroadEndpoint>>;
   const proxyDynamic = home.proxy(path).$_.snap();
@@ -99,10 +99,10 @@ if (false) {
     page: { document: '<main id="hero" <section "body"/>/>', schema: PageSchema },
   }).doc.must("page");
   const preciseRoot = precise.at([]).snap();
-  type PreciseRoot = Expect<Equal<typeof preciseRoot, HsonNode>>;
+  type PreciseRoot = Expect<Equal<typeof preciseRoot, string>>;
   const section = precise.at([0]);
   const sectionValue = section.snap();
-  type Section = Expect<Equal<typeof sectionValue, HsonNode>>;
+  type Section = Expect<Equal<typeof sectionValue, string>>;
   const text = precise.at([0, 0]).snap();
   type Text = Expect<Equal<typeof text, string>>;
   const relativeText = section.at([0]).snap();

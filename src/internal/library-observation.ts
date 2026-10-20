@@ -1,3 +1,4 @@
+import { required_reads } from "./required-reads.js";
 import type { JsonValue } from "../core/types.js";
 import type { LiveMapDocumentLibrary, LibraryArrayRead, LibraryObjectRead, AuthorityDocumentLocation } from "../types/livemap.types.js";
 import type { ReadDataLocation } from "../types/governor.types.js";
@@ -6,7 +7,8 @@ export interface DataLocationObservations {
   readonly rev: number;
   path(): import("../types/livemap.types.js").LivePath;
   snap(): JsonValue | undefined;
-  data(): import("../api/transform/transform.types.js").HsonData | undefined;
+  readonly must: import("../types/livemap.types.js").RequiredReads<JsonValue | undefined, import("../api/transform/transform.types.js").HsonData>;
+  hson(): import("../api/transform/transform.types.js").HsonData | undefined;
   kind(): import("../types/livemap.types.js").LiveMapPathKind;
   watch(listener: (value: JsonValue | undefined) => void): () => void;
   at(path: import("../types/livemap.types.js").LivePath): DataLocationObservations;
@@ -34,34 +36,38 @@ export function collection_observations(raw: DataLocationObservations): Readonly
   });
 }
 
-export function read_data_location(raw: DataLocationObservations): ReadDataLocation {
+export function read_data_location(raw: DataLocationObservations, assertReadable: () => void = () => {}): ReadDataLocation {
+  const snap = () => { assertReadable(); return raw.snap(); };
+  const hson = () => { assertReadable(); return raw.hson(); };
   return Object.freeze({
-    get rev() { return raw.rev; }, path: () => raw.path(), snap: () => raw.snap(), data: () => raw.data(),
+    get rev() { return raw.rev; }, path: () => raw.path(), snap, hson, must: required_reads(snap, hson),
     watch: raw.watch.bind(raw), kind: () => raw.kind(),
-    at: (path: Parameters<typeof raw.at>[0]) => read_data_location(raw.at(path)),
-    present: () => { const checked = raw.present(); return checked === undefined ? undefined : read_data_location(checked); },
-    asArray: () => { const checked = raw.asArray(); return checked === undefined ? undefined : read_data_location(checked); },
-    asObject: () => { const checked = raw.asObject(); return checked === undefined ? undefined : read_data_location(checked); },
-    asScalar: () => { const checked = raw.asScalar(); return checked === undefined ? undefined : read_data_location(checked); },
+    at: (path: Parameters<typeof raw.at>[0]) => read_data_location(raw.at(path), assertReadable),
+    present: () => { const checked = raw.present(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
+    asArray: () => { const checked = raw.asArray(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
+    asObject: () => { const checked = raw.asObject(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
+    asScalar: () => { const checked = raw.asScalar(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
     ...collection_observations(raw),
   }) as unknown as ReadDataLocation;
 }
 
-export function read_document_location(raw: ReturnType<LiveMapDocumentLibrary["at"]>): NonNullable<ReturnType<AuthorityDocumentLocation<unknown, never>["asElement"]>> {
+export function read_document_location(raw: ReturnType<LiveMapDocumentLibrary["at"]>, assertReadable: () => void = () => {}): NonNullable<ReturnType<AuthorityDocumentLocation<unknown, never>["asElement"]>> {
   const element = () => {
     const value = raw.asElement();
     if (value === undefined) throw new Error("Document location is not an element.");
     return value;
   };
+  const snap = () => { assertReadable(); return raw.snap(); };
+  const hson = () => { assertReadable(); return raw.hson(); };
   return Object.freeze({
-    get rev() { return raw.rev; }, path: () => raw.path(), snap: () => raw.snap(),
+    get rev() { return raw.rev; }, path: () => raw.path(), snap, hson, must: required_reads(snap, hson),
     watch: raw.watch.bind(raw), kind: () => raw.kind(),
-    at: (path: readonly number[]) => read_document_location(raw.at(path)),
-    id: (id: string) => { const found = raw.id(id); return found === undefined ? undefined : read_document_location(found); },
-    present: () => raw.present() === undefined ? undefined : read_document_location(raw),
-    asElement: () => raw.asElement() === undefined ? undefined : read_document_location(raw),
-    asRoot: () => raw.asRoot() === undefined ? undefined : read_document_location(raw),
-    asText: () => raw.asText() === undefined ? undefined : read_document_location(raw),
+    at: (path: readonly number[]) => read_document_location(raw.at(path), assertReadable),
+    id: (id: string) => { const found = raw.id(id); return found === undefined ? undefined : read_document_location(found, assertReadable); },
+    present: () => { const checked = raw.present(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); },
+    asElement: () => { const checked = raw.asElement(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); },
+    asRoot: () => { const checked = raw.asRoot(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); },
+    asText: () => { const checked = raw.asText(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); },
     attrs: Object.freeze({
       get: (name: string) => element().attrs.get(name),
       has: (name: string) => element().attrs.has(name),

@@ -1,3 +1,4 @@
+import { document_hson_value } from "./helpers/document-hson-value.mts";
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -72,7 +73,7 @@ check("document watch sees canonical revision n+1 before Reflection revision adv
   map.at([0]).watch(() => {
     seen = {
       mapRevision: map.rev,
-      canonicalTag: tag(map.at([0]).snap()),
+      canonicalTag: tag(document_hson_value(map.at([0]).hson())),
       reflectionRevision: binding.sourceRevision,
       projectedTag: raw_node(retained_subject(binding.tree), [0, 0]).$_tag,
     };
@@ -139,7 +140,7 @@ check("an ordinary observer registered before Reflection sees the same seam", ()
   map.commits.observe(() => {
     seen = {
       mapRevision: map.rev,
-      canonicalTag: tag(map.at([0]).snap()),
+      canonicalTag: tag(document_hson_value(map.at([0]).hson())),
       reflectionRevision: binding.sourceRevision,
       projectedTag: raw_node(retained_subject(binding.tree), [0, 0]).$_tag,
     };
@@ -220,7 +221,7 @@ check("binding disposal from a watch follows the completed Reflection delivery",
   assert.equal(binding.status, "disposed");
   assert.equal(binding.sourceRevision, 1);
   assert.equal(raw_node(retained, [0, 0]).$_tag, "a");
-  assert.equal(tag(map.at([0]).snap()), "a");
+  assert.equal(tag(document_hson_value(map.at([0]).hson())), "a");
 });
 
 check("a watch added during watch dispatch starts with the next commit", () => {

@@ -1,3 +1,4 @@
+import { document_hson_value } from "./helpers/document-hson-value.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -88,7 +89,7 @@ check("insertion and movement refresh search without moving old locations", () =
   const page = registry('<main <item id="x"/> <item/>/>').doc.must("page");
   const old = find(page, "x");
   page.document.content.insert(target(0, 0), 0, item());
-  assert.equal((old?.snap() as HsonNode)?.$_attrs?.id, undefined);
+  assert.equal((document_hson_value(old?.hson()) as HsonNode)?.$_attrs?.id, undefined);
   assert.deepEqual(find(page, "x")?.path(), [1]);
   page.document.content.move(target(0, 0), 1, 2);
   assert.deepEqual(find(page, "x")?.path(), [2]);

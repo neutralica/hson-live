@@ -1,3 +1,4 @@
+import { document_hson_value } from "./helpers/document-hson-value.mts";
 import assert from "node:assert/strict";
 
 import * as publicApi from "../src/index.ts";
@@ -339,7 +340,7 @@ check("generic mixed and text roots retain LiveMap logical document positions", 
     assert.equal(page.at([0]).asText()?.kind(), "text");
     assert.equal(page.at([2]).snap(), "b");
     if (document.includes("<p/>")) {
-      assert.deepEqual(page.at([1]).snap(), node("p"));
+      assert.deepEqual(document_hson_value(page.at([1]).hson()), node("p"));
       assert.equal(page.at([1]).asElement()?.kind(), "element");
     } else {
       assert.equal(page.at([1]).snap(), "");

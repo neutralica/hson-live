@@ -7,7 +7,7 @@ import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-sche
 
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
 import type { HsonSchema, HsonSchemaMode } from "../api/transform/transform.types.js";
-import type { HsonData } from "../api/transform/transform.types.js";
+import type { HsonData, HsonDocument } from "../api/transform/transform.types.js";
 import type {
   DocumentAttrsEvidence,
   DocumentAttrValueEvidence,
@@ -17,6 +17,14 @@ import type {
   LiveMapProjectedGraphEnsureQuidOp,
 } from "../api/livemap/livemap.identity.types.js";
 
+
+/** Current endpoint reads which reject absence without caching a value. */
+export type RequiredReads<TValue, THson> = Readonly<{
+  snap: () => Exclude<TValue, undefined>;
+  hson: () => Exclude<THson, undefined>;
+}>;
+/** Representation optionality follows current endpoint evidence. */
+export type EndpointRepresentation<TValue, TRepresentation> = undefined extends TValue ? TRepresentation | undefined : TRepresentation;
 
 /**
  * One segment of a projected LiveMap path.
@@ -305,7 +313,7 @@ export type LiveMapCore<
   root: () => HsonNode;
   snap: LiveMapCoreSnap<TValue>;
   /** Read exact canonical data without ordinary-JavaScript materialization. */
-  data: (path?: LivePath) => HsonData | undefined;
+  hson: (path?: LivePath) => HsonData | undefined;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
@@ -1323,7 +1331,8 @@ type LiveMapLibraryPathHandleBase<
   path: () => LivePath;
   snap: () => TRead;
   /** Read this path as exact canonical data. */
-  data: () => HsonData | undefined;
+  hson: () => EndpointRepresentation<TRead, HsonData>;
+  readonly must: RequiredReads<TRead, HsonData>;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapLibraryPathHandle<LiveMapPathValue<TRead, TPath>, TLibrary>;
@@ -1372,6 +1381,8 @@ export type LiveMapDataLibrary<
       path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
     ): LiveMapPathValue<TValue, TPath>;
   };
+  hson: () => EndpointRepresentation<TValue, HsonData>;
+  readonly must: RequiredReads<TValue, HsonData>;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapLibraryPathHandle<LiveMapPathValue<TValue, TPath>, TLibrary>;
@@ -1427,6 +1438,13 @@ type LiveMapLibraryDocumentLocationInternal<
       ? LiveMapLibraryDocumentContentCapabilities<TLibrary, TDescriptor>
       : Readonly<Record<never, never>>) >;
 
+type DocumentRefinedRead<TValue, TDescriptor, TShape> = TValue | ([TDescriptor] extends [TShape] ? never : undefined);
+type DocumentRootRefinedRead<TValue, TDescriptor> =
+  TDescriptor extends InternalDocumentRootDescriptor<{ kind: "document"; content: { kind: "sequence"; items: infer TItems extends readonly unknown[] } }>
+    ? number extends TItems["length"] ? TValue | undefined : TItems extends readonly [unknown] ? TValue | undefined : TValue
+    : TValue | undefined;
+type DocumentChildRead<TValue, TChild> = TChild | (undefined extends TValue ? undefined : never);
+
 interface LiveMapLibraryDocumentLocationBase<
   TLibrary extends string,
   TValue,
@@ -1434,8 +1452,10 @@ interface LiveMapLibraryDocumentLocationBase<
 > {
   readonly rev: number;
   path: () => readonly number[];
-  snap: () => TValue;
-  watch: (listener: (next: TValue) => void) => LiveMapDisposer;
+  snap: () => EndpointRepresentation<TValue, string>;
+  hson: () => EndpointRepresentation<TValue, HsonDocument>;
+  readonly must: RequiredReads<string, HsonDocument>;
+  watch: (listener: (next: EndpointRepresentation<TValue, string>) => void) => LiveMapDisposer;
   at<const TPath extends readonly number[]>(
     path: TPath & ([InternalDocumentDescriptorEndpoint<
       InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
@@ -1444,17 +1464,17 @@ interface LiveMapLibraryDocumentLocationBase<
       : unknown),
   ): LiveMapLibraryDocumentLocationInternal<
     TLibrary,
-    InternalDocumentDescriptorEndpoint<
+    DocumentChildRead<TValue, InternalDocumentDescriptorEndpoint<
       InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
-    >,
+    >>,
     InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
   >;
   id: (value: string) => LiveMapLibraryDocumentLocationInternal<TLibrary> | undefined;
   kind: () => "missing" | "root" | "element" | "text";
-  present: () => LiveMapLibraryDocumentLocationInternal<TLibrary, Exclude<TValue, undefined>, TDescriptor> | undefined;
-  asElement: () => LiveMapLibraryDocumentElementLocation<TLibrary, TValue, TDescriptor> | undefined;
-  asRoot: () => LiveMapLibraryDocumentRootLocation<TLibrary, TValue, TDescriptor> | undefined;
-  asText: () => LiveMapLibraryDocumentTextLocation<TLibrary, TValue, TDescriptor> | undefined;
+  present: () => LiveMapLibraryDocumentLocationInternal<TLibrary, TValue, TDescriptor> | undefined;
+  asElement: () => LiveMapLibraryDocumentElementLocation<TLibrary, DocumentRefinedRead<TValue, TDescriptor, { kind: "element" }>, TDescriptor> | undefined;
+  asRoot: () => LiveMapLibraryDocumentRootLocation<TLibrary, DocumentRootRefinedRead<TValue, TDescriptor>, TDescriptor> | undefined;
+  asText: () => LiveMapLibraryDocumentTextLocation<TLibrary, DocumentRefinedRead<TValue, TDescriptor, { kind: "text" }>, TDescriptor> | undefined;
   replace: (
     value: InternalDocumentWritableItem<TDescriptor>,
   ) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceContentOp>;
@@ -1555,7 +1575,7 @@ export type LiveMapDocumentLocation<
  */
 export type LiveMapDocumentQuadLocation<TLibrary extends string = string> = Readonly<
   Pick<LiveMapLibraryDocumentElementLocation<TLibrary, HsonNode | Primitive | undefined, unknown>,
-    "rev" | "path" | "snap" | "attrs" | "flags" | "replace" | "delete" | "insert" | "move">
+    "rev" | "path" | "snap" | "hson" | "must" | "attrs" | "flags" | "replace" | "delete" | "insert" | "move">
   & {
     readonly active: boolean;
     at: (path: readonly number[]) => LiveMapDocumentQuadLocation<TLibrary>;
@@ -1572,6 +1592,10 @@ export type LiveMapDocumentLibrary<
   readonly mode: LiveMapDocumentMode;
   readonly rev: number;
   readonly css: import("./document-css.types.js").DocumentCssHandle;
+  snap: () => string;
+  hson: () => HsonDocument;
+  readonly must: RequiredReads<string, HsonDocument>;
+  watch: (listener: (value: string) => void) => LiveMapDisposer;
   root: () => HsonNode;
   /** Observe an existing authored QUAD; unknown/retired names return undefined without issuing identity. */
   q: (name: string) => LiveMapDocumentQuadLocation<TLibrary> | undefined;
@@ -1771,20 +1795,24 @@ type LiveMapStagedDocumentAttrs<TDescriptor, TResult> =
     : never;
 
 /** Schema-preserving selected document observations and authority-safe commands. */
-export type AuthorityDocumentLocation<TDescriptor = unknown, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear"> = Readonly<{
+export type AuthorityDocumentLocation<TDescriptor = unknown, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear",
+  TRead = unknown extends TDescriptor ? InternalDocumentLegacyEndpoint : InternalDocumentDescriptorEndpoint<TDescriptor>> = Readonly<{
   readonly rev: number;
   path: () => readonly number[];
-  snap: () => (unknown extends TDescriptor ? InternalDocumentLegacyEndpoint : InternalDocumentDescriptorEndpoint<TDescriptor>);
-  watch: (listener: (value: (unknown extends TDescriptor ? InternalDocumentLegacyEndpoint : InternalDocumentDescriptorEndpoint<TDescriptor>)) => void) => LiveMapDisposer;
+  snap: () => EndpointRepresentation<TRead, string>;
+  hson: () => EndpointRepresentation<TRead, HsonDocument>;
+  readonly must: RequiredReads<string, HsonDocument>;
+  watch: (listener: (value: EndpointRepresentation<TRead, string>) => void) => LiveMapDisposer;
   kind: () => "missing" | "root" | "element" | "text";
   at: <const TPath extends readonly number[]>(path: TPath &
     ([InternalDocumentDescriptorEndpoint<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>>] extends [never] ? never : unknown)) =>
-      AuthorityDocumentLocation<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>, TResult, TFlagCommands>;
+      AuthorityDocumentLocation<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>, TResult, TFlagCommands,
+        DocumentChildRead<TRead, InternalDocumentDescriptorEndpoint<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>>>>;
   id: (value: string) => AuthorityDocumentLocation<unknown, TResult, TFlagCommands> | undefined;
-  present: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands> | undefined;
-  asElement: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands> & AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands> | undefined;
-  asRoot: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands> & AuthorityDocumentContent<TDescriptor, TResult> | undefined;
-  asText: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands> | undefined;
+  present: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, TRead> | undefined;
+  asElement: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, DocumentRefinedRead<TRead, TDescriptor, { kind: "element" }>> & AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands> | undefined;
+  asRoot: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, DocumentRootRefinedRead<TRead, TDescriptor>> & AuthorityDocumentContent<TDescriptor, TResult> | undefined;
+  asText: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, DocumentRefinedRead<TRead, TDescriptor, { kind: "text" }>> | undefined;
 }> & ([TResult] extends [never] ? {} : Readonly<{ replace: (value: InternalDocumentWritableItem<TDescriptor>) => TResult; delete: () => TResult }>)
   & ([TDescriptor] extends [{ kind: "element" }] ? AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands>
       : [TDescriptor] extends [InternalDocumentRootDescriptor<unknown>] ? AuthorityDocumentContent<TDescriptor, TResult> : {});
@@ -1799,7 +1827,7 @@ type AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands extends "set" 
 };
 /** An existing runtime QUAD lifetime; nested navigation remains relative to that subject. */
 export type AuthorityDocumentQuadLocation<TResult = Promise<void>> =
-  Pick<LiveMapDocumentQuadLocation, "active" | "rev" | "path" | "snap" | "dispose">
+  Pick<LiveMapDocumentQuadLocation, "active" | "rev" | "path" | "snap" | "hson" | "must" | "dispose">
   & AuthorityDocumentElement<unknown, TResult, "set" | "clear">
   & ([TResult] extends [never] ? {} : Readonly<{
     replace: (value: LiveMapDocumentContent) => TResult;
@@ -2267,7 +2295,8 @@ interface LiveMapPathHandleBase<TValue = JsonValue | undefined, TRead = TValue> 
   path: () => LivePath;
   snap: () => TRead;
   /** Read this path as exact canonical data. */
-  data: () => HsonData | undefined;
+  hson: () => EndpointRepresentation<TRead, HsonData>;
+  readonly must: RequiredReads<TRead, HsonData>;
   /** Create a child handle relative to this handle's data path. */
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),

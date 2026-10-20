@@ -1,3 +1,4 @@
+import type { RequiredReads, EndpointRepresentation } from "./livemap.types.js";
 import type { PartsLibrary } from "./parts-library.types.js";
 import type { LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 import type { LibraryShapeCapabilities, LibraryArrayRead, LibraryObjectRead, LibraryArrayCommands, LibraryObjectCommands, LiveMapArrayBranch, LiveMapObjectBranch, LiveMapScalarBranch } from "./livemap.types.js";
@@ -16,7 +17,8 @@ export type LocusDataLocation<TValue = JsonValue | undefined, TRead = TValue> = 
   readonly rev: number;
   path: () => LivePath;
   snap: () => TRead;
-  data: () => HsonData | undefined;
+  hson: () => EndpointRepresentation<TRead, HsonData>;
+  readonly must: RequiredReads<TRead, HsonData>;
   at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => LocusDataLocation<LiveMapPathValue<TRead, TPath>>;
   watch: (listener: (value: TRead) => void) => () => void;
   kind: () => "missing" | "object" | "array" | "scalar";
@@ -36,6 +38,8 @@ export type LocusDataLibrary<TValue = JsonValue | undefined, TSchema extends Hso
   readonly rev: number;
   root: () => HsonNode;
   snap: LiveMapDataLibrary<TValue, string, TSchema>["snap"];
+  hson: LiveMapDataLibrary<TValue, string, TSchema>["hson"];
+  readonly must: RequiredReads<TValue, HsonData>;
   at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => LocusDataLocation<LiveMapPathValue<TValue, TPath>>;
   schema: Readonly<{ get: LiveMapDataLibrary<TValue, string, TSchema>["schema"]["get"] }>;
 }>;
@@ -47,6 +51,10 @@ export type LocusDocumentLibrary<TEvidence = HsonNode, TSchema extends HsonSchem
   readonly rev: number;
   root: () => HsonNode;
   render: LiveMapDocumentLibrary<TEvidence, string, TSchema>["render"];
+  snap: LiveMapDocumentLibrary<TEvidence, string, TSchema>["snap"];
+  hson: LiveMapDocumentLibrary<TEvidence, string, TSchema>["hson"];
+  must: LiveMapDocumentLibrary<TEvidence, string, TSchema>["must"];
+  watch: LiveMapDocumentLibrary<TEvidence, string, TSchema>["watch"];
   commits: LiveMapDocumentLibrary<TEvidence, string, TSchema>["commits"];
   at: import("./livemap.types.js").AuthorityDocumentSelector<TEvidence>;
   q: (name: string) => import("./livemap.types.js").AuthorityDocumentQuadLocation | undefined;
@@ -87,7 +95,8 @@ export type ReadDataLocation<TValue = JsonValue | undefined, TRead = TValue> = R
   readonly rev: number;
   path: () => LivePath;
   snap: () => TRead;
-  data: () => HsonData | undefined;
+  hson: () => EndpointRepresentation<TRead, HsonData>;
+  readonly must: RequiredReads<TRead, HsonData>;
   watch: (listener: (value: TRead) => void) => () => void;
   kind: LocusDataLocation["kind"];
   at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => ReadDataLocation<LiveMapPathValue<TRead, TPath>>;
@@ -97,11 +106,11 @@ export type ReadDataLocation<TValue = JsonValue | undefined, TRead = TValue> = R
   asScalar: () => ReadDataLocation<LiveMapScalarBranch<TValue>, LibraryRefinedValue<TRead, LiveMapScalarBranch<TValue>>> | undefined;
 }> & LibraryShapeCapabilities<TValue, LibraryArrayRead<TValue>, LibraryObjectRead<TValue>>;
 export type ReadDataLibrary<TValue = JsonValue | undefined, TSchema extends HsonSchema = HsonSchema> =
-  Pick<LocusDataLibrary<TValue, TSchema>, "mode" | "rev" | "root" | "snap" | "schema"> & Readonly<{
+  Pick<LocusDataLibrary<TValue, TSchema>, "mode" | "rev" | "root" | "snap" | "hson" | "must" | "schema"> & Readonly<{
     at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => ReadDataLocation<LiveMapPathValue<TValue, TPath>>;
   }>;
 export type ReadDocumentLibrary<TEvidence = HsonNode, TSchema extends HsonSchema = HsonSchema> =
-  Pick<LocusDocumentLibrary<TEvidence, TSchema>, "mode" | "rev" | "root" | "render" | "commits" | "schema"> & Readonly<{
+  Pick<LocusDocumentLibrary<TEvidence, TSchema>, "mode" | "rev" | "root" | "snap" | "hson" | "must" | "watch" | "render" | "commits" | "schema"> & Readonly<{
     at: import("./livemap.types.js").AuthorityDocumentSelector<TEvidence, never>;
     q: (name: string) => import("./livemap.types.js").AuthorityDocumentQuadLocation<never> | undefined;
     css: import("./document-css.types.js").DocumentCssRead;
@@ -136,13 +145,15 @@ export type EchoProjectedDataLibrary<TValue = JsonValue, TSchema extends HsonSch
   readonly rev: number;
   root: () => HsonNode;
   snap: LiveMapDataLibrary<TValue, string, TSchema>["snap"];
+  hson: LiveMapDataLibrary<TValue, string, TSchema>["hson"];
+  readonly must: RequiredReads<TValue, HsonData>;
   at: ReadDataLibrary<TValue, TSchema>["at"];
   schema: ReadDataLibrary<TValue, TSchema>["schema"];
 }>;
 
 export type EchoProjectedDataPath = ReadDataLocation;
 
-export type EchoLocalDataLibrary<TValue = JsonValue, TSchema extends HsonSchema = HsonSchema> = Readonly<Pick<LiveMapDataLibrary<TValue, string, TSchema>, "mode" | "rev" | "root" | "snap" | "at" | "schema"> & {
+export type EchoLocalDataLibrary<TValue = JsonValue, TSchema extends HsonSchema = HsonSchema> = Readonly<Pick<LiveMapDataLibrary<TValue, string, TSchema>, "mode" | "rev" | "root" | "snap" | "hson" | "must" | "at" | "schema"> & {
   source: "client-local";
 }>;
 
@@ -158,7 +169,7 @@ export type EchoProjectedDocumentLibrary<TEvidence = unknown, TSchema extends Hs
     flags: Pick<LocusDocumentLibrary["document"]["flags"], "has" | "set">;
   }>;
 }>;
-export type EchoLocalDocumentLibrary<TEvidence = unknown, TSchema extends HsonSchema = HsonSchema> = Readonly<Pick<LiveMapDocumentLibrary<TEvidence, string, TSchema>, "mode" | "rev" | "root" | "at" | "render" | "css" | "commits" | "schema" | "q"> & {
+export type EchoLocalDocumentLibrary<TEvidence = unknown, TSchema extends HsonSchema = HsonSchema> = Readonly<Pick<LiveMapDocumentLibrary<TEvidence, string, TSchema>, "mode" | "rev" | "root" | "at" | "snap" | "hson" | "must" | "watch" | "render" | "css" | "commits" | "schema" | "q"> & {
   source: "client-local";
   document: Omit<LiveMapDocumentLibrary["document"], "byQuid">;
 }>;

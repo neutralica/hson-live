@@ -831,8 +831,7 @@ check("borrowed tree destruction stops its bridge and later binding disposal is 
   const binding = _reflect_document_for_runtime_test(runtime, map);
   binding.tree.remove();
   assert.equal(binding.status, "disposed");
-  const retained = map.at([]).snap();
-  assert.equal(is_Node(retained) ? retained.$_tag : undefined, "main");
+  assert.equal(map.at([]).snap(), "<main><span></span></main>");
   binding.dispose();
   assert.equal(_lookup_livetree_runtime_test_node(runtime, SAME_QUID), undefined);
 });

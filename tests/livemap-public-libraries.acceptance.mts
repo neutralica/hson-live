@@ -1,3 +1,4 @@
+import { document_hson_value } from "./helpers/document-hson-value.mts";
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { create_locus_fixture, authority_definitions_from_catalog_fixture, authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
@@ -180,7 +181,7 @@ check("fromLibraries establishes fixed named data and document Libraries", () =>
   assert.equal(map.doc.must("page").mode, "document");
   assert.equal(map.doc.must("page").root().$_content.length, 1);
   assert.equal("document" in map.doc.must("page"), true);
-  assert.equal(node(map.doc.must("page").at([]).snap()).$_tag, "main");
+  assert.equal(node(document_hson_value(map.doc.must("page").at([]).hson())).$_tag, "main");
   assert.equal(typeof map.addLibraries, "function");
   assert.equal("add" in map.data, false);
   assert.equal("create" in map.data, false);
@@ -315,12 +316,12 @@ check("named document locations keep relative content operations in their select
   });
   const page = map.doc.must("page");
   const modal = map.doc.must("modal");
-  const incoming = modal.at([0]).snap();
+  const incoming = document_hson_value(modal.at([0]).hson());
   if (!is_Node(incoming)) throw new Error("Expected selected modal item.");
   const commit = page.at([]).asElement()!.insert(1, incoming);
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
-  assert.equal(node(page.at([]).at([1]).snap()).$_tag, "item");
-  assert.equal(node(modal.at([0]).snap()).$_tag, "item");
+  assert.equal(node(document_hson_value(page.at([]).at([1]).hson())).$_tag, "item");
+  assert.equal(node(document_hson_value(modal.at([0]).hson())).$_tag, "item");
   assert.deepEqual([page.rev, page.root().$_tag], [1, "_hson_root"]);
 });
 
@@ -527,7 +528,6 @@ if (false) {
   const page = map.doc.must("page");
   const state = map.data.must("state");
   page.at([]).asElement()!.attrs.set("title", "typed");
-  // @ts-expect-error A selected document library is not a projected data library.
   page.snap();
   // @ts-expect-error A selected data library has no document authority.
   state.document;

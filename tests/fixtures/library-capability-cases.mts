@@ -265,15 +265,15 @@ export async function collection_command_parity_cases() {
     const invoke = (location: object) => Reflect.apply(Reflect.get(Reflect.get(location, namespace), method), undefined, args);
     try {
       assert.equal(invoke(local.data.must("state").at([path])).changed, true, method);
-      const expected = local.data.must("state").at([path]).data();
+      const expected = local.data.must("state").at([path]).hson();
       assert.equal(staged.batch(w => { assert.equal(invoke(w.data.must("state").at([path])), undefined); }).changed, true);
-      assert.equal(staged.data.must("state").at([path]).data(), expected, method);
+      assert.equal(staged.data.must("state").at([path]).hson(), expected, method);
       assert.equal(await locus.stage(w => { assert.equal(invoke(w.data.must("state").at([path])), undefined); }), undefined);
-      assert.equal(locus.data.must("state").at([path]).data(), expected, method);
+      assert.equal(locus.data.must("state").at([path]).hson(), expected, method);
       const pending = invoke(direct.data.must("state").at([path]));
       assert.ok(pending instanceof Promise);
       assert.equal(await pending, undefined);
-      assert.equal(direct.data.must("state").at([path]).data(), expected, method);
+      assert.equal(direct.data.must("state").at([path]).hson(), expected, method);
     } finally { locus.dispose(); direct.dispose(); }
   }
 }

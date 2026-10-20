@@ -1,3 +1,4 @@
+import { document_hson_value } from "./helpers/document-hson-value.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -45,18 +46,18 @@ const code = (run: () => unknown, expected: LiveMapDocumentMutationError["code"]
 check("element insert owns ordered authored content", () => {
   const map = registry('<main <item id="b"/>/>');
   map.doc.must("page").at([]).asElement()!.insert(0, item("a"));
-  assert.deepEqual(ids(map.doc.must("page").at([]).snap() as HsonNode), ["a", "b"]);
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([]).hson()) as HsonNode), ["a", "b"]);
 });
 check("first insert materializes an empty element's content", () => {
   const map = registry("<main/>");
   const commit = map.doc.must("page").at([]).asElement()!.insert(0, item("a"));
   assert.equal(commit.operations[0]?.operation.op, "insert-content");
-  assert.deepEqual(ids(map.doc.must("page").at([]).snap() as HsonNode), ["a"]);
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([]).hson()) as HsonNode), ["a"]);
 });
 check("nested insert owns only selected section content", () => {
   const map = registry('<main <section <item id="b"/>/>/>', Sections);
   map.doc.must("page").at([0]).asElement()!.insert(0, item("a"));
-  assert.deepEqual(ids(map.doc.must("page").at([0]).snap() as HsonNode), ["a", "b"]);
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([0]).hson()) as HsonNode), ["a", "b"]);
 });
 check("document root insert owns top-level content", () => {
   const map = registry('<item id="a"/> <item id="c"/>', MultiItems);
@@ -73,12 +74,12 @@ check("primitive endpoint has no element insertion capability", () => {
 check("move uses final indexes and retains item identity", () => {
   const map = registry('<main <item id="a"/> <item id="b"/> <item id="c"/>/>');
   map.doc.must("page").at([]).asElement()!.move(0, 2);
-  assert.deepEqual(ids(map.doc.must("page").at([]).snap() as HsonNode), ["b", "c", "a"]);
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([]).hson()) as HsonNode), ["b", "c", "a"]);
 });
 check("nested move leaves other content in place", () => {
   const map = registry('<main <section <item id="a"/> <item id="b"/>/>/>', Sections);
   map.doc.must("page").at([0]).asElement()!.move(1, 0);
-  assert.deepEqual(ids(map.doc.must("page").at([0]).snap() as HsonNode), ["b", "a"]);
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([0]).hson()) as HsonNode), ["b", "a"]);
 });
 check("document root move operates on top-level content", () => {
   const map = registry('<item id="a"/> <item id="b"/> <item id="c"/>', MultiItems);
@@ -90,7 +91,7 @@ check("child location remains fixed after movement", () => {
   const first = page.at([0]);
   page.at([]).asElement()!.move(0, 1);
   assert.equal(first, page.at([0]));
-  assert.equal((first.snap() as HsonNode).$_attrs?.id, "b");
+  assert.equal((document_hson_value(first.hson()) as HsonNode).$_attrs?.id, "b");
 });
 check("proxy escape uses the selected library content capability", () => {
   const page = registry('<main <item id="a"/> <item id="b"/>/>').doc.must("page");

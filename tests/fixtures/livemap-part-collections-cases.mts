@@ -401,7 +401,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     });
     const ledger = aggregate.identityEpoch().issued(), roots = aggregate.libraries().map(id => aggregate.root(id));
     map.capture(); map.cut(); aggregate.captureHosted(); aggregate.captureSemanticCheckpoint();
-    read(map, "collection", "first/β"); data(map).root(); data(map).at([]).data();
+    read(map, "collection", "first/β"); data(map).root(); data(map).at([]).hson();
     assert.deepEqual(map.capture(), before); assert.equal(aggregate.identityEpoch().issued(), ledger);
     aggregate.libraries().forEach((id, index) => assert.equal(aggregate.root(id), roots[index]));
   });
@@ -487,7 +487,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     try {
       for (const outbound of [() => map.capture(), () => map.cut(), () => aggregate.captureHosted(),
         () => aggregate.captureSelectedHosted(["collection"], false), () => aggregate.captureSemanticCheckpoint(), () => aggregate.inspect(),
-        () => library.snap(), () => library.root(), () => handle.snap(), () => handle.data(),
+        () => library.snap(), () => library.root(), () => handle.snap(), () => handle.hson(),
         () => handle.object.toObject(), () => handle.object.values(), () => handle.object.entries(), () => handle.object.pick(["bad"]),
         () => read(map, "collection", "bad")]) assert.throws(outbound);
       assert.equal(aggregate.hostedPosition().revision, revision); assert.equal(aggregate.identityEpoch().issued(), ledger);

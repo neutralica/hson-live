@@ -9,3 +9,6 @@ export {
   materialize_browser_realization,
 } from "../../dist/internal/browser-realization/browser-realization-dom.js";
 export { create_livetree_runtime } from "../../dist/api/livetree/runtime/livetree-runtime.js";
+
+export { representation_markup_cases } from "../fixtures/representation-markup-cases.mts";
+export { hsonLiveMap } from "../../dist/api/livemap/index.js";

@@ -1,3 +1,4 @@
+import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
@@ -107,6 +108,7 @@ export function create_registry_locus_internal<
   activityForCleanup = activity;
   let actionSequence = 0;
   let disposed = false;
+  const assertReadable = () => { if (disposed) throw new Error("Disposed Locus authority."); };
   const actions: Record<string, (
     context: unknown,
     payload: ExactDataCarrier | undefined,
@@ -117,13 +119,17 @@ export function create_registry_locus_internal<
     if (selected.mode !== "document") {
       const handle = Object.freeze({
         mode: selected.mode, get rev() { return selected.rev; }, root: () => selected.root(),
-        snap: selected.snap.bind(selected), schema: Object.freeze({ get: () => selected.schema.get() }),
-        at: (path: import("../../types/livemap.types.js").LivePath) => read_data_location(selected.at(path)),
+        snap: (path?: import("../../types/livemap.types.js").LivePath) => { assertReadable(); return path === undefined ? selected.snap() : selected.snap(path); },
+        hson: () => { assertReadable(); return selected.hson(); },
+        must: required_reads(() => { assertReadable(); return selected.snap(); }, () => { assertReadable(); return selected.hson(); }), schema: Object.freeze({ get: () => selected.schema.get() }),
+        at: (path: import("../../types/livemap.types.js").LivePath) => read_data_location(selected.at(path), assertReadable),
       });
       return parts ? make_parts_facade(handle, key => selected.snap([key]) !== undefined) : handle;
     }
     return Object.freeze({
       mode: "document" as const, get rev() { return selected.rev; }, root: () => selected.root(),
+      snap: () => { assertReadable(); return selected.snap(); }, hson: () => { assertReadable(); return selected.hson(); },
+      must: required_reads(() => { assertReadable(); return selected.snap(); }, () => { assertReadable(); return selected.hson(); }), watch: selected.watch.bind(selected),
       render: mark_browser_html_producer(() => selected.render()), commits: selected.commits,
       schema: Object.freeze({ get: () => selected.schema.get() }),
       css: document_css_reads(selected.css),
@@ -132,8 +138,8 @@ export function create_registry_locus_internal<
           keys: selected.document.attrs.keys, must: selected.document.attrs.must }),
         flags: Object.freeze({ has: selected.document.flags.has }),
       }),
-      at: (path: readonly number[]) => read_document_location(selected.at(path)),
-      q: (name: string) => { const subject = selected.q(name); return subject === undefined ? undefined : read_document_quad(subject); },
+      at: (path: readonly number[]) => read_document_location(selected.at(path), assertReadable),
+      q: (name: string) => { const subject = selected.q(name); return subject === undefined ? undefined : read_document_quad(subject, assertReadable); },
     });
   };
   const readNamespaces = make_family_selectors(name => {
@@ -236,7 +242,7 @@ export function create_registry_locus_internal<
     }
   };
   const governed = make_locus_stage(options.map, submitStage,
-    (definitions, ownership, css) => authority.add_libraries(definitions, ownership, css), assertStageSubmissionAllowed);
+    (definitions, ownership, css) => authority.add_libraries(definitions, ownership, css), assertStageSubmissionAllowed, assertReadable);
 
   const dispatchAction: Locus<TMap, TActions>["dispatchAction"] = async (message) => {
     const release = activity.acquire("action");

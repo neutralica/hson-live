@@ -10,6 +10,6 @@ const map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hso
 const state = map.data.must("state");
 state.at(["count"]).set(1);
 assert.equal(state.snap(["count"]), 1);
-const data = state.at(["count"]).data();
+const data = state.at(["count"]).hson();
 assert.equal(typeof data, "string");
 assert.equal(data === undefined ? undefined : Hson.data.materialize(data), 1);
