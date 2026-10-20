@@ -1,6 +1,6 @@
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonMirror, hsonLiveMap, type HsonSchema } from "../src/index.ts";
@@ -514,7 +514,7 @@ check("the public commit family preserves future cross-library operation order",
 
 check("ordinary Locus constructs and exclusively manages its authority map", async () => {
   const map = create_map();
-  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)) });
+  const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)) });
   assert.notEqual(locus_map_internal(locus), map);
   await locus.lib("state").at(["count"]).set(2);
   assert.equal(map.lib("state").at(["count"]).set(2).rev, 1);

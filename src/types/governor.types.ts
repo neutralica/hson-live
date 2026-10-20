@@ -1,5 +1,5 @@
+import type { LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 import type { LibraryShapeCapabilities, LibraryArrayRead, LibraryObjectRead, LibraryArrayCommands, LibraryObjectCommands, LiveMapArrayBranch, LiveMapObjectBranch, LiveMapScalarBranch } from "./livemap.types.js";
-import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
 import type { JsonValue, HsonNode } from "../core/types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
@@ -11,18 +11,18 @@ import type {
 } from "./livemap.types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
 
-export type LocusDataLocation<TValue = JsonValue | undefined> = Readonly<{
+export type LocusDataLocation<TValue = JsonValue | undefined, TRead = TValue> = Readonly<{
   readonly rev: number;
   path: () => LivePath;
-  snap: () => TValue;
+  snap: () => TRead;
   data: () => HsonData | undefined;
-  at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => LocusDataLocation<LiveMapPathValue<TValue, TPath>>;
-  watch: (listener: (value: TValue) => void) => () => void;
+  at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => LocusDataLocation<LiveMapPathValue<TRead, TPath>>;
+  watch: (listener: (value: TRead) => void) => () => void;
   kind: () => "missing" | "object" | "array" | "scalar";
-  present: () => LocusDataLocation<Exclude<TValue, undefined>> | undefined;
-  asArray: () => LocusDataLocation<LiveMapArrayBranch<TValue>> | undefined;
-  asObject: () => LocusDataLocation<LiveMapObjectBranch<TValue>> | undefined;
-  asScalar: () => LocusDataLocation<LiveMapScalarBranch<TValue>> | undefined;
+  present: () => LocusDataLocation<Exclude<TValue, undefined>, LibraryRefinedValue<TRead, Exclude<TValue, undefined>>> | undefined;
+  asArray: () => LocusDataLocation<LiveMapArrayBranch<TValue>, LibraryRefinedValue<TRead, LiveMapArrayBranch<TValue>>> | undefined;
+  asObject: () => LocusDataLocation<LiveMapObjectBranch<TValue>, LibraryRefinedValue<TRead, LiveMapObjectBranch<TValue>>> | undefined;
+  asScalar: () => LocusDataLocation<LiveMapScalarBranch<TValue>, LibraryRefinedValue<TRead, LiveMapScalarBranch<TValue>>> | undefined;
   set: LiveMapPartWrite<TValue, LiveMapSetValue<TValue>, Promise<void>>;
   replace: LiveMapPartWrite<TValue, LiveMapWriteValue<TValue>, Promise<void>>;
   delete: () => Promise<void>;
@@ -82,18 +82,18 @@ export type LocusDocumentLibrary<TEvidence = HsonNode, TSchema extends HsonSchem
 
 export type LocusLibrary = LocusDataLibrary | LocusDocumentLibrary;
 
-export type ReadDataLocation<TValue = JsonValue | undefined> = Readonly<{
+export type ReadDataLocation<TValue = JsonValue | undefined, TRead = TValue> = Readonly<{
   readonly rev: number;
   path: () => LivePath;
-  snap: () => TValue;
+  snap: () => TRead;
   data: () => HsonData | undefined;
-  watch: (listener: (value: TValue) => void) => () => void;
+  watch: (listener: (value: TRead) => void) => () => void;
   kind: LocusDataLocation["kind"];
-  at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => ReadDataLocation<LiveMapPathValue<TValue, TPath>>;
-  present: () => ReadDataLocation<Exclude<TValue, undefined>> | undefined;
-  asArray: () => ReadDataLocation<LiveMapArrayBranch<TValue>> | undefined;
-  asObject: () => ReadDataLocation<LiveMapObjectBranch<TValue>> | undefined;
-  asScalar: () => ReadDataLocation<LiveMapScalarBranch<TValue>> | undefined;
+  at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => ReadDataLocation<LiveMapPathValue<TRead, TPath>>;
+  present: () => ReadDataLocation<Exclude<TValue, undefined>, LibraryRefinedValue<TRead, Exclude<TValue, undefined>>> | undefined;
+  asArray: () => ReadDataLocation<LiveMapArrayBranch<TValue>, LibraryRefinedValue<TRead, LiveMapArrayBranch<TValue>>> | undefined;
+  asObject: () => ReadDataLocation<LiveMapObjectBranch<TValue>, LibraryRefinedValue<TRead, LiveMapObjectBranch<TValue>>> | undefined;
+  asScalar: () => ReadDataLocation<LiveMapScalarBranch<TValue>, LibraryRefinedValue<TRead, LiveMapScalarBranch<TValue>>> | undefined;
 }> & LibraryShapeCapabilities<TValue, LibraryArrayRead<TValue>, LibraryObjectRead<TValue>>;
 export type ReadDataLibrary<TValue = JsonValue | undefined, TSchema extends HsonSchema = HsonSchema> =
   Pick<LocusDataLibrary<TValue, TSchema>, "mode" | "rev" | "root" | "snap" | "schema"> & Readonly<{
@@ -114,13 +114,11 @@ export type ReadDocumentLibrary<TEvidence = HsonNode, TSchema extends HsonSchema
 export type ReadLibrary = ReadDataLibrary | ReadDocumentLibrary;
 
 export type DefinitionLibrary<TDefinition> =
-  TDefinition extends { data: unknown; schema: infer TSchema extends HsonSchema }
-    ? LocusDataLibrary<DataSchemaValue<TSchema>, TSchema>
-    : TDefinition extends { document: unknown; schema: infer TSchema extends HsonSchema }
-      ? LocusDocumentLibrary<DocumentSchemaGraph<TSchema>, TSchema>
-      : TDefinition extends { parts: unknown } ? LocusDataLibrary<import("./livemap.types.js").LiveMapPartCollection>
-        : TDefinition extends { data: unknown } ? LocusDataLibrary<JsonValue>
-        : TDefinition extends { document: unknown } ? LocusDocumentLibrary : LocusLibrary;
+  LibraryDefinitionEvidence<TDefinition> extends infer E
+    ? E extends { family: infer F; value: infer V; schema: infer S extends HsonSchema }
+      ? F extends "document" ? LocusDocumentLibrary<V, S> : LocusDataLibrary<V, S>
+      : LocusLibrary
+    : never;
 
 export type LocusLibrarySelector<TMap extends LiveMap> = {
   <TName extends LiveMapKnownNames<TMap>>(
@@ -130,11 +128,11 @@ export type LocusLibrarySelector<TMap extends LiveMap> = {
 };
 
 type ReadDefinitionLibrary<TDefinition> =
-  TDefinition extends { data: unknown; schema: infer TSchema extends HsonSchema } ? ReadDataLibrary<DataSchemaValue<TSchema>, TSchema>
-    : TDefinition extends { document: unknown; schema: infer TSchema extends HsonSchema } ? ReadDocumentLibrary<DocumentSchemaGraph<TSchema>, TSchema>
-      : TDefinition extends { parts: unknown } ? ReadDataLibrary<import("./livemap.types.js").LiveMapPartCollection>
-        : TDefinition extends { data: unknown } ? ReadDataLibrary<JsonValue>
-          : TDefinition extends { document: unknown } ? ReadDocumentLibrary : ReadLibrary;
+  LibraryDefinitionEvidence<TDefinition> extends infer E
+    ? E extends { family: infer F; value: infer V; schema: infer S extends HsonSchema }
+      ? F extends "document" ? ReadDocumentLibrary<V, S> : ReadDataLibrary<V, S>
+      : ReadLibrary
+    : never;
 export type ReadLibrarySelector<TMap extends LiveMap> = {
   <TName extends LiveMapKnownNames<TMap>>(name: TName): ReadDefinitionLibrary<LiveMapKnownDefinitions<TMap extends LiveMap<infer TDefinitions> ? TDefinitions : never>[TName]>;
   (name: string): ReadLibrary;

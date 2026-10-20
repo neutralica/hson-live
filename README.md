@@ -12,7 +12,7 @@ By parsing to `Hson` as an intermediary step, JSON can be rendered as HTML and v
 
 ## hson-live
 
-`hson-live` is a TypeScript library for authoring "live" interactive web content. It is a full-stack reactive framework built on the `Hson` notation and its capabilities. 
+`hson-live` a full-stack TypeScript environment for creating "live" web content, built on the `Hson` notation and its capabilities. 
 
 **This project is experimental. It is working architectural research, not a finished product.**
 
@@ -21,7 +21,7 @@ By parsing to `Hson` as an intermediary step, JSON can be rendered as HTML and v
 
 ## Hson - syntax
 
-JSON and HTML occupy different domains, but both describe hierarchical structure.
+JSON and HTML occupy different domains but describe similar structural hierarchies. Hson expresses both.
 
 JSON expresses structure through objects, arrays, keys, and values:
 
@@ -29,18 +29,26 @@ JSON expresses structure through objects, arrays, keys, and values:
 {
   "profile": {
     "name": "Ada",
-    "active": true
+    "active": true,
+    "permissions": [
+      "admin",
+      "owner"
+    ]
   }
 }
 ```
 
-The equivalent data can be expressed in Hson:
+Its equivalent can be represented in Hson:
 
 ```hson
 <
   profile <
     name "Ada"
     active true
+    permissions «
+      "admin",
+      "owner",
+    »
   >
 >
 ```
@@ -54,7 +62,7 @@ HTML expresses structure through elements, attributes, and ordered content:
 </article>
 ```
 
-The same markup structure can be expressed in Hson:
+Hson represents this as:
 
 ```hson
 <article class="note"
@@ -63,22 +71,15 @@ The same markup structure can be expressed in Hson:
 />
 ```
 
-Both forms parse into the same canonical node model.
+Both formats parse into the same HsonNode model.
 
-This allows data and markup to pass through one explicit intermediate representation rather than treating HTML as an opaque string inside JSON, or JSON as an incidental script payload inside HTML.
+Hson faithfully represents JSON objects, arrays, and typed values, including non-Finite values and -0. At admission, JSON is normalized and member key order preserved within the HSON graph. 
 
-Hson can represent:
+HTML's browser- and context-dependent parsing rules present a moving target for accurate representation. Hson requires XML compatibility, but will attempt to normalize non-compliant HTML to its structurally equivalent XML representation before admittance.
 
-- JSON objects and arrays
-- strings, numbers, booleans, and null
-- HTML, XML, and SVG elements
-- element attributes and eligible element metadata
-- ordered and mixed markup content
-- documents with zero, one, or many top-level nodes
-- namespaces and structural wrapper nodes
-- stable markup identity for live document nodes
+Some HTML edge cases are not supported for security or other ambiguity reasons. In particular, empty `<script>` tags are permitted when carrying `src` attributes, but not inline logic.
 
-Round trips are deterministic within each transformation contract.
+Invalid content is rejected rather than silently repaired. After admission and normalization, content remains structurally equivalent even across repeated round-trip transformations.
 
 ---
 
@@ -87,58 +88,57 @@ Round trips are deterministic within each transformation contract.
 
 `hson-live`'s connected subsystems create and operate on `Hson` graphs as both data and markup, uniting two formerly non-interchangeable notations in one ecosystem. 
 
-- `hson.transform` - creates `Hson` graphs from JSON, HTML, XML, and SVG. Its transformer circuit is stable: normalized user data performs repeated round trips across formats without drift or distortion.
-- `hson.liveTree` - `Hson` -> DOM rendering pipeline. LiveTree maintains or tracks a canonical node graph containing `Hson` markup, then projects the document as HTML to the DOM. Mutation to the canonical `Hson` graph updates in realtime. 
-- `hson.liveMap` - a versatile application state machine that maintains the canonical `Hson` graph and controls mutation. LiveMap manages node graph mutation validated against TypeScript-compatible schema and tracks revision history, pushing changes to subscribers via commits.
- - `hson.liveHost` - the application/runtime boundary. LiveHost registers applications, dispatches exact request and connection routes, and provides the hosting contract. LiveHost Node is the implementation of the generic LiveHost, responsible for HTTP/WebSocket ingress, security/resource policy, transport adaptation, and process lifecycle.
-- `Locus` - a server-side canonical LiveMap authority. Locus governs one authoritative LiveMap/state domain and synchronizes replicas across client sessions. Locus decides and sequences graph mutation, coordinates persistence and authorization, retains accepted cacnonical history, and synchronizes client replicas (-> Echo).
-- `Echo` - a subjugated client endpoint; Echo is an unopinionated coordinator of commits from Locus to a client-side LiveMap replica. It tracks authoritative server-side state, sends client mutation intent to Locus, receives state changes back in the form of commits, and keeps its subordinate replica synchronized.
+- `hson.transform` - creates `Hson` graphs from JSON, HTML, XML, and SVG. Its transformer circuit is stable: normalized user data performs repeated round-trips across formats without drift or distortion.
+- `hson.liveTree` - DOM rendering and interaction management. LiveTree projects a `Hson` document to the browser and provides an API surface for event listeners and styling. Mutations to its canonical `Hson` graph are reflected to the DOM in realtime. 
+- `hson.liveMap` - a state machine that holds application data and documents in `Hson`. LiveMap controls `Hson` graph mutation, validates changes against TypeScript-compatible schema, and tracks revision history, streaming changes to subscribers.
+ - `hson.liveHost` - application/runtime boundary: LiveHost provides the hosting contract, registers applications, and dispatches request and connection routes. LiveHost is responsible for HTTP/WebSocket ingress, security/resource policy, transport adaptation, and process lifecycle.
+- `hson.locus` - governs one authoritative server-side LiveMap and synchronizes replicas across client sessions. Locus decides and sequences graph mutation, coordinates persistence and authorization, retains accepted cacnonical history, and synchronizes client replicas (-> Echo).
+- `hson.echo` - client-side endpoint; Echo is an unopinionated coordinator of commits from Locus to a client-side LiveMap replica. It tracks authoritative server-side state, sends client mutation intent, and receives state changes back in the form of commits, keeping its replica synchronized.
 
-`hson-live` is flexible by design; its subsystems can be fully deployed, or composed modularly to fit various use cases. It fully supports no-js modes as a progressive default. 
+`hson-live` is flexible by design; its subsystems can be fully deployed, or composed modularly to fit various use cases.
 
 ---
 
 
-## hson.transform / hsonTransform
+## Transform
 
-The transformation layer parses supported source formats into canonical Hson nodes and serializes those nodes into other supported representations.
+The transformation layer parses input to canonical `Hson` nodes and serializes those nodes into other representations.
 
 ```ts
 import { hson } from "hson-live";
 
-const source = hson.fromJson({
+const source = {
   message: "hello",
   visible: true,
-});
+};
 
-const node = source.toNode();
+const node = hson.fromJson(source).toNode();
 
-const text = hson
-  .fromNode(node)
-  .toHson()
-  .serialize();
+const output = hson.fromNode(node).toHson().serialize();
+
+output === source // true
 ```
 
 The transformation system handles cases that are commonly awkward at format boundaries, including:
 
-- mixed text and element content;
-- JSON arrays and object ordering;
-- boolean and structured attributes;
-- HTML void elements;
-- SVG and XML namespaces;
-- ordered document content;
+- mixed text and element content
+- JSON arrays and object member ordering
+- boolean and structured attributes
+- HTML void elements
+- SVG and XML namespaces
+- ordered document content
 - canonical metadata;
 - persisted node identity.
 
-The graph produced by the transformation layer is used by LiveMap, LiveTree, and Locus.
+`hson-live`'s transformation layer provides the node graphs used by its other subsystems.
 
 ---
 
 
 
-## hson.liveTree / hsonLiveTree
+## LiveTree
 
-LiveTree turns Hson into browser DOM, rendering Hson markup as live documents. It queries document.body and parses it, then replaces its contents with an identical projection from the Hson graph that follows mutations in synchronously.
+LiveTree renders Hson as live markup in browser DOM. It queries document.body and parses its contents into a Hson graph, then replaces the DOM with an identical projection from the gra. Mutations made to the underlying Hson graph are reflected to the DOM in realtime.
 
 ```ts
 const body = hson.liveTree.queryBody().graft();
@@ -158,39 +158,37 @@ message.listen.onClick(() => {
 });
 ```
 
-As a standalone subsystem, LiveTree provides synchronous graph-backed interfaces for:
+LiveTree is suitable as a standalone runtime for CSR or WPA use cases. Its API provides synchronous graph-backed management of:
 
-- element creation and structural editing;
-- text and attributes;
-- forms and datasets;
-- events and listener ownership;
-- inline and QUID-scoped CSS;
-- custom properties;
-- selectors and conditional CSS;
-- keyframes and animation control;
-- SVG;
-- canvas;
-- DOM geometry and inspection;
-- deterministic detach, transfer, removal, and cleanup.
+- element creation and structural editing
+- text and attributes
+- forms and datasets
+- events and listener ownership
+- inline and QUID-scoped CSS
+- custom properties
+- selectors and conditional CSS
+- keyframes and animation control
+- SVG
+- canvas
+- DOM geometry and inspection
+- deterministic detach, transfer, removal, and cleanup
 
-LiveTree does not require a virtual DOM synchronization pass. Mutating the graph updates its DOM projection directly.
+LiveTree tracks node references via a QUID attribute that supports graph lookup and continuity, ensuring stable identity even when relocated. QUIDs also enable locally scoped CSS without Shadow DOM or a bespoke class name system.
 
-If bound, LiveTree nodes are tracked via a QUID attribute, ensuring stable identity even when relocated. QUIDs support lookup and graph continuity, and enable locally scoped CSS without Shadow DOM or a class name system.
-
-LiveTree's CSS remains recognizably CSS. Dynamic property values can be created within application code based on state changes, and ownership and lifetime become explicit. LiveTree supports and manages rules, keyframes, properties, listeners, and other node-owned resources, releasing them when their owning branch is terminally removed. 
+LiveTree's CSS remains recognizably CSS, with a few extra benefits. Properties can be created with dynamic values directly from JS data, and selector lifecycle is explicitly managed: keyframes, animation, rules, listeners, and other node-owned resources are released when their owning branch is terminally removed. 
 
 ---
 
 
-## hson.liveMap / hsonLiveMap
+## LiveMap
 
-LiveMap provides mutable, revisioned application state over canonical Hson graphs. It supports both data and document state, including multiple named data/document libraries coordinated under one LiveMap controlling atomic mutation, observation, Schema governance, capture/recovery, and canonical commit history.
+LiveMap is a state machine that governs and edits Hson data and document graphs. It controls observation, mutation, Schema validation, snapshot/recovery, and revision history.
 
 For data maps, ordinary state can be created from JSON and addressed directly:
 
 ```ts
 const map = hson.liveMap.fromJson({
-  count: 0,
+  count: 2,
   items: ["one", "two"],
 });
 
@@ -203,26 +201,24 @@ map.at(["items"]).array.push("three");
 console.log(map.snap());
 ```
 
-For document maps, paths traverse ordered authored content and expose document-specific content and attribute operations:
+Document maps expose HTML-specific content and attribute operations:
 
 ```ts
 const document = hson.liveMap.fromHson(
-  `<main <section <p "hello"/>/>/>`,
+  `<main <section <p "Hello"/>/>/>`,
 );
 
-if (document.mode === "document") {
-  const paragraph = document.at([0, 0]);
+const paragraph = document.at([0, 0]);
 
-  console.log(paragraph.snap());
+console.log(paragraph.snap());
 
-  paragraph.attrs.set("class", "intro");
-  paragraph.text.set("Hello");
-}
+paragraph.attrs.set("name", "intro");
+paragraph.text.set("Goodbye");
 ```
 
-Path handles are fixed logical coordinates that re-resolve against the current map revision. They support detached snapshots, observation, feeds, subscriptions, and mutation without exposing mutable references into the graph itself. Data locations additionally expose object and array capabilities; document locations expose authored content, attributes, text, and item operations.
+LiveMap paths are structural coordinates that resolve against the current map revision. Path handles support snapshots, observation, feeds, subscriptions, and mutation without exposing direct references to the graph itself. Data locations expose object and array capabilities; document locations expose structure, text, and attribute operations.
 
-LiveMap validates changes against TypeScript-compatible HsonSchema. Candidate mutations are validated before commit; generated Schema proof types allow certified state to retain corresponding TypeScript evidence at application boundaries.
+LiveMap validates changes against TypeScript-compatible HsonSchema before commit. Generated types allow state to derive TypeScript evidence from Schema.
 
 Validated changes are applied atomically. Individual or batched mutations advance the map by one revision and publish one canonical commit.
 
@@ -230,14 +226,14 @@ State can be captured, restored, replayed, and recovered through revision-aware 
 
 LiveMap coordinates logical path addressing with QUID registration to preserve identity continuity across structural graph changes.
 
-An optional proxy surface provides the same underlying capabilities through structural property/index traversal; `map.at(...)` remains the explicit path-oriented form.
+An optional proxy surface provides traversal capabilities through structural property/index traversal; `map.at(...)` remains the explicit path-oriented form.
 
 ---
 
 
 ## LiveMap - LiveTree Integration
 
-Bindings connect LiveTree document presentation to LiveMap state.
+Bindings connect LiveTree presentation to LiveMap state.
 
 ```ts
 const state = hson.liveMap.fromJson({
@@ -261,16 +257,16 @@ button.listen.onClick(() => {
 });
 ```
 
-For broader graph coordination, `hson.reflect` synchronizes a LiveTree runtime with a LiveMap document authority, turning canonical Hson document state into live, interactive, continuously synchronized web content.
+For broader graph coordination, `hsonMirror` synchronizes a LiveTree runtime with a LiveMap document authority, turning canonical Hson document state into live, interactive, continuously synchronized web content.
 
 ---
 
 
 ## LiveHost
 
-LiveHost is the generic hosting boundary for Hson applications. It can carry an application from server-side routing and authority through to synchronized browser state and live document updates, without requiring another server framework.
+LiveHost is the hosting boundary for Hson applications. It can carry an application from server-side routing and authority through to synchronized browser state and live document updates without requiring another server framework.
 
-It registers applications, dispatches HTTP requests and long-lived connections to exact routes, carries principal/admission context, exposes readiness and lifecycle control, and can host applications with or without Locus authority.
+LiveHost registers and hosts applications, dispatches HTTP requests and long-lived connections to exact routes, carries principal/admission context, and exposes readiness and lifecycle control.
 
 ```text
 ordinary application:  request -> LiveHost -> application -> Response
@@ -279,7 +275,7 @@ hosted authority:      request/connection -> LiveHost -> application -> Locus
 
 Applications remain responsible for their own routes, domain topology, authority selection, actions, authorization policy, persistence, SSR, and response content. LiveHost supplies the common runtime machinery around those choices rather than defining application semantics itself.
 
-The current **LiveHost Node runtime** provides HTTP and WebSocket ingress, Web `Request`/`Response` adaptation, origin and proxy policy, resource limits, heartbeat and backpressure handling, health reporting, graceful shutdown, and optional bounded Locus residency through `create_livehost_locus_registry()`.
+The  **LiveHost Node runtime** provides HTTP and WebSocket ingress, Web `Request`/`Response` adaptation, origin and proxy policy, resource limits, heartbeat and backpressure handling, health reporting, graceful shutdown, and optional bounded Locus residency through `create_livehost_locus_registry()`.
 
 Combined with Hson SSR, Echo, Reflect, and LiveTree, a LiveHost application may render useful HTML on the server and continue it in the browser as synchronized, reactive content. Progressive enhancement follows from the same composition rather than requiring a separate client application model.
 

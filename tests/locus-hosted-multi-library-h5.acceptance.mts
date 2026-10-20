@@ -2,7 +2,7 @@ import type { DocumentGraphReplaceContentOp } from "../src/api/livemap/livemap.d
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, resume_locus_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -194,7 +194,7 @@ function page_item(map: ReturnType<typeof make_map>): import("../src/core/types.
 await check("the public Locus and Echo paths bootstrap one typed aggregate mirror and replay atomic named-library actions", async () => {
   install_fake_document();
   let serverMap = make_map();
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }), actions: {
       "theme.all": async (context) => {
         await (() => { const draft = context.stage; draft.lib("state").at(["theme"]).set("dark");
 draft.lib("colors").at(["theme"]).set("blue");
@@ -337,7 +337,7 @@ await check("named document Echo authoring honors aggregate authorization and co
   install_fake_document();
   const decisions = [false, true];
   let serverMap = make_map();
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }), authorizeAction: () => decisions.shift() ?? true });
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }), authorizeAction: () => decisions.shift() ?? true });
   serverMap = locus_map_internal(locus);
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server, { principalId: "principal-a" });
@@ -371,7 +371,7 @@ await check("named Mirror text replacement carries empty portable lineage throug
   const TextPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "string">>>`;
   const definitions = { page: { document: "<main <item \"old\"/>/>", schema: TextPageSchema } } as const;
   let serverMap = hsonLiveMap.fromLibraries(definitions);
-  const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }));
+  const locus = create_locus_fixture(authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }));
   serverMap = locus_map_internal(locus);
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
@@ -468,7 +468,7 @@ await check("projected fallback restores the observed authority document in plac
 });
 
 await check("LiveHost lifecycle composition treats the multi-library Locus as one ordinary authority", async () => {
-  const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }));
+  const locus = create_locus_fixture(authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }));
   const registry = create_livehost_locus_registry({
     maxLoci: 1,
     idleMs: 0,
@@ -485,7 +485,7 @@ await check("LiveHost lifecycle composition treats the multi-library Locus as on
 
 await check("the public socket fails closed for malformed requests and an ahead global recovery cursor", async () => {
   const map = make_map();
-  const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options({ ...test_public_projection(map), map }));
+  const locus = create_locus_fixture(authority_definition_from_fixture_options({ ...test_public_projection(map), map }));
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
   pair.client.send("{");
@@ -532,7 +532,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   install_fake_document();
   const persistence = new MemoryPersistence();
   let serverMap = make_map();
-  const host = await hsonLiveMap.locus.resume({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap, logicalMapId: "h5-persisted-map", persistence }), actions: {
+  const host = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap, logicalMapId: "h5-persisted-map", persistence }), actions: {
       "state.page": async (context) => {
         await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(2);
 draft.lib("page").graph(insert_item()); })();
@@ -582,7 +582,7 @@ draft.lib("page").graph(insert_item()); })();
 
   let restoredMap = make_map();
   const restartStarted = performance.now();
-  const restored = await hsonLiveMap.locus.resume({ ...authority_definition_from_fixture_options({ ...test_public_projection(restoredMap), map: restoredMap, logicalMapId: "h5-persisted-map", persistence }), actions: {
+  const restored = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(restoredMap), map: restoredMap, logicalMapId: "h5-persisted-map", persistence }), actions: {
       "state.page": async (context) => {
         await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(3);
 draft.lib("page").graph(insert_item()); })();
@@ -648,7 +648,7 @@ draft.lib("page").graph(insert_item()); })();
   restored.dispose();
 
   await assert.rejects(
-    () => hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({
+    () => resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({
         state: { data: { theme: "light", count: 0 }, schema: StateSchema },
       }), test_application_catalog(hsonLiveMap.fromLibraries({
         state: { data: { theme: "light", count: 0 }, schema: StateSchema },
@@ -658,7 +658,7 @@ draft.lib("page").graph(insert_item()); })();
 
   persistence.corrupt();
   await assert.rejects(
-    () => hsonLiveMap.locus.resume(authority_definition_from_fixture_options({
+    () => resume_locus_fixture(authority_definition_from_fixture_options({
     ...test_public_projection(make_map()), map: make_map(), logicalMapId: "h5-persisted-map", persistence })),
     /persisted state is invalid/i,
   );
@@ -667,7 +667,7 @@ draft.lib("page").graph(insert_item()); })();
 await check("public hosted failures reject before acceptance and leave the aggregate unchanged", async () => {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await hsonLiveMap.locus.resume({ ...authority_definition_from_fixture_options({ ...test_public_projection(map), map,
+  const host = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(map), map,
     logicalMapId: "h5-failed-append", persistence }), actions: {
       increment: async (context) => {
         await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(1); })();

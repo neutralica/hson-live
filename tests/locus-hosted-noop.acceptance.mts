@@ -1,5 +1,5 @@
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, resume_locus_fixture, authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -77,7 +77,7 @@ function options(map: ReturnType<typeof make_map>): LocusRegistryOptions<typeof 
 // creation, capture, client composition, action completion, and recovery are public.
 for (const strategy of ["replay", "reconcile"] as const) {
   let map = make_map();
-  const locus = strategy === "replay" ? hsonLiveMap.locus.create(authority_definition_from_fixture_options(options(map)))
+  const locus = strategy === "replay" ? create_locus_fixture(authority_definition_from_fixture_options(options(map)))
     : create_registry_locus_internal(options(map), { maxHistoryBytes: 1 }).locus;
   if (strategy === "replay") map = locus_map_internal(locus);
   const pair = socket_pair();
@@ -255,7 +255,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 {
   const persistence = new MemoryCheckpointAdapter();
   const map = make_map();
-  const locus = await hsonLiveMap.locus.resume(authority_definition_from_fixture_options({ ...options(map),
+  const locus = await resume_locus_fixture(authority_definition_from_fixture_options({ ...options(map),
     logicalMapId: "hosted-noop-checkpoint", persistence }));
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);
@@ -286,7 +286,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 
 {
   let map = make_map();
-  const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options(options(map)));
+  const locus = create_locus_fixture(authority_definition_from_fixture_options(options(map)));
   map = locus_map_internal(locus);
   let escaped: { set(value: boolean): void } | undefined;
   try {
@@ -391,7 +391,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 {
   const persistence = new MemoryCheckpointAdapter();
   let map = make_map();
-  const locus = await hsonLiveMap.locus.resume(authority_definition_from_fixture_options({ ...options(map),
+  const locus = await resume_locus_fixture(authority_definition_from_fixture_options({ ...options(map),
     logicalMapId: "hosted-noop-durable-stage", persistence }));
   map = locus_map_internal(locus);
   try {
@@ -415,7 +415,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 
 {
   let map = make_map();
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...options(map) }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...options(map) }), actions: {
     afterAwait: async (ctx: LocusActionContext<typeof map>) => {
       const input = await Promise.resolve(false);
       ctx.stage.lib("game").at(["ready"]).set(input);
@@ -436,7 +436,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 {
   const schema = Hson.schema`<type "data" content <count "number">>`;
   let map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema } });
-  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]) });
+  const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]) });
   map = locus_map_internal(locus);
   try {
     await locus.stage(stage => {

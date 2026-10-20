@@ -1,4 +1,4 @@
-import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, resume_locus_fixture, authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -55,7 +55,7 @@ assert.deepEqual(fidelityRecord.order[1], {kind:"group", header:"@layer", entrie
 assert.deepEqual(fidelityRecord.keyframes[0]?.steps.map(step => step.at), ["0%", "from"]);
 privatePage.css.stylesheet(`.PRIVATE_CSS_SENTINEL { color: red; --blob: ${"x".repeat(25_000)}; }`);
 ungranted.css.stylesheet(".UNGRANTED_CSS_SENTINEL { color: blue; }");
-const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [
+const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, [
     { name: "page", ownership: "shared" },
     { name: "privatePage", ownership: "private" },
     { name: "ungrantedPage", ownership: "shared" },
@@ -275,7 +275,7 @@ const restartOptions = {
   defaultProjection: { libraries: ["page"] },
   authorizeProjection: () => ({ libraries: ["page"] }),
 };
-const firstAuthority = await hsonLiveMap.locus.resume(authority_definition_from_fixture_options({ map: restartMap, ...restartOptions }));
+const firstAuthority = await resume_locus_fixture(authority_definition_from_fixture_options({ map: restartMap, ...restartOptions }));
 const managedRestartPage = firstAuthority.lib("page");
 if (managedRestartPage.mode !== "document") throw new Error("Expected managed restart document.");
 await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { color: maroon; } @layer { .x { color: red !important; } .x { color: blue !important; } }")); });
@@ -310,7 +310,7 @@ restartEcho.disconnect(); stopRestart();
 await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { background: silver; }", managedRestartPage.css.list())); });
 restartEcho.dispose();
 firstAuthority.dispose();
-const restarted = await hsonLiveMap.locus.resume(authority_definition_from_fixture_options({ map: restartInput(), ...restartOptions }));
+const restarted = await resume_locus_fixture(authority_definition_from_fixture_options({ map: restartInput(), ...restartOptions }));
 stopRestart = bind_locus_websocket(restarted, restartWire.server);
 const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), map: restartClient,
   logicalMapId: restarted.logicalMapId });

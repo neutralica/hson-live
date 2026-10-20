@@ -10,7 +10,7 @@ import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { sha256_sync } from "../src/core/sha256-sync.ts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -119,7 +119,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   const server = authority();
   const initialState = server.lib("state");
   initialState.at(["value"]).set(1);
-  const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options({ map: server, ...test_public_projection(server) }));
+  const locus = create_locus_fixture(authority_definition_from_fixture_options({ map: server, ...test_public_projection(server) }));
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
   const cut = internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted();

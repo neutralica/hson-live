@@ -639,8 +639,8 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const adapter = new MemoryCheckpointAdapter();
     const options = {
       logicalMapId: "part-collection-durable", persistence: adapter,
-      shared: [{ name: "collection", definition: definition(parts()) }],
-      private: [{ name: "hidden", definition: definition({ secret: { kind: "document", document: '<secret-only/>' } }) }],
+      shared: [{ name: "collection", definition: definition(parts()) }] as const,
+      private: [{ name: "hidden", definition: definition({ secret: { kind: "document", document: '<secret-only/>' } }) }] as const,
       authorizeProjection: () => ({ libraries: ["collection", "hidden"] }),
       actions: {
         valid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.lib("collection").at(["二", "document"]).set('<p @:label/>'); },

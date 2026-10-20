@@ -1,3 +1,26 @@
+import { hsonLiveMap } from "../../src/api/livemap/index.ts";
+import type { Locus, LocusRegistryOptions, LocusDefinitionOptions, LocusPersistenceAdapter } from "../../src/types/locus.core.types.ts";
+import type { LocusActionPayloads } from "../../src/types/locus.protocol.types.ts";
+import type { LibraryGroupDefinitions } from "../../src/types/library-evidence.types.ts";
+
+// These transport fixtures reconstruct a complete, already validated source map.
+// Keep that test-only proof separate from ordinary variable-length public input.
+declare const fixtureInventory: unique symbol;
+type FixtureInventory<TMap extends LiveMap> = { readonly [fixtureInventory]: TMap };
+type FixtureOptions<TMap extends LiveMap, TActions extends LocusActionPayloads> =
+  FixtureInventory<TMap> & Omit<LocusDefinitionOptions, "actions" | "schema" | "authorizeAction"> &
+  Omit<LocusRegistryOptions<TMap, TActions>, "map" | "libraries">;
+export const create_locus_fixture = hsonLiveMap.locus.create as {
+  <TMap extends LiveMap, TActions extends LocusActionPayloads = LocusActionPayloads>(options: FixtureOptions<TMap, TActions>): Locus<TMap, TActions>;
+};
+export const resume_locus_fixture = hsonLiveMap.locus.resume as {
+  <TMap extends LiveMap, TActions extends LocusActionPayloads = LocusActionPayloads>(options: FixtureOptions<TMap, TActions> & { logicalMapId: string; persistence: LocusPersistenceAdapter }): Promise<Locus<TMap, TActions>>;
+};
+
+type CatalogMap<T extends readonly LocusLibraryCatalogEntry[]> = LiveMap<LibraryGroupDefinitions<{
+  shared: { [K in keyof T]: T[K] extends { name: infer N extends string; definition: infer D extends LiveMapLibraryDefinition } ? { name: N; definition: D } : undefined };
+}>>;
+
 import type { LiveMap, LiveMapDefinitions, LiveMapLibraryDefinition } from "../../src/types/livemap.types.ts";
 import type { LocusAuthorityLibraryDefinition, LocusLocalLibraryDefinition } from "../../src/types/locus.core.types.ts";
 import type { LocusLibraryCatalogEntry } from "../../src/types/locus.projection.types.ts";
@@ -30,13 +53,17 @@ type CatalogAuthorityEntry<TCatalog extends readonly LocusLibraryCatalogEntry[]>
 export function authority_groups_from_map_fixture<
   TMap extends LiveMap,
   const TCatalog extends readonly LocusLibraryCatalogEntry[],
->(map: TMap, catalog: TCatalog): Readonly<{
+>(map: TMap, catalog: TCatalog): FixtureInventory<TMap> & Readonly<{
   private: AuthorityEntries<DefinitionsOf<TMap>, keyof DefinitionsOf<TMap> & string>;
   shared: AuthorityEntries<DefinitionsOf<TMap>, keyof DefinitionsOf<TMap> & string>;
   local: LocalEntries<TCatalog>;
   interactions?: readonly InteractionDescriptor[];
 }> {
   const checkpoint = internal_livemap_aggregate_authority(map).captureSemanticCheckpoint();
+  const supplied = new Set(catalog.filter(entry => entry.ownership !== "local").map(entry => entry.name));
+  if (checkpoint.registry.libraries.some(entry => entry.scope !== "hson-internal" && !supplied.has(entry.name))) {
+    throw new Error("Complete-map fixture catalog omitted a Library.");
+  }
   const privateEntries: LocusAuthorityLibraryDefinition[] = [];
   const sharedEntries: LocusAuthorityLibraryDefinition[] = [];
   const localEntries: LocusLocalLibraryDefinition[] = [];
@@ -74,7 +101,7 @@ export function authority_groups_from_map_fixture<
     shared: sharedEntries,
     local: localEntries,
     ...(interactions === undefined ? {} : { interactions }),
-  } as unknown as Readonly<{
+  } as unknown as FixtureInventory<TMap> & Readonly<{
     private: AuthorityEntries<DefinitionsOf<TMap>, keyof DefinitionsOf<TMap> & string>;
     shared: AuthorityEntries<DefinitionsOf<TMap>, keyof DefinitionsOf<TMap> & string>;
     local: LocalEntries<TCatalog>;
@@ -82,7 +109,7 @@ export function authority_groups_from_map_fixture<
   }>;
 }
 
-export function authority_groups_from_catalog_fixture<const TCatalog extends readonly LocusLibraryCatalogEntry[]>(catalog: TCatalog): Readonly<{
+export function authority_groups_from_catalog_fixture<const TCatalog extends readonly LocusLibraryCatalogEntry[]>(catalog: TCatalog): FixtureInventory<CatalogMap<TCatalog>> & Readonly<{
   private: readonly CatalogAuthorityEntry<TCatalog>[];
   shared: readonly CatalogAuthorityEntry<TCatalog>[];
   local: LocalEntries<TCatalog>;
@@ -98,7 +125,7 @@ export function authority_groups_from_catalog_fixture<const TCatalog extends rea
     } as LocusAuthorityLibraryDefinition);
     else throw new Error(`Test catalog ${entry.name} needs a definition.`);
   }
-  return { private: privateEntries, shared: sharedEntries, local: localEntries } as unknown as Readonly<{
+  return { private: privateEntries, shared: sharedEntries, local: localEntries } as unknown as FixtureInventory<CatalogMap<TCatalog>> & Readonly<{
     private: readonly CatalogAuthorityEntry<TCatalog>[];
     shared: readonly CatalogAuthorityEntry<TCatalog>[];
     local: LocalEntries<TCatalog>;
@@ -108,7 +135,7 @@ export function authority_groups_from_catalog_fixture<const TCatalog extends rea
 /** Keep unrelated transport fixtures concise while their source map is expressed as grouped Locus definitions. */
 export function authority_definition_from_fixture_options<
   const TOptions extends Readonly<{ map: unknown; libraries: readonly LocusLibraryCatalogEntry[] }>,
->(options: TOptions): Omit<TOptions, "map" | "libraries"> & Readonly<{
+>(options: TOptions): FixtureInventory<LiveMap<DefinitionsOf<TOptions["map"]>>> & Omit<TOptions, "map" | "libraries"> & Readonly<{
   private: AuthorityEntries<DefinitionsOf<TOptions["map"]>, keyof DefinitionsOf<TOptions["map"]> & string>;
   shared: AuthorityEntries<DefinitionsOf<TOptions["map"]>, keyof DefinitionsOf<TOptions["map"]> & string>;
   local: LocalEntries<TOptions["libraries"]>;
@@ -116,7 +143,7 @@ export function authority_definition_from_fixture_options<
 }> {
   const { map, libraries, ...rest } = options;
   return { ...rest, ...authority_groups_from_map_fixture(map as LiveMap, libraries) } as unknown as
-    Omit<TOptions, "map" | "libraries"> & Readonly<{
+    FixtureInventory<LiveMap<DefinitionsOf<TOptions["map"]>>> & Omit<TOptions, "map" | "libraries"> & Readonly<{
       private: AuthorityEntries<DefinitionsOf<TOptions["map"]>, keyof DefinitionsOf<TOptions["map"]> & string>;
       shared: AuthorityEntries<DefinitionsOf<TOptions["map"]>, keyof DefinitionsOf<TOptions["map"]> & string>;
       local: LocalEntries<TOptions["libraries"]>;

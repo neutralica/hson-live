@@ -237,7 +237,7 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   assert.equal(JSON.stringify(checkpoint).includes("private"), false);
   assert.equal(JSON.stringify(checkpoint).includes("shared"), false);
   first.dispose();
-  await assert.rejects(() => hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(map(), CATALOG.slice(0, 2)), logicalMapId: "projection-persist", persistence: adapter }), /source definition conflicts/i);
+  await assert.rejects(() => hsonLiveMap.locus.resume({ shared: authority_groups_from_map_fixture(map(), CATALOG).shared, logicalMapId: "projection-persist", persistence: adapter }), /source definition conflicts/i);
   const restored = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(map(), CATALOG), logicalMapId: "projection-persist", persistence: adapter });
   restored.dispose();
 }

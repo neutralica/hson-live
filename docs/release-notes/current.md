@@ -62,10 +62,58 @@ A major push into templating patterns as a first-class operation. Developed comp
 - Governed Part collections: Reusable, validated document definitions with optional CSS, stored as inert data Libraries.
 - Automatic Part composition: `<hson-part>` connectors expand recursively during document admission and supported mutations, without a separate templating API.
 - Inline parameters: `%{name}` placeholders support type-preserving scalar initialization and partial string substitution.
-- Occurrence-scoped CSS:** Part styles automatically scope to each instance, including root and nested selectors, without requiring authored QUADs.
+- Occurrence-scoped CSS: Part styles automatically scope to each instance, including root and nested selectors, without requiring authored QUADs.
 - Automatic CSS lifecycle: Instance-owned styles are installed and removed atomically with their corresponding document subjects.
 - Public document `.q(name)`: Identity-following QUAD locations support ordinary document reads and edits, movement, and safe handle retirement.
 - QUAD/QUID identity improvements: Sparse identity issuance, explicit receiving QUAD promotion, stronger replacement continuity, and authority-lifetime protections.
 - Portable document CSS: Subject identities and styles survive capture, restoration, SSR, and browser grafting with fresh runtime identities.
 - LiveTree/Mirror improvements: Existing DOM Elements retain identity and receive updated CSS identity carriers without replacement.
 - Expanded validation: Additional Node, Worker, and real-Chrome acceptance coverage for composition, CSS, identity, mutation atomicity, and no-JavaScript rendering.
+
+## Hson Live — Library Changelog
+
+- Added governed Part collections and recursive document composition. Introduced reusable document definitions, `<hson-part>` connectors, scalar placeholder substitution, nested composition, and atomic realization during document admission.
+
+- Implemented authored QUAD addressing and scoped Part namespaces. Added semantic `@:name` declarations, connector-to-occurrence bindings, independent namespaces for repeated Parts, and sparse runtime QUID ownership.
+
+- Added occurrence-owned CSS and scoped subject identities. Part stylesheets are scoped to their realized occurrences, with identity-aware ownership, retirement, and cleanup.
+
+- Completed scoped document capture, reconstruction, and Echo reconciliation. Preserved authored associations, occurrence topology, CSS ownership, and distinct receiving identities across snapshots and state restoration.
+
+- Extended durable scoped-state persistence. Added scoped checkpoint capture/restoration, durable effect tails, replay, and fresh-process authority recovery.
+
+- Expanded scoped transaction coverage. Supported CSS-only mutations, whole-document replacement, ordered mixed graph/data/CSS operations, and atomic rejection.
+
+- Preserved scoped topology during dynamic Library admission. Dynamically admitted Part-composed documents retain their namespaces, occurrence lifetimes, subject associations, and CSS ownership across subsequent operations and recovery.
+
+- Corrected staged document-path addressing. Direct, batched, and Locus-staged document operations now resolve consistent logical paths against progressively updated transaction candidates.
+
+- Preserved Echo HTML-producer semantics. Document rendering functions retain their HTML-producer metadata when exposed through Echo, including use as LiveHost request handlers.
+
+- Expanded typed Library admission and location inference. Introduced typed admission receipts, more precise Schema-derived paths, validated location refinements, and improved public capability types.
+
+- Unified collection operations under `.array` and `.object`. Restored shape-specific namespaces across LiveMap, Locus, and Echo; added observational array mapping and authority-safe, candidate-relative collection mutations. Removed the former flat collection-method surface.
+
+- Completed governed document capability parity. Expanded attribute, flag, CSS, and authored-QUAD operations and observations across local Libraries, authoritative Locus, staged writers, read-only contexts, and Echo projections.
+
+- Enabled public hosted scoped-state delivery. Authorized Echo sessions can receive scoped document Libraries, live updates, dynamically granted Libraries, ordered replay, and coherent recovery through existing HTTP and WebSocket transports.
+
+- Preserved flat and scoped documents within shared transactions. Introduced per-document scoped preparation, retaining the distinction between never-scoped, actively scoped, and explicitly scoped-empty documents without compromising atomicity.
+
+- Enabled coherent scoped server-side rendering. Hosted sessions can render Part-composed documents with complete scoped CSS and transferable state from one authorized snapshot, supporting native first paint without browser JavaScript.
+
+- Added authenticated receiver-owned identity handoff. Original SSR subject labels can be validated against independently issued Echo QUIDs, with ownership, CSS correspondence, freshness, reconciliation, and transport-lifecycle fencing.
+
+- Enabled non-destructive hosted browser continuation. Existing server-rendered flat and scoped documents can be adopted into LiveTree and Mirror without replacing compatible DOM elements, losing listeners, or duplicating identity ownership.
+
+- Added native CSS and subject-identity handoff during continuation. Portable SSR markers and stylesheets are translated into receiving-owned identities while preserving computed styles and managed stylesheet ownership.
+
+- Extended incremental flat-document replay with authenticated CSS correspondence. Supported subject-owned CSS across authoritative graph, attribute, flag, text, movement, replacement, and styling operations, including newly demanded receiver identities and correct retirement.
+
+- Preserved flat transaction semantics through replay and persistence. Added complete-candidate CSS validation, order-independent graph/CSS cleanup, stable mixed-Library effect ordering, and correct no-op behavior without unnecessary revisions.
+
+- Completed live scoped DOM synchronization. Authoritative changes propagate through Echo and Mirror to adopted document elements, preserving surviving identities, isolating repeated Part occurrences, and retiring removed subjects and their styles.
+
+- Strengthened browser-continuation startup rollback. Added native DOM checkpoint restoration across failed adoption, recovery, and attachment, including failures during cleanup, preservation of original node references and listeners, and safe retry on the same document.
+
+- Completed hosted continuation lifecycle integration. Established coherent reconnection, missed-revision recovery, reconciliation, projection reduction, revocation, disposal, and identity-lifetime behavior across the authoritative state, receiving runtime, and browser DOM.

@@ -1,7 +1,7 @@
 import { activate_document_interactions_internal } from "../src/api/interactions/interactions.ts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import type { LocusActionContext } from "../src/types/locus.core.types.ts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -346,7 +346,7 @@ await check("revoking shared interaction feature removes installed listeners", a
 await check("document and interaction effects accept or reject as one authority transition", async () => {
   let map = map_fixture();
   let aggregate = internal_livemap_aggregate_authority(map);
-  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)), actions: {
+  const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)), actions: {
       mixed: (context) => (() => { const draft = context.stage; draft.lib("page").graph(Object.freeze({
           domain: "graph",
           op: "set-attr",
@@ -401,7 +401,7 @@ await check("batch and stage each admit document movement with interaction maint
 
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main <button id=one/> <button id=two/>/>" } });
   enable_interactions(map);
-  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)) });
+  const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)) });
   try {
     await locus.stage(stage => {
       stage.lib("page").graph(moved);
@@ -415,7 +415,7 @@ await check("batch and stage each admit document movement with interaction maint
 await check("Locus staging authors hidden descriptors while direct managed writes are fenced", async () => {
   const map = map_fixture();
   const descriptor = local("managed", "run", Hson.data.from(-0));
-  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)), actions: {
+  const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, test_application_catalog(map)), actions: {
       add: (context) => (() => { const draft = context.stage; add_interaction(draft, descriptor); })(),
       replace: (context) => (() => { const draft = context.stage; replace_interaction(draft, local("managed", "next")); })(),
       remove: (context) => (() => { const draft = context.stage; remove_interaction(draft, "managed"); })(),
@@ -917,7 +917,7 @@ await check("public Echo dispatcher preserves exact payload through configured L
   add_interaction(authorityMap, authoritative("echo", "save", exact));
   let handled: HsonData | undefined;
   const configured = test_public_projection(authorityMap);
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...configured, map: authorityMap }),
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...configured, map: authorityMap }),
     interactions: [authoritative("echo", "save", exact)],
     actions: { save: (_context: LocusActionContext, payload: HsonData | undefined) => { handled = payload; } } });
   const captured = internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted();

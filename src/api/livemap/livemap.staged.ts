@@ -92,37 +92,39 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   const assert_open = (): void => {
     if (!open) throw new Error("Expired staged authoring scope.");
   };
-  const data_path = (identity: LiveMapLibraryIdentity, path: LivePath): StagedDataPath => {
+  const data_path = (identity: LiveMapLibraryIdentity, path: LivePath, checks: readonly LiveMapAggregateWrite[] = []): StagedDataPath => {
     const stablePath = must_live_path(path);
     const target = aggregate.target(identity, stablePath);
+    const assert_current = () => { assert_open(); writes.push(...checks); };
     const require_shape = (collection: "array" | "object"): StagedDataPath => {
-      assert_open();
-      writes.push(Object.freeze({ target, kind: "collection", command: Object.freeze({
+      assert_current();
+      const assertion: LiveMapAggregateWrite = Object.freeze({ target, kind: "collection", command: Object.freeze({
         collection, method: "assert-shape", args: Object.freeze<[]>([]),
-      }) }));
-      return data_path(identity, stablePath);
+      }) });
+      writes.push(assertion);
+      return data_path(identity, stablePath, [...checks, assertion]);
     };
     return Object.freeze({
       asArray: () => require_shape("array"),
       asObject: () => require_shape("object"),
       ...collection_commands(command => {
-        assert_open();
+        assert_current();
         writes.push(Object.freeze({ target, kind: "collection", command }));
       }),
       at(child: LivePath) {
         assert_open();
-        return data_path(identity, [...stablePath, ...must_live_path(child)]);
+        return data_path(identity, [...stablePath, ...must_live_path(child)], checks);
       },
       set(value: JsonValue) {
-        assert_open();
+        assert_current();
         writes.push(Object.freeze({ target, kind: "set", value: must_json_value(value, stablePath) }));
       },
       replace(value: JsonValue) {
-        assert_open();
+        assert_current();
         writes.push(Object.freeze({ target, kind: "replace", value: must_json_value(value, stablePath) }));
       },
       delete() {
-        assert_open();
+        assert_current();
         writes.push(Object.freeze({ target, kind: "delete" }));
       },
     });

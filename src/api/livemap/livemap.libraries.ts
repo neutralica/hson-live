@@ -1,3 +1,4 @@
+import { data_path_kind, data_location_check, require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { project_interaction_state_internal } from "../interactions/interactions.projection.js";
 import { render_portable_document_stylesheet, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
@@ -1154,10 +1155,13 @@ function make_data_library(
   const snap = (path: LivePath = []): JsonValue | undefined => aggregate.snap(library.identity, path);
   const public_data_commit = (commit: LiveMapAggregateCommit): LiveMapCommit<string, LiveMapDataOp> =>
     public_commit(commit) as LiveMapCommit<string, LiveMapDataOp>;
-  const handle = <TValue = JsonValue | undefined>(path: LivePath): LiveMapLibraryPathHandle<TValue> => {
+  const handle = <TValue = JsonValue | undefined>(path: LivePath, check?: DataLocationCheck): LiveMapLibraryPathHandle<TValue> => {
     const stablePath = clone_live_path(must_live_path(path));
     type DataCommit = LiveMapCommit<string, LiveMapDataOp>;
-    const projectedRead = (targetPath: LivePath): OrderedProjectedValue | undefined => ordered_projected_value_at(
+    const read = () => check?.() === false ? undefined : snap(stablePath);
+    const refine = (kind: "present" | "array" | "object" | "scalar") =>
+      handle(stablePath, data_location_check(() => snap(stablePath), kind, check));
+    const projectedRead = (targetPath: LivePath): OrderedProjectedValue | undefined => check?.() === false ? undefined : ordered_projected_value_at(
       projected_value_from_hson_node(aggregate.root(library.identity)),
       targetPath,
     );
@@ -1173,23 +1177,24 @@ function make_data_library(
     const arrayApi = make_livemap_array_api<TValue, DataCommit>({} as never, stablePath, projectedAuthority);
     const objectCapabilities = omit_object_discriminant(objectApi);
     const arrayCapabilities = omit_array_collisions(arrayApi);
-    const currentKind = () => classify_data_path_value(snap(stablePath));
+    const currentKind = () => data_path_kind(read());
     const facade = {
       get rev() { return aggregate.inspect().revision; },
       path: () => clone_live_path(stablePath),
-      snap: () => snap(stablePath) as TValue,
+      snap: () => read() as TValue,
       data: () => {
+        if (check?.() === false) return undefined;
         const value = ordered_projected_value_at(
           projected_value_from_hson_node(aggregate.root(library.identity)),
           stablePath,
         );
         return value === undefined ? undefined : hson_data_text_from_value(value);
       },
-      at: ((child: LivePath) => handle([...stablePath, ...must_live_path(child)])) as unknown as LiveMapLibraryPathHandle<TValue>["at"],
+      at: ((child: LivePath) => handle([...stablePath, ...must_live_path(child)], check)) as unknown as LiveMapLibraryPathHandle<TValue>["at"],
       watch: (listener: (next: TValue) => void) => {
-        const stopWatch = aggregate.watch(library.identity, stablePath, (next) => listener(next as TValue));
+        const stopWatch = aggregate.watch(library.identity, stablePath, (next) => listener((check === undefined ? next : read()) as TValue));
         const stopRestore = aggregate.observeRestore((event) => {
-          if (event.libraries.includes(library.identity)) listener(snap(stablePath) as TValue);
+          if (event.libraries.includes(library.identity)) listener(read() as TValue);
         });
         return () => { stopWatch(); stopRestore(); };
       },
@@ -1218,16 +1223,19 @@ function make_data_library(
         target: aggregate.target(library.identity, stablePath),
         kind: "delete",
       }])),
-      update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => public_data_commit(aggregate.commit([{
-        target: aggregate.target(library.identity, stablePath),
-        kind: "set",
-        value: must_json_value(updater(snap(stablePath) as TValue), stablePath),
-      }])),
+      update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => {
+        require_data_location(check);
+        return public_data_commit(aggregate.commit([{
+          target: aggregate.target(library.identity, stablePath),
+          kind: "set",
+          value: must_json_value(updater(read() as TValue), stablePath),
+        }]));
+      },
       kind: currentKind,
-      present: () => currentKind() === "missing" ? undefined : handle<Exclude<TValue, undefined>>(stablePath),
-      asObject: () => currentKind() === "object" ? handle<TValue>(stablePath) : undefined,
-      asArray: () => currentKind() === "array" ? handle<TValue>(stablePath) : undefined,
-      asScalar: () => currentKind() === "scalar" ? handle<TValue>(stablePath) : undefined,
+      present: () => currentKind() === "missing" ? undefined : refine("present"),
+      asObject: () => currentKind() === "object" ? refine("object") : undefined,
+      asArray: () => currentKind() === "array" ? refine("array") : undefined,
+      asScalar: () => currentKind() === "scalar" ? refine("scalar") : undefined,
       ...(currentKind() === "object" ? { object: Object.freeze(objectCapabilities) } : {}),
       ...(currentKind() === "array" ? { array: Object.freeze(arrayCapabilities) } : {}),
     };
@@ -1274,12 +1282,6 @@ function make_data_library(
   return selected;
 }
 
-function classify_data_path_value(value: JsonValue | undefined): import("../../types/livemap.types.js").LiveMapPathKind {
-  if (value === undefined) return "missing";
-  if (Array.isArray(value)) return "array";
-  if (typeof value === "object" && value !== null) return "object";
-  return "scalar";
-}
 
 function omit_object_discriminant<TValue, TCommit>(
   api: ReturnType<typeof make_livemap_object_api<TValue, TCommit>>,

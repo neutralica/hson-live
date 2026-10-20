@@ -38,14 +38,16 @@ export function make_locus_stage<TMap extends LiveMap>(
     if (selected.mode === "document") throw new Error(`Staged Library ${JSON.stringify(name)} is not data.`);
     return selected;
   };
-  const data_path = (name: string, path: LivePath): import("../../types/governor.types.js").LocusDataLocation => {
+  const data_path = (name: string, path: LivePath, retained?: import("../../internal/library-observation.js").DataLocationObservations): import("../../types/governor.types.js").LocusDataLocation => {
     const stable = must_live_path(path);
     const owner = map.lib(name) as LiveMapDataLibrary;
-    const raw = owner.at(stable);
+    const raw = retained ?? owner.at(stable);
     const observations = collection_observations(raw);
     const commands = collection_commands(command => submit(writer => {
       if (map.lib(name) !== owner) throw new Error("Stale Library handle.");
-      raw.snap();
+      if ((command.collection === "array" ? raw.asArray() : raw.asObject()) === undefined) {
+        throw new Error(`Data location is not an ${command.collection}.`);
+      }
       const location = selected_data(writer, name).at(stable);
       Reflect.apply(Reflect.get(Reflect.get(location, command.collection), command.method), undefined, command.args);
     }), cause => Promise.reject(cause));
@@ -58,14 +60,14 @@ export function make_locus_stage<TMap extends LiveMap>(
       ...(observations.array === undefined ? {} : { array: Object.freeze({ ...observations.array, ...commands.array }) }),
       ...(observations.object === undefined ? {} : { object: Object.freeze({ ...observations.object, ...commands.object }) }),
       kind: () => raw.kind(),
-      present: () => raw.present() === undefined ? undefined : data_path(name, stable),
-      asArray: () => raw.asArray() === undefined ? undefined : data_path(name, stable),
-      asObject: () => raw.asObject() === undefined ? undefined : data_path(name, stable),
-      asScalar: () => raw.asScalar() === undefined ? undefined : data_path(name, stable),
-      at: (child: LivePath) => data_path(name, [...stable, ...must_live_path(child)]),
-      set: (value: JsonValue) => submit(writer => { selected_data(writer, name).at(stable).set(value); }),
-      replace: (value: JsonValue) => submit(writer => { selected_data(writer, name).at(stable).replace(value); }),
-      delete: () => submit(writer => { selected_data(writer, name).at(stable).delete(); }),
+      present: () => { const checked = raw.present(); return checked === undefined ? undefined : data_path(name, stable, checked); },
+      asArray: () => { const checked = raw.asArray(); return checked === undefined ? undefined : data_path(name, stable, checked); },
+      asObject: () => { const checked = raw.asObject(); return checked === undefined ? undefined : data_path(name, stable, checked); },
+      asScalar: () => { const checked = raw.asScalar(); return checked === undefined ? undefined : data_path(name, stable, checked); },
+      at: (child: LivePath) => data_path(name, [...stable, ...must_live_path(child)], raw.at(child)),
+      set: (value: JsonValue) => submit(writer => { if (map.lib(name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).set(value); }),
+      replace: (value: JsonValue) => submit(writer => { if (map.lib(name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).replace(value); }),
+      delete: () => submit(writer => { if (map.lib(name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).delete(); }),
     }) as unknown as import("../../types/governor.types.js").LocusDataLocation;
   };
   const document_location = (name: string, path: readonly number[], document: LiveMapDocumentLibrary): NonNullable<ReturnType<import("../../types/governor.types.js").LocusDocumentLocation["asElement"]>> => {

@@ -19,8 +19,11 @@ import { capture_selected_authority_projection_snapshot } from "../../src/api/lo
 import { hosted_flat_subject_fixture } from "./hosted-styled-part-ssr-cases.mts";
 
 export async function receiving_handoff_fixture() {
-  const locus = hsonLiveMap.locus.create({ ...definition, shared: definition.shared.map(entry => entry.name === "page"
-    ? { ...entry, definition: { document: page.document.replace('<p @:outside', '<hson-part @:bare lib="parts" at="bare"/> <p @:outside') } } : entry) });
+  const [pageEntry, ...otherEntries] = definition.shared;
+  const locus = hsonLiveMap.locus.create({ ...definition, shared: [
+    { ...pageEntry, definition: { document: page.document.replace('<p @:outside', '<hson-part @:bare lib="parts" at="bare"/> <p @:outside') } },
+    ...otherEntries,
+  ] });
   const session = await locus.session.create({ libraries: ["page", "flat", "bare", "data"] });
   return { locus, session, cut: session.now({ html: "page" }) };
 }

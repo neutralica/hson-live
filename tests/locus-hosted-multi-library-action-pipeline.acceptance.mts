@@ -1,5 +1,5 @@
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -138,7 +138,7 @@ install_fake_document();
 
 await check("aggregate application handlers receive session origin externally and direct origin for trusted dispatch", async () => {
   const origins: unknown[] = [];
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }), actions: {
       probe(context) { origins.push(context.origin); },
     } });
   const pair = socket_pair();
@@ -205,7 +205,7 @@ await check("independent aggregate endpoints use reload-safe client and request 
 });
 
 await check("aggregate retry request payloads detach nested records and arrays from caller mutation", async () => {
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }), actions: {
       stable: (_context, payload) => payload,
     } });
   const pair = socket_pair();
@@ -257,7 +257,7 @@ await check("aggregate retry request payloads detach nested records and arrays f
 await check("named document denial is terminal without mutation and the next queued request proceeds", async () => {
   const authority = make_map();
   const decisions: unknown[] = [];
-  const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options({
+  const locus = create_locus_fixture(authority_definition_from_fixture_options({
     ...test_public_projection(authority),
     map: authority,
     authorizeAction(context: Parameters<import("../src/types/locus.protocol.types.ts").LocusActionAuthorizer>[0]) {
@@ -305,7 +305,7 @@ await check("named document denial is terminal without mutation and the next que
 await check("application payload decoding precedes authorization and mutation", async () => {
   const authority = make_map();
   let authorizations = 0;
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, schema: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, schema: {
       actions: {
         validated: {
           payload: (value: unknown): value is HsonData => typeof value === "string" && typeof (Hson.data.materialize(value as HsonData) as { value?: unknown }).value === "number",
@@ -337,7 +337,7 @@ await check("application payload decoding precedes authorization and mutation", 
 await check("resumable session reattachment retains one projected aggregate authority domain", async () => {
   const authority = make_map();
   let sessionNumber = 0;
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessionId: () => `aggregate-session-${++sessionNumber}`, sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" } }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessionId: () => `aggregate-session-${++sessionNumber}`, sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" } }), actions: {
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
         await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
@@ -378,7 +378,7 @@ await check("resumable session reattachment retains one projected aggregate auth
 await check("retry, dedupe conflict, and action status use the hosted request contract", async () => {
   const authority = make_map();
   let executions = 0;
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" } }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" } }), actions: {
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
         executions += 1;
@@ -423,7 +423,7 @@ await check("retry, dedupe conflict, and action status use the hosted request co
 await check("aggregate retained action lineage enforces exact principal continuity", async () => {
   const authority = make_map();
   let executions = 0;
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }), actions: {
       owned() {
         executions += 1;
         return { owner: "alice" };
@@ -474,7 +474,7 @@ await check("aggregate retained action lineage enforces exact principal continui
 await check("built-ins and single- or cross-library application actions share one FIFO and revision stream", async () => {
   const authority = make_map();
   const order: string[] = [];
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }), actions: {
       "state.only": async (context) => {
         order.push("state");
         await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(1); })();
@@ -514,7 +514,7 @@ await check("replacement during authorization cannot cross aggregate admission",
   const authorizationEntered = deferred();
   const authorizationRelease = deferred();
   let executions = 0;
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map(), sessions: { graceMs: 10_000, credential: () => "aggregate-auth-fence-credential" } }), authorizeAction: async () => {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map(), sessions: { graceMs: 10_000, credential: () => "aggregate-auth-fence-credential" } }), authorizeAction: async () => {
       authorizationEntered.resolve();
       await authorizationRelease.promise;
       return true;
@@ -556,7 +556,7 @@ await check("replacement after admission retains the outcome but fences late del
   const handlerEntered = deferred();
   const handlerRelease = deferred();
   const authority = make_map();
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-post-admit-credential" } }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-post-admit-credential" } }), actions: {
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;
@@ -603,7 +603,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   const handlerEntered = deferred();
   const handlerRelease = deferred();
   const authority = make_map();
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-disconnect-credential" } }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-disconnect-credential" } }), actions: {
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;

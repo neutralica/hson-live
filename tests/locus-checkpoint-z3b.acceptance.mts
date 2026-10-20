@@ -3,7 +3,7 @@ import { encode_checkpoint_chunks } from "../src/api/locus/locus.checkpoint-chun
 import { exact_tagged_payload, invalid_tagged_graphs } from "./helpers/tagged-codec-fixture.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { resume_locus_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -53,7 +53,7 @@ const libraries = [{ name: "public", ownership: "shared" as const },
   { name: "private", ownership: "private" as const }];
 
 async function host(adapter: MemoryCheckpointAdapter, logicalMapId: string) {
-  return hsonLiveMap.locus.resume({ ...authority_definition_from_fixture_options({ map: make_map(), persistence: adapter, logicalMapId, libraries, defaultProjection: { libraries: ["public"] } }), authorizeProjection: () => ({ libraries: ["public"] }) });
+  return resume_locus_fixture({ ...authority_definition_from_fixture_options({ map: make_map(), persistence: adapter, logicalMapId, libraries, defaultProjection: { libraries: ["public"] } }), authorizeProjection: () => ({ libraries: ["public"] }) });
 }
 
 function active(adapter: MemoryCheckpointAdapter, id: string): LocusHostedAggregatePersistedManifest {
@@ -84,12 +84,12 @@ await case_("checkpoint prefix compares semantic Schema identity and retains reg
 await case_("empty authority checkpoint restores without a placeholder library", async () => {
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-empty";
-  const locus = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
+  const locus = await resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
   const manifest = active(adapter, id);
   assert.deepEqual(manifest.registry.libraries, []);
   assert.deepEqual(manifest.chunks, []);
   locus.dispose();
-  const restored = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
+  const restored = await resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
   assert.ok(restored);
   assert.equal(restored.rev, 0);
   assert.deepEqual(locus_map_internal(restored).capture().registry.libraries, []);
@@ -106,7 +106,7 @@ await case_("restart reapplies deployment local definitions without persisting c
   const options = { persistence: adapter, logicalMapId: id, libraries,
     authorizeProjection: ({ requested }: { requested: { libraries: readonly string[] } }) =>
       ({ libraries: requested.libraries }) };
-  const locus = await hsonLiveMap.locus.resume(authority_definition_from_fixture_options({ ...options,
+  const locus = await resume_locus_fixture(authority_definition_from_fixture_options({ ...options,
     map: hsonLiveMap.fromLibraries({ public: { data: { value: 1 } } }) }));
   const session = await locus.session.create({ libraries: ["public", "ui"] });
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
@@ -123,7 +123,7 @@ await case_("restart reapplies deployment local definitions without persisting c
   assert.equal(JSON.stringify(adapter.state(id)).includes('value 12>'), false);
   echo.dispose(); detach(); locus.dispose();
 
-  const restored = await hsonLiveMap.locus.resume(authority_definition_from_fixture_options({ ...options,
+  const restored = await resume_locus_fixture(authority_definition_from_fixture_options({ ...options,
     map: hsonLiveMap.fromLibraries({ public: { data: { value: 0 } } }) }));
   assert.throws(() => restored.lib("ui"), /Unknown/i);
   const freshSession = await restored.session.create({ libraries: ["public", "ui"] });
@@ -136,11 +136,11 @@ await case_("restart reapplies deployment local definitions without persisting c
 
   const conflictAdapter = new MemoryCheckpointAdapter();
   const conflictId = "z3b-restored-local-collision";
-  const oldDeployment = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: conflictAdapter, logicalMapId: conflictId });
+  const oldDeployment = await resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: conflictAdapter, logicalMapId: conflictId });
   await oldDeployment.addLibraries({ private: [{ name: "ui", definition: { data: { value: 9 } } }] });
   await hsonLiveMap.locus.checkpoint(oldDeployment);
   oldDeployment.dispose();
-  await assert.rejects(hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), [
+  await assert.rejects(resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), [
       { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
     ]), persistence: conflictAdapter, logicalMapId: conflictId }), /collid|catalog|authority|topology/i);
 });
@@ -382,7 +382,7 @@ await case_("durable graph tails reject malformed current tagged content without
   const source = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document">` } });
   const options = authority_definition_from_fixture_options({ map: source, persistence: adapter, logicalMapId: id,
     libraries: [{ name: "page", ownership: "shared" as const }], defaultProjection: { libraries: ["page"] } });
-  const locus = await hsonLiveMap.locus.resume({ ...options, authorizeProjection: () => ({ libraries: ["page"] }) });
+  const locus = await resume_locus_fixture({ ...options, authorizeProjection: () => ({ libraries: ["page"] }) });
   await hsonLiveMap.locus.checkpoint(locus);
   await locus.stage(draft => {
     const page = draft.lib("page");
@@ -424,7 +424,7 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
     { name: "page", ownership: "shared" as const },
     ...names.map((library) => ({ name: library, ownership: "private" as const }))];
   const id = "z3b-large";
-  const locus = await hsonLiveMap.locus.resume({ ...authority_definition_from_fixture_options({ map, persistence: adapter, logicalMapId: id, libraries, defaultProjection: { libraries: ["public", "page"] } }), authorizeProjection: () => ({ libraries: ["public", "page"] }) });
+  const locus = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ map, persistence: adapter, logicalMapId: id, libraries, defaultProjection: { libraries: ["public", "page"] } }), authorizeProjection: () => ({ libraries: ["public", "page"] }) });
   const authority = internal_livemap_aggregate_authority(locus_map_internal(locus));
   const policy = make_locus_hosted_projection_policy(authority.hostedRegistry(), authority.hostedPosition().authority,
     libraries, { libraries: ["public", "page"] },
@@ -449,7 +449,7 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   assert.ok([...adapter.chunks.values()].every((entry) => !entry.payload.includes("issuedQuids")));
   locus.dispose();
   const restoredMap = hsonLiveMap.fromLibraries(inputs);
-  const restored = await hsonLiveMap.locus.resume({ ...authority_definition_from_fixture_options({ map: restoredMap, persistence: adapter, logicalMapId: id, libraries, defaultProjection: { libraries: ["public", "page"] } }), authorizeProjection: () => ({ libraries: ["public", "page"] }) });
+  const restored = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ map: restoredMap, persistence: adapter, logicalMapId: id, libraries, defaultProjection: { libraries: ["public", "page"] } }), authorizeProjection: () => ({ libraries: ["public", "page"] }) });
   assert.equal(restored.rev, count);
   assert.notEqual(locus_map_internal(restored), restoredMap);
   for (const name of names) {
