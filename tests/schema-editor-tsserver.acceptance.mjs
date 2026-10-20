@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
 import ts from "typescript";
 import { Hson } from "../dist/hson-authoring.js";
 import { compile_hson_schema } from "../dist/internal/hson-schema/compiler.js";
@@ -18,6 +19,10 @@ async function check(name, body) {
   catch (error) { events.diagnostic(name, "assertion", String(error)); events.case_end(name, "fail"); events.terminal("fail"); throw error; }
 }
 assert.equal(ts.version, "5.9.3");
+const require = createRequire(import.meta.url);
+const hostPath = process.env.HSON_TEST_HOST_TYPESCRIPT;
+const hostTypeScript = hostPath === undefined ? ts : require(hostPath);
+const serverPath = hostPath === undefined ? require.resolve("typescript/lib/tsserver.js") : join(dirname(require.resolve(hostPath)), "tsserver.js");
 const root = resolve(import.meta.dirname, "..");
 mkdirSync(join(root, "tmp"), { recursive: true });
 const directory = mkdtempSync(join(root, "tmp/schema-editor-tsserver-"));
@@ -49,8 +54,10 @@ for (const ext of ["ts", "tsx", "mts", "cts", "local.ts"]) {
   }
   writeFileSync(file(name), 'export {};\n');
 }
+const proofSource = 'import { Hson, type HsonData } from "hson-live";\nconst S = Hson.schema`<type "data" content <name "string">>`;\nconst bad: HsonData<typeof S> = Hson.data`<name 3>`;';
+writeFileSync(file("proof.ts"), proofSource);
 const originals = new Map(readdirSync(directory).map(name => [name, readFileSync(file(name))]));
-const child = spawn(process.execPath, [join(root, "node_modules/typescript/lib/tsserver.js"), "--globalPlugins", plugin, "--pluginProbeLocations", extension, "--disableAutomaticTypingAcquisition", "--logVerbosity", "verbose", "--logFile", file("server.log")], { stdio: ["pipe", "pipe", "pipe"] });
+const child = spawn(process.execPath, [serverPath, "--globalPlugins", plugin, "--pluginProbeLocations", extension, "--disableAutomaticTypingAcquisition", "--logVerbosity", "verbose", "--logFile", file("server.log")], { stdio: ["pipe", "pipe", "pipe"] });
 let sequence = 0, buffered = Buffer.alloc(0), stderr = "";
 const pending = new Map();
 child.stderr.on("data", data => { stderr += data; });
@@ -100,6 +107,16 @@ try {
     const hover = await request("quickinfo", { file: file("schema.ts"), ...location(schema, schema.indexOf("Slide =")) });
     assert.match(hover.displayString, /"document"/); assert.match(hover.displayString, /unique symbol/);
     assert.deepEqual(hover.start, location(schema, schema.indexOf("Slide =")));
+  });
+  await check("proof-only assignment errors are precise and clear after correction", async () => {
+    await request("open", { file: file("proof.ts") });
+    const errors = await diagnostics("proof.ts");
+    assert.deepEqual(errors.map(error => error.code), [95002], JSON.stringify(errors));
+    assert.deepEqual(errors[0].start, location(proofSource, proofSource.lastIndexOf("3")));
+    const repaired = proofSource.replace("<name 3>", '<name "Ada">');
+    await request("updateOpen", { changedFiles: [{ fileName: file("proof.ts"), textChanges: [{ start: { line: 1, offset: 1 }, end: location(proofSource, proofSource.length), newText: repaired }] }] });
+    assert.deepEqual(await diagnostics("proof.ts"), []);
+    await request("close", { file: file("proof.ts") });
   });
   await check("protocol diagnostics, definitions, references, rename and completions use authored ranges", async () => {
     const errors = await diagnostics("schema.ts"); assert.equal(errors.length, 4, JSON.stringify(errors));
@@ -465,7 +482,7 @@ const loc = hsonLiveMap.locus.create({
     assert.equal(existsSync(file(".hson")), false);
     assert.deepEqual(readdirSync(directory).sort(), [...originals.keys(), "server.log"].sort());
   });
-  events.terminal("pass"); console.log(JSON.stringify({ schemaEditorTsserver: "passed", checks, typescript: ts.version }));
+  events.terminal("pass"); console.log(JSON.stringify({ schemaEditorTsserver: "passed", checks, typescript: hostTypeScript.version }));
 } finally {
   const stopped = new Promise(resolveStop => child.once("exit", resolveStop)); child.kill(); await stopped;
   rmSync(directory, { recursive: true, force: true });

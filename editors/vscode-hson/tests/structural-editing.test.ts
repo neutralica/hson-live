@@ -43,6 +43,31 @@ const arrayPair = (marked: string, language: "typescript" | "markdown" = "typesc
   return structural_array_pair_for_bracket(language === "markdown" ? "/workspace/readme.md" : "/workspace/source.ts", language, text, offset);
 };
 
+check("authored QUADs preserve closer and Enter plans, including nested declarations and slots", () => {
+  const hostPrefix = prefix.replace("Hson.canonical", "Hson.document");
+  for (const body of ['<main |/>', '<main @:main |/>', '<main <p @:label/> |/>', '<main @:main ${fragment} |/>']) {
+    const offset = hostPrefix.length + body.indexOf("|");
+    const text = hostPrefix + body.replace("|", "") + "`;";
+    assert.deepEqual(structural_newline_plan('/workspace/source.ts', 'typescript', text, offset, { insertSpaces: true, tabSize: 2 }, '\n'),
+      { beforeCursor: '\n  ', afterCursor: '\n' }, body);
+    assert.equal(structural_closer_for_less_than('/workspace/source.ts', 'typescript', text.slice(0, offset) + '<' + text.slice(offset), offset + 1), '/>', body);
+  }
+});
+
+check("authored gestures protect quotes, multiline content, comments, JavaScript, and canonical boundaries", () => {
+  const hostPrefix = prefix.replace("Hson.canonical", "Hson.document");
+  for (const body of ['<main @:main "te|xt"/>', '<main @:main "first\nse|cond"/>', '<main @:main // co|mment\n/>', '<main @:main ${fn("te|xt")} />', '<main @:same @:again |/>', '<main @:same <p @:same/> |/>']) {
+    const offset = hostPrefix.length + body.indexOf('|');
+    const text = hostPrefix + body.replace('|', '') + '`;';
+    assert.equal(structural_newline_plan('/workspace/source.ts', 'typescript', text, offset, { insertSpaces: true, tabSize: 2 }, '\n'), undefined, body);
+    assert.equal(structural_closer_for_less_than('/workspace/source.ts', 'typescript', text.slice(0, offset) + '<' + text.slice(offset), offset + 1), undefined, body);
+    assert.equal(structural_array_pair_for_bracket('/workspace/source.ts', 'typescript', text, offset), false, body);
+  }
+  assert.equal(closer('<main @:main |/>'), undefined);
+  const markdown = '```hson\n<main @:main />\n```';
+  assert.equal(structural_newline_plan('/workspace/source.md', 'markdown', markdown, markdown.indexOf('/>'), { insertSpaces: true, tabSize: 2 }, '\n'), undefined);
+});
+
 check("authored document formatting preserves nested QUADs, connector admission, and exact text", () => {
   const bodies = [
     '\n<nav   @:navigation\n<a   @:next href="/next" "  Next  "/>\n<a @:previous href="/previous" "Previous"/>\n/>\n',

@@ -214,8 +214,12 @@ function maskProtectedSource(text: string, region: StructuralRegion): string | u
   return body;
 }
 
-function parses(source: string): boolean {
-  try { parse_hson(source); return true; } catch { return false; }
+function parses(source: string, authoredDocument = false): boolean {
+  try {
+    if (authoredDocument) parse_authored_document_library(source);
+    else parse_hson(source);
+    return true;
+  } catch { return false; }
 }
 
 /** Parser-probed closer selection. Exactly one valid structural mode must win. */
@@ -230,12 +234,12 @@ export function structural_closer_for_less_than(
   const body = maskProtectedSource(textAfterLessThan, region);
   if (body === undefined) return undefined;
   const local = cursorAfterLessThan - region.bodyRange.start;
-  if (body.startsWith("/>", local) && parses(body.slice(0, local) + "hson_probe" + body.slice(local))) return undefined;
-  if (body[local] === ">" && parses(body)) return undefined;
+  if (body.startsWith("/>", local) && parses(body.slice(0, local) + "hson_probe" + body.slice(local), region.authoredDocument)) return undefined;
+  if (body[local] === ">" && parses(body, region.authoredDocument)) return undefined;
   const objectCandidate = body.slice(0, local) + ">" + body.slice(local);
   const documentCandidate = body.slice(0, local) + "hson_probe/>" + body.slice(local);
-  const object = parses(objectCandidate);
-  const document = parses(documentCandidate);
+  const object = parses(objectCandidate, region.authoredDocument);
+  const document = parses(documentCandidate, region.authoredDocument);
   return object === document ? undefined : object ? ">" : "/>";
 }
 
@@ -253,8 +257,8 @@ export function structural_array_pair_for_bracket(
   const local = cursor - region.bodyRange.start;
   const candidate = body.slice(0, local) + "[]" + body.slice(local);
   try {
-    parse_hson(candidate);
-    const tokens = tokenize_hson(candidate);
+    if (!parses(candidate, region.authoredDocument)) return false;
+    const tokens = region.authoredDocument ? tokenize_authored_document_library(candidate) : tokenize_hson(candidate);
     return tokens.some(token => token.kind === "ARR_OPEN" && token.pos.index === local)
       && tokens.some(token => token.kind === "ARR_CLOSE" && token.pos.index === local + 1);
   } catch { return false; }
@@ -374,8 +378,8 @@ function lexicalRanges(source: string, authoredDocument = false): Readonly<{
   });
 }
 
-function insideNonStructuralSyntax(source: string, offset: number): boolean {
-  const ranges = lexicalRanges(source);
+function insideNonStructuralSyntax(source: string, offset: number, authoredDocument = false): boolean {
+  const ranges = lexicalRanges(source, authoredDocument);
   return [...ranges.literals, ...ranges.comments].some(range => offset > range.start && offset < range.end);
 }
 
@@ -601,10 +605,10 @@ export function structural_newline_plan_from_evidence(
   if (region === undefined) return undefined;
   const body = maskProtectedSource(evidence.text, region);
   if (body === undefined) return undefined;
-  const pairs = analyzedStructure(body)?.pairs;
+  const pairs = analyzedStructure(body, region.authoredDocument)?.pairs;
   if (pairs === undefined) return undefined;
   const local = offset - region.bodyRange.start;
-  if (insideNonStructuralSyntax(body, local)) return undefined;
+  if (insideNonStructuralSyntax(body, local, region.authoredDocument)) return undefined;
   const currentLine = lineOf(body, local);
   const unit = STRUCTURAL_INDENTATION;
   const depth = pairs.filter(pair => pair.open < local && pair.close >= local).length;

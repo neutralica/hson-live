@@ -100,7 +100,9 @@ function template_raw(source: HsonTaggedTemplateSource): string {
 /** Suppress only incompatibility through the Schema proof, never other properties. */
 function redundant_brand_error(message: string | ts.DiagnosticMessageChain): boolean {
   if (typeof message === "string") return false;
-  if (message.code === 2326 && message.messageText === "Types of property '[HSON_SCHEMA_PROOF]' are incompatible.") return true;
+  // TypeScript may report a property or a nested property path. In either
+  // shape the incompatibility must be rooted in our verified proof identity.
+  if (/^(?:Types of property|The types of) '\[HSON_SCHEMA_PROOF\](?:\[HSON_SCHEMA_EVIDENCE\])?(?:\.[A-Za-z_$][\w$]*)*' are incompatible(?:\.| between these types\.)$/.test(message.messageText)) return true;
   return message.next !== undefined && message.next.length > 0 && message.next.every(redundant_brand_error);
 }
 

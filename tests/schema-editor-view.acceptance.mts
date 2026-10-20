@@ -72,6 +72,29 @@ const app = project("live", { "schema.ts": producer, "consumer.ts": consumer, "s
 const originalBytes = bytes(app.directory);
 const messages = (values: readonly ts.Diagnostic[]) => values.map(value => `${value.code}@${value.start}: ${ts.flattenDiagnosticMessageText(value.messageText, "\n")}`).join("\n");
 
+check("verified proof diagnostics and correction work on each supplied TypeScript host", () => {
+  const hostPath = process.env["HSON_TEST_HOST_TYPESCRIPT"];
+  const hosts: readonly (typeof ts)[] = hostPath === undefined ? [ts] : [ts, createRequire(import.meta.url)(hostPath)];
+  for (const host of hosts) {
+    const source = 'import { Hson, type HsonData } from "hson-live";\nconst S = Hson.schema`\n  <type "data" content <name "string">>\n`;\nconst bad: HsonData<typeof S> = Hson.data`<name 3>`;';
+    const app = project(`proof-host-${host.version}`, { 'app.ts': source }, {}, host);
+    const errors = app.errors('app.ts');
+    assert.deepEqual(errors.map(error => error.code), [95002], `${host.version}: ${messages(errors)}`);
+    assert.equal(errors[0]?.start, source.lastIndexOf('3'));
+    assert.equal(errors[0]?.length, 1);
+    assert.match(messages(errors), /expected string; received number/);
+    app.edit('app.ts', source.replace('<name 3>', '<name "Ada">'));
+    assert.deepEqual(app.errors('app.ts'), [], host.version);
+    const unsafe = source + '\nconst unrelated: number = "wrong";\nconst wrongFamily: HsonData<typeof S> = Hson.document`<main/>`;\ndeclare const opaque: string;\nconst unverified: HsonData<typeof S> = opaque;';
+    app.edit('app.ts', unsafe);
+    const retained = app.errors('app.ts');
+    assert.equal(retained.filter(error => error.code === 95002).length, 1, messages(retained));
+    for (const name of ['unrelated', 'wrongFamily', 'unverified']) assert.ok(retained.some(error => error.code === 2322 && error.start === unsafe.indexOf(`const ${name}:`) + 6), `${host.version} ${name}: ${messages(retained)}`);
+    app.service.dispose();
+    console.log(`ok - proof diagnostics and correction on TypeScript ${host.version}`);
+  }
+});
+
 check("alias assignments and targeted Hson problems use the live editor view", () => {
   const aliases = project("annotation-aliases", {
     "schema.ts": `import { Hson, type HsonFromSchema, type HsonData, type HsonDocument } from "hson-live";

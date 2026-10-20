@@ -406,7 +406,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  const sourceWatcher = vscode.workspace.createFileSystemWatcher("**/*.{ts,tsx,hson}");
+  const sourceWatcher = vscode.workspace.createFileSystemWatcher("**/*.{ts,tsx,mts,cts,hson}");
   const projectWatcher = vscode.workspace.createFileSystemWatcher("**/*.json");
   context.subscriptions.push(sourceWatcher, projectWatcher);
   const sourceListeners = new Set<(changes: readonly WorkspaceSourceChange[]) => void>();

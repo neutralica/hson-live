@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { DIAGNOSTIC_SOURCE, type DocumentDiagnosticSpec } from "../src/document-diagnostics.js";
+import { DIAGNOSTIC_SOURCE, produce_document_diagnostics, type DocumentDiagnosticSpec } from "../src/document-diagnostics.js";
 import type { DiagnosticDocument, DiagnosticPublisher, Disposable } from "../src/diagnostics.js";
 import { discover_typescript_projects } from "../src/typescript-project-discovery.js";
 import {
@@ -91,23 +91,68 @@ async function settle(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const invalid = 'import { Hson } from "hson-live";\nHson.data`+1`;\nHson.document`<main @:x @:y/>`;';
+  const valid = invalid.replace('+1', '1').replace(' @:y', '');
+  await check("ordinary diagnostics have exact source parity across TypeScript formats and exclude non-sources", () => {
+    const expected = produce_document_diagnostics({ fileName: '/workspace/source.ts', languageId: 'typescript', text: invalid });
+    assert.deepEqual(expected.map(value => value.code), ['HSON_NUMBER_LEADING_PLUS', 'HSON_LIBRARY_QUAD_DUPLICATE']);
+    assert.deepEqual(expected[0]?.range, { start: invalid.indexOf('+1'), end: invalid.indexOf('+1') + 1 });
+    assert.deepEqual(expected[1]?.range, { start: invalid.indexOf('@:y'), end: invalid.indexOf('@:y') + 1 });
+    assert.deepEqual(expected[1]?.related[0]?.range, { start: invalid.indexOf('@:x'), end: invalid.indexOf('@:x') + 1 });
+    for (const ext of ['ts', 'tsx', 'mts', 'cts']) {
+      const input = { fileName: `/workspace/source.${ext}`, languageId: ext === 'tsx' ? 'typescriptreact' : 'typescript', text: invalid };
+      assert.deepEqual(produce_document_diagnostics(input), expected, ext);
+      assert.deepEqual(produce_document_diagnostics({ ...input, text: valid }), []);
+    }
+    for (const name of ['source.d.ts', 'source.d.mts', 'source.d.cts', 'source.S.hson-schema.generated.ts', 'source.S.hson-schema.generated.mts', 'source.js', 'source.mtsx', 'node_modules/pkg/source.cts']) {
+      assert.deepEqual(produce_document_diagnostics({ fileName: `/workspace/${name}`, languageId: 'typescript', text: invalid }), [], name);
+    }
+  });
+
+  for (const ext of ['mts', 'cts']) await check(`unopened .${ext} creation, modification, rename and deletion clear real diagnostics`, async () => {
+    const host = new Host(); const publisher = new Publisher();
+    const first = source(`/workspace/source.${ext}`); const renamed = source(`/workspace/renamed.${ext}`);
+    const controller = start_workspace_diagnostics(host, publisher);
+    await settle();
+    host.discovered = [first]; host.contents.set(first.uri, invalid);
+    host.fire(host.sourceChanges, [{ uri: first.uri, kind: 'create' }]); host.runTimers(); await settle();
+    assert.deepEqual(publisher.values.get(first.uri)?.map(value => value.code), ['HSON_NUMBER_LEADING_PLUS', 'HSON_LIBRARY_QUAD_DUPLICATE']);
+    host.contents.set(first.uri, valid); host.fire(host.sourceChanges, [{ uri: first.uri, kind: 'change' }]); await settle();
+    assert.deepEqual(publisher.values.get(first.uri), []);
+    host.discovered = [renamed]; host.contents.delete(first.uri); host.contents.set(renamed.uri, invalid);
+    host.fire(host.sourceChanges, [{ uri: first.uri, kind: 'delete' }, { uri: renamed.uri, kind: 'create' }]); host.runTimers(); await settle();
+    assert.equal(publisher.values.has(first.uri), false);
+    assert.equal(publisher.values.get(renamed.uri)?.length, 2);
+    host.discovered = []; host.contents.delete(renamed.uri);
+    host.fire(host.sourceChanges, [{ uri: renamed.uri, kind: 'delete' }]); host.runTimers(); await settle();
+    assert.equal(publisher.values.has(renamed.uri), false);
+    assert.deepEqual(host.unexpected, []);
+    controller.dispose();
+  });
+
   await check("TypeScript discovery honors extends, include/exclude, references, outputs, generated files, declarations, and duplicate ownership", () => {
     const root = mkdtempSync(join(tmpdir(), "hson-projects-"));
     fixture(root, "base.json", JSON.stringify({ compilerOptions: { strict: true } }));
-    fixture(root, "tsconfig.json", JSON.stringify({ extends: "./base.json", include: ["src/**/*.ts", "shared/**/*.tsx"], exclude: ["src/excluded/**"], compilerOptions: { outDir: "build" }, references: [{ path: "./referenced" }] }));
+    fixture(root, "tsconfig.json", JSON.stringify({ extends: "./base.json", include: ["src/**/*", "shared/**/*.tsx"], exclude: ["src/excluded/**"], compilerOptions: { outDir: "build" }, references: [{ path: "./referenced" }] }));
     fixture(root, "tsconfig.second.json", JSON.stringify({ include: ["shared/**/*.tsx"] }));
     fixture(root, "referenced/tsconfig.json", JSON.stringify({ include: ["src/**/*.ts"] }));
     const main = fixture(root, "src/main.ts");
+    const esm = fixture(root, "src/esm.mts");
+    const cjs = fixture(root, "src/cjs.cts");
     const shared = fixture(root, "shared/view.tsx");
     const referenced = fixture(root, "referenced/src/ref.ts");
     fixture(root, "src/excluded/no.ts");
     fixture(root, "build/output.ts");
     fixture(root, "src/types.d.ts");
+    fixture(root, "src/types.d.mts");
+    fixture(root, "src/types.d.cts");
+    fixture(root, "src/user.Foo.hson-schema.generated.mts");
+    fixture(root, "src/user.Foo.hson-schema.generated.cts");
     fixture(root, "src/user.Foo.hson-schema.generated.ts");
     fixture(root, "node_modules/pkg/index.ts");
     const discovery = discover_typescript_projects([root]);
     assert.deepEqual(discovery.errors, []);
-    assert.deepEqual(discovery.sources.map(item => item.fileName).sort(), [main, referenced, shared].sort());
+    assert.deepEqual(discovery.sources.map(item => item.fileName).sort(), [main, esm, cjs, referenced, shared].sort());
     assert.equal(discovery.sources.find(item => item.fileName === shared)?.owners.length, 2);
   });
 

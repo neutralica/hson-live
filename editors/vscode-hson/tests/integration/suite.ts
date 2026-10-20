@@ -146,6 +146,32 @@ export async function run(): Promise<void> {
   assert.equal(vscode.workspace.textDocuments.some(document => document.uri.toString() === unopenedStandalone.toString()), false);
   process.stdout.write("ok - real VS Code workspace diagnostics: unopened TS and Hson appear at startup with Schema Watch off\n");
 
+  for (const extension of ['mts', 'cts']) {
+    const uri = vscode.Uri.file(join(workspace, 'static-project', `lifecycle.${extension}`));
+    const renamed = vscode.Uri.file(join(workspace, 'static-project', `renamed.${extension}`));
+    const invalid = 'import { Hson } from "hson-live";\nHson.data`+1`;\nHson.document`<main @:x @:y/>`;';
+    try {
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(invalid));
+      const diagnostics = await diagnosticsFor(uri, 2);
+      assert.deepEqual(diagnostics.map(value => value.code), ['HSON_NUMBER_LEADING_PLUS', 'HSON_LIBRARY_QUAD_DUPLICATE']);
+      assert.equal(diagnostics[1]?.relatedInformation?.length, 1);
+      assert.equal(vscode.workspace.textDocuments.some(document => document.uri.toString() === uri.toString()), false);
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(invalid.replace('+1', '1').replace(' @:y', '')));
+      assert.equal((await diagnosticsFor(uri, 0)).length, 0);
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(invalid));
+      assert.equal((await diagnosticsFor(uri, 2)).length, 2);
+      await vscode.workspace.fs.rename(uri, renamed);
+      assert.equal((await diagnosticsFor(uri, 0)).length, 0);
+      assert.equal((await diagnosticsFor(renamed, 2)).length, 2);
+      await vscode.workspace.fs.delete(renamed);
+      assert.equal((await diagnosticsFor(renamed, 0)).length, 0);
+    } finally {
+      await vscode.workspace.fs.delete(uri).then(undefined, () => undefined);
+      await vscode.workspace.fs.delete(renamed).then(undefined, () => undefined);
+    }
+  }
+  process.stdout.write('ok - unopened MTS/CTS filesystem diagnostic lifecycle\n');
+
   if (process.env.HSON_RESTRICTED_TEST === "1") {
     assert.equal(vscode.workspace.isTrusted, false, "restricted integration workspace must remain untrusted");
     const before = await lifecycle();
@@ -366,6 +392,17 @@ const loc = hsonLiveMap.locus.create({
     await vscode.commands.executeCommand("undo");
 
     const hostPrefix = 'import { Hson } from "hson-live/hson";\n';
+    for (const body of ['<main |/>', '<main @:main |/>', '<main <p @:label/> |/>', '<main @:main ${fragment} |/>']) {
+      const marked = hostPrefix + 'const x=Hson.document`' + body + '`;\nconst untouched = "keep";';
+      const before = await replaceMarked(marked);
+      await vscode.commands.executeCommand('type', { text: '<' });
+      assert.equal(structural.getText(), before.clean.slice(0, before.offset) + '</>' + before.clean.slice(before.offset), body);
+      assert.equal(structural.offsetAt(structuralEditor.selection.active), before.offset + 1, 'Closer cursor remains inside the pair');
+      await replaceMarked(marked);
+      await vscode.commands.executeCommand('hson.insertLineBreak');
+      assert.equal(structural.getText(), before.clean.slice(0, before.offset) + '\n  \n' + before.clean.slice(before.offset), body);
+      assert.equal(structural.offsetAt(structuralEditor.selection.active), before.offset + 3, 'Enter cursor is on the indented inner line');
+    }
     const typeArray = async (label: string, marked: string, paired: boolean): Promise<void> => {
       const before = await replaceMarked(marked);
       await vscode.commands.executeCommand("type", { text: "[" });

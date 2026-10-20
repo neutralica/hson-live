@@ -1,4 +1,5 @@
 import * as messages from "./diagnostic-messages.js";
+import { is_workspace_typescript_source } from "./typescript-project-discovery.js";
 import { hson } from "../../../src/hson.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import {
@@ -47,11 +48,11 @@ export type DocumentDiagnosticSpec = Readonly<{
 }>;
 
 function isTypeScriptInput(input: DocumentDiagnosticInput): boolean {
-  return input.languageId === "typescript" && /\.ts$/.test(input.fileName);
+  return input.languageId === "typescript" && is_workspace_typescript_source(input.fileName) && !/\.tsx$/i.test(input.fileName);
 }
 
 function isTypeScriptReactInput(input: DocumentDiagnosticInput): boolean {
-  return input.languageId === "typescriptreact" && /\.tsx$/.test(input.fileName);
+  return input.languageId === "typescriptreact" && is_workspace_typescript_source(input.fileName) && /\.tsx$/i.test(input.fileName);
 }
 
 export function is_supported_document(input: DocumentDiagnosticInput): boolean {

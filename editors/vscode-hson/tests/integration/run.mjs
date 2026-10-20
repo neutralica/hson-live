@@ -48,7 +48,7 @@ await writeFile(root + "/dist/local-app.mjs", app);
 await appendFile(log, "build-end:" + value + "\\n");
 `);
 await mkdir(join(workspaceDir, "static-project"));
-await writeFile(join(workspaceDir, "static-project", "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext" }, include: ["**/*.ts"] }));
+await writeFile(join(workspaceDir, "static-project", "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext" }, include: ["**/*.ts", "**/*.mts", "**/*.cts"] }));
 await writeFile(join(workspaceDir, "static-project", "unopened-invalid.ts"), 'import { Hson } from "hson-live";\nexport const unopened = Hson.canonical`+1`;\n');
 await writeFile(join(workspaceDir, "unopened-invalid.hson"), "+1\n");
 await writeFile(join(workspaceDir, "pragma-invalid.hson"), "// @hson-diagnostics-ignore-file\n+1\n");
