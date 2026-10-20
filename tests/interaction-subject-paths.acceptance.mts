@@ -61,7 +61,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   add_interaction(map, descriptor("b", [0, 0, 1]));
   const authority = internal_livemap_aggregate_authority(map);
   const library = authority.libraries()[0]!;
-  const reflection = hsonMirror(map.lib("page"));
+  const reflection = hsonMirror(map.doc.must("page"));
   project_livetree(retained_subject(reflection.tree));
   const localSubject = reflection.tree.find.must.byQuid("000007102");
   const localNode = retained_subject(localSubject);
@@ -72,26 +72,26 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const revision = map.rev;
   const seen: Record<string, readonly number[]>[] = [];
   const stop = authority.observe(() => seen.push(paths(map)));
-  map.lib("page").document.content.insert({ kind: "path", path: [0, 0] }, 0, button());
+  map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0] }, 0, button());
   assert.equal(map.rev, revision + 1);
   assert.deepEqual(paths(map), { a: [0, 0, 2], b: [0, 0, 2] });
   assert.deepEqual(seen, [{ a: [0, 0, 2], b: [0, 0, 2] }]);
   assert.deepEqual(authority.documentOverlay(library).pathForQuid("000007102"), [0, 0, 2]);
   assert.equal(retained_subject(reflection.tree.find.must.byQuid("000007102")), localNode);
   assert.equal((localElement as unknown as { listeners: Map<string, Set<unknown>> }).listeners.get("click")?.size, 2);
-  map.lib("page").document.content.move({ kind: "path", path: [0, 0] }, 2, 0);
+  map.doc.must("page").document.content.move({ kind: "path", path: [0, 0] }, 2, 0);
   assert.deepEqual(paths(map), { a: [0, 0, 0], b: [0, 0, 0] });
   assert.deepEqual(authority.documentOverlay(library).pathForQuid("000007102"), [0, 0, 0]);
   assert.equal(retained_subject(reflection.tree.find.must.byQuid("000007102")), localNode);
   const beforeFailure = JSON.stringify(paths(map));
   const beforeRev = map.rev;
-  assert.throws(() => map.lib("page").document.content.insert({ kind: "path", path: [0, 0] }, 99, button()));
+  assert.throws(() => map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0] }, 99, button()));
   assert.equal(map.rev, beforeRev);
   assert.equal(JSON.stringify(paths(map)), beforeFailure);
-  map.lib("page").document.content.remove({ kind: "path", path: [0, 0] }, 0);
+  map.doc.must("page").document.content.remove({ kind: "path", path: [0, 0] }, 0);
   assert.deepEqual(paths(map), {});
   assert.equal((localElement as unknown as { listeners: Map<string, Set<unknown>> }).listeners.has("click"), false);
-  map.lib("page").document.content.insert({ kind: "path", path: [0, 0] }, 0, button());
+  map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0] }, 0, button());
   assert.deepEqual(paths(map), {});
   stop();
   dispose(); reflection.dispose();
@@ -122,7 +122,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   assert.equal(map.rev, beforeSchemaFailure);
   add_interaction(map, descriptor("replace", [0, 0, 0]));
   const before = map.rev;
-  map.lib("page").document.content.replace({ kind: "path", path: [0, 0] }, 0, button());
+  map.doc.must("page").document.content.replace({ kind: "path", path: [0, 0] }, 0, button());
   assert.equal(map.rev, before + 1);
   assert.deepEqual(paths(map), {});
 }
@@ -160,9 +160,9 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   enable_interactions(map);
   add_interaction(map, descriptor("unresolved", [0, 0, 1]));
   assert.deepEqual(paths(map), { unresolved: [0, 0, 1] });
-  map.lib("page").document.content.insert({ kind: "path", path: [0, 0] }, 1, button());
+  map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0] }, 1, button());
   assert.deepEqual(paths(map), { unresolved: [0, 0, 1] });
-  const reflection = hsonMirror(map.lib("page"));
+  const reflection = hsonMirror(map.doc.must("page"));
   project_livetree(retained_subject(reflection.tree));
   let calls = 0;
   const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
@@ -171,11 +171,11 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   if (!is_Node(node)) throw new Error("Expected realized subject.");
   get_el_for_node(node)?.dispatchEvent(new Event("click"));
   assert.equal(calls, 1);
-  map.lib("page").document.content.move({ kind: "path", path: [0, 0] }, 1, 0);
+  map.doc.must("page").document.content.move({ kind: "path", path: [0, 0] }, 1, 0);
   assert.deepEqual(paths(map), { unresolved: [0, 0, 0] });
   get_el_for_node(node)?.dispatchEvent(new Event("click"));
   assert.equal(calls, 2);
-  map.lib("page").document.content.remove({ kind: "path", path: [0, 0] }, 0);
+  map.doc.must("page").document.content.remove({ kind: "path", path: [0, 0] }, 0);
   assert.deepEqual(paths(map), {});
   dispose(); reflection.dispose();
 }
@@ -188,7 +188,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   add_interaction(map, descriptor("descendant", [0, 0, 1, 0, 0]));
   const authority = internal_livemap_aggregate_authority(map);
   const before = map.rev;
-  map.lib("page").document.content.move({ kind: "path", path: [0, 0] }, 1, 0);
+  map.doc.must("page").document.content.move({ kind: "path", path: [0, 0] }, 1, 0);
   assert.equal(map.rev, before + 1);
   assert.deepEqual(paths(map), { descendant: [0, 0, 0, 0, 0] });
   assert.deepEqual(authority.documentOverlay(authority.libraries()[0]!).pathForQuid("000007302"), [0, 0, 0, 0, 0]);

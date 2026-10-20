@@ -6,7 +6,7 @@ const canonical = Hson.canonical`<args [null, true, -0] payload <z 1 a <nested [
 const certified = schema.certify(canonical);
 const exact = Hson.data.fromHson(Hson.canonical`<'10' -0 '2' <__proto__ true>>`);
 const map = hsonLiveMap.fromLibraries({ state: { data: { args: -0, payload: { z: 1, a: [] } }, schema } });
-const state = map.lib("state");
+const state = map.data.must("state");
 state.at(["payload"]).replace({ second: [], first: { nested: true } });
 const relational: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["wide", ["A", "B"]], ["single-b", ["B"]], ["single-c", ["C"]]]>>>>>`;
 const relationalAccepted = relational.certify(Hson.canonical`<items [<kind "wide">, <kind "single-c">]>`);
@@ -28,7 +28,7 @@ parentPort?.postMessage({
   relationalRejected,
   emptyRev: empty.rev,
   emptyCount: empty.capture().libraries.length,
-  primitiveMode: primitive.lib("value").mode,
-  primitiveValue: primitive.lib("value").snap(),
+  primitiveMode: primitive.data.must("value").mode,
+  primitiveValue: primitive.data.must("value").snap(),
   broadDocument: ANY_DOCUMENT.certify(broadDocument) === String(broadDocument),
 });

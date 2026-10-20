@@ -16,8 +16,8 @@ const map = admit_exact_runtime_livemap_libraries({
 const result = map.cut({ data: ["state"], documents: ["page"], html: "page" });
 const encoded = encode_ssr_bootstrap(result.libs);
 const installed = install_libraries_snapshot(result.libs).map;
-const state = installed.lib("state");
-if (state.mode === "document") throw new Error("Expected installed data Library.");
+const state = installed.data.must("state");
+if (String(state.mode) === "document") throw new Error("Expected installed data Library.");
 const runtime = hsonLiveMap.create();
 const runtimeCommit = runtime.addLibraries({ runtimePage: { document: Hson.document`<main "worker"/>` },
   runtimeData: { data: true } }).commit;
@@ -31,9 +31,9 @@ parentPort?.postMessage(Object.freeze({
   decoded: decode_ssr_bootstrap(encoded),
   revision: installed.rev,
   state: state.snap(),
-  page: installed.lib("page").root(),
+  page: installed.doc.must("page").root(),
   hasDocument: "document" in globalThis,
   strictTagged: strict_tagged_receiver_controls(),
-  runtimeAdmission: Object.freeze({ rev: runtime.rev, html: document_html(runtime.lib("runtimePage")),
+  runtimeAdmission: Object.freeze({ rev: runtime.rev, html: document_html(runtime.doc.must("runtimePage")),
     replayDigest: runtimeReplay.capture().registry.digest, digest: runtime.capture().registry.digest }),
 }));

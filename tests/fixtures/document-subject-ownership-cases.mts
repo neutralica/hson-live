@@ -47,7 +47,7 @@ export function document_subject_ownership_cases(check: (name: string, run: () =
       const sourceScopes = a.documentScopes(source), sourceOverlay = a.documentOverlay(source);
       assert.ok(sourceScopes, `${admission} admission installs occurrence scopes`);
       const sourceRoot = a.root(source), ledger = a.identityEpoch().issued(), epoch = a.identityEpoch().current();
-      const page = admission === "composed" ? compose(map, "layout", "final") : map.lib("layout");
+      const page = admission === "composed" ? compose(map, "layout", "final") : map.doc.must("layout");
       if (page.mode !== "document") throw Error("document");
       const library = admission === "composed" ? a.libraries().at(-1)! : source;
       const scopes = a.documentScopes(library), overlay = a.documentOverlay(library);

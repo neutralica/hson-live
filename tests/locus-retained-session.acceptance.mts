@@ -28,7 +28,7 @@ const map = hsonLiveMap.fromLibraries({
   extra: { data: { value: "UNREQUESTED" } },
   secret: { data: { value: "PRIVATE" } },
 });
-map.lib("page").css.stylesheet("p { color: red; }");
+map.doc.must("page").css.stylesheet("p { color: red; }");
 const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, ["page", "state", "extra", "secret"].map(library => ({ name: library, ownership: library === "secret" ? "private" : "shared" }))), authorizeProjection: ({ requested, connection }) => {
     assert.equal(connection?.principalId, "alice");
     assert.equal("htmlDocument" in requested, false);
@@ -67,7 +67,7 @@ const changed = await session.update({ libraries: ["state"] });
 assert.equal(changed.changed, true);
 assert.deepEqual(session.now().libs.libraries.map(entry => entry.name), ["state"]);
 assert.throws(() => session.now({ html: "page" }), /unavailable/i);
-await locus.stage(draft => { const state = draft.lib("state"); state.at(["value"]).set("LATER"); });
+await locus.stage(draft => { const state = draft.data.must("state"); state.at(["value"]).set("LATER"); });
 detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 echo.connect(); await echo.session.reattach();
 assert.equal(echo.sync.strategy, "reconcile");
@@ -242,7 +242,7 @@ assert.equal(requests.length, 2);
   assert.equal((await retained.update({ libraries: ["page", "state", "added"],
     systemFeatures: ["interactions"] })).changed, true);
   assert.equal(echo.sync.status, "caught_up");
-  assert.equal(clientMap.lib("added").mode, "data-object");
+  assert.equal(clientMap.data.must("added").mode, "data-object");
   const change = wire.frames.map(raw => JSON.parse(raw)).find(frame => frame.type === "projection-change");
   assert.ok(change);
   assert.deepEqual(change.systemFeatures, ["interactions"]);
@@ -277,19 +277,19 @@ assert.equal(requests.length, 2);
   assert.ok(wire.frames.map(raw => JSON.parse(raw)).some(frame => frame.type === "projection-change"
     && frame.reconciliation !== undefined));
   assert.equal(echo.sync.status, "caught_up");
-  assert.throws(() => clientMap.lib("extra"));
-  assert.equal(clientMap.lib("page").mode, "document");
+  assert.throws(() => clientMap.data.must("extra"));
+  assert.equal(clientMap.doc.must("page").mode, "document");
 
   assert.equal((await retained.update({ libraries: ["page", "extra"] })).changed, true);
-  assert.equal(clientMap.lib("extra").mode, "data-object");
+  assert.equal(clientMap.data.must("extra").mode, "data-object");
   echo.disconnect(); stop();
   assert.equal((await retained.update({ libraries: ["page"] })).changed, true);
   const reconnect = bind_locus_websocket(host, wire.server);
   echo.connect(); await echo.awaitReconnect();
   assert.equal(echo.sync.strategy, "reconcile");
   assert.equal(echo.sync.status, "caught_up");
-  assert.throws(() => clientMap.lib("extra"));
-  assert.equal(clientMap.lib("page").mode, "document");
+  assert.throws(() => clientMap.data.must("extra"));
+  assert.equal(clientMap.doc.must("page").mode, "document");
   echo.dispose(); reconnect(); host.dispose();
 }
 

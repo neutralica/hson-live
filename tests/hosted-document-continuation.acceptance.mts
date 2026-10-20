@@ -75,7 +75,7 @@ for (const addressedRoot of [false, true]) {
     format: "hson-locus-session-now", sessionBinding: locus.sessions.binding(sessionId)!,
     local: [], initializerDigest: locus_local_initializer_digest([]) });
   assert.doesNotMatch(now.html, /hson:quid/);
-  await locus.stage(draft => { const page = draft.lib("page"); if (page.mode !== "document") throw Error("Document");
+  await locus.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("Document");
     page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "recovered"); });
   const pair = socketPair(), detach = bind_locus_websocket(locus, pair.server), transport = test_echo_transport(pair.client);
   const root = new FakeElement("main"), button = new FakeElement("button"); root.appendChild(button);
@@ -90,7 +90,7 @@ for (const addressedRoot of [false, true]) {
   try {
     const continuation = await continue_hosted_document({ now, credential: locus.sessions.credential(sessionId)!,
       transport, document: "page", root: root as unknown as Element });
-    const page = echo_map_internal(continuation.echo).lib("page"), runtime = runtime_for_tree(continuation.tree);
+    const page = echo_map_internal(continuation.echo).doc.must("page"), runtime = runtime_for_tree(continuation.tree);
     set_document_adoption_fault_hook_for_tests(undefined);
     assert.equal(root.getAttribute("title"), "recovered");
     assert.equal(continuation.tree.dom.el(), root as unknown as Element);
@@ -102,12 +102,12 @@ for (const addressedRoot of [false, true]) {
     }
     for (const name of addressedRoot ? ["root", "confirm"] : ["confirm"]) {
       const address = lookup_document_quad_internal(page, name)!;
-      assert.notEqual(address.quid, lookup_document_quad_internal(map.lib("page"), name)!.quid);
+      assert.notEqual(address.quid, lookup_document_quad_internal(map.doc.must("page"), name)!.quid);
       if (name === "root") assert.equal(continuation.tree.find.byQuid(address.quid)!.dom.el(), root as unknown as Element);
       assert.ok(runtime.quidToNode.has(address.quid));
     }
     await locus.stage(draft => {
-      const page = draft.lib("page"); if (page.mode !== "document") throw new Error("Expected document.");
+      const page = draft.doc.must("page"); if (page.mode !== "document") throw new Error("Expected document.");
       page.attrs.set({ kind: "path", path: validate_document_path([0, 0, 0]) }, "title", "hosted");
     });
     assert.equal(continuation.mirror.status, "active");
@@ -128,7 +128,7 @@ for (const failure of ["none", "native", "incompatible"] as const) {
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
   const sessionId = await locus.create_session({ libraries: ["page"] }), projection = locus.sessions.projection(sessionId)!;
   const capture = () => capture_selected_authority_projection_snapshot(source, projection);
-  const client = client_projection_map({ authority: capture(), local: {} }), page = client.lib("page");
+  const client = client_projection_map({ authority: capture(), local: {} }), page = client.doc.must("page");
   if (page.mode !== "document") throw Error("Document");
   const root = new FakeElement("main"), child = new FakeElement("button"); root.appendChild(child);
   let grafted = continue_document({ map: client, document: page, root: root as unknown as Element });
@@ -139,7 +139,7 @@ for (const failure of ["none", "native", "incompatible"] as const) {
       const oldTree = grafted.tree;
       const oldQuid: string = lookup_document_quad_internal(page, "root")!.quid;
       await locus.stage(draft => {
-        const document = draft.lib("page"); if (document.mode !== "document") throw Error("Document");
+        const document = draft.doc.must("page"); if (document.mode !== "document") throw Error("Document");
         if (failure === "incompatible") document.content.replace({ kind: "path", path: validate_document_path([]) }, 0, { $_tag: "aside", $_content: [] });
         else document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", `round-${round}`);
       });
@@ -195,7 +195,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
   const session = await locus.create_session({ libraries: ["page"] }), projection = locus.sessions.projection(session)!;
   const capture = () => capture_selected_authority_projection_snapshot(source, projection);
-  const client = client_projection_map({ authority: capture(), local: {} }), page = client.lib("page");
+  const client = client_projection_map({ authority: capture(), local: {} }), page = client.doc.must("page");
   if (page.mode !== "document") throw Error("Document");
   let saved: LiveMapDocumentObservationEvidence["rootRebase"];
   let round = 0;
@@ -227,7 +227,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
       const prior = mirror.tree, runtime = runtime_for_tree(prior), claims = new Map(runtime.quidToNode);
       const priorAttrs = root.getAttributeNames().map(name => [name, root.getAttribute(name)]);
       await locus.stage(draft => {
-        const document = draft.lib("page"); if (document.mode !== "document") throw Error("Document");
+        const document = draft.doc.must("page"); if (document.mode !== "document") throw Error("Document");
         document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", `invalid-${invalid}-${round}`);
       });
       reconcile_client_projection_snapshot_internal(client, manager, authority_projection_as_client_composition_internal(capture()));
@@ -259,7 +259,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }) });
   const session = await locus.create_session({ libraries: ["page"], systemFeatures: ["interactions"] }), projection = locus.sessions.projection(session)!;
   const capture = () => capture_selected_authority_projection_snapshot(source, projection);
-  const client = client_projection_map({ authority: capture(), local: {} }), page = client.lib("page");
+  const client = client_projection_map({ authority: capture(), local: {} }), page = client.doc.must("page");
   if (page.mode !== "document") throw Error("Document");
   const root = new FakeElement("main"), button = new FakeElement("button"); root.appendChild(button);
   let calls = 0;
@@ -272,7 +272,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
   try {
     root.dispatchEvent(new Event("click")); assert.equal(calls, 1);
     await locus.stage(draft => {
-      const document = draft.lib("page"); if (document.mode !== "document") throw Error("Document");
+      const document = draft.doc.must("page"); if (document.mode !== "document") throw Error("Document");
       document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "accepted");
     });
     const nativeSet = root.setAttribute;
@@ -404,8 +404,8 @@ function socketPair(): Readonly<{
     root: root as unknown as Element,
     interactions: { local: {} },
   });
-  assert.equal(continuation.map, continuation.echo.lib("page"));
-  assert.equal(continuation.echo.lib("ui").mode, "data-object");
+  assert.equal(continuation.map, continuation.echo.doc.must("page"));
+  assert.equal(continuation.echo.data.must("ui").mode, "data-object");
   button.dispatchEvent(new Event("click"));
   for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
   assert.equal(handled === Hson.data.from({ exact: true }), true);
@@ -459,14 +459,14 @@ function socketPair(): Readonly<{
   const continuation = await continue_hosted_document({ now: mixed, credential: session.credential!,
     transport: test_echo_transport(pair.client), root: root as unknown as Element });
   assert.equal(continuation.echo.sync.strategy, "reconcile");
-  const ui = continuation.echo.lib("ui");
-  if (ui.mode === "document" || ui.source !== "client-local") throw new Error("Expected local data Library.");
+  const ui = continuation.echo.data.must("ui");
+  if (String(ui.mode) === "document" || ui.source !== "client-local") throw new Error("Expected local data Library.");
   assert.equal(ui.snap(["value"]), 0);
   const authorityRev = locus.rev;
   ui.at(["value"]).set(12);
   assert.equal(locus.rev, authorityRev);
   assert.equal(ui.snap(["value"]), 12);
-  assert.equal(continuation.map, continuation.echo.lib("page"));
+  assert.equal(continuation.map, continuation.echo.doc.must("page"));
   assert.equal(get_node_for_el(button as unknown as Element) !== undefined, true);
   assert.equal(continuation.mirror.status, "active");
   continuation.dispose(); continuation.echo.dispose(); detach(); locus.dispose(); emptyLocus.dispose();

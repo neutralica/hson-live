@@ -161,7 +161,7 @@ check("construction facades preserve root and subpath identity and immutability"
     if (!Object.isFrozen(rootTree) || !Object.isFrozen(hson.liveTree)) throw new Error("LiveTree facade is mutable");
     if ("fromTrustedHtml" in hson.liveMap || "fromUntrustedHtml" in hson.liveMap) throw new Error("browser compatibility shape remains");
     const registry = rootMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema\`<type "document" tag "main" content "empty">\` } });
-    if (registry.lib("page").mode !== "document" || registry.lib("page").root().$_content.length !== 1) throw new Error("named document registry did not close");
+    if (registry.doc.must("page").mode !== "document" || registry.doc.must("page").root().$_content.length !== 1) throw new Error("named document registry did not close");
     if (subpathMap.fromLibraries !== rootMap.fromLibraries) throw new Error("registry constructor identity diverged");
     let genericEmptyRejected = false;
     try { hson.fromHson("").toNode(); } catch { genericEmptyRejected = true; }
@@ -276,9 +276,9 @@ const directHsonDataSources = new Map<string, string>([
 
     const schema = Hson.schema\`<type "data" content <value "number">>\`;
     const map = hsonLiveMap.fromLibraries({ state: { data: { value: -0 }, schema } });
-    const value = Hson.data.from(map.lib("state").snap());
+    const value = Hson.data.from(map.data.must("state").snap());
     const roundTrip = hsonLiveMap.fromLibraries({ state: { data: Hson.data.materialize(value), schema } });
-    if (!Object.is(roundTrip.lib("state").snap(["value"]), -0)) throw new Error("LiveMap round trip failed");
+    if (!Object.is(roundTrip.data.must("state").snap(["value"]), -0)) throw new Error("LiveMap round trip failed");
   `],
   ["echo", `
     import { hsonLiveMap } from "hson-live/livemap";
@@ -311,7 +311,7 @@ for (const order of [
     const { hsonLiveMap } = await import("hson-live/livemap");
     const { Hson } = await import("hson-live/hson");
     const map = hsonLiveMap.fromLibraries({ state: { data: { value: -0 }, schema: Hson.schema\`<type "data" content <value "number">>\` } });
-    if (!Object.is(map.lib("state").snap(["value"]), -0)) throw new Error("conversion changed by import order");
+    if (!Object.is(map.data.must("state").snap(["value"]), -0)) throw new Error("conversion changed by import order");
   `);
 }
 
@@ -328,7 +328,7 @@ for (const order of [
     const child = modules[0].Hson.document\`<button @:next "Next"/>\`;
     const authored = modules[1].Hson.document\`<nav @:navigation \${child} \${undefined}/>\`;
     const { hsonLiveMap } = await import("hson-live/livemap");
-    const page = hsonLiveMap.fromLibraries({ page: { document: authored } }).lib("page");
+    const page = hsonLiveMap.fromLibraries({ page: { document: authored } }).doc.must("page");
     if (!page.q("navigation") || !page.q("next")) throw new Error("authored names lost across entrypoints");
     if (modules.some((module) => Object.hasOwn(module, "HsonAuthored"))) throw new Error("authored type became a wrapper");
   `);

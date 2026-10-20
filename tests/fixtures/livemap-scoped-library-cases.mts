@@ -42,7 +42,7 @@ const at = (c: PreparedDocumentScopedLibrary, p: readonly number[]) => {
 };
 function fixture() {
   const map = hsonLiveMap.fromLibraries({ parts: collection(definitions), page: { document: '<main/>' }, other: { data: { n: 0 } } });
-  const page = map.lib("page"); assert.equal(page.mode, "document"); if (page.mode !== "document") throw Error();
+  const page = map.doc.must("page"); assert.equal(page.mode, "document"); if (page.mode !== "document") throw Error();
   page.css.stylesheet('main{padding:3px}');
   const aggregate = internal_livemap_aggregate_authority(map), owner = aggregate.libraries()[1]!;
   return { map, page, aggregate, owner, initial: (text = shell) => aggregate.prepareScopedDocument(owner, source(text)),
@@ -107,12 +107,12 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
     allocator(f.aggregate.identityEpoch().owner, () => { calls++; return "d00000001"; });
     try {
       assert.throws(() => f.aggregate.prepareScopedDocument(f.owner, {
-        get root() { f.map.lib("parts").at(["leaf", "document"]).set('<strong @:root/>'); return selected.root; },
+        get root() { f.map.parts.must("parts").at(["leaf", "document"]).set('<strong @:root/>'); return selected.root; },
         quads: selected.quads,
       }), /changed during capture/);
     } finally { allocator(f.aggregate.identityEpoch().owner, undefined); }
     assert.equal(calls, 0); assert.equal(f.page.css.snapshot(), 'main{padding:3px;}');
-    assert.equal(f.map.lib("parts").at(["leaf", "document"]).snap(), '<strong @:root/>');
+    assert.equal(f.map.parts.must("parts").at(["leaf", "document"]).snap(), '<strong @:root/>');
   });
   check("Library preparation owns complete nested named/unnamed candidates without publishing flat/scoped dual state", () => {
     const f = fixture(); unpublished(f, () => {
@@ -193,7 +193,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
   check("foreign, forged and stale candidates cannot continue under another authority", () => {
     const f = fixture(), g = fixture(), c = f.initial();
     assert.throws(() => g.next(c, []), /another Library/); assert.throws(() => f.next({ ...c }, []), /another Library/);
-    f.map.lib("other").at(["n"]).set(1);
+    f.map.data.must("other").at(["n"]).set(1);
     unpublished(f, () => assert.throws(() => f.next(c, []), /changed during capture/));
   });
   check("non-revisioned identity acquisition invalidates an older scoped candidate", () => {
@@ -206,7 +206,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
   check("reentrant issuance preserves only independently accepted work", () => {
     const f = fixture(), c = f.initial(); let entered = false;
     allocator(f.aggregate.identityEpoch().owner, () => {
-      if (!entered) { entered = true; f.map.lib("other").at(["n"]).set(1); }
+      if (!entered) { entered = true; f.map.data.must("other").at(["n"]).set(1); }
       return "d00000001";
     });
     const ledger = f.aggregate.identityEpoch().issued(), rev = f.map.rev;
@@ -228,7 +228,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
   });
   check("CSS retirement follows lifetime even when an internally proven root QUID survives", () => {
     const f = fixture();
-    f.map.lib("parts").at(["leaf", "css"]).set(':scope{color:blue;animation:oldPulse 1s} @keyframes oldPulse{to{opacity:1}} @property --old-tone{syntax:"<color>";inherits:false;initial-value:blue}');
+    f.map.parts.must("parts").at(["leaf", "css"]).set(':scope{color:blue;animation:oldPulse 1s} @keyframes oldPulse{to{opacity:1}} @property --old-tone{syntax:"<color>";inherits:false;initial-value:blue}');
     const old = f.initial('<hson-part lib="parts" at="leaf"/>');
     unpublished(f, () => {
       // An operation-local unit seam, not caller-authored replacement lineage.

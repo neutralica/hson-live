@@ -341,7 +341,7 @@ check("LiveMap projection and every numeric path follow canonical physical order
     data: hsonTransform.fromNode(detach_hson_root_value(source)).toJson().serialize(),
     schema,
   } });
-  const data = map.lib("data");
+  const data = map.data.must("data");
   assert.equal(data.mode, "data-array");
   assert.deepEqual(data.snap(), ["a", "b"]);
   assert.equal(data.at([0]).snap(), "a");
@@ -356,7 +356,7 @@ check("LiveMap splice and move regenerate dense indexes and preserve addressabil
     data: { items: ["a", "b", "c"] },
     schema,
   } });
-  const data = map.lib("data");
+  const data = map.data.must("data");
   data.at(["items"]).asArray()!.array.splice(1, 1, "x", "y");
   data.at(["items"]).asArray()!.array.move(3, 0);
   assert.deepEqual(data.snap(), { items: ["c", "a", "x", "y"] });

@@ -246,7 +246,7 @@ check("exact codec round-trips nested identity but public restore rejects those 
   const target = hson.liveMap.fromLibraries({ page: { document: element_capture(node("aside"), 0).root, schema } });
   assert.throws(() => hson.liveMap.fromLibraries({ page: { document: decoded.root, schema } }));
   assert.equal(target.rev, 0);
-  assert.equal(target.lib("page").document.byQuid("000000001"), undefined);
+  assert.equal(target.doc.must("page").document.byQuid("000000001"), undefined);
 });
 
 check("nontrivial multiNodeDocument capture round-trips in order", () => {

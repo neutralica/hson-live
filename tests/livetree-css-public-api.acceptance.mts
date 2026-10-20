@@ -84,27 +84,27 @@ check("global stylesheet ingress shares the portable parser and source order wit
   const map = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body/>/>" } });
   const before = map.rev;
   tree.css.global.stylesheet(source);
-  map.lib("page").css.stylesheet(source);
+  map.doc.must("page").css.stylesheet(source);
   assert.equal(map.rev, before + 1);
-  assert.equal(tree.css.snapshot(), map.lib("page").css.snapshot());
-  assert.deepEqual(tree.css.global.list(), map.lib("page").css.list());
+  assert.equal(tree.css.snapshot(), map.doc.must("page").css.snapshot());
+  assert.deepEqual(tree.css.global.list(), map.doc.must("page").css.list());
   assert.equal(tree.css.global.atProperty.get("--phase")?.init, "0");
   assert.equal(tree.css.global.keyframes.get("fade")?.steps.length, 2);
   assert.equal(other.css.snapshot(), "");
   tree.css.global.atProperty.register(["--later", "<number>", "1"]);
-  map.lib("page").css.atProperty.register(["--later", "<number>", "1"]);
+  map.doc.must("page").css.atProperty.register(["--later", "<number>", "1"]);
   tree.css.global.keyframes.set({ name: "later", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
-  map.lib("page").css.keyframes.set({ name: "later", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
+  map.doc.must("page").css.keyframes.set({ name: "later", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
   const moreProperties = [["--alpha", "<number>", "0"], ["--beta", "<number>", "1"]] as const;
   tree.css.global.atProperty.registerMany(moreProperties);
-  map.lib("page").css.atProperty.registerMany(moreProperties);
+  map.doc.must("page").css.atProperty.registerMany(moreProperties);
   const moreKeyframes = [
     { name: "alpha", steps: { from: { opacity: "0" } } },
     { name: "beta", steps: { to: { opacity: "1" } } },
   ];
   tree.css.global.keyframes.setMany(moreKeyframes);
-  map.lib("page").css.keyframes.setMany(moreKeyframes);
-  assert.equal(tree.css.snapshot(), map.lib("page").css.snapshot());
+  map.doc.must("page").css.keyframes.setMany(moreKeyframes);
+  assert.equal(tree.css.snapshot(), map.doc.must("page").css.snapshot());
   tree.css.global.stylesheet(".late { color: green; }");
   tree.css.global.sel(".structured").set.color("black");
   assert.ok(tree.css.snapshot().indexOf(".late{") < tree.css.snapshot().indexOf(".structured{"));

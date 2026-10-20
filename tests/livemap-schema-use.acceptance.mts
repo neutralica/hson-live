@@ -42,11 +42,11 @@ const OtherStateSchema = Hson.schema`<type "data" content <name "string">>` as H
 
 check("document tightening is one portable transition and capture/replay retain it", () => {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: ANY_DOCUMENT } });
-  map.lib("page").css.stylesheet("main { color: red; }");
-  const beforeRoot = map.lib("page").root();
-  const beforeCss = map.lib("page").css.snapshot();
+  map.doc.must("page").css.stylesheet("main { color: red; }");
+  const beforeRoot = map.doc.must("page").root();
+  const beforeCss = map.doc.must("page").css.snapshot();
   const beforeCapture = map.capture();
-  const commit = map.lib("page").schema.use(SlideSchema);
+  const commit = map.doc.must("page").schema.use(SlideSchema);
   assert.deepEqual([commit.changed, commit.prevRev, commit.rev, map.rev], [true, 1, 2, 2]);
   assert.equal(commit.operations.length, 1);
   assert.deepEqual(commit.operations[0], {
@@ -57,10 +57,10 @@ check("document tightening is one portable transition and capture/replay retain 
       schema: SlideSchema.toHson(),
     },
   });
-  assert.deepEqual(map.lib("page").root(), beforeRoot);
-  assert.equal(map.lib("page").css.snapshot(), beforeCss);
-  assert.equal(map.lib("page").schema.get(), SlideSchema);
-  assert.throws(() => map.lib("page").document.attrs.set({ kind: "path", path: [0] }, "title", true), /Schema|schema/i);
+  assert.deepEqual(map.doc.must("page").root(), beforeRoot);
+  assert.equal(map.doc.must("page").css.snapshot(), beforeCss);
+  assert.equal(map.doc.must("page").schema.get(), SlideSchema);
+  assert.throws(() => map.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "title", true), /Schema|schema/i);
 
   const after = map.capture();
   assert.equal(after.registry.libraries[0]?.schema, SlideSchema.toHson());
@@ -68,56 +68,56 @@ check("document tightening is one portable transition and capture/replay retain 
   assert.throws(() => map.restore(beforeCapture), /topology/i);
   map.restore(after);
   const reconstructed = install_libraries_snapshot(after).map;
-  assert.equal(reconstructed.lib("page").schema.get().toHson(), SlideSchema.toHson());
+  assert.equal(reconstructed.doc.must("page").schema.get().toHson(), SlideSchema.toHson());
 
   const replay = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
-  replay.lib("page").css.stylesheet("main { color: red; }");
+  replay.doc.must("page").css.stylesheet("main { color: red; }");
   const applied = replay.replay(commit);
   assert.deepEqual(applied, commit);
-  assert.equal(replay.lib("page").schema.get().toHson(), SlideSchema.toHson());
+  assert.equal(replay.doc.must("page").schema.get().toHson(), SlideSchema.toHson());
 });
 
 check("data tightening governs future writes and explicit family ANY is recognized canonically", () => {
   const reconstructedAny = HsonSchemaFrom(ANY_DATA.toHson());
   const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 }, schema: reconstructedAny } });
-  const commit = map.lib("state").schema.use(StateSchema);
+  const commit = map.data.must("state").schema.use(StateSchema);
   assert.equal(commit.changed, true);
-  assert.equal(map.lib("state").schema.get(), StateSchema);
-  assert.throws(() => map.lib("state").at(["count"]).set("wrong" as never), /Schema|schema/i);
-  assert.equal(map.lib("state").snap(["count"]), 1);
+  assert.equal(map.data.must("state").schema.get(), StateSchema);
+  assert.throws(() => map.data.must("state").at(["count"]).set("wrong" as never), /Schema|schema/i);
+  assert.equal(map.data.must("state").snap(["count"]), 1);
 });
 
 check("invalid roots, wrong families, and different specific contracts reject atomically", () => {
   const invalid = hsonLiveMap.fromLibraries({ page: { document: "<section/>" } });
   const invalidBefore = invalid.capture();
-  assert.throws(() => invalid.lib("page").schema.use(SlideSchema));
+  assert.throws(() => invalid.doc.must("page").schema.use(SlideSchema));
   assert.deepEqual(invalid.capture(), invalidBefore);
-  assert.equal(invalid.lib("page").schema.get().toHson(), ANY_DOCUMENT.toHson());
+  assert.equal(invalid.doc.must("page").schema.get().toHson(), ANY_DOCUMENT.toHson());
 
   const wrong = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
   const wrongBefore = wrong.capture();
-  assert.throws(() => wrong.lib("page").schema.use(StateSchema as unknown as HsonSchema<unknown, "document">), /document Schema/i);
+  assert.throws(() => wrong.doc.must("page").schema.use(StateSchema as unknown as HsonSchema<unknown, "document">), /document Schema/i);
   assert.deepEqual(wrong.capture(), wrongBefore);
 
-  wrong.lib("page").schema.use(SlideSchema);
+  wrong.doc.must("page").schema.use(SlideSchema);
   const fixed = wrong.capture();
-  assert.throws(() => wrong.lib("page").schema.use(OtherSlideSchema));
+  assert.throws(() => wrong.doc.must("page").schema.use(OtherSlideSchema));
   assert.deepEqual(wrong.capture(), fixed);
 
   const data = hsonLiveMap.fromLibraries({ state: { data: { count: 1 }, schema: StateSchema } });
-  assert.throws(() => data.lib("state").schema.use(OtherStateSchema as never));
+  assert.throws(() => data.data.must("state").schema.use(OtherStateSchema as never));
 });
 
 check("canonical equality is an unchanged no-op", () => {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
-  map.lib("page").schema.use(SlideSchema);
+  map.doc.must("page").schema.use(SlideSchema);
   let publications = 0;
   map.commits.observe(() => { publications += 1; });
   const canonicalTwin = HsonSchemaFrom(SlideSchema.toHson());
-  const noop = map.lib("page").schema.use(canonicalTwin as HsonSchema<unknown, "document">);
+  const noop = map.doc.must("page").schema.use(canonicalTwin as HsonSchema<unknown, "document">);
   assert.deepEqual(noop, { kind: "map", changed: false, prevRev: 1, rev: 1, operations: [] });
   assert.equal(publications, 0);
-  assert.equal(map.lib("page").schema.get(), SlideSchema);
+  assert.equal(map.doc.must("page").schema.get(), SlideSchema);
 });
 
 check("accepted observer failures do not turn success into a thrown rejection", () => {
@@ -126,10 +126,10 @@ check("accepted observer failures do not turn success into a thrown rejection", 
   map.commits.observe(() => { throw new Error("observer failed after acceptance"); });
   map.commits.observe(() => { later += 1; });
   const beforeReports = observerReports.length;
-  const commit = map.lib("state").schema.use(StateSchema);
+  const commit = map.data.must("state").schema.use(StateSchema);
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 1);
-  assert.equal(map.lib("state").schema.get(), StateSchema);
+  assert.equal(map.data.must("state").schema.get(), StateSchema);
   assert.equal(later, 1);
   assert.equal(observerReports.length, beforeReports + 1);
   assert.match(String((observerReports.at(-1) as Error | undefined)?.cause), /observer failed after acceptance/);
@@ -137,7 +137,7 @@ check("accepted observer failures do not turn success into a thrown rejection", 
 
 check("restore and authority-position observers are fair, isolated, and reported", () => {
   const source = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
-  source.lib("state").at(["count"]).set(2);
+  source.data.must("state").at(["count"]).set(2);
   const target = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
   const authority = internal_livemap_aggregate_authority(target);
   const delivered: string[] = [];
@@ -147,14 +147,14 @@ check("restore and authority-position observers are fair, isolated, and reported
   authority.observeAuthorityPosition(() => { delivered.push("position-2"); });
   const beforeReports = observerReports.length;
   target.restore(source.capture());
-  assert.equal(target.lib("state").snap(["count"]), 2);
+  assert.equal(target.data.must("state").snap(["count"]), 2);
   assert.deepEqual(delivered, ["restore-1", "restore-2", "position-1", "position-2"]);
   assert.equal(observerReports.length, beforeReports + 2);
 });
 
 check("portable Schema-use replay rejects tampering and revision mismatch atomically", () => {
   const source = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
-  const commit = source.lib("page").schema.use(SlideSchema);
+  const commit = source.doc.must("page").schema.use(SlideSchema);
   const reject = (candidate: unknown, root = "<main/>") => {
     const target = hsonLiveMap.fromLibraries({ page: { document: root } });
     const before = target.capture();
@@ -166,7 +166,7 @@ check("portable Schema-use replay rejects tampering and revision mismatch atomic
   reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, previousSchemaDigest: "0".repeat(64) } }] });
   const equivalentTarget = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
   equivalentTarget.replay({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: `${SlideSchema.toHson()} ` } }] } as never);
-  assert.equal(equivalentTarget.lib("page").schema.use(SlideSchema).changed, false);
+  assert.equal(equivalentTarget.doc.must("page").schema.use(SlideSchema).changed, false);
   reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: StateSchema.toHson() } }] });
   reject({ ...commit, operations: [{ ...operation, operation: { ...operation.operation, schema: OtherSlideSchema.toHson() } }] });
   reject({ ...commit, prevRev: 1, rev: 2 });
@@ -177,23 +177,23 @@ check("Schema attachment preserves retained facades, locations, identity epoch, 
     page: { document: '<main title="before"/> ' },
     state: { data: { count: 1 } },
   });
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   const location = page.at([]);
   const locationBefore = location.snap();
   page.css.stylesheet("main { color: red; }");
   const css = page.css.snapshot();
   const root = page.root();
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const stateRoot = state.root();
   const epoch = internal_livemap_aggregate_authority(map).identityEpoch();
   const owner = epoch.owner;
   const generation = epoch.current();
   page.schema.use(SlideSchema);
-  assert.equal(map.lib("page"), page);
+  assert.equal(map.doc.must("page"), page);
   assert.deepEqual(page.root(), root);
   assert.deepEqual(location.snap(), locationBefore);
   assert.equal(page.css.snapshot(), css);
-  assert.equal(map.lib("state"), state);
+  assert.equal(map.data.must("state"), state);
   assert.deepEqual(state.root(), stateRoot);
   assert.equal(state.snap(["count"]), 1);
   assert.equal(epoch.owner, owner);
@@ -204,7 +204,7 @@ check("Locus-managed authority rejects synchronous attachment", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
   const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options({ map, ...test_public_projection(map) }));
   const before = locus_map_internal(locus).capture();
-  assert.equal("use" in locus.lib("state").schema, false);
+  assert.equal("use" in locus.data.must("state").schema, false);
   assert.deepEqual(locus_map_internal(locus).capture(), before);
   locus.dispose();
 });
@@ -222,7 +222,7 @@ check("projected client rejects replica-only attachment", () => {
     local: {},
   });
   const before = projected.capture();
-  assert.throws(() => projected.lib("state").schema.use(StateSchema), /shared|Locus authority|projected/i);
+  assert.throws(() => projected.data.must("state").schema.use(StateSchema), /shared|Locus authority|projected/i);
   assert.deepEqual(projected.capture(), before);
 });
 

@@ -45,37 +45,37 @@ check("ordinary capture carries the complete named registry and no local proof",
 
 check("portable capture omits supplied and acquired QUID metadata", () => {
   const source = registry('<main @000000111 <item @000000112/>/>');
-  acquire_document_identity(source.lib("page").document, rootTarget);
+  acquire_document_identity(source.doc.must("page").document, rootTarget);
   const bytes = JSON.stringify(source.capture());
   assert.equal(bytes.includes('"quid"'), false);
-  assert.equal(source.lib("page").document.byQuid("000000111")?.$_tag, "main");
+  assert.equal(source.doc.must("page").document.byQuid("000000111")?.$_tag, "main");
 });
 
 check("structured cloning does not confer local identity authority", () => {
   const source = registry('<main @000000113 <item/>/>');
   const target = registry('<main <item/>/>');
   target.restore(structuredClone(source.capture()));
-  assert.equal(target.lib("page").document.byQuid("000000113"), undefined);
-  assert.equal(target.lib("page").render(), source.lib("page").render());
+  assert.equal(target.doc.must("page").document.byQuid("000000113"), undefined);
+  assert.equal(target.doc.must("page").render(), source.doc.must("page").render());
 });
 
 check("JSON serialization retains portable state but no runtime epoch", () => {
   const source = registry('<main <item/>/>');
-  source.lib("page").at([]).asElement()!.attrs.set("state", "ready");
+  source.doc.must("page").at([]).asElement()!.attrs.set("state", "ready");
   const snapshot = JSON.parse(JSON.stringify(source.capture())) as LiveMapSnapshot;
   const target = registry('<main <item/>/>');
   target.restore(snapshot);
   assert.equal(target.rev, source.rev);
-  assert.match(target.lib("page").render(), /state="ready"/);
+  assert.match(target.doc.must("page").render(), /state="ready"/);
 });
 
 check("capture graph is detached from later source mutations", () => {
   const source = registry('<main <item/>/>');
   const snapshot = source.capture();
-  source.lib("page").at([]).asElement()!.attrs.set("later", true);
+  source.doc.must("page").at([]).asElement()!.attrs.set("later", true);
   const target = registry('<main <item/>/>');
   target.restore(snapshot);
-  assert.doesNotMatch(target.lib("page").render(), /later/);
+  assert.doesNotMatch(target.doc.must("page").render(), /later/);
 });
 
 check("malformed portable capture rejects atomically", () => {
@@ -88,7 +88,7 @@ check("malformed portable capture rejects atomically", () => {
 
 check("portable restore retires prior local identity handles", () => {
   const target = registry('<main <item/>/>');
-  const handle = acquire_document_identity(target.lib("page").document, rootTarget);
+  const handle = acquire_document_identity(target.doc.must("page").document, rootTarget);
   const source = registry('<main <item/>/>');
   target.restore(source.capture());
   assert.equal(handle.active, false);
@@ -101,7 +101,7 @@ check("independent registries can restore equal portable bytes", () => {
   const right = registry('<main <item/>/>');
   left.restore(JSON.parse(bytes) as LiveMapSnapshot);
   right.restore(JSON.parse(bytes) as LiveMapSnapshot);
-  assert.equal(left.lib("page").render(), right.lib("page").render());
+  assert.equal(left.doc.must("page").render(), right.doc.must("page").render());
 });
 
 events.terminal("pass");

@@ -42,11 +42,11 @@ const definitions = {
   },
 };
 const libraries = hsonLiveMap.fromLibraries(definitions);
-const libraryName: string = libraries.lib("user").at(["name"]).snap();
-const librarySchema: typeof UserSchema = libraries.lib("user").schema.get();
-libraries.lib("user").at(["name"]).set("Grace");
+const libraryName: string = libraries.data.must("user").at(["name"]).snap();
+const librarySchema: typeof UserSchema = libraries.data.must("user").schema.get();
+libraries.data.must("user").at(["name"]).set("Grace");
 // @ts-expect-error Generated Schema-derived handle rejects a wrong value.
-libraries.lib("user").at(["name"]).set(37);
+libraries.data.must("user").at(["name"]).set(37);
 // Dynamic names are type-safe unions and checked against the live registry at runtime.
 const dynamicLibraryName: string = "users";
 void dynamicLibraryName;
@@ -57,31 +57,31 @@ const hostedLibraries = hsonLiveMap.locus.create({
   ],
   actions: {
     async rename(context) {
-      const currentName: string = context.lib("user").at(["name"]).snap();
+      const currentName: string = context.data.must("user").at(["name"]).snap();
       const noRawMap: "map" extends keyof typeof context ? true : false = false;
       void [currentName, noRawMap];
       {
         const draft = context.stage;
-        draft.lib("user").at(["name"]).set("Lin");
+        draft.data.must("user").at(["name"]).set("Lin");
         // @ts-expect-error Hosted stage retains generated Schema write types.
-        draft.lib("user").at(["name"]).set(37);
+        draft.data.must("user").at(["name"]).set(37);
       }
     },
   },
 });
-const hostedLibraryName: string = hostedLibraries.lib("user").at(["name"]).snap();
+const hostedLibraryName: string = hostedLibraries.data.must("user").at(["name"]).snap();
 const owned = hsonLiveMap.locus.create({ shared: [{ name: "user", definition: definitions.user }],
   private: [{ name: "tree", definition: definitions.tree }], actions: {
   rename(context) {
-    context.stage.lib("user").at(["name"]).set("Mira");
+    context.stage.data.must("user").at(["name"]).set("Mira");
     // @ts-expect-error Owned actions retain generated Schema write types.
-    context.stage.lib("user").at(["name"]).set(37);
+    context.stage.data.must("user").at(["name"]).set(37);
   },
 } });
-owned.lib("user").at(["name"]).set("Mira");
-owned.stage((loc) => { loc.lib("user").at(["name"]).set("Mira"); });
+owned.data.must("user").at(["name"]).set("Mira");
+owned.stage((loc) => { loc.data.must("user").at(["name"]).set("Mira"); });
 // @ts-expect-error Owned construction preserves generated Schema write types.
-owned.lib("user").at(["name"]).set(37);
+owned.data.must("user").at(["name"]).set(37);
 
 void authored;
 void certified;

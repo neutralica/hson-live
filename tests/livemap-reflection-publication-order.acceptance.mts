@@ -461,7 +461,7 @@ check("watch and observer failures remain isolated after acceptance", () => {
 
 check("data maps share watch-before-observer publication without a Reflection phase", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` } });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const order: string[] = [];
   state.at(["value"]).watch((value) => order.push(`watch:${String(value)}:${map.rev}`));
   map.commits.observe(() => order.push(`observer:${map.rev}`));

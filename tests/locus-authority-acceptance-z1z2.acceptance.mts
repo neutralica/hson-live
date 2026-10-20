@@ -24,8 +24,8 @@ const libraries = [
   { name: "B", ownership: "shared" as const },
 ];
 function set_value(draft: LocusHostedAggregateStageWriter, name: "A" | "B", value: string) {
-  const library = draft.lib(name);
-  if (library.mode === "document") throw new Error("Expected data Library.");
+  const library = draft.data.must(name);
+  if (String(library.mode) === "document") throw new Error("Expected data Library.");
   library.at(["value"]).set(value);
 }
 function deferred() {
@@ -109,8 +109,8 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const b = await session(host, "B");
   const huge = "X".repeat(4_500_000);
   await assert.rejects(host.stage((draft) => {
-    draft.lib("A").at(["value"]).set(huge);
-    draft.lib("B").at(["value"]).set("B-small");
+    draft.data.must("A").at(["value"]).set(huge);
+    draft.data.must("B").at(["value"]).set("B-small");
   }), /byte limit/i);
   assert.equal(map.rev, 0);
   assert.equal(installed, 0);
@@ -121,8 +121,8 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
     assert.equal(messages(connection, "progress").length, 0);
   }
   await host.stage((draft) => {
-    draft.lib("A").at(["value"]).set("A-small");
-    draft.lib("B").at(["value"]).set("B-small");
+    draft.data.must("A").at(["value"]).set("A-small");
+    draft.data.must("B").at(["value"]).set("B-small");
   });
   assert.equal(map.rev, 1);
   assert.equal(installed, 1);
@@ -135,8 +135,8 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const restored = await resume_registry_locus({ map: restoredMap, libraries,
     logicalMapId: "z1z2-persistent-rejection", persistence });
   assert.equal(restored.rev, 1);
-  assert.equal(restoredMap.lib("A").snap(["value"]), "A-small");
-  assert.equal(restoredMap.lib("B").snap(["value"]), "B-small");
+  assert.equal(restoredMap.data.must("A").snap(["value"]), "A-small");
+  assert.equal(restoredMap.data.must("B").snap(["value"]), "B-small");
   assert.equal(persistence.commits.length, 1);
   restored.dispose();
 }
@@ -148,10 +148,10 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const host = await resume_registry_locus({ map, libraries,
     logicalMapId: "z1z2-clean-append", persistence });
   persistence.mode = "clean";
-  await assert.rejects(host.stage((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
+  await assert.rejects(host.stage((draft) => draft.data.must("A").at(["value"]).set("A1")), /durably append/i);
   assert.equal(map.rev, 0);
   assert.equal(persistence.commits.length, 0);
-  await host.stage((draft) => draft.lib("A").at(["value"]).set("A2"));
+  await host.stage((draft) => draft.data.must("A").at(["value"]).set("A2"));
   assert.equal(map.rev, 1);
   assert.equal(persistence.commits.length, 1);
   host.dispose();
@@ -165,16 +165,16 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
   const host = await resume_registry_locus({ map, libraries,
     logicalMapId: "z1z2-uncertain-append", persistence });
   persistence.mode = "uncertain";
-  await assert.rejects(host.stage((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
+  await assert.rejects(host.stage((draft) => draft.data.must("A").at(["value"]).set("A1")), /durably append/i);
   assert.equal(map.rev, 0);
   assert.equal(persistence.commits.length, 1);
-  await assert.rejects(host.stage((draft) => draft.lib("A").at(["value"]).set("A2")), /faulted/i);
+  await assert.rejects(host.stage((draft) => draft.data.must("A").at(["value"]).set("A2")), /faulted/i);
   assert.equal(persistence.appendCalls.length, 1);
   host.dispose();
   const restored = await resume_registry_locus({ map: make_map(), libraries,
     logicalMapId: "z1z2-uncertain-append", persistence });
   assert.equal(restored.rev, 1);
-  assert.equal(restored.lib("A").snap(["value"]), "A1");
+  assert.equal(restored.data.must("A").snap(["value"]), "A1");
   restored.dispose();
 }
 
@@ -267,7 +267,7 @@ async function session(server: { logicalMapId: string }, selected: "A" | "B", re
     logicalMapId: "z1z2-reservation", persistence,
     authorizeProjection: async ({ requested }) => { await authorization.promise; return requested; } });
   const pending = persistence.deferNextAppend();
-  const mutation = host.stage((draft) => draft.lib("A").at(["value"]).set("A1"));
+  const mutation = host.stage((draft) => draft.data.must("A").at(["value"]).set("A1"));
   await pending.entered;
   const aggregate = internal_livemap_aggregate_authority(map);
   const library = aggregate.libraries()[0]!;

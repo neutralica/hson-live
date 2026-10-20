@@ -255,7 +255,7 @@ check("aggregate capture preserves the complete fixed application registry", () 
   assert.equal(aggregate.snap(colors, ["value"]), "green");
   assert.equal(aggregate.snap(view, ["value"]), false);
   assert.equal("libraries" in map, false);
-  assert.equal("lib" in map, true);
+  assert.equal("lib" in map, false);
   assert.equal("library" in map, false);
   assert.equal("repository" in map, false);
   assert.equal("addLibrary" in map, false);
@@ -265,7 +265,7 @@ check("aggregate capture preserves the complete fixed application registry", () 
 check("performance telemetry clones and validates only touched libraries", () => {
   const single = hsonLiveMap.fromLibraries({ data: { data: { value: 1 }, schema: DataSchema } });
   const singleStart = performance.now();
-  single.lib("data").at(["value"]).set(2);
+  single.data.must("data").at(["value"]).set(2);
   const singleMs = performance.now() - singleStart;
   const { map, aggregate, data, colors, view } = triple();
   const before = aggregate.telemetry();

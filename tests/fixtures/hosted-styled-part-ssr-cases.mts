@@ -70,7 +70,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
         assert.ok(subject); assert.equal(subject.quid, scopes.occurrences[index]!.rootQuid);
         assert.deepEqual(subject.path, state.scopes.occurrences[index]!.root);
       }
-      const css = locus.lib("page").css.snapshot();
+      const css = locus.doc.must("page").css.snapshot();
       assert.equal((css.match(/color:rgb\(12,34,56\)/g) ?? []).length, 2);
       for (const scope of scopes.occurrences) assert.ok(css.includes(`@scope ([hson\\:quid="${scope.rootQuid}"])`));
       const now = session.now(), page = now.libs.libraries[0]!;
@@ -143,9 +143,9 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       if (decoded.kind !== "hosted-projection") throw Error("Expected hosted projection.");
       assert.deepEqual(decoded.bootstrap.libs, cut.libs);
       const client = client_projection_map({ authority: decoded.bootstrap.libs, local: {} });
-      assert.throws(() => client.lib("PRIVATE_PARTS_SENTINEL"), /Unknown/);
-      assert.throws(() => client.lib("ungranted"), /Unknown/);
-      assert.equal(client.lib("page").mode, "document");
+      assert.throws(() => client.data.must("PRIVATE_PARTS_SENTINEL"), /Unknown/);
+      assert.throws(() => client.doc.must("ungranted"), /Unknown/);
+      assert.equal(client.doc.must("page").mode, "document");
       const receiving = owner(client);
       assert.equal(receiving.documentScopes(receiving.libraries()[0]!), undefined);
       for (const quid of enumerate_livemap_issued_quids(owner(map).identityEpoch().issued())) {

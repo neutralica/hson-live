@@ -65,13 +65,13 @@ void neutralAsData; void dataAsDocument; void documentAsData; void unprovedAsPro
 void crossIdentity; void dataAsSchema; void sliced; void appended;
 
 const dataMap = hsonLiveMap.fromLibraries({ state: { data: Hson.data`<name "Ada">`, schema: SameShapeOneSchema } });
-const governedData: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeOneSchema>, "state", typeof SameShapeOneSchema> = dataMap.lib("state");
+const governedData: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeOneSchema>, "state", typeof SameShapeOneSchema> = dataMap.data.must("state");
 const documentMap = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main id=hero <header/> <section "body"/>/>`, schema: PageSchema } });
-const governedDocument: LiveMapDocumentLibrary<DocumentSchemaGraph<typeof PageSchema>> = documentMap.lib("page");
+const governedDocument: LiveMapDocumentLibrary<DocumentSchemaGraph<typeof PageSchema>> = documentMap.doc.must("page");
 // @ts-expect-error A document Schema cannot govern a data map.
-dataMap.lib("state").schema.use(PageSchema);
+dataMap.data.must("state").schema.use(PageSchema);
 // @ts-expect-error A data Schema cannot govern a document map.
-documentMap.lib("page").schema.use(SameShapeOneSchema);
+documentMap.doc.must("page").schema.use(SameShapeOneSchema);
 // @ts-expect-error Governing Schema handles retain declaration identity.
 const wrongDataEvidence: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeTwoSchema>, "state", typeof SameShapeTwoSchema> = governedData;
 void governedDocument; void wrongDataEvidence;
@@ -98,15 +98,15 @@ void jsonFromHson; void hsonFromJson; void graphFromHson;
 
 // Document evidence also remains available through staged and Governor inference.
 declare const documentWriter: LiveMapStagedWriter<typeof documentMap, void>;
-documentWriter.lib("page").at([0, 0]).replace("new body");
+documentWriter.doc.must("page").at([0, 0]).replace("new body");
 // @ts-expect-error The document's main element has only one section child.
-documentWriter.lib("page").at([1]);
+documentWriter.doc.must("page").at([1]);
 // @ts-expect-error A text location does not expose element attributes.
-documentWriter.lib("page").at([0, 0]).attrs;
+documentWriter.doc.must("page").at([0, 0]).attrs;
 // @ts-expect-error A text location accepts text, not a graph node.
-documentWriter.lib("page").at([0, 0]).replace(documentMap.lib("page").root());
+documentWriter.doc.must("page").at([0, 0]).replace(documentMap.doc.must("page").root());
 declare const documentLocus: Locus<typeof documentMap>;
-const governorSchema: typeof PageSchema = documentLocus.lib("page").schema.get();
+const governorSchema: typeof PageSchema = documentLocus.doc.must("page").schema.get();
 void governorSchema;
 
 // Undefined is an input only for document structural slots; outputs remain total.

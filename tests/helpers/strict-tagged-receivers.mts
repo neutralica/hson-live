@@ -16,7 +16,7 @@ export function strict_tagged_receiver_controls(): Readonly<{ snapshotRejections
   const Page = Hson.schema`<type "document">`;
   const source = hsonLiveMap.fromLibraries({ state: { data: { items: ["a", "b"] } }, page: { document: "<main/>", schema: Page } });
   const target = hsonLiveMap.fromLibraries({ state: { data: { items: ["old", "state"] } }, page: { document: "<main/>", schema: Page } });
-  const page = target.lib("page");
+  const page = target.doc.must("page");
   if (page.mode !== "document") throw new Error("Expected page.");
   const subject = acquire_document_identity(page.document, { kind: "path", path: [0] });
   const engine = internal_livemap_aggregate_authority(target);
@@ -33,7 +33,7 @@ export function strict_tagged_receiver_controls(): Readonly<{ snapshotRejections
     assert.deepEqual(target.capture(), before);
     assert.deepEqual(engine.captureHosted(), ownedBefore);
     assert.deepEqual(engine.libraries(), identities);
-    assert.equal(target.lib("page"), page);
+    assert.equal(target.doc.must("page"), page);
     assert.equal(subject.active, true);
     assert.deepEqual(livemap_identity_epoch_accounting(page), accounting);
     assert.equal(canonical_hson_graph_equal(page.root(), graph), true);
@@ -93,7 +93,7 @@ export function strict_tagged_receiver_controls(): Readonly<{ snapshotRejections
   }
   stop();
   target.restore(snapshot);
-  assert.equal(canonical_hson_graph_equal(target.lib("state").root(), source.lib("state").root()), true);
+  assert.equal(canonical_hson_graph_equal(target.data.must("state").root(), source.data.must("state").root()), true);
   subject.dispose();
   const validContent = { format: "hson-graph-portable", payload: exact_tagged_payload(tagged_node("span")) };
   for (const action of ["insert", "replace"] as const) {
@@ -114,7 +114,7 @@ export function strict_tagged_receiver_controls(): Readonly<{ snapshotRejections
   const clientEngine = internal_livemap_aggregate_authority(client);
   let hosted: Parameters<typeof make_portable_aggregate_commit>[0] | undefined;
   const unsubscribe = authority.observe(commit => { hosted = commit.hosted; });
-  const authorPage = author.lib("page");
+  const authorPage = author.doc.must("page");
   if (authorPage.mode !== "document") throw new Error("Expected author page.");
   authorPage.document.content.insert({ kind: "path", path: [] }, 1, { $_tag: "span", $_content: [] });
   unsubscribe();
@@ -134,6 +134,6 @@ export function strict_tagged_receiver_controls(): Readonly<{ snapshotRejections
     replayRejections += 1;
   }
   clientEngine.replayClientHosted(validCommit);
-  assert.equal(canonical_hson_graph_equal(client.lib("page").root(), authorPage.root()), true);
+  assert.equal(canonical_hson_graph_equal(client.doc.must("page").root(), authorPage.root()), true);
   return Object.freeze({ snapshotRejections, actionRejections, replayRejections });
 }

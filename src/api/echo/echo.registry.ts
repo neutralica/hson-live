@@ -56,7 +56,7 @@ export function create_registry_echo<
       const previous = documentAuthorities.find((entry) => entry.map === map);
       if (previous !== undefined) return previous.authority;
       const name = internal_livemap_aggregate_authority(options.map).hostedRegistry().libraries
-        .find((entry) => options.map.lib(entry.name) === map)?.name;
+        .find((entry) => entry.mode === "document" && options.map.doc.must(entry.name) === map)?.name;
       if (name === undefined) throw new Error("Projected document Library name is unavailable.");
       const entry = { name };
       const authority = make_echo_document_authority(
@@ -99,7 +99,7 @@ export function create_registry_echo<
   (internal_livemap_aggregate_authority(options.map).clientProjection()?.registry
     ?? internal_livemap_aggregate_authority(options.map).hostedRegistry()).libraries
     .filter((entry) => entry.mode === "document")
-    .forEach((entry) => { ensureDocumentAuthority(options.map.lib(entry.name) as LiveMapDocumentLibrary); });
+    .forEach((entry) => { ensureDocumentAuthority(options.map.doc.must(entry.name) as LiveMapDocumentLibrary); });
 
   const dispose = (): void => {
     for (const registration of documentAuthorities) {

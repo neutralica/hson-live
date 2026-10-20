@@ -1,3 +1,4 @@
+import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { inspect_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import type { HsonNode } from "../../core/types.js";
@@ -35,7 +36,7 @@ export function continuation_document_library_name(
   selected: LiveMapDocumentLibrary,
 ): string {
   for (const entry of internal_livemap_aggregate_authority(map).hostedRegistry().libraries) {
-    if (entry.scope === undefined && entry.mode === "document" && map.lib(entry.name) === selected) return entry.name;
+    if (entry.scope === undefined && entry.mode === "document" && map.doc.must(entry.name) === selected) return entry.name;
   }
   throw new Error("Continuation document is not in the fixed Library registry.");
 }
@@ -86,9 +87,7 @@ function is_document_library(value: unknown): value is LiveMapDocumentLibrary {
 }
 
 function is_libraries_map(value: unknown): value is LiveMap {
-  return typeof value === "object" && value !== null
-    && typeof (value as { lib?: unknown }).lib === "function"
-    && typeof (value as { rev?: unknown }).rev === "number";
+  return is_public_multi_library_livemap(value);
 }
 
 /** Resolve only public document facades registered by the supplied canonical map. */

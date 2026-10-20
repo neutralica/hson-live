@@ -272,8 +272,8 @@ check("unsaved direct Schema attachment refines immediately and stale proofs are
   const declaration = 'export const Page = Hson.schema`<type "document" tag "main" content "string">`;';
   const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\n';
   const map = 'const map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\n';
-  const exact = 'const exact: typeof Page = map.lib("home").schema.get();\nconst text: string = map.lib("home").at([0]).snap();\n';
-  const attached = `${prefix}${declaration}\n${map}map.lib("home").schema.use(Page);\n${exact}`;
+  const exact = 'const exact: typeof Page = map.doc.must("home").schema.get();\nconst text: string = map.doc.must("home").at([0]).snap();\n';
+  const attached = `${prefix}${declaration}\n${map}map.doc.must("home").schema.use(Page);\n${exact}`;
   const broad = `${prefix}${declaration}\n${map}${exact}`;
   const test = project("attachment-live", { "index.ts": broad });
   assert.ok(test.errors("index.ts").some(error => error.code === 2322), messages(test.errors("index.ts")));
@@ -281,10 +281,13 @@ check("unsaved direct Schema attachment refines immediately and stale proofs are
   test.edit("index.ts", attached);
   assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
 
+  test.edit("index.ts", attached.replaceAll('doc.must("home")', "doc.home"));
+  assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
+
   test.edit("index.ts", broad);
   assert.ok(test.errors("index.ts").some(error => error.code === 2322), messages(test.errors("index.ts")));
 
-  const dynamic = `${prefix}${declaration}\n${map}declare const name: string;\nmap.lib(name).schema.use(Page);\n${exact}`;
+  const dynamic = `${prefix}${declaration}\n${map}declare const name: string;\nmap.doc.must(name).schema.use(Page);\n${exact}`;
   test.edit("index.ts", dynamic);
   assert.ok(test.errors("index.ts").some(error => error.code === 2322), messages(test.errors("index.ts")));
 
@@ -330,17 +333,17 @@ check("LiveMap namespace construction receives named-import candidate diagnostic
   ] as const) {
     const prefix = `${schema}${imported}\n`;
     const map = `const empty = ${binding}.create();\nvoid empty;\nconst map = ${binding}.fromLibraries({ home: { document: '<main "hello"/>' } });\n`;
-    const exact = 'const exact: typeof Page = map.lib("home").schema.get();\n';
+    const exact = 'const exact: typeof Page = map.doc.must("home").schema.get();\n';
     const test = project(`livemap-namespace-${name}`, { "index.ts": prefix + map + exact });
     assert.ok(test.errors("index.ts").some(error => error.code === 2322), name);
-    test.edit("index.ts", prefix + map + 'map.lib("home").schema.use(Page);\n' + exact);
+    test.edit("index.ts", prefix + map + 'map.doc.must("home").schema.use(Page);\n' + exact);
     assert.equal(test.errors("index.ts").length, 0, `${name}\n${messages(test.errors("index.ts"))}`);
     assert.match(test.service.getProgram()?.getSourceFile(test.file("index.ts"))?.text ?? "", /__hson_assert_library_schema\(map, "home", Page\)/, name);
-    test.edit("index.ts", prefix + `const bad = Hson.document\`<aside "hello"/>\`;\nconst map = ${binding}.fromLibraries({ home: { document: bad } });\nmap.lib("home").schema.use(Page);\n`);
+    test.edit("index.ts", prefix + `const bad = Hson.document\`<aside "hello"/>\`;\nconst map = ${binding}.fromLibraries({ home: { document: bad } });\nmap.doc.must("home").schema.use(Page);\n`);
     assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 1, `${name}\n${messages(test.errors("index.ts"))}`);
     test.service.dispose();
   }
-  const unrelated = project("livemap-namespace-unrelated", { "index.ts": `${schema}import * as mapApi from "hson-live/echo";\nconst bad = Hson.document\`<aside "hello"/>\`;\nconst map = mapApi.fromLibraries({ home: { document: bad } });\nmap.lib("home").schema.use(Page);\n` });
+  const unrelated = project("livemap-namespace-unrelated", { "index.ts": `${schema}import * as mapApi from "hson-live/echo";\nconst bad = Hson.document\`<aside "hello"/>\`;\nconst map = mapApi.fromLibraries({ home: { document: bad } });\nmap.doc.must("home").schema.use(Page);\n` });
   assert.equal(unrelated.errors("index.ts").filter(error => error.code === 95002).length, 0);
   assert.doesNotMatch(unrelated.service.getProgram()?.getSourceFile(unrelated.file("index.ts"))?.text ?? "", /__hson_assert_library_schema\(map, "home", Page\)/);
   unrelated.service.dispose();
@@ -350,8 +353,8 @@ check("unbraced attachment proofs stay in their authored control-flow owner", ()
   const declaration = 'export const Page = Hson.schema`<type "document" tag "main" content "string">`;';
   const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\n';
   const map = 'const map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\n';
-  const use = 'map.lib("home").schema.use(Page);';
-  const after = 'const exact: typeof Page = map.lib("home").schema.get();\n';
+  const use = 'map.doc.must("home").schema.use(Page);';
+  const after = 'const exact: typeof Page = map.doc.must("home").schema.get();\n';
   const cases = {
     if: `declare const condition: boolean;\nif (condition)\n  ${use}\n${after}`,
     ifElse: `declare const condition: boolean;\nif (condition)\n  ${use}\nelse\n  void 0;\n${after}`,
@@ -364,7 +367,7 @@ check("unbraced attachment proofs stay in their authored control-flow owner", ()
     assert.equal(test.service.getSyntacticDiagnostics(test.file("index.ts")).length, 0, name);
     assert.ok(test.errors("index.ts").some(error => error.code === 2322), `${name}\n${messages(test.errors("index.ts"))}`);
     const generated = test.service.getProgram()?.getSourceFile(test.file("index.ts"))?.text ?? "";
-    assert.match(generated, /\{map\.lib\("home"\)\.schema\.use\(Page\);\n__hson_assert_library_schema/);
+    assert.match(generated, /\{map\.doc\.must\("home"\)\.schema\.use\(Page\);\n__hson_assert_library_schema/);
     test.service.dispose();
   }
   const labeled = project("attachment-label", { "index.ts": `${prefix}${declaration}\n${map}label:\n  ${use}\n${after}` });
@@ -374,7 +377,7 @@ check("unbraced attachment proofs stay in their authored control-flow owner", ()
 });
 
 check("Phase 1 precision fixture passes entirely through the in-memory view", () => {
-  const directory = join(temporary, "precision"); cpSync(join(root, "tests/fixtures/hson-schema-compiler-project"), directory, { recursive: true });
+  const directory = join(temporary, "precision"); cpSync(join(root, "tests/fixtures/hson-schema-compiler-project"), directory, { recursive: true, filter: source => !source.split(/[\\/]/).some(part => part === ".hson" || part === "dist") });
   const files: Record<string, string> = {};
   for (const [name, contents] of bytes(directory)) files[name] = contents.toString();
   const exact = project("precision-live", files, { paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")], "@support/*": ["./support/*"] }, types: ["node"] });
@@ -408,10 +411,10 @@ Schema.certify(condition ? badMissingHead : badOrder);
 hsonLiveMap.fromLibraries({ page: { document: badMissingHead, schema: Schema } });
 hsonLiveMap.fromLibraries({ page: { document: valid, schema: Schema } });
 const map = hsonLiveMap.fromLibraries({ page: { document: badOrder } });
-map.lib("page").schema.use(Schema);
+map.doc.must("page").schema.use(Schema);
 const mutated = hsonLiveMap.fromLibraries({ page: { document: badOrder } });
 getPage();
-mutated.lib("page").schema.use(Schema);
+mutated.doc.must("page").schema.use(Schema);
 export const Data = Hson.schema\`<type "data" content <name "string">>\`;
 hsonLiveMap.fromLibraries({ state: { data: { name: 42 }, schema: Data } });
 hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" }, schema: Data } });
@@ -448,18 +451,18 @@ hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
   const cases: readonly [string, number][] = [
     ['hsonLiveMap.fromLibraries({ page: { document: bad, schema: S } });', 1],
     ['hsonLiveMap.fromLibraries({ page: { document: good, schema: S } });', 0],
-    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad, schema: ANY_DOCUMENT } }); map.lib("page").schema.use(S);', 1],
-    ['const map = hsonLiveMap.fromLibraries({ page: { document: good } }); map.lib("page").schema.use(S);', 0],
-    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); const alias = map; map.lib("page").schema.use(S);', 0],
-    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); getPage(); map.lib("page").schema.use(S);', 0],
-    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); declare const name: string; map.lib(name).schema.use(S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad, schema: ANY_DOCUMENT } }); map.doc.must("page").schema.use(S);', 1],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: good } }); map.doc.must("page").schema.use(S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); const alias = map; map.doc.must("page").schema.use(S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); getPage(); map.doc.must("page").schema.use(S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); declare const name: string; map.doc.must(name).schema.use(S);', 0],
     ['S.certify(condition ? bad : getPage());', 0],
     ['S.certify(await Promise.resolve(bad));', 0],
     ['const D = Hson.schema`<type "data" content <name "string">>`; D.certify(Hson.data`<name 42>`);', 1],
     ['const A = S; hsonLiveMap.fromLibraries({ page: { document: bad, schema: A } });', 1],
-    ['const A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.lib("page").schema.use(A);', 1],
-    ['let A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.lib("page").schema.use(A);', 0],
-    ['const D = Hson.schema`<type "data" content <name "string">>`; const A = D; const map = hsonLiveMap.fromLibraries({ state: { data: { name: 42 } } }); map.lib("state").schema.use(A);', 1],
+    ['const A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.doc.must("page").schema.use(A);', 1],
+    ['let A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.doc.must("page").schema.use(A);', 0],
+    ['const D = Hson.schema`<type "data" content <name "string">>`; const A = D; const map = hsonLiveMap.fromLibraries({ state: { data: { name: 42 } } }); map.data.must("state").schema.use(A);', 1],
     ['const D = Hson.schema`<type "data" content <name "string">>`; hsonLiveMap.fromLibraries({ data: { data: \'{"name":42}\', schema: D } });', 1],
     ['const D = Hson.schema`<type "data" content <name "string">>`; const data = condition ? { name: 42 } : { name: 7 }; Reflect.set(data, "name", "Ada"); hsonLiveMap.fromLibraries({ state: { data, schema: D } });', 0],
   ];
@@ -478,7 +481,7 @@ hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
   assert.doesNotThrow(() => runtime.certify(Hson.document`<html <head/> <body/>/>`));
   assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: bad, schema: runtime } }), /Schema validation failed/);
   const map = hsonLiveMap.fromLibraries({ page: { document: bad } });
-  assert.throws(() => Reflect.apply(map.lib("page").schema.use, undefined, [runtime]), /Schema validation failed/);
+  assert.throws(() => Reflect.apply(map.doc.must("page").schema.use, undefined, [runtime]), /Schema validation failed/);
 });
 
 check("annotation proof, certification, aliases and generated diagnostics converge", () => {
@@ -496,11 +499,11 @@ const bad: HsonData<typeof A> = Hson.data\`<name 42>\`;
 S.certify(bad); A.certify(bad);
 const PageAlias = Page;
 const invalidMap = hsonLiveMap.fromLibraries({ page: { document: '<aside "hello"/>' } });
-invalidMap.lib("page").schema.use(PageAlias);
+invalidMap.doc.must("page").schema.use(PageAlias);
 const map = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>' } });
-map.lib("page").schema.use(PageAlias);
-const exact: typeof Page = map.lib("page").schema.get();
-const snap: string = map.lib("page").at([0]).snap();
+map.doc.must("page").schema.use(PageAlias);
+const exact: typeof Page = map.doc.must("page").schema.get();
+const snap: string = map.doc.must("page").at([0]).snap();
 const unrelated: number = "wrong";
 `;
   const test = project("candidate-convergence", { "index.ts": source });
@@ -735,7 +738,7 @@ check("optional-chain tags retain syntax errors and cannot establish candidate o
 check("rejected Schema producers withdraw generated evidence, attachment assertions and governed reads", () => {
   const body = '<type "data" content <name "string">>';
   const valid = `import { Hson } from "hson-live";\r\nexport const Bad = Hson.schema\`${body}\`;\r\n`;
-  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { Bad } from "./schema.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.lib("state").schema.use(Bad);\r\nconst name: string = map.lib("state").at(["name"]).snap();\r\nconst wrong: number = map.lib("state").at(["name"]).snap();\r\n';
+  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { Bad } from "./schema.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.data.must("state").schema.use(Bad);\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n';
   const test = project("producer-proof-eligibility", { "schema.ts": valid, "index.ts": consumer });
   const evidence = () => test.service.getProgram()!.getSourceFiles().filter(file => file.fileName.endsWith("/Bad.hson-schema.generated.ts"));
   const attachment = () => { const snapshot = test.host.getScriptSnapshot(test.file("index.ts"))!; return snapshot.getText(0, snapshot.getLength()).includes('__hson_assert_library_schema(map, "state", Bad)'); };

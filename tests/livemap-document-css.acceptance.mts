@@ -7,8 +7,8 @@ import { repository_typescript_worker } from "./helpers/repository-typescript-wo
 
 const document = '<html <head <title "CSS"/> <style "body{font-size:12px;}"/>/> <body <main id=home-screen "Hello"/>/>/>';
 const map = hsonLiveMap.fromLibraries({ page: { document }, data: { data: { count: 1 } } });
-const page = map.lib("page");
-const data = map.lib("data");
+const page = map.doc.must("page");
+const data = map.data.must("data");
 if (false) {
   const transitionReturn: void = page.css.stylesheet("body { margin: 0; }");
   void transitionReturn;
@@ -19,24 +19,24 @@ if (false) {
   // @ts-expect-error Document-wide CSS has no redundant global child.
   page.css.global;
 }
-const dynamic: LiveMapDynamicLibrary = map.lib("page" as string);
+const dynamic: LiveMapDynamicLibrary = map.doc.must("page" as string);
 if (dynamic.mode === "document") {
   assert.equal(dynamic.css.snapshot(), "");
   dynamic.css.stylesheet("");
 }
-assert.throws(() => map.lib("data" as string).css, /data Library; document CSS is unavailable/);
+assert.throws(() => Reflect.get(map.data.must("data" as string), "css"), /data Library; document CSS is unavailable/);
 assert.equal("css" in page.at([]), false);
 assert.equal("global" in page.css, false);
 assert.equal(page.css.snapshot(), "");
 assert.deepEqual(map.capture().libraries.find((item) => item.name === "page")?.css,
   { rules: [], properties: [], keyframes: [], order: [] });
 assert.equal("css" in (map.capture().libraries.find((item) => item.name === "data") ?? {}), false);
-assert.doesNotMatch(document_html(map.lib("page")), /data-hson-managed-document-css/);
+assert.doesNotMatch(document_html(map.doc.must("page")), /data-hson-managed-document-css/);
 assert.throws(() => hsonLiveMap.fromLibraries({ data: { data: 1, css: {} } } as never), /Initial Library CSS input/);
 assert.throws(() => hsonLiveMap.fromLibraries({ page: { document, css: {} } } as never), /Initial Library CSS input/);
 
 const empty = map.capture();
-const installedEmpty = install_libraries_snapshot(empty).map.lib("page");
+const installedEmpty = install_libraries_snapshot(empty).map.doc.must("page");
 assert.equal(installedEmpty.mode, "document");
 if (installedEmpty.mode === "document") assert.equal(installedEmpty.css.snapshot(), "");
 const rootBefore = page.root();
@@ -67,7 +67,7 @@ page.css.atProperty.register(["--phase", "<number>", "0"]);
 page.css.keyframes.set({ name: "fade", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
 const styled = map.capture();
 const css = page.css.snapshot();
-const installedStyled = install_libraries_snapshot(styled).map.lib("page");
+const installedStyled = install_libraries_snapshot(styled).map.doc.must("page");
 assert.equal(installedStyled.mode, "document");
 if (installedStyled.mode === "document") assert.equal(installedStyled.css.snapshot(), css);
 assert.match(css, /@property --phase/);
@@ -76,7 +76,7 @@ assert.match(css, /@media \(max-width: 600px\)/);
 assert.match(css, /@supports \(display: grid\)/);
 assert.equal(render_portable_document_stylesheet(decode_portable_document_stylesheet(
   styled.libraries.find((item) => item.name === "page")?.css)), css);
-const html = document_html(map.lib("page"));
+const html = document_html(map.doc.must("page"));
 assert.equal((html.match(/data-hson-managed-document-css/g) ?? []).length, 1);
 assert.ok(html.indexOf("<title>CSS</title>") < html.indexOf('<style>body{font-size:12px;}</style>'));
 assert.ok(html.indexOf('<style>body{font-size:12px;}</style>') < html.indexOf("data-hson-managed-document-css"));
@@ -95,11 +95,11 @@ assert.deepEqual(cut.libs.libraries.find((item) => item.name === "page")?.css,
   styled.libraries.find((item) => item.name === "page")?.css);
 map.restore(styled);
 assert.equal(page.css.snapshot(), css);
-assert.equal(document_html(map.lib("page")), html);
+assert.equal(document_html(map.doc.must("page")), html);
 const fresh = hsonLiveMap.fromLibraries({ page: { document }, data: { data: { count: 1 } } });
 for (const commit of commits) fresh.replay(commit);
 assert.deepEqual(fresh.capture(), styled);
-assert.equal(document_html(fresh.lib("page")), html);
+assert.equal(document_html(fresh.doc.must("page")), html);
 const firstCssOperation = commits[0]?.operations[0]?.operation;
 assert.ok(firstCssOperation && Object.isFrozen(firstCssOperation));
 if (firstCssOperation && "domain" in firstCssOperation && firstCssOperation.domain === "css" && firstCssOperation.kind === "rule") {
@@ -120,7 +120,7 @@ assert.equal(fresh.rev, replayRev);
 assert.deepEqual(fresh.capture(), styled);
 
 const orderMap = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body/>/>" } });
-const order = orderMap.lib("page").css;
+const order = orderMap.doc.must("page").css;
 order.rule("a", ".a").set.color("red");
 order.rule("b", ".b").set.color("blue");
 order.rule("a", ".a").set.backgroundColor("black");
@@ -132,28 +132,28 @@ order.clearAll();
 assert.equal(order.snapshot(), "");
 
 const fragment = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
-fragment.lib("page").css.sel("main").set.color("red");
-assert.throws(() => document_html(fragment.lib("page")), /not compatible with browser-parser realization/);
-assert.throws(() => document_html(fragment.lib("page")), (error: unknown) =>
+fragment.doc.must("page").css.sel("main").set.color("red");
+assert.throws(() => document_html(fragment.doc.must("page")), /not compatible with browser-parser realization/);
+assert.throws(() => document_html(fragment.doc.must("page")), (error: unknown) =>
   error instanceof Error && error.cause instanceof Error && /explicit html\/head/.test(error.cause.message));
 const dangerous = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body/>/>" } });
-dangerous.lib("page").css.sel("body").set.content('"</style><script>"');
-assert.throws(() => document_html(dangerous.lib("page")), (error: unknown) =>
+dangerous.doc.must("page").css.sel("body").set.content('"</style><script>"');
+assert.throws(() => document_html(dangerous.doc.must("page")), (error: unknown) =>
   error instanceof Error && error.cause instanceof Error && /closing sentinel/.test(error.cause.message));
 
 const addMap = hsonLiveMap.create();
 addMap.addLibraries({ page: { document: "<html <head/> <body/>/>" } });
-const added = addMap.lib("page");
+const added = addMap.doc.must("page");
 assert.equal(added.mode, "document");
 if (added.mode === "document") assert.equal(added.css.snapshot(), "");
 const addedCommits: Array<ReturnType<typeof addMap.addLibraries>["commit"]> = [];
 addMap.commits.observe((commit) => { addedCommits.push(commit); });
-addMap.lib("page").css.stylesheet("body { margin: 0; }");
+addMap.doc.must("page").css.stylesheet("body { margin: 0; }");
 assert.equal(addMap.rev, 2);
 assert.equal(addedCommits.length, 1);
 assert.equal(addedCommits[0]?.operations.some((entry) =>
   "domain" in entry.operation && entry.operation.domain === "css"), true);
-assert.match(document_html(addMap.lib("page")), /body\{[^}]*margin:0;/);
+assert.match(document_html(addMap.doc.must("page")), /body\{[^}]*margin:0;/);
 const worker = await new Promise<Readonly<{ capture: ReturnType<typeof map.capture>; css: string; html: string }>>((resolve, reject) => {
   const instance = repository_typescript_worker(new URL("./fixtures/livemap-document-css.worker.mts", import.meta.url));
   instance.once("message", resolve);
@@ -161,11 +161,11 @@ const worker = await new Promise<Readonly<{ capture: ReturnType<typeof map.captu
   instance.once("exit", (code) => { if (code !== 0) reject(new Error(`Document CSS Worker exited with ${code}.`)); });
 });
 const workerMap = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body/>/>" } });
-workerMap.lib("page").css.sel("body").set.margin("0");
-workerMap.lib("page").css.atProperty.register(["--phase", "<number>", "0"]);
-workerMap.lib("page").css.keyframes.set({ name: "fade", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
-workerMap.lib("page").css.stylesheet(".worker { color: var(--accent, blue); } @media (min-width: 1px) { .worker { display: grid; } }");
+workerMap.doc.must("page").css.sel("body").set.margin("0");
+workerMap.doc.must("page").css.atProperty.register(["--phase", "<number>", "0"]);
+workerMap.doc.must("page").css.keyframes.set({ name: "fade", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
+workerMap.doc.must("page").css.stylesheet(".worker { color: var(--accent, blue); } @media (min-width: 1px) { .worker { display: grid; } }");
 assert.deepEqual(worker.capture, workerMap.capture());
-assert.equal(worker.css, workerMap.lib("page").css.snapshot());
-assert.equal(worker.html, document_html(workerMap.lib("page")));
+assert.equal(worker.css, workerMap.doc.must("page").css.snapshot());
+assert.equal(worker.html, document_html(workerMap.doc.must("page")));
 console.log("LiveMap document CSS state, transitions, capture, replay, and rendering acceptance passed.");

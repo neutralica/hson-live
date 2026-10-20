@@ -333,7 +333,7 @@ check("generic mixed and text roots retain LiveMap logical document positions", 
   for (const document of [Hson.document`"a"<p/>"b"`, Hson.document`"a" "" "b"`]) {
     const semantic = hsonTransform.fromHson(document).toNode();
     const qualified = Hson.document.fromNode(semantic);
-    const page = hsonLiveMap.fromLibraries({ page: { document: qualified, schema: ANY_DOCUMENT } }).lib("page");
+    const page = hsonLiveMap.fromLibraries({ page: { document: qualified, schema: ANY_DOCUMENT } }).doc.must("page");
     assert.equal(page.at([]).asRoot()?.kind(), "root");
     assert.equal(page.at([0]).snap(), "a");
     assert.equal(page.at([0]).asText()?.kind(), "text");
@@ -380,7 +380,7 @@ check("single raw-text substitutions preserve ordinary and complete managed CSS"
     assert.equal(hsonTransform.fromTrustedHtml(transport).toHson().serialize(), page);
     assert.doesNotMatch(transport, /<\/?_hson_(?:elem|str)(?=[\s>])/);
     const map = hsonLiveMap.fromLibraries({ page: { document: page, schema: HtmlPageSchema } });
-    const browserHtml = map.lib("page").render();
+    const browserHtml = map.doc.must("page").render();
     assert.ok(browserHtml.includes(`<style>${cssText}</style>`));
     assert.doesNotMatch(browserHtml, /hson-raw:/);
   }
@@ -390,14 +390,14 @@ check("single raw-text substitutions preserve ordinary and complete managed CSS"
 check("external script admits, inline script rejects, and unsafe style closes reject browser realization", () => {
   const script = Hson.document`<script src="/app.js"/>`;
   assert.equal(hsonTransform.fromHson(script).toHtml().serialize(), '<script src="/app.js"></script>');
-  assert.equal(hsonLiveMap.fromLibraries({ page: { document: script, schema: ScriptSchema } }).lib("page").render(), '<script src="/app.js"></script>');
+  assert.equal(hsonLiveMap.fromLibraries({ page: { document: script, schema: ScriptSchema } }).doc.must("page").render(), '<script src="/app.js"></script>');
   assert.throws(() => Hson.document`<script "go()"/>`, /requires src and no content/);
   assert.throws(() => Hson.document`<script src="/app.js" "go()"/>`, /requires src and no content/);
 
   const unsafe = Hson.document`<style "${"a{} </style> body{}"}"/>`;
   const map = hsonLiveMap.fromLibraries({ page: { document: unsafe, schema: StyleSchema } });
   assert.throws(
-    () => map.lib("page").render(),
+    () => map.doc.must("page").render(),
     (error: unknown) => error instanceof Error
       && error.cause instanceof Error
       && /closing sentinel/.test(error.cause.message),

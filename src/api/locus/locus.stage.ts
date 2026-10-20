@@ -1,3 +1,5 @@
+import { make_family_selectors } from "../../internal/library-selectors.js";
+import { require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { document_css_commands, document_css_reads, dispatch_document_css_command } from "../../internal/document-css-commands.js";
 import { collection_commands } from "../livemap/livemap.collection-command.js";
 import { collection_observations, read_document_location } from "../../internal/library-observation.js";
@@ -8,7 +10,6 @@ import type {
   LiveMapStagedWriter, LivePath, LiveMapDataLibrary, LiveMapDocumentLibrary,
 } from "../../types/livemap.types.js";
 import type { LocusRuntimeLibraryAdditions, LocusStage } from "../../types/locus.core.types.js";
-import type { LocusLibrarySelector } from "../../types/governor.types.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
@@ -16,7 +17,7 @@ import { mark_browser_html_producer } from "../../internal/browser-html-producer
 import { register_governed_document, write_document_quad } from "../../internal/governed-document.js";
 
 type Writer = LiveMapStagedWriter<LiveMap, void>;
-type Selected = ReturnType<Writer["lib"]>;
+type Selected = ReturnType<Writer["doc"]["must"]> | ReturnType<Writer["data"]["must"]>;
 type Document = Extract<Selected, Readonly<{ mode: "document" }>>;
 type Data = Exclude<Selected, Document>;
 /** Governed selection shares one authority submission without exposing the subordinate map. */
@@ -26,25 +27,23 @@ export function make_locus_stage<TMap extends LiveMap>(
   submitLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>,
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>,
   assertSubmissionAllowed: () => void,
-): Readonly<{ stage: LocusStage<TMap>; lib: LocusLibrarySelector<TMap>;
-  addLibraries: import("../../types/locus.core.types.js").Locus<TMap>["addLibraries"] }> {
+): Pick<import("../../types/locus.core.types.js").Locus<TMap>, "stage" | "doc" | "data" | "parts" | "addLibraries"> {
   const selected_document = (writer: Writer, name: string): Document => {
-    const selected = writer.lib(name);
+    const selected = writer.doc.must(name);
     if (selected.mode !== "document") throw new Error(`Staged Library ${JSON.stringify(name)} is not a document.`);
     return selected;
   };
   const selected_data = (writer: Writer, name: string): Data => {
-    const selected = writer.lib(name);
-    if (selected.mode === "document") throw new Error(`Staged Library ${JSON.stringify(name)} is not data.`);
+    const selected = resolve_livemap_library_internal(map, name)?.family === "parts" ? writer.parts.must(name) : writer.data.must(name);
     return selected;
   };
-  const data_path = (name: string, path: LivePath, retained?: import("../../internal/library-observation.js").DataLocationObservations): import("../../types/governor.types.js").LocusDataLocation => {
+  const data_path = (name: string, path: LivePath, owner: LiveMapDataLibrary, retained?: import("../../internal/library-observation.js").DataLocationObservations): import("../../types/governor.types.js").LocusDataLocation => {
     const stable = must_live_path(path);
-    const owner = map.lib(name) as LiveMapDataLibrary;
+    owner.schema.get();
     const raw = retained ?? owner.at(stable);
     const observations = collection_observations(raw);
     const commands = collection_commands(command => submit(writer => {
-      if (map.lib(name) !== owner) throw new Error("Stale Library handle.");
+      if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle.");
       if ((command.collection === "array" ? raw.asArray() : raw.asObject()) === undefined) {
         throw new Error(`Data location is not an ${command.collection}.`);
       }
@@ -60,14 +59,14 @@ export function make_locus_stage<TMap extends LiveMap>(
       ...(observations.array === undefined ? {} : { array: Object.freeze({ ...observations.array, ...commands.array }) }),
       ...(observations.object === undefined ? {} : { object: Object.freeze({ ...observations.object, ...commands.object }) }),
       kind: () => raw.kind(),
-      present: () => { const checked = raw.present(); return checked === undefined ? undefined : data_path(name, stable, checked); },
-      asArray: () => { const checked = raw.asArray(); return checked === undefined ? undefined : data_path(name, stable, checked); },
-      asObject: () => { const checked = raw.asObject(); return checked === undefined ? undefined : data_path(name, stable, checked); },
-      asScalar: () => { const checked = raw.asScalar(); return checked === undefined ? undefined : data_path(name, stable, checked); },
-      at: (child: LivePath) => data_path(name, [...stable, ...must_live_path(child)], raw.at(child)),
-      set: (value: JsonValue) => submit(writer => { if (map.lib(name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).set(value); }),
-      replace: (value: JsonValue) => submit(writer => { if (map.lib(name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).replace(value); }),
-      delete: () => submit(writer => { if (map.lib(name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).delete(); }),
+      present: () => { const checked = raw.present(); return checked === undefined ? undefined : data_path(name, stable, owner, checked); },
+      asArray: () => { const checked = raw.asArray(); return checked === undefined ? undefined : data_path(name, stable, owner, checked); },
+      asObject: () => { const checked = raw.asObject(); return checked === undefined ? undefined : data_path(name, stable, owner, checked); },
+      asScalar: () => { const checked = raw.asScalar(); return checked === undefined ? undefined : data_path(name, stable, owner, checked); },
+      at: (child: LivePath) => data_path(name, [...stable, ...must_live_path(child)], owner, raw.at(child)),
+      set: (value: JsonValue) => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).set(value); }),
+      replace: (value: JsonValue) => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).replace(value); }),
+      delete: () => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).delete(); }),
     }) as unknown as import("../../types/governor.types.js").LocusDataLocation;
   };
   const document_location = (name: string, path: readonly number[], document: LiveMapDocumentLibrary): NonNullable<ReturnType<import("../../types/governor.types.js").LocusDocumentLocation["asElement"]>> => {
@@ -76,7 +75,7 @@ export function make_locus_stage<TMap extends LiveMap>(
     const read = read_document_location(raw);
     const at = (path: readonly number[]) => document_location(name, path, document);
     const edit = (run: (location: import("../livemap/livemap.staged.js").StagedDocumentLocation) => void) => submit(writer => {
-      if (map.lib(name) !== document) throw new Error("Stale Library handle.");
+      if (require_livemap_library_internal(map, name) !== document) throw new Error("Stale Library handle.");
       document.root();
       run(selected_document(writer, name).at(stable) as import("../livemap/livemap.staged.js").StagedDocumentLocation);
     });
@@ -143,17 +142,19 @@ export function make_locus_stage<TMap extends LiveMap>(
           return Object.freeze({ libraries: Object.freeze(libraries) });
         });
       };
-  const lib = (name: string) => {
-        const selected = map.lib(name);
+  const facades = new WeakMap<object, ReturnType<typeof makeLibrary>>();
+  const makeLibrary = (name: string) => {
+        const selected = require_livemap_library_internal(map, name);
         if (selected.mode !== "document") {
           const data = selected as LiveMapDataLibrary;
-          return Object.freeze({ mode: data.mode, get rev() { return data.rev; }, root: () => data.root(),
+          const handle = Object.freeze({ mode: data.mode, get rev() { return data.rev; }, root: () => data.root(),
             snap: data.snap.bind(data), schema: Object.freeze({ get: () => data.schema.get() }),
-            at: (path: LivePath) => data_path(name, path) });
+            at: (path: LivePath) => data_path(name, path, data) });
+          return handle;
         }
         const document = selected as LiveMapDocumentLibrary;
         const edit = (run: (draft: Document) => void) => submit(writer => {
-          if (map.lib(name) !== document) throw new Error("Stale Library handle.");
+          if (require_livemap_library_internal(map, name) !== document) throw new Error("Stale Library handle.");
           document.root();
           run(selected_document(writer, name));
         });
@@ -225,5 +226,14 @@ export function make_locus_stage<TMap extends LiveMap>(
         register_governed_document(handle, document);
         return handle;
       };
-  return Object.freeze({ stage: submit as LocusStage<TMap>, lib: lib as LocusLibrarySelector<TMap>, addLibraries: addLibraries as import("../../types/locus.core.types.js").Locus<TMap>["addLibraries"] });
+  const lib = (name: string) => {
+    const raw = require_livemap_library_internal(map, name);
+    let handle = facades.get(raw);
+    if (handle === undefined) { handle = makeLibrary(name); facades.set(raw, handle); }
+    return handle;
+  };
+  return Object.freeze({ stage: submit, ...make_family_selectors(name => {
+    const binding = resolve_livemap_library_internal(map, name);
+    return binding === undefined ? undefined : { ...binding, handle: lib(name) };
+  }), addLibraries }) as unknown as Pick<import("../../types/locus.core.types.js").Locus<TMap>, "stage" | "doc" | "data" | "parts" | "addLibraries">;
 }

@@ -144,25 +144,25 @@ function projected_client_map(authority: LiveMap): LiveMap {
 }
 
 function data(draft: LocusHostedAggregateStageWriter, name: string): LocusHostedAggregateDataStage {
-  const selected = draft.lib(name);
-  if (selected.mode === "document") throw new Error(`Expected data library ${name}.`);
+  const selected = draft.data.must(name);
+  if (String(selected.mode) === "document") throw new Error(`Expected data library ${name}.`);
   return selected;
 }
 
 function document(draft: LocusHostedAggregateStageWriter, name: string): LocusHostedAggregateDocumentStage {
-  const selected = draft.lib(name);
+  const selected = draft.doc.must(name);
   if (!("graph" in selected)) throw new Error(`Expected document library ${name}.`);
   return selected;
 }
 
 function data_library(map: LiveMap, name: string) {
-  const selected = map.lib(name);
+  const selected = map.data.must(name);
   if (!("snap" in selected)) throw new Error(`Expected data library ${name}.`);
   return selected;
 }
 
 function page_library(map: LiveMap) {
-  const selected = map.lib("page");
+  const selected = map.doc.must("page");
   if (!("document" in selected)) throw new Error("Expected page document library.");
   return selected;
 }

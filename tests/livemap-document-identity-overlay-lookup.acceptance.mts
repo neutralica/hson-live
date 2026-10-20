@@ -120,19 +120,19 @@ check("portable registry restore clears source and prior lookup identity", () =>
   const source = hsonLiveMap.fromLibraries({ page: { document: '<main title="new"/>', schema: Schema } });
   const target = hsonLiveMap.fromLibraries({ page: { document: '<main/>', schema: Schema } });
   target.restore(source.capture());
-  assert.equal(target.lib("page").document.byQuid(Q1), undefined);
-  assert.equal(target.lib("page").document.byQuid(Q2), undefined);
+  assert.equal(target.doc.must("page").document.byQuid(Q1), undefined);
+  assert.equal(target.doc.must("page").document.byQuid(Q2), undefined);
 });
 
 check("a stale detached old node cannot influence new overlay resolution", () => {
   const Schema = Hson.schema`<type "document" tag "main" content "empty">`;
   const target = hsonLiveMap.fromLibraries({ page: { document: '<main/>', schema: Schema } });
-  const stale = target.lib("page").root();
+  const stale = target.doc.must("page").root();
   const source = hsonLiveMap.fromLibraries({ page: { document: '<main title="next"/>', schema: Schema } });
   target.restore(source.capture());
   if (stale !== undefined) stale.$_tag = "tampered";
-  assert.equal(target.lib("page").document.byQuid(Q1), undefined);
-  assert.equal(target.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "next");
+  assert.equal(target.doc.must("page").document.byQuid(Q1), undefined);
+  assert.equal(target.doc.must("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "next");
 });
 
 check("agreement assertion accepts a freshly constructed overlay", () => {

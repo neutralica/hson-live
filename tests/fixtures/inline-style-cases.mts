@@ -114,7 +114,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
   });
   check("Mirror CSS rejection does not commit, mint identity, or partially notify", () => {
     const aggregate = hsonLiveMap.fromLibraries({ page: { document: '<main <p/>/>' } });
-    const map = aggregate.lib('page') as unknown as LiveMapDocumentLibrary;
+    const map = aggregate.doc.must('page') as unknown as LiveMapDocumentLibrary;
     const mirror = hsonMirror(map);
     const tree = mirror.tree.find.must.byTag('p');
     const runtime = runtime_for_tree(tree);
@@ -149,7 +149,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     const accessorControl=hsonLiveTree.fromHson('<p/>');let reads=0;
     assert.throws(()=>accessorControl.style.set.color({get value(){reads++;return '\u00a0red';}}),/invalid/);assert.equal(reads,0);
     const aggregate = hsonLiveMap.fromLibraries({page:{document:'<p/>'}});
-    const library = aggregate.lib('page') as unknown as LiveMapDocumentLibrary;const mirror = hsonMirror(library);
+    const library = aggregate.doc.must('page') as unknown as LiveMapDocumentLibrary;const mirror = hsonMirror(library);
     const tree = mirror.tree.find.must.byTag('p');let commits = 0;const stop = library.commits.observe(() => commits++);
     try {
       tree.attrs.set('style', '--x:\u00a0red;color:var(--x)');
@@ -165,7 +165,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     for (const [key, api] of [['cssFloat','cssFloat'], ['float','cssFloat'], ['margin-top','marginTop'], ['marginTop','marginTop']]) {
       const initial = key.includes('margin') ? '5px' : 'left', changed = key.includes('margin') ? '7px' : 'right';
       const aggregate = hsonLiveMap.fromLibraries({page:{document:{$_tag:'_hson_root',$_content:[{$_tag:'p',$_content:[],$_attrs:{style:{[key]:initial, '--keep':{value:-0,unit:'px'}}}}]}}});
-      const library=aggregate.lib('page') as unknown as LiveMapDocumentLibrary, mirror=hsonMirror(library), tree=mirror.tree.find.must.byTag('p');
+      const library=aggregate.doc.must('page') as unknown as LiveMapDocumentLibrary, mirror=hsonMirror(library), tree=mirror.tree.find.must.byTag('p');
       const get = () => api === 'cssFloat' ? tree.style.get.cssFloat() : tree.style.get.marginTop();
       let commits=0;const stop=library.commits.observe(()=>commits++);
       try {
@@ -208,7 +208,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
       'opacity:calc(1px + 2px)', 'width:calc(2 + 3)',
     ];
     const aggregate=hsonLiveMap.fromLibraries({page:{document:'<p style="width:37px;--present:2s"/>'}});
-    const library=aggregate.lib('page') as unknown as LiveMapDocumentLibrary, mirror=hsonMirror(library), tree=mirror.tree.find.must.byTag('p');
+    const library=aggregate.doc.must('page') as unknown as LiveMapDocumentLibrary, mirror=hsonMirror(library), tree=mirror.tree.find.must.byTag('p');
     let notifications=0;const stop=library.commits.observe(()=>notifications++);
     try {
       const oracle=structuredClone(tree.node), rev=library.rev, issued=runtime_for_tree(tree).issuedQuids.size;
@@ -253,7 +253,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     const unsupportedFamilies=['round','mod','rem','sin','cos','tan','asin','acos','atan','atan2','pow','sqrt','hypot','log','exp','abs','sign','calc-size','random','progress','media-progress','container-progress'];
     for(const name of unsupportedFamilies) values.push(`${name}(var(--missing, 2px), 10px)`);
     const aggregate=hsonLiveMap.fromLibraries({page:{document:'<p style="width:37px;color:green;--present:2s"/>'}});
-    const library=aggregate.lib('page') as unknown as LiveMapDocumentLibrary, mirror=hsonMirror(library), tree=mirror.tree.find.must.byTag('p');
+    const library=aggregate.doc.must('page') as unknown as LiveMapDocumentLibrary, mirror=hsonMirror(library), tree=mirror.tree.find.must.byTag('p');
     const standalone=hsonLiveTree.fromHson('<p style="width:37px;color:green"/>',{isolated:true});
     const oracle=structuredClone(tree.node), standaloneOracle=structuredClone(standalone.node), rev=library.rev, issued=runtime_for_tree(tree).issuedQuids.size;
     let notifications=0;const stop=library.commits.observe(()=>notifications++);
@@ -286,7 +286,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
         cssFloat:'left',opacity:'.2','--keep':keep,'--other':{value:'retained',unit:'_'},'--null':null,'--empty':'',
       }}}]};
       const sourceOracle=structuredClone(original);
-      const aggregate=hsonLiveMap.fromLibraries({page:{document:original}}), library=aggregate.lib('page') as unknown as LiveMapDocumentLibrary;
+      const aggregate=hsonLiveMap.fromLibraries({page:{document:original}}), library=aggregate.doc.must('page') as unknown as LiveMapDocumentLibrary;
       const authority=internal_livemap_aggregate_authority(aggregate), snapshot=authority.captureHosted();
       const mirror=hsonMirror(library),tree=mirror.tree.find.must.byTag('p');let notifications=0, hosted:HostedAggregateCommit|undefined, firstEffect:HostedAggregateCommit|undefined;
       const stop=library.commits.observe(()=>notifications++), stopAuthority=authority.observe(commit=>{hosted=commit.hosted;});
@@ -319,7 +319,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
         assert.ok(canonical_hson_graph_equal(sourceOracle,original));
       } finally {stopAuthority();stop();mirror.dispose();}
       assert.ok(firstEffect);authority.restoreHosted(snapshot);authority.replayHosted(firstEffect);
-      const replayed=aggregate.lib('page').root().$_content[0];assert.ok(replayed&&typeof replayed==='object'&&'$_tag' in replayed);
+      const replayed=aggregate.doc.must('page').root().$_content[0];assert.ok(replayed&&typeof replayed==='object'&&'$_tag' in replayed);
       const subject=sourceOracle.$_content[0];assert.ok(subject&&typeof subject==='object'&&'$_tag' in subject&&subject.$_attrs?.style&&typeof subject.$_attrs.style==='object');
       const expected:HsonNode={...subject,$_attrs:{...subject.$_attrs,style:{...subject.$_attrs.style,cssFloat:'right'}}};
       assert.ok(canonical_hson_graph_equal(expected,replayed));
@@ -338,7 +338,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     assert.equal(tree.style.get['--Tone'](),'red');assert.equal(tree.style.get['--tone'](),'blue');assert.equal(tree.style.get.backgroundColor(),'black');
   });
   check("P5 fully resolved inline batch collisions are controlled and publish nothing", () => {
-    const aggregate=hsonLiveMap.fromLibraries({page:{document:'<p style="color:green"/>'}}), library=aggregate.lib('page') as unknown as LiveMapDocumentLibrary;
+    const aggregate=hsonLiveMap.fromLibraries({page:{document:'<p style="color:green"/>'}}), library=aggregate.doc.must('page') as unknown as LiveMapDocumentLibrary;
     const mirror=hsonMirror(library), tree=mirror.tree.find.must.byTag('p');let commits=0;const stop=library.commits.observe(()=>commits++);
     try {
       const original=structuredClone(tree.node), rev=library.rev, issued=runtime_for_tree(tree).issuedQuids.size;
@@ -363,7 +363,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     const root: HsonNode = { $_tag: '_hson_root', $_content: original.$_content };
     const map = hsonLiveMap.fromLibraries({ page: { document: root } });
     const restored = install_libraries_snapshot(map.capture()).map;
-    assert.ok(canonical_hson_graph_equal(root, restored.lib('page').root()));
+    assert.ok(canonical_hson_graph_equal(root, restored.doc.must('page').root()));
     const leaf = (transform.toNode().$_content[0] as HsonNode).$_attrs?.style;
     assert.ok(leaf && typeof leaf === 'object');
     assert.ok(Object.is(leaf.negative, -0));

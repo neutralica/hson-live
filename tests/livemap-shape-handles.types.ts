@@ -24,7 +24,7 @@ if (false) {
       schema: ShapeSchema,
     },
   });
-  const state = map.lib("state");
+  const state = map.data.must("state");
 
   state.at(["object"]).object.setKey("value", 2);
   // @ts-expect-error Object endpoints do not expose array operations.
@@ -88,7 +88,7 @@ if (false) {
       schema: PageSchema,
     },
   });
-  const narrowedPage = libraries.lib("page");
+  const narrowedPage = libraries.doc.must("page");
   narrowedPage.at([]).attrs.set("id", "next");
   narrowedPage.at([0]).flags.set("hidden");
   narrowedPage.at([0, 0]).replace("next");

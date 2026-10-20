@@ -15,8 +15,8 @@ const map = admit_exact_runtime_livemap_libraries({
 });
 const node = map.cut({ data: ["state"], documents: ["page"], html: "page" });
 const installed = install_libraries_snapshot(node.libs).map;
-const state = installed.lib("state");
-if (state.mode === "document") throw new Error("Expected installed data Library.");
+const state = installed.data.must("state");
+if (String(state.mode) === "document") throw new Error("Expected installed data Library.");
 const worker = await new Promise<any>((resolve, reject) => {
   const instance = repository_typescript_worker(new URL("./fixtures/libraries-ssr.worker.mts", import.meta.url));
   instance.once("message", resolve);
@@ -40,5 +40,5 @@ assert.equal(worker.encoded, encode_ssr_bootstrap(node.libs));
 assert.deepEqual(worker.decoded, { kind: "libraries", bootstrap: node.libs });
 assert.equal(worker.revision, installed.rev);
 assert.deepEqual(worker.state, state.snap());
-assert.deepEqual(worker.page, installed.lib("page").root());
+assert.deepEqual(worker.page, installed.doc.must("page").root());
 process.stdout.write("Libraries SSR Node/Worker parity acceptance passed.\n");

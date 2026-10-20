@@ -9,7 +9,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
 
 {
   const map = create();
-  const css = map.lib("page").css;
+  const css = map.doc.must("page").css;
   const commits: unknown[] = [];
   map.commits.observe((commit) => commits.push(commit));
   const start = map.rev;
@@ -17,8 +17,8 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
   assert.equal(map.rev, start + 1);
   assert.equal(commits.length, 1);
   assert.ok(css.snapshot().indexOf("body{") < css.snapshot().indexOf("#home-screen{"));
-  assert.equal((map.lib("page").render().match(/data-hson-managed-document-css/g) ?? []).length, 1);
-  assert.match(map.lib("page").render(), /#home-screen\{display:grid;\}/);
+  assert.equal((map.doc.must("page").render().match(/data-hson-managed-document-css/g) ?? []).length, 1);
+  assert.match(map.doc.must("page").render(), /#home-screen\{display:grid;\}/);
   assert.doesNotMatch(css.snapshot(), /opening/);
   css.stylesheet("");
   assert.equal(css.snapshot(), "");
@@ -33,7 +33,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
 
 {
   const map = create();
-  const css = map.lib("page").css;
+  const css = map.doc.must("page").css;
   const first = `
     main { color: red; }
     :root { --tone: red; }
@@ -76,8 +76,8 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
   const map = create();
   const commits: Parameters<typeof map.replay>[0][] = [];
   map.commits.observe((commit) => commits.push(commit));
-  map.lib("page").css.stylesheet("main { color: red; }");
-  map.batch((draft) => { draft.lib("page").css({
+  map.doc.must("page").css.stylesheet("main { color: red; }");
+  map.batch((draft) => { draft.doc.must("page").css({
     domain: "css", kind: "append", stylesheet: parse_document_stylesheet("main { color: blue; }", ["stylesheet:1"]),
   }); });
   const state = map.capture().libraries[0]?.css;
@@ -92,7 +92,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
 
 {
   const map = create();
-  const css = map.lib("page").css;
+  const css = map.doc.must("page").css;
   css.stylesheet(".foo { color: red; } .foo { color: blue; }");
   assert.deepEqual(css.list(), ["stylesheet:1", "stylesheet:2"]);
   assert.match(css.get("stylesheet:2") ?? "", /color:blue/);
@@ -105,7 +105,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
   assert.deepEqual(css.list(), ["stylesheet:1"]);
   const captured = map.capture();
   const restored = install_libraries_snapshot(captured);
-  const restoredPage = restored.map.lib("page");
+  const restoredPage = restored.map.doc.must("page");
   assert.equal(restoredPage.mode, "document");
   if (restoredPage.mode === "document") assert.equal(restoredPage.css.snapshot(), snapshot);
   assert.deepEqual(restored.map.capture().libraries[0]?.css, captured.libraries[0]?.css);
@@ -113,15 +113,15 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
   const replayCommits: Parameters<typeof fresh.replay>[0][] = [];
   const producer = create();
   producer.commits.observe((commit) => replayCommits.push(commit));
-  producer.lib("page").css.stylesheet(".foo { color: red; } .foo { color: blue; }");
-  producer.lib("page").css.rule("structured", ".structured").set.color("green");
-  producer.lib("page").css.stylesheet(".last { color: black; }");
+  producer.doc.must("page").css.stylesheet(".foo { color: red; } .foo { color: blue; }");
+  producer.doc.must("page").css.rule("structured", ".structured").set.color("green");
+  producer.doc.must("page").css.stylesheet(".last { color: black; }");
   const replacement = replayCommits.at(-1)?.operations[0]?.operation;
   assert.ok(replacement && "domain" in replacement && replacement.domain === "css");
   assert.equal(replacement.kind, "replace");
   for (const commit of replayCommits) fresh.replay(commit);
-  assert.equal(fresh.lib("page").css.snapshot(), snapshot);
-  assert.doesNotMatch(fresh.lib("page").render(), /\.foo|\.structured/);
+  assert.equal(fresh.doc.must("page").css.snapshot(), snapshot);
+  assert.doesNotMatch(fresh.doc.must("page").render(), /\.foo|\.structured/);
   css.drop("stylesheet:1");
   assert.equal(css.snapshot(), "");
   css.clearAll();
@@ -131,7 +131,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
 
 {
   const map = create();
-  const css = map.lib("page").css;
+  const css = map.doc.must("page").css;
   const commits: unknown[] = [];
   map.commits.observe((commit) => commits.push(commit));
   css.stylesheet("main { color: blue; }");
@@ -154,7 +154,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
 
 {
   const map = create();
-  const css = map.lib("page").css;
+  const css = map.doc.must("page").css;
   const commits: Parameters<typeof map.replay>[0][] = [];
   map.commits.observe((commit) => commits.push(commit));
   css.stylesheet(`
@@ -174,7 +174,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
   const replayed = create();
   replayed.replay(commits[0]!);
   assert.deepEqual(replayed.capture().libraries[0]?.css, state);
-  assert.equal(replayed.lib("page").css.snapshot(), snapshot);
+  assert.equal(replayed.doc.must("page").css.snapshot(), snapshot);
   assert.match(snapshot, /color:red !important/);
   assert.match(snapshot, /content|--label:"a;b}"/);
   assert.match(snapshot, /data:image\/svg\+xml,a;b/);
@@ -185,7 +185,7 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
   assert.equal(map.capture().libraries[0]?.css?.rules[0]?.declarations[1]?.[1], "1/* separator */2", "component token boundary survives");
   map.restore(capture);
   assert.equal(css.snapshot(), snapshot);
-  const installedPage = install_libraries_snapshot(capture).map.lib("page");
+  const installedPage = install_libraries_snapshot(capture).map.doc.must("page");
   assert.equal(installedPage.mode, "document");
   if (installedPage.mode === "document") assert.equal(installedPage.css.snapshot(), snapshot);
   css.clearAll();
@@ -195,13 +195,13 @@ const create = () => hsonLiveMap.fromLibraries({ page: { document } });
 
 {
   const map = create();
-  const css = map.lib("page").css;
+  const css = map.doc.must("page").css;
   css.stylesheet(".cascade { margin-left: 5px; margin: 0; content: var(--message); } @keyframes cascade { from { padding-left: 5px; padding: 0; } }");
   const snapshot = css.snapshot();
   assert.match(snapshot, /margin-left:5px;margin:0;/);
   assert.match(snapshot, /content:var\(--message\);/);
   assert.match(snapshot, /padding-left: 5px;\s+padding: 0;/);
-  const installed = install_libraries_snapshot(map.capture()).map.lib("page");
+  const installed = install_libraries_snapshot(map.capture()).map.doc.must("page");
   assert.equal(installed.mode, "document");
   if (installed.mode === "document") assert.equal(installed.css.snapshot(), snapshot);
 }

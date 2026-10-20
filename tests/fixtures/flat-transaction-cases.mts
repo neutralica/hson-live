@@ -19,11 +19,11 @@ type Writer = LiveMapStagedWriter<LiveMap, void>;
 const document = '<main <b @:a title="same" disabled "Same"/> <i/>/>';
 const css = '[hson\\:quad="a"]{color:red}';
 function page(w: Writer, name = "page") {
-  const lib = w.lib(name); assert.equal(lib.mode, "document");
+  const lib = w.doc.must(name); assert.equal(lib.mode, "document");
   if (lib.mode !== "document") throw Error("document"); return lib;
 }
 function data(w: Writer, n: number) {
-  const lib = w.lib("data"); if (lib.mode === "document") throw Error("data"); lib.at(["n"]).set(n);
+  const lib = w.data.must("data"); if (String(lib.mode) === "document") throw Error("data"); lib.at(["n"]).set(n);
 }
 function snapshot(map: LiveMap) {
   const a = owner(map);
@@ -47,7 +47,7 @@ async function fixture() {
     scoped: { document: '<aside <hson-part lib="parts" at="p"/>/>' } }, [], undefined,
   { page: parse_document_stylesheet(css, []), other: parse_document_stylesheet(css, []) });
   const adapter = new MemoryCheckpointAdapter(), locus = await persist({ map, persistence: adapter, scopedDocuments: true });
-  const lib = map.lib("page"); assert.ok(lib.mode === "document");
+  const lib = map.doc.must("page"); assert.ok(lib.mode === "document");
   const quid = lookup(lib, "a")!.quid;
   return { map, adapter, locus, stylesheet: `[hson\\:quid="${quid}"]{color:blue}` };
 }
@@ -198,7 +198,7 @@ export async function flat_transaction_cases(check: (name: string, run: () => Pr
         })); });
         await locus.stage(w => {
           noops.forEach(noop => noop(w));
-          if (kind === "scoped") w.lib(kind).at([]).asElement().attrs.set("title", "propagated"); else w.lib(kind).at(["n"]).set(1);
+          if (kind === "scoped") w.doc.must(kind).at([]).asElement().attrs.set("title", "propagated"); else w.data.must(kind).at(["n"]).set(1);
         });
         await applied; assert.equal(echo.sync.appliedRev, rev);
         assert.equal(a.documentOverlay(id), overlay); assert.deepEqual(issued(a.identityEpoch().issued()), issued(ledger));

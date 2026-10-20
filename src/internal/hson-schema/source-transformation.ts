@@ -112,7 +112,7 @@ export function library_schema_attachment_plan(
       const recognized = recognize_library_schema_attachment(node.expression, checker, facts, hsonLiveMapSymbols);
       if (recognized !== undefined) {
         attachments.push({ statement: node, ...recognized });
-        const proof = `${helper}(${recognized.map.getText(source)}, ${recognized.library.getText(source)}, ${recognized.schema.getText(source)});`;
+        const proof = `${helper}(${recognized.map.getText(source)}, ${JSON.stringify(recognized.library.text)}, ${recognized.schema.getText(source)});`;
         const owner = direct_statement_owner(node);
         if (owner === undefined) {
           edits.push({ start: node.getEnd(), end: node.getEnd(), text: `\n${proof}` });
@@ -157,20 +157,38 @@ function recognize_library_schema_attachment(
     || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "use") return undefined;
   const schemaMember = expression.expression.expression;
   if (!ts.isPropertyAccessExpression(schemaMember) || schemaMember.name.text !== "schema") return undefined;
-  const libraryCall = schemaMember.expression;
-  if (!ts.isCallExpression(libraryCall) || libraryCall.arguments.length !== 1
-    || !ts.isPropertyAccessExpression(libraryCall.expression) || libraryCall.expression.name.text !== "lib"
-    || !ts.isIdentifier(libraryCall.expression.expression)) return undefined;
-  const map = libraryCall.expression.expression;
-  const library = libraryCall.arguments[0];
+  const selected = direct_family_selection(schemaMember.expression);
+  if (selected === undefined) return undefined;
+  const { map, library } = selected;
   const schema = expression.arguments[0];
   if (!ts.isStringLiteral(library) || !ts.isIdentifier(schema)
     || !ts.isIdentifier(expression.expression.name) || !official_schema_use(expression.expression.name, checker)) return undefined;
   const fact = schema_fact(schema, checker, schemas);
   if (fact === undefined) return undefined;
   const admitted = tightening_admission(map, library.text, checker, hsonLiveMapSymbols);
-  if (admitted === undefined || admitted !== fact.mode) return undefined;
+  if (admitted === undefined || admitted !== fact.mode || selected.family !== (admitted === "document" ? "doc" : "data")) return undefined;
   return { map, library, schema, mode: admitted };
+}
+
+/** Recognize required direct family selection without treating optional lookup as proof. */
+export function direct_family_selection(expression: ts.Expression): Readonly<{
+  map: ts.Identifier; library: ts.StringLiteral; facade: ts.Expression; family: "doc" | "data";
+}> | undefined {
+  let namespace: ts.Expression;
+  let library: ts.StringLiteral;
+  if (ts.isCallExpression(expression) && expression.arguments.length === 1
+    && ts.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "must"
+    && ts.isStringLiteral(expression.arguments[0])) {
+    namespace = expression.expression.expression;
+    library = expression.arguments[0];
+  } else if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.name)) {
+    namespace = expression.expression;
+    if (["must", "name", "length", "then", "toJSON", "call", "apply", "bind", "prototype", "constructor"].includes(expression.name.text)) return undefined;
+    library = ts.factory.createStringLiteral(expression.name.text);
+  } else return undefined;
+  if (!ts.isPropertyAccessExpression(namespace) || !ts.isIdentifier(namespace.expression)
+    || (namespace.name.text !== "doc" && namespace.name.text !== "data")) return undefined;
+  return { map: namespace.expression, library, facade: expression, family: namespace.name.text };
 }
 
 function schema_fact(

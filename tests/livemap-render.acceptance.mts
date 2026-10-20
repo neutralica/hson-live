@@ -7,10 +7,10 @@ const map = hsonLiveMap.fromLibraries({
   second: { document: "<aside/>" },
   state: { data: { value: 1 } },
 });
-assert.equal(map.lib("page").render(), "<main></main>");
-assert.equal(map.lib("second").render(), "<aside></aside>");
-assert.equal(map.lib("page").render(), map.cut({ html: "page" }).html);
-assert.equal("render" in map.lib("state"), false);
+assert.equal(map.doc.must("page").render(), "<main></main>");
+assert.equal(map.doc.must("second").render(), "<aside></aside>");
+assert.equal(map.doc.must("page").render(), map.cut({ html: "page" }).html);
+assert.equal("render" in map.data.must("state"), false);
 assert.equal(map.rev, 0);
 
 // Instrument the owned roots only after admission, so first-use selection is measured.
@@ -35,11 +35,11 @@ const restore = authority.libraries().slice(3).map(identity => {
   return () => { Object.defineProperty(root, "$_content", descriptor); };
 });
 try {
-  const page = local.lib("page");
+  const page = local.doc.must("page");
   assert.equal(page.render(), "<main></main>");
-  assert.equal(local.lib("second").render(), page.render());
-  assert.equal(local.lib("page"), page);
-  assert.equal(local.lib("state").snap(), 1);
+  assert.equal(local.doc.must("second").render(), page.render());
+  assert.equal(local.doc.must("page"), page);
+  assert.equal(local.data.must("state").snap(), 1);
   assert.equal(unrelatedReads, 0, "First document/data selection and rendering must not read unrelated roots.");
 } finally {
   for (const reset of restore) reset();
@@ -47,7 +47,7 @@ try {
 
 // Re-enter while capture clones the root, before it captures the stylesheet.
 const coherent = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body data-render=before/>/>' } });
-const page = coherent.lib("page");
+const page = coherent.doc.must("page");
 page.css.sel("body").set.color("blue");
 const revision = coherent.rev;
 const commits: number[] = [];
@@ -85,7 +85,7 @@ assert.match(updatedHtml, /color:red/);
 // The root payload is bounded once during capture, then again when render decodes
 // the fully detached candidate. Re-enter at that second read, beyond the source fence.
 const detached = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body data-render=before/>/>' } });
-const detachedPage = detached.lib("page");
+const detachedPage = detached.doc.must("page");
 detachedPage.css.sel("body").set.color("blue");
 const expectedHtml = detachedPage.render();
 const detachedRoot = internal_livemap_aggregate_authority(detached).captureSelectedHosted(["page"], false).libraries[0]!.root;

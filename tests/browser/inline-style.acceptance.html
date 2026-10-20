@@ -65,7 +65,7 @@ try {
   el.setAttribute=originalSet;tree.style.set.color('green');check('valid retry after native failure',d.defaultView.getComputedStyle(el).color==='rgb(0, 128, 0)');
   tree.remove();dispose_livetree_runtime(runtime);f.remove();
 
-  const local=hsonLiveMap.fromLibraries({page:{document:'<main <p/>/>'}}), mirror=hsonMirror(local.lib('page'));
+  const local=hsonLiveMap.fromLibraries({page:{document:'<main <p/>/>'}}), mirror=hsonMirror(local.doc.must('page'));
   const p=mirror.tree.find.must.byTag('p'), localRuntime=runtime_for_tree(p), issued=localRuntime.issuedQuids.size;
   const localFrame=await frame();localFrame.contentDocument.body.append(project_livetree(subject_for_tree(mirror.tree),'html',localRuntime,localFrame.contentDocument));
   const rev=local.rev;
@@ -93,7 +93,7 @@ try {
   const reviewFrame=await frame(), reviewDoc=reviewFrame.contentDocument;
   const mountedMirror=style=>{
     const map=hsonLiveMap.fromLibraries({page:{document:{$_tag:'_hson_root',$_content:[{$_tag:'p',$_content:[],...(style===undefined?{}:{$_attrs:{style}})}]}}});
-    const library=map.lib('page'),mirror=hsonMirror(library),tree=mirror.tree.find.must.byTag('p'),runtime=runtime_for_tree(tree);
+    const library=map.doc.must('page'),mirror=hsonMirror(library),tree=mirror.tree.find.must.byTag('p'),runtime=runtime_for_tree(tree);
     reviewDoc.body.append(project_livetree(subject_for_tree(mirror.tree),'html',runtime,reviewDoc));
     return {map,library,mirror,tree,runtime,el:tree.dom.el()};
   };
@@ -283,7 +283,7 @@ try {
   const restored=install_libraries_snapshot(state.libs).map, root=document.querySelector('#ssr-root'), paragraph=root.querySelector('p');
   check('SSR first render has correct importance and order',getComputedStyle(paragraph).color==='rgb(255, 0, 0)' && getComputedStyle(paragraph).marginTop==='5px');
   const mutations=new MutationObserver(()=>{});mutations.observe(root,{subtree:true,attributes:true,childList:true});
-  const continued=continue_document({map:restored,document:restored.lib('page'),root});
+  const continued=continue_document({map:restored,document:restored.doc.must('page'),root});
   check('continuation adopts native identity without writes',continued.tree.dom.el()===root && root.querySelector('p')===paragraph && mutations.takeRecords().length===0);
   mutations.disconnect();const continuedP=continued.tree.find.must.byTag('p'), continuedRuntime=runtime_for_tree(continuedP), count=continuedRuntime.issuedQuids.size;
   continuedP.style.set.color('green!important');

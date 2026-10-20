@@ -25,23 +25,23 @@ const definition = {
 const locus = hsonLiveMap.locus.create({ ...definition, interactions: [descriptor] });
 assert.deepEqual(locus_map_internal(locus).capture().registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name),
   ["secret", "count", "page"]);
-assert.throws(() => locus.lib("ui"), /Unknown LiveMap Library/);
+assert.throws(() => locus.data.must("ui"), /Unknown LiveMap Library/);
 assert.ok(locus_map_internal(locus).capture().registry.libraries.some((entry) => entry.scope === "hson-internal"));
 assert.equal("map" in locus, false);
 assert.equal("lib" in locus.stage, false);
 assert.equal("addLibraries" in locus.stage, false);
 const authorityCommits: number[] = [];
 const stopAuthorityCommits = locus.commits.observe((commit) => authorityCommits.push(commit.rev));
-await locus.lib("count").at(["value"]).set(2);
-await locus.stage((loc) => { loc.lib("count").at(["value"]).set(3); });
-const page = locus.lib("page");
+await locus.data.must("count").at(["value"]).set(2);
+await locus.stage((loc) => { loc.data.must("count").at(["value"]).set(3); });
+const page = locus.doc.must("page");
 await page.at([]).asElement()!.attrs.set("title", "owned");
 assert.equal(page.at([]).asElement()!.attrs.get("title"), "owned");
 assert.deepEqual(authorityCommits, [2, 3, 4]);
 stopAuthorityCommits();
 assert.deepEqual(locus.cut().libs.libraries.map((entry) => entry.name),
   ["secret", "count", "page", "@hson/canonical-interactions"]);
-assert.equal(Hson.data.materialize(locus.lib("count").at(["value"]).data()!), 3);
+assert.equal(Hson.data.materialize(locus.data.must("count").at(["value"]).data()!), 3);
 const session = await locus.session.create({ libraries: ["count", "page", "secret", "ui"] });
 assert.deepEqual(session.now().libs.libraries.map((entry) => entry.name), ["count", "page"]);
 assert.deepEqual(session.now().local.map((entry) => entry.name), ["ui"]);
@@ -49,26 +49,26 @@ await assert.rejects(hsonLiveMap.locus.checkpoint(locus), /no durable backing/i)
 locus.dispose();
 
 const pathAuthority = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main <p/>/>" } }] });
-await pathAuthority.lib("page").at([0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
-assert.equal(pathAuthority.lib("page").at([0]).asElement()!.attrs.get("title"), "replaced");
+await pathAuthority.doc.must("page").at([0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
+assert.equal(pathAuthority.doc.must("page").at([0]).asElement()!.attrs.get("title"), "replaced");
 pathAuthority.dispose();
 
 const styled = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
   logicalMapId: "styled-authority" });
-assert.match(styled.lib("page").css.snapshot(), /color:red/);
+assert.match(styled.doc.must("page").css.snapshot(), /color:red/);
 styled.dispose();
 const combinedDefinition = { shared: [{ name: "page", definition: { document: "<main <button/>/>" }, css }],
   interactions: [descriptor], logicalMapId: "combined-interactions-css" } as const;
 const combined = hsonLiveMap.locus.create(combinedDefinition);
 assert.equal(combined.rev, 1); // Initial CSS is admitted at revision zero; the descriptor creates one transition.
-assert.match(combined.lib("page").css.snapshot(), /color:red/);
+assert.match(combined.doc.must("page").css.snapshot(), /color:red/);
 const combinedSystem = locus_map_internal(combined).capture().libraries.find((entry) => entry.name === "@hson/canonical-interactions");
 assert.ok(combinedSystem);
 const combinedValue = node_to_json_value(decode_hosted_root(combinedSystem.root));
 if (typeof combinedValue !== "object" || combinedValue === null || Array.isArray(combinedValue)
   || !Array.isArray(combinedValue.descriptors)) throw new Error("Initial interaction descriptors are missing.");
 assert.equal(combinedValue.descriptors.length, 1);
-  assert.equal(typeof combined.lib("page").css.clearAll, "function");
+  assert.equal(typeof combined.doc.must("page").css.clearAll, "function");
 combined.dispose();
 const combinedStorage = new MemoryCheckpointAdapter();
 const combinedDurable = await hsonLiveMap.locus.resume({ ...combinedDefinition, persistence: combinedStorage });
@@ -76,7 +76,7 @@ assert.equal(combinedDurable.rev, 1);
 combinedDurable.dispose();
 const combinedRestored = await hsonLiveMap.locus.resume({ ...combinedDefinition, persistence: combinedStorage });
 assert.equal(combinedRestored.rev, 1);
-assert.match(combinedRestored.lib("page").css.snapshot(), /color:red/);
+assert.match(combinedRestored.doc.must("page").css.snapshot(), /color:red/);
 const restoredSystem = locus_map_internal(combinedRestored).capture().libraries.find((entry) => entry.name === "@hson/canonical-interactions");
 assert.ok(restoredSystem);
 const restoredValue = node_to_json_value(decode_hosted_root(restoredSystem.root));
@@ -92,7 +92,7 @@ durable.dispose();
 const restored = await hsonLiveMap.locus.resume({ shared: [{ name: "page", definition: { document: "<main/>" }, css }],
   logicalMapId: "styled-durable", persistence: storage });
 assert.equal(restored.rev, revision);
-assert.match(restored.lib("page").css.snapshot(), /color:red/);
+assert.match(restored.doc.must("page").css.snapshot(), /color:red/);
 restored.dispose();
 
 const sheet: string = "main { display: block; } @keyframes pulse { from { opacity: 0; } to { opacity: 1; } }";
@@ -106,10 +106,10 @@ const sheet: string = "main { display: block; } @keyframes pulse { from { opacit
     main { display: grid; }`;
   const bare = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
   const governed = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" }, css: first }] });
-  bare.lib("page").css.stylesheet(first);
+  bare.doc.must("page").css.stylesheet(first);
   assert.deepEqual(bare.capture().libraries[0]?.css, locus_map_internal(governed).capture().libraries[0]?.css);
-  bare.lib("page").css.stylesheet(second);
-  await governed.lib("page").css.stylesheet(second);
+  bare.doc.must("page").css.stylesheet(second);
+  await governed.doc.must("page").css.stylesheet(second);
   assert.deepEqual(bare.capture().libraries[0]?.css, locus_map_internal(governed).capture().libraries[0]?.css);
   assert.deepEqual(bare.capture().libraries[0]?.css?.order.map((entry) => entry.kind),
     ["keyframes", "property", "rule", "rule"]);
@@ -120,21 +120,21 @@ const authored = hsonLiveMap.locus.create({ shared: [
   { name: "slide01", definition: { document: '<html <head/> <body <main "Slide"/>/>/>', schema: Hson.schema`<type "document">` }, css: sheet },
 ] });
 assert.equal(authored.rev, 0);
-assert.match(authored.lib("home").render(), /display:block/);
+assert.match(authored.doc.must("home").render(), /display:block/);
 const initialSheet = locus_map_internal(authored).capture().libraries.find((entry) => entry.name === "home")?.css;
 assert.ok(initialSheet);
-await authored.lib("home").css.stylesheet("main { color: red; }");
+await authored.doc.must("home").css.stylesheet("main { color: red; }");
 assert.equal(authored.rev, 1);
-await authored.lib("home").css.stylesheet(sheet);
+await authored.doc.must("home").css.stylesheet(sheet);
 assert.deepEqual(locus_map_internal(authored).capture().libraries.find((entry) => entry.name === "home")?.css, initialSheet);
 assert.equal(authored.rev, 2);
-await authored.lib("slide01").css.stylesheet("");
-assert.equal(authored.lib("slide01").css.snapshot(), "");
+await authored.doc.must("slide01").css.stylesheet("");
+assert.equal(authored.doc.must("slide01").css.snapshot(), "");
 assert.equal(authored.rev, 3);
-await authored.stage((draft) => { draft.lib("home").css.stylesheet(sheet); });
+await authored.stage((draft) => { draft.doc.must("home").css.stylesheet(sheet); });
 assert.equal(authored.rev, 3);
 const beforeInvalid = authored.rev;
-await assert.rejects(authored.lib("home").css.stylesheet("main { color: ; }"), /CSS|declaration|syntax/i);
+await assert.rejects(authored.doc.must("home").css.stylesheet("main { color: ; }"), /CSS|declaration|syntax/i);
 assert.equal(authored.rev, beforeInvalid);
 await authored.addLibraries({ shared: [{ name: "staged", definition: { document: "<main/>" }, css: sheet }] });
 assert.equal(authored.rev, 4);
@@ -150,12 +150,12 @@ const cssDurableDefinition = { shared: [{ name: "page", definition: { document: 
 const cssDurable = await hsonLiveMap.locus.resume(cssDurableDefinition);
 assert.equal(cssDurable.rev, 0);
 await cssDurable.addLibraries({ shared: [{ name: "later", definition: { document: "<main/>" }, css: sheet }] });
-await cssDurable.lib("page").css.stylesheet("main { color: blue; }");
+await cssDurable.doc.must("page").css.stylesheet("main { color: blue; }");
 assert.equal(cssDurable.rev, 2);
 cssDurable.dispose();
 const cssResumed = await hsonLiveMap.locus.resume(cssDurableDefinition);
 assert.equal(cssResumed.rev, 2);
-assert.match(cssResumed.lib("page").css.snapshot(), /color:blue/);
+assert.match(cssResumed.doc.must("page").css.snapshot(), /color:blue/);
 assert.deepEqual(locus_map_internal(cssResumed).capture().libraries.find((entry) => entry.name === "later")?.css, initialSheet);
 cssResumed.dispose();
 const localStyled = hsonLiveMap.locus.create({

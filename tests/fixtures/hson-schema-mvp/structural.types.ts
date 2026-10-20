@@ -26,7 +26,7 @@ type Assert<T extends true> = T;
 type Root = Assert<Equal<JsonFromSchema<typeof DeckSchema>, Deck>>;
 export const example: JsonFromSchema<typeof DeckSchema> = { slides: [{ id: "one", column1: [{ kind: "code", language: "hson", source: "<p/>" }] }] };
 const map = hsonLiveMap.fromLibraries({ slides: { data: { slides: [] }, schema: DeckSchema } });
-const lib = map.lib("slides");
+const lib = map.data.must("slides");
 export const rootSnapshot = lib.snap();
 export const slideSnapshot = lib.at(["slides", 0]).snap();
 export const pathSnapshot = lib.snap(["slides", 0]);
@@ -90,42 +90,42 @@ const stringCertificate: HsonData<typeof DeckSchema> = "<slides []>";
 declare const tree: JsonFromSchema<typeof TreeSchema>;
 const recursive: JsonFromSchema<typeof TreeSchema> = { value: "root", age: 1, children: [tree] };
 const treeMap = hsonLiveMap.fromLibraries({ tree: { data: { value: "root", age: 1, children: [] }, schema: TreeSchema } });
-export const recursiveSnapshot = treeMap.lib("tree").snap();
-const deepAge: number | undefined = treeMap.lib("tree").at(["children", 0, "children", 0, "age"]).snap();
-treeMap.lib("tree").at([]).replace(tree);
-treeMap.lib("tree").at([]).update(current => current);
+export const recursiveSnapshot = treeMap.data.must("tree").snap();
+const deepAge: number | undefined = treeMap.data.must("tree").at(["children", 0, "children", 0, "age"]).snap();
+treeMap.data.must("tree").at([]).replace(tree);
+treeMap.data.must("tree").at([]).update(current => current);
 // @ts-expect-error Recursive candidates retain primitive precision.
-treeMap.lib("tree").at(["children", 0, "age"]).set("bad");
+treeMap.data.must("tree").at(["children", 0, "age"]).set("bad");
 const mutual: JsonFromSchema<typeof MutualSchema> = { kind: "a", children: [{ kind: "b", children: [] }] };
 const mutualMap = hsonLiveMap.fromLibraries({ mutual: { data: { kind: "a", children: [] }, schema: MutualSchema } });
-export const mutualSnapshot = mutualMap.lib("mutual").snap();
-const mutualKind: "a" | undefined = mutualMap.lib("mutual").at(["children", 0, "children", 0, "kind"]).snap();
-mutualMap.lib("mutual").at([]).replace(mutual);
+export const mutualSnapshot = mutualMap.data.must("mutual").snap();
+const mutualKind: "a" | undefined = mutualMap.data.must("mutual").at(["children", 0, "children", 0, "kind"]).snap();
+mutualMap.data.must("mutual").at([]).replace(mutual);
 
 declare const one: JsonFromSchema<typeof SameShapeOneSchema>;
 const two: JsonFromSchema<typeof SameShapeTwoSchema> = one;
 declare const userInput: HsonData<typeof UserSchema>;
 const users = hsonLiveMap.fromLibraries({ user: { data: userInput, schema: UserSchema } });
-const user = users.lib("user").snap();
-users.lib("user").at(["pair"]).replace(user.pair);
-users.lib("user").at(["flags"]).update(current => current);
+const user = users.data.must("user").snap();
+users.data.must("user").at(["pair"]).replace(user.pair);
+users.data.must("user").at(["flags"]).update(current => current);
 // @ts-expect-error Readonly tuple forwarding must not broaden position types.
-users.lib("user").at(["pair"]).replace([true, "bad"]);
+users.data.must("user").at(["pair"]).replace([true, "bad"]);
 
 const locus = hsonLiveMap.locus.create({ shared: [{ name: "slides", definition: { data: { slides: [] }, schema: DeckSchema } }], actions: {
   read(context) {
-    const snapshot = context.lib("slides").snap();
+    const snapshot = context.data.must("slides").snap();
     const root: Assert<Equal<typeof snapshot, Deck>> = true;
-    const selected = context.lib("slides").at(["slides", 0]).snap();
+    const selected = context.data.must("slides").at(["slides", 0]).snap();
     const exact: Assert<Equal<typeof selected, Slide | undefined>> = true;
-    context.lib("slides").at(["slides"]).watch(value => {
+    context.data.must("slides").at(["slides"]).watch(value => {
       const watched: Assert<Equal<typeof value, readonly Slide[]>> = true;
       void watched;
     });
     void [root, exact];
   },
 } });
-const locusSlide = locus.lib("slides").at(["slides", 0]).snap();
+const locusSlide = locus.data.must("slides").at(["slides", 0]).snap();
 type LocusRead = Assert<Equal<typeof locusSlide, Slide | undefined>>;
 declare const treeView: LiveTree;
 treeView.bind.path(lib.at(["slides", 0]), (_target, current, previous) => {
@@ -148,27 +148,27 @@ const ReservedRefsSchema = Hson.schema`<type "data" defs <
 > content <a <ref "Evidence"> b <ref "ReadonlyArray"> c <ref "string"> d <ref "$SchemaRef2"> e <ref "dash-name">>>`;
 const reservedRefs: JsonFromSchema<typeof ReservedRefsSchema> = { a: { name: "Ada" }, b: ["one"], c: 3, d: true, e: [] };
 const reservedMap = hsonLiveMap.fromLibraries({ refs: { data: { a: { name: "Ada" }, b: [], c: 3, d: true, e: [] }, schema: ReservedRefsSchema } });
-reservedMap.lib("refs").at(["e"]).replace(reservedRefs.e);
+reservedMap.data.must("refs").at(["e"]).replace(reservedRefs.e);
 const mutableEmpty: [] = [];
 const readonlyEmpty: readonly [] = [];
 type EmptyProposal = Assert<Equal<LiveMapWriteValue<readonly []>, [] | readonly []>>;
 type MutableEmptyProposal = Assert<Equal<LiveMapWriteValue<[]>, []>>;
 const emptyProposal: LiveMapWriteValue<readonly []> = mutableEmpty;
 const readonlyEmptyProposal: LiveMapWriteValue<readonly []> = readonlyEmpty;
-reservedMap.lib("refs").at(["e"]).replace(mutableEmpty);
-reservedMap.lib("refs").at(["e"]).replace(readonlyEmpty);
-reservedMap.lib("refs").at(["e"]).update(current => current);
+reservedMap.data.must("refs").at(["e"]).replace(mutableEmpty);
+reservedMap.data.must("refs").at(["e"]).replace(readonlyEmpty);
+reservedMap.data.must("refs").at(["e"]).update(current => current);
 const arbitraryLength = new Array<never>(2);
 // @ts-expect-error An array variable does not establish exact empty-tuple cardinality.
 const badEmptyProposal: LiveMapWriteValue<readonly []> = arbitraryLength;
 // @ts-expect-error Mutable empty tuples also retain cardinality.
 const badMutableEmptyProposal: LiveMapWriteValue<[]> = arbitraryLength;
 // @ts-expect-error Selected governed writes must reject arbitrary array lengths.
-reservedMap.lib("refs").at(["e"]).replace(arbitraryLength);
+reservedMap.data.must("refs").at(["e"]).replace(arbitraryLength);
 // @ts-expect-error Update outputs must retain empty-tuple cardinality, too.
-reservedMap.lib("refs").at(["e"]).update(() => arbitraryLength);
+reservedMap.data.must("refs").at(["e"]).update(() => arbitraryLength);
 // @ts-expect-error Empty tuple proposals retain cardinality.
-reservedMap.lib("refs").at(["e"]).replace([1]);
+reservedMap.data.must("refs").at(["e"]).replace([1]);
 
 const nestedReadonly: readonly (readonly string[])[] = [["one"], []];
 const nestedProposal: LiveMapWriteValue<typeof nestedReadonly> = nestedReadonly;
@@ -185,7 +185,7 @@ const mutualProposal: LiveMapWriteValue<typeof mutualSnapshot> = mutualSnapshot;
 const badRecursiveProposal: LiveMapWriteValue<typeof recursiveSnapshot> = { value: "root", age: 1, children: [{ value: true, age: 0, children: [] }] };
 // @ts-expect-error Mutually recursive proposals retain nested discriminators.
 const badMutualProposal: LiveMapWriteValue<typeof mutualSnapshot> = { kind: "a", children: [{ kind: "a", children: [] }] };
-users.lib("user").at(["pair"]).update(current => current);
+users.data.must("user").at(["pair"]).update(current => current);
 void [reservedRefs, emptyProposal, readonlyEmptyProposal, badEmptyProposal, badMutableEmptyProposal,
   nestedProposal, badNestedProposal, objectProposal, unionProposal, badUnionProposal,
   recursiveProposal, mutualProposal, badRecursiveProposal, badMutualProposal];

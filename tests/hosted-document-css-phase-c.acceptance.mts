@@ -37,7 +37,7 @@ const map = hsonLiveMap.fromLibraries({
   privatePage: { document: '<html <head/> <body/>/>' },
   ungrantedPage: { document: '<html <head/> <body/>/>' },
 });
-const page = map.lib("page"), privatePage = map.lib("privatePage"), ungranted = map.lib("ungrantedPage");
+const page = map.doc.must("page"), privatePage = map.doc.must("privatePage"), ungranted = map.doc.must("ungrantedPage");
 if (page.mode !== "document" || privatePage.mode !== "document" || ungranted.mode !== "document") throw new Error("Expected documents.");
 const fidelitySource = String.raw`p { color: rgb(1, 2, 3) !important; }
   @layer { .layer { CoLoR: red !important; } .layer { c\6f lor: blue !important; } }
@@ -60,7 +60,7 @@ const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, [
     { name: "privatePage", ownership: "private" },
     { name: "ungrantedPage", ownership: "shared" },
   ]), defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ["page"] }) });
-const managedPage = locus.lib("page");
+const managedPage = locus.doc.must("page");
 if (managedPage.mode !== "document") throw new Error("Expected managed document.");
 const wire = pair();
 let detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
@@ -69,13 +69,13 @@ const echo = create_echo_aggregate_client_internal({ transport: test_echo_transp
 await echo.connect();
 const client = echo.map;
 if (client === undefined) throw new Error("Missing client map.");
-const clientPage = client.lib("page"), localPage = client.lib("localPage");
+const clientPage = client.doc.must("page"), localPage = client.doc.must("localPage");
 if (clientPage.mode !== "document" || localPage.mode !== "document") throw new Error("Expected client documents.");
 const initial = clientPage.css.snapshot();
 assert.match(initial, /rgb\(1,2,3\)/);
 assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, fidelityRecord);
 const noopRev = locus.rev;
-await locus.stage(draft => { const selected=draft.lib("page"); if ("graph" in selected) selected.css({domain:"css",kind:"replace",stylesheet:parse_document_stylesheet(fidelitySource, [])}); });
+await locus.stage(draft => { const selected=draft.doc.must("page"); if ("graph" in selected) selected.css({domain:"css",kind:"replace",stylesheet:parse_document_stylesheet(fidelitySource, [])}); });
 assert.equal(locus.rev, noopRev);
 assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, fidelityRecord);
 assert.throws(() => clientPage.css.clearAll(), /hosted|managed|projection|authority/i);
@@ -99,20 +99,20 @@ const rejectedBefore=locus.rev, rejectedRecord=client.capture();
 let rejectedCodeInvocations=0;
 for (const entries of [Array(1), Object.defineProperty([], "0", {get(){rejectedCodeInvocations++;throw Error("must not execute");},enumerable:true}), Object.assign([], {map(){rejectedCodeInvocations++;throw Error("must not execute map");}})]) {
   const malformed={rules:[],properties:[],keyframes:[],order:[{kind:"group",header:"@layer",entries}]};
-  await assert.rejects(()=>locus.stage(draft=>{const selected=draft.lib("page");if("graph" in selected) selected.css({domain:"css",kind:"replace",stylesheet:malformed as unknown as NonNullable<typeof fidelityRecord>});}));
+  await assert.rejects(()=>locus.stage(draft=>{const selected=draft.doc.must("page");if("graph" in selected) selected.css({domain:"css",kind:"replace",stylesheet:malformed as unknown as NonNullable<typeof fidelityRecord>});}));
   assert.equal(locus.rev,rejectedBefore);
   assert.deepEqual(client.capture(),rejectedRecord);
 }
 const rejectedWireCount=wire.sent.length;
 for(const operations of [Array(1),[, {domain:"css",kind:"clear-all"}], Object.defineProperty([],"0",{get(){rejectedCodeInvocations++;throw Error("executed batch getter")},enumerable:true}), Object.assign([{domain:"css",kind:"clear-all"}],{map(){rejectedCodeInvocations++;return []}})]) {
-  await assert.rejects(()=>locus.stage(draft=>{const selected=draft.lib("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations} as never);}));
+  await assert.rejects(()=>locus.stage(draft=>{const selected=draft.doc.must("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations} as never);}));
   assert.equal(locus.rev,rejectedBefore);assert.deepEqual(client.capture(),rejectedRecord);assert.equal(wire.sent.length,rejectedWireCount);
 }
 const retainedRule=fidelityRecord.rules[0]!;
-await locus.stage(draft=>{const selected=draft.lib("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations:[{domain:"css",kind:"rule",ruleKey:retainedRule.ruleKey,scopes:retainedRule.scopes,rule:retainedRule}]});});
+await locus.stage(draft=>{const selected=draft.doc.must("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations:[{domain:"css",kind:"rule",ruleKey:retainedRule.ruleKey,scopes:retainedRule.scopes,rule:retainedRule}]});});
 assert.equal(locus.rev,rejectedBefore);assert.deepEqual(client.capture(),rejectedRecord);assert.equal(wire.sent.length,rejectedWireCount);
 const batchRule=(color:string)=>({domain:"css" as const,kind:"rule" as const,ruleKey:"batch-proof",scopes:[],rule:{ruleKey:"batch-proof",selector:".batch-proof",scopes:[],declarations:[["color",color] as const]}});
-await locus.stage(draft=>{const selected=draft.lib("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations:[batchRule("red"),batchRule("blue")]});});
+await locus.stage(draft=>{const selected=draft.doc.must("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations:[batchRule("red"),batchRule("blue")]});});
 assert.equal(locus.rev,rejectedBefore+1);assert.equal(client.rev,localRev+1);
 assert.equal(wire.sent.length,rejectedWireCount+1);
 assert.match(wire.sent.at(-1) ?? "",/hson-document-css-op/);
@@ -122,7 +122,7 @@ for(const snapshot of [locus.session.get(sessionId)!.now({html:"page"}).libs,cli
 assert.equal(rejectedCodeInvocations,0);
 const append = (css: string, existing: readonly string[] = []) => ({ domain: "css" as const, kind: "append" as const,
   stylesheet: parse_document_stylesheet(css, existing) });
-await locus.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@media screen { p { background: navy; } }", page.css.list())); });
+await locus.stage((draft) => { const selected = draft.doc.must("page"); if ("graph" in selected) selected.css(append("@media screen { p { background: navy; } }", page.css.list())); });
 assert.match(clientPage.css.snapshot(), /background:navy/);
 assert.equal(client.rev, localRev + 2);
 assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, locus.session.get(sessionId)!.now({html:"page"}).libs.libraries.find(entry => entry.name === "page")?.css);
@@ -132,8 +132,8 @@ assert.equal(live.includes("PRIVATE_CSS_SENTINEL"), false);
 assert.equal(live.includes("UNGRANTED_CSS_SENTINEL"), false);
 const beforeHidden = wire.sent.length;
 const localRevBeforeHidden = client.rev;
-await locus.stage((draft) => { const selected = draft.lib("privatePage"); if ("graph" in selected) selected.css(append(".PRIVATE_LIVE_CSS_SENTINEL { color: black; }", privatePage.css.list())); });
-await locus.stage((draft) => { const selected = draft.lib("ungrantedPage"); if ("graph" in selected) selected.css(append(".UNGRANTED_LIVE_CSS_SENTINEL { color: yellow; }", ungranted.css.list())); });
+await locus.stage((draft) => { const selected = draft.doc.must("privatePage"); if ("graph" in selected) selected.css(append(".PRIVATE_LIVE_CSS_SENTINEL { color: black; }", privatePage.css.list())); });
+await locus.stage((draft) => { const selected = draft.doc.must("ungrantedPage"); if ("graph" in selected) selected.css(append(".UNGRANTED_LIVE_CSS_SENTINEL { color: yellow; }", ungranted.css.list())); });
 for (const raw of wire.sent.slice(beforeHidden)) {
   assert.equal(raw.includes("PRIVATE_LIVE_CSS_SENTINEL"), false);
   assert.equal(raw.includes("UNGRANTED_LIVE_CSS_SENTINEL"), false);
@@ -152,7 +152,7 @@ assert.equal(forbidden.type, "error");
 if (forbidden.type === "error") assert.equal(forbidden.error.code, "LOCUS_ACTION_FORBIDDEN");
 assert.match(ungranted.css.snapshot(), /UNGRANTED_CSS_SENTINEL/);
 echo.disconnect(); detach();
-await locus.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@keyframes pulse { from { opacity: 0; } to { opacity: 1; } }", page.css.list())); });
+await locus.stage((draft) => { const selected = draft.doc.must("page"); if ("graph" in selected) selected.css(append("@keyframes pulse { from { opacity: 0; } to { opacity: 1; } }", page.css.list())); });
 detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 const recovered = await echo.connect();
 assert.equal(recovered.outcome, "replay");
@@ -162,7 +162,7 @@ echo.disconnect(); detach();
 await locus.session.get(sessionId)!.update({ libraries: ["page", "ungrantedPage"] }, { principalId: "alice" });
 detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 assert.ok(["current", "reconcile"].includes((await echo.connect()).outcome));
-const expanded = client.lib("ungrantedPage");
+const expanded = client.doc.must("ungrantedPage");
 if (expanded.mode !== "document") throw new Error("Expected expanded document.");
 assert.match(expanded.css.snapshot(), /UNGRANTED_CSS_SENTINEL/);
 assert.match(expanded.css.snapshot(), /UNGRANTED_LIVE_CSS_SENTINEL/);
@@ -170,17 +170,17 @@ echo.disconnect(); detach();
 await locus.session.get(sessionId)!.update({ libraries: ["ungrantedPage"] }, { principalId: "alice" });
 detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 assert.ok(["current", "reconcile"].includes((await echo.connect()).outcome));
-assert.throws(() => client.lib("page"), /Unknown/);
+assert.throws(() => client.doc.must("page"), /Unknown/);
 assert.throws(() => clientPage.css.snapshot());
 wire.deliver(live);
-assert.throws(() => client.lib("page"), /Unknown/);
+assert.throws(() => client.doc.must("page"), /Unknown/);
 assert.equal(localPage.css.snapshot(), localCss);
 assert.throws(() => locus.session.get(sessionId)!.now({ html: "page" }), /unavailable/);
 echo.disconnect(); detach();
 await locus.session.get(sessionId)!.update({ libraries: ["page", "ungrantedPage"] }, { principalId: "alice" });
 detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 assert.ok(["current", "reconcile"].includes((await echo.connect()).outcome));
-const regranted = client.lib("page");
+const regranted = client.doc.must("page");
 if (regranted.mode !== "document") throw new Error("Expected regranted document.");
 assert.notEqual(regranted, clientPage);
 assert.match(regranted.css.snapshot(), /@keyframes pulse/);
@@ -191,10 +191,10 @@ const adapter = new MemoryCheckpointAdapter();
 const durable = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
 const persistent = await create_persistent_locus_hosted_aggregate_internal({ map: durable, persistence: adapter,
   logicalMapId: "hosted-css-phase-c" });
-await persistent.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append(String.raw`body { color: purple; } @layer { @media screen { .escaped-newline { --x:"review\
+await persistent.stage((draft) => { const selected = draft.doc.must("page"); if ("graph" in selected) selected.css(append(String.raw`body { color: purple; } @layer { @media screen { .escaped-newline { --x:"review\
 word"; font-family:var(--x); } } } @layer { .x { color: red !important; } .x { color: blue !important; } } @keyframes durable { 0% { opacity: .2; } from { opacity: .8; } }`)); });
 await persistent.checkpoint();
-await persistent.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { background: teal; }", persistent.map.lib("page").css.list())); });
+await persistent.stage((draft) => { const selected = draft.doc.must("page"); if ("graph" in selected) selected.css(append("body { background: teal; }", persistent.map.doc.must("page").css.list())); });
 const durableRecord = persistent.map.capture().libraries.find(entry => entry.name === "page")?.css;
 assert.ok(durableRecord);
 assert.equal(durableRecord.rules.find(rule=>rule.selector===".escaped-newline")?.declarations[0]?.[1], '"review\\\nword"');
@@ -203,7 +203,7 @@ const state = adapter.state("hosted-css-phase-c");
 if (state === undefined) throw new Error("Missing durable state.");
 const restored = await restore_persistent_locus_hosted_aggregate_internal("hosted-css-phase-c", state, { persistence: adapter });
 assert.ok(restored);
-const restoredPage = restored.map.lib("page");
+const restoredPage = restored.map.doc.must("page");
 if (restoredPage.mode !== "document") throw new Error("Expected restored document.");
 assert.match(restoredPage.css.snapshot(), /color:purple/);
 assert.match(restoredPage.css.snapshot(), /background:teal/);
@@ -211,7 +211,7 @@ assert.deepEqual(restored.map.capture().libraries.find(entry => entry.name === "
 const durableCss = restoredPage.css.snapshot();
 const beforeFailureRev = restored.rev;
 adapter.failAppend = new Error("CSS append rejected");
-await assert.rejects(() => restored.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("body { margin: 9px; }", restoredPage.css.list())); }),
+await assert.rejects(() => restored.stage((draft) => { const selected = draft.doc.must("page"); if ("graph" in selected) selected.css(append("body { margin: 9px; }", restoredPage.css.list())); }),
   { code: "LOCUS_PERSISTENCE_APPEND_FAILED" });
 assert.equal(restored.rev, beforeFailureRev);
 assert.equal(restoredPage.css.snapshot(), durableCss);
@@ -221,7 +221,7 @@ if (checkpointAtS2 === undefined) throw new Error("Missing stylesheet S2 checkpo
 const restoredAtS2 = await restore_persistent_locus_hosted_aggregate_internal("hosted-css-phase-c", checkpointAtS2,
   { persistence: adapter });
 assert.ok(restoredAtS2);
-const checkpointPage = restoredAtS2.map.lib("page");
+const checkpointPage = restoredAtS2.map.doc.must("page");
 if (checkpointPage.mode !== "document") throw new Error("Expected checkpoint stylesheet document.");
 assert.equal(checkpointPage.css.snapshot(), durableCss);
 assert.deepEqual(restoredAtS2.map.capture().libraries.find(entry => entry.name === "page")?.css, durableRecord);
@@ -230,7 +230,7 @@ const fallbackMap = hsonLiveMap.fromLibraries({
   page: { document: '<html <head/> <body/>/>' },
   hidden: { document: '<html <head/> <body/>/>' },
 });
-const fallbackPage = fallbackMap.lib("page"), fallbackHidden = fallbackMap.lib("hidden");
+const fallbackPage = fallbackMap.doc.must("page"), fallbackHidden = fallbackMap.doc.must("hidden");
 if (fallbackPage.mode !== "document" || fallbackHidden.mode !== "document") throw new Error("Expected fallback documents.");
 fallbackPage.css.stylesheet("body { color: olive; }");
 fallbackHidden.css.stylesheet(".HIDDEN_FALLBACK_CSS_SENTINEL { color: red; }");
@@ -245,16 +245,16 @@ const fallbackEcho = create_echo_aggregate_client_internal({ transport: test_ech
 await fallbackEcho.connect();
 const fallbackClient = fallbackEcho.map;
 if (fallbackClient === undefined) throw new Error("Missing fallback client.");
-const fallbackLocal = fallbackClient.lib("localPage");
+const fallbackLocal = fallbackClient.doc.must("localPage");
 if (fallbackLocal.mode !== "document") throw new Error("Expected local fallback document.");
 fallbackLocal.css.stylesheet("body { color: cyan; }");
 const fallbackLocalCss = fallbackLocal.css.snapshot();
 fallbackEcho.disconnect(); stopFallback();
-await fallbackHost.stage((draft) => { const selected = draft.lib("page"); if ("graph" in selected) selected.css(append("@media screen { body { background: coral; } }", fallbackPage.css.list())); });
-await fallbackHost.stage((draft) => { const selected = draft.lib("hidden"); if ("graph" in selected) selected.css(append(".HIDDEN_FALLBACK_TAIL_SENTINEL { color: blue; }", fallbackHidden.css.list())); });
+await fallbackHost.stage((draft) => { const selected = draft.doc.must("page"); if ("graph" in selected) selected.css(append("@media screen { body { background: coral; } }", fallbackPage.css.list())); });
+await fallbackHost.stage((draft) => { const selected = draft.doc.must("hidden"); if ("graph" in selected) selected.css(append(".HIDDEN_FALLBACK_TAIL_SENTINEL { color: blue; }", fallbackHidden.css.list())); });
 stopFallback = bind_locus_websocket(fallbackHost, fallbackWire.server);
 assert.equal((await fallbackEcho.connect()).outcome, "reconcile");
-const fallbackProjected = fallbackClient.lib("page");
+const fallbackProjected = fallbackClient.doc.must("page");
 if (fallbackProjected.mode !== "document") throw new Error("Expected fallback projected document.");
 assert.match(fallbackProjected.css.snapshot(), /background:coral/);
 assert.equal(fallbackLocal.css.snapshot(), fallbackLocalCss);
@@ -267,7 +267,7 @@ fallbackEcho.dispose(); stopFallback(); fallbackHost.dispose();
 const restartAdapter = new MemoryCheckpointAdapter();
 const restartInput = () => hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
 const restartMap = restartInput();
-const restartPage = restartMap.lib("page");
+const restartPage = restartMap.doc.must("page");
 if (restartPage.mode !== "document") throw new Error("Expected restart document.");
 const restartOptions = {
   persistence: restartAdapter, logicalMapId: "hosted-css-restart",
@@ -276,9 +276,9 @@ const restartOptions = {
   authorizeProjection: () => ({ libraries: ["page"] }),
 };
 const firstAuthority = await resume_locus_fixture(authority_definition_from_fixture_options({ map: restartMap, ...restartOptions }));
-const managedRestartPage = firstAuthority.lib("page");
+const managedRestartPage = firstAuthority.doc.must("page");
 if (managedRestartPage.mode !== "document") throw new Error("Expected managed restart document.");
-await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { color: maroon; } @layer { .x { color: red !important; } .x { color: blue !important; } }")); });
+await firstAuthority.stage((draft) => { draft.doc.must("page").css(append("body { color: maroon; } @layer { .x { color: red !important; } .x { color: blue !important; } }")); });
 await hsonLiveMap.locus.checkpoint(firstAuthority);
 const restartWire = pair();
 let stopRestart = bind_locus_websocket(firstAuthority, restartWire.server);
@@ -287,19 +287,19 @@ const restartEcho = create_echo_aggregate_client_internal({ transport: test_echo
 await restartEcho.connect();
 const restartClient = restartEcho.map;
 if (restartClient === undefined) throw new Error("Missing restart client.");
-const restartLocal = restartClient.lib("localPage");
+const restartLocal = restartClient.doc.must("localPage");
 if (restartLocal.mode !== "document") throw new Error("Expected restart local document.");
 restartLocal.css.stylesheet("body { color: lime; }");
 const restartLocalCss = restartLocal.css.snapshot();
 const beforeRejectedCssRev = firstAuthority.rev;
-const beforeRejectedClientCss = restartClient.lib("page");
+const beforeRejectedClientCss = restartClient.doc.must("page");
 if (beforeRejectedClientCss.mode !== "document") throw new Error("Expected projected CSS before failure.");
 const beforeRejectedCss = beforeRejectedClientCss.css.snapshot();
 const restartGroupRecord = restartClient.capture().libraries.find(entry => entry.name === "page")?.css;
 assert.equal(restartGroupRecord?.order[1]?.kind, "group");
 const beforeRejectedWire = restartWire.sent.length;
 restartAdapter.failAppend = new Error("CSS durable acceptance rejected");
-await assert.rejects(() => firstAuthority.stage((draft) => { draft.lib("page").css(append("body { margin: 11px; }", managedRestartPage.css.list())); }),
+await assert.rejects(() => firstAuthority.stage((draft) => { draft.doc.must("page").css(append("body { margin: 11px; }", managedRestartPage.css.list())); }),
   { code: "LOCUS_PERSISTENCE_APPEND_FAILED" });
 assert.equal(firstAuthority.rev, beforeRejectedCssRev);
 assert.equal(firstAuthority.rev, beforeRejectedCssRev);
@@ -307,7 +307,7 @@ assert.equal(restartEcho.lastAppliedRev, beforeRejectedCssRev);
 assert.equal(beforeRejectedClientCss.css.snapshot(), beforeRejectedCss);
 assert.equal(restartWire.sent.length, beforeRejectedWire);
 restartEcho.disconnect(); stopRestart();
-await firstAuthority.stage((draft) => { draft.lib("page").css(append("body { background: silver; }", managedRestartPage.css.list())); });
+await firstAuthority.stage((draft) => { draft.doc.must("page").css(append("body { background: silver; }", managedRestartPage.css.list())); });
 restartEcho.dispose();
 firstAuthority.dispose();
 const restarted = await resume_locus_fixture(authority_definition_from_fixture_options({ map: restartInput(), ...restartOptions }));
@@ -316,7 +316,7 @@ const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo
   logicalMapId: restarted.logicalMapId });
 assert.equal((await resumedEcho.connect()).outcome, "reconcile");
 assert.deepEqual(restartClient.capture().libraries.find(entry => entry.name === "page")?.css?.order[1], restartGroupRecord?.order[1]);
-const restartedProjected = restartClient.lib("page");
+const restartedProjected = restartClient.doc.must("page");
 if (restartedProjected.mode !== "document") throw new Error("Expected restarted projected document.");
 assert.match(restartedProjected.css.snapshot(), /color:maroon/);
 assert.match(restartedProjected.css.snapshot(), /background:silver/);

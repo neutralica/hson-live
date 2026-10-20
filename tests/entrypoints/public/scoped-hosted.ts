@@ -9,7 +9,7 @@ async function receive(session: LocusSession, transport: EchoReplicaTransport): 
   return hsonLiveMap.echo.create({ now, credential: session.credential!, transport });
 }
 function permissions(echo: Echo<LiveMap>) {
-  const library = echo.lib("scoped");
+  const library = echo.doc.must("scoped");
   if (library.source !== "authority-projected") return;
   if (library.mode === "document") {
     const command: Promise<void> = library.at([]).asElement()!.attrs.set("title", "authorized on server");

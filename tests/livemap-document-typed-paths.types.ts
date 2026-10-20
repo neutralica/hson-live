@@ -41,20 +41,20 @@ if (false) {
     explicit: { document: doc, schema: ANY_DOCUMENT },
   });
 
-  const direct = map.lib("direct");
+  const direct = map.doc.must("direct");
   const root = direct.at([]).snap();
   type Root = Expect<Equal<typeof root, HsonNode>>;
   const child = direct.at([0]).snap();
   type Child = Expect<Equal<typeof child, BroadEndpoint>>;
   direct.at([1]);
-  const annotatedChild = map.lib("annotated").at([0]).snap();
+  const annotatedChild = map.doc.must("annotated").at([0]).snap();
   type AnnotatedChild = Expect<Equal<typeof annotatedChild, BroadEndpoint>>;
-  const returnedChild = map.lib("returned").at([0]).snap();
+  const returnedChild = map.doc.must("returned").at([0]).snap();
   type ReturnedChild = Expect<Equal<typeof returnedChild, BroadEndpoint>>;
-  const explicitChild = map.lib("explicit").at([0]).snap();
+  const explicitChild = map.doc.must("explicit").at([0]).snap();
   type ExplicitChild = Expect<Equal<typeof explicitChild, BroadEndpoint>>;
 
-  const home = map.lib("home");
+  const home = map.doc.must("home");
   home.at([0]);
   const body = home.at([1]);
   const nested = home.at([1, 0]).snap();
@@ -83,8 +83,8 @@ if (false) {
   type ProxyRelative = Expect<Equal<typeof proxyRelative, BroadEndpoint>>;
   const proxyDynamic = home.proxy(path).$_.snap();
   type ProxyDynamic = Expect<Equal<typeof proxyDynamic, BroadEndpoint>>;
-  map.lib("explicit").at([]).at([0]);
-  map.lib("explicit").proxy([0]).$_.at([0]);
+  map.doc.must("explicit").at([]).at([0]);
+  map.doc.must("explicit").proxy([0]).$_.at([0]);
 
   // @ts-expect-error Document paths must be arrays.
   home.at(0);
@@ -97,7 +97,7 @@ if (false) {
 
   const precise = hsonLiveMap.fromLibraries({
     page: { document: '<main id="hero" <section "body"/>/>', schema: PageSchema },
-  }).lib("page");
+  }).doc.must("page");
   const preciseRoot = precise.at([]).snap();
   type PreciseRoot = Expect<Equal<typeof preciseRoot, HsonNode>>;
   const section = precise.at([0]);
@@ -130,15 +130,15 @@ if (false) {
     any: { document: doc, schema: AnyGeneratedSchema },
     main: { document: doc, schema: MainGeneratedSchema },
   });
-  const arrayChild = generated.lib("any").at([0]).snap();
+  const arrayChild = generated.doc.must("any").at([0]).snap();
   type ArrayChild = Expect<Equal<typeof arrayChild, BroadEndpoint>>;
-  const arrayNested = generated.lib("any").at([0, 0]).snap();
+  const arrayNested = generated.doc.must("any").at([0, 0]).snap();
   type ArrayNested = Expect<Equal<typeof arrayNested, BroadEndpoint>>;
-  const contentChild = generated.lib("main").at([999]).snap();
+  const contentChild = generated.doc.must("main").at([999]).snap();
   type ContentChild = Expect<Equal<typeof contentChild, BroadEndpoint>>;
-  const contentNested = generated.lib("main").at([0]).at([0]).snap();
+  const contentNested = generated.doc.must("main").at([0]).at([0]).snap();
   type ContentNested = Expect<Equal<typeof contentNested, BroadEndpoint>>;
-  const contentProxy = generated.lib("main").proxy([0]).$_.snap();
+  const contentProxy = generated.doc.must("main").proxy([0]).$_.snap();
   type ContentProxy = Expect<Equal<typeof contentProxy, BroadEndpoint>>;
 
   const arrayText = textArray.at([999]).snap();

@@ -62,7 +62,7 @@ export function prepare_hosted_document_internal(options: HostedContinuationOpti
     const replica = prepared;
     const echo = replica.echo;
     const documentName = options.document ?? ("document" in options.now ? options.now.document : undefined);
-    const explicitDocument = documentName === undefined ? undefined : replica.map.lib(documentName);
+    const explicitDocument = documentName === undefined ? undefined : replica.map.doc.must(documentName);
     if (explicitDocument !== undefined && explicitDocument.mode !== "document") {
       throw new Error("Explicit continuation selection is not a document library.");
     }
@@ -243,7 +243,7 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
       }
     }
     let disposed = false;
-    const selected = echo.lib(continuation_document_library_name(resolved.aggregate, resolved.selected));
+    const selected = echo.doc.must(continuation_document_library_name(resolved.aggregate, resolved.selected));
     if (selected.mode !== "document" || selected.source !== "authority-projected") {
       throw new Error("Hosted continuation selected document is not authority-projected.");
     }

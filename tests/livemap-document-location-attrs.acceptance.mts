@@ -37,7 +37,7 @@ const registry = (source: string) => {
   const schema = source.includes("<section") ? SectionMain : source.includes("<button") ? ButtonMain : source.includes('"text"') ? TextMain : EmptyMain;
   return hsonLiveMap.fromLibraries({ page: { document: source, schema } });
 };
-const element = (source: string) => registry(source).lib("page");
+const element = (source: string) => registry(source).doc.must("page");
 const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
 const code = (run: () => unknown, expected: LiveMapDocumentMutationError["code"]): void => assert.throws(run, (error: unknown) => error instanceof LiveMapDocumentMutationError && error.code === expected);
 const equivalent = (
@@ -75,7 +75,7 @@ check("every attrs write exactly equals the document API", () => {
   equivalent(`<main id="old"/>`, (map) => map.at([]).asElement()!.attrs.clear(), (map) => map.document.attrs.clear(target(0)));
 });
 check("proxy escape exposes the identical attrs capability", () => { const map = element(`<main <button/>/>`); assert.equal(map.proxy([0]).$_, map.at([0])); map.proxy([0]).$_.asElement()!.attrs.set("id", "submit"); assert.equal(map.at([0]).asElement()!.attrs.get("id"), "submit"); });
-check("attrs commits restore without special cases", () => { const source = registry(`<main/>`); const receiver = registry(`<main/>`); source.lib("page").at([]).asElement()!.attrs.replace({ class: "ready", title: "Hello" }); receiver.restore(source.capture()); assert.deepEqual(receiver.lib("page").root(), source.lib("page").root()); });
+check("attrs commits restore without special cases", () => { const source = registry(`<main/>`); const receiver = registry(`<main/>`); source.doc.must("page").at([]).asElement()!.attrs.replace({ class: "ready", title: "Hello" }); receiver.restore(source.capture()); assert.deepEqual(receiver.doc.must("page").root(), source.doc.must("page").root()); });
 check("Reflection consumes location attrs commits", () => { const map = element(`<main/>`); const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map); map.at([]).asElement()!.attrs.set("title", "Hello"); const main = retained_subject(binding.tree).$_content[0]; assert.equal(typeof main === "object" && main !== null ? main.$_attrs?.title : undefined, "Hello"); binding.dispose(); });
 check("attrs never extend the logical coordinate", () => { const map = element(`<main <button/>/>`); const location = map.at([0]); const before = location.path(); location.asElement()!.attrs.set("id", "submit"); assert.deepEqual(location.path(), before); assert.equal(location, map.at([0])); });
 check("attrs capability acquisition is frozen and non-minting", () => { const map = element(`<main/>`); const attrs = map.at([]).asElement()!.attrs; assert.equal(Object.isFrozen(attrs), true); assert.equal(JSON.stringify(map.root()).includes("quid"), false); assert.equal(map.rev, 0); });

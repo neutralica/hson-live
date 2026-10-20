@@ -49,7 +49,7 @@ const WideSchema = Hson.schema`<type "data" content <
   '__proto__' <optional "any"> constructor <optional "any"> prototype <optional "any">
 >>`;
 const registry = (data: string | Record<string, unknown>) => hsonLiveMap.fromLibraries({ state: { data: data as JsonValue, schema: WideSchema } });
-const dataLibrary = (map: ReturnType<typeof registry>): LiveMapDataLibrary<unknown> => map.lib("state");
+const dataLibrary = (map: ReturnType<typeof registry>): LiveMapDataLibrary<unknown> => map.data.must("state");
 const root = (map: ReturnType<typeof registry>) => dataLibrary(map).root();
 const payload = (map: ReturnType<typeof registry>) => map.capture().libraries[0]!.root.payload;
 const same = (left: ReturnType<typeof registry>, right: ReturnType<typeof registry>) => {
@@ -80,13 +80,13 @@ check("integer-like order remains exact across registry capture", () => {
   const target = registry('{}');
   target.restore(source.capture());
   same(source, target);
-  assert.deepEqual(source.lib("state").at([]).asObject()!.object.keys(), ["10", "2", "1"]);
+  assert.deepEqual(source.data.must("state").at([]).asObject()!.object.keys(), ["10", "2", "1"]);
 });
 check("dangerous names retain ordinary data semantics", () => {
   const source = registry('{"__proto__":"data","constructor":-0,"prototype":true}');
   const target = registry('{}'); target.restore(source.capture());
   same(source, target);
-  const value = target.lib("state").snap() as Record<string, unknown>;
+  const value = target.data.must("state").snap() as Record<string, unknown>;
   assert.equal(Object.hasOwn(value, "__proto__"), true);
   assert.equal(Object.is(value.constructor, -0), true);
 });
@@ -94,7 +94,7 @@ check("nested arrays, unusual strings, and negative zero remain exact", () => {
   const source = registry({ nested: { items: [1, -0, { value: "\ud800x\udfff" }] } });
   const target = registry('{}'); target.restore(source.capture());
   same(source, target);
-  const value = target.lib("state").snap() as { nested: { items: [number, number, { value: string }] } };
+  const value = target.data.must("state").snap() as { nested: { items: [number, number, { value: string }] } };
   assert.equal(Object.is(value.nested.items[1], -0), true);
   assert.equal(value.nested.items[2].value, "\ud800x\udfff");
 });
@@ -104,7 +104,7 @@ check("repeated source references are detached structural occurrences", () => {
   const target = registry('{}'); target.restore(source.capture());
   child.value = 9;
   same(source, target);
-  assert.deepEqual(target.lib("state").snap(), { left: { value: 1 }, right: { value: 1 } });
+  assert.deepEqual(target.data.must("state").snap(), { left: { value: 1 }, right: { value: 1 } });
 });
 check("null-prototype input remains exact", () => {
   const input = Object.create(null) as Record<string, unknown>;
@@ -115,27 +115,27 @@ check("null-prototype input remains exact", () => {
 check("feed values are detached while canonical order remains exact", () => {
   const map = registry('{"value":{}}');
   let observed: unknown;
-  map.lib("state").at(["value"]).feed((event) => {
+  map.data.must("state").at(["value"]).feed((event) => {
     observed = event.value;
     (event.value as Record<string, unknown>).tail = 99;
   });
-  map.lib("state").at(["value"]).replace({ "10": 10, "2": 2, "1": 1, tail: -0 });
+  map.data.must("state").at(["value"]).replace({ "10": 10, "2": 2, "1": 1, tail: -0 });
   assert.deepEqual(Object.keys(observed as object), ["1", "2", "10", "tail"]);
-  assert.equal((map.lib("state").snap() as { value: { tail: number } }).value.tail, -0);
+  assert.equal((map.data.must("state").snap() as { value: { tail: number } }).value.tail, -0);
 });
 check("detached root mutation cannot bypass commits", () => {
   const map = registry({ a: { value: 1 } });
   let commits = 0;
   map.commits.observe(() => { commits += 1; });
   const detached = root(map); detached.$_content.length = 0;
-  assert.deepEqual(map.lib("state").snap(), { a: { value: 1 } });
+  assert.deepEqual(map.data.must("state").snap(), { a: { value: 1 } });
   assert.equal(map.rev, 0); assert.equal(commits, 0);
 });
 check("plain object materialization can lose integer-key order", () => {
   const source = registry('{"10":10,"2":2,"1":1}');
-  const target = registry(source.lib("state").snap() as Record<string, unknown>);
-  assert.deepEqual(source.lib("state").at([]).asObject()!.object.keys(), ["10", "2", "1"]);
-  assert.deepEqual(target.lib("state").at([]).asObject()!.object.keys(), ["1", "2", "10"]);
+  const target = registry(source.data.must("state").snap() as Record<string, unknown>);
+  assert.deepEqual(source.data.must("state").at([]).asObject()!.object.keys(), ["10", "2", "1"]);
+  assert.deepEqual(target.data.must("state").at([]).asObject()!.object.keys(), ["1", "2", "10"]);
   assert.equal(canonical_hson_graph_equal(root(source), root(target)), false);
 });
 check("document attribute equality is unordered by name", () => {
@@ -149,7 +149,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
   check(`ordered-root receiving paths: ${fixture.id}`, () => {
     const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
     const source = hsonLiveMap.fromLibraries({ state: { data: fixture.expectedJson } });
-    assert.equal(canonical_hson_graph_equal(source.lib("state").root(), original), true);
+    assert.equal(canonical_hson_graph_equal(source.data.must("state").root(), original), true);
     const engine = internal_livemap_aggregate_authority(source);
     const snapshot = source.capture();
     const hosted = engine.captureHosted();
@@ -169,7 +169,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
       const stop = forbid_structural_js_enumeration();
       try {
         const reconstructed = receive();
-        const observed = reconstructed.lib("state").root();
+        const observed = reconstructed.data.must("state").root();
         assert.equal(canonical_hson_graph_equal(observed, original), true);
         const value = observed.$_content[0];
         assert.ok(is_Node(value));
@@ -178,10 +178,10 @@ for (const fixture of orderedRootReconstructionFixtures) {
       } finally { stop(); }
     }
     const js = hsonTransform.fromNode(fixture.graph).toJson().value();
-    assert.deepEqual(source.lib("state").snap(), js);
+    assert.deepEqual(source.data.must("state").snap(), js);
     const fromObject = hsonLiveMap.fromLibraries({ state: { data: js } });
-    assert.equal(canonical_hson_graph_equal(fromObject.lib("state").root(), hsonTransform.fromJson(js).toNode()), true);
-    assert.equal(canonical_hson_graph_equal(source.lib("state").root(), original), true);
+    assert.equal(canonical_hson_graph_equal(fromObject.data.must("state").root(), hsonTransform.fromJson(js).toNode()), true);
+    assert.equal(canonical_hson_graph_equal(source.data.must("state").root(), original), true);
     assert.equal(canonical_hson_graph_equal(decode_hosted_root(encode_hosted_root(original)), original), true);
     assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(hsonTransform.fromJson(fixture.expectedJson).toBinary().serialize()).toNode(), fixture.graph), true);
     assert.equal(canonical_hson_graph_equal(hsonTransform.fromHson(hsonTransform.fromNode(fixture.graph).toHson().serialize()).toNode(), fixture.graph), true);

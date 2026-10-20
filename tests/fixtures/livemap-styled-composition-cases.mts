@@ -34,7 +34,7 @@ export function legacy_flat_styled_map(input: LiveMapInput): LiveMap {
   return make_livemap_mirror_from_semantic_checkpoint_internal({ ...snapshot, libraries });
 }
 const part = (document: string, css: string) => ({ kind: "document", document, css });
-function page(map: LiveMap): LiveMapDocumentLibrary { const value = map.lib("page"); if (value.mode !== "document") throw Error("document"); return value; }
+function page(map: LiveMap): LiveMapDocumentLibrary { const value = map.doc.must("page"); if (value.mode !== "document") throw Error("document"); return value; }
 function identity(map: LiveMap) { return owner(map).libraries()[owner(map).hostedRegistry().libraries.findIndex(entry => entry.name === "page")]!; }
 function atomic(map: LiveMap, run: () => unknown, reason?: RegExp) {
   const before = map.capture(), ledger = owner(map).identityEpoch().issued(); let events = 0;
@@ -79,7 +79,7 @@ export function second_repair_fixture() {
     const replacement=hsonTransform.fromHson(`<hson-part lib="parts" at="equivalent" id="equivalent${index}"/>`).toNode().$_content[0];if(!is_Node(replacement))throw Error("connector");
     const target:LiveMapDocumentCommitTarget={kind:"path",path:path([0,0,1,0,0,0])};
     const result=index<2?p.document.content.replace(target,index,replacement)
-      :map.batch(draft=>{const document=draft.lib("page");if(document.mode!=="document")throw Error("document");document.graph({domain:"graph",op:"replace-content",target,index,replacement});});
+      :map.batch(draft=>{const document=draft.doc.must("page");if(document.mode!=="document")throw Error("document");document.graph({domain:"graph",op:"replace-content",target,index,replacement});});
     assert.equal(result.changed,true);assert.equal(result.rev,index+1);assert.deepEqual(p.root(),before);
   }
   return map;
@@ -138,7 +138,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     // The retained private traversal proves configured stylesheet selection.
     // Admit the same selected topology through ordinary automatic admission to
     // check actual receiving identity reuse without retaining an inert shell.
-    map.lib("parts").at(["outer","document"]).set('<section @:root <hson-part @:child lib="other" at="cross"/> <hson-part at="inner"/>/>');
+    map.parts.must("parts").at(["outer","document"]).set('<section @:root <hson-part @:child lib="other" at="cross"/> <hson-part at="inner"/>/>');
     map.addLibraries({page:{document:'<main <hson-part @:slot lib="parts" at="outer"/>/>'}});
     assert.deepEqual(page(map).root(),result.root);
     const aggregate=owner(map),id=identity(map),record=encode_portable_document_stylesheet(aggregate.stylesheet(id));
@@ -217,7 +217,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
       page: { document: '<main <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>' } });
     assert.equal(owner(map).documentOverlay(identity(map)).size, 4);
     assert.equal(page(map).q("root"), undefined); assert.equal(page(map).q("child"), undefined);
-    assert.equal(install_libraries_snapshot(map.cut({ documents: ["page"], data: [] }).libs).map.lib("page").mode, "document");
+    assert.equal(install_libraries_snapshot(map.cut({ documents: ["page"], data: [] }).libs).map.doc.must("page").mode, "document");
     const invalid = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<p/>', '[hson\\:quad="absent"]{color:red}') }) });
     atomic(invalid, () => invalid.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /subject/);
   });
@@ -241,7 +241,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     });
     try { assert.throws(() => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }), /changed/); }
     finally { allocator(aggregate.identityEpoch().owner, undefined); }
-    assert.equal(aggregate.identityEpoch().issued().size, 1); assert.equal(aggregate.documentOverlay(identity(map)).quidAtPath(path([0])), "987654321"); assert.throws(() => map.lib("bad"));
+    assert.equal(aggregate.identityEpoch().issued().size, 1); assert.equal(aggregate.documentOverlay(identity(map)).quidAtPath(path([0])), "987654321"); assert.throws(() => map.doc.must("bad"));
   });
   check("styled local topology is durable while public incremental delivery stays guarded", () => {
     const map = hsonLiveMap.fromLibraries({ parts: collection({ x: part('<button/>', 'button{color:red}') }) });
@@ -279,11 +279,11 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
       const ids = document_css_subject_identities(encode_portable_document_stylesheet(owner(current).stylesheet(identity(current))), "outbound");
       assert.equal(ids.length, 1); assert.equal(seen.has(ids[0]!), false); seen.add(ids[0]!);
       assert.match(page(current).render(), /color:red/); assert.doesNotMatch(JSON.stringify(page(current).root()), /hson-part/);
-      if (i) assert.throws(() => current.lib("parts")); previous = current;
+      if (i) assert.throws(() => current.parts.must("parts")); previous = current;
     }
     page(previous).document.content.remove({ kind: "path", path: [0, 0, 1, 0] }, 1);
     assert.equal(page(previous).css.snapshot(), ""); assert.equal(owner(previous).documentOverlay(identity(previous)).size, 0);
-    assert.equal(install_libraries_snapshot(previous.capture()).map.lib("page").mode, "document");
+    assert.equal(install_libraries_snapshot(previous.capture()).map.doc.must("page").mode, "document");
   });
   check("global conflicts, exhausted allocation and reentrant inner work reject the outer candidate", () => {
     for (const global of ['@keyframes repeated{from{opacity:0}}', '@property --repeated{syntax:"*";inherits:false}']) {
@@ -298,10 +298,10 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     try { atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /QUID/); }
     finally { allocator(owner(map).identityEpoch().owner, undefined); }
     let inner = false;
-    allocator(owner(map).identityEpoch().owner, () => { if (!inner) { inner = true; const state = map.lib("state"); state.at(["count"]).set(1); } return "123456789"; });
+    allocator(owner(map).identityEpoch().owner, () => { if (!inner) { inner = true; const state = map.data.must("state"); state.at(["count"]).set(1); } return "123456789"; });
     try { assert.throws(() => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }), /changed/); }
     finally { allocator(owner(map).identityEpoch().owner, undefined); }
-    assert.equal(map.lib("state").at(["count"]).snap(), 1); assert.throws(() => map.lib("bad"));
+    assert.equal(map.data.must("state").at(["count"]).snap(), 1); assert.throws(() => map.doc.must("bad"));
     assert.equal(owner(map).identityEpoch().issued().size, 0);
   });
   check("retained styled coverage: escaped identity syntax literals supports tests and preorder contributions survive restoration", () => {
@@ -331,7 +331,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
       p.css.sel(`[hson\\:quid="${quid}"]`).setProp('color','red');
       const parent=owner(map).documentQuad(identity(map),"slot0",undefined)!.path.slice(0,-1);let commits=0;
       const off=map.commits.observe(()=>commits++);
-      try{map.batch(draft=>{const selected=draft.lib("page");if(selected.mode!=="document")throw Error("document");
+      try{map.batch(draft=>{const selected=draft.doc.must("page");if(selected.mode!=="document")throw Error("document");
         if(first)selected.css.stylesheet('body{color:blue}');
         selected.content.replace({kind:"path",path:path(parent)},0,{$_tag:"i",$_content:[]});
         if(!first)selected.css.stylesheet('body{color:blue}');

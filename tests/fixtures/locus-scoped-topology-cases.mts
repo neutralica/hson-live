@@ -38,7 +38,7 @@ const additions = [{ name: "page", ownership: "shared" }, { name: "data", owners
 const catalog = [...initialCatalog, ...additions];
 function initial() { return hsonLiveMap.fromLibraries({ parts, initial: { document: '<aside @:initial/>' }, hidden: { data: { secret: "PRIVATE_LIBRARY" } } }); }
 function id(map: LiveMap, name: string) { const a = authority(map); return a.libraries()[a.hostedRegistry().libraries.findIndex(e => e.name === name)]!; }
-function data(map: LiveMap, name: string) { const library = map.lib(name); if (library.mode === "document") throw Error(); return library.snap(); }
+function data(map: LiveMap, name: string) { const library = map.data.must(name); if (String(library.mode) === "document") throw Error(); return library.snap(); }
 function state(map: LiveMap, name = "page") { return authority(map).scopedDocumentState(id(map, name)); }
 function preserved(map: LiveMap) {
   const a = authority(map), checkpoint = a.captureSemanticCheckpoint(), ledger = a.identityEpoch().issued(), epoch = a.identityEpoch().current();
@@ -77,15 +77,15 @@ export async function topology_tail_fixture() {
   const effective = await projection(map), snapshot = capture(map, effective, true);
   assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_UNUSED_PART|PRIVATE_LIBRARY|"name":"parts"/);
   const echo = receive(snapshot, local_initializers({ local: { data: 1 } })); assert.ok(echo.map);
-  assert.ok(equal(state(map), state(echo.map))); assert.throws(() => echo.map!.lib("parts"));
+  assert.ok(equal(state(map), state(echo.map))); assert.throws(() => echo.map!.parts.must("parts"));
   const sourceIds = issued(a.identityEpoch().issued());
   for (const quid of issued(authority(echo.map).identityEpoch().issued())) assert.ok(!sourceIds.includes(quid));
   const scoped = await l.stage(w => {
-    const d = w.lib("page"); if (d.mode !== "document") throw Error();
+    const d = w.doc.must("page"); if (d.mode !== "document") throw Error();
     d.content.remove({ kind: "path", path: path([0, 0]) }, 1);
     d.content.remove({ kind: "path", path: path([0, 0]) }, 1);
     d.attrs.set({ kind: "path", path: path([0]) }, "title", "ordered");
-    const data = w.lib("data"); if (data.mode === "document") throw Error(); data.at(["n"]).set(4);
+    const data = w.data.must("data"); if (String(data.mode) === "document") throw Error(); data.at(["n"]).set(4);
   });
   assert.ok(scoped); echo.replayScopedHosted({ ...encode_authoritative_scoped_commit(scoped), registryDigest: projected_registry_digest(effective) });
   assert.ok(equal(state(map), state(echo.map))); assert.equal(state(map).scopes.occurrences.length, 2);
@@ -109,7 +109,7 @@ export async function verify_topology_restart(f: Awaited<ReturnType<typeof topol
     const echo = receive(snapshot, local_initializers({ local: { data: 1 } })); assert.ok(echo.map);
     try {
       assert.ok(equal(state(l.map), state(echo.map)));
-      const op = await l.stage(w => { const d = w.lib("page"); if (d.mode !== "document") throw Error(); d.attrs.set({ kind: "path", path: path([0]) }, "title", "restarted"); });
+      const op = await l.stage(w => { const d = w.doc.must("page"); if (d.mode !== "document") throw Error(); d.attrs.set({ kind: "path", path: path([0]) }, "title", "restarted"); });
       assert.ok(op); echo.replayScopedHosted({ ...encode_authoritative_scoped_commit(op), registryDigest: projected_registry_digest(effective) });
       assert.ok(equal(state(l.map), state(echo.map)));
       await l.checkpoint(); const again = await resume(l.logicalMapId, { persistence: f.adapter, scopedDocuments: true }); assert.ok(again);
@@ -175,7 +175,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       const session = await locus.session.create({ libraries: ["initial"] }, { resumable: true });
       const sessionBefore = session.now(), verify = preserved(map);
       await assert.rejects(locus.addLibraries({ shared: [{ name: "earlier", definition: { data: 1 } }, { name: "page", definition: { document: '<hson-part lib="parts" at="missing"/>' } }] }), /Unknown Part/);
-      verify(); assert.deepEqual(session.now(), sessionBefore); assert.throws(() => locus.lib("earlier"));
+      verify(); assert.deepEqual(session.now(), sessionBefore); assert.throws(() => locus.data.must("earlier"));
     } finally { locus.dispose(); }
   });
   await check("H0b authenticated reauthorization reconstructs scoped receivers with management fencing", async () => {
@@ -199,17 +199,17 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       const fresh = compose_client_projection_internal(snapshot, local_initializers({ local: { data: 9 } }), true);
       const fa = authority(fresh), owner = {}; fa.claimManagement(owner);
       try {
-        assert.ok(equal(state(map), state(fresh))); const local = fresh.lib("local"), localRoot = fa.root(id(fresh, "local"));
+        assert.ok(equal(state(map), state(fresh))); const local = fresh.data.must("local"), localRoot = fa.root(id(fresh, "local"));
         const oldId = id(fresh, "page"), oldScopes = fa.documentScopes(oldId), epoch = fa.identityEpoch().current();
         reconcile_client_projection_snapshot_internal(fresh, owner, incoming, true);
         assert.notEqual(fa.documentScopes(id(fresh, "page")), oldScopes); assert.ok(equal(state(map), state(fresh)));
-        const retiring = fresh.lib("page"), retiringId = id(fresh, "page"), quids = issued(fa.identityEpoch().issued());
+        const retiring = fresh.doc.must("page"), retiringId = id(fresh, "page"), quids = issued(fa.identityEpoch().issued());
         const narrowed = await projection(map, ["initial"]); sessions.update_projection("topology", authorized, narrowed);
         // Authorized reconciliation removes projected scopes and retains client-local state.
         reconcile_client_projection_snapshot_internal(fresh, owner, composition(captureSession(map, sessions, "topology")), false);
-        assert.throws(() => fresh.lib("page")); assert.throws(() => fa.documentScopes(retiringId)); assert.throws(() => retiring.root());
+        assert.throws(() => fresh.doc.must("page")); assert.throws(() => fa.documentScopes(retiringId)); assert.throws(() => retiring.root());
         assert.equal(fa.identityEpoch().current(), epoch); assert.ok(quids.every(quid => fa.identityEpoch().issued().has(quid)));
-        assert.equal(fresh.lib("local"), local); assert.equal(fa.root(id(fresh, "local")), localRoot);
+        assert.equal(fresh.data.must("local"), local); assert.equal(fa.root(id(fresh, "local")), localRoot);
       } finally { fa.releaseManagement(owner); }
     } finally { r.releaseManagement(manager); sessions.dispose(); }
   });
@@ -218,7 +218,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
     map.addLibraries({ page: { document: '<main @:root <hson-part @:slot lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/>/>' },
       parts: { parts: { panel: { kind: "document", document: '<section @:root <hson-part at="leaf"/>/>' }, leaf: { kind: "document", document: '<button @:root/>' } } } });
     assert.equal(state(map).scopes.occurrences.length, 4); assert.equal(state(map).css.order.length, 0);
-    const doc = map.lib("page"); if (doc.mode !== "document") throw Error(); assert.doesNotMatch(doc.render(), /hson-part|hson:quid/);
+    const doc = map.doc.must("page"); if (doc.mode !== "document") throw Error(); assert.doesNotMatch(doc.render(), /hson-part|hson:quid/);
   });
   await check("H0b invalid final definitions, duplicate names, missing Parts and schema failures preserve the complete map", async () => {
     const map = initial(); map.addLibraries({ page });
@@ -295,7 +295,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
     const before = a.captureSemanticCheckpoint(), ledger = a.identityEpoch().issued();
     try {
       await assert.rejects(l.add_libraries_internal({ page }, undefined, [{ name: "page", ownership: "shared" }]), /append/);
-      assert.throws(() => map.lib("page")); assert.equal(a.identityEpoch().issued(), ledger);
+      assert.throws(() => map.doc.must("page")); assert.equal(a.identityEpoch().issued(), ledger);
       await queued; assert.equal(map.rev, before.revision + 1); assert.equal(data(map, "inner"), 7);
       assert.deepEqual(a.captureSemanticCheckpoint().libraries.slice(0, 3), before.libraries);
     } finally { l.dispose(); }

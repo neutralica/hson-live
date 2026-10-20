@@ -25,7 +25,7 @@ const components = styled_fixture();
 const componentOwner = internal_livemap_aggregate_authority(components), finalIdentity = componentOwner.libraries().at(-1);
 const componentDemand = document_css_subject_identities(encode_portable_document_stylesheet(componentOwner.stylesheet(finalIdentity)), "outbound");
 const componentCut = components.cut({html:"page", documents:["page"], data:[]});
-const selectors = selector_fixture(), selectorPage = selectors.lib("page");
+const selectors = selector_fixture(), selectorPage = selectors.doc.must("page");
 const selectorCut = selectors.cut({html:"page", documents:["page"], data:[]});
 const selectorPages = new Map([["/selectors", selectorCut]]);
 selectorPage.document.content.move({kind:"path",path:[0,0,1,0,0,0]},2,0);
@@ -41,20 +41,20 @@ const scoped = await scoped_fixture();
 const scopedPages = new Map();
 function capture_scoped_pages(suffix = "") {
   const captured = scoped.session.now({html:"page"});
-  const html = scoped.locus.lib("page").render();
+  const html = scoped.locus.doc.must("page").render();
   assert.equal(html, captured.html);
   scopedPages.set(`/hosted-scoped${suffix}`, captured);
   scopedPages.set(`/library-scoped${suffix}`, { ...captured, html });
 }
 capture_scoped_pages();
 await scoped.locus.stage(w => {
-  w.lib("page").css.sel("#left button").setProp("padding", "11px");
-  w.lib("page").css.sel("#left span").setProp("color", "rgb(70,80,90)");
+  w.doc.must("page").css.sel("#left button").setProp("padding", "11px");
+  w.doc.must("page").css.sel("#left span").setProp("color", "rgb(70,80,90)");
 });
 capture_scoped_pages("-changed");
-await scoped.locus.stage(w => { w.lib("page").at([1,0]).replace(scoped_node('<hson-part lib="parts" at="bare"/>')); });
+await scoped.locus.stage(w => { w.doc.must("page").at([1,0]).replace(scoped_node('<hson-part lib="parts" at="bare"/>')); });
 capture_scoped_pages("-retired");
-await scoped.locus.stage(w => { w.lib("page").at([1,2]).delete(); w.lib("page").at([1,1]).delete(); w.lib("page").at([1,0]).delete(); });
+await scoped.locus.stage(w => { w.doc.must("page").at([1,2]).delete(); w.doc.must("page").at([1,1]).delete(); w.doc.must("page").at([1,0]).delete(); });
 capture_scoped_pages("-empty");
 const bundle = await build({ entryPoints: ["tests/browser/document-portable-graft.entry.mjs"], bundle: true,
   write: false, platform: "browser", format: "iife", logLevel: "silent" });

@@ -1,3 +1,4 @@
+import { require_livemap_library_internal } from "../../src/api/livemap/livemap.libraries.js";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,7 +59,7 @@ function assert_recovered(locus: Parameters<typeof locus_map_internal>[0], origi
   assert.deepEqual(current.libraries.map(entry => entry.name), original.libraries.map(entry => entry.name));
   for (const library of original.libraries) {
     assert.ok(canonical_hson_graph_equal(library.root, library_root(current, library.name)), library.name);
-    const observed = locus_map_internal(locus).lib(library.name).root();
+    const observed = require_livemap_library_internal(locus_map_internal(locus), library.name).root();
     assert.ok(canonical_hson_graph_equal(library.root, observed));
   }
   assert_style_fidelity(main(library_root(current, "page")));
@@ -135,10 +136,10 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
     assert_checkpoint_roots(adapter, id, original);
     assert.equal(adapter.state(id)?.commits.length, 0);
     assert_style_fidelity(main(library_root(original, "page")));
-    assert.ok(Object.is(locus.lib("scalar").snap(), -0));
+    assert.ok(Object.is(locus.data.must("scalar").snap(), -0));
     locus.dispose();
     const reopened = await resume(fresh(id), id);
-    try { assert_recovered(reopened, original); assert.ok(Object.is(reopened.lib("scalar").snap(), -0)); }
+    try { assert_recovered(reopened, original); assert.ok(Object.is(reopened.data.must("scalar").snap(), -0)); }
     finally { reopened.dispose(); }
   });
   await check("Cut 8 ordered signed-zero replay is exact before and after checkpoint coverage", async () => {
@@ -146,8 +147,8 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
     const initial = semantic(locus);
     await hsonLiveMap.locus.checkpoint(locus);
     assert_checkpoint_roots(adapter, id, initial);
-    await locus.stage(draft => { draft.lib("state").at(["negative"]).set(-0); });
-    await locus.stage(draft => { draft.lib("state").at(["other"]).set(2); });
+    await locus.stage(draft => { draft.data.must("state").at(["negative"]).set(-0); });
+    await locus.stage(draft => { draft.data.must("state").at(["other"]).set(2); });
     assert.deepEqual(adapter.state(id)?.commits.map(record => [record.commit.prevRev, record.commit.rev]), [[0, 1], [1, 2]]);
     const operation = adapter.state(id)!.commits[0]!.commit.operations[0]!;
     assert.ok(operation.domain !== "document");
@@ -157,7 +158,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
     const reopenedAdapter = fresh(id), reopened = await resume(reopenedAdapter, id, data_fixture(0));
     try {
       assert_recovered(reopened, expected);
-      assert.ok(Object.is(reopened.lib("state").snap(["negative"]), -0));
+      assert.ok(Object.is(reopened.data.must("state").snap(["negative"]), -0));
       await hsonLiveMap.locus.checkpoint(reopened);
       assert_checkpoint_roots(reopenedAdapter, id, expected);
       assert.equal(reopenedAdapter.state(id)?.commits.length, 0);
@@ -168,7 +169,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
   await check("Cut 8 unrelated replay cannot mask checkpoint sign or style-unit loss", async () => {
     const id = "cut8-unrelated", adapter = fresh(id), locus = await resume(adapter, id);
     const initial = semantic(locus);
-    await locus.stage(draft => { draft.lib("state").at(["other"]).set(2); });
+    await locus.stage(draft => { draft.data.must("state").at(["other"]).set(2); });
     assert_checkpoint_roots(adapter, id, initial);
     const expected = semantic(locus); locus.dispose();
     const reopened = await resume(fresh(id), id);
@@ -178,7 +179,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
     const id = "cut8-replacement", adapter = fresh(id), locus = await resume(adapter, id);
     const initial = semantic(locus), replacement = style_branch();
     replacement.$_attrs!.title = "replacement";
-    await locus.stage(draft => { draft.lib("page").content.replace({ kind: "path", path: validate_document_path([]) }, 0, replacement); });
+    await locus.stage(draft => { draft.doc.must("page").content.replace({ kind: "path", path: validate_document_path([]) }, 0, replacement); });
     assert_checkpoint_roots(adapter, id, initial);
     const expected = semantic(locus); locus.dispose();
     const reopened = await resume(fresh(id), id);
@@ -196,7 +197,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
       assert.doesNotMatch([...adapter.chunks.values()].map(chunk => chunk.payload).join(""), /issuedQuids|identityEpoch|\["k","quid"/);
       locus.dispose(); adapter = fresh(id); locus = await resume(adapter, id);
       assert_recovered(locus, original);
-      await locus.stage(draft => { draft.lib("state").at(["negative"]).set(-0); });
+      await locus.stage(draft => { draft.data.must("state").at(["negative"]).set(-0); });
       assert.equal(locus.rev, 0);
     }
     locus.dispose();
@@ -218,7 +219,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
     await mismatch("persisted absent versus present undefined", copy => { style_leaf(main(library_root(copy, "page")), "height").unit = undefined; });
     await mismatch("nested data signed zero", copy => {
       const altered = hsonLiveMap.fromLibraries({ state: { data: { ...data_fixture(), nested: { pair: [0, 0], deeper: [{ negative: -0 }] } }, schema: Data } });
-      library_root(copy, "state").$_content = altered.lib("state").root().$_content;
+      library_root(copy, "state").$_content = altered.data.must("state").root().$_content;
     });
     await mismatch("ordered object members", copy => {
       const object = main(library_root(copy, "state")); object.$_content.reverse();
@@ -256,7 +257,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
       const invalid = clone_node(library_root(original, name));
       if (target === "page") style_leaf(main(invalid), "width").unit = null;
       else if (target === "attribute") main(invalid).$_attrs!.count = undefined;
-      else invalid.$_content = hsonLiveMap.fromLibraries({ wrong: { data: { negative: 0 } } }).lib("wrong").root().$_content;
+      else invalid.$_content = hsonLiveMap.fromLibraries({ wrong: { data: { negative: 0 } } }).data.must("wrong").root().$_content;
       replace_stored_root(adapter, id, name, invalid);
       const corrupt = adapter.state(id);
       const reopening = fresh(id);
@@ -274,7 +275,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
   });
   await check("Cut 8 covered tail after pruning failure resumes once and maintains next revision", async () => {
     const id = "cut8-prune", adapter = fresh(id), locus = await resume(adapter, id, data_fixture(0));
-    await locus.stage(draft => { draft.lib("state").at(["negative"]).set(-0); });
+    await locus.stage(draft => { draft.data.must("state").at(["negative"]).set(-0); });
     const expected = semantic(locus);
     adapter.failPrune = new Error("simulated crash after activation");
     await assert.rejects(hsonLiveMap.locus.checkpoint(locus));
@@ -286,7 +287,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
       assert_recovered(reopened, expected);
       let notifications = 0;
       const stop = locus_map_internal(reopened).commits.observe(() => notifications++);
-      await reopened.stage(draft => { draft.lib("state").at(["other"]).set(2); });
+      await reopened.stage(draft => { draft.data.must("state").at(["other"]).set(2); });
       stop();
       assert.equal(notifications, 1);
       assert.equal(reopened.rev, 2);

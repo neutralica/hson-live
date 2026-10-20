@@ -63,7 +63,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
       ['[hson\\:quad="_123456789"]', /Portable CSS requires a corresponding ordinary Library subject/],
     ] as const) {
       const client = compose(snapshot, local_initializers({ ui: { data: { value: 0 } }, existing: { document: "<main/>" } }));
-      const aggregate = owner(client), existing = client.lib("existing");
+      const aggregate = owner(client), existing = client.doc.must("existing");
       if (existing.mode !== "document") throw Error("document");
       const library = aggregate.libraries()[1];
       assert.equal(aggregate.hostedRegistry().libraries[1]?.name, "existing");
@@ -87,10 +87,10 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
         assert.deepEqual(client.capture(), before); assert.equal(client.rev, before.revision);
         assert.equal(aggregate.hostedRegistry(), registry); assert.deepEqual(aggregate.libraries(), ids);
         assert.equal(aggregate.identityEpoch().issued(), ledger); assert.deepEqual(aggregate.hostedPosition(), position);
-        assert.throws(() => client.lib("panel")); assert.throws(() => client.lib("alpha"));
+        assert.throws(() => client.data.must("panel")); assert.throws(() => client.doc.must("alpha"));
         // A rejected document seed must not retain even a mode contract.
         const retry = local_initializers({ panel: { data: { accepted: true } } });
-        install(client, retry); assert.equal(client.lib("panel").mode, "data-object");
+        install(client, retry); assert.equal(client.data.must("panel").mode, "data-object");
         assert.equal(commits, 1); assert.equal(positions, 1); assert.equal(client.rev, before.revision + 1);
         install(client, retry); assert.equal(commits, 1);
       } finally { stop(); stopPosition(); }
@@ -105,7 +105,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
     const observed: string[] = [], errors: unknown[] = [];
     const stop = client.commits.observe(() => {
       try {
-        const panel = client.lib("panel"); if (panel.mode !== "document") throw Error("document");
+        const panel = client.doc.must("panel"); if (String(panel.mode) !== "document") throw Error("document");
         observed.push(panel.css.snapshot()); install(client, [seed]);
       } catch (cause) { errors.push(cause); }
     });
@@ -113,7 +113,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
     assert.deepEqual(errors, []); assert.equal(observed.length, 1); assert.match(observed[0]!, /::part\(hson/);
     assert.equal(client.rev, before + 1); assert.equal(aggregate.identityEpoch().issued().size, ledger.size);
     const fresh = compose(snapshot, [seed]); assert.equal(fresh.rev, 0);
-    const panel = fresh.lib("panel"); if (panel.mode !== "document") throw Error("document");
+    const panel = fresh.doc.must("panel"); if (String(panel.mode) !== "document") throw Error("document");
     assert.equal(panel.css.snapshot(), observed[0]);
     panel.document.attrs.set({ kind: "path", path: [0] }, "title", "retained");
     install(fresh, [seed]); assert.equal(panel.document.attrs.get({ kind: "path", path: [0] }, "title"), "retained");
@@ -129,7 +129,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
       const seeds = [...inners, outer], observed = observe_seeds(client, seeds);
       try {
         during_root_encode(outer, 4, () => {
-          assert.equal(client.rev, 0); assert.throws(() => client.lib("outer"), /Unknown LiveMap Library/);
+          assert.equal(client.rev, 0); assert.throws(() => client.data.must("outer"), /Unknown LiveMap Library/);
           for (const inner of inners) install(client, [inner]);
           assert.equal(client.rev, count); assert_installed_seeds(client, inners);
         }, () => install(client, [outer]));
@@ -184,13 +184,13 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
         && error.message === "Prepared LiveMap authority transition revisions are invalid."));
       assert.deepEqual(client.capture(), afterInner); assert.equal(aggregate.hostedRegistry(), registry);
       assert.equal(aggregate.identityEpoch().issued(), ledger); assert.deepEqual(aggregate.libraries(), identities);
-      assert.throws(() => client.lib("outer"), /Unknown LiveMap Library/);
+      assert.throws(() => client.data.must("outer"), /Unknown LiveMap Library/);
       assert_installed_seeds(client, [inner]);
       assert.deepEqual(observed.errors, []); assert.deepEqual(observed.revisions, [1]); assert.deepEqual(observed.positions, [1]);
       // A different mode can claim the still-absent name: no rejected document
       // seed contract leaked out of the failed outer candidate.
       const retry = local_initializers({ outer: { data: { accepted: true } } });
-      install(client, retry); assert.equal(client.lib("outer").mode, "data-object");
+      install(client, retry); assert.equal(client.data.must("outer").mode, "data-object");
       assert_installed_seeds(client, [inner, ...retry]);
       assert.deepEqual(observed.errors, []); assert.deepEqual(observed.revisions, [1, 2]); assert.deepEqual(observed.positions, [1, 2]);
       assert.equal(client.rev, 2);

@@ -741,7 +741,7 @@ check("Mirror document and collection synchronization preserve clean projection 
   const source = hsonLiveMap.fromLibraries({ state: {
     data: { items: [{ id: "a" }, { id: "b" }] },
     schema: Hson.schema`<type "data" content <items "any">>`,
-  } }).lib("state");
+  } }).data.must("state");
   const projection = hson.mirror.collection<{ id: string }>({
     source: source.at(["items"]) as never,
     host,

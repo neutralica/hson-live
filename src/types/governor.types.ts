@@ -3,7 +3,7 @@ import type { LibraryShapeCapabilities, LibraryArrayRead, LibraryObjectRead, Lib
 import type { JsonValue, HsonNode } from "../core/types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
-  LiveMap, LiveMapKnownDefinitions, LiveMapKnownNames, LiveMapPathValue, LiveMapSetValue,
+  LiveMapPathValue, LiveMapSetValue,
   LiveMapWriteValue, LiveMapPartWrite, LivePath, LiveMapRootMode, LiveMapCssOp,
   LiveMapDocumentContent, LiveMapDocumentAttrs, LiveMapDocumentAttributeValue,
   LiveMapDocumentRequestTarget, LiveMapCut, LiveMapHtmlCut, LiveMapCutOptions,
@@ -120,24 +120,6 @@ export type DefinitionLibrary<TDefinition> =
       : LocusLibrary
     : never;
 
-export type LocusLibrarySelector<TMap extends LiveMap> = {
-  <TName extends LiveMapKnownNames<TMap>>(
-    name: TName,
-  ): DefinitionLibrary<LiveMapKnownDefinitions<TMap extends LiveMap<infer TDefinitions> ? TDefinitions : never>[TName]>;
-  (name: string): LocusLibrary;
-};
-
-type ReadDefinitionLibrary<TDefinition> =
-  LibraryDefinitionEvidence<TDefinition> extends infer E
-    ? E extends { family: infer F; value: infer V; schema: infer S extends HsonSchema }
-      ? F extends "document" ? ReadDocumentLibrary<V, S> : ReadDataLibrary<V, S>
-      : ReadLibrary
-    : never;
-export type ReadLibrarySelector<TMap extends LiveMap> = {
-  <TName extends LiveMapKnownNames<TMap>>(name: TName): ReadDefinitionLibrary<LiveMapKnownDefinitions<TMap extends LiveMap<infer TDefinitions> ? TDefinitions : never>[TName]>;
-  (name: string): ReadLibrary;
-};
-
 export type LibraryCut = {
   (options?: undefined): LiveMapCut;
   (options: LiveMapCutOptions): LiveMapCut | LiveMapHtmlCut;
@@ -145,35 +127,35 @@ export type LibraryCut = {
 
 export type LibraryCommits = LiveMapRegistryCommitObserverApi;
 
-export type EchoProjectedDataLibrary = Readonly<{
+export type EchoProjectedDataLibrary<TValue = JsonValue, TSchema extends HsonSchema = HsonSchema> = Readonly<{
   source: "authority-projected";
   readonly mode: Exclude<LiveMapRootMode, "document">;
   readonly rev: number;
   root: () => HsonNode;
-  snap: LiveMapDataLibrary["snap"];
-  at: (path: LivePath) => EchoProjectedDataPath;
-  schema: Readonly<{ get: () => HsonSchema }>;
+  snap: LiveMapDataLibrary<TValue, string, TSchema>["snap"];
+  at: ReadDataLibrary<TValue, TSchema>["at"];
+  schema: ReadDataLibrary<TValue, TSchema>["schema"];
 }>;
 
 export type EchoProjectedDataPath = ReadDataLocation;
 
-export type EchoLocalDataLibrary = Readonly<Pick<LiveMapDataLibrary, "mode" | "rev" | "root" | "snap" | "at" | "schema"> & {
+export type EchoLocalDataLibrary<TValue = JsonValue, TSchema extends HsonSchema = HsonSchema> = Readonly<Pick<LiveMapDataLibrary<TValue, string, TSchema>, "mode" | "rev" | "root" | "snap" | "at" | "schema"> & {
   source: "client-local";
 }>;
 
 export type EchoDocumentLocation = import("./livemap.types.js").AuthorityDocumentLocation<unknown, Promise<void>, "set">;
-export type EchoProjectedDocumentLibrary = Omit<LocusDocumentLibrary, "at" | "document" | "css" | "q"> & Readonly<{
+export type EchoProjectedDocumentLibrary<TEvidence = unknown, TSchema extends HsonSchema = HsonSchema> = Omit<LocusDocumentLibrary<TEvidence, TSchema>, "at" | "document" | "css" | "q"> & Readonly<{
   source: "authority-projected";
   css: ((operation: LiveMapCssOp) => Promise<void>) & import("./document-css.types.js").DocumentCssRead
     & Pick<import("./document-css.types.js").DocumentCssCommands<Promise<void>>, "clearAll" | "atProperty" | "keyframes">
     & Readonly<{ stylesheet: (text: string) => Promise<void> }>;
-  at: (path: readonly number[]) => EchoDocumentLocation;
+  at: import("./livemap.types.js").AuthorityDocumentSelector<TEvidence, Promise<void>, "set">;
   q: (name: string) => import("./livemap.types.js").AuthorityDocumentQuadLocation<never> | undefined;
   document: Omit<LocusDocumentLibrary["document"], "flags"> & Readonly<{
     flags: Pick<LocusDocumentLibrary["document"]["flags"], "has" | "set">;
   }>;
 }>;
-export type EchoLocalDocumentLibrary = Readonly<Pick<LiveMapDocumentLibrary, "mode" | "rev" | "root" | "at" | "render" | "css" | "commits" | "schema" | "q"> & {
+export type EchoLocalDocumentLibrary<TEvidence = unknown, TSchema extends HsonSchema = HsonSchema> = Readonly<Pick<LiveMapDocumentLibrary<TEvidence, string, TSchema>, "mode" | "rev" | "root" | "at" | "render" | "css" | "commits" | "schema" | "q"> & {
   source: "client-local";
   document: Omit<LiveMapDocumentLibrary["document"], "byQuid">;
 }>;

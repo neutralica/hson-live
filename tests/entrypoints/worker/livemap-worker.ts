@@ -19,10 +19,10 @@ const map = hsonLiveMap.fromLibraries({
     schema: Hson.schema`<type "data" content <ready "boolean" items <array "number">>>`,
   },
 });
-const state = map.lib("state");
+const state = map.data.must("state");
 // @ts-expect-error Data Libraries do not expose document QUAD access.
 state.q("member");
-const quadDocument = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main @:main/>` } }).lib("page");
+const quadDocument = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main @:main/>` } }).doc.must("page");
 const quad: LiveMapDocumentQuadLocation<"page"> | undefined = quadDocument.q("unknown");
 if (quad !== undefined) {
   const active: boolean = quad.active;
@@ -43,16 +43,16 @@ void empty.capture();
 const added = empty.addLibraries({ runtimePage: { document: Hson.document`<main/>` }, runtimeState: { data: 1 } });
 void added.commit.operations;
 void added.libraries.runtimePage.render();
-const runtimePage = empty.lib("runtimePage");
+const runtimePage = empty.doc.must("runtimePage");
 if (runtimePage.mode === "document") { void runtimePage.document.root(); void runtimePage.render(); }
 const scalar = hsonLiveMap.fromLibraries({ value: { data: 1, schema: ANY_DATA } });
-void scalar.lib("value").at([]).asScalar();
+void scalar.data.must("value").at([]).asScalar();
 void ANY_DOCUMENT.toHson();
 
 const documentMap = hsonLiveMap.fromLibraries({
   page: { document: `<main <button id="target" "Save"/>/>`, schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "button" attrs <props <id "string">> content "string">]>>` },
 });
-const page = documentMap.lib("page");
+const page = documentMap.doc.must("page");
 if (page.mode === "document") {
   const location = page.at([0]);
   location.watch((next) => { void next; });
@@ -69,7 +69,7 @@ if (page.mode === "document") {
   page.at(["content"]);
   page.render();
 }
-void documentMap.lib("page").render();
+void documentMap.doc.must("page").render();
 
 // @ts-expect-error Data locations do not provide HTML ID discovery.
 state.at([]).id("target");
@@ -140,7 +140,7 @@ optionalReceipt.commit.operations;
 optionalReceipt.libraries.optionalPage.render();
 optionalReceipt.libraries.optionalPage?.render();
 map.batch(writer => {
-  const items = writer.lib("state").at(["items"]);
+  const items = writer.data.must("state").at(["items"]);
   items.asArray().array.push(3);
   // @ts-expect-error Staged refinement supplies commands, not live observations.
   items.asArray().snap();

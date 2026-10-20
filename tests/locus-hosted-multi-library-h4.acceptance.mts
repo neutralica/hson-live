@@ -78,13 +78,13 @@ function make_map() {
 }
 
 function data(draft: LocusHostedAggregateStageWriter, name: string): LocusHostedAggregateDataStage {
-  const library = draft.lib(name);
-  if (library.mode === "document") throw new Error(`Expected data Library ${name}.`);
+  const library = draft.data.must(name);
+  if (String(library.mode) === "document") throw new Error(`Expected data Library ${name}.`);
   return library;
 }
 
 function document(draft: LocusHostedAggregateStageWriter, name: string): LocusHostedAggregateDocumentStage {
-  const library = draft.lib(name);
+  const library = draft.doc.must(name);
   if (!("graph" in library)) throw new Error(`Expected document Library ${name}.`);
   return library;
 }
@@ -263,7 +263,7 @@ await check("checkpoint-pruned generated identity is absent after fresh-runtime 
   );
   if (restored === undefined) throw new Error("Expected persisted hosted aggregate state.");
   const snapshot = internal_livemap_aggregate_authority(restored.map).captureHosted();
-  const page = restored.map.lib("page");
+  const page = restored.map.doc.must("page");
   if (!("document" in page)) throw new Error("Expected restored document Library.");
   assert.equal(page.document.byQuid(RETIRED_QUID), undefined);
   assert.equal(snapshot.identity.issuedQuids.includes(RETIRED_QUID), false);
@@ -358,7 +358,7 @@ await check("fresh-runtime local identity follows movement and precise updates a
   assert.equal(replayed.rev, 4);
   const replayAuthority = internal_livemap_aggregate_authority(replayed.map);
   assert.equal(replayAuthority.resolveQuid(RESTART_DOCUMENT_QUID), undefined);
-  const root = replayed.map.lib("page").root();
+  const root = replayed.map.doc.must("page").root();
   const main = root.$_content[0];
   if (!is_Node(main)) throw new Error("Expected restored main.");
   const wrapper = main.$_content[0];

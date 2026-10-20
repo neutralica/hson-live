@@ -150,7 +150,7 @@ export function owned_mutation_browser_cases(): number {
     const schema = Hson.schema.fromHson('<type "document" tag "main" content <repeat <tag "section" content <repeat <tag "p" content "empty">>>>>' as never);
     const incoming = (): HsonNode => { const p = n("p"); return n("section", n("_hson_elem", p, p)); };
     const map = hsonLiveMap.fromLibraries({ page: { document: n("_hson_root", n("main", n("_hson_elem", incoming()))), schema } });
-    const page = map.lib("page"), binding = hsonMirror(page), root = subject_for_tree(binding.tree), owner = at(root, 0);
+    const page = map.doc.must("page"), binding = hsonMirror(page), root = subject_for_tree(binding.tree), owner = at(root, 0);
     const dom = project_livetree(owner) as Element; document.body.append(dom);
     const path = (...segments: number[]) => ({ kind: "path" as const, path: validate_document_path([0, ...segments]) });
     try {

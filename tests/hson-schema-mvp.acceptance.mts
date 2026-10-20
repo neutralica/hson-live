@@ -161,7 +161,7 @@ check("Deck four-way ref union compiles, certifies, and generates four alternati
   assert.throws(() => schema.certify(Hson.canonical`<blocks [<kind "code" source 1>]>`));
   assert.equal(Hson.schema.fromHson(schema.toHson()).toHson(), schema.toHson());
   const map = hsonLiveMap.fromLibraries({ blocks: { data: { blocks: [{ kind: "paragraph", text: "body" }] }, schema } });
-  assert.deepEqual(map.lib("blocks").snap(), { blocks: [{ kind: "paragraph", text: "body" }] });
+  assert.deepEqual(map.data.must("blocks").snap(), { blocks: [{ kind: "paragraph", text: "body" }] });
   const registry = make_hosted_registry([{ name: "blocks", identity: Object.freeze({}), mode: "data-object", schema }]);
   assert.equal(Hson.schema.fromHson(registry.libraries[0]!.schema).toHson(), schema.toHson());
   const generated = generate_hson_schema_types("Deck", compiled.value.semantic, compiled.value.definitions).declarations;

@@ -64,7 +64,7 @@ assert.throws(() => hsonTransform.fromNode({ $_tag: "main", $_content: [] }));
 assert.equal(hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [{ $_tag: "main", $_content: [] }] }).toHson().serialize(), "<main/>");
 const admittedTree = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] }, { isolated: true });
 assert.notEqual(admittedTree.quid, localQuid);
-assert.equal(hsonLiveMap.fromLibraries({ page: { document: authored, schema } }).lib("page").mode, "document");
+assert.equal(hsonLiveMap.fromLibraries({ page: { document: authored, schema } }).doc.must("page").mode, "document");
 
 // All four portable carriers omit the active claim and do not inherit it.
 const hsonWire = source.toHson().serialize();

@@ -1,3 +1,5 @@
+import { make_family_selectors } from "../../internal/library-selectors.js";
+import { PART_COLLECTION_VALIDATION } from "./livemap.parts.js";
 import { normalize_document_request_target } from "./livemap.document.target.js";
 import { document_css_commands, capture_document_css_command } from "../../internal/document-css-commands.js";
 import { collection_commands } from "./livemap.collection-command.js";
@@ -234,15 +236,28 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
     });
     return staged;
   };
+  const selectedFacades = new Map<LiveMapLibraryIdentity, StagedDataLibrary | StagedDocumentLibrary>();
   const selected = (name: string): StagedDataLibrary | StagedDocumentLibrary => {
     assert_open();
     const binding = byName.get(name);
     if (binding === undefined) throw new Error(`Unknown staged LiveMap Library ${JSON.stringify(name)}.`);
-    return binding.mode === "document"
+    const existing = selectedFacades.get(binding.identity);
+    if (existing !== undefined) return existing;
+    const facade = binding.mode === "document"
       ? document_library(binding.identity)
-      : Object.freeze({ mode: binding.mode, at: (path: LivePath) => data_path(binding.identity, path) });
+      : Object.freeze({ mode: binding.mode, at: (path: LivePath) => { assert_open(); return data_path(binding.identity, path); } });
+    selectedFacades.set(binding.identity, facade);
+    return facade;
   };
-  const writer = Object.freeze({ lib: selected });
+  const writer = Object.freeze(make_family_selectors(name => {
+    assert_open();
+    const binding = byName.get(name);
+    if (binding === undefined) return undefined;
+    const contract = registry.libraries.find(entry => entry.name === name && entry.scope === undefined);
+    if (contract === undefined) throw new Error("Staged Library contract is unavailable.");
+    return { family: binding.mode === "document" ? "doc" : contract.validation === PART_COLLECTION_VALIDATION ? "parts" : "data",
+      schema: aggregate.librarySchema(binding.identity), handle: selected(name) };
+  }));
   const interactionSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
   if (interactionSystem !== undefined) {
     const interactionRoot = projected_value_from_hson_node(aggregate.systemRoot(interactionSystem));

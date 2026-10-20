@@ -46,7 +46,7 @@ const echo = create_echo_aggregate_client_internal({ transport: test_echo_transp
 await echo.connect();
 const clientMap = echo.map;
 assert.ok(clientMap);
-const base = clientMap.lib("base");
+const base = clientMap.data.must("base");
 const beforeClientRev = clientMap.rev;
 const beforeAuthorityRev = locus.rev;
 const beforeRegistry = clientMap.capture().registryDigest;
@@ -67,7 +67,7 @@ assert.equal(clientMap.capture().registryDigest, beforeRegistry);
 assert.equal(livemap_identity_epoch_accounting(base).issued, beforeIssued);
 assert.deepEqual(observedCommits, []);
 assert.equal(wire.sent.length, beforeSent);
-for (const name of ["preferences", "localPage", "replayed"]) assert.throws(() => clientMap.lib(name), /unknown/i);
+for (const name of ["preferences", "localPage", "replayed"]) assert.throws(() => clientMap.data.must(name), /unknown/i);
 const beforeAdmissionWire = wire.received.length;
 await locus.addLibraries({ private: [{ name: "privateState", definition: { data: { secret: "PRIVATE_ROOT_SENTINEL" } } }], shared: [{ name: "newPublic", definition: { data: { count: 2 } } }, { name: "page", definition: { document: Hson.document`<html <head/> <body <main <p "RUNTIME_PAGE_SENTINEL"/>/>/>/>` }, css: "main { display: block; }" }] });
 assert.equal(locus.rev, beforeAuthorityRev + 1);
@@ -92,11 +92,11 @@ assert.equal(result.sequence, 1);
 assert.equal(locus.rev, authorityMapRevBeforeProjection);
 assert.equal(echo.map, clientMap);
 assert.equal(clientMap.rev, beforeClientRev + 1);
-assert.equal(clientMap.lib("base"), base);
-assert.equal(clientMap.lib("newPublic").mode, "data-object");
-assert.equal(client_library_source_internal(clientMap.lib("newPublic")), "authority-projected");
-assert.equal(clientMap.lib("page").mode, "document");
-const projectedPage = clientMap.lib("page");
+assert.equal(clientMap.data.must("base"), base);
+assert.equal(clientMap.data.must("newPublic").mode, "data-object");
+assert.equal(client_library_source_internal(clientMap.data.must("newPublic")), "authority-projected");
+assert.equal(clientMap.doc.must("page").mode, "document");
+const projectedPage = clientMap.doc.must("page");
 if (projectedPage.mode !== "document") throw new Error("Expected projected document Library.");
 assert.match(projectedPage.css.snapshot(), /display:block/);
 assert.equal(wire.received.at(-1)?.includes("privateState"), false);
@@ -105,12 +105,12 @@ assert.match(cut.html, /RUNTIME_PAGE_SENTINEL/);
 assert.ok(JSON.stringify(cut.libs).includes("newPublic"));
 assert.equal(JSON.stringify(cut.libs).includes("PRIVATE_ROOT_SENTINEL"), false);
 await locus.stage((draft) => {
-  const library = draft.lib("newPublic");
-  if (library.mode === "document") throw new Error("Expected data Library.");
+  const library = draft.data.must("newPublic");
+  if (String(library.mode) === "document") throw new Error("Expected data Library.");
   library.at(["count"]).set(3);
 });
 assert.equal(echo.lastAppliedRev, locus.rev);
-const projected = clientMap.lib("newPublic");
+const projected = clientMap.data.must("newPublic");
 if (!("snap" in projected)) throw new Error("Expected projected data Library.");
 assert.equal(projected.snap(["count"]), 3);
 assert.equal((await echo.recover()).outcome, "current");
@@ -136,11 +136,11 @@ await assert.rejects(locus.addLibraries({
   shared: [{ name: "invalid", definition: { data: 2 } }],
 }), /duplicat/i);
 assert.equal(locus.rev, beforeInvalid);
-assert.throws(() => locus.lib("invalid"), /Unknown/);
+assert.throws(() => locus.data.must("invalid"), /Unknown/);
 const NumberSchema = Hson.schema`<type "data" content <value "number">>`;
 await assert.rejects(locus.addLibraries({ private: [{ name: "valid", definition: { data: { value: 1 } } }, { name: "invalidSchema", definition: { data: { value: "wrong" }, schema: NumberSchema } }] }), /Schema|schema|number/i);
 assert.equal(locus.rev, beforeInvalid);
-assert.throws(() => locus.lib("valid"), /Unknown/);
+assert.throws(() => locus.data.must("valid"), /Unknown/);
 await locus.addLibraries({ private: [{ name: "explicitPrivate", definition: { data: { secret: "EXPLICIT_PRIVATE_SENTINEL" } } }] });
 assert.equal(echo.lastAppliedRev, locus.rev);
 assert.equal(wire.received.at(-1)?.includes("explicitPrivate"), false);
@@ -160,7 +160,7 @@ const interactionEcho = create_echo_aggregate_client_internal({ transport: test_
 await interactionEcho.connect();
 const interactionClientMap = interactionEcho.map;
 assert.ok(interactionClientMap);
-const initialPage = interactionClientMap.lib("basePage");
+const initialPage = interactionClientMap.doc.must("basePage");
 if (initialPage.mode !== "document") throw new Error("Expected initial document Library.");
 const existingMirror = hsonMirror(initialPage);
 const existingTree = retained_subject(existingMirror.tree);
@@ -178,11 +178,11 @@ const interactionSessionId = interactionEcho.session.sessionId;
 assert.ok(interactionSessionId);
 await interactionLocus.session.get(interactionSessionId)!.update({ libraries: ["basePage", "nextPage"], systemFeatures: ["interactions"] });
 assert.equal(interactionEcho.map, interactionClientMap);
-assert.equal(interactionClientMap.lib("basePage"), initialPage);
+assert.equal(interactionClientMap.doc.must("basePage"), initialPage);
 assert.equal(retained_subject(existingMirror.tree), existingTree);
 assert.equal(existingMirror.diagnostics().updatesApplied, existingMirrorUpdates);
-assert.equal(interactionClientMap.lib("nextPage").mode, "document");
-const nextPage = interactionClientMap.lib("nextPage");
+assert.equal(interactionClientMap.doc.must("nextPage").mode, "document");
+const nextPage = interactionClientMap.doc.must("nextPage");
 if (nextPage.mode !== "document") throw new Error("Expected runtime document Library.");
 const nextMirror = hsonMirror(nextPage);
 assert.ok(retained_subject(nextMirror.tree));
@@ -212,7 +212,7 @@ assert.ok(collisionSessionId);
 await collisionLocus.session.get(collisionSessionId)!.update({ libraries: ["base", "shared"] });
 assert.equal(collisionEcho.diagnostics().status, "live");
 assert.equal(collisionClientMap.rev, localRev + 1);
-const projectedShared = collisionClientMap.lib("shared");
+const projectedShared = collisionClientMap.data.must("shared");
 assert.equal(client_library_source_internal(projectedShared), "authority-projected");
 if (!("snap" in projectedShared)) throw new Error("Expected projected data Library.");
 assert.equal(projectedShared.snap(["owner"]), "authority");
@@ -271,7 +271,7 @@ for (const ownership of ["private", "shared"] as const) {
   }), /local initializer|collides/i);
   assert.equal(reserved.rev, beforeRev);
   assert.equal(reservedAdapter.appendCalls.length, beforeCommits);
-  assert.throws(() => reserved.lib("ui"), /Unknown/i);
+  assert.throws(() => reserved.data.must("ui"), /Unknown/i);
   assert.deepEqual(reservedSession.now().local, reservedInitial.local);
   assert.equal(reservedSession.now().initializerDigest, reservedInitial.initializerDigest);
 }
@@ -285,13 +285,13 @@ assert.equal(adapter.state(durable.logicalMapId)?.commits.length, 1);
 adapter.failAppend = new Error("append failed");
 await assert.rejects(durable.addLibraries({ shared: [{ name: "refused", definition: { data: { value: 3 } } }] }), /append/i);
 assert.equal(durable.rev, 1);
-assert.throws(() => durable.lib("refused"), /Unknown/);
+assert.throws(() => durable.data.must("refused"), /Unknown/);
 durable.dispose();
 const resumedMap = hsonLiveMap.create();
 const resumed = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(resumedMap, []),
   persistence: adapter, logicalMapId: "public-hosted-admission" });
 assert.equal(resumed.rev, 1);
-const resumedFirst = resumed.lib("first");
+const resumedFirst = resumed.data.must("first");
 if (!("snap" in resumedFirst)) throw new Error("Expected restored data Library.");
 assert.equal(resumedFirst.snap(["value"]), 1);
 resumed.dispose();
@@ -304,7 +304,7 @@ const sortedRestartMap = hsonLiveMap.fromLibraries({ middle: { data: { value: 0 
 const sortedRestart = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(sortedRestartMap, [
     { name: "middle", ownership: "shared" },
   ]), persistence: sortedAdapter, logicalMapId: "sorted-hosted-admission" });
-assert.equal(sortedRestart.lib("aardvark").mode, "data-object");
+assert.equal(sortedRestart.data.must("aardvark").mode, "data-object");
 sortedRestart.dispose();
 process.stdout.write("ok - public admission uses the durable authority gate atomically\n");
 
@@ -315,8 +315,8 @@ const pendingBatch = capturedLocus.addLibraries({ shared: [{ name: "one", defini
 Object.assign(mutableBatch, { unclassified: { data: { secret: "LATE_LIBRARY_SENTINEL" } } });
 await pendingBatch;
 assert.equal(capturedLocus.rev, 1);
-assert.equal(capturedLocus.lib("one").mode, "data-object");
-assert.throws(() => capturedLocus.lib("unclassified"), /Unknown/);
+assert.equal(capturedLocus.data.must("one").mode, "data-object");
+assert.throws(() => capturedLocus.data.must("unclassified"), /Unknown/);
 await capturedLocus.addLibraries({ private: [{ name: "inherited",
   definition: { data: { secret: "INHERITED_EXPOSURE_SENTINEL" } } }] });
 const capturedWire = sockets();

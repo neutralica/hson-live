@@ -56,8 +56,8 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
 const exact = Hson.data.fromHson(Hson.canonical`<'10' -0 '2' 2 __proto__ <polluted true>>`);
 const authorityMap = make_map();
 enable_interactions(authorityMap);
-set_livemap_document_quid_candidate_source_for_tests(authorityMap.lib("page").document, () => QUID);
-acquire_document_identity(authorityMap.lib("page").document, { kind: "path", path: validate_document_path([0, 0, 0]) });
+set_livemap_document_quid_candidate_source_for_tests(authorityMap.doc.must("page").document, () => QUID);
+acquire_document_identity(authorityMap.doc.must("page").document, { kind: "path", path: validate_document_path([0, 0, 0]) });
 const descriptor: InteractionDescriptor = Object.freeze({
   id: "worker", subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener, kind: "locus", key: "save", payload: exact,
 });
@@ -80,8 +80,8 @@ echo.connect();
 await echo.session.create();
 await echo.completeRecovery();
 
-const reflection = hsonMirror(replicaMap.lib("page"));
-const page = replicaMap.lib("page");
+const reflection = hsonMirror(replicaMap.doc.must("page"));
+const page = replicaMap.doc.must("page");
 if (!("document" in page)) throw new Error("Expected document library.");
 const localQ = "000008398";
 set_livemap_document_quid_candidate_source_for_tests(page.document, () => localQ);

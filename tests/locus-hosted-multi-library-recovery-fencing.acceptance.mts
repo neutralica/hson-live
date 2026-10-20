@@ -126,8 +126,8 @@ function make_projected_map() {
 }
 
 function state(draft: LocusHostedAggregateStageWriter): LocusHostedAggregateDataStage {
-  const selected = draft.lib("state");
-  if (selected.mode === "document") throw new Error("Expected state data library.");
+  const selected = draft.data.must("state");
+  if (String(selected.mode) === "document") throw new Error("Expected state data library.");
   return selected;
 }
 

@@ -36,7 +36,7 @@ function check(name: string, run: () => void): void {
 const MainSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 function owners(source = `<main a="one" b="two" selected/>`): { tree: LiveTree; map: LiveMapDocumentLibrary } {
   const tree = hson.liveTree.fromHson(source);
-  const map = hson.liveMap.fromLibraries({ page: { document: source, schema: MainSchema } }).lib("page");
+  const map = hson.liveMap.fromLibraries({ page: { document: source, schema: MainSchema } }).doc.must("page");
   return { tree, map };
 }
 

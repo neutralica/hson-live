@@ -25,7 +25,7 @@ const extension = join(root, "editors/vscode-hson");
 const manifest = JSON.parse(readFileSync(join(extension, "package.json"), "utf8"));
 const plugin = manifest.contributes.typescriptServerPlugins[0].name;
 const schema = 'import { Hson, type JsonFromSchema } from "hson-live";\nconst before: number = "before";\nexport const Thing = Hson.schema`<type "data" content <name "string">>`;\nconst between: number = "between";\nexport const Slide = Hson.schema`<type "document">`;\nexport const Twin = Hson.schema`<type "document">`;\nexport const Page = Hson.schema`<type "document" tag "main" content "string">`;\nconst after: number = "after";\ndeclare const local: JsonFromSchema<typeof Thing>;\nlocal.na';
-const consumer = 'import { hsonLiveMap, type JsonFromSchema, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin, Page } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: JsonFromSchema<typeof Thing>;\nconst wrong: number = value.name;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\ntype WrongMode = HsonData<typeof Slide>;\nconst map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\nmap.lib("home").schema.use(Page);\nconst exactPage: typeof Page = map.lib("home").schema.get();\nconst pageText: string = map.lib("home").at([0]).snap();\n';
+const consumer = 'import { hsonLiveMap, type JsonFromSchema, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin, Page } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: JsonFromSchema<typeof Thing>;\nconst wrong: number = value.name;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\ntype WrongMode = HsonData<typeof Slide>;\nconst map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\nmap.doc.must("home").schema.use(Page);\nconst exactPage: typeof Page = map.doc.must("home").schema.get();\nconst pageText: string = map.doc.must("home").at([0]).snap();\n';
 const file = name => join(directory, name);
 writeFileSync(file("package.json"), '{"type":"module"}');
 writeFileSync(file("schema.ts"), schema);
@@ -304,7 +304,7 @@ try {
     assert.equal((await diagnostics("consumer.ts")).length, 3);
   });
   await check("unsaved Schema attachment refines immediately and removal withdraws the proof", async () => {
-    const withoutAttachment = consumer.replace('map.lib("home").schema.use(Page);\n', "");
+    const withoutAttachment = consumer.replace('map.doc.must("home").schema.use(Page);\n', "");
     await editConsumer(withoutAttachment);
     const broad = await diagnostics("consumer.ts");
     assert.ok(broad.some(error => JSON.stringify(error.start) === JSON.stringify(location(withoutAttachment, withoutAttachment.indexOf("exactPage:")))), JSON.stringify(broad));
@@ -407,7 +407,7 @@ try {
   });
   await check("upstream Schema producer rejection withdraws attachment precision and recovers unsaved", async () => {
     const body = '<type "data" content <name "string">>';
-    const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.lib("state").schema.use(Bad);\r\nconst name: string = map.lib("state").at(["name"]).snap();\r\nconst wrong: number = map.lib("state").at(["name"]).snap();\r\n`;
+    const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.data.must("state").schema.use(Bad);\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n`;
     const assertValid = async () => {
       const errors = await diagnostics("consumer.ts");
       assert.equal(errors.length, 1, JSON.stringify(errors));

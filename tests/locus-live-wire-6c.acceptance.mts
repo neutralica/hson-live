@@ -31,8 +31,8 @@ const server = create_locus_hosted_aggregate_authority_internal({ map, libraries
   { name: "UNSELECTED_NAME_SENTINEL", ownership: "shared" },
 ], defaultProjection: { libraries: ["A"] }, authorizeProjection: () => ({ libraries: ["A", "B"] }) });
 function data(draft: LocusHostedAggregateStageWriter, name: string) {
-  const library = draft.lib(name);
-  if (library.mode === "document") throw new Error("Expected data library.");
+  const library = draft.data.must(name);
+  if (String(library.mode) === "document") throw new Error("Expected data library.");
   return library;
 }
 function pair(transform: (raw: string) => string = raw => raw) {
@@ -167,8 +167,8 @@ for (const [connection, index, visible, other] of [
 }
 assert.equal(echo.lastAppliedRev, 4);
 assert.equal(echo.map?.rev, 1);
-const echoA = echo.map?.lib("A");
-if (echoA === undefined || echoA.mode === "document") throw new Error("Expected projected A data library.");
+const echoA = echo.map?.data.must("A");
+if (echoA === undefined || String(echoA.mode) === "document") throw new Error("Expected projected A data library.");
 assert.equal(echoA.snap(["value"]), "SMALL_A_MIXED_SENTINEL");
 
 const oversizedVisible = `VISIBLE_OVERSIZE_WIRE_SENTINEL_${"y".repeat(4_500_000)}`;
@@ -187,7 +187,7 @@ assert.equal(echoA.snap(["value"]), "SMALL_A_MIXED_SENTINEL");
 assert.equal(live(a).length, beforeRejected);
 assert.equal(live(b).length, beforeRejectedB);
 assert.equal(live(echoPair).length, beforeRejectedEcho);
-const authorityB = map.lib("B");
+const authorityB = map.data.must("B");
 if (!("snap" in authorityB)) throw new Error("Expected B data library.");
 assert.equal(authorityB.snap(["value"]), "SMALL_B_MIXED_SENTINEL");
 
@@ -232,8 +232,8 @@ tightConnection.client.send(JSON.stringify({ type: "recover", id: "tight-recover
 await settle();
 assert.ok(tightConnection.received.some((raw) => JSON.parse(raw).type === "recovery-caught-up"));
 await assert.rejects(() => tightServer.stage((draft) => {
-  const library = draft.lib("A");
-  if (library.mode === "document") throw new Error("Expected data library.");
+  const library = draft.data.must("A");
+  if (String(library.mode) === "document") throw new Error("Expected data library.");
   library.at(["value"]).set("A1");
 }));
 assert.equal(tightMap.rev, 0);
@@ -300,27 +300,27 @@ for (const invalid of invalid_tagged_graphs) {
   const owned = client.map;
   if (!owned) throw new Error("Expected live replica.");
   const before = owned.capture();
-  const local = owned.lib("local");
-  const page = owned.lib("page");
+  const local = owned.data.must("local");
+  const page = owned.doc.must("page");
   let publications = 0;
   const stop = owned.commits.observe(() => { publications += 1; });
   await server.stage(draft => {
-    const page = draft.lib("page");
+    const page = draft.doc.must("page");
     if (page.mode !== "document") throw new Error("Expected page.");
     page.content.insert({ kind: "path", path: validate_document_path([]) }, 1, { $_tag: "span", $_content: [] });
   });
   assert.deepEqual(owned.capture(), before, invalid.name);
   assert.equal(client.lastAppliedRev, 0, invalid.name);
-  assert.equal(owned.lib("page"), page);
-  assert.equal(owned.lib("local"), local);
+  assert.equal(owned.doc.must("page"), page);
+  assert.equal(owned.data.must("local"), local);
   assert.equal(publications, 0);
   corrupt = false;
   client.disconnect(); detach();
   detach = bind_locus_websocket(server, connection.socket);
   await client.connect();
   assert.equal(client.lastAppliedRev, 1);
-  assert.equal(canonical_hson_graph_equal(owned.lib("page").root(), source.lib("page").root()), true);
-  assert.equal(owned.lib("local"), local);
+  assert.equal(canonical_hson_graph_equal(owned.doc.must("page").root(), source.doc.must("page").root()), true);
+  assert.equal(owned.data.must("local"), local);
   stop(); client.dispose(); detach(); server.dispose();
 }
 process.stdout.write("Step 6C live socket wire acceptance passed.\n");

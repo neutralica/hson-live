@@ -34,7 +34,7 @@ export async function h0a_tail_fixture() {
     await l.stage(w => {
       page(w).css({ domain: "css", kind: "rule", ruleKey: "independent", scopes: [],
         rule: { ruleKey: "independent", scopes: [], selector: "article", declarations: [["margin", "5px"]] } });
-      const data = w.lib("data"); if (data.mode === "document") throw Error(); data.at(["n"]).set(17);
+      const data = w.data.must("data"); if (String(data.mode) === "document") throw Error(); data.at(["n"]).set(17);
       page(w).graph({ domain: "graph", op: "replace-root", mode: "document", root: replacement() });
       page(w).attrs.set(root, "title", "H0a");
       page(w).css({ domain: "css", kind: "property", name: "--accent",
@@ -149,7 +149,7 @@ export async function h0a_cases(check: (name: string, run: () => Promise<void>) 
     let queued: Promise<unknown> | undefined;
     f.adapter.appendCommit = async () => {
       f.adapter.appendCommit = append;
-      queued = l.stage(w => { const d = w.lib("data"); if (d.mode === "document") throw Error(); d.at(["n"]).set(29); });
+      queued = l.stage(w => { const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(29); });
       throw Error("storage rejected H0a");
     };
     try {

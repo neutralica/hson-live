@@ -824,9 +824,9 @@ check("internal exact LiveMap installation remains cold while public raw admissi
   assert_portable_node_reject(() => hsonLiveMap.fromLibraries({ page: { document: valid, schema: MainParagraph } }));
   const map = exactMap(valid, MainParagraph);
   assert.deepEqual(valid, before);
-  assert.equal(map.lib("page").mode, "document");
-  assert.equal(map.lib("page").document.byQuid(Q1)?.$_tag, "main");
-  assert.equal(map.lib("page").document.byQuid(Q2)?.$_tag, "p");
+  assert.equal(map.doc.must("page").mode, "document");
+  assert.equal(map.doc.must("page").document.byQuid(Q1)?.$_tag, "main");
+  assert.equal(map.doc.must("page").document.byQuid(Q2)?.$_tag, "p");
   assert.equal(get_node_by_quid(Q1), undefined);
   assert.equal(get_node_by_quid(Q2), undefined);
 
@@ -850,10 +850,10 @@ check("internal exact LiveMap installation remains cold while public raw admissi
   const crossMapSource = document_root(element("shared", Q6));
   const firstMap = exactMap(crossMapSource, SharedEmpty);
   const secondMap = exactMap(crossMapSource, SharedEmpty);
-  assert.equal(firstMap.lib("page").mode, "document");
-  assert.equal(secondMap.lib("page").mode, "document");
-  assert.equal(firstMap.lib("page").document.byQuid(Q6)?.$_tag, "shared");
-  assert.equal(secondMap.lib("page").document.byQuid(Q6)?.$_tag, "shared");
+  assert.equal(firstMap.doc.must("page").mode, "document");
+  assert.equal(secondMap.doc.must("page").mode, "document");
+  assert.equal(firstMap.doc.must("page").document.byQuid(Q6)?.$_tag, "shared");
+  assert.equal(secondMap.doc.must("page").document.byQuid(Q6)?.$_tag, "shared");
   assert.equal(get_node_by_quid(Q6), undefined);
 });
 
@@ -861,35 +861,35 @@ check("same-topology registry restore transfers state without carrying runtime i
   const target = exactMap(document_root(element("main", Q1)));
   const source = exactMap(document_root(element("main", Q2)),
     Hson.schema`<type "document" tag "main" content "empty">`);
-  source.lib("page").at([]).asElement()!.attrs.set("title", "restored");
-  const page = target.lib("page");
+  source.doc.must("page").at([]).asElement()!.attrs.set("title", "restored");
+  const page = target.doc.must("page");
   const portable = source.capture();
   assert.equal(target.capture().registry.digest, portable.registry.digest);
   assert.equal(JSON.stringify(portable).includes(Q2), false);
   target.restore(portable);
   assert.deepEqual(target.capture(), portable);
-  assert.equal(target.lib("page"), page);
+  assert.equal(target.doc.must("page"), page);
   assert.equal(page.at([]).asElement()!.attrs.get("title"), "restored");
   assert.equal(page.document.byQuid(Q1), undefined);
   assert.equal(page.document.byQuid(Q2), undefined);
-  assert.equal(source.lib("page").document.byQuid(Q2)?.$_tag, "main");
+  assert.equal(source.doc.must("page").document.byQuid(Q2)?.$_tag, "main");
 });
 
 check("incompatible registry restore preserves topology and fresh installation omits source identity", () => {
   const target = exactMap(document_root(element("main", Q1)));
   const source = exactMap(document_root(element("section", Q2)), SectionEmpty);
-  const oldPage = target.lib("page");
+  const oldPage = target.doc.must("page");
   const before = target.capture();
   const portable = source.capture();
   assert.notEqual(before.registry.digest, portable.registry.digest);
   assert.throws(() => target.restore(portable), /current Library topology/);
   assert.deepEqual(target.capture(), before);
-  assert.equal(target.lib("page"), oldPage);
+  assert.equal(target.doc.must("page"), oldPage);
   assert.equal(oldPage.document.byQuid(Q1)?.$_tag, "main");
   assert.equal(oldPage.document.byQuid(Q2), undefined);
   const installed = install_libraries_snapshot(portable).map;
   assert.deepEqual(installed.capture(), portable);
-  const page = installed.lib("page");
+  const page = installed.doc.must("page");
   if (page.mode !== "document") throw new Error("Expected installed document Library");
   assert.equal(must_tag(page.root(), "section").$_tag, "section");
   assert.equal(page.document.byQuid(Q2), undefined);

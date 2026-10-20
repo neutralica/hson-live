@@ -39,7 +39,7 @@ function rejects_realization_at(run: () => unknown, message: RegExp) {
 
 export function ssr_subject_fixture(): DocumentSsrSubjectFixture {
   const map = authored({ page: { document: '<html @:_987654321 <head <style "p{color:rgb(99,99,99)}"/>/> <body <section @:first id="first" <p @:firstChild id="first-child"/> <p id="anonymous-one"/>/> <section @:second id="second" <p @:secondChild id="second-child"/> <p id="anonymous-two"/>/> <p id="unrelated"/> <p class="ordinary" id="ordinary"/>/>/>' } });
-  const page = map.lib("page"), aggregate = owner(map), library = aggregate.libraries()[0]!;
+  const page = map.doc.must("page"), aggregate = owner(map), library = aggregate.libraries()[0]!;
   if (page.mode !== "document") throw Error("document");
   const demanded = ["012345678", "123456789"];
   aggregate.acquireLocalDocumentIdentity(library, path([0, 0, 1, 0, 0, 0, 1]), demanded[0]!);
@@ -63,9 +63,9 @@ export function flat_final_subject_fixture(): DocumentSsrSubjectFixture {
     components: collection({ button: { kind: "document", document: '<button @:source/>' } }),
     final: { document: '<html <head/> <body <button/> <button/>/>/>' },
   });
-  const page = map.lib("final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;
+  const page = map.doc.must("final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;
   if (page.mode !== "document") throw Error("document");
-  assert.ok(canonical_hson_graph_equal(page.root(), map.lib("layout").root()),
+  assert.ok(canonical_hson_graph_equal(page.root(), map.doc.must("layout").root()),
     "Historical flat state has the same realized graph as Part composition.");
   assert.equal(aggregate.documentScopes(library), undefined);
   assert.equal(aggregate.documentOverlay(library).size, 0);
@@ -80,7 +80,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
   document_subject_ownership_cases(check);
   check("flat authored QUAD subjects retain ordinary capture and SSR without occurrence scopes", () => {
     const map = authored({ page: { document: '<html @:page <head/> <body <p @:firstChild "Flat"/>/>/>' } });
-    const page = map.lib("page"), aggregate = owner(map), library = aggregate.libraries()[0]!;
+    const page = map.doc.must("page"), aggregate = owner(map), library = aggregate.libraries()[0]!;
     if (page.mode !== "document") throw Error("document");
     page.css.stylesheet(`[hson\\:quid="${lookup(page,"firstChild")!.quid}"]{color:red}`);
     assert.equal(aggregate.documentScopes(library), undefined);
@@ -88,7 +88,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     assert.deepEqual(result.libs, snapshot);
     assert.equal(result.html, page.render());
     const receiving = install_libraries_snapshot(snapshot).map;
-    const received = receiving.lib("page");
+    const received = receiving.doc.must("page");
     if (received.mode !== "document") throw Error("document");
     assert.equal(owner(receiving).documentScopes(owner(receiving).libraries()[0]!), undefined);
     assert.ok(lookup(received, "firstChild"));
@@ -189,7 +189,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     } finally { TextEncoder.prototype.encode = encode; }
   });
   check("identity-free CSS keeps selectors layer occurrences and ordering", () => {
-    const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <p class="ordinary"/>/>/>'}}), page = map.lib("page");
+    const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <p class="ordinary"/>/>/>'}}), page = map.doc.must("page");
     page.css.stylesheet('@layer before{}@layer{.ordinary:is(.x,.y){color:red}}@layer{.ordinary{color:blue}}.ordinary{color:red}.ordinary{color:green}');
     const before = page.css.snapshot(), candidate = capture(page, []);
     assert.equal(render_portable_document_stylesheet(decode_portable_document_stylesheet(candidate.css)), before);
@@ -200,19 +200,19 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
   check("independent Library instances keep distinct addressed roots and descendants", () => {
     const map = authored({one:{document:'<html @:one <head/> <body <p @:oneChild/>/>/>'},two:{document:'<html @:two <head/> <body <p @:twoChild/>/>/>'}});
     for (const [library, rootName, childName] of [["one","one","oneChild"],["two","two","twoChild"]]) {
-      const page = map.lib(library!); if (page.mode !== "document") throw Error("document");
+      const page = map.doc.must(library!); if (page.mode !== "document") throw Error("document");
       page.css.stylesheet(`[hson\\:quid="${lookup(page,rootName!)!.quid}"]{color:red}[hson\\:quid="${lookup(page,childName!)!.quid}"]{color:blue}`);
       const html = render(page, []);
       assert.match(html, new RegExp(`<html hson:quad="${rootName}">`));
       assert.ok(html.includes(`[hson\\:quad="${childName}"]`));
       assert.equal((html.match(/ hson:quad=/g) ?? []).length, 2);
     }
-    const one = map.lib("one"), two = map.lib("two");
+    const one = map.doc.must("one"), two = map.doc.must("two");
     assert.throws(() => capture(one,[lookup(two,"twoChild")!.quid]), /active subject/);
     assert.doesNotMatch(render(one,[]), /quad="two|quad="twoChild/);
   });
   check("authored versus disposable name collisions reject without publication", () => {
-    const map = authored({page:{document:'<html @:_012345678 <head/> <body <p/>/>/>'}}), page = map.lib("page"), aggregate = owner(map), library = aggregate.libraries()[0]!;
+    const map = authored({page:{document:'<html @:_012345678 <head/> <body <p/>/>/>'}}), page = map.doc.must("page"), aggregate = owner(map), library = aggregate.libraries()[0]!;
     aggregate.acquireLocalDocumentIdentity(library,path([0,0,1,0,0]),"012345678");
     const before = map.capture(), ledger = aggregate.identityEpoch().issued(), overlay = aggregate.documentOverlay(library);
     let output: unknown;
@@ -235,7 +235,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     assert.throws(() => capture(page,["999999999"]), /^Error: Correspondence requires an owner-issued QUID\.$/);
   });
   check("omitted live anonymous demand rejects unresolved correspondence in otherwise admissible CSS", () => {
-    const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <p/>/>/>'}}), page = map.lib("page"), aggregate = owner(map);
+    const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <p/>/>/>'}}), page = map.doc.must("page"), aggregate = owner(map);
     aggregate.acquireLocalDocumentIdentity(aggregate.libraries()[0]!, path([0,0,1,0,0]), "012345678");
     page.css.stylesheet('[hson\\:quid="012345678"]{color:red}');
     assert.match(render(page,["012345678"]), /hson:quad="_012345678"/);
@@ -256,7 +256,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     ]}}}), {code:"HSON_CANONICAL_INVARIANT_VIOLATION",message:/invalid or reserved attribute name/});
   });
   check("admissible uppercase carrier collides after browser attribute lowering in the subject planner", () => {
-    const map = authored({page:{document:'<html @:root HSON:QUAD="authored" <head/> <body/>/>'}}), page = map.lib("page");
+    const map = authored({page:{document:'<html @:root HSON:QUAD="authored" <head/> <body/>/>'}}), page = map.doc.must("page");
     const candidate = capture(page,[]);
     assert.doesNotThrow(() => hsonLiveMap.fromLibraries({page:{document:candidate.root}}));
     for (const css of ["", "p{color:red}"]) {
@@ -265,12 +265,12 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     }
   });
   check("managed marker collision reaches managed CSS planning", () => {
-    const map = hsonLiveMap.fromLibraries({page:{document:'<html data-hson-managed-document-css="authored" <head/> <body/>/>'}}), page = map.lib("page");
+    const map = hsonLiveMap.fromLibraries({page:{document:'<html data-hson-managed-document-css="authored" <head/> <body/>/>'}}), page = map.doc.must("page");
     page.css.stylesheet('p{color:red}');
     rejects_realization_at(() => render(page,[]), /^Authored markup uses the reserved managed document CSS marker\.$/);
   });
   check("unsafe style sentinel rejects CSS admission and rawtext SSR realization", () => {
-    const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}}), page = map.lib("page");
+    const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}}), page = map.doc.must("page");
     const before = map.capture(), candidate = capture(page,[]), unsafe = 'p{content:"</style>"}';
     assert.throws(() => page.css.stylesheet(unsafe), {name:"DocumentStylesheetError",code:"CSS_ADMISSION",
       message:/style RAWTEXT contains a parser-significant closing sentinel/});
@@ -278,11 +278,11 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     rejects_realization_at(() => realize_document(candidate.root,unsafe,{}), /style RAWTEXT contains a parser-significant closing sentinel/);
   });
   check("managed CSS requires an html shell and incomplete full documents reject earlier in browser planning", () => {
-    const fragment = hsonLiveMap.fromLibraries({page:{document:'<main/>'}}).lib("page");
+    const fragment = hsonLiveMap.fromLibraries({page:{document:'<main/>'}}).doc.must("page");
     assert.doesNotThrow(() => render(fragment,[]));
     fragment.css.stylesheet('main{color:red}');
     rejects_realization_at(() => render(fragment,[]), /^Nonempty document CSS requires an explicit html\/head document root\.$/);
-    const missing = hsonLiveMap.fromLibraries({page:{document:'<html <body/>/>'}}).lib("page");
+    const missing = hsonLiveMap.fromLibraries({page:{document:'<html <body/>/>'}}).doc.must("page");
     // Full html planning requires head then body even before managed CSS is added.
     for (const css of ["", "p{color:red}"]) {
       missing.css.stylesheet(css);
@@ -372,7 +372,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     assert.deepEqual(observe(),before);
     assert.equal(aggregate.documentScopes(layout),scopes,"SSR preserves the exact source occurrence lifetimes.");
     const receiving = install_libraries_snapshot(result.libs).map;
-    assert.throws(() => receiving.lib("components")); assert.throws(() => receiving.lib("layout"));
+    assert.throws(() => receiving.data.must("components")); assert.throws(() => receiving.doc.must("layout"));
     for (const quid of sourceQuids) assert.equal(owner(receiving).identityEpoch().issued().has(quid),false);
     assert.equal(receiving.capture().libraries.length,1);
     // Portable state admission is tested here; projected-marker graft/CSS rebinding is outside this cut.

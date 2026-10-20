@@ -53,9 +53,9 @@ const echo = create_echo_aggregate_client_internal({ transport: test_echo_transp
 await echo.connect();
 const clientMap = echo.map;
 assert.ok(clientMap);
-const page = clientMap.lib("page");
+const page = clientMap.doc.must("page");
 if (page.mode !== "document") throw new Error("Expected document Library.");
-const preferences = clientMap.lib("preferences");
+const preferences = clientMap.data.must("preferences");
 const mirror = hsonMirror(page);
 const tree = retained_subject(mirror.tree);
 const startingClientRev = clientMap.rev;
@@ -66,8 +66,8 @@ detach();
 
 await locus.addLibraries({ shared: [{ name: "newState", definition: { data: { value: 1 } } }] });
 await locus.stage((draft) => {
-  const state = draft.lib("newState");
-  if (state.mode === "document") throw new Error("Expected data Library.");
+  const state = draft.data.must("newState");
+  if (String(state.mode) === "document") throw new Error("Expected data Library.");
   state.at(["value"]).set(2);
 });
 await locus.addLibraries({ private: [{ name: "privateState", definition: { data: { secret: "PRIVATE_REPLAY_ROOT_SENTINEL",
@@ -76,8 +76,8 @@ await locus.addLibraries({ private: [{ name: "privateState", definition: { data:
     UNGRANTED_REPLAY_SCHEMA_SENTINEL: "ungranted" },
     schema: Hson.schema`<type "data" content <secret "string" UNGRANTED_REPLAY_SCHEMA_SENTINEL "string">>` } }] });
 await locus.stage((draft) => {
-  const next = draft.lib("nextState"), hidden = draft.lib("privateState");
-  if (next.mode === "document" || hidden.mode === "document") throw new Error("Expected data Libraries.");
+  const next = draft.data.must("nextState"), hidden = draft.data.must("privateState");
+  if (String(next.mode) === "document" || String(hidden.mode) === "document") throw new Error("Expected data Libraries.");
   next.at(["value"]).set(4);
   hidden.at(["secret"]).set("PRIVATE_REPLAY_WRITE_SENTINEL");
 });
@@ -94,18 +94,18 @@ assert.equal(recovery.outcome, "replay");
 assert.equal(echo.map, clientMap);
 assert.equal(echo.lastAppliedRev, locus.rev);
 assert.equal(clientMap.rev, startingClientRev + 1);
-assert.equal(clientMap.lib("page"), page);
-assert.equal(clientMap.lib("preferences"), preferences);
+assert.equal(clientMap.doc.must("page"), page);
+assert.equal(clientMap.data.must("preferences"), preferences);
 assert.equal(retained_subject(mirror.tree), tree);
 const local = preferences;
 if (!("snap" in local)) throw new Error("Expected local data Library.");
 assert.equal(local.snap(["theme"]), "dark");
-const state = clientMap.lib("newState"), next = clientMap.lib("nextState");
+const state = clientMap.data.must("newState"), next = clientMap.data.must("nextState");
 if (!("snap" in state) || !("snap" in next)) throw new Error("Expected recovered data Libraries.");
 assert.equal(state.snap(["value"]), 2);
 assert.equal(next.snap(["value"]), 4);
-assert.throws(() => clientMap.lib("privateState"), /Unknown/);
-assert.throws(() => clientMap.lib("ungrantedState"), /Unknown/);
+assert.throws(() => clientMap.data.must("privateState"), /Unknown/);
+assert.throws(() => clientMap.data.must("ungrantedState"), /Unknown/);
 const replayWire = wire.serverSent.slice(beforeReplay);
 const privateRegistryDigest = internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted().registry.digest;
 for (const encoded of replayWire) {
@@ -138,7 +138,7 @@ const currentSession = currentEcho.session.sessionId;
 assert.ok(currentSession);
 await currentServer.addLibraries({ shared: [{ name: "later", definition: { data: { value: 9 } } }] });
 assert.equal(currentEcho.lastAppliedRev, currentServer.rev);
-assert.throws(() => currentMap.lib("later"), /Unknown/);
+assert.throws(() => currentMap.data.must("later"), /Unknown/);
 currentEcho.disconnect();
 detachCurrent();
 const currentAuthorityRev = currentServer.rev;
@@ -150,7 +150,7 @@ assert.equal((await currentEcho.connect()).outcome, "current");
 assert.equal(currentEcho.map, currentMap);
 assert.equal(currentEcho.lastAppliedRev, currentAuthorityRev);
 assert.equal(currentMap.rev, currentMapRev + 1);
-const currentLater = currentMap.lib("later");
+const currentLater = currentMap.data.must("later");
 if (!("snap" in currentLater)) throw new Error("Expected current grant data Library.");
 assert.equal(currentLater.snap(["value"]), 9);
 currentEcho.dispose();
@@ -169,7 +169,7 @@ const topologyClient = client_projection_map({
   authority: project_authority_snapshot(beforeTopology, emptyProjection),
   local: { preferences: { data: { value: "local" } } },
 });
-const topologyLocal = topologyClient.lib("preferences");
+const topologyLocal = topologyClient.data.must("preferences");
 const topologyReplica = create_echo_aggregate_replica_capability_internal(topologyClient);
 let topologyCommit: HostedAggregateCommit | undefined;
 sourceAggregate.observe((commit) => { topologyCommit = commit.hosted; });
@@ -201,9 +201,9 @@ topologyReplica.advanceHostedProgress({ logicalMapId: beforeTopology.authority.l
   incarnationId: beforeTopology.authority.incarnationId,
   registryDigest: projectedAdd.commit.registryDigest, prevRev: 0, rev: 1 });
 assert.equal(topologyClient.rev, clientRevBeforeAdd + 1);
-assert.equal(topologyClient.lib("preferences"), topologyLocal);
-assert.equal(topologyClient.lib("visible").mode, "data-object");
-assert.throws(() => topologyClient.lib("hidden"), /Unknown/);
+assert.equal(topologyClient.data.must("preferences"), topologyLocal);
+assert.equal(topologyClient.data.must("visible").mode, "data-object");
+assert.throws(() => topologyClient.data.must("hidden"), /Unknown/);
 topologyReplica.dispose();
 process.stdout.write("ok - retained topology projector filters one atomic library-add and installs it in place\n");
 
@@ -232,8 +232,8 @@ tailEcho.disconnect();
 detachTail();
 await tailServer.add_libraries({ added: { data: { value: 1 } } }, { added: "shared" });
 await tailServer.stage((draft) => {
-  const added = draft.lib("added");
-  if (added.mode === "document") throw new Error("Expected added data Library.");
+  const added = draft.data.must("added");
+  if (String(added.mode) === "document") throw new Error("Expected added data Library.");
   added.at(["value"]).set(2);
 });
 await tailServer.sessions.updateProjection(tailSession, { libraries: ["anchor", "added"] },
@@ -245,8 +245,8 @@ await cutEntered;
 await assert.rejects(tailServer.sessions.updateProjection(tailSession,
   { libraries: ["anchor", "added"] }, { principalId: "alice" }), /projection.*unavailable/i);
 await tailServer.stage((draft) => {
-  const added = draft.lib("added");
-  if (added.mode === "document") throw new Error("Expected added data Library.");
+  const added = draft.data.must("added");
+  if (String(added.mode) === "document") throw new Error("Expected added data Library.");
   added.at(["value"]).set(3);
 });
 await tailServer.add_libraries({ hiddenTail: { data: { secret: "HIDDEN_TAIL_SENTINEL" } } });
@@ -255,10 +255,10 @@ assert.equal((await tailRecovery).outcome, "replay");
 assert.equal(tailEcho.map, tailMap);
 for (let turn = 0; turn < 30 && tailEcho.lastAppliedRev !== tailServer.rev; turn++) await Promise.resolve();
 assert.equal(tailEcho.lastAppliedRev, tailServer.rev);
-const tailAdded = tailMap.lib("added");
+const tailAdded = tailMap.data.must("added");
 if (!("snap" in tailAdded)) throw new Error("Expected recovered data Library.");
 assert.equal(tailAdded.snap(["value"]), 3);
-assert.throws(() => tailMap.lib("hiddenTail"), /Unknown/);
+assert.throws(() => tailMap.data.must("hiddenTail"), /Unknown/);
 const tailMessages = tailWire.serverSent.slice(beforeTailWire).map((raw) => JSON.parse(raw));
 assert.deepEqual(tailMessages.filter((message) => ["recovery-progress", "projection-change",
   "recovery-caught-up", "commit", "progress"].includes(message.type)).map((message) => message.type),
@@ -286,7 +286,7 @@ await emptyServer.session.get(emptySession)!.update({ libraries: ["first"] }, { 
 detachEmpty = bind_locus_websocket(emptyServer, emptyWire.server, { principalId: "alice" });
 assert.equal((await emptyEcho.connect()).outcome, "replay");
 const recoveredEmptyMap = require_map(emptyEcho);
-const firstLibrary = recoveredEmptyMap.lib("first");
+const firstLibrary = recoveredEmptyMap.data.must("first");
 if (!("snap" in firstLibrary)) throw new Error("Expected first recovered Library.");
 assert.equal(firstLibrary.snap(["value"]), 7);
 assert.equal(emptyEcho.lastAppliedRev, emptyServer.rev);
@@ -306,7 +306,7 @@ const interactionEcho = create_echo_aggregate_client_internal({ transport: test_
 await interactionEcho.connect();
 const interactionMap = interactionEcho.map;
 assert.ok(interactionMap);
-const basePage = interactionMap.lib("basePage");
+const basePage = interactionMap.doc.must("basePage");
 if (basePage.mode !== "document") throw new Error("Expected document Library.");
 const baseMirror = hsonMirror(basePage);
 const baseTree = retained_subject(baseMirror.tree);
@@ -326,9 +326,9 @@ const beforeInteractionReplay = interactionWire.serverSent.length;
 detachInteraction = bind_locus_websocket(interactionServer, interactionWire.server, { principalId: "alice" });
 assert.equal((await interactionEcho.connect()).outcome, "replay");
 assert.equal(interactionEcho.map, interactionMap);
-assert.equal(interactionMap.lib("basePage"), basePage);
+assert.equal(interactionMap.doc.must("basePage"), basePage);
 assert.equal(retained_subject(baseMirror.tree), baseTree);
-const nextPage = interactionMap.lib("nextPage");
+const nextPage = interactionMap.doc.must("nextPage");
 if (nextPage.mode !== "document") throw new Error("Expected recovered document Library.");
 const nextMirror = hsonMirror(nextPage);
 assert.ok(retained_subject(nextMirror.tree));

@@ -36,7 +36,7 @@ function sender(text = '<main <hson-part @:left lib="parts" at="panel"/> <hson-p
     globals: { kind: "document", document: '<em @:root/>', css: ':scope{animation:pulse 1s} @keyframes pulse{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
   }), page: { document: '<main/>' }, other: { data: { n: 0 } } });
   const a = authority(map), owner = a.libraries()[1]!;
-  map.lib("page").css.stylesheet('main{padding:7px}');
+  map.doc.must("page").css.stylesheet('main{padding:7px}');
   return { map, a, owner, before: a.prepareScopedDocument(owner, source(text)) };
 }
 function receiver(initial: unknown) {
@@ -73,7 +73,7 @@ export function scoped_effect_fixture() {
 }
 export function scoped_effect_receive(input: ReturnType<typeof scoped_effect_fixture>): PortableDocumentScopedLibrary {
   const f = receiver(input.initial);
-  assert.throws(() => f.map.lib("parts"));
+  assert.throws(() => f.map.parts.must("parts"));
   const result = f.a.prepareScopedDocumentEffectReplay(f.before, input.effects);
   const captured = f.a.captureScopedDocument(result); assert.ok(equal(input.final, captured));
   return captured;
@@ -87,7 +87,7 @@ export function scoped_effect_cases(check: (name: string, run: () => void) => vo
     assert.equal(new Set(r.result.scopes.occurrences.map(s => s.lifetime)).size, 7);
     assert.ok(render(r.result.stylesheet).includes("padding:7px"));
     for (const scope of r.result.scopes.occurrences) assert.ok(!r.next.scopes.occurrences.some(s => s.rootQuid === scope.rootQuid));
-    assert.equal(r.map.lib("page").q("middle"), undefined);
+    assert.equal(r.map.doc.must("page").q("middle"), undefined);
   });
   check("named connector introduction into a surviving namespace and later retirement use opposite coordinates", () => {
     const f = sender(), prepared = f.a.prepareScopedDocumentOperations(f.before, [insert([0, 0], 0, "plain")]);
@@ -228,7 +228,7 @@ export function scoped_effect_cases(check: (name: string, run: () => void) => vo
     const input = scoped_effect_fixture();
     for (const mode of ["stale", "managed", "reserved"]) {
       const r = receiver(input.initial); let calls = 0; let cleanup = () => {};
-      if (mode === "stale") r.map.lib("other").at(["n"]).set(1);
+      if (mode === "stale") r.map.data.must("other").at(["n"]).set(1);
       if (mode === "managed") { const owner = {}; r.a.claimManagement(owner); cleanup = () => r.a.releaseManagement(owner); }
       if (mode === "reserved") { const candidate = r.a.prepare([]), release = r.a.reserve(candidate); cleanup = () => { release(); r.a.discard(candidate); }; }
       allocator(r.a.identityEpoch().owner, () => { calls++; return "y00000001"; });
@@ -238,12 +238,12 @@ export function scoped_effect_cases(check: (name: string, run: () => void) => vo
     }
   });
   check("reentrant issuance rejects the batch while preserving independently accepted work", () => {
-    const input = scoped_effect_fixture(), r = receiver(input.initial), issued = r.a.identityEpoch().issued(), snapshot = r.map.lib("page").root();
-    allocator(r.a.identityEpoch().owner, () => { r.map.lib("other").at(["n"]).set(1); return "y00000001"; });
+    const input = scoped_effect_fixture(), r = receiver(input.initial), issued = r.a.identityEpoch().issued(), snapshot = r.map.doc.must("page").root();
+    allocator(r.a.identityEpoch().owner, () => { r.map.data.must("other").at(["n"]).set(1); return "y00000001"; });
     try { assert.throws(() => r.a.prepareScopedDocumentEffectReplay(r.before, input.effects), /changed/); }
     finally { allocator(r.a.identityEpoch().owner, undefined); }
-    assert.equal(r.a.identityEpoch().issued().size, issued.size); assert.equal(r.a.identityEpoch().issued().has("y00000001"), false); assert.deepEqual(r.map.lib("page").root(), snapshot);
-    assert.equal(r.map.lib("other").at(["n"]).snap(), 1);
+    assert.equal(r.a.identityEpoch().issued().size, issued.size); assert.equal(r.a.identityEpoch().issued().has("y00000001"), false); assert.deepEqual(r.map.doc.must("page").root(), snapshot);
+    assert.equal(r.map.data.must("other").at(["n"]).snap(), 1);
   });
   check("schema validates the completed batch before issuance, allowing transient intermediate graphs", () => {
     const f = sender('<main/>'), first = replace([], 0, "plain");

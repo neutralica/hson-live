@@ -21,14 +21,14 @@ try {
   assert.match(document(a.echo, "flat").css.snapshot(), /color:maroon/);
   assert.match(flat.session.now({ html: "flat" }).html, /maroon/);
   assert.match(document(flat.echo, "flat").render(), /<html/);
-  assert.throws(() => flat.echo.lib("page"));
+  assert.throws(() => flat.echo.doc.must("page"));
   assert.match(document(a.echo).css.snapshot(), /color:teal/);
   for (const match of source.css.matchAll(/hson\\:quid="([^"]+)"/g)) assert.ok(!document(a.echo).css.snapshot().includes(match[1]!));
-  assert.throws(() => a.echo.lib("parts"));
+  assert.throws(() => a.echo.parts.must("parts"));
   await locus.stage(w => {
-    w.lib("page").at([]).asElement().attrs.set("title", "after-restart");
-    w.lib("bare").css.sel("main").setProp("color", "blue");
-    w.lib("flat").at([]).asElement().attrs.set("title", "after-restart");
+    w.doc.must("page").at([]).asElement().attrs.set("title", "after-restart");
+    w.doc.must("bare").css.sel("main").setProp("color", "blue");
+    w.doc.must("flat").at([]).asElement().attrs.set("title", "after-restart");
   });
   await caught(a.echo, locus); await caught(flat.echo, locus);
   assert.equal(document(a.echo).at([]).asElement()!.attrs.get("title"), "after-restart");

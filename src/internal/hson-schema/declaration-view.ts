@@ -1,6 +1,6 @@
 import { dirname, relative, resolve, sep } from "node:path";
 import ts from "typescript";
-import { apply_source_edits, library_schema_attachment_plan, type PreciseSchemaFact, type SchemaSourceEdit } from "./source-transformation.js";
+import { apply_source_edits, direct_family_selection, library_schema_attachment_plan, type PreciseSchemaFact, type SchemaSourceEdit } from "./source-transformation.js";
 
 type EvidenceOrigin = Readonly<{ source: string; name: string; evidence: string }>;
 
@@ -189,17 +189,9 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       const rendered = render(type, node);
       if (rendered.changed) edits.push({ start: position, end: position, text: `: ${printer.printNode(ts.EmitHint.Unspecified, rendered.node, source)}` });
     };
-    const selectedLibrary = (expression: ts.Expression): Readonly<{
-      map: ts.Identifier; library: ts.StringLiteral; facade: ts.CallExpression;
-    }> | undefined => {
-      if (!ts.isCallExpression(expression)
-        || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "lib"
-        || !ts.isIdentifier(expression.expression.expression) || expression.arguments.length !== 1
-        || !ts.isStringLiteral(expression.arguments[0])) return undefined;
-      return { map: expression.expression.expression, library: expression.arguments[0], facade: expression };
-    };
+    const selectedLibrary = direct_family_selection;
     const matchingAttachment = (
-      selected: Readonly<{ map: ts.Identifier; library: ts.StringLiteral; facade: ts.CallExpression }>,
+      selected: Readonly<{ map: ts.Identifier; library: ts.StringLiteral; facade: ts.Expression }>,
       container: ts.Node,
       before: number,
     ): Readonly<{ schema: ts.Identifier; mode?: "data" | "document" }> | undefined => {
@@ -225,7 +217,7 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       }
       return undefined;
     };
-    const selectedMode = (selected: Readonly<{ facade: ts.CallExpression }>): "data" | "document" | undefined => {
+    const selectedMode = (selected: Readonly<{ facade: ts.Expression }>): "data" | "document" | undefined => {
       const property = checker.getPropertyOfType(checker.getTypeAtLocation(selected.facade), "mode");
       if (property === undefined) return undefined;
       const mode = checker.getTypeOfSymbolAtLocation(property, selected.facade);
@@ -233,7 +225,7 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
         && ((mode as ts.StringLiteralType).value === "data" || (mode as ts.StringLiteralType).value === "document")
         ? (mode as ts.StringLiteralType).value as "data" | "document" : undefined;
     };
-    const selectedSchema = (selected: Readonly<{ facade: ts.CallExpression }>): ts.Type | undefined => {
+    const selectedSchema = (selected: Readonly<{ facade: ts.Expression }>): ts.Type | undefined => {
       const facade = checker.getTypeAtLocation(selected.facade);
       const schemaProperty = checker.getPropertyOfType(facade, "schema");
       if (schemaProperty === undefined) return undefined;
@@ -243,7 +235,7 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       const signature = checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(getProperty, selected.facade), ts.SignatureKind.Call)[0];
       return signature === undefined ? undefined : checker.getReturnTypeOfSignature(signature);
     };
-    const selectionCarriesSchema = (selected: Readonly<{ facade: ts.CallExpression }>, schema: ts.Identifier): boolean => {
+    const selectionCarriesSchema = (selected: Readonly<{ facade: ts.Expression }>, schema: ts.Identifier): boolean => {
       const current = selectedSchema(selected);
       if (current === undefined) return false;
       const requested = checker.getTypeAtLocation(schema);
@@ -298,12 +290,9 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       if (returned === undefined || expression === undefined) return undefined;
       const targeted = targetedExpressionType(expression, body, returned.getStart(source));
       if (targeted !== undefined) return targeted;
-      if (!ts.isCallExpression(expression)
-        || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "lib"
-        || !ts.isIdentifier(expression.expression.expression) || expression.arguments.length !== 1
-        || !ts.isStringLiteral(expression.arguments[0])) return undefined;
-      const map = expression.expression.expression;
-      const library = expression.arguments[0];
+      const selected = selectedLibrary(expression);
+      if (selected === undefined) return undefined;
+      const { map, library } = selected;
       const attachment = attachments.find(fact => fact.statement.parent === body && fact.statement.getEnd() < returned.getStart(source)
         && checker.getSymbolAtLocation(fact.map) === checker.getSymbolAtLocation(map)
         && fact.library.text === library.text);

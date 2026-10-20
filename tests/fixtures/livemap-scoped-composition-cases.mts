@@ -44,10 +44,10 @@ const replace = (coordinate: readonly number[], index: number, member = "panel")
 function fixture(text = shell) {
   const map = hsonLiveMap.fromLibraries({ parts: collection(parts), state: { data: { n: 0 } },
     page: { document: '<main/>' }, unrelated: { document: '<aside @:other/>' } });
-  const unrelated = map.lib("unrelated");
+  const unrelated = map.doc.must("unrelated");
   if (unrelated.mode !== "document") throw Error("Expected document Library.");
   unrelated.css.stylesheet("aside{color:red}");
-  const data = map.lib("state"), definitions = map.lib("parts");
+  const data = map.data.must("state"), definitions = map.parts.must("parts");
   const aggregate = internal_livemap_aggregate_authority(map), owner = aggregate.libraries()[2]!;
   const authority = (): DocumentScopedCompositionAuthority => ({ identityOwner: aggregate.identityEpoch().owner,
     assertCurrent: aggregate.captureFence(), readPart: (lib, at) => readPart(map, lib, at) });
@@ -281,7 +281,7 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
     unchanged(f, () => {
       const next = f.next(before, [insert([0, 0], 0, "styled")]);
       assert.equal(next.changed, true); assert.equal(next.steps[0]!.styles.length, 1);
-      const page = f.map.lib("page"); assert.equal(page.mode, "document");
+      const page = f.map.doc.must("page"); assert.equal(page.mode, "document");
       if (page.mode === "document") { assert.equal(page.q("left"), undefined); assert.equal(page.css.snapshot(), ""); }
       assert.equal(next.scopes.occurrences.length, 8);
     });

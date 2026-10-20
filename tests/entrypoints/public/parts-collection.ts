@@ -8,39 +8,39 @@ const parts = { header: { kind: "document", document, css: "h1{color:red}" } } s
 const definition = { parts } satisfies LiveMapLibraryDefinition;
 const catalog = { name: "parts", definition } as const satisfies LocusAuthorityLibraryDefinition;
 const map = hsonLiveMap.fromLibraries({ parts: definition });
-const part: LiveMapDocumentPart | undefined = map.lib("parts").at(["header"]).snap();
-const text: string | undefined = map.lib("parts").at(["header", "document"]).snap();
-const kind: "document" | undefined = map.lib("parts").at(["header", "kind"]).snap();
-const css: string | undefined = map.lib("parts").at(["header", "css"]).snap();
-map.lib("parts").at(["new"]).set({ kind: "document", document: "<p/>" });
-map.batch(writer => { writer.lib("parts").at(["header", "document"]).set("<h2/>"); });
+const part: LiveMapDocumentPart | undefined = map.parts.must("parts").at(["header"]).snap();
+const text: string | undefined = map.parts.must("parts").at(["header", "document"]).snap();
+const kind: "document" | undefined = map.parts.must("parts").at(["header", "kind"]).snap();
+const css: string | undefined = map.parts.must("parts").at(["header", "css"]).snap();
+map.parts.must("parts").at(["new"]).set({ kind: "document", document: "<p/>" });
+map.batch(writer => { writer.parts.must("parts").at(["header", "document"]).set("<h2/>"); });
 map.cut({ data: ["parts"] });
 // @ts-expect-error Parts are data Libraries, not document Libraries.
 map.cut({ documents: ["parts"] });
 // @ts-expect-error Data Libraries have no document QUAD lookup.
-map.lib("parts").q("header");
+map.parts.must("parts").q("header");
 // @ts-expect-error The contract's kind is fixed.
-map.lib("parts").at(["header", "kind"]).set("data");
+map.parts.must("parts").at(["header", "kind"]).set("data");
 // @ts-expect-error Part documents must be strings.
-map.lib("parts").at(["header", "document"]).set(1);
+map.parts.must("parts").at(["header", "document"]).set(1);
 // @ts-expect-error Staged writes retain Part field types.
-map.batch(writer => { writer.lib("parts").at(["header", "document"]).set(1); });
+map.batch(writer => { writer.parts.must("parts").at(["header", "document"]).set(1); });
 const locus = hsonLiveMap.locus.create({ private: [catalog] });
-const locusText: string | undefined = locus.lib("parts").at(["header", "document"]).snap();
-void locus.lib("parts").at(["header", "document"]).set("<h3/>");
-void locus.stage(writer => { writer.lib("parts").at(["header", "document"]).set("<h4/>"); });
+const locusText: string | undefined = locus.parts.must("parts").at(["header", "document"]).snap();
+void locus.parts.must("parts").at(["header", "document"]).set("<h3/>");
+void locus.stage(writer => { writer.parts.must("parts").at(["header", "document"]).set("<h4/>"); });
 // @ts-expect-error Locus retains the Part contract's fixed kind.
-void locus.lib("parts").at(["header", "kind"]).set("data");
+void locus.parts.must("parts").at(["header", "kind"]).set("data");
 void locus.addLibraries({ shared: [{ name: "later", definition }] });
 hsonLiveMap.create().addLibraries({ later: definition });
 
 declare const schema: HsonSchema<{ header: { kind: "document"; document: string } }, "data">;
 const explicit: LiveMapPartsLibraryInput = { parts };
 const governed = hsonLiveMap.fromLibraries({ parts: explicit });
-const schemaValue: LiveMapPartCollection = governed.lib("parts").snap();
-const schemaHandle: HsonSchema<unknown, "data"> = governed.lib("parts").schema.get();
+const schemaValue: LiveMapPartCollection = governed.parts.must("parts").snap();
+const schemaHandle: HsonSchema<unknown, "data"> = governed.parts.must("parts").schema.get();
 const typedLocus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: explicit }] });
-const locusValue: LiveMapPartCollection = typedLocus.lib("parts").snap();
+const locusValue: LiveMapPartCollection = typedLocus.parts.must("parts").snap();
 // @ts-expect-error A definition cannot select two families.
 const mixed: LiveMapLibraryDefinition = { parts, data: {} };
 // @ts-expect-error A document definition cannot also select Parts.
@@ -85,33 +85,33 @@ void locus.addLibraries({ private: [{ name: "later", definition: { parts: invali
 const validCollection: LiveMapPartCollection = { header: validPart, plain: { kind: "document", document }, schema: validPart };
 hsonLiveMap.fromLibraries({ parts: { parts: validCollection } });
 hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: validCollection } }] });
-map.lib("parts").at(["header"]).set(validPart);
-map.lib("parts").at(["header"]).replace(validPart);
-map.lib("parts").at([]).replace(validCollection);
-map.lib("parts").at([]).asObject()?.object.setKey("header", validPart);
-map.batch(writer => { writer.lib("parts").at(["header"]).set(validPart); });
-void locus.lib("parts").at(["header"]).replace(validPart);
-void locus.stage(writer => { writer.lib("parts").at(["header"]).replace(validPart); });
+map.parts.must("parts").at(["header"]).set(validPart);
+map.parts.must("parts").at(["header"]).replace(validPart);
+map.parts.must("parts").at([]).replace(validCollection);
+map.parts.must("parts").at([]).asObject()?.object.setKey("header", validPart);
+map.batch(writer => { writer.parts.must("parts").at(["header"]).set(validPart); });
+void locus.parts.must("parts").at(["header"]).replace(validPart);
+void locus.stage(writer => { writer.parts.must("parts").at(["header"]).replace(validPart); });
 // @ts-expect-error Direct member patches retain the forbidden field through write projection.
-map.lib("parts").at(["header"]).set(invalidPart);
+map.parts.must("parts").at(["header"]).set(invalidPart);
 // @ts-expect-error Direct member replacement retains the forbidden field.
-map.lib("parts").at(["header"]).replace(invalidPart);
+map.parts.must("parts").at(["header"]).replace(invalidPart);
 // @ts-expect-error Complete collection replacement cannot hide an invalid member.
-map.lib("parts").at([]).replace(invalidParts);
+map.parts.must("parts").at([]).replace(invalidParts);
 // Indexed collection-root patches retain the existing generic JSON proposal type;
 // member writes and complete replacements retain the Part definition type.
 // @ts-expect-error Collection object helpers retain Part member write types.
-map.lib("parts").at([]).asObject()?.object.setKey("header", invalidPart);
+map.parts.must("parts").at([]).asObject()?.object.setKey("header", invalidPart);
 // @ts-expect-error Staged member patches retain the forbidden field.
-map.batch(writer => { writer.lib("parts").at(["header"]).set(invalidPart); });
+map.batch(writer => { writer.parts.must("parts").at(["header"]).set(invalidPart); });
 // @ts-expect-error Staged collection replacement retains the forbidden field.
-map.batch(writer => { writer.lib("parts").at([]).replace(invalidParts); });
+map.batch(writer => { writer.parts.must("parts").at([]).replace(invalidParts); });
 // @ts-expect-error Direct governed Locus writes reject reused invalid members.
-void locus.lib("parts").at(["header"]).set(invalidPart);
+void locus.parts.must("parts").at(["header"]).set(invalidPart);
 // @ts-expect-error Staged governed Locus writes reject reused invalid members.
-void locus.stage(writer => { writer.lib("parts").at(["header"]).replace(invalidPart); });
+void locus.stage(writer => { writer.parts.must("parts").at(["header"]).replace(invalidPart); });
 
-const detachedParts = map.lib("parts").snap();
+const detachedParts = map.parts.must("parts").snap();
 const copiedParts: LiveMapPartCollection = { ...detachedParts };
 hsonLiveMap.fromLibraries({ parts: { parts: copiedParts } });
 const invalidSnapshotParts = { ...detachedParts, header: invalidPart };
@@ -122,13 +122,13 @@ const invalidCopy: LiveMapPartCollection = { ...copiedParts, header: invalidPart
 
 // Intrinsic Parts writes and ordinary data fields named schema remain supported.
 const schemaPart = { kind: "document", document } as const;
-governed.lib("parts").at(["header"]).set(schemaPart);
-governed.batch(writer => { writer.lib("parts").at(["header"]).replace(schemaPart); });
-void typedLocus.lib("parts").at(["header"]).set(schemaPart);
-void typedLocus.stage(writer => { writer.lib("parts").at(["header"]).replace(schemaPart); });
+governed.parts.must("parts").at(["header"]).set(schemaPart);
+governed.batch(writer => { writer.parts.must("parts").at(["header"]).replace(schemaPart); });
+void typedLocus.parts.must("parts").at(["header"]).set(schemaPart);
+void typedLocus.stage(writer => { writer.parts.must("parts").at(["header"]).replace(schemaPart); });
 const ordinary = hsonLiveMap.fromLibraries({ data: { data: invalidParts } });
-ordinary.lib("data").at([]).set(invalidParts);
-ordinary.batch(writer => { writer.lib("data").at([]).replace(invalidParts); });
+ordinary.data.must("data").at([]).set(invalidParts);
+ordinary.batch(writer => { writer.data.must("data").at([]).replace(invalidParts); });
 void [invalidCollection, invalidDefinition, invalidCopy];
 
 // Former supplemental-Schema positives are now explicit admission negatives.
@@ -252,154 +252,154 @@ const additionalInvalidMember = { ...complete, extra: badDocument };
 const arrayRoot = [validPart];
 
 // Direct LiveMap writes preserve the intrinsic contract.
-emptyMap.lib("parts").at([]).replace({});
-emptyMap.lib("parts").at([]).replace(complete);
-emptyMap.lib("parts").at([]).replace(validCollection);
-emptyMap.lib("parts").at([]).replace(detachedParts);
+emptyMap.parts.must("parts").at([]).replace({});
+emptyMap.parts.must("parts").at([]).replace(complete);
+emptyMap.parts.must("parts").at([]).replace(validCollection);
+emptyMap.parts.must("parts").at([]).replace(detachedParts);
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-emptyMap.lib("parts").at([]).replace(1);
+emptyMap.parts.must("parts").at([]).replace(1);
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-emptyMap.lib("parts").at([]).replace(arrayRoot);
+emptyMap.parts.must("parts").at([]).replace(arrayRoot);
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-emptyMap.lib("parts").at([]).replace(additionalInvalidMember);
+emptyMap.parts.must("parts").at([]).replace(additionalInvalidMember);
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-emptyMap.lib("parts").at([]).replace(invalidParts);
-emptyMap.lib("parts").at(["header"]).replace(validPart);
+emptyMap.parts.must("parts").at([]).replace(invalidParts);
+emptyMap.parts.must("parts").at(["header"]).replace(validPart);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.lib("parts").at(["header"]).replace(invalidPart);
+emptyMap.parts.must("parts").at(["header"]).replace(invalidPart);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.lib("parts").at(["header"]).replace(badKind);
+emptyMap.parts.must("parts").at(["header"]).replace(badKind);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.lib("parts").at(["header"]).replace(badDocument);
+emptyMap.parts.must("parts").at(["header"]).replace(badDocument);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.lib("parts").at(["header"]).replace(badCss);
-emptyMap.lib("parts").at(["header"]).set(validPart);
+emptyMap.parts.must("parts").at(["header"]).replace(badCss);
+emptyMap.parts.must("parts").at(["header"]).set(validPart);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.lib("parts").at(["header"]).set(invalidPart);
+emptyMap.parts.must("parts").at(["header"]).set(invalidPart);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.lib("parts").at(["header"]).set(badKind);
+emptyMap.parts.must("parts").at(["header"]).set(badKind);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.lib("parts").at(["header"]).set(badDocument);
+emptyMap.parts.must("parts").at(["header"]).set(badDocument);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.lib("parts").at(["header"]).set(badCss);
-emptyMap.lib("parts").at(["header"]).set({ css: "p{color:blue}" });
+emptyMap.parts.must("parts").at(["header"]).set(badCss);
+emptyMap.parts.must("parts").at(["header"]).set({ css: "p{color:blue}" });
 
 // emptyMap.batch writes preserve the intrinsic contract.
-emptyMap.batch(writer => { writer.lib("parts").at([]).replace({}); });
-emptyMap.batch(writer => { writer.lib("parts").at([]).replace(complete); });
-emptyMap.batch(writer => { writer.lib("parts").at([]).replace(validCollection); });
-emptyMap.batch(writer => { writer.lib("parts").at([]).replace(detachedParts); });
+emptyMap.batch(writer => { writer.parts.must("parts").at([]).replace({}); });
+emptyMap.batch(writer => { writer.parts.must("parts").at([]).replace(complete); });
+emptyMap.batch(writer => { writer.parts.must("parts").at([]).replace(validCollection); });
+emptyMap.batch(writer => { writer.parts.must("parts").at([]).replace(detachedParts); });
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-emptyMap.batch(writer => { writer.lib("parts").at([]).replace(1); });
+emptyMap.batch(writer => { writer.parts.must("parts").at([]).replace(1); });
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-emptyMap.batch(writer => { writer.lib("parts").at([]).replace(arrayRoot); });
+emptyMap.batch(writer => { writer.parts.must("parts").at([]).replace(arrayRoot); });
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-emptyMap.batch(writer => { writer.lib("parts").at([]).replace(additionalInvalidMember); });
+emptyMap.batch(writer => { writer.parts.must("parts").at([]).replace(additionalInvalidMember); });
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-emptyMap.batch(writer => { writer.lib("parts").at([]).replace(invalidParts); });
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).replace(validPart); });
+emptyMap.batch(writer => { writer.parts.must("parts").at([]).replace(invalidParts); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).replace(validPart); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).replace(invalidPart); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).replace(invalidPart); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).replace(badKind); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).replace(badKind); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).replace(badDocument); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).replace(badDocument); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).replace(badCss); });
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).set(validPart); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).replace(badCss); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set(validPart); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).set(invalidPart); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set(invalidPart); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).set(badKind); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set(badKind); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).set(badDocument); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set(badDocument); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).set(badCss); });
-emptyMap.batch(writer => { writer.lib("parts").at(["header"]).set({ css: "p{color:blue}" }); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set(badCss); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set({ css: "p{color:blue}" }); });
 
 // directLocus writes preserve the intrinsic contract.
-void emptyLocus.lib("parts").at([]).replace({});
-void emptyLocus.lib("parts").at([]).replace(complete);
-void emptyLocus.lib("parts").at([]).replace(validCollection);
-void emptyLocus.lib("parts").at([]).replace(detachedParts);
+void emptyLocus.parts.must("parts").at([]).replace({});
+void emptyLocus.parts.must("parts").at([]).replace(complete);
+void emptyLocus.parts.must("parts").at([]).replace(validCollection);
+void emptyLocus.parts.must("parts").at([]).replace(detachedParts);
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-void emptyLocus.lib("parts").at([]).replace(1);
+void emptyLocus.parts.must("parts").at([]).replace(1);
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-void emptyLocus.lib("parts").at([]).replace(arrayRoot);
+void emptyLocus.parts.must("parts").at([]).replace(arrayRoot);
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-void emptyLocus.lib("parts").at([]).replace(additionalInvalidMember);
+void emptyLocus.parts.must("parts").at([]).replace(additionalInvalidMember);
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-void emptyLocus.lib("parts").at([]).replace(invalidParts);
-void emptyLocus.lib("parts").at(["header"]).replace(validPart);
+void emptyLocus.parts.must("parts").at([]).replace(invalidParts);
+void emptyLocus.parts.must("parts").at(["header"]).replace(validPart);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.lib("parts").at(["header"]).replace(invalidPart);
+void emptyLocus.parts.must("parts").at(["header"]).replace(invalidPart);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.lib("parts").at(["header"]).replace(badKind);
+void emptyLocus.parts.must("parts").at(["header"]).replace(badKind);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.lib("parts").at(["header"]).replace(badDocument);
+void emptyLocus.parts.must("parts").at(["header"]).replace(badDocument);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.lib("parts").at(["header"]).replace(badCss);
-void emptyLocus.lib("parts").at(["header"]).set(validPart);
+void emptyLocus.parts.must("parts").at(["header"]).replace(badCss);
+void emptyLocus.parts.must("parts").at(["header"]).set(validPart);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.lib("parts").at(["header"]).set(invalidPart);
+void emptyLocus.parts.must("parts").at(["header"]).set(invalidPart);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.lib("parts").at(["header"]).set(badKind);
+void emptyLocus.parts.must("parts").at(["header"]).set(badKind);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.lib("parts").at(["header"]).set(badDocument);
+void emptyLocus.parts.must("parts").at(["header"]).set(badDocument);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.lib("parts").at(["header"]).set(badCss);
-void emptyLocus.lib("parts").at(["header"]).set({ css: "p{color:blue}" });
+void emptyLocus.parts.must("parts").at(["header"]).set(badCss);
+void emptyLocus.parts.must("parts").at(["header"]).set({ css: "p{color:blue}" });
 
 // emptyLocus.stage writes preserve the intrinsic contract.
-void emptyLocus.stage(writer => { writer.lib("parts").at([]).replace({}); });
-void emptyLocus.stage(writer => { writer.lib("parts").at([]).replace(complete); });
-void emptyLocus.stage(writer => { writer.lib("parts").at([]).replace(validCollection); });
-void emptyLocus.stage(writer => { writer.lib("parts").at([]).replace(detachedParts); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at([]).replace({}); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at([]).replace(complete); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at([]).replace(validCollection); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at([]).replace(detachedParts); });
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-void emptyLocus.stage(writer => { writer.lib("parts").at([]).replace(1); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at([]).replace(1); });
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-void emptyLocus.stage(writer => { writer.lib("parts").at([]).replace(arrayRoot); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at([]).replace(arrayRoot); });
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-void emptyLocus.stage(writer => { writer.lib("parts").at([]).replace(additionalInvalidMember); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at([]).replace(additionalInvalidMember); });
 // @ts-expect-error Complete replacement requires only valid Part members in a string-keyed collection.
-void emptyLocus.stage(writer => { writer.lib("parts").at([]).replace(invalidParts); });
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).replace(validPart); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at([]).replace(invalidParts); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).replace(validPart); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).replace(invalidPart); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).replace(invalidPart); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).replace(badKind); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).replace(badKind); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).replace(badDocument); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).replace(badDocument); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).replace(badCss); });
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).set(validPart); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).replace(badCss); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(validPart); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).set(invalidPart); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(invalidPart); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).set(badKind); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(badKind); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).set(badDocument); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(badDocument); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).set(badCss); });
-void emptyLocus.stage(writer => { writer.lib("parts").at(["header"]).set({ css: "p{color:blue}" }); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(badCss); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set({ css: "p{color:blue}" }); });
 
 // Ordinary data Libraries retain custom Schema projections, including staged Locus writes.
 const ordinaryGoverned = hsonLiveMap.fromLibraries({ data: { data: invalidParts, schema } });
 const ordinaryLocus = hsonLiveMap.locus.create({ private: [{ name: "data", definition: { data: invalidParts, schema } }] });
-const ordinaryValue: { header: { kind: "document"; document: string } } = ordinaryGoverned.lib("data").snap();
-const ordinarySchema: typeof schema = ordinaryGoverned.lib("data").schema.get();
-ordinaryGoverned.lib("data").at(["header"]).replace(schemaPart);
-ordinaryGoverned.batch(writer => { writer.lib("data").at(["header"]).set(schemaPart); });
-void ordinaryLocus.lib("data").at(["header"]).replace(schemaPart);
-void ordinaryLocus.stage(writer => { writer.lib("data").at(["header"]).set(schemaPart); });
+const ordinaryValue: { header: { kind: "document"; document: string } } = ordinaryGoverned.data.must("data").snap();
+const ordinarySchema: typeof schema = ordinaryGoverned.data.must("data").schema.get();
+ordinaryGoverned.data.must("data").at(["header"]).replace(schemaPart);
+ordinaryGoverned.batch(writer => { writer.data.must("data").at(["header"]).set(schemaPart); });
+void ordinaryLocus.data.must("data").at(["header"]).replace(schemaPart);
+void ordinaryLocus.stage(writer => { writer.data.must("data").at(["header"]).set(schemaPart); });
 // @ts-expect-error Ordinary Schema field types remain enforced.
-ordinaryGoverned.lib("data").at(["header", "document"]).set(1);
+ordinaryGoverned.data.must("data").at(["header", "document"]).set(1);
 // @ts-expect-error Ordinary staged Schema field types remain enforced.
-ordinaryGoverned.batch(writer => { writer.lib("data").at(["header", "document"]).set(1); });
+ordinaryGoverned.batch(writer => { writer.data.must("data").at(["header", "document"]).set(1); });
 // @ts-expect-error Ordinary governed Schema field types remain enforced.
-void ordinaryLocus.lib("data").at(["header", "document"]).set(1);
+void ordinaryLocus.data.must("data").at(["header", "document"]).set(1);
 // @ts-expect-error Ordinary governed staged Schema field types remain enforced.
-void ordinaryLocus.stage(writer => { writer.lib("data").at(["header", "document"]).set(1); });
+void ordinaryLocus.stage(writer => { writer.data.must("data").at(["header", "document"]).set(1); });
 void [ordinaryValue, ordinarySchema];
 
 // Required inferred keys must fail in both exact-optional compiler modes.
@@ -410,13 +410,13 @@ const undefinedDefinition = { parts: undefinedMembers };
 const reusedUndefinedLibraries = { later: undefinedLibrarySchema };
 const reusedUndefinedCatalog = { private: [{ name: "later", definition: undefinedDefinition }] } as const;
 // @ts-expect-error Known Parts facades expose only Schema inspection.
-map.lib("parts").schema.use(ANY_DATA);
+map.parts.must("parts").schema.use(ANY_DATA);
 // @ts-expect-error Governor Parts facades expose only Schema inspection.
-locus.lib("parts").schema.use(ANY_DATA);
+locus.parts.must("parts").schema.use(ANY_DATA);
 // @ts-expect-error Staged writers cannot attach a supplemental Schema.
-map.batch(writer => { writer.lib("parts").schema.use(ANY_DATA); });
+map.batch(writer => { writer.parts.must("parts").schema.use(ANY_DATA); });
 // @ts-expect-error Staged governors cannot attach a supplemental Schema.
-void locus.stage(writer => { writer.lib("parts").schema.use(ANY_DATA); });
+void locus.stage(writer => { writer.parts.must("parts").schema.use(ANY_DATA); });
 // @ts-expect-error Presence of undefined is not absence at Library admission.
 hsonLiveMap.fromLibraries({ parts: { parts, schema: undefined } });
 // @ts-expect-error Reusing an inferred Library cannot erase key presence.
@@ -442,48 +442,48 @@ void locus.addLibraries({ shared: [{ name: "later", definition: undefinedLibrary
 // @ts-expect-error Reused grouped input retains member key presence.
 void locus.addLibraries(reusedUndefinedCatalog);
 // @ts-expect-error Direct member patches retain inferred schema: undefined.
-map.lib("parts").at(["header"]).set(undefinedMemberSchema);
+map.parts.must("parts").at(["header"]).set(undefinedMemberSchema);
 // @ts-expect-error Direct member replacements retain inferred schema: undefined.
-map.lib("parts").at(["header"]).replace(undefinedMemberSchema);
+map.parts.must("parts").at(["header"]).replace(undefinedMemberSchema);
 // @ts-expect-error Direct collection replacements check every inferred member.
-map.lib("parts").at([]).replace(undefinedMembers);
+map.parts.must("parts").at([]).replace(undefinedMembers);
 // @ts-expect-error Staged member patches retain inferred schema: undefined.
-map.batch(writer => { writer.lib("parts").at(["header"]).set(undefinedMemberSchema); });
+map.batch(writer => { writer.parts.must("parts").at(["header"]).set(undefinedMemberSchema); });
 // @ts-expect-error Staged collection replacements check every inferred member.
-map.batch(writer => { writer.lib("parts").at([]).replace(undefinedMembers); });
+map.batch(writer => { writer.parts.must("parts").at([]).replace(undefinedMembers); });
 // @ts-expect-error Governor member patches retain inferred schema: undefined.
-void locus.lib("parts").at(["header"]).set(undefinedMemberSchema);
+void locus.parts.must("parts").at(["header"]).set(undefinedMemberSchema);
 // @ts-expect-error Governor member replacements retain inferred schema: undefined.
-void locus.lib("parts").at(["header"]).replace(undefinedMemberSchema);
+void locus.parts.must("parts").at(["header"]).replace(undefinedMemberSchema);
 // @ts-expect-error Governor collection replacements check every inferred member.
-void locus.lib("parts").at([]).replace(undefinedMembers);
+void locus.parts.must("parts").at([]).replace(undefinedMembers);
 // @ts-expect-error Staged governor patches retain inferred schema: undefined.
-void locus.stage(writer => { writer.lib("parts").at(["header"]).set(undefinedMemberSchema); });
+void locus.stage(writer => { writer.parts.must("parts").at(["header"]).set(undefinedMemberSchema); });
 // @ts-expect-error Staged governor replacements check every inferred member.
-void locus.stage(writer => { writer.lib("parts").at([]).replace(undefinedMembers); });
+void locus.stage(writer => { writer.parts.must("parts").at([]).replace(undefinedMembers); });
 // The acknowledged generic collection-root patch proposal boundary stays unchanged.
-map.lib("parts").at([]).set(invalidParts);
-map.batch(writer => { writer.lib("parts").at([]).set(invalidParts); });
-void locus.lib("parts").at([]).set(invalidParts);
-void locus.stage(writer => { writer.lib("parts").at([]).set(invalidParts); });
+map.parts.must("parts").at([]).set(invalidParts);
+map.batch(writer => { writer.parts.must("parts").at([]).set(invalidParts); });
+void locus.parts.must("parts").at([]).set(invalidParts);
+void locus.stage(writer => { writer.parts.must("parts").at([]).set(invalidParts); });
 const ordinaryUndefined = hsonLiveMap.fromLibraries({ data: { data: 1 } });
-ordinaryUndefined.lib("data").schema.use(ANY_DATA);
+ordinaryUndefined.data.must("data").schema.use(ANY_DATA);
 hsonLiveMap.fromLibraries({ data: { data: 1, schema: ANY_DATA } });
 hsonLiveMap.fromLibraries({ parts: { parts: {} } });
 hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: {} } }] });
 
 // @ts-expect-error Object helpers must retain key-presence evidence for new members.
-map.lib("parts").at([]).asObject()?.object.setKey("header", undefinedMemberSchema);
-map.lib("parts").at(["header"]).asObject()?.object.setMany({ document: "<header/>" });
+map.parts.must("parts").at([]).asObject()?.object.setKey("header", undefinedMemberSchema);
+map.parts.must("parts").at(["header"]).asObject()?.object.setMany({ document: "<header/>" });
 // @ts-expect-error Part object patch helpers reject schema even when undefined.
-map.lib("parts").at(["header"]).asObject()?.object.setMany({ schema: undefined });
+map.parts.must("parts").at(["header"]).asObject()?.object.setMany({ schema: undefined });
 declare const maybeUndefinedMember: typeof validPart | typeof undefinedMemberSchema;
 // @ts-expect-error Collection admission also checks member unions.
 hsonLiveMap.fromLibraries({ parts: { parts: { header: maybeUndefinedMember } } });
 
 // @ts-expect-error Member updater inference retains required forbidden keys.
-map.lib("parts").at(["header"]).update(() => undefinedMemberSchema);
-map.lib("parts").at(["header"]).update(() => ({ css: "p{color:blue}" }));
+map.parts.must("parts").at(["header"]).update(() => undefinedMemberSchema);
+map.parts.must("parts").at(["header"]).update(() => ({ css: "p{color:blue}" }));
 declare const persistence: import("hson-live/locus").LocusPersistenceAdapter;
 // @ts-expect-error Durable construction uses the same Library key checks.
 void hsonLiveMap.locus.resume({ logicalMapId: "parts-types", persistence, private: [{ name: "parts", definition: undefinedLibrarySchema }] });

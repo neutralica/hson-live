@@ -1,3 +1,4 @@
+import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
 import { data_path_kind, data_location_check, require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { project_interaction_state_internal } from "../interactions/interactions.projection.js";
@@ -239,7 +240,7 @@ export function add_livemap_canonical_libraries_internal(
   return admit(capture_library_definitions(definitions));
 }
 
-const PUBLIC_MULTI_LIBRARY_MAPS = new WeakSet<object>();
+const PUBLIC_MULTI_LIBRARY_MAPS = new WeakMap<object, (name: string) => FamilySelection<LiveMapDataLibrary | LiveMapDocumentLibrary> | undefined>();
 const CLIENT_LIBRARY_SOURCES = new WeakMap<object, "authority-projected" | "client-local">();
 const DOCUMENT_CSS_STATE = new WeakMap<object, () => import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet>();
 const DOCUMENT_CSS_COMMIT = new WeakMap<object, (operation: import("../../types/livemap.types.js").LiveMapCssOp) => void>();
@@ -474,6 +475,20 @@ export function reconcile_client_projection_snapshot_internal(
 /** True only for the dedicated local multi-library public facade. @internal */
 export function is_public_multi_library_livemap(value: unknown): value is object {
   return typeof value === "object" && value !== null && PUBLIC_MULTI_LIBRARY_MAPS.has(value);
+}
+
+/** Resolve through the existing named registry, retaining its binding fences. @internal */
+export function resolve_livemap_library_internal(map: LiveMap, name: string) {
+  const resolve = PUBLIC_MULTI_LIBRARY_MAPS.get(map);
+  if (resolve === undefined) throw new Error("Library selection requires a registered LiveMap.");
+  return resolve(name);
+}
+
+/** Generic private algorithms may operate across Library families. @internal */
+export function require_livemap_library_internal(map: LiveMap, name: string): LiveMapDataLibrary | LiveMapDocumentLibrary {
+  const selected = resolve_livemap_library_internal(map, name);
+  if (selected === undefined) throw new Error(`Unknown LiveMap Library ${JSON.stringify(name)}.`);
+  return selected.handle;
 }
 
 /** Select public configuration once; only admitted material crosses into ownership. @internal */
@@ -750,7 +765,15 @@ function make_livemap_library_receiver(
     return Object.freeze({ commit, libraries: Object.freeze(admitted) });
   };
 
-  const lib = Object.freeze((name: string) => selected(name));
+  const resolve = (name: string): FamilySelection<LiveMapDataLibrary | LiveMapDocumentLibrary> | undefined => {
+    const binding = named.get(name);
+    if (binding === undefined) return undefined;
+    const schema = aggregate.librarySchema(binding.identity);
+    const contract = aggregate.hostedRegistry().libraries.find(entry => entry.name === name && entry.scope === undefined);
+    if (contract === undefined) throw new Error("Library registry binding is unavailable.");
+    return { family: binding.family === "document" ? "doc" : contract.validation === PART_COLLECTION_VALIDATION ? "parts" : "data",
+      schema, handle: selected(name) };
+  };
 
   const batch = (callback: (writer: LiveMapStagedWriter<LiveMap, void>) => unknown): LiveMapCommit => {
     if (clientSnapshot !== undefined) throw new Error("LiveMap batch is unavailable on a client composition map.");
@@ -773,7 +796,7 @@ function make_livemap_library_receiver(
 
   const libraries = Object.freeze({
     get rev() { return aggregate.inspect().revision; },
-    lib,
+    ...make_family_selectors(resolve),
     batch,
     addLibraries,
     replay: (commit: LiveMapCommit): LiveMapCommit => {
@@ -922,7 +945,7 @@ function make_livemap_library_receiver(
       }
     },
   }));
-  PUBLIC_MULTI_LIBRARY_MAPS.add(libraries);
+  PUBLIC_MULTI_LIBRARY_MAPS.set(libraries, resolve);
   HOSTED_LIBRARY_ADMISSION.set(libraries, (owner, additions, css, assertEntryCurrent) => {
     assertEntryCurrent();
     if (additions.length === 0) throw new Error("Hosted Library admission batch is empty.");
@@ -1179,8 +1202,8 @@ function make_data_library(
     const arrayCapabilities = omit_array_collisions(arrayApi);
     const currentKind = () => data_path_kind(read());
     const facade = {
-      get rev() { return aggregate.inspect().revision; },
-      path: () => clone_live_path(stablePath),
+      get rev() { aggregate.librarySchema(library.identity); return aggregate.inspect().revision; },
+      path: () => { aggregate.librarySchema(library.identity); return clone_live_path(stablePath); },
       snap: () => read() as TValue,
       data: () => {
         if (check?.() === false) return undefined;
@@ -1255,7 +1278,7 @@ function make_data_library(
 
   const facade: LiveMapDataLibrary = {
     mode: contract.mode,
-    get rev() { return aggregate.inspect().revision; },
+    get rev() { aggregate.librarySchema(library.identity); return aggregate.inspect().revision; },
     root: () => clone_node(aggregate.root(library.identity)),
     snap: library_snap,
     at: library_at as LiveMapDataLibrary["at"],
@@ -1310,6 +1333,7 @@ function make_document_library(
   const root = (): HsonNode => aggregate.root(library.identity);
   const document_commits = Object.freeze({
     observe: (listener: (observation: LiveMapCommitObservation) => void) => {
+      aggregate.librarySchema(library.identity);
       const stopCommit = aggregate.observe((aggregateCommit) => {
         const mapped = aggregate.documentCommitFor(library.identity, aggregateCommit);
         const selectedOperations = aggregateCommit.operations
@@ -1439,7 +1463,7 @@ function make_document_library(
 
   const raw_at = make_livemap_document_location_factory(
     Object.freeze({
-      get rev() { return aggregate.inspect().revision; },
+      get rev() { aggregate.librarySchema(library.identity); return aggregate.inspect().revision; },
       root,
     }),
     "document",
@@ -1583,7 +1607,7 @@ function make_document_library(
 
   const facade: LiveMapDocumentLibrary = {
     mode: "document" as const,
-    get rev() { return aggregate.inspect().revision; },
+    get rev() { aggregate.librarySchema(library.identity); return aggregate.inspect().revision; },
     css: make_livemap_document_css(
       () => aggregate.stylesheet(library.identity),
       (operation) => { aggregate.commitStylesheet(library.identity, operation); },

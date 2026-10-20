@@ -63,9 +63,9 @@ try {
     { connection: { principalId: "development-anonymous" } });
   const echo = await hsonLiveMap.echo.create({ now: retained.now(), credential: retained.credential!, transport });
   assert.equal(echo.sync.status, "caught_up");
-  const authority = echo_document_authority_for(echo_map_internal(echo).lib("page"));
+  const authority = echo_document_authority_for(echo_map_internal(echo).doc.must("page"));
   assert.ok(authority);
-  const page = echo.lib("page");
+  const page = echo.doc.must("page");
   if (page.mode !== "document" || page.source !== "authority-projected") throw new Error("Expected projected document.");
   holdCommit = true;
   const epoch = echo.session.epoch;

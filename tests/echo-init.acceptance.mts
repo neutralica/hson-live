@@ -1,3 +1,4 @@
+import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { sha256_sync } from "../src/core/sha256-sync.ts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
@@ -69,13 +70,13 @@ for (const [expected, advance, truncateHistory] of [
     defaultProjection: { libraries: ["state"] },
     authorizeProjection: () => ({ libraries: ["state"] }),
   };
-  const locus: Locus<typeof map> = truncateHistory
+  const locus = truncateHistory
     ? create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus
-    : hsonLiveMap.locus.create(authority_definition_from_fixture_options(options));
+    : create_locus_fixture(authority_definition_from_fixture_options(options));
   const session = await locus.session.create({ libraries: ["state"] });
   const cut = session.now();
   if (advance) await locus.stage((draft) => {
-    const state = draft.lib("state");
+    const state = draft.data.must("state");
 
     state.at(["value"]).set(1);
   });
@@ -103,8 +104,8 @@ for (const [expected, advance, truncateHistory] of [
   assert.equal(echo.sync.strategy, expected);
   assert.equal(echo.sync.appliedRev, locus.rev);
   assert.equal(echo.session.credential, session.credential);
-  const state = echo.lib("state");
-  if (state.mode === "document") throw new Error("Expected a data library.");
+  const state = echo.data.must("state");
+  if (String(state.mode) === "document") throw new Error("Expected a data library.");
   assert.equal(state.snap(["value"]), expected === "current" ? 0 : 1);
   assert.equal("set" in state.at(["value"]), false, "projected data has no direct setter");
   echo.dispose();
@@ -193,8 +194,8 @@ for (const [expected, advance, truncateHistory] of [
   assert.equal(valid.sync.status, "caught_up");
   const secondPair = socket_pair(); let detachSecond = bind_locus_websocket(locus, secondPair.server);
   const second = await hsonLiveMap.echo.create({ now: b.now(), credential: b.credential!, transport: test_echo_transport(secondPair.client) });
-  const localA = valid.lib("ui"); const localB = second.lib("ui");
-  if (localA.mode === "document" || localB.mode === "document"
+  const localA = valid.data.must("ui"); const localB = second.data.must("ui");
+  if (String(localA.mode) === "document" || String(localB.mode) === "document"
     || localA.source !== "client-local" || localB.source !== "client-local") throw new Error("Expected local data Libraries.");
   const beforeLocal = locus.rev;
   localA.at(["value"]).set(12);
@@ -206,7 +207,7 @@ for (const [expected, advance, truncateHistory] of [
   valid.disconnect(); second.disconnect();
   detachValid(); detachSecond();
   await locus.stage((draft) => {
-    const state = draft.lib("state");
+    const state = draft.data.must("state");
     state.at(["value"]).set(1);
   });
   detachValid = bind_locus_websocket(locus, validPair.server);
@@ -236,8 +237,8 @@ for (const [expected, advance, truncateHistory] of [
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonLiveMap.echo.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
-  const state = echo.lib("state");
-  if (state.mode === "document") throw new Error("Expected data.");
+  const state = echo.data.must("state");
+  if (String(state.mode) === "document") throw new Error("Expected data.");
   assert.equal(state.snap(["value"]), 0);
   echo.dispose(); detach(); locus.dispose();
 }
@@ -245,7 +246,7 @@ for (const [expected, advance, truncateHistory] of [
 // A valid CSS value is also mutable projected state, even with an unchanged contract.
 {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
-  map.lib("page").css.stylesheet("main { color: red; }");
+  map.doc.must("page").css.stylesheet("main { color: red; }");
   const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]),
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
   const session = await locus.session.create({ libraries: ["page"] });
@@ -258,10 +259,10 @@ for (const [expected, advance, truncateHistory] of [
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonLiveMap.echo.create({ now: forged, credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal(echo.sync.strategy, "reconcile");
-  const projectedPage = echo.lib("page");
+  const projectedPage = echo.doc.must("page");
   if (projectedPage.mode !== "document" || projectedPage.source !== "authority-projected")
     throw new Error("Expected projected document.");
-  assert.equal(projectedPage.css.snapshot(), map.lib("page").css.snapshot());
+  assert.equal(projectedPage.css.snapshot(), map.doc.must("page").css.snapshot());
   const beforeHostedCss = echo.rev;
   await projectedPage.css.stylesheet("main { color: blue; }");
   assert.match(projectedPage.css.snapshot(), /blue/);
@@ -317,7 +318,7 @@ for (const [mutate, truncateHistory] of [[false, false], [true, false], [true, t
   const options: LocusRegistryOptions<typeof map> = { map, libraries: [{ name: "state", ownership: "shared" }],
     authorizeProjection: () => ({ libraries: ["state"] }) };
   const locus = truncateHistory ? create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus
-    : hsonLiveMap.locus.create(authority_definition_from_fixture_options(options));
+    : create_locus_fixture(authority_definition_from_fixture_options(options));
   const session = await locus.session.create({ libraries: ["state"] });
   const pair = socket_pair(); let detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
@@ -326,7 +327,7 @@ for (const [mutate, truncateHistory] of [[false, false], [true, false], [true, t
   assert.equal(locus.session.debug().sessions[0]!.state, "disconnected");
   assert.equal(locus.session.debug().sessions[0]!.transportAttached, false);
   if (mutate) await locus.stage((draft) => {
-    const state = draft.lib("state");
+    const state = draft.data.must("state");
     state.at(["value"]).set(1);
   });
   pair.holdCaughtUp();
@@ -447,7 +448,7 @@ for (const stage of ["message", "close"] as const) {
   const LocalSchema = Hson.schema`<type "data" content <value "number">>`;
   const PanelSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
   const cssSource = hsonLiveMap.fromLibraries({ panel: { document: "<aside/>", schema: PanelSchema } });
-  cssSource.lib("panel").css.stylesheet("aside { color: red; }");
+  cssSource.doc.must("panel").css.stylesheet("aside { color: red; }");
   const validCss = cssSource.capture().libraries[0]!.css!;
   const localDocument = (css: typeof validCss) => make_locus_application_catalog(hsonLiveMap.create(), [
     { name: "panel", ownership: "local", initializer: { document: "<aside/>", schema: PanelSchema }, css },
@@ -495,7 +496,7 @@ for (const stage of ["message", "close"] as const) {
   const cssRule = first.local.find((entry) => entry.name === "panel")!.css!.rules[0]!;
   assert.throws(() => { (cssRule.declarations[0] as unknown as string[])[1] = "green"; }, TypeError);
   assert.match(JSON.stringify(immutableB.now().local), /red/);
-  assert.throws(() => locus.lib("ui"), /unknown/i, "local definitions never enter locus_map_internal(locus)");
+  assert.throws(() => locus.data.must("ui"), /unknown/i, "local definitions never enter locus_map_internal(locus)");
   assert.throws(() => hsonLiveMap.locus.create({
     shared: [{ name: "state", definition: { data: { value: 0 }, schema: StateSchema } }],
     local: [{ name: "state", initializer: { data: { value: 9 }, schema: StateSchema } }],
@@ -512,7 +513,7 @@ for (const stage of ["message", "close"] as const) {
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
-  assert.throws(() => echo.lib("ui"), /unknown/i);
+  assert.throws(() => echo.data.must("ui"), /unknown/i);
   const beforeTopologyRev = echo.rev;
   const beforeTopologyRegistry = echo_map_internal(echo).capture().registryDigest;
   const beforeAuthorityCursor = echo.sync.appliedRev;
@@ -528,18 +529,18 @@ for (const stage of ["message", "close"] as const) {
   assert.equal(echo_map_internal(echo).capture().registryDigest, beforeTopologyRegistry);
   assert.equal(echo.sync.appliedRev, beforeAuthorityCursor);
   assert.equal(topologyCommits, 0);
-  assert.throws(() => echo.lib("extraPage"), /unknown/i);
-  assert.throws(() => echo.lib("replayedLocal"), /unknown/i);
+  assert.throws(() => echo.doc.must("extraPage"), /unknown/i);
+  assert.throws(() => echo.data.must("replayedLocal"), /unknown/i);
 
   await session.update({ libraries: ["state", "ui", "panel"] });
   await until(() => {
-    try { return echo.lib("ui").mode === "data-object" && echo.lib("panel").mode === "document"; }
+    try { return echo.data.must("ui").mode === "data-object" && echo.doc.must("panel").mode === "document"; }
     catch { return false; }
   });
-  const ui = echo.lib("ui");
-  const panel = echo.lib("panel");
+  const ui = echo.data.must("ui");
+  const panel = echo.doc.must("panel");
   assert.equal(echo.sync.status, "caught_up", "a later authorized initializer grant remains healthy");
-  if (ui.mode === "document" || panel.mode !== "document"
+  if (String(ui.mode) === "document" || panel.mode !== "document"
     || ui.source !== "client-local" || panel.source !== "client-local") throw new Error("Local initializer mode mismatch.");
   assert.equal(ui.snap(["value"]), 0);
   assert.match(JSON.stringify(panel.css.snapshot()), /red/);
@@ -550,22 +551,22 @@ for (const stage of ["message", "close"] as const) {
   assert.equal(locus.rev, authorityRevBeforeLocal, "local mutation never enters authority history");
   assert.doesNotThrow(() => ui.schema.use(LocalSchema as never));
   assert.equal(ui.schema.get().toHson(), LocalSchema.toHson());
-  const projectedState = echo.lib("state");
+  const projectedState = echo.data.must("state");
   assert.equal(projectedState.source, "authority-projected");
   assert.equal("use" in projectedState.schema, false);
-  if (projectedState.mode !== "document") assert.equal(projectedState.at([]).at(["value"]).snap(), 0);
+  if (String(projectedState.mode) !== "document") assert.equal(projectedState.at([]).at(["value"]).snap(), 0);
 
   await session.update({ libraries: ["state"] });
   assert.equal(ui.snap(["value"]), 12, "scope removal is non-destructive");
   await session.update({ libraries: ["state", "ui", "panel"] });
-  assert.equal(echo.lib("ui"), ui);
+  assert.equal(echo.data.must("ui"), ui);
   assert.equal(ui.snap(["value"]), 12, "remove/re-add does not reapply the seed");
   assert.equal(ui.schema.get().toHson(), LocalSchema.toHson(), "re-add preserves the evolved local Schema");
 
   echo.disconnect();
   detach();
   await locus.stage((draft) => {
-    const state = draft.lib("state");
+    const state = draft.data.must("state");
     state.at(["value"]).set(1);
   });
   detach = bind_locus_websocket(locus, pair.server);
@@ -601,10 +602,10 @@ for (const stage of ["message", "close"] as const) {
   const freshPair = socket_pair();
   const detachFresh = bind_locus_websocket(locus, freshPair.server);
   const fresh = await hsonLiveMap.echo.create({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
-  const freshUi = fresh.lib("ui");
-  if (freshUi.mode === "document" || freshUi.source !== "client-local") throw new Error("Expected fresh local data Library.");
+  const freshUi = fresh.data.must("ui");
+  if (String(freshUi.mode) === "document" || freshUi.source !== "client-local") throw new Error("Expected fresh local data Library.");
   assert.equal(freshUi.snap(["value"]), 0);
-  const freshPanel = fresh.lib("panel");
+  const freshPanel = fresh.doc.must("panel");
   if (freshPanel.mode !== "document") throw new Error("Expected fresh local document.");
   assert.match(JSON.stringify(freshPanel.css.snapshot()), /red/);
   fresh.dispose(); detachFresh();
@@ -653,12 +654,12 @@ for (const stage of ["message", "close"] as const) {
   const stopComposedCommits = echo.commits.observe((commit) => composedCommits.push(commit.rev));
 
   const initialRev = echo.rev;
-  await locus.lib("hidden").at(["value"]).set(1);
+  await locus.data.must("hidden").at(["value"]).set(1);
   await until(() => echo.sync.appliedRev === locus.rev);
   assert.equal(echo.rev, initialRev, "private progress has no composed-state commit");
   assert.deepEqual(composedCommits, []);
 
-  await locus.lib("visible").at(["value"]).set(1);
+  await locus.data.must("visible").at(["value"]).set(1);
   await until(() => echo.sync.appliedRev === locus.rev);
   assert.equal(echo.rev, initialRev + 1, "visible authority commit changes composed state");
   assert.deepEqual(composedCommits, [echo.rev]);
@@ -667,14 +668,14 @@ for (const stage of ["message", "close"] as const) {
   const beforeGrantApplied = echo.sync.appliedRev;
   const beforeGrantAuthority = locus.rev;
   await session.update({ libraries: ["visible", "local"] });
-  await until(() => { try { return echo.lib("local").source === "client-local"; } catch { return false; } });
+  await until(() => { try { return echo.data.must("local").source === "client-local"; } catch { return false; } });
   assert.equal(echo.rev, beforeGrantRev + 1, "late initializer installs client-local topology");
   assert.equal(echo.sync.appliedRev, beforeGrantApplied);
   assert.equal(locus.rev, beforeGrantAuthority);
   assert.deepEqual(echo.cut().libs.libraries.map((entry) => entry.name), ["visible", "local"]);
 
-  const local = echo.lib("local");
-  if (local.source !== "client-local" || local.mode === "document") throw new Error("Expected local data handle.");
+  const local = echo.data.must("local");
+  if (local.source !== "client-local" || String(local.mode) === "document") throw new Error("Expected local data handle.");
   const beforeLocalRev = echo.rev;
   local.at(["value"]).set(2);
   assert.equal(echo.rev, beforeLocalRev + 1);
@@ -682,7 +683,7 @@ for (const stage of ["message", "close"] as const) {
 
   echo.disconnect(); detach();
   const beforeSnapshotRev = echo.rev;
-  await locus.lib("hidden").at(["value"]).set(2);
+  await locus.data.must("hidden").at(["value"]).set(2);
   detach = bind_locus_websocket(locus, pair.server);
   echo.connect();
   await echo.session.reattach();
@@ -691,13 +692,13 @@ for (const stage of ["message", "close"] as const) {
   assert.equal(echo.rev, beforeSnapshotRev, "unchanged composed state keeps its revision");
   assert.equal(local.at(["value"]).snap(), 2);
   assert.equal(composedCommits.at(-1), echo.rev);
-  const oldVisible = echo.lib("visible");
+  const oldVisible = echo.data.must("visible");
   await session.update({ libraries: ["local"] });
-  await until(() => { try { echo.lib("visible"); return false; } catch { return true; } });
+  await until(() => { try { echo.data.must("visible"); return false; } catch { return true; } });
   await session.update({ libraries: ["visible", "local"] });
-  await until(() => { try { return echo.lib("visible").source === "authority-projected"; } catch { return false; } });
-  assert.notEqual(echo.lib("visible"), oldVisible, "regranted projected library gets a fresh governed handle");
-  assert.equal(echo.lib("local"), local, "client-local handle retains identity across grant changes");
+  await until(() => { try { return echo.data.must("visible").source === "authority-projected"; } catch { return false; } });
+  assert.notEqual(echo.data.must("visible"), oldVisible, "regranted projected library gets a fresh governed handle");
+  assert.equal(echo.data.must("local"), local, "client-local handle retains identity across grant changes");
   stopComposedCommits();
   echo.dispose(); detach(); locus.dispose();
 }

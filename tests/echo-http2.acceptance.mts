@@ -108,7 +108,7 @@ try {
     clientId: "client", requestId: "unknown" }, { signal: aborted.signal });
   assert.equal(failed.kind, "not-submitted");
   await locus.stage((draft) => {
-    const state = draft.lib("state");
+    const state = draft.data.must("state");
 
     state.at(["value"]).set(1);
   });
@@ -125,7 +125,7 @@ try {
   releaseFinite?.();
   assert.equal((await inFlight).kind, "uncertain", "in-flight finite cancellation cannot prove non-submission");
   await locus.stage((draft) => {
-    const state = draft.lib("state");
+    const state = draft.data.must("state");
 
     state.at(["value"]).set(2);
   });

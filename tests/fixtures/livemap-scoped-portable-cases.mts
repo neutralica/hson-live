@@ -37,7 +37,7 @@ function fixture() {
       css: ':scope{animation:glow 1s} @keyframes glow{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
     empty: { kind: "document", document: '<em/>' },
   }), page: { document: '<main/>' } });
-  map.lib("page").css.stylesheet('main{margin:7px}');
+  map.doc.must("page").css.stylesheet('main{margin:7px}');
   const aggregate = authority(map), owner = aggregate.libraries()[1]!;
   const parsed = parse_authored_document_library('<main @:_000000002 <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <hson-part lib="parts" at="global"/> <hson-part lib="parts" at="empty"/>/>');
   let count = 0;
@@ -55,7 +55,7 @@ export function scoped_portable_fixture_capture(): PortableDocumentScopedLibrary
 }
 export function scoped_portable_roundtrip(input: unknown): PortableDocumentScopedLibrary {
   const f = receiver();
-  assert.throws(() => f.map.lib("parts"));
+  assert.throws(() => f.map.parts.must("parts"));
   const candidate = f.restore(input);
   assert.throws(() => Reflect.apply(f.aggregate.accept, undefined, [candidate]), /another authority/);
   const capture = f.aggregate.captureScopedDocument(candidate);
@@ -104,8 +104,8 @@ export function scoped_portable_cases(check: (name: string, run: () => void) => 
       for (const quid of quids(next.overlay)) assert.ok(!f.candidate.issued.has(quid));
       assert.equal(document_scoped_quads_equal(next.scopes, f.candidate.scopes), false);
       assert.ok(equal(portable, receiving.aggregate.captureScopedDocument(next)));
-      assert.throws(() => receiving.map.lib("parts"));
-      assert.equal(receiving.map.lib("page").q("left"), undefined, "candidate is not public installed state");
+      assert.throws(() => receiving.map.parts.must("parts"));
+      assert.equal(receiving.map.doc.must("page").q("left"), undefined, "candidate is not public installed state");
     }); } finally { allocator(receiving.aggregate.identityEpoch().owner, undefined); }
   });
   check("CSS transport labels remain separate even when an authored name has identical text", () => {
@@ -191,14 +191,14 @@ export function scoped_portable_cases(check: (name: string, run: () => void) => 
     const f = receiver(), ledger = f.aggregate.identityEpoch().issued(), rev = f.map.rev;
     let entered = false;
     allocator(f.aggregate.identityEpoch().owner, () => {
-      if (!entered) { entered = true; f.map.lib("other").at(["n"]).set(1); }
+      if (!entered) { entered = true; f.map.data.must("other").at(["n"]).set(1); }
       return "d00000004";
     });
     try { assert.throws(() => f.restore(input), /changed during capture/); }
     finally { allocator(f.aggregate.identityEpoch().owner, undefined); }
     assert.equal(f.map.rev, rev + 1); assert.equal(f.aggregate.identityEpoch().issued().size, ledger.size);
     assert.equal(f.aggregate.identityEpoch().issued().has("d00000004"), false);
-    assert.equal(f.map.lib("other").at(["n"]).snap(), 1); assert.equal(f.map.lib("page").css.snapshot(), "");
+    assert.equal(f.map.data.must("other").at(["n"]).snap(), 1); assert.equal(f.map.doc.must("page").css.snapshot(), "");
   });
   check("reconstruction detaches graph, scope and CSS coordinates before invoking the receiving allocator", () => {
     const original = scoped_portable_fixture_capture(), input = copy(original), f = receiver(); let calls = 0;
@@ -228,14 +228,14 @@ export function scoped_portable_cases(check: (name: string, run: () => void) => 
   check("reentrant portable inspection is fenced before receiving issuance", () => {
     const input = scoped_portable_fixture_capture(), f = receiver(); let calls = 0, entered = false;
     const proxy = new Proxy(input, { getOwnPropertyDescriptor(target, key) {
-      if (!entered) { entered = true; f.map.lib("other").at(["n"]).set(1); }
+      if (!entered) { entered = true; f.map.data.must("other").at(["n"]).set(1); }
       return Reflect.getOwnPropertyDescriptor(target, key);
     } });
     allocator(f.aggregate.identityEpoch().owner, () => { calls++; return "e00000001"; });
     try { assert.throws(() => f.restore(proxy), /changed during capture/); }
     finally { allocator(f.aggregate.identityEpoch().owner, undefined); }
     assert.equal(calls, 0); assert.equal(f.map.rev, 1); assert.equal(f.aggregate.identityEpoch().issued().size, 0);
-    assert.equal(f.map.lib("other").at(["n"]).snap(), 1);
+    assert.equal(f.map.data.must("other").at(["n"]).snap(), 1);
   });
   const malformed: readonly [string, (input: ReturnType<typeof copy>) => void][] = [
     ["invalid binding path", p => { p.scopes.occurrences[0].bindings[0].path = [999]; }],

@@ -21,14 +21,14 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 });
 
 function data_value(map: LiveMap, name: string, key: string): unknown {
-  const library = map.lib(name);
+  const library = map.data.must(name);
   if (!("snap" in library)) throw new Error("Expected a data Library.");
   return library.snap([key]);
 }
 
 function set_data(draft: LocusHostedAggregateStageWriter, name: string, key: string, value: JsonValue): void {
-  const library = draft.lib(name);
-  if (library.mode === "document") throw new Error("Expected a data Library draft.");
+  const library = draft.data.must(name);
+  if (String(library.mode) === "document") throw new Error("Expected a data Library draft.");
   library.at([key]).set(value);
 }
 
@@ -103,7 +103,7 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
   assert.equal(data_value(restored.map, "A", "count"), 1);
   assert.equal(data_value(restored.map, "B", "value"), "B0");
   assert.equal(data_value(restored.map, "C", "value"), "C1");
-  assert.equal(restored.map.lib("D").mode, "document");
+  assert.equal(restored.map.doc.must("D").mode, "document");
   restored.dispose();
 });
 
@@ -156,7 +156,7 @@ await case_("prepared topology stays invisible while the durable append is pendi
   await adapter.entered.promise;
   assert.equal(map.rev, 0);
   assert.equal(locus.registryDigest, digest);
-  assert.throws(() => map.lib("held"), /Unknown/);
+  assert.throws(() => map.data.must("held"), /Unknown/);
   assert.throws(() => map.addLibraries({ bypass: { data: 2 } }), /Locus authority|controlled|managed/i);
   adapter.release.resolve();
   await pending;
@@ -181,14 +181,14 @@ await case_("failed durable topology append leaves authority and publication unt
   assert.equal(locus.registryDigest, digest);
   assert.deepEqual(published, []);
   assert.deepEqual(adapter.state(locus.logicalMapId)?.commits, []);
-  assert.throws(() => map.lib("rejected"), /Unknown/);
+  assert.throws(() => map.data.must("rejected"), /Unknown/);
   const numberSchema = Hson.schema`<type "data" content <value "number">>`;
   await assert.rejects(add_private(locus, {
     valid: { data: { value: 1 } },
     invalid: { data: { value: "wrong" }, schema: numberSchema },
   }), /Schema|number/i);
   assert.equal(locus.rev, 0);
-  assert.throws(() => map.lib("valid"), /Unknown/);
+  assert.throws(() => map.data.must("valid"), /Unknown/);
   await add_private(locus, { accepted: { data: { value: 2 } } });
   assert.deepEqual(published, [1]);
   assert.equal(locus.rev, 1);

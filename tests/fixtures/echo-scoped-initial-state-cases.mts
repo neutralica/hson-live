@@ -26,7 +26,7 @@ import { prepare_echo_replica_internal } from "../../src/api/echo/echo.replica-p
 
 const copy = <T,>(input: T): T => structuredClone(input);
 const node = (source: string) => { const n = hsonTransform.fromHson(source).toNode().$_content[0]; assert.ok(is_Node(n)); return n; };
-const page = (w: LocusHostedAggregateStageWriter) => { const d = w.lib("page"); assert.equal(d.mode, "document"); if (d.mode !== "document") throw Error(); return d; };
+const page = (w: LocusHostedAggregateStageWriter) => { const d = w.doc.must("page"); assert.equal(d.mode, "document"); if (d.mode !== "document") throw Error(); return d; };
 const listener = { event: "click", target: "element" as const, capture: false, once: false, passive: false,
   missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false };
 
@@ -99,16 +99,16 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
       for (let i = 0; i < allIds.length; i++) for (let j = i + 1; j < allIds.length; j++) for (const id of allIds[i]!) assert.ok(!allIds[j]!.has(id));
       for (const cap of [first, second]) {
         const r = view(cap); assert.ok(equal(f.a.scopedDocumentState(f.pageId), r.state()));
-        assert.equal(r.scopes().length, 4); assert.throws(() => r.map.lib("parts")); assert.throws(() => r.map.lib("hidden"));
-        const doc = r.map.lib("page"); if (doc.mode !== "document") throw Error();
+        assert.equal(r.scopes().length, 4); assert.throws(() => r.map.parts.must("parts")); assert.throws(() => r.map.doc.must("hidden"));
+        const doc = r.map.doc.must("page"); if (doc.mode !== "document") throw Error();
         assert.ok(doc.q("page")); assert.ok(doc.q("left")); assert.equal(doc.q("label"), undefined);
-        assert.match(r.map.lib("page").css.snapshot(), /margin:7px/); assert.match(r.map.lib("page").css.snapshot(), /border:0/);
+        assert.match(r.map.doc.must("page").css.snapshot(), /margin:7px/); assert.match(r.map.doc.must("page").css.snapshot(), /border:0/);
         assert.equal(r.a.clientProjection()!.revision, snapshot.revision);
         assert.match(JSON.stringify(r.a.systemRoot(r.a.systemState("@hson/canonical-interactions")!)), /shared-footer/);
-        const data = r.map.lib("data"); if (data.mode === "document") throw Error(); assert.equal(data.snap(["n"]), 0);
+        const data = r.map.data.must("data"); if (String(data.mode) === "document") throw Error(); assert.equal(data.snap(["n"]), 0);
       }
       const before = [view(first).scopes(), view(second).scopes()];
-      const one = await f.stage(w => { page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "next"); const d = w.lib("data"); if (d.mode === "document") throw Error(); d.at(["n"]).set(1); });
+      const one = await f.stage(w => { page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "next"); const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(1); });
       for (const [i, cap] of [first, second].entries()) { cap.replayScopedHosted(one); assert.deepEqual(view(cap).scopes().map(s => s.lifetime), before[i]!.map(s => s.lifetime)); }
       const priorGraph = f.a.root(f.pageId);
       const two = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0]) }, 0, node('<hson-part lib="parts" at="panel"/>')));
@@ -116,9 +116,9 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
       for (const [i, cap] of [first, second].entries()) {
         const r = view(cap); cap.replayScopedHosted(two); assert.ok(equal(f.a.scopedDocumentState(f.pageId), r.state()));
         assert.equal(r.a.clientProjection()!.revision, snapshot.revision + 2);
-        const data = r.map.lib("data"); if (data.mode === "document") throw Error(); assert.equal(data.snap(["n"]), 1);
+        const data = r.map.data.must("data"); if (String(data.mode) === "document") throw Error(); assert.equal(data.snap(["n"]), 1);
         assert.notEqual(r.scopes()[0]!.lifetime, before[i]![0]!.lifetime); assert.notEqual(r.scopes()[1]!.lifetime, before[i]![1]!.lifetime);
-        assert.equal(r.scopes()[2]!.lifetime, before[i]![2]!.lifetime); assert.match(r.map.lib("page").css.snapshot(), /border:0/);
+        assert.equal(r.scopes()[2]!.lifetime, before[i]![2]!.lifetime); assert.match(r.map.doc.must("page").css.snapshot(), /border:0/);
         unchanged(cap, () => assert.throws(() => cap.replayScopedHosted(two)));
       }
     } finally { first.dispose(); second.dispose(); f.l.dispose(); }
@@ -127,7 +127,7 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
   await check("full projected replacement installs graph scopes CSS and position together while retaining client-local state", async () => {
     const f = await fixture(), cap = f.fresh(), r = view(cap);
     try {
-      const local = r.map.lib("local"); if (local.mode === "document") throw Error(); local.at(["n"]).set(19);
+      const local = r.map.data.must("local"); if (String(local.mode) === "document") throw Error(); local.at(["n"]).set(19);
       add_interaction(r.map, { id: "local-nav", subject: { library: "localPage", path: [0] }, listener, kind: "browser", key: "nav", args: null });
       const localId = r.a.libraries()[r.a.hostedRegistry().libraries.filter(e => e.scope === undefined).findIndex(e => e.name === "local")]!, localRoot = r.a.root(localId), old = r.scopes();
       await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "restored"));

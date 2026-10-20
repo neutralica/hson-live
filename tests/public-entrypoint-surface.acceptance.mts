@@ -18,6 +18,7 @@ const testEvents = create_test_event_emitter("core.public-entrypoint-surface");
 const repositoryRoot = resolve(import.meta.dirname, "..");
 
 const ROOT_EXPORTS = `
+LibraryFamily LibraryFamilySelector LibraryFamilyNamespaces
 LibraryArrayCommands LibraryArrayRead LibraryObjectCommands LibraryObjectRead
 LiveMapAdmittedLibraries LiveMapLibraryAdmission LocusLibraryAdmission
 LocusLibrary LocusDataLibrary LocusDataLocation LocusDocumentLibrary LocusDocumentLocation

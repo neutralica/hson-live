@@ -16,10 +16,10 @@ function consume_document_quad(location: LiveMapDocumentQuadLocation<"page">): Q
 void consume_document_quad;
 
 const quadLibrary = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { data: {} } });
-const quadLocation: LiveMapDocumentQuadLocation<"page"> | undefined = quadLibrary.lib("page").q("unknown");
+const quadLocation: LiveMapDocumentQuadLocation<"page"> | undefined = quadLibrary.doc.must("page").q("unknown");
 void quadLocation;
 // @ts-expect-error Data Library surfaces remain unchanged.
-quadLibrary.lib("state").q("unknown");
+quadLibrary.data.must("state").q("unknown");
 import { configure_scout, type ScoutProvider } from "hson-live/scout";
 import {
   Hson,
@@ -600,7 +600,7 @@ hson.liveMap.schema;
 declare const publicElementSchema: HsonSchema;
 const publicElementCandidate = hson.liveMap.fromLibraries({ page: { document: `<button "Save"/>`, schema: publicElementSchema } });
 {
-  const schemaBound = publicElementCandidate.lib("page");
+  const schemaBound = publicElementCandidate.doc.must("page");
   const sameSchema = schemaBound.schema;
   const exactSchema: HsonSchema = sameSchema.get();
   // @ts-expect-error Schema detachment is not a governance operation.
@@ -842,7 +842,7 @@ declare const publicDeclarationClosure:
 void publicDeclarationClosure;
 
 declare const governanceSchema: HsonSchema;
-const schemaBoundMap = mapSubpath.fromLibraries({ state: { data: {}, schema: governanceSchema } }).lib("state");
+const schemaBoundMap = mapSubpath.fromLibraries({ state: { data: {}, schema: governanceSchema } }).data.must("state");
 // @ts-expect-error LiveMap exposes no public live canonical-node debug escape.
 schemaBoundMap.debug.node([]);
 // @ts-expect-error Schema detachment through undefined is not part of the owner contract.
@@ -1056,7 +1056,7 @@ declare const pathHandle: LiveMapLibraryPathHandle;
 // @ts-expect-error LiveMap path handles have no public QUID identity.
 void pathHandle.quid;
 
-const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<main/>`, schema: Hson.schema`<type "document" tag "main" content "empty">` } }).lib("page");
+const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<main/>`, schema: Hson.schema`<type "document" tag "main" content "empty">` } }).doc.must("page");
 {
   // @ts-expect-error Document LiveMaps expose no public live canonical-node debug escape.
   publicDocumentMap.debug.node([]);
@@ -1094,7 +1094,7 @@ const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<main/>`
   void documentAcquisitionIsPublic;
 }
 
-const projectedHsonLookalike = mapSubpath.fromLibraries({ state: { data: { value: { $_tag: "projected", $_content: [] } }, schema: Hson.schema`<type "data" content <value "any">>` } }).lib("state");
+const projectedHsonLookalike = mapSubpath.fromLibraries({ state: { data: { value: { $_tag: "projected", $_content: [] } }, schema: Hson.schema`<type "data" content <value "any">>` } }).data.must("state");
 bindingTree.bind.text(projectedHsonLookalike.at(["value"]));
 bindingTree.bind.attr(projectedHsonLookalike.at(["value"]), "data-projected");
 

@@ -44,56 +44,56 @@ const code = (run: () => unknown, expected: LiveMapDocumentMutationError["code"]
 
 check("element insert owns ordered authored content", () => {
   const map = registry('<main <item id="b"/>/>');
-  map.lib("page").at([]).asElement()!.insert(0, item("a"));
-  assert.deepEqual(ids(map.lib("page").at([]).snap() as HsonNode), ["a", "b"]);
+  map.doc.must("page").at([]).asElement()!.insert(0, item("a"));
+  assert.deepEqual(ids(map.doc.must("page").at([]).snap() as HsonNode), ["a", "b"]);
 });
 check("first insert materializes an empty element's content", () => {
   const map = registry("<main/>");
-  const commit = map.lib("page").at([]).asElement()!.insert(0, item("a"));
+  const commit = map.doc.must("page").at([]).asElement()!.insert(0, item("a"));
   assert.equal(commit.operations[0]?.operation.op, "insert-content");
-  assert.deepEqual(ids(map.lib("page").at([]).snap() as HsonNode), ["a"]);
+  assert.deepEqual(ids(map.doc.must("page").at([]).snap() as HsonNode), ["a"]);
 });
 check("nested insert owns only selected section content", () => {
   const map = registry('<main <section <item id="b"/>/>/>', Sections);
-  map.lib("page").at([0]).asElement()!.insert(0, item("a"));
-  assert.deepEqual(ids(map.lib("page").at([0]).snap() as HsonNode), ["a", "b"]);
+  map.doc.must("page").at([0]).asElement()!.insert(0, item("a"));
+  assert.deepEqual(ids(map.doc.must("page").at([0]).snap() as HsonNode), ["a", "b"]);
 });
 check("document root insert owns top-level content", () => {
   const map = registry('<item id="a"/> <item id="c"/>', MultiItems);
-  map.lib("page").at([]).asRoot()!.insert(1, item("b"));
-  assert.deepEqual(ids(map.lib("page").root()), ["a", "b", "c"]);
+  map.doc.must("page").at([]).asRoot()!.insert(1, item("b"));
+  assert.deepEqual(ids(map.doc.must("page").root()), ["a", "b", "c"]);
 });
 check("invalid insert index rejects exactly", () => {
-  code(() => registry("<main/>").lib("page").at([]).asElement()!.insert(1, item("a")), "INVALID_DOCUMENT_CONTENT_INDEX");
+  code(() => registry("<main/>").doc.must("page").at([]).asElement()!.insert(1, item("a")), "INVALID_DOCUMENT_CONTENT_INDEX");
 });
 check("primitive endpoint has no element insertion capability", () => {
-  const page = registry('<main "text"/>', Text).lib("page");
+  const page = registry('<main "text"/>', Text).doc.must("page");
   assert.equal(page.at([0]).asElement(), undefined);
 });
 check("move uses final indexes and retains item identity", () => {
   const map = registry('<main <item id="a"/> <item id="b"/> <item id="c"/>/>');
-  map.lib("page").at([]).asElement()!.move(0, 2);
-  assert.deepEqual(ids(map.lib("page").at([]).snap() as HsonNode), ["b", "c", "a"]);
+  map.doc.must("page").at([]).asElement()!.move(0, 2);
+  assert.deepEqual(ids(map.doc.must("page").at([]).snap() as HsonNode), ["b", "c", "a"]);
 });
 check("nested move leaves other content in place", () => {
   const map = registry('<main <section <item id="a"/> <item id="b"/>/>/>', Sections);
-  map.lib("page").at([0]).asElement()!.move(1, 0);
-  assert.deepEqual(ids(map.lib("page").at([0]).snap() as HsonNode), ["b", "a"]);
+  map.doc.must("page").at([0]).asElement()!.move(1, 0);
+  assert.deepEqual(ids(map.doc.must("page").at([0]).snap() as HsonNode), ["b", "a"]);
 });
 check("document root move operates on top-level content", () => {
   const map = registry('<item id="a"/> <item id="b"/> <item id="c"/>', MultiItems);
-  map.lib("page").at([]).asRoot()!.move(2, 0);
-  assert.deepEqual(ids(map.lib("page").root()), ["c", "a", "b"]);
+  map.doc.must("page").at([]).asRoot()!.move(2, 0);
+  assert.deepEqual(ids(map.doc.must("page").root()), ["c", "a", "b"]);
 });
 check("child location remains fixed after movement", () => {
-  const page = registry('<main <item id="a"/> <item id="b"/>/>').lib("page");
+  const page = registry('<main <item id="a"/> <item id="b"/>/>').doc.must("page");
   const first = page.at([0]);
   page.at([]).asElement()!.move(0, 1);
   assert.equal(first, page.at([0]));
   assert.equal((first.snap() as HsonNode).$_attrs?.id, "b");
 });
 check("proxy escape uses the selected library content capability", () => {
-  const page = registry('<main <item id="a"/> <item id="b"/>/>').lib("page");
+  const page = registry('<main <item id="a"/> <item id="b"/>/>').doc.must("page");
   assert.equal(page.proxy().$_, page.at([]));
   const commit = page.proxy().$_.asElement()!.move(0, 1);
   assert.equal(commit.operations[0]?.operation.op, "move-content");
@@ -101,21 +101,21 @@ check("proxy escape uses the selected library content capability", () => {
 check("location insert matches document API and registry commit", () => {
   const left = registry('<main <item id="a"/>/>');
   const right = registry('<main <item id="a"/>/>');
-  const first = left.lib("page").at([]).asElement()!.insert(1, item("b"));
-  const second = right.lib("page").document.content.insert(target(0, 0), 1, item("b"));
+  const first = left.doc.must("page").at([]).asElement()!.insert(1, item("b"));
+  const second = right.doc.must("page").document.content.insert(target(0, 0), 1, item("b"));
   assert.deepEqual(first, second);
   assert.deepEqual(left.capture(), right.capture());
 });
 check("location move restores without special cases", () => {
   const source = registry('<main <item id="a"/> <item id="b"/>/>');
   const receiver = registry('<main <item id="a"/> <item id="b"/>/>');
-  source.lib("page").at([]).asElement()!.move(0, 1);
+  source.doc.must("page").at([]).asElement()!.move(0, 1);
   receiver.restore(source.capture());
-  assert.deepEqual(receiver.lib("page").root(), source.lib("page").root());
+  assert.deepEqual(receiver.doc.must("page").root(), source.doc.must("page").root());
 });
 check("Mirror consumes selected document location commits", () => {
   const map = registry('<main <item id="a"/>/>');
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), page);
   page.at([]).asElement()!.insert(1, item("b"));
   assert.deepEqual(ids(binding.tree.node), ["a", "b"]);
@@ -123,9 +123,9 @@ check("Mirror consumes selected document location commits", () => {
 });
 check("acquiring content capabilities does not mint QUIDs", () => {
   const map = registry('<main <item id="a"/>/>');
-  const location = map.lib("page").at([]).asElement()!;
+  const location = map.doc.must("page").at([]).asElement()!;
   void location.insert; void location.move;
-  assert.equal(JSON.stringify(map.lib("page").root()).includes("quid"), false);
+  assert.equal(JSON.stringify(map.doc.must("page").root()).includes("quid"), false);
   assert.equal(map.rev, 0);
 });
 process.stdout.write(`# ${checks} named document location content checks passed\n`);

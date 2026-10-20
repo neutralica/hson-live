@@ -96,22 +96,22 @@ export function cut8_copy_cases(check: (name: string, run: () => void) => void):
       const map = hsonLiveMap.fromLibraries({ data: { data: { nested: [0, -0] } }, page: { document } });
       const authority = internal_livemap_aggregate_authority(map);
       const checkpoint = authority.captureSemanticCheckpoint();
-      const root = map.lib("data").root();
+      const root = map.data.must("data").root();
       assert.ok(canonical_hson_graph_equal(root, checkpoint.libraries[0]!.root));
-      const page = map.lib("page").root();
+      const page = map.doc.must("page").root();
       assert.ok(canonical_hson_graph_equal(page, document));
       const capture = capture_internal_document(map, "page");
       assert.ok(canonical_hson_graph_equal(capture.root, document));
       const portable = map.capture();
       assert.ok(canonical_hson_graph_equal(document, decode_hosted_root(portable.libraries[1]!.root)));
       const restored = install_libraries_snapshot(portable).map;
-      assert.ok(canonical_hson_graph_equal(restored.lib("page").root(), document));
-      assert.ok(canonical_hson_graph_equal(restored.lib("data").root(), root));
-      const observed = map.lib("page").root();
+      assert.ok(canonical_hson_graph_equal(restored.doc.must("page").root(), document));
+      assert.ok(canonical_hson_graph_equal(restored.data.must("data").root(), root));
+      const observed = map.doc.must("page").root();
       const main = observed.$_content[0];
       assert.ok(typeof main === "object" && main !== null);
       style_leaf(main, "width").value = 17;
-      assert.ok(canonical_hson_graph_equal(map.lib("page").root(), document));
+      assert.ok(canonical_hson_graph_equal(map.doc.must("page").root(), document));
       assert.equal(map.rev, 0);
     });
     case_("public unrelated attribute mutation retains untouched typed storage", () => {

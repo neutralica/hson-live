@@ -49,7 +49,7 @@ check("broad composed documents retain logical, relative, and proxy paths", () =
     home: { document },
     explicit: { document, schema: ANY_DOCUMENT },
   });
-  for (const page of [map.lib("home"), map.lib("explicit")]) {
+  for (const page of [map.doc.must("home"), map.doc.must("explicit")]) {
     assert.equal(tag(page.at([]).snap()), "html");
     assert.equal(tag(page.at([0]).snap()), "head");
     assert.equal(tag(page.at([1]).snap()), "body");
@@ -71,7 +71,7 @@ check("broad composed documents retain logical, relative, and proxy paths", () =
 
 check("one-library document locations read root, child, and nested paths", () => {
   const map = tree("<main <item <item/>/>/>");
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   assert.equal(tag(page.at([]).snap()), "main");
   assert.equal(tag(page.at([0]).snap()), "item");
   assert.equal(tag(page.at([0, 0]).snap()), "item");
@@ -81,18 +81,18 @@ check("one-library document locations read root, child, and nested paths", () =>
 });
 
 check("multi-node root and text leaves keep their logical coordinates", () => {
-  const multi = hsonLiveMap.fromLibraries({ page: { document: "<item/> <item/>", schema: MultiSchema } }).lib("page");
+  const multi = hsonLiveMap.fromLibraries({ page: { document: "<item/> <item/>", schema: MultiSchema } }).doc.must("page");
   assert.equal(tag(multi.at([]).snap()), "_hson_root");
   assert.equal(tag(multi.at([0]).snap()), "item");
   assert.equal(tag(multi.at([1]).snap()), "item");
-  const text = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>', schema: TextSchema } }).lib("page");
+  const text = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>', schema: TextSchema } }).doc.must("page");
   assert.equal(text.at([0]).snap(), "hello");
   assert.equal(text.at([0, 0]).snap(), undefined);
 });
 
 check("reads are detached, do not mint QUIDs, and do not advance revision", () => {
   const map = tree("<main <item/>/>");
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   const before = map.rev;
   const read = page.at([0]).snap();
   if (!is_Node(read)) throw new Error("Expected item node.");
@@ -104,7 +104,7 @@ check("reads are detached, do not mint QUIDs, and do not advance revision", () =
 
 check("fixed coordinates resolve their current occupant after insert, move, and remove", () => {
   const map = tree("<main <item id=\"first\"/> <item id=\"second\"/>/>");
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   const atOne = page.at([1]);
   assert.equal((atOne.snap() as HsonNode).$_attrs?.id, "second");
   page.document.content.insert({ kind: "path", path: [0, 0] }, 0, item());
@@ -117,7 +117,7 @@ check("fixed coordinates resolve their current occupant after insert, move, and 
 
 check("location replacement stays within the selected document Schema", () => {
   const map = tree("<main <item/>/>");
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   page.at([0]).replace({ $_tag: "item", $_attrs: { id: "replacement" }, $_content: [] });
   assert.equal((page.at([0]).snap() as HsonNode).$_attrs?.id, "replacement");
   assert.equal(map.rev, 1);
@@ -125,7 +125,7 @@ check("location replacement stays within the selected document Schema", () => {
 
 check("map restore refreshes existing document locations and watchers", () => {
   const map = tree("<main <item id=\"before\"/>/>");
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   const location = page.at([0]);
   const snapshot = map.capture();
   const seen: unknown[] = [];
@@ -139,7 +139,7 @@ check("map restore refreshes existing document locations and watchers", () => {
 
 check("local identity acquisition does not publish document watch events", () => {
   const map = tree("<main <item/>/>");
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   let events = 0;
   page.at([0]).watch(() => { events += 1; });
   acquire_document_identity(page.document, { kind: "path", path: [0, 0, 0] });
@@ -147,7 +147,7 @@ check("local identity acquisition does not publish document watch events", () =>
 });
 
 check("malformed logical paths reject and coordinate inspection is frozen", () => {
-  const page = tree("<main <item/>/>").lib("page");
+  const page = tree("<main <item/>/>").doc.must("page");
   assert.throws(() => page.at([-1]), /not valid/);
   assert.throws(() => page.at([1.5]), /not valid/);
   const path = page.at([0]).path() as number[];
@@ -158,7 +158,7 @@ check("malformed logical paths reject and coordinate inspection is frozen", () =
 
 check("data paths remain selected from their named library", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { items: ["first"] }, schema: DataSchema } });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   assert.equal(state.at(["items", 0]).snap(), "first");
   assert.equal(typeof state.at(["items"]).asArray()!.array.push, "function");
 });

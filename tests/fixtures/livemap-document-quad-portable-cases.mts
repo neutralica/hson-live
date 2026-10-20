@@ -41,7 +41,7 @@ import type { HsonNode } from "../../src/core/types.ts";
 const target = (...path: number[]) => ({ kind: "path" as const, path: validate_document_path(path) });
 const fixture = () => authored({ page: { document: '<main @:root <button @:confirm "Go"/> <aside/>/>' } });
 function doc(map: LiveMap, name = "page"): LiveMapDocumentLibrary {
-  const result = map.lib(name); if (result.mode !== "document") throw Error("Expected document"); return result;
+  const result = map.doc.must(name); if (result.mode !== "document") throw Error("Expected document"); return result;
 }
 function subject(map: LiveMap, name = "confirm", library = "page") {
   const result = lookup(doc(map, library), name); if (!result) throw Error(`Missing ${name}`); return result;
@@ -90,7 +90,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const projected = capture_selected_authority_projection_snapshot(map, effective, true);
     assert.doesNotMatch(JSON.stringify(projected), /UNUSED_PRIVATE_SOURCE|UNUSED_PRIVATE_CSS|hson-part/);
     const receiving = create_echo_scoped_replica_internal(projected), client = receiving.map!;
-    assert.throws(() => client.lib("hidden")); assert.match(doc(client).css.snapshot(), /rgb\(12,34,56\)/);
+    assert.throws(() => client.doc.must("hidden")); assert.match(doc(client).css.snapshot(), /rgb\(12,34,56\)/);
     assert.notEqual(subject(client, "slot").quid, subject(map, "slot").quid);
     assert.doesNotMatch(JSON.stringify(doc(client).root()), /hson-part/);
     assert.throws(() => client.cut({ documents: ["page"], data: [] }), /Echo\/checkpoint/);
@@ -103,7 +103,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       unused: { kind: "document", document: '<p "PRIVATE_UNVISITED"/>' } }) }],
       shared: [{ name: "page", definition: { document: '<html <head/> <body <hson-part lib="parts" at="x"/>/>/>' }, css: 'body{margin:0}' }], defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
-      const selected = locus.lib("page"); if (selected.mode !== "document") throw Error("document");
+      const selected = locus.doc.must("page"); if (selected.mode !== "document") throw Error("document");
       assert.match(selected.css.snapshot(), /body\{margin:0/); assert.match(selected.css.snapshot(), /button:where\(:scope,:scope \*\)\{color:red/);
       const session = await locus.session.create({ libraries: ["page"] });
       const snapshot = session.now().libs;
@@ -137,7 +137,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       assert.throws(() => hostedAdd(map, {}, { bad: { document: '<hson-part lib="hidden" at="plain"/>' } }));
     } finally { aggregate.releaseManagement(manager); }
     const client = create_echo_scoped_replica_internal(capture_selected_authority_projection_snapshot(map, await projection(map, ["page"], ["hidden", "styled"]), true), local_initializers({}));
-    try { assert.throws(() => client.map!.lib("hidden")); assert.doesNotMatch(JSON.stringify(doc(client.map!).root()), /hson-part/); }
+    try { assert.throws(() => client.map!.doc.must("hidden")); assert.doesNotMatch(JSON.stringify(doc(client.map!).root()), /hson-part/); }
     finally { client.dispose(); }
   });
   await check("legacy flat owned CSS survives semantic checkpoints and fresh durable restoration, then retires without stale rules", async () => {
@@ -287,7 +287,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       for (const quid of quids) assert.ok(!sourceIds.includes(quid));
       for (const quid of enumerate_livemap_issued_quids(b.identityEpoch().issued())) assert.ok(!sourceIds.includes(quid) && !quids.includes(quid));
       assert.deepEqual(encode_hosted_root(doc(first.map, "final").root()), encode_hosted_root(doc(second.map, "final").root()));
-      assert.throws(() => first.map!.lib("components")); assert.throws(() => first.map!.lib("layout"));
+      assert.throws(() => first.map!.data.must("components")); assert.throws(() => first.map!.doc.must("layout"));
     } finally { first.dispose(); second.dispose(); }
   });
   await check("disposable exact admission rejects malformed disposition records paths and one-to-one collisions", () => {
@@ -511,18 +511,18 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
         transport: test_echo_transport(clientSocket), logicalMapId: server.logicalMapId });
       try {
         await echo.connect(); const client = echo.map!; assert.ok(client); assert.equal(echo.diagnostics().status, "live");
-        assert.throws(() => client.lib("hidden"));
+        assert.throws(() => client.doc.must("hidden"));
         if (addressed) assert.notEqual(subject(client).quid, subject(map).quid);
         await server.sessions.updateProjection(echo.session.sessionId!, { libraries: ["page"] });
-        assert.equal(echo.diagnostics().status, "live"); assert.throws(() => client.lib("extra"));
+        assert.equal(echo.diagnostics().status, "live"); assert.throws(() => client.data.must("extra"));
         if (addressed) assert.deepEqual(subject(client).path, [0, 0, 0]);
-        await server.stage(draft => { const page = draft.lib("page"); if (page.mode !== "document") throw Error("Document"); page.attrs.set(target(0), "title", "after"); });
+        await server.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("Document"); page.attrs.set(target(0), "title", "after"); });
         assert.equal(echo.diagnostics().status, "live"); assert.equal(echo.lastAppliedRev, server.rev);
         assert.equal(doc(client).document.attrs.get(target(0), "title"), "after");
         if (addressed) assert.ok(subject(client));
         await server.sessions.updateProjection(echo.session.sessionId!, { libraries: ["hidden"] });
         assert.equal(echo.diagnostics().status, "live");
-        assert.throws(() => client.lib("hidden"));
+        assert.throws(() => client.doc.must("hidden"));
       } finally { echo.dispose(); detach(); server.dispose(); }
     }
   });
@@ -756,7 +756,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.throws(() => followed.attrs.set("title", "unauthorized"));
     assert.throws(() => followed.insert(0, "unauthorized"));
     assert.deepEqual(client.capture(), initialClient); assert.equal(owner(client).identityEpoch().issued(), initialLedger);
-    assert.ok(lookup(doc(client, "public"), "shared")); assert.throws(() => client.lib("hidden"));
+    assert.ok(lookup(doc(client, "public"), "shared")); assert.throws(() => client.doc.must("hidden"));
     assert.equal(JSON.stringify(client.capture()).includes("PRIVATE_ADDRESS"), false);
     const raw = map.cut({ documents: [], data: ["hidden"] });
     assert.ok(JSON.stringify(raw.libs).includes("PRIVATE_ADDRESS"));
@@ -810,18 +810,18 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     try {
       assert.ok(adapter.state("quad-host")?.checkpoint.chunks.some(chunk => chunk.part === "quads"));
       assert.equal(JSON.stringify([...adapter.chunks.values()]).includes(old), false);
-      await locus.stage(draft => { const page = draft.lib("page"); if (page.mode !== "document") throw Error("doc");
+      await locus.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("doc");
         page.graph({ domain: "graph", op: "move-content", target: target(0, 0), from: 0, to: 1 }); });
       const recovered = await load("quad-host", { persistence: adapter }); assert.ok(recovered);
       try { assert.deepEqual(subject(recovered.map).path, [0, 0, 1]); assert.notEqual(subject(recovered.map).quid, old); }
       finally { recovered.dispose(); }
-      await locus.stage(draft => { const page = draft.lib("page"); if (page.mode !== "document") throw Error("doc");
+      await locus.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("doc");
         page.attrs.set(target(0, 0, 1), "title", "continued"); });
       await locus.checkpoint();
       const restored = await load("quad-host", { persistence: adapter }); assert.ok(restored);
       try { assert.deepEqual(subject(restored.map).path, [0, 0, 1]); assert.notEqual(subject(restored.map).quid, old); }
       finally { restored.dispose(); }
-      await locus.stage(draft => { const page = draft.lib("page"); if (page.mode !== "document") throw Error("doc");
+      await locus.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("doc");
         page.graph({ domain: "graph", op: "remove-content", target: target(0, 0), index: 1 }); });
       const retired = await load("quad-host", { persistence: adapter }); assert.ok(retired);
       try { assert.equal(lookup(doc(retired.map), "confirm"), undefined); assert.ok(lookup(doc(retired.map), "root")); }

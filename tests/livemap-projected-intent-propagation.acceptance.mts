@@ -31,7 +31,7 @@ const Schema = Hson.schema`<type "data" content <
   a <optional "any"> z <optional "any">
 >>`;
 const registry = (data: string | JsonValue) => hsonLiveMap.fromLibraries({ state: { data, schema: Schema } });
-const state = (map: ReturnType<typeof registry>) => map.lib("state");
+const state = (map: ReturnType<typeof registry>) => map.data.must("state");
 
 check("rename intent reaches the named registry commit stream", () => {
   const map = registry({ source: 1 });

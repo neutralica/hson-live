@@ -1,3 +1,5 @@
+import type { LibraryFamilySelector } from "./library-selectors.types.js";
+import type { LiveMapEffectiveDefinitions } from "./livemap.types.js";
 import type { LibraryGroupDefinitions } from "./library-evidence.types.js";
 // Shared hosted contracts for the fixed library registry.
 // locus.types.ts
@@ -12,7 +14,7 @@ import type {
   LiveMapPartsDefinitionCheck,
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
-import type { LocusLibrarySelector, ReadLibrarySelector, LibraryCut, LibraryCommits, EchoLibrary } from "./governor.types.js";
+import type { LibraryCut, LibraryCommits } from "./governor.types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
 import type {
   LocusActionAuthorizer,
@@ -53,7 +55,9 @@ export type LocusStage<TMap extends LiveMap> =
 export type LocusActionContext<
   TMap extends LiveMap = LiveMap,
 > = Readonly<{
-  lib: ReadLibrarySelector<TMap>;
+  readonly doc: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "read", "doc">;
+  readonly data: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "read", "data">;
+  readonly parts: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "read", "parts">;
   stage: LiveMapStagedWriter<TMap, void>;
   seq: LocusSeq;
   origin: LocusActionOrigin;
@@ -453,7 +457,9 @@ export type Echo<
   dispose: LocusDisposer;
 }> & (TMap extends LiveMap ? Readonly<{
   readonly rev: number;
-  lib: (name: string) => EchoLibrary;
+  readonly doc: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "echo", "doc">;
+  readonly data: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "echo", "data">;
+  readonly parts: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "echo", "parts">;
   cut: LibraryCut;
   commits: LibraryCommits;
   sync: EchoSync;
@@ -498,7 +504,9 @@ export type Locus<
   TMap extends LiveMap = LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
-  lib: LocusLibrarySelector<TMap>;
+  readonly doc: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "locus", "doc">;
+  readonly data: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "locus", "data">;
+  readonly parts: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "locus", "parts">;
   cut: LibraryCut;
   commits: LibraryCommits;
   addLibraries: <const TAdditions extends LocusRuntimeLibraryAdditions>(

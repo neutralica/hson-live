@@ -23,7 +23,7 @@ import {
 function fixture(prefix = "a") {
   const map = hsonLiveMap.fromLibraries({ page: { document:
     '<main <section <button "next"/> <aside <button "nested"/>/>/> <section <button "next"/>/> <footer/>/>' } });
-  const page = map.lib("page"); assert.equal(page.mode, "document");
+  const page = map.doc.must("page"); assert.equal(page.mode, "document");
   if (page.mode !== "document") throw Error("document fixture");
   const aggregate = internal_livemap_aggregate_authority(map), owner = aggregate.libraries()[0]!;
   const coordinates = {

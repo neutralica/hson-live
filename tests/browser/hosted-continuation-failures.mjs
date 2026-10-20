@@ -94,7 +94,7 @@ export async function hostedFailures({ session, endpoint, url, recovered = false
         if (flat) assert(styled.getAttribute('hson:quid') && styled.getAttribute('hson:quid') !== '444444444', 'Recovery introduced receiver-owned identity demand');
         replaySeen = true;
         recoveredNodes = inventory(root);
-        receivingDocument = echo_map_internal(echo).lib('page').document;
+        receivingDocument = echo_map_internal(echo).doc.must('page').document;
         if (nativeFaults) {
           assert(echo.sync.appliedRev === revision && revision - session.cut.libs.revision >= 3, 'Multiple accepted revisions recovered before failure');
           assert(['p','q'].map(id => doc.getElementById(`rollback-${id}`))

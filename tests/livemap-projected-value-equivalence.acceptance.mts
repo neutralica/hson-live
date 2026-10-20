@@ -134,8 +134,8 @@ function assert_mutation_equivalence(
   expected: JsonValue,
 ): HsonNode {
   const schema: HsonSchema = Hson.schema`<type "data" content <value <optional "any"> left <optional "any"> kept <optional "any"> added <optional "any"> before <optional "any"> next <optional "any"> nested <optional "any"> items <optional "any">>>`;
-  const first = hsonLiveMap.fromLibraries({ state: { data: initial, schema } }).lib("state");
-  const second = hsonLiveMap.fromLibraries({ state: { data: initial, schema } }).lib("state");
+  const first = hsonLiveMap.fromLibraries({ state: { data: initial, schema } }).data.must("state");
+  const second = hsonLiveMap.fromLibraries({ state: { data: initial, schema } }).data.must("state");
   mutate(first);
   mutate(second);
 

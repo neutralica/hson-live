@@ -35,12 +35,12 @@ function registry(source: string) {
   });
 }
 function text(map: ReturnType<typeof registry>): string {
-  return document_html(map.lib("page"));
+  return document_html(map.doc.must("page"));
 }
 
 check("portable registry restore replaces document content and captured revision", () => {
   const source = registry('<main <item "new"/>/>');
-  source.lib("page").at([0]).asElement()?.attrs.set("state", "ready");
+  source.doc.must("page").at([0]).asElement()?.attrs.set("state", "ready");
   const target = registry('<main <item "old"/>/>');
   target.restore(source.capture());
   assert.equal(target.rev, source.rev);
@@ -75,14 +75,14 @@ check("foreign registry Schema requires fresh installation", () => {
   const other = hsonLiveMap.fromLibraries({
     page: { document: '<main "other"/>', schema: Hson.schema`<type "document" tag "main" content "string">` },
   });
-  const oldPage = target.lib("page");
+  const oldPage = target.doc.must("page");
   const before = target.capture();
   assert.throws(() => target.restore(other.capture()), /current Library topology/);
   assert.deepEqual(target.capture(), before);
-  assert.equal(target.lib("page"), oldPage);
+  assert.equal(target.doc.must("page"), oldPage);
   const installed = install_libraries_snapshot(other.capture()).map;
   assert.deepEqual(installed.capture(), other.capture());
-  assert.match(document_html(installed.lib("page")), /other/);
+  assert.match(document_html(installed.doc.must("page")), /other/);
 });
 
 check("portable capture excludes supplied runtime QUIDs", () => {
@@ -91,15 +91,15 @@ check("portable capture excludes supplied runtime QUIDs", () => {
   assert.equal(JSON.stringify(capture).includes('"quid"'), false);
   const target = registry('<main <item "before"/>/>');
   target.restore(capture);
-  assert.equal(target.lib("page").document.byQuid("00000000a"), undefined);
-  assert.equal(target.lib("page").document.byQuid("00000000b"), undefined);
+  assert.equal(target.doc.must("page").document.byQuid("00000000a"), undefined);
+  assert.equal(target.doc.must("page").document.byQuid("00000000b"), undefined);
 });
 
 check("restored state is detached from later source changes", () => {
   const source = registry('<main <item "value"/>/>');
   const target = registry('<main <item "before"/>/>');
   target.restore(source.capture());
-  source.lib("page").at([0]).asElement()?.attrs.set("later", true);
+  source.doc.must("page").at([0]).asElement()?.attrs.set("later", true);
   assert.doesNotMatch(text(target), /later/);
 });
 
@@ -107,8 +107,8 @@ check("data libraries have no document snapshot method", () => {
   const map = hsonLiveMap.fromLibraries({ state: {
     data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>`,
   } });
-  assert.equal(Reflect.get(map.lib("state"), "install"), undefined);
-  assert.equal(Reflect.get(map.lib("state"), "restore"), undefined);
+  assert.equal(Reflect.get(map.data.must("state"), "install"), undefined);
+  assert.equal(Reflect.get(map.data.must("state"), "restore"), undefined);
 });
 
 events.terminal("pass");

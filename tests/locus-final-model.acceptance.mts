@@ -23,15 +23,15 @@ for (const options of [
 ]) {
   const created = hsonLiveMap.locus.create(options);
   assert.equal(created.rev, 0);
-  assert.equal("lib" in created, true);
+  assert.equal("lib" in created, false);
   created.dispose();
 }
 
 const definition = { shared: [{ name: "A", definition: { data: { value: 1 } } }],
   logicalMapId: "final-locus-model" } as const;
 const read = (locus: ReturnType<typeof hsonLiveMap.locus.create>, name: string) => {
-  const library = locus.lib(name);
-  if (library.mode === "document") throw new Error("Expected data Library.");
+  const library = locus.data.must(name);
+  if (String(library.mode) === "document") throw new Error("Expected data Library.");
   return Hson.data.materialize(library.at(["value"]).data()!);
 };
 
@@ -40,7 +40,7 @@ const fresh = hsonLiveMap.locus.create({ private: [{ name: "secret", definition:
   local: [{ name: "ui", initializer: { data: { selected: false } } }] });
 assert.equal(fresh.rev, 0);
 assert.deepEqual(locus_map_internal(fresh).capture().registry.libraries.map((entry) => entry.name), ["secret", "public"]);
-assert.throws(() => fresh.lib("ui"), /Unknown LiveMap Library/);
+assert.throws(() => fresh.data.must("ui"), /Unknown LiveMap Library/);
 assert.throws(() => Reflect.apply(hsonLiveMap.locus.create, undefined, [hsonLiveMap.create()]), /unsupported|grouped/i);
 await assert.rejects(hsonLiveMap.locus.checkpoint(fresh), /no durable backing/i);
 // @ts-expect-error Literal duplicate names are rejected before runtime.
@@ -56,9 +56,9 @@ await first.addLibraries({ private: [{ name: "B", definition: { data: { value: 2
 assert.equal(first.rev, 1);
 assert.deepEqual(storage.appendCalls.at(-1)?.locus.libraryOwnershipAdded,
   [{ name: "B", ownership: "private" }, { name: "C", ownership: "shared" }]);
-const b = first.lib("B");
-const c = first.lib("C");
-if (b.mode === "document" || c.mode === "document") throw new Error("Expected data Libraries.");
+const b = first.data.must("B");
+const c = first.data.must("C");
+if (String(b.mode) === "document" || String(c.mode) === "document") throw new Error("Expected data Libraries.");
 await b.at(["value"]).set(4);
 await c.at(["value"]).set(5);
 const rev = first.rev;
@@ -135,7 +135,7 @@ const held = await hsonLiveMap.locus.resume({ ...definition, persistence: failed
 failed.failAppend = new Error("append unavailable");
 await assert.rejects(held.addLibraries({ shared: [{ name: "C", definition: { data: {} } }] }), /append/i);
 assert.equal(held.rev, 0);
-assert.throws(() => held.lib("C"), /Unknown LiveMap Library/);
+assert.throws(() => held.data.must("C"), /Unknown LiveMap Library/);
 held.dispose();
 const missingIdentityStorage = new MemoryCheckpointAdapter();
 // @ts-expect-error Durable resume requires a stable logicalMapId.
@@ -164,8 +164,8 @@ const racing = await hsonLiveMap.locus.resume({ ...racingDefinition, persistence
 racingStorage.blockNextLoad = true;
 const compacting = hsonLiveMap.locus.checkpoint(racing);
 await racingStorage.entered.promise;
-await racing.lib("state").at(["value"]).set(1);
-await racing.lib("state").at(["value"]).set(2);
+await racing.data.must("state").at(["value"]).set(1);
+await racing.data.must("state").at(["value"]).set(2);
 await racing.addLibraries({ shared: [{ name: "later", definition: { data: { value: 3 } } }] });
 racingStorage.release.resolve();
 await compacting;
@@ -189,7 +189,7 @@ for (const fixture of orderedRootReconstructionFixtures.filter(entry => entry.id
   const created = await hsonLiveMap.locus.resume(options);
   await created.addLibraries({ shared: [{ name: "ordered", definition: { data: fixture.expectedJson } }] });
   const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
-  assert.equal(canonical_hson_graph_equal(locus_map_internal(created).lib("ordered").root(), original), true);
+  assert.equal(canonical_hson_graph_equal(locus_map_internal(created).data.must("ordered").root(), original), true);
   const payload = locus_map_internal(created).capture().libraries.find(entry => entry.name === "ordered")!.root.payload;
   created.dispose();
   for (const checkpoint of [false, true]) {
@@ -197,7 +197,7 @@ for (const fixture of orderedRootReconstructionFixtures.filter(entry => entry.id
     let resumed;
     try { resumed = await hsonLiveMap.locus.resume(options); }
     finally { stop(); }
-    assert.equal(canonical_hson_graph_equal(locus_map_internal(resumed).lib("ordered").root(), original), true, fixture.id);
+    assert.equal(canonical_hson_graph_equal(locus_map_internal(resumed).data.must("ordered").root(), original), true, fixture.id);
     assert.equal(locus_map_internal(resumed).capture().libraries.find(entry => entry.name === "ordered")!.root.payload, payload);
     if (!checkpoint) await hsonLiveMap.locus.checkpoint(resumed);
     resumed.dispose();

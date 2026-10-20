@@ -17,10 +17,10 @@ const libraries = hsonLiveMap.fromLibraries({
   page: { document: "<main id=hero <section \"body\"/>>", schema: PageSchema },
   sequence: { document: "<item/><item/>", schema: DocumentSequenceSchema },
 });
-const pageMode: "document" = libraries.lib("page").mode;
-const selectedPageRoot = libraries.lib("page").document.root();
+const pageMode: "document" = libraries.doc.must("page").mode;
+const selectedPageRoot = libraries.doc.must("page").document.root();
 // @ts-expect-error The selected Page document has exactly one top-level main node.
-libraries.lib("page").at([1]);
+libraries.doc.must("page").at([1]);
 
 void pageMode;
 void selectedPageRoot;

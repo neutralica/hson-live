@@ -62,7 +62,7 @@ export function continue_portable_document_internal(options: Readonly<{
 }>, handoff: PortableDocumentHandoff): DocumentContinuation {
   const owner = internal_livemap_aggregate_authority(options.map);
   owner.assertPortableDocumentHandoff(handoff);
-  if (options.map.lib(handoff.libraryName) !== options.document) throw new Error("Portable handoff selects a different Library.");
+  if (options.map.doc.must(handoff.libraryName) !== options.document) throw new Error("Portable handoff selects a different Library.");
   return continue_document_impl(options, handoff);
 }
 

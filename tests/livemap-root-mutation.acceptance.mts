@@ -39,7 +39,7 @@ function governed() {
   const map = hsonLiveMap.fromLibraries({
     state: { data: { count: 1, keep: 2, nested: { a: 1, b: 2 } }, schema: StateSchema },
   });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const root = state.at([]);
   const publications: LiveMapCommit[] = [];
   const feeds: LiveMapLibraryFeedEvent[] = [];
@@ -103,7 +103,7 @@ check("root update receives a detached structural snapshot and uses set semantic
 check("root and nested no-ops follow the same revision and publication policy", () => {
   const { map, root, publications, feeds } = governed();
   // Constructive root writes preserve an identified ancestor container.
-  const identity = acquire_projected_identity(map.lib("state"), []);
+  const identity = acquire_projected_identity(map.data.must("state"), []);
   unchanged(root.set({}), 0);
   unchanged(root.set({ count: 1 }), 0);
   unchanged(root.update(current => {
@@ -167,7 +167,7 @@ check("explicit root replacement removes omitted members and validates the compl
   assert.equal(publications.length, 0);
   assert.equal(feeds.length, 0);
   const broad = hsonLiveMap.fromLibraries({ state: { data: { a: 1, b: 2 } } });
-  const broadRoot = broad.lib("state").at([]);
+  const broadRoot = broad.data.must("state").at([]);
   changed(broadRoot.replace({ a: 3 }), 0);
   assert.deepEqual(broadRoot.snap(), { a: 3 });
 });
@@ -178,14 +178,14 @@ check("root arrays and tuples assign the whole endpoint and retain ordinary no-o
     { schema: TupleSchema, initial: ["first", 1], next: ["next", 2], proposal: ["updated", 3] },
   ]) {
     const map = hsonLiveMap.fromLibraries({ state: { data: initial, schema } });
-    const root = map.lib("state").at([]);
+    const root = map.data.must("state").at([]);
     let publications = 0;
     let feeds = 0;
     map.commits.observe(() => { publications += 1; });
     root.feed(() => { feeds += 1; });
     changed(root.set(next), 0);
     assert.deepEqual(root.snap(), next);
-    const identity = acquire_projected_identity(map.lib("state"), []);
+    const identity = acquire_projected_identity(map.data.must("state"), []);
     unchanged(root.set(next), 1);
     unchanged(root.update(current => {
       assert.deepEqual(current, next);
@@ -202,8 +202,8 @@ check("root arrays and tuples assign the whole endpoint and retain ordinary no-o
     assert.equal(feeds, 2);
 
     const nestedMap = hsonLiveMap.fromLibraries({ state: { data: { items: next } } });
-    const nested = nestedMap.lib("state").at(["items"]);
-    const nestedIdentity = acquire_projected_identity(nestedMap.lib("state"), ["items"]);
+    const nested = nestedMap.data.must("state").at(["items"]);
+    const nestedIdentity = acquire_projected_identity(nestedMap.data.must("state"), ["items"]);
     unchanged(nested.set(next), 0);
     unchanged(nested.update(current => {
       assert.deepEqual(current, next);
@@ -215,7 +215,7 @@ check("root arrays and tuples assign the whole endpoint and retain ordinary no-o
 
 check("root primitive set and update replace the value with atomic validation", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: 1, schema: NumberSchema } });
-  const root = map.lib("state").at([]);
+  const root = map.data.must("state").at([]);
   let publications = 0;
   let feeds = 0;
   map.commits.observe(() => { publications += 1; });
@@ -253,10 +253,10 @@ check("multi-library root assignments preserve other values, identity, and the i
       other: { data: { keep: { value: 1 } } },
     });
     // Runtime Schema cases intentionally use the Schema-neutral selector.
-    const state = map.lib(String("state"));
-    assert.ok(state.mode !== "document");
+    const state = map.data.must(String("state"));
+    assert.ok(String(state.mode) !== "document");
     const root = state.at([]);
-    const other = map.lib("other");
+    const other = map.data.must("other");
     const otherIdentity = acquire_projected_identity(other, ["keep"]);
     const endpointIdentity = Array.isArray(initial) ? acquire_projected_identity(state, []) : undefined;
     const beforeIdentity = livemap_identity_epoch_accounting(state);
@@ -331,10 +331,10 @@ check("multi-library rejected assignments and explicit replacement retain existi
     state: { data: [1, 2], schema: ArraySchema },
     other: { data: { keep: 1 } },
   });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const root = state.at([]);
   const identity = acquire_projected_identity(state, []);
-  const otherIdentity = acquire_projected_identity(map.lib("other"), []);
+  const otherIdentity = acquire_projected_identity(map.data.must("other"), []);
   const beforeIdentity = livemap_identity_epoch_accounting(state);
   let publications = 0;
   let feeds = 0;
@@ -345,7 +345,7 @@ check("multi-library rejected assignments and explicit replacement retain existi
   assert.throws(() => root.replace([3]), /multiple application Libraries/);
   assert.throws(() => root.replace([1, 2]), /multiple application Libraries/);
   assert.deepEqual(root.snap(), [1, 2]);
-  assert.deepEqual(map.lib("other").snap(), { keep: 1 });
+  assert.deepEqual(map.data.must("other").snap(), { keep: 1 });
   assert.equal(identity.active, true);
   assert.equal(otherIdentity.active, true);
   assert.deepEqual(livemap_identity_epoch_accounting(state), beforeIdentity);
@@ -354,7 +354,7 @@ check("multi-library rejected assignments and explicit replacement retain existi
   assert.equal(feeds, 0);
 
   const single = hsonLiveMap.fromLibraries({ state: { data: [1] } });
-  const singleState = single.lib("state");
+  const singleState = single.data.must("state");
   const singleRoot = singleState.at([]);
   const singleIdentity = acquire_projected_identity(singleState, []);
   const before = livemap_identity_epoch_accounting(singleState);
@@ -371,8 +371,8 @@ check("root assignment retires descendants while object patches and nested write
   const map = hsonLiveMap.fromLibraries({
     state: { data: [{ child: {} }] }, other: { data: { a: 1, b: 2, nested: { a: 1, b: 2 }, items: [1, 2] } },
   });
-  const state = map.lib("state");
-  const other = map.lib("other");
+  const state = map.data.must("state");
+  const other = map.data.must("other");
   const rootIdentity = acquire_projected_identity(state, []);
   const childIdentity = acquire_projected_identity(state, [0, "child"]);
   const otherIdentity = acquire_projected_identity(other, []);
@@ -402,7 +402,7 @@ check("root assignment retires descendants while object patches and nested write
 
 check("multi-library null roots retain fixed root-kind constraints", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: null }, other: { data: {} } });
-  const root = map.lib("state").at([]);
+  const root = map.data.must("state").at([]);
   unchanged(root.set(null), 0);
   unchanged(root.update(current => current), 0);
   assert.throws(() => root.set(1), /root mode is fixed/);
@@ -413,8 +413,8 @@ check("multi-library null roots retain fixed root-kind constraints", () => {
 check("replay preserves root assignment intent through the existing operation codec", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: [1] }, other: { data: { keep: 1 } } });
   const aggregate = internal_livemap_aggregate_authority(map);
-  const state = map.lib("state");
-  const other = acquire_projected_identity(map.lib("other"), []);
+  const state = map.data.must("state");
+  const other = acquire_projected_identity(map.data.must("other"), []);
   const identity = acquire_projected_identity(state, []);
   const before = livemap_identity_epoch_accounting(state);
   const operation = decode_livemap_replay_payload(encode_livemap_replay_transport([

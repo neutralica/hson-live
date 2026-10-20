@@ -111,10 +111,10 @@ if (mixed.a.kind === "commit" && mixed.b.kind === "commit") {
   assert.deepEqual(mixed.b.commit.operations.map((entry) => entry.library), ["visibleB"]);
   assert.equal(mixed.a.commit.rev, mixed.b.commit.rev);
 }
-const dataA = clientA.lib("visibleA");
-const dataB = clientB.lib("visibleB");
-const localA = clientA.lib("local");
-if (dataA.mode === "document" || dataB.mode === "document" || localA.mode === "document") throw new Error("Expected data libraries.");
+const dataA = clientA.data.must("visibleA");
+const dataB = clientB.data.must("visibleB");
+const localA = clientA.data.must("local");
+if (String(dataA.mode) === "document" || String(dataB.mode) === "document" || String(localA.mode) === "document") throw new Error("Expected data libraries.");
 assert.equal(dataA.snap(["value"]), "VISIBLE_SENTINEL");
 assert.equal(dataB.snap(["value"]), "B1");
 assert.equal(clientA.rev, 1);
@@ -206,7 +206,7 @@ if (mixedSystemEvent.a.kind === "commit") {
   assert.equal(wire.includes("HIDDEN_INTERACTION_SENTINEL"), false);
 }
 observed = undefined;
-const page = authority.lib("page");
+const page = authority.doc.must("page");
 if (page.mode !== "document") throw new Error("Expected page document.");
 page.document.attrs.set({ kind: "path", path: [0] }, "title", "VISIBLE_DOCUMENT_SENTINEL");
 assert.ok(observed);

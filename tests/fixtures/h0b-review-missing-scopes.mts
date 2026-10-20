@@ -26,7 +26,7 @@ export async function review_missing_scopes() {
     assert.ok(restored);
     try {
       const a = authority(restored.map);
-      const page = restored.map.lib('page'); assert.equal(page.mode, 'document');
+      const page = restored.map.doc.must('page'); assert.equal(page.mode, 'document');
       if (page.mode !== 'document') throw Error('Expected a document');
       console.log({ accepted: true, revision: restored.rev,
         scopes: a.documentScopes(a.libraries()[1]!), slot: page.q('slot'),

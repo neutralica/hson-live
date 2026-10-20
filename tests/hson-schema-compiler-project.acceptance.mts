@@ -143,7 +143,7 @@ check("stock TypeScript retains value, mode, identity, refinements, recursion, d
 check("post-hoc attachment proof is compiler-view only", () => {
   const generated = readFileSync(join(output, "sources/consumer.ts"), "utf8");
   assert.match(generated, /__hson_assert_library_schema\(attachedDocument, "home", PageSchema\)/);
-  assert.match(generated, /attachedDocument\.lib\("home"\)\.schema\.use\(PageSchema\)/);
+  assert.match(generated, /attachedDocument\.doc\.must\("home"\)\.schema\.use\(PageSchema\)/);
   const current = verify_schema_compiler_project(join(project, "tsconfig.json"));
   check_schema_project(join(project, "tsconfig.json"), current, true);
   const runtime = readFileSync(join(project, "out/consumer.js"), "utf8");
@@ -197,8 +197,8 @@ import * as maps from "hson-live/livemap";
 const Page = Hson.schema\`<type "document" tag "main" content "string">\`;
 const empty = maps.create();
 const map = maps.fromLibraries({ home: { document: '<main "hello"/>' } });
-map.lib("home").schema.use(Page);
-const exact: typeof Page = map.lib("home").schema.get();
+map.doc.must("home").schema.use(Page);
+const exact: typeof Page = map.doc.must("home").schema.get();
 void empty; void exact;
 `);
   succeed(generate(other));
@@ -212,7 +212,7 @@ check("flow-refined exported map bindings fail with an intentional tooling diagn
   writeFileSync(join(other, "flow-map.ts"), `import { Hson, hsonLiveMap } from "hson-live";
 export const S = Hson.schema\`<type "data" content <value "number">>\`;
 export const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 } } });
-map.lib("state").schema.use(S);
+map.data.must("state").schema.use(S);
 `);
   succeed(generate(other));
   const current = verify_schema_compiler_project(join(other, "tsconfig.json"));
@@ -451,7 +451,7 @@ check("producer admission gates CLI evidence, attachments and regenerated govern
       "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")],
     } }, files: ["index.ts"] }));
   const body = '<type "data" content <name "string">>';
-  const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.lib("state").schema.use(Bad);\r\nconst name: string = map.lib("state").at(["name"]).snap();\r\nconst wrong: number = map.lib("state").at(["name"]).snap();\r\n`;
+  const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.data.must("state").schema.use(Bad);\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n`;
   const currentRoot = join(directory, ".hson/compiler-input/tsconfig.json");
   const current = () => JSON.parse(readFileSync(join(currentRoot, "manifest.json"), "utf8")) as Manifest & { diagnostics: readonly string[] };
   const mirrored = () => readFileSync(join(currentRoot, "sources/index.ts"), "utf8");

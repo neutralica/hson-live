@@ -25,7 +25,7 @@ async function page(html, libs) {
   document.body.append(frame); await loaded;
   const doc = frame.contentDocument, root = doc.documentElement;
   const receiver = restore(structuredClone(libs)), aggregate = owner(receiver.map), library = aggregate.libraries()[0];
-  const selected = receiver.map.lib(libs.libraries[0].name), handoff = aggregate.preparePortableDocumentHandoff(library, receiver.correspondence);
+  const selected = receiver.map.doc.must(libs.libraries[0].name), handoff = aggregate.preparePortableDocumentHandoff(library, receiver.correspondence);
   return { frame, doc, root, ...receiver, aggregate, library, selected, handoff,
     run: () => graft({ map: receiver.map, document: selected, root }, handoff) };
 }
@@ -95,7 +95,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     assert(lookup(f.selected, 'first')?.quid === firstId, 'precise mutation retains authored identity');
     rejects(() => f.selected.at([1, 1]).delete(), 'remaining identity CSS rejects retirement');
     f.map.batch(draft => {
-      const selected = draft.lib(libs.libraries[0].name);
+      const selected = draft.doc.must(libs.libraries[0].name);
       selected.content.remove({ kind:'path', path:[0,0,1,0] }, 1);
       selected.css.stylesheet('.ordinary{color:rgb(21,22,23)}');
     });
@@ -168,7 +168,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     equal(before, [...Array(3).fill(['3px','rgb(10, 20, 30)','7px']),['0px','rgb(0, 0, 0)','0px']], 'Part-owned CSS before graft');
     const buttons=doc=>[...doc.querySelectorAll('button')].map(button=>{const css=doc.defaultView.getComputedStyle(button);return [css.color,css.paddingLeft];});
     const buttonStyles=buttons(f.doc);equal(buttonStyles,[...Array(3).fill(['rgb(60, 70, 80)','11px']),['rgb(0, 0, 0)','6px']],'bare and nested selectors style nested Part descendants without leaking');
-    rejects(() => f.map.lib('parts'), 'no source Part collection'); rejects(() => f.map.lib('layout'), 'no source layout Library');
+    rejects(() => f.map.parts.must('parts'), 'no source Part collection'); rejects(() => f.map.doc.must('layout'), 'no source layout Library');
     const text=Object.getOwnPropertyDescriptor(Node.prototype,'nodeValue'),prototype=f.doc.defaultView.Element.prototype,remove=prototype.removeAttribute;
     let switches=0,removals=0;
     Object.defineProperty(style.firstChild,'nodeValue',{configurable:true,get(){return text.get.call(this);},set(value){
@@ -252,7 +252,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     third.selected.document.content.remove({kind:'path',path:parent},2);
     assert(!third.doc.getElementById('runtime-part')&&!third.selected.css.snapshot().includes(runtimeId),'runtime occurrence and owned CSS retire together');
     const finalCut=third.map.cut({data:[],documents:['page'],html:'page'}),final=await page(finalCut.html,finalCut.libs),finalGraft=final.run();
-    rejects(()=>final.map.lib('runtimeParts'),'runtime definitions omitted from final graft');
+    rejects(()=>final.map.data.must('runtimeParts'),'runtime definitions omitted from final graft');
     assert(final.doc.querySelectorAll('section').length===2&&final.correspondence.associations.length===2,'runtime removal leaves no stale CSS or identity in capture and re-graft');
     finalGraft.dispose();final.frame.remove();
 
@@ -260,7 +260,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     regraft.dispose();again.frame.remove();continued.dispose();f.frame.remove();
   });
   await check('ordinary carrier-free SSR uses the unchanged exact continuation path', async () => {
-    const receiver = restore(structuredClone(libs)), selected = receiver.map.lib('page'); selected.css.clearAll();
+    const receiver = restore(structuredClone(libs)), selected = receiver.map.doc.must('page'); selected.css.clearAll();
     const frame = document.createElement('iframe'); frame.srcdoc = selected.render(); const loaded = new Promise(resolve => frame.onload = resolve); document.body.append(frame); await loaded;
     const root = frame.contentDocument.documentElement;
     const continued = continue_document({map: receiver.map, document:selected, root}); assert(continued.tree.dom.el() === root, 'ordinary root retained'); continued.dispose(); frame.remove();
@@ -271,7 +271,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
       const map = hsonLiveMap.fromLibraries({ parts: collection({
         x: { kind:'document', document:'<button id="live"/>', css:'button{color:rgb(10,20,30);padding-left:13px}' },
       }), page: { document:'<html <head/> <body <button id="live"/> <button id="outside"/>/>/>' } });
-      const selected = map.lib('page'), frame = document.createElement('iframe');
+      const selected = map.doc.must('page'), frame = document.createElement('iframe');
       frame.srcdoc = selected.render(); const loaded = new Promise(resolve => frame.onload = resolve);
       document.body.append(frame); await loaded;
       const doc = frame.contentDocument, root = doc.documentElement, outside = doc.getElementById('outside');
@@ -279,7 +279,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
       const parent = {kind:'path',path:[0,0,1,0]};
       const replace = () => {
         const replacement = hsonTransform.fromHson('<hson-part lib="parts" at="x"/>').toNode().$_content[0];
-        return staged ? map.batch(draft => draft.lib('page').graph({domain:'graph',op:'replace-content',target:parent,index:0,replacement}))
+        return staged ? map.batch(draft => draft.doc.must('page').graph({domain:'graph',op:'replace-content',target:parent,index:0,replacement}))
           : selected.document.content.replace(parent,0,replacement);
       };
       let publications = 0; const off = map.commits.observe(() => publications++);
@@ -288,7 +288,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
         const before = map.capture(), native = doc.getElementById('live'), markup = root.outerHTML;
         const ledger = owner(map).identityEpoch().issued();
         rejects(() => map.batch(draft => {
-          const page = draft.lib('page');
+          const page = draft.doc.must('page');
           page.graph({domain:'graph',op:'replace-content',target:parent,index:0,
             replacement:hsonTransform.fromHson('<hson-part lib="parts" at="x"/>').toNode().$_content[0]});
           page.graph({domain:'graph',op:'remove-content',target:parent,index:999});
@@ -314,7 +314,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
       assert(doc.querySelector(marker).textContent === selected.css.snapshot() && doc.querySelectorAll(marker).length === 1, 'one coherent managed style');
       assert(doc.getElementById('outside') === outside && outside.getAttribute('hson:quid') === null, 'unrelated native sibling stays carrier-free');
       equal(read(doc,outside),['rgb(0, 0, 0)','6px'],'unrelated sibling CSS remains unchanged');
-      const moved = staged ? map.batch(draft => draft.lib('page').graph({domain:'graph',op:'move-content',target:parent,from:0,to:1}))
+      const moved = staged ? map.batch(draft => draft.doc.must('page').graph({domain:'graph',op:'move-content',target:parent,from:0,to:1}))
         : selected.document.content.move(parent,0,1);
       assert(moved.changed && doc.body.lastElementChild === button && button.getAttribute('hson:quid') === quid, 'move retains exact Element and carrier');
       equal(read(doc,button),['rgb(10, 20, 30)','13px'],'CSS follows moved root');
@@ -330,7 +330,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
       replace();
       const fresh = doc.getElementById('live'), freshQuid = fresh.getAttribute('hson:quid');
       assert(freshQuid && doc.querySelector(marker), 'later Part installs a fresh carrier');
-      if (staged) map.batch(draft => draft.lib('page').graph({domain:'graph',op:'remove-content',target:parent,index:0}));
+      if (staged) map.batch(draft => draft.doc.must('page').graph({domain:'graph',op:'remove-content',target:parent,index:0}));
       else selected.document.content.remove(parent,0);
       assert(!fresh.isConnected && !doc.querySelector(marker) && !selected.css.snapshot().includes(freshQuid), 'removal retires owned CSS and its native carrier');
       assert(continued.mirror.status === 'active', 'supported mutations preserve active continuation');

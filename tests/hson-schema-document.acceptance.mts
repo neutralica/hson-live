@@ -240,7 +240,7 @@ check("public and worker entrypoint Schema fixtures compile and admit their docu
     const document = Hson.document.fromHson(hsonTransform.fromHson(documentSource).toHson().serialize());
     const schema = RuntimeHsonSchema.fromHson(hsonTransform.fromHson(schemaSource).toHson().serialize());
     assert.equal(schema.certify(document), document);
-    const page = hsonLiveMap.fromLibraries({ page: { document: documentSource, schema } }).lib("page");
+    const page = hsonLiveMap.fromLibraries({ page: { document: documentSource, schema } }).doc.must("page");
     assert.equal(page.mode, "document");
     if (path.includes("worker")) assert.ok(page.at([]).id("target"));
   }

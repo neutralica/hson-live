@@ -100,8 +100,8 @@ function same(f: Fixture, cap: ReturnType<typeof replica>) {
   assert.equal(r.a.clientProjection()!.registry.digest, composition(f.state(), true).registryDigest);
   assert.deepEqual(r.a.clientProjection()!.authority, f.state().authority);
   assert.equal(r.a.clientProjection()!.libraries.includes("parts"), false);
-  const sourceData = f.map.lib("data"), receivedData = r.map.lib("data");
-  if (receivedData.mode === "document") throw Error();
+  const sourceData = f.map.data.must("data"), receivedData = r.map.data.must("data");
+  if (String(receivedData.mode) === "document") throw Error();
   assert.deepEqual(receivedData.snap(), sourceData.snap());
   const docs = new Set(["page", "zpage"]);
   assert.ok(canonical_hson_graph_equal(
@@ -338,7 +338,7 @@ export async function recovery_closure_cases(check: (name: string, run: () => Pr
           const state = feed.snapshot.snapshot;
           let message: Output;
           if (kind === "commit") {
-            const commit = await f.stage(w => { const d = w.lib("data"); if (d.mode === "document") throw Error(); d.at(["n"]).set(1); });
+            const commit = await f.stage(w => { const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(1); });
             message = { type: "commit", id: feed.request.id, projectionSequence: 0, projectionDigest: state.projectionDigest,
               commit: { format: "hson-locus-live-projected-client-wire", ...state.authority, registryDigest: feed.caught.registryDigest,
                 commit: { authority: commit.authority, registryDigest: commit.registryDigest, prevRev: commit.prevRev, rev: commit.rev, operations: commit.operations.filter(operation => operation.domain !== "document"), format: "hson-locus-live-projected-client-commit" } } };
@@ -457,7 +457,7 @@ export async function recovery_closure_cases(check: (name: string, run: () => Pr
       const f = await fixture(!scoped), h = receiving(f, scoped);
       try {
         const feed = await finish(h), state = feed.snapshot.snapshot;
-        const one = await f.stage(w => { const d = w.lib("data"); if (d.mode === "document") throw Error(); d.at(["n"]).set(42); });
+        const one = await f.stage(w => { const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(42); });
         const progress: Extract<Output, { type: "progress" }> = { type: "progress", id: feed.request.id,
           projectionSequence: 0, projectionDigest: state.projectionDigest,
           progress: { ...state.authority, registryDigest: feed.caught.registryDigest, prevRev: one.rev, rev: one.rev + 1 } };
@@ -469,7 +469,7 @@ export async function recovery_closure_cases(check: (name: string, run: () => Pr
               registryDigest: one.registryDigest, prevRev: one.prevRev, rev: one.rev,
               operations: one.operations.filter(operation => operation.domain !== "document") } } }); off();
         assert.ok(hit); assert_position(h, one.rev + 1, true, "live");
-        const data = h.echo.map!.lib("data"); if (data.mode === "document") throw Error(); assert.equal(data.snap(["n"]), 42);
+        const data = h.echo.map!.data.must("data"); if (String(data.mode) === "document") throw Error(); assert.equal(data.snap(["n"]), 42);
         let nested = false;
         const stop = h.echo.observeAuthorityPosition(() => {
           if (nested) return; nested = true;
@@ -712,7 +712,7 @@ export async function terminal_progress_open_cases(check: (name: string, run: ()
         const position = h.a.clientProjection()!; assert.equal(position.revision, 2);
         const progress = (prevRev: number) => ({ ...position.authority, registryDigest: position.registry.digest, prevRev, rev: prevRev + 1 });
         const ledger = h.a.identityEpoch().issued(), mapRevision = h.echo.map!.rev, ids = h.a.libraries();
-        const roots = ids.map(id => h.a.root(id)), css = h.echo.map!.lib("page").css.snapshot();
+        const roots = ids.map(id => h.a.root(id)), css = h.echo.map!.doc.must("page").css.snapshot();
         let hit = false;
         assert.throws(() => h.echo.replica.advanceHostedProgress(new Proxy(progress(2), { get(target, key, receiver) {
           if (key === "rev" && !hit) {
@@ -726,7 +726,7 @@ export async function terminal_progress_open_cases(check: (name: string, run: ()
         assert_position(h, 4, false, "idle", "idle"); next!.captureManagementFence()();
         assert.equal(h.a.identityEpoch().issued(), ledger); assert.equal(h.echo.map!.rev, mapRevision);
         assert.deepEqual(h.a.libraries(), ids); ids.forEach((id, index) => assert.equal(h.a.root(id), roots[index]));
-        assert.equal(h.echo.map!.lib("page").css.snapshot(), css);
+        assert.equal(h.echo.map!.doc.must("page").css.snapshot(), css);
         assert.equal(next!.advanceHostedProgress(progress(4)), 5);
       } finally { next?.dispose(); h.dispose(); f.l.dispose(); }
     });
@@ -919,10 +919,10 @@ export async function retry_progress_publication_cases(check: (name: string, run
         off(); stop(); stopPublished(); assert.deepEqual(installed, [3, 4]); assert.equal(commits, 0); assert.equal(published, 0);
         // A legitimate graph replay after progress uses the same authority cursor.
         for (const title of ["hidden-3", "hidden-4"]) await f.stage(w => {
-          const d = w.lib("hidden"); if (d.mode !== "document") throw Error();
+          const d = w.doc.must("hidden"); if (d.mode !== "document") throw Error();
           d.attrs.set({ kind: "path", path: path([0]) }, "title", title);
         });
-        const commit = await f.stage(w => { const d = w.lib("data"); if (d.mode === "document") throw Error(); d.at(["n"]).set(3); });
+        const commit = await f.stage(w => { const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(3); });
         assert.equal(commit.prevRev, 4);
         h.echo.replica.replayScopedHosted(commit);
         assert_position(h, 5, true, "live"); grant();
@@ -962,7 +962,7 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
     try {
       const a = view(first), b = view(second), oldA = a.scopes(), oldB = b.scopes(), originalGraph = f.a.root(f.pageId);
       const retired = oldB.map(s => s.rootQuid);
-      const local = b.map.lib("local"); if (local.mode === "document") throw Error(); local.at(["n"]).set(77);
+      const local = b.map.data.must("local"); if (String(local.mode) === "document") throw Error(); local.at(["n"]).set(77);
       add_interaction(b.map, { id: "local-nav", subject: { library: "localPage", path: [0] }, listener, kind: "browser", key: "nav", args: null });
       const localRoot = local.root();
       // The first transition changes only the occurrence lifetime, not graph content.
@@ -970,22 +970,22 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
       assert.ok(canonical_hson_graph_equal(f.a.root(f.pageId), originalGraph)); first.replayScopedHosted(one);
       assert.equal(a.scopes()[2]!.lifetime, oldA[2]!.lifetime);
       assert.equal(a.scopes()[3]!.lifetime, oldA[3]!.lifetime);
-      const two = await f.stage(w => { page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "cut"); const d = w.lib("data"); if (d.mode === "document") throw Error(); d.at(["n"]).set(2); });
+      const two = await f.stage(w => { page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "cut"); const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(2); });
       first.replayScopedHosted(two);
       const beforeThird = a.scopes();
       const three = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0]) }, 1, node('<hson-part lib="parts" at="leaf"/>')));
       first.replayScopedHosted(three);
       assert.equal(a.scopes()[0]!.lifetime, beforeThird[0]!.lifetime);
       assert.equal(a.scopes()[1]!.lifetime, beforeThird[1]!.lifetime);
-      assert.equal((a.map.lib("page").css.snapshot().match(/padding:3px/g) ?? []).length, 1);
+      assert.equal((a.map.doc.must("page").css.snapshot().match(/padding:3px/g) ?? []).length, 1);
       assert.equal(a.scopes()[0]!.lifetime === oldA[0]!.lifetime, false);
       assert.equal(a.scopes()[1]!.lifetime === oldA[1]!.lifetime, false);
       const decision = plan(start.revision, f.l.rev, two.rev, [three], entry => entry);
       assert.deepEqual(decision, { outcome: "reconcile", reason: "history_unavailable" });
       await finish(h); assert.equal(h.echo.lastAppliedRev, f.l.rev);
       for (const scope of b.scopes()) assert.ok(!oldB.some(old => old.lifetime === scope.lifetime));
-      for (const id of retired) { assert.equal(b.a.documentOverlay(b.id).pathForQuid(id), undefined); assert.ok(!b.map.lib("page").css.snapshot().includes(id)); }
-      assert.match(b.map.lib("page").css.snapshot(), /border:0/);
+      for (const id of retired) { assert.equal(b.a.documentOverlay(b.id).pathForQuid(id), undefined); assert.ok(!b.map.doc.must("page").css.snapshot().includes(id)); }
+      assert.match(b.map.doc.must("page").css.snapshot(), /border:0/);
       assert.equal(local.snap(["n"]), 77); assert.deepEqual(local.root(), localRoot);
       assert.match(JSON.stringify(b.a.systemRoot(b.a.systemState("@hson/canonical-interactions")!)), /local-nav/);
       same(f, first); same(f, second);
@@ -999,7 +999,7 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
       assert.equal(h.echo.lastAppliedRev, four.rev);
       const ids = [f.a, a.a, b.a].map(x => new Set(enumerate_livemap_issued_quids(x.identityEpoch().issued())));
       for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) for (const id of ids[i]!) assert.ok(!ids[j]!.has(id));
-      assert.match(b.map.lib("page").css.snapshot(), /border:0/);
+      assert.match(b.map.doc.must("page").css.snapshot(), /border:0/);
       const current = await h.begin();
       assert.equal(current.request.cursor!.lastAppliedRev, four.rev);
       assert.equal(plan(four.rev, f.l.rev, four.rev, [], entry => entry).outcome, "current");
@@ -1124,13 +1124,13 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
   await check("ordinary flat reconciliation uses the same recovery fences and preserves local state", async () => {
     const f = await fixture(true), h = receiving(f, false);
     try {
-      const local = h.echo.map!.lib("local"); if (local.mode === "document") throw Error(); local.at(["n"]).set(91);
+      const local = h.echo.map!.data.must("local"); if (String(local.mode) === "document") throw Error(); local.at(["n"]).set(91);
       await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "flat-cut"));
       await finish(h);
       assert.equal(h.echo.lastAppliedRev, f.l.rev); assert.equal(local.snap(["n"]), 91);
       const r = view(h.echo.replica); assert.ok(canonical_hson_graph_equal(r.a.root(r.id), f.a.root(f.pageId)));
       assert.equal(r.a.documentScopes(r.id), undefined);
-      const doc = h.echo.map!.lib("page"); if (doc.mode !== "document") throw Error(); assert.ok(doc.q("footer"));
+      const doc = h.echo.map!.doc.must("page"); if (doc.mode !== "document") throw Error(); assert.ok(doc.q("footer"));
     } finally { h.dispose(); f.l.dispose(); }
   });
 

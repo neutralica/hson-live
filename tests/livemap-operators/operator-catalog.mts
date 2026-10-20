@@ -39,7 +39,7 @@ export function registry(initial: string | JsonValue) {
   return hsonLiveMap.fromLibraries({ state: { data: initial, schema: Wide } });
 }
 export function state(initial: string | JsonValue): State {
-  return registry(initial).lib("state");
+  return registry(initial).data.must("state");
 }
 export function exact(map: State): string {
   return JSON.stringify({ root: encode_exact_hson_value(map.root()) });
@@ -63,7 +63,7 @@ export function mutation_operator(
 ): DeterministicLiveMapOperator {
   return operator(id, "mutation", name, rule, applicability, expected, () => {
     const map = registry(initial);
-    const selected = map.lib("state");
+    const selected = map.data.must("state");
     let publications = 0;
     map.commits.observe(() => { publications += 1; });
     const before = exact(selected);
@@ -94,7 +94,7 @@ export function atomic_rejection_operator(
 ): DeterministicLiveMapOperator {
   return operator(id, "admission-schema", name, rule, applicability, "rejection", () => {
     const map = registry({ value: 1 });
-    const selected = map.lib("state");
+    const selected = map.data.must("state");
     let publications = 0;
     let feeds = 0;
     map.commits.observe(() => { publications += 1; });
@@ -136,7 +136,7 @@ export function error_code(error: unknown): string {
 }
 export function schema_number_map(): State {
   const schema = Hson.schema`<type "data" content <value "number">>`;
-  return hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema } }).lib("state");
+  return hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema } }).data.must("state");
 }
 
 export function assert_operator(operator: DeterministicLiveMapOperator): OperatorResult {

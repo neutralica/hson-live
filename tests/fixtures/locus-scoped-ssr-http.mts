@@ -18,7 +18,7 @@ export async function scoped_ssr_http() {
     cert: await readFile(new URL("./livehost-tls/cert.pem", import.meta.url)) };
   const app = hsonLiveHost.create({ name: "h2-ssr" });
   app.GET("/", () => new Response(session.now({ html: "page" }).html, { headers: { "content-type": "text/html; charset=utf-8" } }));
-  app.GET("/flat", locus.lib("flat").render);
+  app.GET("/flat", locus.doc.must("flat").render);
   app.GET("/forbidden", () => new Response(session.now({ html: "secret" }).html));
   const captured = deferred(), release = deferred();
   app.GET("/stream", async () => {
@@ -61,7 +61,7 @@ export async function scoped_ssr_http() {
       const forbidden = await get("/forbidden"); assert.equal(forbidden.status, 500); assert.doesNotMatch(forbidden.body, /PRIVATE_|<html/);
     }
     const pending = h2get("/stream"); await captured.promise;
-    await locus.stage(w => { w.lib("page").at([]).asElement().attrs.set("title", "later-http"); w.lib("page").css.sel("body").setProp("color", "teal"); });
+    await locus.stage(w => { w.doc.must("page").at([]).asElement().attrs.set("title", "later-http"); w.doc.must("page").css.sel("body").setProp("color", "teal"); });
     release.resolve(); const streamed = await pending;
     assert.equal(streamed.body, cut.html); assert.equal(streamed.revision, String(cut.libs.revision));
     assert.match((await h1get("/")).body, /later-http/);

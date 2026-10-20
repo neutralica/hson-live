@@ -121,10 +121,10 @@ check("one hosted commit carries ordered qualified semantics plus one exact witn
   assert.deepEqual(hosted.replay.operations.map((entry) => entry.library), ["alpha", "beta", "alpha", "alpha", "page"]);
   assert.deepEqual(hosted.replay.operations.map((entry) => entry.domain), ["data", "data", "data", "data", "graph"]);
   assert.equal(hosted.replay.operations[4]?.format, "hson-hosted-graph-op");
-  assert.equal(Object.is(map.lib("alpha").snap(["negativeZero"]), -0), true);
-  assert.deepEqual(Object.keys(map.lib("alpha").snap(["ordered"]) as object), ["b", "a"]);
-  assert.equal(Object.is((map.lib("alpha").snap(["items"]) as number[])[1], -0), true);
-  assert.equal(map.lib("page").document.byQuid(Q_ACTIVE)?.$_tag, "item");
+  assert.equal(Object.is(map.data.must("alpha").snap(["negativeZero"]), -0), true);
+  assert.deepEqual(Object.keys(map.data.must("alpha").snap(["ordered"]) as object), ["b", "a"]);
+  assert.equal(Object.is((map.data.must("alpha").snap(["items"]) as number[])[1], -0), true);
+  assert.equal(map.doc.must("page").document.byQuid(Q_ACTIVE)?.$_tag, "item");
 });
 
 check("copied exact hosted commits reject without revision movement", () => {
@@ -226,7 +226,7 @@ check("issued-but-retired QUID survives same-runtime exact aggregate restore and
   const targetAuthority = sourceAuthority;
   targetAuthority.restoreHosted(sourceAuthority.captureHosted());
   assert.equal(targetAuthority.resolveQuid(Q_RETIRED), undefined);
-  assert.deepEqual(livemap_identity_epoch_accounting(target.lib("page")), { epoch: 0, issued: 1 });
+  assert.deepEqual(livemap_identity_epoch_accounting(target.doc.must("page")), { epoch: 0, issued: 1 });
   const modal = targetAuthority.libraries()[3]!;
   const before = target.rev;
   assert.throws(() => targetAuthority.commit([
@@ -256,8 +256,8 @@ check("same-runtime exact restore rebuilds local lookup and copied capture rejec
   const untouchedAuthority = internal_livemap_aggregate_authority(untouched);
   assert.throws(() => untouchedAuthority.restoreHosted(collision), /owner|epoch|provenance/i);
   assert.equal(untouched.rev, 0);
-  const pageRoot = untouched.lib("page").root().$_content[0];
-  const modalRootAfter = untouched.lib("modal").root().$_content[0];
+  const pageRoot = untouched.doc.must("page").root().$_content[0];
+  const modalRootAfter = untouched.doc.must("modal").root().$_content[0];
   assert.equal(is_Node(pageRoot) ? pageRoot.$_content.length : -1, 0);
   assert.equal(is_Node(modalRootAfter) ? modalRootAfter.$_content.length : -1, 0);
 });
@@ -304,9 +304,9 @@ check("same-runtime snapshot plus ordered aggregate tail reproduces exact state,
   assert.equal(publications, 1);
   assert.deepEqual([replayed.prevRev, replayed.rev, rebuilt.rev], [2, 3, 3]);
   assert.deepEqual(rebuiltAuthority.captureHosted(), finalCapture);
-  assert.equal(Object.is(rebuilt.lib("alpha").snap(["negativeZero"]), -0), true);
-  assert.deepEqual(Object.keys(rebuilt.lib("alpha").snap(["ordered"]) as object), ["b", "a"]);
-  assert.equal(Object.is((rebuilt.lib("alpha").snap(["items"]) as number[])[1], -0), true);
+  assert.equal(Object.is(rebuilt.data.must("alpha").snap(["negativeZero"]), -0), true);
+  assert.deepEqual(Object.keys(rebuilt.data.must("alpha").snap(["ordered"]) as object), ["b", "a"]);
+  assert.equal(Object.is((rebuilt.data.must("alpha").snap(["items"]) as number[])[1], -0), true);
   assert.equal(rebuiltAuthority.resolveQuid(Q_RETIRED), undefined);
 
   const stale = structuredClone(tail) as HostedAggregateCommit;

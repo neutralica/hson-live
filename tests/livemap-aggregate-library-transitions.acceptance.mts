@@ -58,10 +58,10 @@ function pair(
 
 check("one-library registry keeps stable selection and map-wide commits", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberSchema } });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const commit = state.at(["value"]).set(2);
 
-  assert.equal(map.lib("state"), state);
+  assert.equal(map.data.must("state"), state);
   assert.equal(state.snap(["value"]), 2);
   assert.equal(map.rev, 1);
   assert.equal(commit.rev, 1);
@@ -223,7 +223,7 @@ check("a document-mode internal library can coexist under the same map authority
 check("aggregate preparation clones only affected library candidates and publishes once", () => {
   const single = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberSchema } });
   const singleStart = performance.now();
-  single.lib("state").at(["value"]).set(2);
+  single.data.must("state").at(["value"]).set(2);
   const singleMs = performance.now() - singleStart;
 
   const { map, aggregate, data, colors } = pair({ value: 1 }, { value: "blue" });

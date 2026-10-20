@@ -24,9 +24,9 @@ hsonLiveHost.DELETE;
 import * as hsonLiveMap from "hson-live/livemap";
 
 declare const locus: ReturnType<typeof hsonLiveMap.locus.create>;
-const home = locus.lib("home");
-const slide01 = locus.lib("slide01");
-const slide02 = locus.lib("slide02");
+const home = locus.doc.must("home");
+const slide01 = locus.doc.must("slide01");
+const slide02 = locus.doc.must("slide02");
 if (home.mode === "document" && slide01.mode === "document" && slide02.mode === "document") {
   const host: LiveHost = hsonLiveHost.create({ name: "deck" });
   host.GET("/single", home.render);

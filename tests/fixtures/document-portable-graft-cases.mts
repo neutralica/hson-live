@@ -13,7 +13,7 @@ function fixture() {
   const source = ssr_subject_fixture(), cut = cut_document_ssr_internal(source.map, { html: "page" }, source.demanded);
   const receiver = restore_portable_document_receiver_internal(JSON.parse(JSON.stringify(cut.libs)));
   const aggregate = owner(receiver.map), library = aggregate.libraries()[0]!;
-  const document = receiver.map.lib("page");
+  const document = receiver.map.doc.must("page");
   if (document.mode !== "document") throw Error("Expected document");
   return { source, cut, ...receiver, aggregate, library, document };
 }
@@ -100,18 +100,18 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
     const cut = cut_document_ssr_internal(map, {html:"final",documents:["final"],data:[]}, demanded);
     const receiver = restore_portable_document_receiver_internal(cut.libs), owning = owner(receiver.map);
     assert.equal(receiver.correspondence.associations.length, 2);
-    assert.throws(() => receiver.map.lib("components")); assert.throws(() => receiver.map.lib("layout"));
+    assert.throws(() => receiver.map.data.must("components")); assert.throws(() => receiver.map.doc.must("layout"));
     const candidate = owning.preparePortableDocumentHandoff(owning.libraries()[0]!, receiver.correspondence);
     candidate.acceptCss();
     assert.notEqual(receiver.correspondence.associations[0]!.quid, receiver.correspondence.associations[1]!.quid);
     for (const entry of receiver.correspondence.associations) {
-      assert.equal(entry.disposition, "disposable"); assert.equal(lookup(receiver.map.lib("final"), entry.name), undefined);
+      assert.equal(entry.disposition, "disposable"); assert.equal(lookup(receiver.map.doc.must("final"), entry.name), undefined);
       assert.ok(candidate.receivingCss.includes(entry.quid)); assert.equal(demanded.includes(entry.quid), false);
     }
     const next = install_libraries_snapshot(receiver.map.cut({ documents: ["final"], data: [] }).libs).map;
     assert.equal(next.capture().libraries.length, 1); assert.equal(next.capture().libraries[0]!.quads!.length, 2);
-    assert.throws(() => next.lib("components")); assert.throws(() => next.lib("layout"));
-    const nextLibrary = next.lib("final"); if (nextLibrary.mode !== "document") throw Error("document");
+    assert.throws(() => next.data.must("components")); assert.throws(() => next.doc.must("layout"));
+    const nextLibrary = next.doc.must("final"); if (nextLibrary.mode !== "document") throw Error("document");
     for (const entry of receiver.correspondence.associations) assert.equal(nextLibrary.css.snapshot().includes(entry.quid), false);
   });
   check("malformed collision and wrong-subject portable admissions are atomic", () => {

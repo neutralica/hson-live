@@ -56,23 +56,23 @@ function source(quid?: string): string {
   const quid = "000003001";
   const map = documentMap(source(quid));
   const fixture = mainFixture(quid);
-  const before = structuredClone(map.lib("page").root());
+  const before = structuredClone(map.doc.must("page").root());
   const profile = begin_livetree_materialization_profile();
   const continuation = continue_document({ map, root: fixture.root as unknown as Element });
   const materialization = profile.stop();
-  assert.equal(continuation.map, map.lib("page"));
+  assert.equal(continuation.map, map.doc.must("page"));
   assert.equal(continuation.tree.dom.el(), fixture.root as unknown as Element);
   assert.equal(continuation.tree.find.byTag("p")?.dom.el(), fixture.child as unknown as Element);
   assert.equal(fixture.child.childNodes[0], fixture.text);
-  assert.deepEqual(map.lib("page").root(), before);
+  assert.deepEqual(map.doc.must("page").root(), before);
   assert.equal(map.rev, 0);
   assert.equal(materialization.quidEnsureCalls, 0);
   assert.equal(fixture.root.getAttribute("hson:quid"), null);
   assert.equal(fixture.child.getAttribute("hson:quid"), null);
-  map.lib("page").document.attrs.set(path(0, 0), "title", "continued");
+  map.doc.must("page").document.attrs.set(path(0, 0), "title", "continued");
   assert.equal(fixture.child.getAttribute("title"), "continued");
   continuation.dispose();
-  map.lib("page").document.attrs.set(path(0, 0), "title", "detached");
+  map.doc.must("page").document.attrs.set(path(0, 0), "title", "detached");
   assert.equal(fixture.child.getAttribute("title"), "continued");
   continuation.tree.find.byTag("p")?.attrs.set("title", "detached");
   const rebound = continue_document({ map, root: fixture.root as unknown as Element });
@@ -98,7 +98,7 @@ function cssFixture() {
   const rule = resolved.sel("button");
   const runtime = runtime_for_tree(tree), issued = [...runtime.issuedQuids];
   const activeClaims = [...runtime.quidToNode.keys()], pendingClaims = [...runtime.pendingQuidClaims.keys()];
-  const graph = tree.node, documentCss = map.lib("page").css.snapshot(), rev = map.rev;
+  const graph = tree.node, documentCss = map.doc.must("page").css.snapshot(), rev = map.rev;
   let commits = 0;
   const stop = map.commits.observe(() => { commits++; });
   continuation.dispose();
@@ -111,7 +111,7 @@ function cssFixture() {
   assert.throws(() => resolved.clearAll(), /disposed/);
   assert.throws(() => rule.set.color("red"), /disposed/);
   assert.equal(CssRuntimeManager.forRuntime(runtime).renderCss(), "");
-  assert.equal(map.lib("page").css.snapshot(), documentCss);
+  assert.equal(map.doc.must("page").css.snapshot(), documentCss);
   assert.equal(map.rev, rev); assert.equal(commits, 0);
   assert.deepEqual(tree.node, graph); assert.deepEqual([...runtime.issuedQuids], issued);
   assert.deepEqual([...runtime.quidToNode.keys()], activeClaims);
@@ -159,7 +159,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   const map = documentMap(source());
   const fixture = mainFixture();
   set_document_adoption_fault_hook_for_tests((point) => {
-    if (point === "after-tree") map.lib("page").document.attrs.set(path(0, 0), "data-race", "moved");
+    if (point === "after-tree") map.doc.must("page").document.attrs.set(path(0, 0), "data-race", "moved");
   });
   assert.throws(
     () => continue_document({ map, root: fixture.root as unknown as Element }),
@@ -175,7 +175,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
 
 {
   const map = documentMap(source());
-  const existing = (await import("../src/api/mirror/mirror.document.ts")).reflect_document(map.lib("page"));
+  const existing = (await import("../src/api/mirror/mirror.document.ts")).reflect_document(map.doc.must("page"));
   const fixture = mainFixture();
   assert.throws(
     () => continue_document({ map, root: fixture.root as unknown as Element }),
@@ -210,7 +210,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   enable_interactions(first);
   const root = new FakeElement("main");
   const inferred = continue_document({ map: first, root: root as unknown as Element });
-  assert.equal(inferred.map, first.lib("page"));
+  assert.equal(inferred.map, first.doc.must("page"));
   inferred.dispose();
 
   const many = hsonLiveMap.fromLibraries({
@@ -222,8 +222,8 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
     /multiple public document libraries/i,
   );
   const modalRoot = new FakeElement("main");
-  const selected = continue_document({ map: many, document: many.lib("modal"), root: modalRoot as unknown as Element });
-  assert.equal(selected.map, many.lib("modal"));
+  const selected = continue_document({ map: many, document: many.doc.must("modal"), root: modalRoot as unknown as Element });
+  assert.equal(selected.map, many.doc.must("modal"));
   selected.dispose();
 }
 
@@ -300,7 +300,7 @@ for (const restored of [false, true]) {
     ? '<main @:root <button @:confirm/> <aside @:other/> <span/>/>'
     : '<main <button @:confirm/> <aside/> <span/>/>' } });
   const map = restored ? install_libraries_snapshot(server.capture()).map : server;
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   if (page.mode !== "document") throw new Error("Expected document Library.");
   const before = map.capture(), aggregate = internal_livemap_aggregate_authority(map);
   const ledger = aggregate.identityEpoch().issued();
@@ -322,7 +322,7 @@ for (const restored of [false, true]) {
     assert.equal(runtime.quidToNode.get(address.quid), subject_for_tree(tree));
     assert.equal(runtime.nodeToQuid.get(subject_for_tree(tree)), address.quid);
     assert.equal(element.getAttribute("hson:quid"), null);
-    if (restored) assert.notEqual(address.quid, lookup_document_quad_internal(server.lib("page"), name)!.quid);
+    if (restored) assert.notEqual(address.quid, lookup_document_quad_internal(server.doc.must("page"), name)!.quid);
   }
   assert.equal(continuation.tree.find.must.byTag("span").node.$_meta?.quid, undefined);
   assert.equal(aggregate.identityEpoch().issued(), ledger);
@@ -345,7 +345,7 @@ for (const restored of [false, true]) {
 // Failed adoption must leave the existing Library claims intact and allow a retry.
 for (const failure of ["foreign-quid", "matching-quid", "malformed-quid", "wrong-attribute", "after-runtime", "after-tree", "after-tree-dom"] as const) {
   const map = make_livemap_from_authored_libraries_internal({ page: { document: '<main <button @:confirm/>/>' } });
-  const page = map.lib("page"), root = new FakeElement("main"), button = new FakeElement("button");
+  const page = map.doc.must("page"), root = new FakeElement("main"), button = new FakeElement("button");
   if (page.mode !== "document") throw new Error("Expected document Library.");
   root.appendChild(button);
   const aggregate = internal_livemap_aggregate_authority(map), before = map.capture(), ledger = aggregate.identityEpoch().issued();

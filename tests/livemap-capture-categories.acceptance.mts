@@ -45,11 +45,11 @@ check("capture strips every generated QUID in nested content", () => {
 check("capture does not mutate source identity", () => {
   const map = exact(`<main @${Q1}/>`);
   map.capture();
-  assert.equal(map.lib("page").document.byQuid(Q1)?.$_tag, "main");
+  assert.equal(map.doc.must("page").document.byQuid(Q1)?.$_tag, "main");
 });
 check("capture carries the exact registry revision", () => {
   const map = exact(`<main @${Q1}/>`);
-  map.lib("page").document.attrs.set({ kind: "path", path: [0] }, "data-v", 1);
+  map.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "data-v", 1);
   assert.equal(map.capture().revision, 1);
 });
 check("repeated captures are stable and detached", () => {
@@ -63,36 +63,36 @@ check("repeated captures are stable and detached", () => {
 check("capture of a QUID-free source does not mint identity", () => {
   const map = ordinary("<main/>");
   map.capture();
-  assert.equal(JSON.stringify(map.lib("page").root()).includes("quid"), false);
+  assert.equal(JSON.stringify(map.doc.must("page").root()).includes("quid"), false);
   assert.equal(map.rev, 0);
 });
 check("restore transfers semantic state without source identity", () => {
   const source = exact(`<main @${Q1}/>`);
-  source.lib("page").document.attrs.set({ kind: "path", path: [0] }, "title", "source");
+  source.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "title", "source");
   const target = ordinary("<main/>");
   target.restore(source.capture());
-  assert.equal(target.lib("page").document.byQuid(Q1), undefined);
-  assert.equal(target.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "source");
+  assert.equal(target.doc.must("page").document.byQuid(Q1), undefined);
+  assert.equal(target.doc.must("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "source");
 });
 check("restore of same registry captures exact canonical state", () => {
   const source = ordinary("<main/>");
-  source.lib("page").document.attrs.set({ kind: "path", path: [0] }, "title", "source");
+  source.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "title", "source");
   const target = ordinary("<main/>");
   target.restore(source.capture());
-  assert.equal(canonical_hson_graph_equal(source.lib("page").root(), target.lib("page").root()), true);
+  assert.equal(canonical_hson_graph_equal(source.doc.must("page").root(), target.doc.must("page").root()), true);
   assert.equal(target.rev, source.rev);
 });
 check("different registry snapshot requires fresh installation", () => {
   const target = ordinary("<main/>");
-  const oldPage = target.lib("page");
+  const oldPage = target.doc.must("page");
   const other = hsonLiveMap.fromLibraries({ other: { document: "<main/>", schema: Empty } });
   const before = target.capture();
   assert.throws(() => target.restore(other.capture()), /current Library topology/);
   assert.deepEqual(target.capture(), before);
-  assert.equal(target.lib("page"), oldPage);
+  assert.equal(target.doc.must("page"), oldPage);
   const installed = install_libraries_snapshot(other.capture()).map;
   assert.deepEqual(installed.capture(), other.capture());
-  assert.equal(installed.lib("other").mode, "document");
+  assert.equal(installed.doc.must("other").mode, "document");
 });
 check("local registry exposes no solo capture or install category", () => {
   const map = ordinary("<main/>");

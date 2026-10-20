@@ -1426,7 +1426,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         }
         const identity = libraryName === undefined ? undefined : identitiesByName.get(libraryName);
         if (libraryName === undefined || identity === undefined) throw new Error("Hosted document action requires a known library.");
-        const selected = options.map.lib(libraryName);
+        const selected = options.map.doc.must(libraryName);
         if (selected.mode !== "document") throw new Error("Hosted document action library is not a document Library.");
         const localPayload: Record<string, unknown> = { ...record };
         delete localPayload.library;
@@ -1442,7 +1442,7 @@ export function create_locus_hosted_aggregate_authority_internal<
           ok: true,
           payload: ExactDataCarrier.from(normalized),
           executeDocument: (draft: LocusHostedAggregateStageWriter) => {
-            const target = draft.lib(libraryName);
+            const target = draft.doc.must(libraryName);
             if (!("graph" in target)) throw new Error("Hosted document action library is not a document Library.");
             resolution.execute(document_action_target(target, aggregate, identity));
           },

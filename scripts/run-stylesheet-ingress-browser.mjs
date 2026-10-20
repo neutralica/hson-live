@@ -28,12 +28,12 @@ const source = `
 `;
 const documentSource = "<html <head/> <body/>/>";
 const nodeMap = hsonLiveMap.fromLibraries({ page: { document: documentSource } });
-nodeMap.lib("page").css.stylesheet(source);
+nodeMap.doc.must("page").css.stylesheet(source);
 const nodeTree = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] }, { isolated: true });
 nodeTree.css.global.stylesheet(source);
 const expected = {
   record: nodeMap.capture().libraries[0].css,
-  mapCss: nodeMap.lib("page").css.snapshot(),
+  mapCss: nodeMap.doc.must("page").css.snapshot(),
   treeCss: nodeTree.css.snapshot(),
 };
 assert.equal(expected.mapCss, expected.treeCss);
@@ -54,7 +54,7 @@ const entry = `
   globalThis.addEventListener("error",event=>document.body.dataset.error=encodeURIComponent(String(event.error?.stack??event.message)));
   const source = ${JSON.stringify(source)};
   const map = hsonLiveMap.fromLibraries({ page: { document: ${JSON.stringify(documentSource)} } });
-  map.lib("page").css.stylesheet(source);
+  map.doc.must("page").css.stylesheet(source);
   const tree = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] });
   tree.css.global.stylesheet(source);
   function nativeValue(css, oracle) {
@@ -75,8 +75,8 @@ const entry = `
     const original = nativeValue(oracle.css, oracle);
     try {
     const owned = hsonLiveMap.fromLibraries({page:{document:${JSON.stringify(documentSource)}}});
-    owned.lib("page").css.stylesheet(oracle.css);
-    const reconstructed = nativeValue(owned.lib("page").css.snapshot(), oracle);
+    owned.doc.must("page").css.stylesheet(oracle.css);
+    const reconstructed = nativeValue(owned.doc.must("page").css.snapshot(), oracle);
     const runtime = hsonLiveTree.fromNode({$_tag:"main",$_content:[]},{isolated:true});
     runtime.css.global.stylesheet(oracle.css);
     const runtimeValue = nativeValue(runtime.css.snapshot(), oracle);
@@ -86,7 +86,7 @@ const entry = `
     } catch(error) { return {name:oracle.name, expected:oracle.expected, original, error:String(error)}; }
   });
   const operations = [];
-  const orderedMap=hsonLiveMap.fromLibraries({page:{document:${JSON.stringify(documentSource)}}}), orderedPage=orderedMap.lib("page");
+  const orderedMap=hsonLiveMap.fromLibraries({page:{document:${JSON.stringify(documentSource)}}}), orderedPage=orderedMap.doc.must("page");
   const operationOracle={property:"color",className:"x"};
   orderedPage.css.stylesheet('@layer { .x { color: red !important; } .x { color: blue !important; } }');
   orderedPage.css.drop("stylesheet:1");
@@ -110,7 +110,7 @@ const entry = `
   for (const owner of ["document", "runtime"]) {
     const ownedMap=hsonLiveMap.fromLibraries({page:{document:${JSON.stringify(documentSource)}}});
     const ownedTree=hsonLiveTree.fromNode({$_tag:"main",$_content:[]},{isolated:true});
-    const css=owner==="document"?ownedMap.lib("page").css:ownedTree.css.global;
+    const css=owner==="document"?ownedMap.doc.must("page").css:ownedTree.css.global;
     const snapshot=()=>owner==="document"?css.snapshot():ownedTree.css.snapshot();
     for (const [selector] of selectorPairs) css.sel(selector).set.color("red");
     const values=()=>selectorPairs.map(([,id])=>nativeValue(snapshot(),{id,property:"color"}));
@@ -129,7 +129,7 @@ const entry = `
   const lazyFrame = document.createElement("iframe"); document.body.append(lazyFrame);
   const lazyDoc = lazyFrame.contentDocument, lazyRuntime = create_livetree_runtime();
   const lazyMap = hsonLiveMap.fromLibraries({page:{document:'<main <button class=lazy "go"/>/>'}});
-  const lazyMirror = reflect_document_in_runtime(lazyMap.lib('page'), lazyRuntime);
+  const lazyMirror = reflect_document_in_runtime(lazyMap.doc.must('page'), lazyRuntime);
   lazyDoc.body.append(project_livetree(subject_for_tree(lazyMirror.tree), 'html', lazyRuntime, lazyDoc));
   const lazyTree = lazyMirror.tree.find.must.byTag('button'), lazyElement = lazyTree.dom.el();
   const lazyRev = lazyMap.rev, lazyRecord = JSON.stringify(lazyMap.capture());
@@ -142,7 +142,7 @@ const entry = `
   continuation.push({name:'rejected runtime global CSS does not issue or publish identity',pass:lazyRejected && noDemand()});
   lazyGlobal.stylesheet('.lazy{color:red}'); lazyGlobal.stylesheet('.lazy{color:green}'); lazyRuntime.cssManager.syncNow();
   const wrapper = lazyDoc.head.querySelector('hson-_style'), runtimeStyle = wrapper?.querySelector('style');
-  continuation.push({name:'plain Mirror runtime-global append computes correctly in retained wrapper',pass:noDemand() && lazyFrame.contentWindow.getComputedStyle(lazyElement).color==='rgb(0, 128, 0)' && lazyMap.lib('page').css.snapshot()==='' && wrapper?.parentNode===lazyDoc.head && runtimeStyle?.parentNode===wrapper});
+  continuation.push({name:'plain Mirror runtime-global append computes correctly in retained wrapper',pass:noDemand() && lazyFrame.contentWindow.getComputedStyle(lazyElement).color==='rgb(0, 128, 0)' && lazyMap.doc.must('page').css.snapshot()==='' && wrapper?.parentNode===lazyDoc.head && runtimeStyle?.parentNode===wrapper});
   lazyGlobal.sel('.lazy').set.opacity('.5'); await new Promise(resolve=>requestAnimationFrame(resolve)); lazyRuntime.cssManager.syncNow();
   continuation.push({name:'runtime global update retains element/listener/style-host identity without QUID',pass:noDemand() && lazyTree.dom.el()===lazyElement && lazyDoc.head.querySelector('hson-_style')===wrapper && wrapper.querySelector('style')===runtimeStyle && lazyFrame.contentWindow.getComputedStyle(lazyElement).opacity==='0.5'});
   lazyGlobal.clearAll(); await new Promise(resolve=>requestAnimationFrame(resolve)); lazyRuntime.cssManager.syncNow(); lazyElement.click();
@@ -153,7 +153,7 @@ const entry = `
   stopLazy(); lazyMirror.dispose(); lazyMirror.tree.remove(); dispose_livetree_runtime(lazyRuntime); lazyFrame.remove();
   const framed = document.createElement("iframe"); document.body.append(framed);
   const continuedMap = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <button class=x "go"/>/>/>'}});
-  const page = continuedMap.lib("page");
+  const page = continuedMap.doc.must("page");
   page.css.stylesheet('@layer { .x { color: red !important; } .x { color: blue !important; } }');
   const doc = framed.contentDocument; doc.open(); doc.write(page.render()); doc.close();
   const style = doc.head.querySelector('style[data-hson-managed-document-css]'), button=doc.querySelector('button');
@@ -186,7 +186,7 @@ const entry = `
     const result = {
       semantics, continuation, operations,
       record: map.capture().libraries[0].css,
-      mapCss: map.lib("page").css.snapshot(),
+      mapCss: map.doc.must("page").css.snapshot(),
       treeCss: tree.css.snapshot(),
       managedStyle: document.querySelector("hson-_style style")?.textContent ?? null,
     };

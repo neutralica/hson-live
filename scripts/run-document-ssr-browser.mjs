@@ -66,7 +66,7 @@ try {
   const localMap = admit_exact_runtime_livemap_libraries({
     page: { document: parse_hson_exact_runtime(`<main id="local-ssr" <p @000005201 "ab"/>/>`, { allowTopLevelDocumentText: true }), schema: LocalPageSchema },
   });
-  localMap.lib("page").document.attrs.set({ kind: "path", path: [0] }, "data-revision", "N");
+  localMap.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "data-revision", "N");
   const local = localMap.cut({ html: "page" });
   assert.doesNotMatch(local.html, /hson:quid|000005201/);
   assert.doesNotMatch(JSON.stringify(local.libs), /000005201|"quid"/);
@@ -76,9 +76,9 @@ try {
   const quadCuts = [false, true].map(multiple => {
     const map = make_livemap_from_authored_libraries_internal({ page: { document:
       `<html ${multiple ? '@:root ' : ''}<head/> <body <main <button @:confirm id="quad-button"/> <aside ${multiple ? '@:other ' : ''}id="quad-other"/> <span id="quad-anonymous"/>/>/>/>` } });
-    map.lib("page").css.stylesheet('#quad-button{color:rgb(11,22,33)}');
+    map.doc.must("page").css.stylesheet('#quad-button{color:rgb(11,22,33)}');
     const cut = map.cut({ html: "page" });
-    const serverQuids = (cut.libs.libraries[0].quads ?? []).map(({ name }) => lookup_document_quad_internal(map.lib("page"), name).quid);
+    const serverQuids = (cut.libs.libraries[0].quads ?? []).map(({ name }) => lookup_document_quad_internal(map.doc.must("page"), name).quid);
     assert.doesNotMatch(cut.html, /hson:quid/);
     return { multiple, cut, serverQuids };
   });
@@ -123,8 +123,8 @@ try {
     defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] },
     authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }),
     actions: {
-      "state.increment": (context) => context.stage.lib("state").at(["count"]).set(2),
-      "state.interaction": (context) => context.stage.lib("state").at(["count"]).set(5),
+      "state.increment": (context) => context.stage.data.must("state").at(["count"]).set(2),
+      "state.interaction": (context) => context.stage.data.must("state").at(["count"]).set(5),
     },
   });
   const retained = await librariesLocus.session.create({ libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] });
@@ -136,9 +136,9 @@ try {
     libraries: encode_ssr_bootstrap(libraries),
   });
   await librariesLocus.stage((draft) => {
-    draft.lib("state").at(["count"]).set(1);
-    draft.lib("page").at([]).asElement().attrs.set("data-recovered", "page");
-    draft.lib("admin").at([]).asElement().attrs.set("data-recovered", "admin");
+    draft.data.must("state").at(["count"]).set(1);
+    draft.doc.must("page").at([]).asElement().attrs.set("data-recovered", "page");
+    draft.doc.must("admin").at([]).asElement().attrs.set("data-recovered", "admin");
   });
 
   librariesSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
@@ -156,13 +156,13 @@ try {
     defaultProjection: { libraries: ["page"] },
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
   });
-  await cssLocus.stage(draft => { draft.lib("page").css({domain:"css",kind:"append",
+  await cssLocus.stage(draft => { draft.doc.must("page").css({domain:"css",kind:"append",
     stylesheet:parse_document_stylesheet('@layer { #hosted-layer-target { CoLoR: red !important; } #hosted-layer-target { color: blue !important; } }', [])}); });
-  await cssLocus.stage((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
+  await cssLocus.stage((draft) => { draft.doc.must("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
     rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(1, 2, 3)"]] } }); });
   const cssSession = await cssLocus.session.create({ libraries: ["page"] });
   const cssCut = cssSession.now({ html: "page" });
-  await cssLocus.stage((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
+  await cssLocus.stage((draft) => { draft.doc.must("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
     rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(4, 5, 6)"]] } }); });
   cssSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolveListen, rejectListen) => {
@@ -178,7 +178,7 @@ try {
     '<html @:root <head/> <body <button @:target id="hosted-quad"/>/>/>' }, secret: { data: { sentinel: "PRIVATE_ROOT_RECOVERY" } }, side: { document: "<aside/>" } });
   enable_interactions(quadMap);
   add_interaction(quadMap, { ...browserInteraction, id: "quad-root-click", subject: { library: "page", path: [0] }, key: "rootClick" });
-  quadMap.lib("page").css.stylesheet('#hosted-quad{color:rgb(11,22,33)}');
+  quadMap.doc.must("page").css.stylesheet('#hosted-quad{color:rgb(11,22,33)}');
   quadLocus = create_locus_hosted_aggregate_authority_internal({ map: quadMap,
     libraries: [{ name: "page", ownership: "shared" }, { name: "secret", ownership: "private" }, { name: "side", ownership: "shared" }], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures, writableDocuments: ["page"] }) });
@@ -186,10 +186,10 @@ try {
   const quadHostedCut = { ...cut_hosted_projection(capture_selected_authority_projection_snapshot(quadMap,
     quadLocus.sessions.projection(quadSessionId)), "page"), format: "hson-locus-session-now",
     sessionBinding: quadLocus.sessions.binding(quadSessionId), local: [], initializerDigest: locus_local_initializer_digest([]) };
-  const quadServerQuids = ["root", "target"].map(name => lookup_document_quad_internal(quadMap.lib("page"), name).quid);
+  const quadServerQuids = ["root", "target"].map(name => lookup_document_quad_internal(quadMap.doc.must("page"), name).quid);
   // Ordinary retained history is available. Recovery must still reconcile this
   // now-stale, valid SSR cut without replacing its borrowed root Element.
-  await quadLocus.stage(draft => { draft.lib("page").attrs.set({ kind: "path", path: [0] }, "data-stale-recovered", "yes"); });
+  await quadLocus.stage(draft => { draft.doc.must("page").attrs.set({ kind: "path", path: [0] }, "data-stale-recovered", "yes"); });
   quadSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolveListen, rejectListen) => { quadSocketServer.once("listening", resolveListen); quadSocketServer.once("error", rejectListen); });
   quadSocketServer.on("connection", socket => bind_node_locus_websocket(quadLocus, socket));
@@ -215,13 +215,13 @@ try {
       return;
     }
     if (url.pathname === "/__quad-mutate") {
-      await quadLocus.stage(draft => { draft.lib("page").attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "title", "live"); });
+      await quadLocus.stage(draft => { draft.doc.must("page").attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "title", "live"); });
       response.writeHead(204).end();
       return;
     }
     if (url.pathname === "/__quad-reconcile") {
       quadRecoveryRound++;
-      await quadLocus.stage(draft => { draft.lib("page").attrs.set({ kind: "path", path: [0] }, "data-recovery-round", String(quadRecoveryRound)); });
+      await quadLocus.stage(draft => { draft.doc.must("page").attrs.set({ kind: "path", path: [0] }, "data-recovery-round", String(quadRecoveryRound)); });
       await quadLocus.sessions.updateProjection(quadSessionId, { libraries: quadRecoveryRound % 2 ? ["page", "side"] : ["page"], systemFeatures: ["interactions"] });
       response.writeHead(204).end();
       return;
@@ -233,12 +233,12 @@ try {
       return;
     }
     if (url.pathname === "/__quad-incompatible") {
-      await quadLocus.stage(draft => { draft.lib("page").content.replace({ kind: "path", path: [] }, 0, { $_tag: "aside", $_content: [] }); });
+      await quadLocus.stage(draft => { draft.doc.must("page").content.replace({ kind: "path", path: [] }, 0, { $_tag: "aside", $_content: [] }); });
       response.writeHead(204).end();
       return;
     }
     if (url.pathname === "/__css-mutate") {
-      await cssLocus.stage((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
+      await cssLocus.stage((draft) => { draft.doc.must("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
         rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(7, 8, 9)"]] } }); });
       response.writeHead(204).end();
       return;

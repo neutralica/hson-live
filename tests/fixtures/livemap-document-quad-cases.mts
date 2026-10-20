@@ -27,7 +27,7 @@ import { parse_tokens } from "../../src/api/transform/parsers/parse-tokens.ts";
 
 const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
 const doc = (map: LiveMap, name = "page"): LiveMapDocumentLibrary => {
-  const result = map.lib(name); if (result.mode !== "document") throw Error("Expected document"); return result;
+  const result = map.doc.must(name); if (result.mode !== "document") throw Error("Expected document"); return result;
 };
 const fixture = () => authored({ page: { document: '<main @:page <button @:confirm "Confirm"/> <aside/>/>' } });
 const subject = (owner: object, name: string) => {
@@ -226,7 +226,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     assert.throws(() => Hson.canonical`${Hson.document`<button @:confirm/>`}`);
     const schema = Hson.schema`<type "document" tag "button" content "string">`;
     const governed = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<button @:confirm "Confirm"/>`, schema } });
-    assert.ok(governed.lib("page").q("confirm"));
+    assert.ok(governed.doc.must("page").q("confirm"));
     assert.ok(lookup(doc(hsonLiveMap.fromLibraries({ page: { document: source } })), "confirm"));
     const normal = hsonLiveMap.create();
     normal.addLibraries({ page: { document: source } });
@@ -335,7 +335,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     const map = fixture(), aggregate = internal_livemap_aggregate_authority(map), id = aggregate.libraries()[0]!;
     unchanged(map, () => aggregate.installInitialDocumentQuads(id, [{ name: "foreign", quid: "000009001" }]));
     unchanged(map, () => map.batch(batch => {
-      const page = batch.lib("page"); if (page.mode !== "document") throw Error("Expected document");
+      const page = batch.doc.must("page"); if (page.mode !== "document") throw Error("Expected document");
       page.graph({ domain: "graph", op: "ensure-quid", target: target(0), quid: "000009001" } as never);
     }), /identity|QUID/i);
     const manager = {}; aggregate.claimManagement(manager); aggregate.releaseManagement(manager);
@@ -366,14 +366,14 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
   check("recursive Part composition preserves shell QUADs and leaves Part addresses local", () => {
     const map = authored({ layout: { document: '<main @:page <hson-part lib="parts" at="header"/> <hson-part lib="parts" at="header"/>/>' },
       parts: collection({ header: { kind: "document", document: '<header @:header <hson-part at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } }) });
-    const source = subject(doc(map, "layout"), "page"), original = map.lib("parts").root();
+    const source = subject(doc(map, "layout"), "page"), original = map.parts.must("parts").root();
     const ledger = enumerate_livemap_issued_quids(internal_livemap_aggregate_authority(map).identityEpoch().issued());
     const page = compose_livemap_document_internal(map, "layout", "result");
     assert.equal(JSON.stringify(page.root()).includes("quid"), false);
     assert.equal(JSON.stringify(page.root()).includes("hson-part"), false);
     assert.ok(lookup(page, "page")); assert.equal(lookup(page, "button"), undefined);
     assert.equal(reverse(page, source.quid), undefined);
-    assert.deepEqual(map.lib("parts").root(), original);
+    assert.deepEqual(map.parts.must("parts").root(), original);
     assert.equal(internal_livemap_aggregate_authority(map).identityEpoch().issued().size, ledger.length + 5);
     const first = acquire_document_identity(page.document, target(0, 0, 0, 0, 0));
     const second = acquire_document_identity(page.document, target(0, 0, 1, 0, 0));

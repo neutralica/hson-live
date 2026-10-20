@@ -30,38 +30,38 @@ const record = (entries: readonly (readonly [string, JsonValue])[]): Record<stri
   for (const [key, value] of entries) result[key] = value;
   return result;
 };
-const exact = (value: ReturnType<typeof registry>) => JSON.stringify(encode_exact_hson_value(value.lib("state").root()));
+const exact = (value: ReturnType<typeof registry>) => JSON.stringify(encode_exact_hson_value(value.data.must("state").root()));
 
 check("feed publishes an accepted value at the selected library path", () => {
   const map = registry({ a: 1 });
   let observed: unknown;
-  map.lib("state").at(["value"]).feed((event) => { observed = event.value; });
-  map.lib("state").at(["value"]).replace({ a: 2 });
+  map.data.must("state").at(["value"]).feed((event) => { observed = event.value; });
+  map.data.must("state").at(["value"]).replace({ a: 2 });
   assert.deepEqual(observed, { a: 2 });
 });
 
 check("feed publication preserves negative zero", () => {
   const map = registry(0);
   let observed: unknown;
-  map.lib("state").at(["value"]).feed((event) => { observed = event.value; });
-  map.lib("state").at(["value"]).set(-0);
+  map.data.must("state").at(["value"]).feed((event) => { observed = event.value; });
+  map.data.must("state").at(["value"]).set(-0);
   assert.equal(Object.is(observed, -0), true);
-  assert.equal(Object.is(map.lib("state").snap(["value"]), -0), true);
+  assert.equal(Object.is(map.data.must("state").snap(["value"]), -0), true);
 });
 
 check("each feed listener receives detached public material", () => {
   const map = registry({ a: 1 });
   let second: unknown;
-  map.lib("state").at(["value"]).feed((event) => { (event.value as { a: number }).a = 99; });
-  map.lib("state").at(["value"]).feed((event) => { second = (event.value as { a: number }).a; });
-  map.lib("state").at(["value"]).replace({ a: 2 });
+  map.data.must("state").at(["value"]).feed((event) => { (event.value as { a: number }).a = 99; });
+  map.data.must("state").at(["value"]).feed((event) => { second = (event.value as { a: number }).a; });
+  map.data.must("state").at(["value"]).replace({ a: 2 });
   assert.equal(second, 2);
-  assert.deepEqual(map.lib("state").snap(["value"]), { a: 2 });
+  assert.deepEqual(map.data.must("state").snap(["value"]), { a: 2 });
 });
 
 check("dangerous property names remain data rather than prototypes", () => {
   const map = registry(record([["__proto__", { safe: true }], ["constructor", 3], ["prototype", "x"]]));
-  const value = map.lib("state").snap(["value"]);
+  const value = map.data.must("state").snap(["value"]);
   assert.equal(Object.hasOwn(value as object, "__proto__"), true);
   assert.deepEqual(Object.keys(value as object), ["__proto__", "constructor", "prototype"]);
 });
@@ -77,21 +77,21 @@ check("array objects survive a portable registry round trip", () => {
   const source = registry([{ a: 1 }, { b: -0 }]);
   const target = registry([]);
   target.restore(source.capture());
-  assert.deepEqual(target.lib("state").snap(["value"]), [{ a: 1 }, { b: -0 }]);
+  assert.deepEqual(target.data.must("state").snap(["value"]), [{ a: 1 }, { b: -0 }]);
 });
 
 check("equal exact values do not advance revision or publish", () => {
   const map = registry({ a: 1 });
   let publications = 0;
   map.commits.observe(() => { publications += 1; });
-  map.lib("state").at(["value"]).replace({ a: 1 });
+  map.data.must("state").at(["value"]).replace({ a: 1 });
   assert.equal(map.rev, 0);
   assert.equal(publications, 0);
 });
 
 check("accepted changes publish one named global operation", () => {
   const map = registry(0);
-  const commit = map.lib("state").at(["value"]).set(1);
+  const commit = map.data.must("state").at(["value"]).set(1);
   assert.equal(commit.operations[0]?.library, "state");
   assert.equal(commit.rev, 1);
 });

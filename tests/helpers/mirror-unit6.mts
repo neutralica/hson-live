@@ -43,7 +43,7 @@ export function element(source: string): LiveMapDocumentLibrary {
 export function document_from_node(document: HsonNode): LiveMapDocumentLibrary {
   const schema = Hson.schema.fromHson(hsonTransform.fromHson(schema_for_document(document)).toHson().serialize() as HsonSchemaData);
   const registry = admit_exact_runtime_livemap_libraries({ page: { document, schema } });
-  const library = registry.lib("page");
+  const library = registry.doc.must("page");
   OWNER.set(library, registry);
   return library;
 }

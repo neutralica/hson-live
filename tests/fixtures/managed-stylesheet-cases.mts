@@ -18,11 +18,11 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     const escapedName = 'f\\ ';
     const escapedFrames = String.raw`@keyframes f\ {0%{opacity:.2}from{opacity:.8}}`;
     const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}});
-    map.lib("page").css.stylesheet(escapedFrames);
-    assert.ok(map.lib("page").css.keyframes.has(escapedName));
-    assert.equal(map.lib("page").css.keyframes.get(escapedName)?.name, escapedName);
-    map.lib("page").css.keyframes.delete(escapedName);
-    assert.equal(map.lib("page").css.snapshot(), "");
+    map.doc.must("page").css.stylesheet(escapedFrames);
+    assert.ok(map.doc.must("page").css.keyframes.has(escapedName));
+    assert.equal(map.doc.must("page").css.keyframes.get(escapedName)?.name, escapedName);
+    map.doc.must("page").css.keyframes.delete(escapedName);
+    assert.equal(map.doc.must("page").css.snapshot(), "");
     const runtime = hsonLiveTree.fromNode({$_tag:"main",$_content:[]},{isolated:true});
     runtime.css.global.stylesheet(escapedFrames);
     assert.ok(runtime.css.global.keyframes.has(escapedName));
@@ -105,7 +105,7 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
   check("LiveMap capture replay and runtime append retain correct grouping and atomic rejection", () => {
     const source = '@layer{.x{color:red!important}.x{color:blue!important}}';
     const map = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
-    const page = map.lib("page"); const commits: Parameters<typeof map.replay>[0][] = [];
+    const page = map.doc.must("page"); const commits: Parameters<typeof map.replay>[0][] = [];
     map.commits.observe(commit => commits.push(commit));
     page.css.stylesheet(source);
     const original = map.capture(); const rev = map.rev;
@@ -116,7 +116,7 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     }
     page.css.drop("stylesheet:1");
     assert.equal(page.css.list().length, 1);
-    const restored = install_libraries_snapshot(map.capture()).map.lib("page");
+    const restored = install_libraries_snapshot(map.capture()).map.doc.must("page");
     assert.equal(restored.mode, "document");
     if (restored.mode !== "document") throw Error("bad library");
     assert.equal(restored.css.snapshot(), page.css.snapshot());
@@ -146,10 +146,10 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     const rendered = render_portable_document_stylesheet(decode_portable_document_stylesheet(record));
     assert.ok(rendered.includes('"review\\\nword"'), "renderer must not insert content after escaped newline");
     const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}});
-    map.lib("page").css.stylesheet(source);
+    map.doc.must("page").css.stylesheet(source);
     const restored = install_libraries_snapshot(map.capture()).map;
     assert.deepEqual(restored.capture().libraries[0]!.css, record);
-    assert.equal(restored.lib("page").css.snapshot(), rendered);
+    assert.equal(restored.doc.must("page").css.snapshot(), rendered);
     const tree = hsonLiveTree.fromNode({$_tag:"main",$_content:[]},{isolated:true});
     tree.css.global.stylesheet(source); assert.equal(tree.css.snapshot(), rendered); tree.remove();
   });
@@ -158,7 +158,7 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}});
     const commits: Parameters<typeof map.replay>[0][] = []; map.commits.observe(commit => commits.push(commit));
     const tree = hsonLiveTree.fromNode({$_tag:"main",$_content:[]},{isolated:true});
-    for (const css of [map.lib("page").css, tree.css.global]) {
+    for (const css of [map.doc.must("page").css, tree.css.global]) {
       for (const selector of selectors) css.sel(selector).set.color("red");
       assert.equal(css.list().length, selectors.length);
       for (const selector of selectors) { const key = `sel:${selector}`; assert.ok(css.has(key), key); assert.ok(css.get(key)?.includes(selector), key); }
@@ -168,7 +168,7 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
       css.drop(`sel:${selectors[0]}`); assert.equal(css.has(`sel:${selectors[0]}`), false);
       assert.equal(css.has(`sel:${selectors[1]}`), true);
       css.sel(selectors[0]!).set.color("blue");
-      const text = css === tree.css.global ? tree.css.snapshot() : map.lib("page").css.snapshot();
+      const text = css === tree.css.global ? tree.css.snapshot() : map.doc.must("page").css.snapshot();
       assert.ok(text.indexOf(`${selectors[1]}{`) < text.indexOf(`${selectors[0]}{`), "recreation appends");
     }
     const state=decode_portable_document_stylesheet(map.capture().libraries[0]!.css);
@@ -176,7 +176,7 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     assert.equal(dropped.rules.length,state.rules.length-1);
     assert.ok(dropped.rules.some(rule=>rule.ruleKey===`sel:${selectors[1]}`));
     const before=map.rev, count=commits.length;
-    map.lib("page").css.sel('  #t  ').set.color("red");
+    map.doc.must("page").css.sel('  #t  ').set.color("red");
     assert.equal(map.rev,before); assert.equal(commits.length,count);
     const replay=hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}});
     for(const commit of commits) replay.replay(commit);
@@ -196,14 +196,14 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     const iterator: unknown[]=[];Object.defineProperty(iterator,Symbol.iterator,{value:()=>{invoked++;throw Error("executed iterator")}});malformed.push(iterator);
     const decorated: unknown[]=[];Object.defineProperty(decorated,"extra",{value:1});malformed.push(decorated);
     const map=hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}});
-    map.lib("page").css.stylesheet('.x{color:red}'); const before=map.capture(), root=map.lib("page").document, rev=map.rev;
+    map.doc.must("page").css.stylesheet('.x{color:red}'); const before=map.capture(), root=map.doc.must("page").document, rev=map.rev;
     let commits=0;map.commits.observe(()=>commits++);
     for(const entries of malformed) {
       const record={rules:[],properties:[],keyframes:[],order:[{kind:"group",header:"@layer",entries}]};
       assert.throws(()=>decode_portable_document_stylesheet(record), /array|storage/i);
       const capture={...before,libraries:before.libraries.map(item => { const altered={...item}; Object.defineProperty(altered,"css",{value:record,enumerable:true});return altered; })};
       assert.throws(()=>map.restore(capture));
-      assert.equal(map.lib("page").document,root);assert.equal(map.rev,rev);assert.equal(commits,0);assert.deepEqual(map.capture(),before);
+      assert.equal(map.doc.must("page").document,root);assert.equal(map.rev,rev);assert.equal(commits,0);assert.deepEqual(map.capture(),before);
       assert.throws(()=>install_libraries_snapshot(capture));
     }
     assert.equal(invoked,0,"indexed getters, iterators and methods must never execute");
@@ -227,7 +227,7 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     const frames=parse_document_stylesheet('@keyframes a{from{opacity:.2}}',[]);
     Object.defineProperty(frames.keyframes[0]!,"steps",{value:Array(1)});
     assert.throws(()=>decode_portable_document_stylesheet(frames),/array|storage/i);
-    map.lib("page").css.sel('.retry').set.color("green");assert.equal(map.rev,rev+1);assert.equal(commits,1);
+    map.doc.must("page").css.sel('.retry').set.color("green");assert.equal(map.rev,rev+1);assert.equal(commits,1);
   });
 
   check("CSS batch replay qualifies physical arrays before publication and preserves JSON closure", () => {
@@ -245,8 +245,8 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     const hidden=[clear];Object.defineProperty(hidden,"0",{value:clear,enumerable:false});bad.push(hidden);
     const inherited:unknown[]=Array(1);Object.setPrototypeOf(inherited,Object.assign(Object.create(Array.prototype),{0:clear}));bad.push(inherited);
     const serialization=[clear];Object.defineProperty(serialization,"toJSON",{value(){invoked++;return [clear]}});bad.push(serialization);
-    const make=()=>{const map=hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}});map.lib("page").css.stylesheet('.x{color:orange}');return map};
-    const map=make(), peer=make(), page=map.lib("page"), root=page.root(), owner=page.document, before=map.capture(), rev=map.rev;
+    const make=()=>{const map=hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}});map.doc.must("page").css.stylesheet('.x{color:orange}');return map};
+    const map=make(), peer=make(), page=map.doc.must("page"), root=page.root(), owner=page.document, before=map.capture(), rev=map.rev;
     const commits:Parameters<typeof map.replay>[0][]=[];map.commits.observe(commit=>commits.push(commit));
     for(const operations of bad) {
       const batch={domain:"css",kind:"batch",operations};

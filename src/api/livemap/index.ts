@@ -111,3 +111,5 @@ export type {
   ProjectedValueAdmissionCode,
   ProjectedValuePath,
 } from "../../core/projected-value-admission.js";
+
+export type { LibraryFamily, LibraryFamilySelector, LibraryFamilyNamespaces } from "../../types/library-selectors.types.js";

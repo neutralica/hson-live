@@ -18,7 +18,7 @@
     const QUID = "000008398";
     const PageSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
     const StateSchema = Hson.schema`<type "data" content <count "number">>`;
-    const page = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } }).lib("page").root();
+    const page = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } }).doc.must("page").root();
     page.$_content[0].$_content[0].$_content[0].$_meta = { quid: QUID };
     const map = admit_exact_runtime_livemap_libraries({
       state: { data: { count: 0 }, schema: StateSchema },
@@ -79,7 +79,7 @@
     const runtimeReplica = hsonLiveMap.create();
     runtimeReplica.replay(runtimeCommit.commit);
     const runtimeAdmissionPassed = runtimeMap.rev === 1
-      && runtimeMap.lib("runtimePage").render() === "<main>browser</main>"
+      && runtimeMap.doc.must("runtimePage").render() === "<main>browser</main>"
       && runtimeReplica.capture().registry.digest === runtimeMap.capture().registry.digest;
 
     const passed = runtimeAdmissionPassed && calls.element === 1

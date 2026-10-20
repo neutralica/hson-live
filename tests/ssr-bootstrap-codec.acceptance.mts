@@ -1,3 +1,4 @@
+import { require_livemap_library_internal } from "../src/api/livemap/livemap.libraries.js";
 import assert from "node:assert/strict";
 import { corrupt_tagged_payload } from "./helpers/tagged-codec-fixture.mts";
 import {
@@ -67,14 +68,14 @@ assert.throws(() => encode_ssr_bootstrap({ ...equivalentSource,
   (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
 assert.equal(decoded.bootstrap.revision, 0);
 assert.equal(decoded.bootstrap.libraries.length, 2);
-const installedState = install_libraries_snapshot(decoded.bootstrap).map.lib("state");
-if (installedState.mode === "document") throw new Error("Expected data library.");
+const installedState = install_libraries_snapshot(decoded.bootstrap).map.data.must("state");
+if (String(installedState.mode) === "document") throw new Error("Expected data library.");
 assert.equal(Object.is((installedState.snap() as { value: number }).value, -0), true);
 
 const canonicalJson = decodeText(encoded);
 const parsed = JSON.parse(canonicalJson) as Record<string, unknown>;
 const beforeMalformed = map.capture();
-const existingLibraries = bootstrap.libraries.map(entry => map.lib(entry.name));
+const existingLibraries = bootstrap.libraries.map(entry => require_livemap_library_internal(map, entry.name));
 let malformedPublications = 0;
 const stopMalformed = map.commits.observe(() => { malformedPublications += 1; });
 for (const name of ["state", "page"]) {
@@ -103,7 +104,7 @@ for (const name of ["state", "page"]) {
       && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
     assert.throws(() => install_libraries_snapshot(malformed));
     assert.deepEqual(map.capture(), beforeMalformed);
-    bootstrap.libraries.forEach((library, index) => assert.equal(map.lib(library.name), existingLibraries[index]));
+    bootstrap.libraries.forEach((library, index) => assert.equal(require_livemap_library_internal(map, library.name), existingLibraries[index]));
     assert.equal(malformedPublications, 0);
   }
 }
@@ -130,7 +131,7 @@ assert.throws(() => encode_ssr_bootstrap(bootstrap, { maxEncodedBytes: encoded.l
   (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_TOO_LARGE");
 
 // Removed solo and complete-hosted formats cannot be encoded as local SSR state.
-const oldSolo = { kind: "hson-document", mode: "document", rev: 0, root: map.lib("page").root() };
+const oldSolo = { kind: "hson-document", mode: "document", rev: 0, root: map.doc.must("page").root() };
 // @ts-expect-error Solo document captures are not SSR bootstrap input.
 assert.throws(() => encode_ssr_bootstrap(oldSolo), (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
 

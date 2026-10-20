@@ -1,3 +1,5 @@
+import { make_family_selectors } from "../../internal/library-selectors.js";
+import { require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { empty_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import { capture_document_attrs_command } from "../livemap/livemap.document.mutation.js";
 import { document_css_reads, document_css_commands, capture_document_css_command, lower_document_css_command } from "../../internal/document-css-commands.js";
@@ -19,10 +21,10 @@ import { must_live_path } from "../livemap/livemap.guard.js";
 export function make_echo_library_selector(
   map: LiveMap,
   ensureDocumentAuthority: (selected: LiveMapDocumentLibrary) => EchoDocumentAuthority,
-): (name: string) => EchoLibrary {
+) {
   const selected = new Map<string, Readonly<{ raw: LiveMapDataLibrary | LiveMapDocumentLibrary; handle: EchoLibrary }>>();
   const select = (name: string): EchoLibrary => {
-    const raw = map.lib(name);
+    const raw = require_livemap_library_internal(map, name);
     const cached = selected.get(name);
     if (cached?.raw === raw) return cached.handle;
     const source = client_library_source_internal(raw);
@@ -181,5 +183,8 @@ export function make_echo_library_selector(
     selected.set(name, Object.freeze({ raw, handle: governed as EchoLibrary }));
     return governed as EchoLibrary;
   };
-  return select;
+  return make_family_selectors(name => {
+    const binding = resolve_livemap_library_internal(map, name);
+    return binding === undefined ? undefined : { ...binding, handle: select(name) };
+  });
 }

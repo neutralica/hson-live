@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
+import { locus_map_internal } from "../dist/internal/governor-maps.js";
 import { Hson, bind_locus_http } from "../dist/index.js";
 import { hsonLiveMap } from "hson-live/livemap";
 import { bind_node_locus_websocket } from "../dist/api/locus/node/index.js";
@@ -59,7 +60,7 @@ try {
     authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
     actions: { save: () => { handled += 1; } },
   });
-  const map = locus.map;
+  const map = locus_map_internal(locus);
   socketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolveListen, rejectListen) => {
     socketServer.once("listening", resolveListen);

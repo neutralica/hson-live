@@ -65,7 +65,7 @@ const path = (...segments: number[]) => ({ kind: 'path' as const, path: validate
 function mirrorFixture() {
     const schema = Hson.schema.fromHson('<type "document" tag "main" content <repeat <tag "section" content <repeat <tag "p" content "empty">>>>>' as never);
     const registry = hsonLiveMap.fromLibraries({ page: { document: n('_hson_root', n('main', n('_hson_elem', n('section', n('_hson_elem', n('p'), n('p'))), n('section', n('_hson_elem', n('p')))))), schema } });
-    const page = registry.lib('page'), binding = hsonMirror(page), root = subject_for_tree(binding.tree), main = at(root, 0);
+    const page = registry.doc.must('page'), binding = hsonMirror(page), root = subject_for_tree(binding.tree), main = at(root, 0);
     const a = binding.tree.findAll.byTag('p').array();
     // Explicit canonical acquisition supplies continuity evidence for only two subjects.
     const qa = a[0]!.quid, qb = a[2]!.quid;

@@ -55,114 +55,114 @@ const sectionTag: "section" = page.$_content[0].$_content[0].$_content[0].$_tag;
 const hidden: "hidden" | undefined = page.$_content[0].$_attrs.hidden;
 
 const map = hsonLiveMap.fromLibraries({ state: { schema: RecordSchema, data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] } } });
-map.lib("state").at(["age"]).set(4);
-map.lib("state").at(["flags"]).replace([false, true]);
+map.data.must("state").at(["age"]).set(4);
+map.data.must("state").at(["flags"]).replace([false, true]);
 // @ts-expect-error Mutation candidates retain member types.
-map.lib("state").at(["age"]).set("four");
+map.data.must("state").at(["age"]).set("four");
 // @ts-expect-error Mutation candidates retain literal types.
-map.lib("state").at(["status"]).set("waiting");
+map.data.must("state").at(["status"]).set("waiting");
 
 const attachedDocument = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
 // @ts-expect-error Before attachment the getter is only family-correct.
-const broadDocumentGetter: typeof PageSchema = attachedDocument.lib("home").schema.get();
-attachedDocument.lib("home").schema.use(PageSchema);
-const exactDocumentGetter: typeof PageSchema = attachedDocument.lib("home").schema.get();
-const attachedText: string = attachedDocument.lib("home").at([0, 0]).snap();
-attachedDocument.lib("home").at([]).attrs.set("id", "next");
+const broadDocumentGetter: typeof PageSchema = attachedDocument.doc.must("home").schema.get();
+attachedDocument.doc.must("home").schema.use(PageSchema);
+const exactDocumentGetter: typeof PageSchema = attachedDocument.doc.must("home").schema.get();
+const attachedText: string = attachedDocument.doc.must("home").at([0, 0]).snap();
+attachedDocument.doc.must("home").at([]).attrs.set("id", "next");
 // @ts-expect-error Attached document paths retain tuple bounds.
-attachedDocument.lib("home").at([1]);
+attachedDocument.doc.must("home").at([1]);
 // @ts-expect-error Attached text endpoints do not expose element attributes.
-attachedDocument.lib("home").at([0, 0]).attrs;
+attachedDocument.doc.must("home").at([0, 0]).attrs;
 
 const explicitAnyDocument = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>', schema: ANY_DOCUMENT } });
-explicitAnyDocument.lib("home").schema.use(PageSchema);
-const explicitDocumentGetter: typeof PageSchema = explicitAnyDocument.lib("home").schema.get();
+explicitAnyDocument.doc.must("home").schema.use(PageSchema);
+const explicitDocumentGetter: typeof PageSchema = explicitAnyDocument.doc.must("home").schema.get();
 
 const attachedData = hsonLiveMap.fromLibraries({ record: { data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] } } });
-attachedData.lib("record").schema.use(RecordSchema);
-const exactDataGetter: typeof RecordSchema = attachedData.lib("record").schema.get();
-attachedData.lib("record").at(["age"]).set(4);
+attachedData.data.must("record").schema.use(RecordSchema);
+const exactDataGetter: typeof RecordSchema = attachedData.data.must("record").schema.get();
+attachedData.data.must("record").at(["age"]).set(4);
 // @ts-expect-error Attached data mutation candidates retain member types.
-attachedData.lib("record").at(["age"]).set("four");
+attachedData.data.must("record").at(["age"]).set("four");
 // @ts-expect-error Attached data paths reject undeclared members.
-attachedData.lib("record").at(["missing"]);
+attachedData.data.must("record").at(["missing"]);
 
 const explicitAnyData = hsonLiveMap.fromLibraries({ record: { data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] }, schema: ANY_DATA } });
-explicitAnyData.lib("record").schema.use(RecordSchema);
-const explicitDataGetter: typeof RecordSchema = explicitAnyData.lib("record").schema.get();
+explicitAnyData.data.must("record").schema.use(RecordSchema);
+const explicitDataGetter: typeof RecordSchema = explicitAnyData.data.must("record").schema.get();
 
 const sequential = hsonLiveMap.fromLibraries({
   home: { document: '<main id="hero" <section "body"/>/>' },
   record: { data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] } },
 });
-sequential.lib("home").schema.use(PageSchema);
-sequential.lib("record").schema.use(RecordSchema);
-const sequentialDocument: typeof PageSchema = sequential.lib("home").schema.get();
-const sequentialData: typeof RecordSchema = sequential.lib("record").schema.get();
+sequential.doc.must("home").schema.use(PageSchema);
+sequential.data.must("record").schema.use(RecordSchema);
+const sequentialDocument: typeof PageSchema = sequential.doc.must("home").schema.get();
+const sequentialData: typeof RecordSchema = sequential.data.must("record").schema.get();
 
 const conditional = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
 if (checking) {
-  conditional.lib("home").schema.use(PageSchema);
-  const branchSchema: typeof PageSchema = conditional.lib("home").schema.get();
+  conditional.doc.must("home").schema.use(PageSchema);
+  const branchSchema: typeof PageSchema = conditional.doc.must("home").schema.get();
   void branchSchema;
 }
 // @ts-expect-error A one-branch attachment is broad after the join.
-const afterConditional: typeof PageSchema = conditional.lib("home").schema.get();
+const afterConditional: typeof PageSchema = conditional.doc.must("home").schema.get();
 
 const bothBranches = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
 if (checking) {
-  bothBranches.lib("home").schema.use(PageSchema);
+  bothBranches.doc.must("home").schema.use(PageSchema);
 } else {
-  bothBranches.lib("home").schema.use(PageSchema);
+  bothBranches.doc.must("home").schema.use(PageSchema);
 }
-const afterBothBranches: typeof PageSchema = bothBranches.lib("home").schema.get();
+const afterBothBranches: typeof PageSchema = bothBranches.doc.must("home").schema.get();
 
 let reassigned = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-reassigned.lib("home").schema.use(PageSchema);
-const beforeReassignment: typeof PageSchema = reassigned.lib("home").schema.get();
+reassigned.doc.must("home").schema.use(PageSchema);
+const beforeReassignment: typeof PageSchema = reassigned.doc.must("home").schema.get();
 reassigned = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
 // @ts-expect-error Assignment drops the proof attached to the prior map value.
-const afterReassignment: typeof PageSchema = reassigned.lib("home").schema.get();
+const afterReassignment: typeof PageSchema = reassigned.doc.must("home").schema.get();
 
 const caught = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-try { caught.lib("home").schema.use(PageSchema); } catch {}
+try { caught.doc.must("home").schema.use(PageSchema); } catch {}
 // @ts-expect-error A swallowed attachment failure cannot refine after catch.
-const afterCatch: typeof PageSchema = caught.lib("home").schema.get();
+const afterCatch: typeof PageSchema = caught.doc.must("home").schema.get();
 
 declare const dynamicLibrary: string;
 const dynamicAttachment = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-dynamicAttachment.lib(dynamicLibrary).schema.use(PageSchema);
+dynamicAttachment.doc.must(dynamicLibrary).schema.use(PageSchema);
 // @ts-expect-error Dynamic names do not receive targeted refinement.
-const afterDynamic: typeof PageSchema = dynamicAttachment.lib("home").schema.get();
+const afterDynamic: typeof PageSchema = dynamicAttachment.doc.must("home").schema.get();
 
 const broadPageSchema: HsonSchema<unknown, "document"> = PageSchema;
 const broadAttachment = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-broadAttachment.lib("home").schema.use(broadPageSchema);
+broadAttachment.doc.must("home").schema.use(broadPageSchema);
 // @ts-expect-error Broad Schema variables do not receive exact refinement.
-const afterBroad: typeof PageSchema = broadAttachment.lib("home").schema.get();
+const afterBroad: typeof PageSchema = broadAttachment.doc.must("home").schema.get();
 
 const alreadySpecific = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>', schema: PageSchema } });
 // @ts-expect-error A statically specific governing Schema cannot change nominal contracts.
-alreadySpecific.lib("home").schema.use(twinSchema);
+alreadySpecific.doc.must("home").schema.use(twinSchema);
 
 export function refinedHomeLibrary() {
   const refined = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-  refined.lib("home").schema.use(PageSchema);
-  return refined.lib("home");
+  refined.doc.must("home").schema.use(PageSchema);
+  return refined.doc.must("home");
 }
 
 const publicRefined = hsonLiveMap.fromLibraries({
   home: { document: '<main id="hero" <section "body"/>/>' },
   second: { document: '<main id="hero" <section "other"/>/>' },
 });
-publicRefined.lib("home").schema.use(PageSchema);
-publicRefined.lib("second").schema.use(PageSchema);
-export const refinedHome = publicRefined.lib("home");
-export const refinedSecond = publicRefined.lib("second");
-export const refinedTitle = publicRefined.lib("home").at([0, 0]);
+publicRefined.doc.must("home").schema.use(PageSchema);
+publicRefined.doc.must("second").schema.use(PageSchema);
+export const refinedHome = publicRefined.doc.must("home");
+export const refinedSecond = publicRefined.doc.must("second");
+export const refinedTitle = publicRefined.doc.must("home").at([0, 0]);
 export function getRefinedTitle() {
-  publicRefined.lib("home").schema.use(PageSchema);
-  return publicRefined.lib("home").at([0, 0]);
+  publicRefined.doc.must("home").schema.use(PageSchema);
+  return publicRefined.doc.must("home").at([0, 0]);
 }
 
 // Existing static-literal validation is reused for generated inputs as well.

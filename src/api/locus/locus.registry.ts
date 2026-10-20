@@ -1,3 +1,5 @@
+import { make_family_selectors } from "../../internal/library-selectors.js";
+import { resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { read_document_quad } from "../../internal/governed-document.js";
 import { document_css_reads } from "../../internal/document-css-commands.js";
 import { read_data_location, read_document_location } from "../../internal/library-observation.js";
@@ -34,7 +36,6 @@ import { LocusProjectionUnavailableError } from "./locus.projection.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 import { register_locus_semantic_attachment_internal } from "./locus.transport.internal.js";
 import { make_locus_stage } from "./locus.stage.js";
-import type { ReadLibrarySelector } from "../../types/governor.types.js";
 import { register_locus_map_internal } from "../../internal/governor-maps.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 
@@ -110,8 +111,8 @@ export function create_registry_locus_internal<
     payload: ExactDataCarrier | undefined,
     message?: LocusClientActionMessage,
   ) => unknown | void | Promise<unknown | void>> = {};
-  const readLib = ((name: string) => {
-    const selected = options.map.lib(name);
+  const readFacades = new WeakMap<object, ReturnType<typeof readLib>>();
+  const readLib = (selected: import("../../types/livemap.types.js").LiveMapDataLibrary | import("../../types/livemap.types.js").LiveMapDocumentLibrary) => {
     if (selected.mode !== "document") return Object.freeze({
       mode: selected.mode, get rev() { return selected.rev; }, root: () => selected.root(),
       snap: selected.snap.bind(selected), schema: Object.freeze({ get: () => selected.schema.get() }),
@@ -130,7 +131,15 @@ export function create_registry_locus_internal<
       at: (path: readonly number[]) => read_document_location(selected.at(path)),
       q: (name: string) => { const subject = selected.q(name); return subject === undefined ? undefined : read_document_quad(subject); },
     });
-  }) as ReadLibrarySelector<TMap>;
+  };
+  const readNamespaces = make_family_selectors(name => {
+    if (disposed) throw new Error("Disposed Locus authority.");
+    const binding = resolve_livemap_library_internal(options.map, name);
+    if (binding === undefined) return undefined;
+    let handle = readFacades.get(binding.handle);
+    if (handle === undefined) { handle = readLib(binding.handle); readFacades.set(binding.handle, handle); }
+    return { ...binding, handle };
+  });
 
   for (const [name, handler] of Object.entries(options.actions ?? {})) {
     if (handler === undefined) continue;
@@ -141,15 +150,15 @@ export function create_registry_locus_internal<
         origin: LocusActionContext<TMap>["origin"];
         stage: LiveMapStagedWriter<LiveMap, void>;
       }>;
-      const publicContext: LocusActionContext<TMap> = Object.freeze({
-        lib: readLib,
+      const publicContext = Object.freeze({
+        ...readNamespaces,
         stage: aggregateContext.stage as LiveMapStagedWriter<TMap, void>,
         seq: actionSequence,
         origin: aggregateContext.origin,
         // Aggregate transport does not carry application events. Keep the
         // established action context callable without fabricating a stream.
         emitEvent: () => false,
-      });
+      }) as unknown as LocusActionContext<TMap>;
       const message: LocusClientActionMessage<TActions> = (actionMessage ?? Object.freeze({
         type: "action",
         id: `locus-action-${actionSequence}`,
@@ -286,7 +295,7 @@ export function create_registry_locus_internal<
   }
 
   const locus = Object.freeze({
-    lib: governed.lib,
+    doc: governed.doc, data: governed.data, parts: governed.parts,
     cut: options.map.cut.bind(options.map),
     commits: options.map.commits,
     addLibraries: governed.addLibraries,

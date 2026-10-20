@@ -82,7 +82,7 @@ try {
     libraries: snapshot.registry.libraries.map(entry => ({ ...entry, schema: b as typeof entry.schema })) } };
   const installed = install_libraries_snapshot(presentedSnapshot).map;
   assert.equal(installed.capture().registryDigest, snapshot.registryDigest);
-  const installedLibrary = installed.lib("state");
+  const installedLibrary = installed.data.must("state");
   assert.equal(installedLibrary.mode, "data-object");
   assert.deepEqual(installedLibrary.snap(), { value: "x" });
   assert.doesNotThrow(() => portable_aggregate_inputs_internal({ ...presentedSnapshot, format: "hson-portable-aggregate-snapshot",

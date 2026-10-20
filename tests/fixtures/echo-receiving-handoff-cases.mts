@@ -36,7 +36,7 @@ async function receiving_handoff_echo(f: { locus: Parameters<typeof bind_locus_h
     const cut = session.now({ html: "page" });
     const echo = await hsonLiveMap.echo.create({ now: structuredClone(cut), credential: session.credential!, transport: intercept(transport) });
     const map = echo_map_internal(echo), a = authority(map), cap = handoff(echo);
-    const document = echo.lib("page"); if (document.mode !== "document") throw Error("Expected document");
+    const document = echo.doc.must("page"); if (document.mode !== "document") throw Error("Expected document");
     const id = a.libraries()[a.hostedRegistry().libraries.filter(e => e.scope === undefined).findIndex(e => e.name === "page")]!;
     return { echo, map, a, cap, id, cut, document, close() { echo.dispose(); transport.dispose(); binding.dispose(); } };
   } catch (cause) { transport.dispose(); binding.dispose(); throw cause; }
@@ -231,11 +231,11 @@ export async function receiving_handoff_cases(check: (name: string, run: () => P
       const f = await receiving_handoff_fixture(), r = await receiving_handoff_echo(f);
       try {
         const evidence = r.cap.prepare("page"), handle = r.document.q("left");
-        if (change === "graph") await f.locus.stage(w => w.lib("page").at([1, 0]).asElement().attrs.set("title", "changed"));
-        if (change === "css") await f.locus.stage(w => w.lib("page").css.sel("#left").setProp("color", "orange"));
-        if (change === "topology") await f.locus.stage(w => w.lib("page").at([1, 0]).replace(node('<hson-part lib="parts" at="panel" id="left"/>')));
-        if (change === "retirement") await f.locus.stage(w => w.lib("page").at([1, 0]).delete());
-        if (change === "progress") await f.locus.stage(w => w.lib("data").at(["n"]).set(2));
+        if (change === "graph") await f.locus.stage(w => w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "changed"));
+        if (change === "css") await f.locus.stage(w => w.doc.must("page").css.sel("#left").setProp("color", "orange"));
+        if (change === "topology") await f.locus.stage(w => w.doc.must("page").at([1, 0]).replace(node('<hson-part lib="parts" at="panel" id="left"/>')));
+        if (change === "retirement") await f.locus.stage(w => w.doc.must("page").at([1, 0]).delete());
+        if (change === "progress") await f.locus.stage(w => w.data.must("data").at(["n"]).set(2));
         if (change === "projection") { await f.session.update({ libraries: ["data"] }); await until(() => !r.a.clientProjection()!.libraries.includes("page")); }
         if (change === "revocation") { f.session.revoke(); await until(() => r.echo.session.status !== "attached"); }
         if (change === "dispose") r.echo.dispose();

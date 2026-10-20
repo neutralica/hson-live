@@ -26,9 +26,9 @@ import type { LiveMap } from "../../src/types/livemap.types.ts";
 
 const node = (text: string) => { const n = hsonTransform.fromHson(text).toNode().$_content[0]; assert.ok(is_Node(n)); return n; };
 const connector = (name = "panel") => node(`<hson-part lib="parts" at="${name}"/>`);
-const page = (w: LocusHostedAggregateStageWriter, name = "page") => { const p = w.lib(name); if (p.mode !== "document") throw Error(); return p; };
-const doc = (map: LiveMap) => { const p = map.lib("page"); if (p.mode !== "document") throw Error(); return p; };
-const data = (map: LiveMap, name: string) => { const d = map.lib(name); if (d.mode === "document") throw Error(); return d; };
+const page = (w: LocusHostedAggregateStageWriter, name = "page") => { const p = w.doc.must(name); if (p.mode !== "document") throw Error(); return p; };
+const doc = (map: LiveMap) => { const p = map.doc.must("page"); if (p.mode !== "document") throw Error(); return p; };
+const data = (map: LiveMap, name: string) => { const d = map.data.must(name); if (String(d.mode) === "document") throw Error(); return d; };
 const target = { kind: "path" as const, path: path([0, 0]) };
 const insert = (w: LocusHostedAggregateStageWriter, index = 0, name = "panel") => page(w).content.insert(target, index, connector(name));
 const replace = (w: LocusHostedAggregateStageWriter, index = 0, name = "panel") => page(w).content.replace(target, index, connector(name));
@@ -46,7 +46,7 @@ async function fixture() {
   const a = authority(map), library = a.libraries()[1]!;
   const footer = a.documentOverlay(library).quidAtPath(path([0, 0, 0]))!;
   enable_interactions(map);
-  map.lib("page").css.stylesheet(`main{padding:7px} [hson\\:quid="${footer}"]{border:0}`);
+  map.doc.must("page").css.stylesheet(`main{padding:7px} [hson\\:quid="${footer}"]{border:0}`);
   add_interaction(map, { id: "shared-footer", subject: { library: "page", path: [0, 0, 0] }, listener, kind: "browser", key: "footer", args: null });
   const initial = a.captureHosted();
   const policy = make_locus_hosted_projection_policy(initial.registry, initial.authority,
@@ -128,11 +128,11 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
     const f = await fixture(), first = f.receive(), second = f.receive();
     try {
       assert.equal(scopes(first).length, 0); assert.equal(scopes(second).length, 0);
-      const local = first.map.lib("local"); if (local.mode === "document") throw Error(); local.at(["n"]).set(11);
+      const local = first.map.data.must("local"); if (String(local.mode) === "document") throw Error(); local.at(["n"]).set(11);
       const independent = f.a.libraries()[2]!, sourceIds = new Set(enumerate_livemap_issued_quids(f.a.identityEpoch().issued()));
       const { batch } = await f.stage(w => {
-        insert(w); const d = w.lib("other"); if (d.mode === "document") throw Error(); d.at(["n"]).set(1); insert(w, 1);
-        const parts = w.lib("parts"); if (parts.mode === "document") throw Error();
+        insert(w); const d = w.data.must("other"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(1); insert(w, 1);
+        const parts = w.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
         parts.at(["secret", "document"]).set('<strong "UPDATED_PRIVATE_SENTINEL"/>');
         page(w, "hidden").attrs.set({ kind: "path", path: path([0]) }, "title", "PRIVATE_HIDDEN_SENTINEL");
       });
@@ -141,13 +141,13 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
       for (const r of [first, second]) {
         delivered(f, r, batch); assert.equal(scopes(r).length, 4);
         assert.equal(data(r.map, "other").snap(["n"]), 1);
-        assert.throws(() => r.map.lib("parts")); assert.throws(() => r.map.lib("hidden"));
+        assert.throws(() => r.map.parts.must("parts")); assert.throws(() => r.map.doc.must("hidden"));
         assert.equal(doc(r.map).q("label"), undefined); assert.equal(doc(r.map).q("child"), undefined);
         const state = r.a.scopedDocumentState(r.library);
         assert.equal(state.scopes.occurrences.filter(s => s.bindings.some(b => b.name === "root")).length, 4);
         assert.equal(state.scopes.occurrences.filter(s => s.parent !== null).length, 2);
         assert.equal(r.a.documentQuad(r.library, "_abcdefghj", undefined)?.path.at(-1), 2);
-        assert.match(r.map.lib("page").css.snapshot(), /padding:7px/); assert.match(r.map.lib("page").css.snapshot(), /border:0/);
+        assert.match(r.map.doc.must("page").css.snapshot(), /padding:7px/); assert.match(r.map.doc.must("page").css.snapshot(), /border:0/);
       }
       assert.equal(data(first.map, "local").snap(["n"]), 11); assert.equal(data(second.map, "local").snap(["n"]), 5);
       for (const id of ids(first)) { assert.ok(!ids(second).has(id)); assert.ok(!sourceIds.has(id)); assert.ok(!f.a.identityEpoch().issued().has(id)); }
@@ -270,10 +270,10 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
     const f = await fixture(), r = f.receive();
     try {
       const initial = await f.stage(w => { insert(w); insert(w, 1); }); r.cap.replayScopedHosted(initial.batch);
-      const old = scopes(r), cssBefore = r.map.lib("page").css.snapshot();
+      const old = scopes(r), cssBefore = r.map.doc.must("page").css.snapshot();
       assert.match(cssBefore, /color:red/); assert.match(cssBefore, /border:0/);
       const replacement = await f.stage(w => replace(w, 0, "green")); delivered(f, r, replacement.batch);
-      const css = r.map.lib("page").css.snapshot(); assert.match(css, /color:green/); assert.match(css, /color:red/); assert.match(css, /border:0/);
+      const css = r.map.doc.must("page").css.snapshot(); assert.match(css, /color:green/); assert.match(css, /color:red/); assert.match(css, /border:0/);
       assert.equal((cssBefore.match(/color:red/g) ?? []).length, 2);
       assert.equal((css.match(/color:red/g) ?? []).length, 1);
       const demands = document_css_subject_identities(encode_portable_document_stylesheet(r.a.stylesheet(r.library)), "outbound");
@@ -282,7 +282,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
       if (old[0]!.rootQuid !== scopes(r)[0]!.rootQuid) assert.ok(!demands.includes(old[0]!.rootQuid));
       assert.equal(scopes(r)[2]!.lifetime, old[2]!.lifetime);
       const removal = await f.stage(w => page(w).content.remove(target, 1)); delivered(f, r, removal.batch);
-      assert.doesNotMatch(r.map.lib("page").css.snapshot(), /color:red/); assert.match(r.map.lib("page").css.snapshot(), /border:0/);
+      assert.doesNotMatch(r.map.doc.must("page").css.snapshot(), /color:red/); assert.match(r.map.doc.must("page").css.snapshot(), /border:0/);
     } finally { r.cap.dispose(); f.locus.dispose(); }
   });
   await check("authored alias and renamed disposable CSS transport subject remain separate", async () => {

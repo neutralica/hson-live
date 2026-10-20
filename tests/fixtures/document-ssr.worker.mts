@@ -25,7 +25,7 @@ parentPort?.postMessage(Object.freeze({
   decoded: decode_ssr_bootstrap(encoded),
   largeEncoded,
   largeDecoded: decode_ssr_bootstrap(largeEncoded),
-  emptyRoot: emptyMap.lib("page").root(),
+  emptyRoot: emptyMap.doc.must("page").root(),
   emptySsrRejected,
   hasDocument: "document" in globalThis,
 }));

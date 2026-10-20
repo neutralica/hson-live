@@ -29,8 +29,8 @@ export type LocusHostedAggregateAuthorityEnvelope = Readonly<{
 }>;
 
 export type LocusHostedAggregateStageWriter = LiveMapStagedWriter<LiveMap, void>;
-export type LocusHostedAggregateDocumentStage = Extract<ReturnType<LocusHostedAggregateStageWriter["lib"]>, Readonly<{ mode: "document" }>>;
-export type LocusHostedAggregateDataStage = Exclude<ReturnType<LocusHostedAggregateStageWriter["lib"]>, LocusHostedAggregateDocumentStage>;
+export type LocusHostedAggregateDocumentStage = Extract<ReturnType<LocusHostedAggregateStageWriter["doc"]["must"]> | ReturnType<LocusHostedAggregateStageWriter["data"]["must"]>, Readonly<{ mode: "document" }>>;
+export type LocusHostedAggregateDataStage = Exclude<ReturnType<LocusHostedAggregateStageWriter["doc"]["must"]> | ReturnType<LocusHostedAggregateStageWriter["data"]["must"]>, LocusHostedAggregateDocumentStage>;
 
 export type LocusHostedAggregateActionContext = Readonly<{
   map: LiveMap;

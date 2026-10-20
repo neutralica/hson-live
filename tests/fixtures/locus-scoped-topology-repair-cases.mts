@@ -115,9 +115,9 @@ export async function topology_repair_cases(check: (name: string, run: () => Pro
               ? { get page() { revoke(); return parse_document_stylesheet('main{color:red}', []); } } : {};
             assert.throws(() => prepare(map, owner, inputs, css), /management|authority|changed/i);
           }
-          assert.ok(entered); verify(); assert.throws(() => map.lib("earlier")); assert.throws(() => map.lib("page"));
+          assert.ok(entered); verify(); assert.throws(() => map.data.must("earlier")); assert.throws(() => map.doc.must("page"));
           assert.equal(map.rev, activity === "replacement-work" ? 1 : 0);
-          if (activity === "replacement-work") { const inner = map.lib("inner"); assert.ok("snap" in inner); assert.equal(inner.snap(), 7); }
+          if (activity === "replacement-work") { const inner = map.data.must("inner"); assert.ok("snap" in inner); assert.equal(inner.snap(), 7); }
           a.releaseManagement(owner); a.releaseManagement(other); a.claimManagement(owner);
           const healthy = prepare(map, owner, { later: page }); a.accept(healthy.transition, "isolate", healthy.afterInstall);
           assert.equal(map.rev, activity === "replacement-work" ? 2 : 1); assert.equal(scopes(map, "later")?.occurrences.length, 4);

@@ -143,7 +143,7 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   const changedRevisionPolicy = make_locus_hosted_projection_policy(
     internal_livemap_aggregate_authority(changedRevisionMap).hostedRegistry(), FENCE, CATALOG, undefined, authorize);
   const beforeRevision = await normalize_locus_effective_projection(changedRevisionPolicy, request);
-  changedRevisionMap.lib("presentation").at(["value"]).set("after-revision");
+  changedRevisionMap.data.must("presentation").at(["value"]).set("after-revision");
   assert.equal(changedRevisionMap.rev, 1);
   assert.equal((await normalize_locus_effective_projection(changedRevisionPolicy, request)).digest, beforeRevision.digest);
   assert.equal(JSON.stringify(first).includes("credentials"), false);

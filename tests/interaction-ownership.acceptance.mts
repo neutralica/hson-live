@@ -80,7 +80,7 @@ function setup(sharedFeature: boolean, panelRoot = "<aside <button/>/>", sharedI
 }
 
 function mirror_document(map: LiveMap, name: string) {
-  const library = map.lib(name);
+  const library = map.doc.must(name);
   if (library.mode !== "document") throw new Error(`Expected document Library ${JSON.stringify(name)}.`);
   return hsonMirror(library);
 }
@@ -223,7 +223,7 @@ for (const sharedFeature of [true, false]) {
 {
   const { authority, client, replica } = setup(true, "<aside <button/>/>", true);
   add_interaction(client, descriptor("local", "panel", "local", true));
-  const panel = client.lib("panel");
+  const panel = client.doc.must("panel");
   if (panel.mode !== "document") throw new Error("Expected panel document.");
   panel.document.attrs.set({ kind: "path", path: [0] }, "title", "retained");
   panel.css.sel("aside").set.color("red");
@@ -245,7 +245,7 @@ for (const sharedFeature of [true, false]) {
   const incoming = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(authority).captureHosted());
   replica.restoreHosted(incoming);
   assert.deepEqual(ids(client), ["shared", "local"]);
-  assert.equal(client.lib("panel"), panel);
+  assert.equal(client.doc.must("panel"), panel);
   assert.equal(panel.document.attrs.get({ kind: "path", path: [0] }, "title"), "retained");
   assert.equal(panel.css.snapshot(), css);
   pageTarget.dispatchEvent(new Event("click"));
@@ -295,7 +295,7 @@ for (const sharedFeature of [true, false]) {
   const { authority, client, replica } = setup(true, "<aside <button/>/>", true);
   add_interaction(client, descriptor("local", "panel", "local"));
   const pageMirror = mirror_document(client, "page");
-  const panel = client.lib("panel");
+  const panel = client.doc.must("panel");
   const panelMirror = mirror_document(client, "panel");
   const pageTarget = new EventTarget();
   const panelTarget = new EventTarget();
@@ -309,7 +309,7 @@ for (const sharedFeature of [true, false]) {
   panelTarget.dispatchEvent(new Event("click"));
   replica.restoreHosted(await projected_snapshot(authority, false, []));
   assert.deepEqual(ids(client), ["local"]);
-  assert.equal(client.lib("panel"), panel);
+  assert.equal(client.doc.must("panel"), panel);
   pageTarget.dispatchEvent(new Event("click"));
   panelTarget.dispatchEvent(new Event("click"));
   assert.deepEqual([shared, localCalls], [1, 2]);
@@ -325,7 +325,7 @@ for (const sharedFeature of [true, false]) {
   assert.equal(internal_livemap_aggregate_authority(client).systemState("@hson/canonical-interactions"), undefined);
   const local = local_initializers({ panel: { document: "<aside <button/>/>", schema: PanelSchema } });
   install_client_local_initializers_internal(client, local);
-  const panel = client.lib("panel");
+  const panel = client.doc.must("panel");
   const cursor = replica.clientProjection()?.revision;
   const digest = replica.clientProjection()?.registry.digest;
   const beforeRejected = client.rev;
@@ -346,7 +346,7 @@ for (const sharedFeature of [true, false]) {
   // A local initializer leaving scope does not remove its already installed Library.
   replica.restoreHosted(initial);
   install_client_local_initializers_internal(client, local);
-  assert.equal(client.lib("panel"), panel);
+  assert.equal(client.doc.must("panel"), panel);
   assert.deepEqual(ids(client), ["late-local"]);
   target.dispatchEvent(new Event("click"));
   assert.equal(calls, 2);
@@ -433,7 +433,7 @@ for (const sharedFeature of [true, false]) {
   assert.equal(echo.sync.appliedRev, beforeCursor);
   assert.equal(internal_livemap_aggregate_authority(echo_map_internal(echo)).clientProjection()?.registry.digest, beforeDigest);
   assert.equal(internal_livemap_aggregate_authority(authority).systemState("@hson/canonical-interactions"), undefined);
-  const panel = echo.lib("panel");
+  const panel = echo.doc.must("panel");
   const reflection = mirror_document(echo_map_internal(echo), "panel");
   const target = new EventTarget();
   link_node_to_el(retained_subject(reflection.tree.find.must.byTag("button")), target as unknown as Element);
@@ -443,7 +443,7 @@ for (const sharedFeature of [true, false]) {
   target.dispatchEvent(new Event("click"));
   await session.update({ libraries: ["page"] });
   await session.update({ libraries: ["page", "panel"] });
-  assert.equal(echo.lib("panel"), panel);
+  assert.equal(echo.doc.must("panel"), panel);
   assert.deepEqual(ids(echo_map_internal(echo)), ["local-only"]);
   target.dispatchEvent(new Event("click"));
   assert.equal(calls, 2);
@@ -461,7 +461,7 @@ for (const sharedFeature of [true, false]) {
 {
   const { client, replica } = setup(false, "<aside <button id=\"one\"/> <button id=\"two\"/>/>");
   add_interaction(client, descriptor("moving", "panel"));
-  const panel = client.lib("panel");
+  const panel = client.doc.must("panel");
   if (panel.mode !== "document") throw new Error("Expected panel document.");
   const revision = client.rev;
   const seen: Record<string, readonly number[]>[] = [];
@@ -479,7 +479,7 @@ for (const sharedFeature of [true, false]) {
 {
   const { client, replica } = setup(false);
   add_interaction(client, descriptor("replaced", "panel"));
-  const panel = client.lib("panel");
+  const panel = client.doc.must("panel");
   if (panel.mode !== "document") throw new Error("Expected panel document.");
   const parsed = parse_hson_exact_runtime("<button id=\"replacement\"/>", { allowTopLevelDocumentText: true });
   const bucket = parsed.$_content[0];
@@ -496,7 +496,7 @@ for (const sharedFeature of [true, false]) {
 {
   const { client, replica } = setup(false);
   add_interaction(client, descriptor("root-replaced", "panel"));
-  const panel = client.lib("panel");
+  const panel = client.doc.must("panel");
   if (panel.mode !== "document") throw new Error("Expected panel document.");
   const parsed = parse_hson_exact_runtime("<aside <button id=\"replacement\"/>/>", { allowTopLevelDocumentText: true });
   const bucket = parsed.$_content[0];

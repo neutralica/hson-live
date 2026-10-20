@@ -94,8 +94,8 @@ function fixture() {
   const map = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
   const replica = create_echo_aggregate_replica_capability_internal(map);
   const aggregate = internal_livemap_aggregate_authority(map);
-  const state = map.lib("state");
-  const page = map.lib("page");
+  const state = map.data.must("state");
+  const page = map.doc.must("page");
   if (!("snap" in state) || !("document" in page)) throw new Error("Expected hosted test Libraries.");
   return { authority, map, replica, aggregate, state, page, snapshot };
 }
@@ -178,7 +178,7 @@ await check("ordinary local registry LiveMap cannot advance authority position",
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: DataSchema } });
   assert.equal(Reflect.has(map, "advanceHostedProgress"), false);
   assert.equal(map.rev, 0);
-  map.lib("state").at(["value"]).set(1);
+  map.data.must("state").at(["value"]).set(1);
   assert.equal(map.rev, 1);
 });
 
@@ -247,8 +247,8 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
   assert.equal(recovery.revision, 9);
   const map = client.map;
   if (map === undefined) throw new Error("Expected bootstrapped Echo map.");
-  const state = map.lib("state");
-  const page = map.lib("page");
+  const state = map.data.must("state");
+  const page = map.doc.must("page");
   if (!("snap" in state) || !("document" in page)) throw new Error("Expected hosted test Libraries.");
   const mirror = hsonMirror(page);
   const id = JSON.parse(pair.serverSent.find((raw) => JSON.parse(raw).type === "recovery-caught-up")!).id;
@@ -316,7 +316,7 @@ await check("replay history processes commit, progress, commit, final progress b
   map.commits.observe(() => { commits += 1; });
   const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), map, logicalMapId: server.logicalMapId });
   const recovered = await client.connect();
-  const state = map.lib("state");
+  const state = map.data.must("state");
   if (!("snap" in state)) throw new Error("Expected data Library.");
   assert.equal(recovered.outcome, "replay");
   assert.equal(recovered.revision, 4);
@@ -360,7 +360,7 @@ await check("reconcile synchronization drains buffered progress and graph tail t
   const recovered = await client.connect();
   const map = client.map;
   if (map === undefined) throw new Error("Expected snapshot-installed Echo map.");
-  const state = map.lib("state");
+  const state = map.data.must("state");
   if (!("snap" in state)) throw new Error("Expected data Library.");
   assert.equal(recovered.outcome, "reconcile");
   assert.equal(recovered.revision, 7);
@@ -544,7 +544,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     });
     const echo = await bounded(hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport }), 1_000,
       () => `Replica establishment stalled: ${JSON.stringify({ plans, binding: attachment.binding.attached })}`);
-    const documentAuthority = echo_document_authority_for(echo_map_internal(echo).lib("page"));
+    const documentAuthority = echo_document_authority_for(echo_map_internal(echo).doc.must("page"));
     assert.ok(documentAuthority);
     holdLive = true;
     const pending = documentAuthority.enqueue(() => Object.freeze({ name: "document.attrs.set" as const,
@@ -648,7 +648,7 @@ await check("exact identity history derives generic client progress without rewr
   const mirror = make_livemap_mirror_from_portable_aggregate_internal(make_portable_aggregate_snapshot(snapshot));
   const clientIdentityBefore = internal_livemap_aggregate_authority(mirror).captureHosted().identity;
   internal_livemap_aggregate_authority(mirror).replayClientHosted(client);
-  const state = mirror.lib("state");
+  const state = mirror.data.must("state");
   if (!("snap" in state)) throw new Error("Expected projected state Library.");
   assert.equal(state.snap(["value"]), 1);
   assert.deepEqual(internal_livemap_aggregate_authority(mirror).captureHosted().identity, clientIdentityBefore);
@@ -684,7 +684,7 @@ await check("flat live commit completion retains contiguous replay accepted by a
     assert.equal(client.lastAppliedRev, third.commit.rev);
     assert.equal(client.replica.ready, true); assert.equal(client.diagnostics().status, "live");
     assert.equal(client.session.status, "attached"); assert.deepEqual(positions, [second.commit.rev, third.commit.rev]);
-    const state = map.lib("state"); if (state.mode === "document") throw Error("Expected data Library.");
+    const state = map.data.must("state"); if (String(state.mode) === "document") throw Error("Expected data Library.");
     assert.equal(state.snap(["value"]), 3);
   } finally { client.dispose(); server.dispose(); }
 });

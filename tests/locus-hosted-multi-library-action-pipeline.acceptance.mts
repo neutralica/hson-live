@@ -281,7 +281,7 @@ await check("named document denial is terminal without mutation and the next que
   if (denied.type === "error") assert.equal(denied.delivery, "rejected");
   assert.equal(locus.rev, 0);
   assert.equal(echoMap.rev, 0);
-  assert.equal(locus.lib("page").document.attrs.get({ kind: "path", path: [0] }, "blocked"), undefined);
+  assert.equal(locus.doc.must("page").document.attrs.get({ kind: "path", path: [0] }, "blocked"), undefined);
   const accepted = await echo.action("document.attrs.set", {
     library: "page",
     target: { kind: "path", path: [0] },
@@ -291,7 +291,7 @@ await check("named document denial is terminal without mutation and the next que
   assert.equal(accepted.type, "ack");
   assert.equal(locus.rev, 1);
   assert.equal(echoMap.rev, 1);
-  const projectedPage = echoMap.lib("page");
+  const projectedPage = echoMap.doc.must("page");
   if (projectedPage.mode !== "document") throw new Error("Expected projected page document.");
   assert.equal(projectedPage.document.attrs.get({ kind: "path", path: [0] }, "title"), "accepted");
   const evidence = decisions[0] as { session: { resumable: boolean }; logicalMapId: string; incarnationId: string; connection: { principalId?: string }; payload: HsonData };
@@ -314,7 +314,7 @@ await check("application payload decoding precedes authorization and mutation", 
     }, authorizeAction() { authorizations += 1; return true; } }), actions: {
       validated: async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
-        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(value.value); })();
       },
     } });
   const pair = socket_pair();
@@ -329,7 +329,7 @@ await check("application payload decoding precedes authorization and mutation", 
   const accepted = await echo.action("validated", { value: 3 });
   assert.equal(accepted.type, "ack");
   assert.equal(authorizations, 1);
-  assert.equal(locus.lib("state").snap(["value"]), 3);
+  assert.equal(locus.data.must("state").snap(["value"]), 3);
   echo.dispose();
   locus.dispose();
 });
@@ -340,7 +340,7 @@ await check("resumable session reattachment retains one projected aggregate auth
   const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessionId: () => `aggregate-session-${++sessionNumber}`, sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" } }), actions: {
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
-        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(value.value); })();
       },
     } });
   const firstPair = socket_pair();
@@ -369,7 +369,7 @@ await check("resumable session reattachment retains one projected aggregate auth
   assert.equal(second.session.incarnationId, locus.incarnationId);
   assert.equal(second.session.debug().reattachCount, 1);
   await second.action("state.set", { value: 2 });
-  assert.equal(locus.lib("state").snap(["value"]), 2);
+  assert.equal(locus.data.must("state").snap(["value"]), 2);
   assert.equal(locus.rev, 2);
   second.dispose();
   locus.dispose();
@@ -382,7 +382,7 @@ await check("retry, dedupe conflict, and action status use the hosted request co
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
         executions += 1;
-        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(value.value); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(value.value); })();
       },
     } });
   const firstPair = socket_pair();
@@ -477,12 +477,12 @@ await check("built-ins and single- or cross-library application actions share on
   const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }), actions: {
       "state.only": async (context) => {
         order.push("state");
-        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(1); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(1); })();
       },
       "cross.library": async (context) => {
         order.push("cross");
-        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(2);
-draft.lib("other").at(["value"]).set(2); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(2);
+draft.data.must("other").at(["value"]).set(2); })();
       },
     } });
   const pair = socket_pair();
@@ -560,7 +560,7 @@ await check("replacement after admission retains the outcome but fences late del
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;
-        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(9); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(9); })();
       },
     } });
   const firstPair = socket_pair();
@@ -589,7 +589,7 @@ await check("replacement after admission retains the outcome but fences late del
   assert.equal(recovered.type, "ack");
   if (recovered.type === "ack") assert.ok(recovered.delivery === "joined" || recovered.delivery === "cached");
   assert.equal(locus.rev, 1);
-  assert.equal(locus.lib("state").snap(["value"]), 9);
+  assert.equal(locus.data.must("state").snap(["value"]), 9);
   assert.equal(recovered.completionRev, 1);
   assert.equal((await second.actionStatus(pending.request.requestId)).state, "succeeded");
   assert.equal(locus.activity.snapshot().actionCount, 0);
@@ -607,7 +607,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;
-        await (() => { const draft = context.stage; draft.lib("state").at(["value"]).set(11); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(11); })();
       },
     } });
   const firstPair = socket_pair();
@@ -636,7 +636,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   const recovered = await second.retryAction(pending.request);
   assert.equal(recovered.type, "ack");
   assert.equal(recovered.completionRev, 1);
-  assert.equal(locus.lib("state").snap(["value"]), 11);
+  assert.equal(locus.data.must("state").snap(["value"]), 11);
   assert.equal(locus.activity.snapshot().actionCount, 0);
   first.dispose();
   second.dispose();

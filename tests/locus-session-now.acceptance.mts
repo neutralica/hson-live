@@ -51,8 +51,8 @@ async function session(locus: Locus) {
 }
 
 function data(map: LiveMap, name: string) {
-  const library = map.lib(name);
-  if (library.mode === "document") throw new Error("Expected data library.");
+  const library = map.data.must(name);
+  if (String(library.mode) === "document") throw new Error("Expected data library.");
   return library;
 }
 
@@ -77,7 +77,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
   };
   const locus = strategy === "replay" ? create_locus_fixture(authority_definition_from_fixture_options(options))
     : create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus;
-  await locus.stage((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_ADVANCED"));
+  await locus.stage((draft) => draft.data.must("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_ADVANCED"));
   const initial = await session(locus);
   const sentBefore = initial.pair.serverSent.length;
   const snapshot = initial.capability.now().libs;
@@ -97,7 +97,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     local: { local: { data: { value: "LOCAL" }, schema: Data } } });
   assert.deepEqual(data(client, "visible").snap(), { value: "INITIAL" });
   assert.equal(snapshot.libraries[0]?.schema, Data.toHson());
-  assert.throws(() => client.lib("PRIVATE_NAME"), /unknown/i);
+  assert.throws(() => client.data.must("PRIVATE_NAME"), /unknown/i);
   const retained = JSON.stringify(snapshot);
   initial.detach();
   assert.deepEqual(initial.capability.now().libs, snapshot, "disconnected retained session remains available");
@@ -112,8 +112,8 @@ for (const strategy of ["replay", "reconcile"] as const) {
   const localHandle = local.at(["value"]);
   echo.disconnect(); detach();
   localHandle.set("LOCAL_OFFLINE");
-  await locus.stage((draft) => draft.lib("visible").at(["value"]).set("RECOVERED"));
-  await locus.stage((draft) => draft.lib("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_OFFLINE"));
+  await locus.stage((draft) => draft.data.must("visible").at(["value"]).set("RECOVERED"));
+  await locus.stage((draft) => draft.data.must("PRIVATE_NAME").at(["PRIVATE_SCHEMA"]).set("PRIVATE_ROOT_OFFLINE"));
   assert.equal(echo.sync.appliedRev, snapshot.revision);
   assert.equal(JSON.stringify(snapshot), retained, "captured artifact is detached from later mutations");
   detach = bind_locus_websocket(locus, pair.server);
@@ -121,7 +121,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
   assert.equal(echo.sync.strategy, strategy);
   assert.equal(echo.sync.appliedRev, locus.rev);
   assert.equal(echo.map, client);
-  assert.equal(client.lib("local"), local);
+  assert.equal(client.data.must("local"), local);
   assert.equal(localHandle.snap(), "LOCAL_OFFLINE");
   assert.equal(data(client, "visible").snap(["value"]), "RECOVERED");
   if (strategy === "reconcile") {
@@ -158,7 +158,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 
 for (const libraries of [["page"], ["page", "state"]]) {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body <main/>/>/>" }, state: { data: { value: 1 } } });
-  map.lib("page").css.stylesheet("main { color: blue; }");
+  map.doc.must("page").css.stylesheet("main { color: blue; }");
   const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }, { name: "state", ownership: "shared" }]), defaultProjection: { libraries }, authorizeProjection: () => ({ libraries }) });
   const initial = await session(locus);
   const snapshot = initial.capability.now().libs;
@@ -166,9 +166,9 @@ for (const libraries of [["page"], ["page", "state"]]) {
   assert.deepEqual(snapshot.libraries.map((entry) => entry.name), libraries);
   assert.ok(snapshot.libraries.find((entry) => entry.name === "page")?.css);
   const client = client_projection_map({ authority: snapshot, local: {} });
-  const page = client.lib("page");
+  const page = client.doc.must("page");
   assert.equal(page.mode, "document");
-  if (page.mode === "document") assert.equal(page.css.snapshot(), map.lib("page").css.snapshot());
+  if (page.mode === "document") assert.equal(page.css.snapshot(), map.doc.must("page").css.snapshot());
   initial.detach(); locus.dispose();
 }
 console.log("ok - document-only and mixed session now state preserves hosted state and CSS");

@@ -38,7 +38,7 @@ globalThis.receivingHandoffPreflight = async ({ sessions, endpoint }) => {
       try {
         echo = await hsonLiveMap.echo.create({ now: session.cut, credential: session.credential, transport });
         const cap = echo_receiving_document_handoff_internal(echo), evidence = cap.prepare('page');
-        const selected = echo_map_internal(echo).lib('page');
+        const selected = echo_map_internal(echo).doc.must('page');
         const canonical = capture_continuation_document_root(selected);
         for (let attempt = 0; attempt < 2; attempt++) {
           cap.assert(evidence, 'page');

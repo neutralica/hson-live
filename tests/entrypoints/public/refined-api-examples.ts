@@ -40,8 +40,8 @@ const exactDocument = Hson.document.fromHson(authored);
 void [html, authored, Hson.document.toNode(exactDocument)];
 
 const dataMap = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
-dataMap.lib("state").at(["count"]).set(1);
-const exactData: HsonData | undefined = dataMap.lib("state").at([]).data();
+dataMap.data.must("state").at(["count"]).set(1);
+const exactData: HsonData | undefined = dataMap.data.must("state").at([]).data();
 void (exactData === undefined ? undefined : Hson.data.entries(exactData));
 
 const standalone = hsonLiveTree.fromNode(hsonTransform.fromTrustedHtml("<main/>").toNode());
@@ -62,7 +62,7 @@ void hosted;
 const localSsr = libraries.cut({ html: "page" });
 const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(localSsr.libs));
 void decoded;
-void continue_document({ map: hostedMap, document: hostedMap.lib("page"), root });
+void continue_document({ map: hostedMap, document: hostedMap.doc.must("page"), root });
 
 const retained = await hosted.session.create({ libraries: ["state", "page"] });
 const replica = await hsonLiveMap.echo.create({ now: retained.now(), credential: retained.credential!, transport });

@@ -1,3 +1,4 @@
+import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
@@ -36,8 +37,8 @@ await check("bound aggregate admission preserves atomic completion, authorizatio
     },
     actions: { cross: async (context, payload) => {
       executions += 1; const value = (payload?.materialize() as { value: number }).value;
-      await (() => { const draft = context.stage; const state = draft.lib("state"), other = draft.lib("other");
-if (state.mode === "document" || other.mode === "document") throw new Error("Expected data libraries.");
+      await (() => { const draft = context.stage; const state = draft.data.must("state"), other = draft.data.must("other");
+if (String(state.mode) === "document" || String(other.mode) === "document") throw new Error("Expected data libraries.");
 state.at(["value"]).set(value);
 other.at(["value"]).set(value); })();
       return { accepted: true };
@@ -49,7 +50,7 @@ other.at(["value"]).set(value); })();
   assert.equal(first.type, "ack"); assert.equal(first.delivery, "executed"); assert.equal(first.completionRev, 1); assert.equal(first.seq, 1);
   const cached = await admit_locus_remote_action_internal<TestActions>(server, { ...ingress, message: { ...request, id: "cross-retry", attemptId: "cross-retry-attempt", retry: true } });
   assert.equal(cached.type, "ack"); assert.equal(cached.delivery, "cached"); assert.equal(executions, 1); assert.notEqual(sessions[0], sessions[1]);
-  assert.equal(map.lib("state").snap(["value"]), 7); assert.equal(map.lib("other").snap(["value"]), 7);
+  assert.equal(map.data.must("state").snap(["value"]), 7); assert.equal(map.data.must("other").snap(["value"]), 7);
   assert.equal(server.actionRequests.debug().retainedTerminalCount, 1); assert.equal(server.sessions.debug().sessions.length, 0);
   server.dispose();
 });
@@ -60,8 +61,8 @@ await check("aggregate whole-action FIFO remains ahead of the common admission s
     held: async (context, payload) => {
       const value = payload?.scalar(); if (typeof value !== "number") throw new Error("Expected numeric action data.");
       entered.push(value); if (value === 1) await gate.promise;
-      await (() => { const draft = context.stage; const state = draft.lib("state");
-if (state.mode === "document") throw new Error("Expected data library.");
+      await (() => { const draft = context.stage; const state = draft.data.must("state");
+if (String(state.mode) === "document") throw new Error("Expected data library.");
 state.at(["value"]).set(value); })();
       return payload;
     },
@@ -71,7 +72,7 @@ state.at(["value"]).set(value); })();
   const second = admit_locus_remote_action_internal<TestActions>(server, { message: message("second", "held", 2) });
   await Promise.resolve(); assert.deepEqual(entered, [1]); gate.resolve();
   const [one, two] = await Promise.all([first, second]);
-  assert.equal(one.completionRev, 1); assert.equal(two.completionRev, 2); assert.deepEqual(entered, [1, 2]); assert.equal(map.lib("state").snap(["value"]), 2);
+  assert.equal(one.completionRev, 1); assert.equal(two.completionRev, 2); assert.deepEqual(entered, [1, 2]); assert.equal(map.data.must("state").snap(["value"]), 2);
   assert.equal(server.sessions.debug().sessions.length, 0); server.dispose();
 });
 
@@ -84,7 +85,7 @@ await check("aggregate authorization rejection retains no lineage or ephemeral s
 
 await check("the internal admission capability remains bound after the normal aggregate Locus facade is created", async () => {
   let locus!: import("../src/types/locus.types.ts").Locus<ReturnType<typeof make_map>, TestActions>;
-  locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), authorizeAction: () => { assert.equal(locus.activity.snapshot().retainedSessionCount, 1); return true; }, actions: { held: (_context, payload) => payload } });
+  locus = create_locus_fixture({ ...authority_groups_from_map_fixture(make_map(), test_application_catalog(make_map())), authorizeAction: () => { assert.equal(locus.activity.snapshot().retainedSessionCount, 1); return true; }, actions: { held: (_context, payload) => payload } });
   const result = await admit_locus_remote_action_internal<TestActions>(locus, { message: message("facade", "held", 4) });
   assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result === undefined ? undefined : Hson.data.materialize(result.result), 4);
   assert.equal(locus.session.debug().sessions.length, 0); assert.equal(locus.activity.snapshot().retainedSessionCount, 0); locus.dispose();

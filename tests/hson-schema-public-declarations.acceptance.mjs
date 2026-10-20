@@ -83,18 +83,18 @@ export const map = hsonLiveMap.fromLibraries({
   page: { document: documentCertificate, schema: Page },
 });
 export function getMap() { return map; }
-export const treeLibrary = map.lib("tree");
-export const snapshot = map.lib("main").snap();
-export const treeValue = map.lib("tree").at(["children", 0, "value"]).snap();
+export const treeLibrary = map.data.must("tree");
+export const snapshot = map.data.must("main").snap();
+export const treeValue = map.data.must("tree").at(["children", 0, "value"]).snap();
 export const alias = S;
 export const pageAlias = Page;
 const attached = hsonLiveMap.fromLibraries({ main: { data: { name: "Ada", format: "hson" } }, page: { document: '<main "body"/>' } });
-attached.lib("main").schema.use(S);
-attached.lib("page").schema.use(Page);
-export const library = attached.lib("main");
-export const page = attached.lib("page");
-export const text = attached.lib("page").at([0]);
-export function getText() { attached.lib("page").schema.use(Page); return attached.lib("page").at([0]); }
+attached.data.main.schema.use(S);
+attached.doc.page.schema.use(Page);
+export const library = attached.data.main;
+export const page = attached.doc.page;
+export const text = attached.doc.page.at([0]);
+export function getText() { attached.doc.page.schema.use(Page); return attached.doc.page.at([0]); }
 `);
 check("Worker producer generates evidence and emits public declarations", () => {
   const before = readFileSync(join(producer, "index.ts"), "utf8");
@@ -136,10 +136,10 @@ const propertyCertificate: HsonFromSchema<typeof S> = certificateObject.certific
 const fieldCertificate: HsonFromSchema<typeof S> = new Certificates().value;
 const getterCertificate: HsonFromSchema<typeof Page> = new Certificates().document;
 const methodCertificate: HsonFromSchema<typeof S> = new Certificates().getValue();
-export const mapValue = map.lib("main").snap();
-export const returnedMapValue = getMap().lib("main").snap();
+export const mapValue = map.data.must("main").snap();
+export const returnedMapValue = getMap().data.must("main").snap();
 // Consume recursive reads structurally; publishing a new recursive alias is a separate public naming contract.
-const branchValue = map.lib("tree").at(["children", 0]).snap();
+const branchValue = map.data.must("tree").at(["children", 0]).snap();
 type MapRead = Assert<Equal<typeof mapValue, Shape>>;
 type ReturnedMapRead = Assert<Equal<typeof returnedMapValue, Shape>>;
 const libraryBranch = treeLibrary.at(["children", 0]).snap();
@@ -147,8 +147,8 @@ type LibraryBranch = Assert<Equal<typeof libraryBranch, JsonFromSchema<typeof Tr
 type BranchRead = Assert<Equal<typeof branchValue, JsonFromSchema<typeof Tree> | undefined>>;
 type Snapshot = Assert<Equal<typeof snapshot, Shape>>;
 type RecursiveLeaf = Assert<Equal<typeof treeValue, string | undefined>>;
-const certifiedPageText: string = map.lib("page").at([0]).snap();
-const storedSchema: typeof S = map.lib("main").schema.get();
+const certifiedPageText: string = map.doc.must("page").at([0]).snap();
+const storedSchema: typeof S = map.data.must("main").schema.get();
 // @ts-expect-error Identical structural projections do not merge certification identity.
 const otherCertificate: HsonFromSchema<typeof Twin> = certificate;
 // @ts-expect-error Raw strings never acquire certification proof.
@@ -158,11 +158,11 @@ const wrongFamily: HsonFromSchema<typeof Page> = certificate;
 // @ts-expect-error Governed map reads retain the declared literal union.
 const wrongFormat: "json" = mapValue.format;
 // @ts-expect-error Governed maps reject unknown paths.
-map.lib("main").at(["missing"]);
+map.data.must("main").at(["missing"]);
 // @ts-expect-error Recursive writes retain primitive types.
-map.lib("tree").at(["children", 0, "value"]).set(3);
+map.data.must("tree").at(["children", 0, "value"]).set(3);
 // @ts-expect-error Document maps retain text-only replacements.
-map.lib("page").at([0]).replace(42);
+map.doc.must("page").at([0]).replace(42);
 const same: typeof S = alias;
 const samePage: typeof Page = pageAlias;
 export const value = library.snap();
@@ -195,7 +195,7 @@ import { Hson, hsonLiveMap } from "hson-live";
 export const S = Hson.schema\`<type "data" content <values <array "string">>>\`;
 export const certificate = S.certify(Hson.data\`<values []>\`);
 export const map = hsonLiveMap.fromLibraries({ state: { data: { values: [] }, schema: S } });
-export const library = map.lib("state");
+export const library = map.data.must("state");
 `;
   // An explicitly authored root import has its existing DOM dependency. Only
   // this producer needs DOM; its emitted declaration references remain narrow.
@@ -210,10 +210,10 @@ export const library = map.lib("state");
 import { S, certificate, map, library } from "../root-producer/out/index.js";
 import type { HsonFromSchema } from "hson-live/hson";
 const proof: HsonFromSchema<typeof S> = certificate;
-export const values = map.lib("state").snap().values;
+export const values = map.data.must("state").snap().values;
 const sameValues: readonly string[] = library.snap().values;
 // @ts-expect-error The published root-import map still rejects invalid items.
-map.lib("state").at(["values"]).replace([42]);
+map.data.must("state").at(["values"]).replace([42]);
 `);
   const files = run([join(root, "node_modules/typescript/bin/tsc"), "-p", join(rootConsumer, "tsconfig.json"), "--pretty", "false", "--listFiles"]);
   assert.doesNotMatch(files, /lib\.dom\.|@types\//);

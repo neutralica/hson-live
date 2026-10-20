@@ -32,7 +32,7 @@ const check = (name: string, run: () => void): void => {
 
 check("one named data library retains its state identity across graph changes", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada", age: 37 }, schema: DataSchema } });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const authority = internal_livemap_aggregate_authority(map);
   const before = authority.inspect().libraries[0]!;
   assert.equal(before.mode, "data-object");
@@ -48,7 +48,7 @@ check("one named data library retains its state identity across graph changes", 
 
 check("one registry ledger survives library-local graph changes", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { item: {} }, schema: ItemSchema } });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const authority = internal_livemap_aggregate_authority(map);
   const before = authority.inspect().libraries[0]!;
   acquire_projected_identity(state, ["item"]);
@@ -64,11 +64,11 @@ check("one registry ledger survives library-local graph changes", () => {
 
 check("one named document library retains its mode under the registry", () => {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   const ownership = internal_livemap_aggregate_authority(map).inspect().libraries[0]!;
   assert.equal(ownership.mode, "document");
-  assert.equal(map.lib("page"), page);
-  assert.equal("lib" in map, true);
+  assert.equal(map.doc.must("page"), page);
+  assert.equal("lib" in map, false);
 });
 
 process.stdout.write(`1..${checks}\n`);

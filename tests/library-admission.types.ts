@@ -6,7 +6,7 @@ receipt.commit.operations;
 receipt.libraries.page.render();
 receipt.libraries.deck.at(["slides", 0, "kind"]).snap() satisfies "heading" | "code" | undefined;
 // @ts-expect-error Admission does not type the original registry.
-map.lib("page").render();
+map.doc.page.render();
 // @ts-expect-error No unrelated successful evidence.
 receipt.libraries.other;
 declare const dynamic: string;
@@ -14,7 +14,7 @@ const dynamicReceipt = map.addLibraries({ [dynamic]: { document: "<main/>" } });
 // @ts-expect-error Dynamic names cannot certify arbitrary membership.
 dynamicReceipt.libraries.anything.render();
 const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" } }] });
-locus.lib("page").render();
+locus.doc.page.render();
 const admitted = await locus.addLibraries({ shared: [{ name: "deck", definition: { data: { slides: [] }, schema } }, { name: "next", definition: { document: "<aside/>" } }] });
 admitted.libraries.next.render();
 admitted.libraries.deck.at(["optional", "count"]).snap() satisfies number | undefined;
@@ -23,7 +23,7 @@ admitted.libraries.deck.at(["slides", 0, "wrong"]);
 // @ts-expect-error No numeric child below a scalar.
 admitted.libraries.deck.at(["optional", "count", 0]);
 // @ts-expect-error Original Locus binding does not acquire dynamic types.
-locus.lib("deck").snap();
+locus.data.deck.snap();
 const unknown = await locus.addLibraries({ shared: [{ name: dynamic, definition: { data: 1 } }] });
 // @ts-expect-error Dynamic string does not establish arbitrary registry evidence.
 unknown.libraries.anything.snap();
@@ -76,7 +76,7 @@ if (optionalLocal.libraries.optionalDeck) {
   optionalLocal.libraries.optionalDeck.at(["notInSchema"]);
 }
 // @ts-expect-error The original alias acquires no new inventory.
-map.lib("optionalPage").render();
+map.doc.optionalPage.render();
 
 // The receipt preserves the optional property modifier, not just an undefined value union.
 const absentMembership: Pick<typeof optionalLocal.libraries, "optionalPage" | "optionalDeck"> = {};

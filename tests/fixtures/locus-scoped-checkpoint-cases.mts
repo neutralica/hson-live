@@ -96,7 +96,7 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
   await check("B1 existing chunks restore complete scoped meaning, private ownership, interactions and fresh sparse identities", async () => {
     const f = await fixture(), adapter = new MemoryCheckpointAdapter();
     try {
-      await f.stage(w => { const data = w.lib("data"); if (data.mode === "document") throw Error(); data.at(["n"]).set(7); });
+      await f.stage(w => { const data = w.data.must("data"); if (String(data.mode) === "document") throw Error(); data.at(["n"]).set(7); });
       const checkpoint = f.a.captureSemanticCheckpoint();
       await write(checkpoint, adapter, ownership);
       const manifest = active(adapter, checkpoint);
@@ -122,7 +122,7 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
         demanded += a.documentOverlay(id)!.size;
       }
       assert.equal(receiver.length, demanded);
-      assert.match(received.lib("page").css.snapshot(), /border:0/);
+      assert.match(received.doc.must("page").css.snapshot(), /border:0/);
       assert.ok(equal(document(checkpoint), document(a.captureSemanticCheckpoint())));
       // Governed Part contents remain durable, but are not used to rebuild realized documents.
       const withoutDefinitions = { ...checkpoint, libraries: checkpoint.libraries.map(entry => entry.name === "parts"
@@ -183,7 +183,7 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
     const f = await fixture();
     try {
       const checkpoint = f.a.captureSemanticCheckpoint(), map = restore(checkpoint), a = authority(map);
-      const data = map.lib("data"); if (data.mode === "document") throw Error(); data.at(["n"]).set(99);
+      const data = map.data.must("data"); if (String(data.mode) === "document") throw Error(); data.at(["n"]).set(99);
       const mutations: readonly [string, (entry: any) => void][] = [
         ["missing occurrences", p => { delete p.scopes.occurrences; }],
         ["invalid parent", p => { p.scopes.occurrences[0].parent = p.scopes.occurrences[0].root; }],
@@ -279,7 +279,7 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
       const pending = write(presented, adapter, ownership); await paused.entered;
       await f.stage(w => {
         page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "later");
-        const data = w.lib("data"); if (data.mode === "document") throw Error(); data.at(["n"]).set(22);
+        const data = w.data.must("data"); if (String(data.mode) === "document") throw Error(); data.at(["n"]).set(22);
       });
       paused.release(); await pending;
       librariesEqual(checkpoint, authority(await read(active(adapter, checkpoint), adapter)).captureSemanticCheckpoint());

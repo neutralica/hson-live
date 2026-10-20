@@ -1,3 +1,4 @@
+import { require_livemap_library_internal } from "../src/api/livemap/livemap.libraries.js";
 import "./locus-scoped-checkpoint.acceptance.mts";
 import { encode_checkpoint_chunks } from "../src/api/locus/locus.checkpoint-chunks.ts";
 import { exact_tagged_payload, invalid_tagged_graphs } from "./helpers/tagged-codec-fixture.mts";
@@ -111,8 +112,8 @@ await case_("restart reapplies deployment local definitions without persisting c
   const session = await locus.session.create({ libraries: ["public", "ui"] });
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
-  const ui = echo.lib("ui");
-  if (ui.mode === "document" || ui.source !== "client-local") throw new Error("Expected local data Library.");
+  const ui = echo.data.must("ui");
+  if (String(ui.mode) === "document" || ui.source !== "client-local") throw new Error("Expected local data Library.");
   const authorityRev = locus.rev;
   ui.at(["value"]).set(12);
   assert.equal(locus.rev, authorityRev);
@@ -125,12 +126,12 @@ await case_("restart reapplies deployment local definitions without persisting c
 
   const restored = await resume_locus_fixture(authority_definition_from_fixture_options({ ...options,
     map: hsonLiveMap.fromLibraries({ public: { data: { value: 0 } } }) }));
-  assert.throws(() => restored.lib("ui"), /Unknown/i);
+  assert.throws(() => restored.data.must("ui"), /Unknown/i);
   const freshSession = await restored.session.create({ libraries: ["public", "ui"] });
   const freshPair = socket_pair(); const detachFresh = bind_locus_websocket(restored, freshPair.server);
   const fresh = await hsonLiveMap.echo.create({ now: freshSession.now(), credential: freshSession.credential!, transport: test_echo_transport(freshPair.client) });
-  const freshUi = fresh.lib("ui");
-  if (freshUi.mode === "document") throw new Error("Expected local data Library.");
+  const freshUi = fresh.data.must("ui");
+  if (String(freshUi.mode) === "document") throw new Error("Expected local data Library.");
   assert.equal(freshUi.snap(["value"]), 0);
   fresh.dispose(); detachFresh(); restored.dispose();
 
@@ -164,7 +165,7 @@ await case_("presentation-equivalent checkpoint Schema restores with exact chunk
   });
   adapter.seed(id, { ...state, checkpoint: { ...manifest, chunks } });
   const restored = await host(adapter, id);
-  assert.equal(locus_map_internal(restored).lib("public").snap(["value"]), "public");
+  assert.equal(locus_map_internal(restored).data.must("public").snap(["value"]), "public");
   restored.dispose();
 });
 
@@ -186,7 +187,7 @@ await case_("checkpoint chunks exclude runtime QUID identity and restore fresh i
   const fresh = internal_livemap_aggregate_authority(locus_map_internal(restored));
   assert.notEqual(fresh.identityEpoch().owner, owner);
   assert.equal(fresh.resolveQuid(quid), undefined);
-  assert.equal(restored.lib("private").snap(["value"]), "private");
+  assert.equal(restored.data.must("private").snap(["value"]), "private");
   restored.dispose();
 });
 
@@ -209,18 +210,18 @@ await case_("two data and two document libraries retain system interactions and 
   const locus = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter });
   await locus.stage((draft) => {
     for (const [name, value] of [["dataA", "A1"], ["dataB", "B1"]] as const) {
-      const library = draft.lib(name);
-      if (library.mode === "document") throw new Error("Expected data Library.");
+      const library = draft.data.must(name);
+      if (String(library.mode) === "document") throw new Error("Expected data Library.");
       library.at(["value"]).set(value);
     }
-    const page = draft.lib("pageB");
+    const page = draft.doc.must("pageB");
     if (!("graph" in page)) throw new Error("Expected document Library.");
     page.graph({ domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0]) },
       index: 0, content: { $_tag: "_hson_elem", $_content: [{ $_tag: "item", $_content: [] }] } });
   });
   await locus.checkpoint();
   await locus.stage((draft) => {
-    const page = draft.lib("pageB");
+    const page = draft.doc.must("pageB");
     if (!("graph" in page)) throw new Error("Expected document Library.");
     page.graph({ domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([0, 0]) },
       index: 0, replacement: { $_tag: "item", $_attrs: { title: "continued" }, $_content: [] } });
@@ -232,11 +233,11 @@ await case_("two data and two document libraries retain system interactions and 
   assert.equal(restored.rev, 3);
   for (const [name, expected] of [["dataA", "A1"], ["dataB", "B1"]] as const) {
     const selectedName: string = name;
-    const library: { root: () => HsonNode } = restored.map.lib(selectedName);
+    const library: { root: () => HsonNode } = require_livemap_library_internal(restored.map, selectedName);
     assert.ok(JSON.stringify(library.root()).includes(expected));
   }
-  assert.equal(restored.map.lib("pageA").mode, "document");
-  assert.ok(JSON.stringify(restored.map.lib("pageB").root()).includes("continued"));
+  assert.equal(restored.map.doc.must("pageA").mode, "document");
+  assert.ok(JSON.stringify(restored.map.doc.must("pageB").root()).includes("continued"));
   const authority = internal_livemap_aggregate_authority(restored.map);
   const system = authority.systemState("@hson/canonical-interactions");
   assert.ok(system);
@@ -250,18 +251,18 @@ await case_("preactivation failures preserve old checkpoint and complete tail", 
     const adapter = new MemoryCheckpointAdapter();
     const locus = await host(adapter, id);
     const old = active(adapter, id).checkpointId;
-    await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
+    await locus.stage((draft) => { draft.data.must("private").at(["value"]).set("R1"); });
     if (phase === "chunk") adapter.failChunk = new Error("chunk failure");
     if (phase === "manifest") adapter.failManifest = new Error("manifest failure");
     if (phase === "activation") adapter.failActivation = "before";
     await assert.rejects(hsonLiveMap.locus.checkpoint(locus));
     assert.equal(active(adapter, id).checkpointId, old);
     assert.equal(adapter.state(id)?.commits.length, 1);
-    await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R2"); });
+    await locus.stage((draft) => { draft.data.must("private").at(["value"]).set("R2"); });
     locus.dispose();
     const restored = await host(adapter, id);
     assert.equal(restored.rev, 2);
-    assert.equal(restored.lib("private").snap(["value"]), "R2");
+    assert.equal(restored.data.must("private").snap(["value"]), "R2");
     restored.dispose();
   }
 });
@@ -270,7 +271,7 @@ await case_("uncertain activation reconciles; redundant covered tail survives a 
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-activation";
   const locus = await host(adapter, id);
-  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
+  await locus.stage((draft) => { draft.data.must("private").at(["value"]).set("R1"); });
   adapter.failActivation = "after";
   adapter.failPrune = new Error("crash before cleanup");
   await assert.rejects(hsonLiveMap.locus.checkpoint(locus));
@@ -279,7 +280,7 @@ await case_("uncertain activation reconciles; redundant covered tail survives a 
   locus.dispose();
   const restored = await host(adapter, id);
   assert.equal(restored.rev, 1);
-  assert.equal(restored.lib("private").snap(["value"]), "R1");
+  assert.equal(restored.data.must("private").snap(["value"]), "R1");
   restored.dispose();
 });
 
@@ -299,15 +300,15 @@ await case_("unreconcilable activation outcome closes the authority until reload
   const adapter = new UnreadableActivation();
   const id = "z3b-uncertain";
   const locus = await host(adapter, id);
-  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
+  await locus.stage((draft) => { draft.data.must("private").at(["value"]).set("R1"); });
   adapter.fail = true;
   await assert.rejects(hsonLiveMap.locus.checkpoint(locus), (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
       && error.code === "LOCUS_PERSISTENCE_CHECKPOINT_UNCERTAIN");
-  await assert.rejects(locus.stage((draft) => { draft.lib("private").at(["value"]).set("R2"); }), /disposed|closed/i);
+  await assert.rejects(locus.stage((draft) => { draft.data.must("private").at(["value"]).set("R2"); }), /disposed|closed/i);
   const restored = await host(adapter, id);
   assert.equal(restored.rev, 1);
-  assert.equal(restored.lib("private").snap(["value"]), "R1");
+  assert.equal(restored.data.must("private").snap(["value"]), "R1");
   restored.dispose();
 });
 
@@ -315,12 +316,12 @@ await case_("later commits remain in tail while checkpoint chunks are blocked", 
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-concurrent";
   const locus = await host(adapter, id);
-  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R1"); });
+  await locus.stage((draft) => { draft.data.must("private").at(["value"]).set("R1"); });
   const paused = adapter.deferChunk();
   const checkpoint = hsonLiveMap.locus.checkpoint(locus);
   await paused.entered;
-  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R2"); });
-  await locus.stage((draft) => { draft.lib("private").at(["value"]).set("R3"); });
+  await locus.stage((draft) => { draft.data.must("private").at(["value"]).set("R2"); });
+  await locus.stage((draft) => { draft.data.must("private").at(["value"]).set("R3"); });
   paused.release();
   await checkpoint;
   assert.equal(active(adapter, id).rev, 1);
@@ -328,7 +329,7 @@ await case_("later commits remain in tail while checkpoint chunks are blocked", 
   locus.dispose();
   const restored = await host(adapter, id);
   assert.equal(restored.rev, 3);
-  assert.equal(restored.lib("private").snap(["value"]), "R3");
+  assert.equal(restored.data.must("private").snap(["value"]), "R3");
   restored.dispose();
 });
 
@@ -385,11 +386,11 @@ await case_("durable graph tails reject malformed current tagged content without
   const locus = await resume_locus_fixture({ ...options, authorizeProjection: () => ({ libraries: ["page"] }) });
   await hsonLiveMap.locus.checkpoint(locus);
   await locus.stage(draft => {
-    const page = draft.lib("page");
+    const page = draft.doc.must("page");
     if (page.mode !== "document") throw new Error("Expected page.");
     page.content.insert({ kind: "path", path: validate_document_path([]) }, 1, { $_tag: "span", $_content: [] });
   });
-  const expected = locus.lib("page").root();
+  const expected = locus.doc.must("page").root();
   const valid = adapter.state(id)!;
   assert.equal(valid.commits.length, 1);
   locus.dispose();
@@ -408,7 +409,7 @@ await case_("durable graph tails reject malformed current tagged content without
   adapter.seed(id, valid);
   const recovered = await load_persistent_locus_hosted_aggregate_internal(id, { persistence: adapter });
   assert.ok(recovered);
-  assert.equal(canonical_hson_graph_equal(recovered.map.lib("page").root(), expected), true);
+  assert.equal(canonical_hson_graph_equal(recovered.map.doc.must("page").root(), expected), true);
 });
 
 await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and restore", async () => {
@@ -435,8 +436,8 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   const clientMap = client_projection_map({ authority: initialProjection, local: {} });
   const value = "x".repeat(4 * 1024 * 1024 + 512 * 1024);
   for (const name of names) await locus.stage((draft) => {
-    const library = draft.lib(name);
-    if (library.mode === "document") throw new Error("Expected data Library.");
+    const library = draft.data.must(name);
+    if (String(library.mode) === "document") throw new Error("Expected data Library.");
     library.at(["value"]).set(value);
   });
   assert.ok(names.length * value.length > 64 * 1024 * 1024);
@@ -453,11 +454,11 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   assert.equal(restored.rev, count);
   assert.notEqual(locus_map_internal(restored), restoredMap);
   for (const name of names) {
-    const library = restored.lib(name);
+    const library = restored.data.must(name);
     if (!("snap" in library)) throw new Error("Expected data Library.");
     assert.equal(library.snap(["value"]), value);
   }
-  const publicLibrary = restored.lib("public");
+  const publicLibrary = restored.data.must("public");
   if (!("snap" in publicLibrary)) throw new Error("Expected public data Library.");
   assert.equal(publicLibrary.snap(["value"]), "tiny");
   const pair = socket_pair();

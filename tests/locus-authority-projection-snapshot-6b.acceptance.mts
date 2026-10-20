@@ -93,10 +93,10 @@ const client = client_projection_map({ authority: decoded, local: {
   localDoc: { document: "<aside/>", schema: LocalDocSchema },
 } });
 assert.equal(client.rev, 0);
-assert.equal(client.lib("allowedData").mode, "data-object");
-assert.equal(client.lib("allowedPage").mode, "document");
-assert.equal(client.lib("localData").mode, "data-object");
-assert.equal(client.lib("localDoc").mode, "document");
+assert.equal(client.data.must("allowedData").mode, "data-object");
+assert.equal(client.doc.must("allowedPage").mode, "document");
+assert.equal(client.data.must("localData").mode, "data-object");
+assert.equal(client.doc.must("localDoc").mode, "document");
 const clientCaptureText = JSON.stringify(client.capture());
 assert.ok(clientCaptureText.includes("ALLOWED_INTERACTION_SENTINEL"));
 assert.equal(clientCaptureText.includes("PRIVATE_INTERACTION_SENTINEL"), false);
@@ -134,17 +134,17 @@ assert.equal(encode_authority_projection_snapshot(zeroSnapshot).includes("ALLOWE
 const localOnly = client_projection_map({ authority: zeroSnapshot,
   local: { localData: { data: { value: "only" }, schema: DataSchema } } });
 assert.equal(localOnly.rev, 0);
-assert.equal(localOnly.lib("localData").mode, "data-object");
+assert.equal(localOnly.data.must("localData").mode, "data-object");
 const localDocumentOnly = client_projection_map({ authority: zeroSnapshot,
   local: { localDoc: { document: "<aside/>", schema: LocalDocSchema } } });
-assert.equal(localDocumentOnly.lib("localDoc").mode, "document");
+assert.equal(localDocumentOnly.doc.must("localDoc").mode, "document");
 assert.throws(() => client_projection_map({ authority: zeroSnapshot, local: {} }), /no LiveMap/i);
 const zeroDisabled = project_authority_snapshot(complete, await normalize_locus_effective_projection(policy, { libraries: [] }));
 assert.equal(zeroDisabled.system, null);
 const localOnlyWithoutSystem = client_projection_map({ authority: zeroDisabled,
   local: { localData: { data: { value: "only" }, schema: DataSchema } } });
 assert.equal(localOnlyWithoutSystem.rev, 0);
-assert.equal(localOnlyWithoutSystem.lib("localData").mode, "data-object");
+assert.equal(localOnlyWithoutSystem.data.must("localData").mode, "data-object");
 assert.throws(() => client_projection_map({ authority: zeroDisabled, local: {} }), /no LiveMap/i);
 
 const malformed = { ...decoded, libraries: [...decoded.libraries, decoded.libraries[0]] };
@@ -163,7 +163,7 @@ assert.throws(() => admit_authority_projection_snapshot({ ...decoded,
 }), /malformed/i);
 
 // The capture is one revision even when authority advances after the cut.
-map.lib("allowedData").at(["value"]).set("after-capture");
+map.data.must("allowedData").at(["value"]).set("after-capture");
 const older = project_authority_snapshot(complete, effective);
 assert.equal(older.revision, complete.revision);
 assert.equal(encode_authority_projection_snapshot(older).includes("after-capture"), false);

@@ -35,12 +35,12 @@ check("document mutation publishes one named map commit", () => {
   const map = exact("<main @000000001/>");
   const seen: unknown[] = [];
   map.commits.observe((commit) => seen.push(commit));
-  const commit = map.lib("page").document.attrs.set(rootTarget, "id", "main");
+  const commit = map.doc.must("page").document.attrs.set(rootTarget, "id", "main");
   assert.deepEqual(seen, [commit]);
   assert.equal(commit.operations[0]?.library, "page");
   assert.equal(commit.operations[0]?.operation.op, "set-attr");
   assert.deepEqual([commit.prevRev, commit.rev], [0, 1]);
-  map.lib("page").document.attrs.set(rootTarget, "id", "main");
+  map.doc.must("page").document.attrs.set(rootTarget, "id", "main");
   assert.equal(seen.length, 1);
 });
 check("document mutation failures publish nothing", () => {
@@ -48,7 +48,7 @@ check("document mutation failures publish nothing", () => {
   const seen: unknown[] = [];
   map.commits.observe((commit) => seen.push(commit));
   const before = map.capture();
-  assert.throws(() => map.lib("page").document.attrs.set(rootTarget, "bad name", "x"));
+  assert.throws(() => map.doc.must("page").document.attrs.set(rootTarget, "bad name", "x"));
   assert.deepEqual(map.capture(), before);
   assert.deepEqual(seen, []);
 });
@@ -56,20 +56,20 @@ check("data feed and registry commit observation see one change", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Data } });
   const feeds: unknown[] = [];
   const commits: unknown[] = [];
-  map.lib("state").at(["value"]).feed((event) => feeds.push(event));
+  map.data.must("state").at(["value"]).feed((event) => feeds.push(event));
   map.commits.observe((commit) => commits.push(commit));
-  const commit = map.lib("state").at(["value"]).set(2);
+  const commit = map.data.must("state").at(["value"]).set(2);
   assert.equal(feeds.length, 1);
   assert.deepEqual(commits, [commit]);
   assert.equal(commit.operations[0]?.library, "state");
 });
 check("registry restore swaps state and exact revision", () => {
   const source = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Data } });
-  source.lib("state").at(["value"]).set(2);
-  source.lib("state").at(["value"]).set(3);
+  source.data.must("state").at(["value"]).set(2);
+  source.data.must("state").at(["value"]).set(3);
   const target = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: Data } });
   target.restore(source.capture());
-  assert.deepEqual(target.lib("state").snap(), { value: 3 });
+  assert.deepEqual(target.data.must("state").snap(), { value: 3 });
   assert.equal(target.rev, 2);
   const before = target.capture();
   assert.throws(() => target.restore({ ...before, format: "wrong" } as never));
@@ -78,12 +78,12 @@ check("registry restore swaps state and exact revision", () => {
 check("document restore installs a coherent later state", () => {
   const source = exact('<main @000000002 <p @000000003 "old"/>/>', Paragraph);
   const target = exact('<main @000000002 <p @000000003 "old"/>/>', Paragraph);
-  source.lib("page").document.attrs.set(rootTarget, "class", "ready");
-  source.lib("page").document.attrs.set(rootTarget, "title", "new");
+  source.doc.must("page").document.attrs.set(rootTarget, "class", "ready");
+  source.doc.must("page").document.attrs.set(rootTarget, "title", "new");
   target.restore(source.capture());
   assert.deepEqual(target.capture(), source.capture());
   assert.equal(target.rev, 2);
-  assert.equal(target.lib("page").document.byQuid("000000003"), undefined);
+  assert.equal(target.doc.must("page").document.byQuid("000000003"), undefined);
 });
 check("capture and restore preserve an empty graph owner and later first insertion", () => {
   const schema = Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`;
@@ -91,20 +91,20 @@ check("capture and restore preserve an empty graph owner and later first inserti
   const source = hsonLiveMap.fromLibraries({ page: { document: empty, schema } });
   const target = hsonLiveMap.fromLibraries({ page: { document: "<item/>", schema } });
   target.restore(source.capture());
-  assert.deepEqual(target.lib("page").root(), empty);
+  assert.deepEqual(target.doc.must("page").root(), empty);
   assert.deepEqual(target.capture(), source.capture());
-  assert.equal(target.lib("page").at([0]).snap(), undefined);
-  source.lib("page").at([]).asRoot()!.insert(0, { $_tag: "item", $_content: [] });
+  assert.equal(target.doc.must("page").at([0]).snap(), undefined);
+  source.doc.must("page").at([]).asRoot()!.insert(0, { $_tag: "item", $_content: [] });
   target.restore(source.capture());
   assert.deepEqual(target.capture(), source.capture());
-  assert.equal((target.lib("page").root().$_content[0] as { $_tag: string }).$_tag, "item");
+  assert.equal((target.doc.must("page").root().$_content[0] as { $_tag: string }).$_tag, "item");
 });
 
 check("replace attrs planning detaches caller input without changing state", () => {
   const map = exact('<main id="before" @00000001f/>');
   const attrs = { id: "after", style: { color: "red" } };
   const before = map.capture();
-  const prepared = prepare_document_graph_operation(map.lib("page").root(), "document", {
+  const prepared = prepare_document_graph_operation(map.doc.must("page").root(), "document", {
     domain: "graph", op: "replace-attrs", target: rootTarget, attrs,
   });
   assert.deepEqual(map.capture(), before);
@@ -116,7 +116,7 @@ check("replace attrs planning detaches caller input without changing state", () 
 });
 check("bulk attrs methods produce one named replace operation", () => {
   const map = ordinary('<main id="old" title="kept"/>');
-  const attrs = map.lib("page").document.attrs;
+  const attrs = map.doc.must("page").document.attrs;
   const commits = [
     attrs.setMany(rootTarget, { id: "new", hidden: false }),
     attrs.dropMany(rootTarget, ["hidden"]),
@@ -137,7 +137,7 @@ check("invalid attribute bags reject atomically", () => {
   for (const value of invalid) {
     const map = ordinary('<main id="kept"/>');
     const before = map.capture();
-    assert.throws(() => map.lib("page").document.attrs.replace(rootTarget, value as never));
+    assert.throws(() => map.doc.must("page").document.attrs.replace(rootTarget, value as never));
     assert.deepEqual(map.capture(), before);
   }
 });
@@ -145,7 +145,7 @@ check("invalid document targets reject without advancing revision", () => {
   for (const path of [[0, 0], [9]]) {
     const map = ordinary();
     const before = map.capture();
-    assert.throws(() => map.lib("page").document.attrs.set({ kind: "path", path }, "id", "x"));
+    assert.throws(() => map.doc.must("page").document.attrs.set({ kind: "path", path }, "id", "x"));
     assert.deepEqual(map.capture(), before);
   }
 });
@@ -153,7 +153,7 @@ check("capture and restore omit runtime QUID claims", () => {
   const source = exact('<main @000000020/>');
   const target = ordinary();
   target.restore(source.capture());
-  assert.equal(target.lib("page").document.byQuid("000000020"), undefined);
+  assert.equal(target.doc.must("page").document.byQuid("000000020"), undefined);
   assert.equal(JSON.stringify(target.capture()).includes("000000020"), false);
 });
 process.stdout.write(`# ${checks} registry document observation checks passed\n`);

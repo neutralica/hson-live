@@ -111,9 +111,9 @@ check("registry construction stays canonical and DOM-free", () => {
   }
   const trusted = hsonLiveMap.fromLibraries({ page: { document: hsonTransform.fromTrustedHtml("<main>ready</main>").toNode(), schema: MainText } });
   const untrusted = hsonLiveMap.fromLibraries({ page: { document: hsonTransform.fromUntrustedHtml("<main onclick='unsafe()'>ready</main>").toNode(), schema: MainText } });
-  assert.equal(trusted.lib("page").mode, "document");
-  assert.equal(untrusted.lib("page").mode, "document");
-  assert.equal(find_nodes(untrusted.lib("page").root(), "main")[0]?.$_attrs?.onclick, undefined);
+  assert.equal(trusted.doc.must("page").mode, "document");
+  assert.equal(untrusted.doc.must("page").mode, "document");
+  assert.equal(find_nodes(untrusted.doc.must("page").root(), "main")[0]?.$_attrs?.onclick, undefined);
 });
 
 check("one-library registries classify data and document roots", () => {
@@ -121,13 +121,13 @@ check("one-library registries classify data and document roots", () => {
   const array = hsonLiveMap.fromLibraries({ state: { data: [1, 2], schema: NumberArray } });
   const document = hsonLiveMap.fromLibraries({ page: { document: '<main "text"/>', schema: MainText } });
   const empty = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } });
-  assert.deepEqual([object.lib("state").mode, array.lib("state").mode, document.lib("page").mode, empty.lib("page").mode], ["data-object", "data-array", "document", "document"]);
-  assert.deepEqual(empty.lib("page").root(), { $_tag: "_hson_root", $_content: [] });
+  assert.deepEqual([object.data.must("state").mode, array.data.must("state").mode, document.doc.must("page").mode, empty.doc.must("page").mode], ["data-object", "data-array", "document", "document"]);
+  assert.deepEqual(empty.doc.must("page").root(), { $_tag: "_hson_root", $_content: [] });
 });
 
 check("empty document and quoted empty text remain distinct", () => {
-  const empty = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } }).lib("page");
-  const quoted = hsonLiveMap.fromLibraries({ page: { document: '""', schema: TextDocument } }).lib("page");
+  const empty = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } }).doc.must("page");
+  const quoted = hsonLiveMap.fromLibraries({ page: { document: '""', schema: TextDocument } }).doc.must("page");
   assert.equal(quoted.root().$_content.length, 1);
   assert.notDeepEqual(quoted.root(), empty.root());
 });
@@ -137,7 +137,7 @@ check("empty runtime document reads stay graph-native and source admission rejec
     assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source, schema: EmptyDocument } }), /has no semantic value/);
   }
   const map = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } });
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   assert.ok(page.at([]).asRoot());
   assert.equal(page.at([0]).snap(), undefined);
   assert.deepEqual(page.document.content(), []);
@@ -155,7 +155,7 @@ check("malformed canonical roots and generated QUID claims reject at admission",
 check("document input and detached reads do not share graph ownership", () => {
   const source = parse_hson_exact_runtime('<main id="original" <p "x"/>/>', { allowTopLevelDocumentText: true });
   const map = admit_exact_runtime_livemap_libraries({ page: { document: source, schema: MainP } });
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   const baseline = page.root();
   assert.notEqual(source, baseline);
   const detached = page.root();
@@ -173,15 +173,15 @@ check("ordinary data input is detached and selected library reads remain exact",
   const input = { value: 1 };
   const map = hsonLiveMap.fromLibraries({ state: { data: input, schema: NumberData } });
   input.value = 2;
-  assert.deepEqual(map.lib("state").snap(), { value: 1 });
-  assert.equal(map.lib("state").at(["value"]).snap(), 1);
+  assert.deepEqual(map.data.must("state").snap(), { value: 1 });
+  assert.equal(map.data.must("state").at(["value"]).snap(), 1);
   assert.equal(map.rev, 0);
 });
 
 check("local QUID identity is sparse and portable capture omits it", () => {
   const source = parse_hson_exact_runtime('<main @000000001 <p "one"/> <p @000000005 "two"/>/>', { allowTopLevelDocumentText: true });
   const map = admit_exact_runtime_livemap_libraries({ page: { document: source, schema: MainTwoP } });
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   const root = page.root();
   assert.equal(find_nodes(root, "main")[0]?.$_meta?.quid, "000000001");
   assert.equal(find_nodes(root, "p")[0]?.$_meta?.quid, undefined);
@@ -199,7 +199,7 @@ check("duplicate and malformed document QUIDs reject before registry constructio
 
 check("selected document library has document operations and no data writes", () => {
   const map = hsonLiveMap.fromLibraries({ page: { document: '<main "Save"/>', schema: MainText } });
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   assert.equal(page.schema.get(), MainText);
   assert.equal("set" in page, false);
   assert.equal("replay" in page, false);
@@ -211,10 +211,10 @@ check("selected document library has document operations and no data writes", ()
 
 check("first data and document writes advance one map revision", () => {
   const data = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberData } });
-  const dataCommit = data.lib("state").at(["value"]).set(2);
+  const dataCommit = data.data.must("state").at(["value"]).set(2);
   assert.deepEqual([dataCommit.prevRev, dataCommit.rev, data.rev], [0, 1, 1]);
   const document = hsonLiveMap.fromLibraries({ page: { document: '<main "new"/>', schema: MainText } });
-  const documentCommit = document.lib("page").document.attrs.set({ kind: "path", path: [0] }, "id", "main");
+  const documentCommit = document.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "id", "main");
   assert.deepEqual([documentCommit.prevRev, documentCommit.rev, document.rev], [0, 1, 1]);
 });
 

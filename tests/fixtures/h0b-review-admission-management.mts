@@ -38,7 +38,7 @@ export function review_admission_management() {
     // Both iterations must reject the obsolete grant. Independently accepted
     // replacement work must remain visible at revision 1.
     if (replacementWork) {
-      const inner = map.lib('inner'); assert.ok('snap' in inner); assert.equal(inner.snap(), 7);
+      const inner = map.data.must('inner'); assert.ok('snap' in inner); assert.equal(inner.snap(), 7);
     }
     results.push(rejected && map.rev === (replacementWork ? 1 : 0));
   }

@@ -63,7 +63,7 @@ export function lazy_css_cases(check: (name: string, run: () => void) => void): 
 
   check("plain Mirror global routing stays runtime-owned with no source identity demand", () => {
     const map: LiveMap = hsonLiveMap.fromLibraries({ page: { document: '<main <span/>/>' } });
-    const page = map.lib('page');
+    const page = map.doc.must('page');
     if (page.mode !== 'document') throw Error('Expected document Library');
     const mirror = hsonMirror(page);
     const tree = mirror.tree.find.must.byTag('span');
@@ -145,7 +145,7 @@ export function lazy_css_cases(check: (name: string, run: () => void) => void): 
   check("Mirror binding disposal preserves uncached rejection and active cached runtime ownership", () => {
     for (const cached of [false, true]) {
       const map: LiveMap = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
-      const page = map.lib('page');
+      const page = map.doc.must('page');
       if (page.mode !== 'document') throw Error('Expected document Library');
       const mirror = hsonMirror(page), tree = mirror.tree.find.must.byTag('main');
       const global = cached ? tree.css.global : undefined;
@@ -167,7 +167,7 @@ export function lazy_css_cases(check: (name: string, run: () => void) => void): 
 
   check("cached no-QUID aliases retain operation-time stale-subject guards", () => {
     const map: LiveMap = hsonLiveMap.fromLibraries({ page: { document: '<main <span/>/>' } });
-    const page = map.lib('page');
+    const page = map.doc.must('page');
     if (page.mode !== 'document') throw Error('Expected document Library');
     const mirror = hsonMirror(page);
     const tree = mirror.tree.find.must.byTag('span');

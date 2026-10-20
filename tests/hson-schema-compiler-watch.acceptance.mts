@@ -66,7 +66,7 @@ await check("cross-file producer records cannot publish proof and invalidation w
   const invalid = producer.replace("// ok", "// \\8");
   const badPath = join(directory, "bad.ts"), consumerPath = join(directory, "consumer.ts");
   writeFileSync(join(directory, "good.ts"), producer); writeFileSync(badPath, invalid);
-  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { S } from "./bad.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.lib("state").schema.use(S);\r\nexport const name: string = map.lib("state").at(["name"]).snap();\r\n';
+  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { S } from "./bad.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.data.must("state").schema.use(S);\r\nexport const name: string = map.data.must("state").at(["name"]).snap();\r\n';
   writeFileSync(consumerPath, consumer);
   const states: string[] = [];
   let fabricate = true;
@@ -113,7 +113,7 @@ await check("cross-file producer records cannot publish proof and invalidation w
     check_schema_project(config, corrected, false); check_schema_project(config, corrected, true);
     assert.match(readFileSync(join(directory, "out/consumer.d.ts"), "utf8"), /name: string/);
     rmSync(join(directory, "out"), { recursive: true });
-    writeFileSync(consumerPath, consumer + 'const wrong: number = map.lib("state").at(["name"]).snap();\r\n'); await watch.poll();
+    writeFileSync(consumerPath, consumer + 'const wrong: number = map.data.must("state").at(["name"]).snap();\r\n'); await watch.poll();
     assert.throws(() => check_schema_project(config, verify_schema_compiler_project(config), false), /Type 'string' is not assignable to type 'number'/);
     writeFileSync(consumerPath, consumer); await watch.poll();
     const priorManifest = readFileSync(manifestPath), priorStates = states.length;

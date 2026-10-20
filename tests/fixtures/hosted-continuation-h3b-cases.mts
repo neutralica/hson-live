@@ -45,10 +45,10 @@ export async function hosted_h3b_cases(check: (name: string, run: () => Promise<
       const options = { now, credential: session.credential!, root: root as unknown as Element, transport };
       try {
         await locus.stage(w => {
-          w.lib("page").at([0]).asElement().attrs.set("title", "recovered");
-          w.lib("page").at([0,0,0]).replace("Changed");
-          w.lib("page").at([1]).delete();
-          w.lib("page").at([]).asElement().insert(1, node('<hson-part lib="parts" at="item"/>'));
+          w.doc.must("page").at([0]).asElement().attrs.set("title", "recovered");
+          w.doc.must("page").at([0,0,0]).replace("Changed");
+          w.doc.must("page").at([1]).delete();
+          w.doc.must("page").at([]).asElement().insert(1, node('<hson-part lib="parts" at="item"/>'));
         });
         set_hosted_startup_fault_hook_for_tests((point, echo) => {
           if (point === "recovered") {

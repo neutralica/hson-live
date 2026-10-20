@@ -197,7 +197,7 @@ check("LiveMap exposes only detached canonical root copies", () => {
     { allowTopLevelDocumentText: true },
   );
   const map = admit_exact_runtime_livemap_libraries({ page: { document: node, schema: Hson.schema`<type "document" tag "button" attrs <props <id "string" data-user "string">> content "string">` } });
-  const page = map.lib("page");
+  const page = map.doc.must("page");
 
   assert.equal("node" in map, false);
   assert.equal("debug" in map, false);
@@ -223,7 +223,7 @@ check("LiveMap exposes only detached canonical root copies", () => {
 
 check("detached public observations cannot mutate canonical ownership", () => {
   const map = hson.liveMap.fromLibraries({ state: { data: { a: { b: 1 } }, schema: Hson.schema`<type "data" content <a <content <b "number">>>>` } });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const baseline = state.snap();
   const beforeRev = map.rev;
   const root = state.root();
@@ -238,7 +238,7 @@ check("detached public observations cannot mutate canonical ownership", () => {
 
 check("document operations stay on the named library while restore stays on the registry", () => {
   const map = admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime(`<main @000000003/>`, { allowTopLevelDocumentText: true }), schema: Hson.schema`<type "document" tag "main" content "empty">` } });
-  const page = map.lib("page");
+  const page = map.doc.must("page");
   assert.equal(page.mode, "document");
   assert.equal(typeof map.restore, "function");
   assert.equal("install" in page, false);
@@ -249,7 +249,7 @@ check("document operations stay on the named library while restore stays on the 
   assert.equal(Object.isFrozen(page.document.attrs.must), true);
   assert.equal(typeof page.document.content.insert, "function");
   assert.equal(typeof page.document.content.move, "function");
-  const data = hson.liveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } }).lib("state");
+  const data = hson.liveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } }).data.must("state");
   assert.equal("attrs" in data.at([]), false);
 });
 

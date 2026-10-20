@@ -25,7 +25,7 @@ async function topology_fixture() {
       { name: 'live', definition: { document: '<main <hson-part lib="parts" at="bare"/>/>' } }],
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ['flat', 'page', 'live'] }),
   });
-  await locus.stage(w => w.lib('page').at([1,0]).delete());
+  await locus.stage(w => w.doc.must('page').at([1,0]).delete());
   const session = await locus.session.create({ libraries: ['page','flat','live'] });
   return { locus, session, cut: session.now({ html: 'page' }) };
 }
@@ -34,7 +34,7 @@ async function flat_fixture(rollback = false) {
   const fixture = await hosted_flat_subject_fixture('<button @:a id="hosted-a" "Styled"/> <button @:b id="hosted-b" "Styled"/> <em id="hosted-disposable" "Disposable"/>' + (rollback ? parents : ''));
   const aggregate = owner(locus_map_internal(fixture.locus)), identity = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(e => e.name === 'page')];
   aggregate.acquireLocalDocumentIdentity(identity, validate_document_path([0,0,1,0,2]), '123456789');
-  await fixture.locus.stage(w => w.lib('page').css.sel('[hson\\:quid="123456789"]').setProp('color','rgb(90,80,70)'));
+  await fixture.locus.stage(w => w.doc.must('page').css.sel('[hson\\:quid="123456789"]').setProp('color','rgb(90,80,70)'));
   return { ...fixture, cut: fixture.session.now({ html: 'page' }) };
 }
 const fixtures = [await receiving_handoff_fixture(), await flat_fixture(), await receiving_handoff_fixture(), await topology_fixture(), await flat_fixture(true)];
@@ -105,23 +105,23 @@ try {
       await evaluate(bundle.outputFiles[0].text);
       const map = locus_map_internal(page.locus), aggregate = owner(map), identity = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(e => e.name === 'page')];
       aggregate.acquireLocalDocumentIdentity(identity, validate_document_path([0,0,1,0,5]), '444444444');
-      await page.locus.stage(w => w.lib('page').at([1,0]).asElement().attrs.set('title', 'earlier-recovery'));
+      await page.locus.stage(w => w.doc.must('page').at([1,0]).asElement().attrs.set('title', 'earlier-recovery'));
       await page.locus.stage(w => {
-        w.lib('page').at([1,0]).asElement().attrs.set('title', 'replayed');
-        w.lib('page').at([1,0]).asElement().flags.set('disabled');
-        w.lib('page').at([1,0,0]).replace('Recovered text');
-        w.lib('page').at([1,2]).delete();
-        w.lib('page').at([1]).asElement().insert(2,node('<p id="recovery-insert" "Inserted during recovery"/>'));
-        w.lib('page').css.stylesheet('[hson\\:quid="444444444"]{color:rgb(77,88,99)}');
+        w.doc.must('page').at([1,0]).asElement().attrs.set('title', 'replayed');
+        w.doc.must('page').at([1,0]).asElement().flags.set('disabled');
+        w.doc.must('page').at([1,0,0]).replace('Recovered text');
+        w.doc.must('page').at([1,2]).delete();
+        w.doc.must('page').at([1]).asElement().insert(2,node('<p id="recovery-insert" "Inserted during recovery"/>'));
+        w.doc.must('page').css.stylesheet('[hson\\:quid="444444444"]{color:rgb(77,88,99)}');
       });
       await page.locus.stage(w => {
         for (const [index, id] of [[3, 'p'], [4, 'q']]) {
-          for (let child = 2; child >= 0; child--) w.lib('page').at([1,index,child]).delete();
-          for (let child = 0; child < 3; child++) w.lib('page').at([1,index]).asElement().insert(child,
+          for (let child = 2; child >= 0; child--) w.doc.must('page').at([1,index,child]).delete();
+          for (let child = 0; child < 3; child++) w.doc.must('page').at([1,index]).asElement().insert(child,
             node(`<span id="recovery-${id}-${child}" "New child"/>`));
         }
-        w.lib('page').at([1]).asElement().insert(3, node('<p id="recovery-extra-one" "Extra one"/>'));
-        w.lib('page').at([1]).asElement().insert(4, node('<p id="recovery-extra-two" "Extra two"/>'));
+        w.doc.must('page').at([1]).asElement().insert(3, node('<p id="recovery-extra-one" "Extra one"/>'));
+        w.doc.must('page').at([1]).asElement().insert(4, node('<p id="recovery-extra-two" "Extra two"/>'));
       });
       const revision = page.locus.rev;
       console.log(await evaluate(`hostedFailures(${JSON.stringify({ session: page.sessions[0], endpoint: base + page.endpoint, url: base + page.path, recovered: true, flat: true, nativeFaults: true, revision })})`));
@@ -138,7 +138,7 @@ try {
           url: base + page.path + '?document=' + document, document }];
         console.log(await evaluate(`hostedTopologies(${JSON.stringify({ variants, endpoint: base + page.endpoint })})`));
       }
-      assert.match(page.locus.lib('flat').render(), /title="browser"/);
+      assert.match(page.locus.doc.must('flat').render(), /title="browser"/);
       continue;
     }
     await command('Emulation.setScriptExecutionDisabled', { value: true });
@@ -164,12 +164,12 @@ try {
       const args = { session: page.sessions[0], endpoint: base + page.endpoint, url: base + page.path };
       console.log(await evaluate(`hostedFailures(${JSON.stringify(args)})`));
       await page.locus.stage(w => {
-        w.lib('page').at([1,0]).asElement().attrs.set('title', 'replayed');
-        w.lib('page').at([1,0,0]).asElement().flags.set('disabled');
-        w.lib('page').at([1,0,0,0,0]).replace('Recovered text');
-        w.lib('page').at([1,1]).delete();
-        w.lib('page').at([1]).asElement().insert(1,node('<p id="recovery-insert" "Inserted during recovery"/>'));
-        w.lib('page').css.sel('#left').setProp('color', 'rgb(77,88,99)');
+        w.doc.must('page').at([1,0]).asElement().attrs.set('title', 'replayed');
+        w.doc.must('page').at([1,0,0]).asElement().flags.set('disabled');
+        w.doc.must('page').at([1,0,0,0,0]).replace('Recovered text');
+        w.doc.must('page').at([1,1]).delete();
+        w.doc.must('page').at([1]).asElement().insert(1,node('<p id="recovery-insert" "Inserted during recovery"/>'));
+        w.doc.must('page').css.sel('#left').setProp('color', 'rgb(77,88,99)');
       });
       console.log(await evaluate(`hostedFailures(${JSON.stringify({ ...args, recovered: true })})`));
       continue;
@@ -181,16 +181,16 @@ try {
       await evaluate(`hostedCheckLive(${JSON.stringify(phase)})`);
     };
     await changed('attrs', () => page.locus.stage(w => {
-      w.lib('page').at([1,0]).asElement().attrs.set('title','authoritative');
-      w.lib('page').at(i !== 1 ? [1,0,0] : [1,0]).asElement().flags.set('disabled');
+      w.doc.must('page').at([1,0]).asElement().attrs.set('title','authoritative');
+      w.doc.must('page').at(i !== 1 ? [1,0,0] : [1,0]).asElement().flags.set('disabled');
     }));
     let flatDemand = false;
-    const subject = lookup_document_quad_internal(locus_map_internal(page.locus).lib('page'), i !== 1 ? 'left' : 'a');
+    const subject = lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), i !== 1 ? 'left' : 'a');
     await changed('content', () => page.locus.stage(w => {
-      w.lib('page').at(i !== 1 ? [1,0,0,0,0] : [1,0,0]).replace('Changed');
-      w.lib('page').at([1]).asElement().insert(2, node('<p id="inserted" "Inserted"/>'));
-      if (i === 1) w.lib('page').css.stylesheet(`[hson\\:quid="${subject.quid}"]{color:rgb(21,43,65)}[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).lib('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="123456789"]{color:rgb(90,80,70)}${flatDemand ? '[hson\\:quid="222222222"]{color:rgb(22,44,66)}' : ''}`);
-      else w.lib('page').css.sel(`[hson\\:quid="${subject.quid}"]`).setProp('color','rgb(21,43,65)');
+      w.doc.must('page').at(i !== 1 ? [1,0,0,0,0] : [1,0,0]).replace('Changed');
+      w.doc.must('page').at([1]).asElement().insert(2, node('<p id="inserted" "Inserted"/>'));
+      if (i === 1) w.doc.must('page').css.stylesheet(`[hson\\:quid="${subject.quid}"]{color:rgb(21,43,65)}[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="123456789"]{color:rgb(90,80,70)}${flatDemand ? '[hson\\:quid="222222222"]{color:rgb(22,44,66)}' : ''}`);
+      else w.doc.must('page').css.sel(`[hson\\:quid="${subject.quid}"]`).setProp('color','rgb(21,43,65)');
     }));
     if (i === 1) {
       const aggregate = owner(locus_map_internal(page.locus));
@@ -198,28 +198,28 @@ try {
       aggregate.acquireLocalDocumentIdentity(aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(e => e.name === 'page')], validate_document_path([0,0,1,0,2]), '222222222');
       assert.equal(page.locus.rev, before);
       flatDemand = true;
-      await changed('demand', () => page.locus.stage(w => w.lib('page').css.sel('[hson\\:quid="222222222"]').setProp('color','rgb(22,44,66)')));
+      await changed('demand', () => page.locus.stage(w => w.doc.must('page').css.sel('[hson\\:quid="222222222"]').setProp('color','rgb(22,44,66)')));
     }
-    await changed('move', () => page.locus.stage(w => w.lib('page').at([1]).asElement().move(0,1)));
+    await changed('move', () => page.locus.stage(w => w.doc.must('page').at([1]).asElement().move(0,1)));
     await changed('remove', () => page.locus.stage(w => {
-      if (i === 1) w.lib('page').css.stylesheet(`[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).lib('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="123456789"]{color:rgb(90,80,70)}${flatDemand ? '[hson\\:quid="222222222"]{color:rgb(22,44,66)}' : ''}`);
-      else w.lib('page').css.sel(`[hson\\:quid="${subject.quid}"]`).drop();
-      w.lib('page').at([1,1]).delete();
+      if (i === 1) w.doc.must('page').css.stylesheet(`[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="123456789"]{color:rgb(90,80,70)}${flatDemand ? '[hson\\:quid="222222222"]{color:rgb(22,44,66)}' : ''}`);
+      else w.doc.must('page').css.sel(`[hson\\:quid="${subject.quid}"]`).drop();
+      w.doc.must('page').at([1,1]).delete();
     }));
-    await changed('replace', () => page.locus.stage(w => w.lib('page').at([1]).asElement().insert(1,
+    await changed('replace', () => page.locus.stage(w => w.doc.must('page').at([1]).asElement().insert(1,
       node(i !== 1 ? '<hson-part lib="parts" at="panel" id="replacement"/>' : '<button id="replacement" "New"/>'))));
     if (i === 1) {
       await changed('graph-first-cleanup', () => page.locus.stage(w => {
-        w.lib('page').at([1,3]).delete();
-        w.lib('page').css.stylesheet(`[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).lib('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="222222222"]{color:rgb(22,44,66)}`);
+        w.doc.must('page').at([1,3]).delete();
+        w.doc.must('page').css.stylesheet(`[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="222222222"]{color:rgb(22,44,66)}`);
       }));
       await evaluate('hostedArmRejection()');
-      await page.locus.stage(w => w.lib('page').at([1,0]).asElement().attrs.set('data-rejected', 'accepted-authority'));
+      await page.locus.stage(w => w.doc.must('page').at([1,0]).asElement().attrs.set('data-rejected', 'accepted-authority'));
       await evaluate('hostedRejected()');
       console.log('Chrome rejected correspondence preserved DOM/CSS and ledger');
     }
     await evaluate('hostedPause()');
-    await page.locus.stage(w => w.lib('page').at([1,0]).asElement().attrs.set('title', 'missed'));
+    await page.locus.stage(w => w.doc.must('page').at([1,0]).asElement().attrs.set('title', 'missed'));
     await evaluate(`hostedResume(${page.locus.rev})`);
     console.log("Chrome replay/reconciliation passed");
     await page.owners[0].update({ libraries: [] });

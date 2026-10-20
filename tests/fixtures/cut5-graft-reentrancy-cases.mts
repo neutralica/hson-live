@@ -37,7 +37,7 @@ function mutationFamilyCase(kind: typeof mutationKinds[number], native: boolean)
   const target = host.find.must.byTag('main'), independent = host.find.must.byTag('nav'), alias = new LiveTree(target);
   const existing = target.find.must.byTag('p'), inner = new LiveTree(node('aside')), other = new LiveTree(node('footer'));
   const source = new LiveTree(node('section', node('_hson_elem', node('b')))), cap = source.detachContents();
-  const bindingSource = hsonLiveMap.fromLibraries({state: {data: {value: 1}, schema: Hson.schema`<type "data" content <value "number">>`}}).lib('state').at(['value']);
+  const bindingSource = hsonLiveMap.fromLibraries({state: {data: {value: 1}, schema: Hson.schema`<type "data" content <value "number">>`}}).data.must('state').at(['value']);
   const factory = target.create, cachedAttrs = alias.attrs, cachedText = alias.text, cachedStyle = alias.style, cachedCss = alias.css;
   const runtime = runtime_for_tree(target), receiverNode = subject_for_tree(target), root = subject_for_tree(inner);
   const oldContent = receiverNode.$_content, oldDom = [...target.dom.el()!.childNodes];

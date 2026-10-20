@@ -11,7 +11,7 @@ for (const [id, manifest] of input.manifests) adapter.manifests.set(id, manifest
 const restored = await load(input.logicalMapId, { persistence: adapter }); assert.ok(restored);
 try {
   const a = owner(restored.map), id = a.libraries()[0]!, quid = a.documentOverlay(id).quidAtPath(validate_document_path([0,0,0]));
-  const page = restored.map.lib("page"); assert.equal(page.mode, "document");
+  const page = restored.map.doc.must("page"); assert.equal(page.mode, "document");
   if (page.mode !== "document") throw Error("document");
   assert.equal(page.document.attrs.get({ kind: "path", path: validate_document_path([0,0,0]) }, "title"), "accepted");
   assert.ok(quid && page.css.snapshot().includes(quid)); assert.notEqual(quid, input.sender);

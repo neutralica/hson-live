@@ -117,11 +117,11 @@ try {
     assert.equal(replica.session.status, "attached");
     assert.equal(replica.sync.status, "caught_up");
     assert.equal(replica.sync.strategy, "current");
-    const ui = replica.lib("ui");
-    if (ui.mode === "document" || ui.source !== "client-local") throw new Error("Expected local data library.");
+    const ui = replica.data.must("ui");
+    if (String(ui.mode) === "document" || ui.source !== "client-local") throw new Error("Expected local data library.");
     ui.at(["value"]).set(23);
     await locus.stage((draft) => {
-      const state = draft.lib("state");
+      const state = draft.data.must("state");
 
       state.at(["value"]).set(1);
     });
@@ -135,7 +135,7 @@ try {
     for (let i = 0; i < 100 && resumeRecovery === undefined; i++) await new Promise((resolve) => setTimeout(resolve, 10));
     assert.ok(resumeRecovery, "replacement recovery waits before admission");
     await locus.stage((draft) => {
-      const state = draft.lib("state");
+      const state = draft.data.must("state");
 
       state.at(["value"]).set(2);
     });

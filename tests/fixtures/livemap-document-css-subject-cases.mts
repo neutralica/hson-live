@@ -27,7 +27,7 @@ import type { LiveMap } from "../../src/types/livemap.types.ts";
 const selector = (quid: string) => `[hson\\:quid="${quid}"]`;
 const target = (...segments: number[]) => ({ kind: "path" as const, path: path(segments) });
 function page(map: LiveMap, name = "page") {
-  const result = map.lib(name); if (result.mode !== "document") throw Error("document"); return result;
+  const result = map.doc.must(name); if (result.mode !== "document") throw Error("document"); return result;
 }
 function fixture(full = false) {
   const map = hsonLiveMap.fromLibraries({ page: { document: full ? '<html <head/> <body <button/> <aside/> <span/>/>/>' : '<main <button/> <aside/> <span/>/>' } });
@@ -127,7 +127,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
   });
   await check("strict retirement judges complete graph and CSS batches in either order while movement retains identity", () => {
     const map = fixture(), document = page(map);
-    map.batch(draft => { const selected = draft.lib("page");
+    map.batch(draft => { const selected = draft.doc.must("page");
       selected.attrs.set(target(0), "title", "atomic");
       selected.css.stylesheet(`${selector("123456789")}{color:green}.ordinary{color:blue}`);
     });
@@ -136,15 +136,15 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     atomic(map, () => document.document.content.remove(target(0, 0), 1));
     atomic(map, () => document.document.content.replace(target(0, 0), 1, { $_tag: "section", $_content: [] }));
     atomic(map, () => map.batch(draft => {
-      draft.lib("page").at([1]).delete();
-      draft.lib("page").css.stylesheet(`${selector("999999999")}{color:red}`);
+      draft.doc.must("page").at([1]).delete();
+      draft.doc.must("page").css.stylesheet(`${selector("999999999")}{color:red}`);
     }));
     for (const cssFirst of [false, true]) {
       const candidate = install_libraries_snapshot(map.capture()).map, aggregate = owner(candidate);
       const quid = assertCurrentCss(candidate, [[0, 0, 1]])[0]!;
       let events = 0; const stop = candidate.commits.observe(() => events++);
       try { candidate.batch(draft => {
-        const selected = draft.lib("page");
+        const selected = draft.doc.must("page");
         if (selected.mode !== "document") throw Error("document");
         if (cssFirst) selected.css.stylesheet(".ordinary{color:blue}");
         selected.at([1]).delete();
@@ -167,8 +167,8 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     const collision = { ...scopes, rules: scopes.rules.map(rule => ({ ...rule, ruleKey: "same" })),
       order: scopes.order.map(entry => entry.kind === "group" ? { ...entry,
         entries: entry.entries.map(child => child.kind === "rule" ? { ...child, ruleKey: "same" } : child) } : entry) };
-    atomic(map, () => map.batch(draft => draft.lib("page").css({ domain: "css", kind: "replace", stylesheet: collision })));
-    map.batch(draft => { draft.lib("page").css.stylesheet(""); draft.lib("page").at([0]).delete(); });
+    atomic(map, () => map.batch(draft => draft.doc.must("page").css({ domain: "css", kind: "replace", stylesheet: collision })));
+    map.batch(draft => { draft.doc.must("page").css.stylesheet(""); draft.doc.must("page").at([0]).delete(); });
     atomic(map, () => page(map).css.stylesheet(`${selector("123456789")}{color:red}`));
     const names = authored({ page: { document: '<main <button @:_123456789/> <aside/>/>' } });
     const aggregate = owner(names); aggregate.acquireLocalDocumentIdentity(aggregate.libraries()[0]!, path([0, 0, 1]), "123456789");
@@ -207,7 +207,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
         Object.defineProperty({ ...entry }, "root", { enumerable: true, get() { reads++; throw Error("checkpoint accessor executed"); } })) }));
       assert.equal(reads, 0);
       const exact = aggregate.captureHosted(), quid = assertCurrentCss(map)[0]!;
-      map.batch(draft => { const selected = draft.lib("page"); if (selected.mode !== "document") throw Error("document");
+      map.batch(draft => { const selected = draft.doc.must("page"); if (selected.mode !== "document") throw Error("document");
         selected.attrs.set(target(0), "title", "changed"); });
       aggregate.restoreHosted(exact);
       assert.equal(assertCurrentCss(map)[0], quid);
@@ -264,7 +264,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     JSON.stringify = function(value, replacer, space) {
       if (value?.format === "hson-livemap-libraries-snapshot" && !mutated) {
         mutated = true;
-        map.batch(draft => { draft.lib("page").at([0]).delete(); draft.lib("page").css.stylesheet(""); });
+        map.batch(draft => { draft.doc.must("page").at([0]).delete(); draft.doc.must("page").css.stylesheet(""); });
       }
       return Reflect.apply(stringify, JSON, [value, replacer, space]);
     };
@@ -298,7 +298,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
       let hosted: HostedAggregateCommit | undefined;
       const stop = owner(map).observe(commit => { hosted = commit.hosted; });
       try {
-        await locus.stage(draft => { const selected = draft.lib("page"); if (selected.mode !== "document") throw Error("document"); selected.attrs.set(target(0,0,0), "title", "accepted"); });
+        await locus.stage(draft => { const selected = draft.doc.must("page"); if (selected.mode !== "document") throw Error("document"); selected.attrs.set(target(0,0,0), "title", "accepted"); });
         assert.ok(hosted); assert.equal(locus.rev, 1); assert.equal(adapter.appendCalls.length, 1);
         const portable = encode_authoritative_scoped_commit(hosted);
         assert.equal(JSON.stringify(portable).includes(sender), false);
@@ -358,13 +358,13 @@ export async function document_css_subject_cases(check: (name: string, run: () =
       await echo.connect(); const client = echo.map; assert.ok(client); assert.equal(echo.diagnostics().status, "live");
       const local = assertCurrentCss(client)[0]!; assert.notEqual(local, sourceQuid);
       assert.equal(owner(client).identityEpoch().issued().has(sourceQuid), false);
-      assert.equal(sent.join("").includes("PRIVATE_PART_SENTINEL"), false); assert.throws(() => client.lib("hidden"));
+      assert.equal(sent.join("").includes("PRIVATE_PART_SENTINEL"), false); assert.throws(() => client.data.must("hidden"));
       assertCurrentCss(install_libraries_snapshot(client.capture()).map);
-      await server.stage(draft => { const selected = draft.lib("extra"); if (selected.mode !== "document") throw Error("document");
+      await server.stage(draft => { const selected = draft.doc.must("extra"); if (selected.mode !== "document") throw Error("document");
         selected.attrs.set(target(0), "title", "unrelated-live-update"); });
       assert.equal(echo.diagnostics().status, "live"); assert.equal(assertCurrentCss(client)[0], local);
       await server.sessions.updateProjection(echo.session.sessionId!, { libraries: ["page"] });
-      assert.equal(echo.diagnostics().status, "live"); assert.throws(() => client.lib("extra")); assertCurrentCss(client);
+      assert.equal(echo.diagnostics().status, "live"); assert.throws(() => client.doc.must("extra")); assertCurrentCss(client);
       const aggregate = owner(client), registry = aggregate.hostedRegistry();
       const css = { domain: "css" as const, kind: "replace" as const,
         stylesheet: parse_document_stylesheet(`${selector(sourceQuid)}{color:red}`, []) };

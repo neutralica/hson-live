@@ -1,3 +1,4 @@
+import type { LibraryFamilySelector, LibraryFamilyNamespaces } from "./library-selectors.types.js";
 import type { LibraryLiteralDefinitions, LibraryCertainNames, LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 // livemap.types.ts
 
@@ -1657,7 +1658,7 @@ type LiveMapSchemaRefinements<TMap> = TMap extends Readonly<{
   [liveMapLibrarySchemaRefinementsType]: infer TRefinements;
 }> ? TRefinements : Readonly<Record<never, never>>;
 
-type LiveMapEffectiveDefinitions<TMap> = {
+export type LiveMapEffectiveDefinitions<TMap> = {
   readonly [TName in keyof LiveMapReceiverDefinitions<TMap>]: TName extends keyof LiveMapSchemaRefinements<TMap>
     ? LiveMapDefinitionWithSchema<
       LiveMapReceiverDefinitions<TMap>[TName],
@@ -1684,15 +1685,6 @@ type LiveMapEffectiveKnownNames<TMap> = Extract<
   LibraryCertainNames<LiveMapKnownDefinitions<LiveMapEffectiveDefinitions<TMap>>>, string
 >;
 
-type LiveMapLibrarySelector<TMap> = [LiveMapEffectiveKnownNames<TMap>] extends [never]
-  ? (name: string) => LiveMapDynamicLibrary
-  : {
-      <TLibrary extends LiveMapEffectiveKnownNames<TMap>>(
-        name: TLibrary,
-      ): LiveMapLibraryFacadeForInput<LiveMapKnownDefinitions<LiveMapEffectiveDefinitions<TMap>>[TLibrary], TLibrary>;
-      (name: string): LiveMapDynamicLibrary;
-    };
-
 /** Write-only data location used while one map-wide transition is being described. */
 export type LiveMapStagedDataPath<TValue, TResult> = Readonly<{
   at: <const TPath extends LivePath>(
@@ -1707,7 +1699,7 @@ export type LiveMapStagedDataPath<TValue, TResult> = Readonly<{
   asObject: () => LiveMapStagedDataPath<LiveMapObjectBranch<TValue>, TResult>;
 }> & LibraryShapeCapabilities<TValue, LibraryArrayCommands<TValue, TResult>, LibraryObjectCommands<TValue, TResult>>;
 
-type LiveMapStagedDataLibrary<TValue, TResult> = Readonly<{
+export type LiveMapStagedDataLibrary<TValue, TResult> = Readonly<{
   readonly mode: DataLiveMapMode;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
@@ -1795,13 +1787,13 @@ export type AuthorityDocumentQuadLocation<TResult = Promise<void>> =
     delete: () => TResult;
   }>) & Readonly<{ at: (path: readonly number[]) => AuthorityDocumentQuadLocation<TResult> }>;
 
-export type AuthorityDocumentSelector<TEvidence, TResult = Promise<void>> =
+export type AuthorityDocumentSelector<TEvidence, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear"> =
   <const TPath extends readonly number[]>(path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never] ? never : unknown)) =>
-    AuthorityDocumentLocation<InternalDocumentLogicalPathDescriptor<TEvidence, TPath>, TResult>;
+    AuthorityDocumentLocation<InternalDocumentLogicalPathDescriptor<TEvidence, TPath>, TResult, TFlagCommands>;
 
 type LiveMapStagedDocumentGraphOperation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
 
-type LiveMapStagedDocumentLibrary<TEvidence, TResult> = Readonly<{
+export type LiveMapStagedDocumentLibrary<TEvidence, TResult> = Readonly<{
   readonly mode: "document";
   at: <const TPath extends readonly number[]>(
     path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never] ? never : unknown),
@@ -1831,28 +1823,8 @@ type LiveMapStagedDocumentLibrary<TEvidence, TResult> = Readonly<{
   css: ((operation: LiveMapCssOp) => TResult) & import("./document-css.types.js").DocumentCssCommands<TResult>;
 }>;
 
-type LiveMapStagedLibraryForInput<TInput, TResult> =
-  LibraryDefinitionEvidence<TInput> extends infer E
-    ? E extends { family: infer F; value: infer V }
-      ? F extends "document" ? LiveMapStagedDocumentLibrary<V, TResult> : LiveMapStagedDataLibrary<V, TResult>
-      : never
-    : never;
-
-type LiveMapDynamicStagedLibrary<TResult> =
-  | LiveMapStagedDataLibrary<JsonValue, TResult>
-  | LiveMapStagedDocumentLibrary<HsonNode, TResult>;
-
 /** One temporary writer; terminal results reflect its execution context. */
-export type LiveMapStagedWriter<TMap extends LiveMap, TResult> = Readonly<{
-  lib: [LiveMapEffectiveKnownNames<TMap>] extends [never]
-    ? (name: string) => LiveMapDynamicStagedLibrary<TResult>
-    : {
-        <TLibrary extends LiveMapEffectiveKnownNames<TMap>>(
-          name: TLibrary,
-        ): LiveMapStagedLibraryForInput<LiveMapEffectiveDefinitions<TMap>[TLibrary], TResult>;
-        (name: string): LiveMapDynamicStagedLibrary<TResult>;
-      };
-}>;
+export type LiveMapStagedWriter<TMap extends LiveMap, TResult> = LibraryFamilyNamespaces<LiveMapEffectiveDefinitions<TMap>, "stage", TResult>;
 
 /** Synchronous callback whose return cannot contain a Promise. */
 export type LiveMapSynchronousAuthoring<TWriter, TResult> = <TCallback extends (writer: TWriter) => unknown>(
@@ -1920,7 +1892,9 @@ export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
   /** Private type evidence; it has no runtime property or public selector. */
   readonly [liveMapLibrariesType]: TLibraries;
   readonly rev: number;
-  readonly lib: LiveMapLibrarySelector<this>;
+  readonly doc: LibraryFamilySelector<LiveMapEffectiveDefinitions<this>, "local", "doc">;
+  readonly data: LibraryFamilySelector<LiveMapEffectiveDefinitions<this>, "local", "data">;
+  readonly parts: LibraryFamilySelector<LiveMapEffectiveDefinitions<this>, "local", "parts">;
   /** Describe one synchronous, map-wide atomic transition. */
   batch: LiveMapSynchronousAuthoring<LiveMapStagedWriter<this, void>, LiveMapCommit>;
   /** Admit one atomic batch of new libraries into this map's registry. */

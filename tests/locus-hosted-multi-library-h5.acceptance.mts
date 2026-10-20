@@ -183,7 +183,7 @@ function remove_item() {
 }
 
 function page_item(map: ReturnType<typeof make_map>): import("../src/core/types.js").HsonNode | undefined {
-  const main = map.lib("page").root().$_content[0];
+  const main = map.doc.must("page").root().$_content[0];
   if (typeof main !== "object" || main === null) return undefined;
   const wrapper = main.$_content[0];
   if (typeof wrapper !== "object" || wrapper === null) return undefined;
@@ -196,21 +196,21 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   let serverMap = make_map();
   const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }), actions: {
       "theme.all": async (context) => {
-        await (() => { const draft = context.stage; draft.lib("state").at(["theme"]).set("dark");
-draft.lib("colors").at(["theme"]).set("blue");
-draft.lib("page").graph(insert_item()); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["theme"]).set("dark");
+draft.data.must("colors").at(["theme"]).set("blue");
+draft.doc.must("page").graph(insert_item()); })();
         return Hson.data.from("ok");
       },
       "state.only": async (context) => {
         assert.equal(typeof context.emitEvent, "function");
         assert.equal("map" in context, false);
-        const current = context.lib("state");
+        const current = context.data.must("state");
         assert.notEqual(current.snap(["count"]), undefined);
         assert.equal("emit_event" in context, false);
-        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(1); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["count"]).set(1); })();
       },
       invalid: async (context) => {
-        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set("invalid"); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["count"]).set("invalid"); })();
       },
     } });
   serverMap = locus_map_internal(locus);
@@ -241,7 +241,7 @@ draft.lib("page").graph(insert_item()); })();
   assert.equal(bootstrap.strategy, "current");
   assert.equal(client.map, clientMap);
   assert.equal(client.rev, 0);
-  assert.throws(() => clientMap.lib("state").at(["count"]).set(9), /library mutation authority/i);
+  assert.throws(() => clientMap.data.must("state").at(["count"]).set(9), /library mutation authority/i);
   assert.equal("subscribe" in client, false);
   assert.equal("unsubscribe" in client, false);
   const invalid = await client.action("invalid");
@@ -255,14 +255,14 @@ draft.lib("page").graph(insert_item()); })();
   assert.equal(wrongLibrary.type, "error");
   if (wrongLibrary.type === "error") assert.match(wrongLibrary.error.message, /document/i);
   assert.deepEqual([serverMap.rev, clientMap.rev], [0, 0]);
-  const page = client.lib("page");
+  const page = client.doc.must("page");
   if (page.mode !== "document") throw new Error("Expected document Library.");
   const reflection = hsonMirror(page);
   const stateValues: unknown[] = [];
   const colorsValues: unknown[] = [];
   const theme = (name: string) => {
-    const library = client.lib(name);
-    if (library.mode === "document") throw new Error("Expected data Library.");
+    const library = client.data.must(name);
+    if (String(library.mode) === "document") throw new Error("Expected data Library.");
     return library.snap(["theme"]);
   };
   const stopState = client.commits.observe((commit) => stateValues.push([theme("state"), commit.rev]));
@@ -273,9 +273,9 @@ draft.lib("page").graph(insert_item()); })();
   if (themeAll.type === "ack") assert.equal(themeAll.result === undefined ? undefined : Hson.data.materialize(themeAll.result), "ok");
   const stateColorsPageMs = performance.now() - aggregateStarted;
   assert.deepEqual([serverMap.rev, clientMap.rev], [1, 1]);
-  assert.equal(clientMap.lib("state").snap(["theme"]), "dark");
-  assert.equal(clientMap.lib("colors").snap(["theme"]), "blue");
-  assert.equal(clientMap.lib("page").document.byQuid(QUID), undefined);
+  assert.equal(clientMap.data.must("state").snap(["theme"]), "dark");
+  assert.equal(clientMap.data.must("colors").snap(["theme"]), "blue");
+  assert.equal(clientMap.doc.must("page").document.byQuid(QUID), undefined);
   const serverAuthority = internal_livemap_aggregate_authority(serverMap);
   const serverPage = serverAuthority.libraries()[2];
   if (serverPage === undefined) throw new Error("Expected server page Library.");
@@ -300,10 +300,10 @@ draft.lib("page").graph(insert_item()); })();
   assert.equal(client.sync.appliedRev, 2);
   const reflectedMain = reflected_document_element(reflection);
   const reflectedWrite = reflectedMain.async.attrs.set("title", "echoed");
-  assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), undefined);
+  assert.equal(serverMap.doc.must("page").document.attrs.get({ kind: "path", path: [0] }, "title"), undefined);
   await wait_for_aggregate_revision(clientMap, 3);
   await reflectedWrite;
-  assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "echoed");
+  assert.equal(serverMap.doc.must("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "echoed");
   assert.equal(reflectedMain.attrs.get("title"), "echoed");
   assert.equal(reflection.sourceRevision, 3);
   const replacementRequest = JSON.parse(JSON.stringify({
@@ -321,8 +321,8 @@ draft.lib("page").graph(insert_item()); })();
   const replacementResult = await client.action("document.content.replace", replacementRequest);
   assert.equal(replacementResult.type, "ack", JSON.stringify(replacementResult));
   await wait_for_aggregate_revision(clientMap, 4);
-  assert.equal(serverMap.lib("page").document.byQuid(QUID), undefined);
-  assert.equal(clientMap.lib("page").document.byQuid(QUID), undefined);
+  assert.equal(serverMap.doc.must("page").document.byQuid(QUID), undefined);
+  assert.equal(clientMap.doc.must("page").document.byQuid(QUID), undefined);
   assert.equal(page_item(clientMap)?.$_attrs?.title, "lineage");
   assert.equal(reflection.sourceRevision, 4);
   stopState();
@@ -349,7 +349,7 @@ await check("named document Echo authoring honors aggregate authorization and co
   echo.connect();
   await echo.session.create();
   await echo.completeRecovery();
-  const reflection = hsonMirror(clientMap.lib("page"));
+  const reflection = hsonMirror(clientMap.doc.must("page"));
   const main = reflected_document_element(reflection);
   const denied = main.async.attrs.set("title", "denied");
   const accepted = main.async.attrs.set("id", "accepted");
@@ -390,7 +390,7 @@ await check("named Mirror text replacement carries empty portable lineage throug
   echo.connect();
   await echo.session.create();
   await echo.completeRecovery();
-  const reflection = hsonMirror(clientMap.lib("page"));
+  const reflection = hsonMirror(clientMap.doc.must("page"));
   const lineages: unknown[] = [];
   const stop = serverMap.commits.observe((commit) => {
     for (const entry of commit.operations) {
@@ -406,7 +406,7 @@ await check("named Mirror text replacement carries empty portable lineage throug
   assert.equal(clientMap.rev, 1);
   assert.equal(reflection.sourceRevision, 1);
   assert.equal(reflection.tree.find.must.byTag("item").text.get(), "new");
-  assert.equal(clientMap.lib("page").document.byQuid(QUID), undefined);
+  assert.equal(clientMap.doc.must("page").document.byQuid(QUID), undefined);
   stop(); reflection.dispose(); echo.dispose(); locus.dispose();
 });
 
@@ -416,15 +416,15 @@ await check("projected fallback restores the observed authority document in plac
   const staleMap = make_client_map(serverMap);
   const locus = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(serverMap), map: serverMap,
     maxHistoryBytes: 4_000 });
-  const stateHandle = staleMap.lib("state").at(["theme"]);
-  const reflection = hsonMirror(staleMap.lib("page"));
+  const stateHandle = staleMap.data.must("state").at(["theme"]);
+  const reflection = hsonMirror(staleMap.doc.must("page"));
   const staleMain = reflected_document_element(reflection);
   const staleMainNode = retained_subject(staleMain);
-  await locus.stage((draft) => { const state = draft.lib("state"); if (state.mode !== "document") state.at(["theme"]).set("x".repeat(6_000)); });
+  await locus.stage((draft) => { const state = draft.data.must("state"); if (String(state.mode) !== "document") state.at(["theme"]).set("x".repeat(6_000)); });
   await locus.stage((draft) => {
-    const state = draft.lib("state");
-    const page = draft.lib("page");
-    if (state.mode !== "document") state.at(["theme"]).set("dark");
+    const state = draft.data.must("state");
+    const page = draft.doc.must("page");
+    if (String(state.mode) !== "document") state.at(["theme"]).set("dark");
     if ("graph" in page) page.graph(insert_item());
   });
   const first = socket_pair();
@@ -444,9 +444,9 @@ await check("projected fallback restores the observed authority document in plac
   snapshotClient.dispose();
 
   await locus.stage((draft) => {
-    const state = draft.lib("state");
-    const page = draft.lib("page");
-    if (state.mode !== "document") state.at(["count"]).set(2);
+    const state = draft.data.must("state");
+    const page = draft.doc.must("page");
+    if (String(state.mode) !== "document") state.at(["count"]).set(2);
     if ("graph" in page) {
       page.graph(remove_item());
       page.graph(insert_item());
@@ -534,11 +534,11 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   let serverMap = make_map();
   const host = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap, logicalMapId: "h5-persisted-map", persistence }), actions: {
       "state.page": async (context) => {
-        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(2);
-draft.lib("page").graph(insert_item()); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["count"]).set(2);
+draft.doc.must("page").graph(insert_item()); })();
       },
       "page.retire": async (context) => {
-        await (() => { const draft = context.stage; draft.lib("page").graph(remove_item()); })();
+        await (() => { const draft = context.stage; draft.doc.must("page").graph(remove_item()); })();
       },
     } });
   serverMap = locus_map_internal(host);
@@ -550,7 +550,7 @@ draft.lib("page").graph(insert_item()); })();
   client.connect();
   await client.session.create();
   await client.completeRecovery();
-  const reflection = hsonMirror(clientMap.lib("page"));
+  const reflection = hsonMirror(clientMap.doc.must("page"));
   const echoMainQuid = reflected_document_element(reflection).quid;
   const retainedAction = client.action("state.page");
   await retainedAction;
@@ -562,13 +562,13 @@ draft.lib("page").graph(insert_item()); })();
   assert.equal(clientMap.rev, 1);
   await client.action("page.retire");
   assert.equal(clientMap.rev, 2);
-  assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_QUID), undefined);
+  assert.equal(clientMap.doc.must("page").document.byQuid(PERSISTED_QUID), undefined);
   const locusA = internal_livemap_aggregate_authority(serverMap);
   const locusPageA = locusA.libraries()[2];
   if (locusPageA === undefined) throw new Error("Expected page Library.");
   locusA.acquireLocalDocumentIdentity(locusPageA, validate_document_path([0]), LOCUS_RESTART_A_QUID);
   assert.equal(serverMap.rev, 2);
-  assert.equal(clientMap.lib("page").document.byQuid(LOCUS_RESTART_A_QUID), undefined);
+  assert.equal(clientMap.doc.must("page").document.byQuid(LOCUS_RESTART_A_QUID), undefined);
   const checkpointStarted = performance.now();
   await hsonLiveMap.locus.checkpoint(host);
   assert.equal(JSON.stringify(persistence.snapshot()).includes(LOCUS_RESTART_A_QUID), false);
@@ -584,8 +584,8 @@ draft.lib("page").graph(insert_item()); })();
   const restartStarted = performance.now();
   const restored = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(restoredMap), map: restoredMap, logicalMapId: "h5-persisted-map", persistence }), actions: {
       "state.page": async (context) => {
-        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(3);
-draft.lib("page").graph(insert_item()); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["count"]).set(3);
+draft.doc.must("page").graph(insert_item()); })();
       },
     } });
   restoredMap = locus_map_internal(restored);
@@ -599,7 +599,7 @@ draft.lib("page").graph(insert_item()); })();
   assert.equal(locusB.resolveQuid(LOCUS_RESTART_A_QUID), undefined);
   locusB.acquireLocalDocumentIdentity(locusPageB, validate_document_path([0]), LOCUS_RESTART_B_QUID);
   assert.equal(restoredMap.rev, 2);
-  assert.equal(clientMap.lib("page").document.byQuid(LOCUS_RESTART_B_QUID), undefined);
+  assert.equal(clientMap.doc.must("page").document.byQuid(LOCUS_RESTART_B_QUID), undefined);
   const restoredRetainedStatus = read_locus_retained_action_status_internal(restored, {
     clientId: client.clientId,
     requestId: retainedAction.request.requestId,
@@ -624,22 +624,22 @@ draft.lib("page").graph(insert_item()); })();
   await fallback.session.create();
   assert.equal((await fallback.completeRecovery()).strategy, "reconcile");
   assert.equal(fallbackMap.rev, 1);
-  assert.equal(fallbackMap.lib("state").snap(["count"]), 2);
-  assert.equal(fallbackMap.lib("page").document.byQuid(LOCUS_RESTART_A_QUID), undefined);
-  assert.equal(fallbackMap.lib("page").document.byQuid(LOCUS_RESTART_B_QUID), undefined);
+  assert.equal(fallbackMap.data.must("state").snap(["count"]), 2);
+  assert.equal(fallbackMap.doc.must("page").document.byQuid(LOCUS_RESTART_A_QUID), undefined);
+  assert.equal(fallbackMap.doc.must("page").document.byQuid(LOCUS_RESTART_B_QUID), undefined);
   assert.equal(fallbackPair.serverSent.join("\n").includes(LOCUS_RESTART_A_QUID), false);
   assert.equal(fallbackPair.serverSent.join("\n").includes(LOCUS_RESTART_B_QUID), false);
   fallback.dispose();
   const reconnectMs = performance.now() - reconnectStarted;
-  assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_QUID), undefined);
+  assert.equal(clientMap.doc.must("page").document.byQuid(PERSISTED_QUID), undefined);
   assert.equal(reflection.sourceRevision, 2);
   assert.equal(internal_livemap_aggregate_authority(restoredMap).captureHosted().identity.issuedQuids.includes(PERSISTED_QUID), false);
   assert.equal(clientMap.rev, 2);
   const continuedStatePageStarted = performance.now();
   await recovered.action("state.page");
   const continuedStatePageMs = performance.now() - continuedStatePageStarted;
-  assert.deepEqual([restored.rev, clientMap.rev, clientMap.lib("state").snap(["count"])], [3, 3, 3]);
-  assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_NEXT_QUID), undefined);
+  assert.deepEqual([restored.rev, clientMap.rev, clientMap.data.must("state").snap(["count"])], [3, 3, 3]);
+  assert.equal(clientMap.doc.must("page").document.byQuid(PERSISTED_NEXT_QUID), undefined);
   assert.equal(page_item(clientMap)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 3);
   process.stdout.write(`# telemetry ${JSON.stringify({ checkpointMs, restartLoadMs, reconnectMs, continuedStatePageMs })}\n`);
@@ -670,7 +670,7 @@ await check("public hosted failures reject before acceptance and leave the aggre
   const host = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(map), map,
     logicalMapId: "h5-failed-append", persistence }), actions: {
       increment: async (context) => {
-        await (() => { const draft = context.stage; draft.lib("state").at(["count"]).set(1); })();
+        await (() => { const draft = context.stage; draft.data.must("state").at(["count"]).set(1); })();
       },
     } });
   persistence.failAppends = true;

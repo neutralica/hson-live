@@ -7,7 +7,7 @@ const canonical = hsonTransform.fromTrustedHtml("<main><p>Ready</p></main>").toH
 assert.match(hsonTransform.fromHson(canonical).toHtml().serialize(), /<main>/);
 
 const map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
-const state = map.lib("state");
+const state = map.data.must("state");
 state.at(["count"]).set(1);
 assert.equal(state.snap(["count"]), 1);
 const data = state.at(["count"]).data();

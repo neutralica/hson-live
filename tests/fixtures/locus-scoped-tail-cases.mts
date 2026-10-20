@@ -42,9 +42,9 @@ export async function scoped_tail_fixture() {
   assert.equal(oldScopes[0]!.lifetime, newScopes[0]!.lifetime);
   assert.ok(checkpoint_libraries_equal(base.libraries, f.a.captureSemanticCheckpoint().libraries));
   const mixed = await l.stage(w => {
-    const d = w.lib("data"); if (d.mode === "document") throw Error(); d.at(["n"]).set(3);
+    const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(3);
     page(w).content.insert(target, 2, node('<hson-part lib="parts" at="leaf"/>'));
-    const parts = w.lib("parts"); if (parts.mode === "document") throw Error();
+    const parts = w.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
     parts.at(["secret", "document"]).set('<strong "UPDATED_PRIVATE_PART"/>');
     page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "tail");
   });
@@ -88,7 +88,7 @@ export async function verify_scoped_tail_restart(f: Pick<Awaited<ReturnType<type
   const projection = captureSession(l.map, sessions, "resumed", true);
   assert.doesNotMatch(JSON.stringify(projection), /UPDATED_PRIVATE_PART|PRIVATE_LIBRARY_SENTINEL|hidden-event|"name":"parts"/);
   const cap = echo(projection, local_initializers({ local: { data: { n: 1 } } }));
-  assert.ok(cap.map); assert.throws(() => cap.map!.lib("parts"));
+  assert.ok(cap.map); assert.throws(() => cap.map!.parts.must("parts"));
   try {
     const commit = await l.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "after-resume"));
     assert.ok(commit);
@@ -215,16 +215,16 @@ export async function scoped_tail_cases(check: (name: string, run: () => Promise
     let queued: Promise<HostedAggregateCommit | undefined> | undefined;
     f.adapter.appendCommit = async record => {
       f.adapter.appendCommit = append;
-      const data = l.map.lib("data"); if (data.mode === "document") throw Error();
+      const data = l.map.data.must("data"); if (String(data.mode) === "document") throw Error();
       assert.throws(() => data.at(["n"]).set(88), /managed|Locus|controlled/);
-      queued = l.stage(w => { const d = w.lib("data"); if (d.mode === "document") throw Error(); d.at(["n"]).set(99); });
+      queued = l.stage(w => { const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(99); });
       throw Error("rejected append");
     };
     try {
       await assert.rejects(() => l.stage(w => page(w).content.replace(target, 1, connector())), /append/);
       await queued;
       assert.equal(l.rev, f.expected.revision + 1);
-      const d = l.map.lib("data"); if (d.mode === "document") throw Error(); assert.equal(d.snap(["n"]), 99);
+      const d = l.map.data.must("data"); if (String(d.mode) === "document") throw Error(); assert.equal(d.snap(["n"]), 99);
     } finally { l.dispose(); }
   });
   await check("B2 reentrant storage preserves independently accepted deployment work and retries", async () => {
@@ -232,12 +232,12 @@ export async function scoped_tail_cases(check: (name: string, run: () => Promise
     const originalLoad = f.adapter.load.bind(f.adapter);
     let changed = false;
     f.adapter.load = async id => {
-      if (!changed) { changed = true; target.map.lib("data").at(["n"]).set(91); }
+      if (!changed) { changed = true; target.map.data.must("data").at(["n"]).set(91); }
       return originalLoad(id);
     };
     const options = { map: target.map, persistence: f.adapter, logicalMapId: f.state.checkpoint.logicalMapId, libraries: catalog };
     await assert.rejects(() => resume_registry_locus(options, { scopedDocuments: true }), /changed during/);
-    assert.equal(target.map.lib("data").snap(["n"]), 91);
+    assert.equal(target.map.data.must("data").snap(["n"]), 91);
     f.adapter.load = originalLoad;
     const l = await resume_registry_locus(options, { scopedDocuments: true }); l.dispose();
   });
@@ -272,7 +272,7 @@ export async function scoped_tail_cases(check: (name: string, run: () => Promise
       try {
         assert.ok(checkpoint_libraries_equal(f.expected.libraries, a.captureSemanticCheckpoint().libraries));
         assert.equal(l.rev, f.expected.revision);
-        await l.stage(w => { w.lib("data").at(["n"]).set(8); });
+        await l.stage(w => { w.data.must("data").at(["n"]).set(8); });
         assert.equal(l.rev, f.expected.revision + 1);
       } finally { l.dispose(); }
     } finally { target.l.dispose(); }

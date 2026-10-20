@@ -18,7 +18,7 @@ import type { LiveMapGraphOp } from "../../src/types/livemap.types.ts";
 
 const node = (text: string) => { const value = hsonTransform.fromHson(text).toNode().$_content[0]; assert.ok(is_Node(value)); return value; };
 const connector = (member = "panel") => node(`<hson-part lib="parts" at="${member}"/>`);
-const document = (writer: LocusHostedAggregateStageWriter) => { const doc = writer.lib("page"); assert.equal(doc.mode, "document"); if (doc.mode !== "document") throw Error(); return doc; };
+const document = (writer: LocusHostedAggregateStageWriter) => { const doc = writer.doc.must("page"); assert.equal(doc.mode, "document"); if (doc.mode !== "document") throw Error(); return doc; };
 const insert = (writer: LocusHostedAggregateStageWriter, index = 0, member = "panel") => document(writer).content.insert({ kind: "path", path: path([0, 0]) }, index, connector(member));
 const replace = (writer: LocusHostedAggregateStageWriter, index = 0, member = "panel") => document(writer).content.replace({ kind: "path", path: path([0, 0]) }, index, connector(member));
 function fixture() {
@@ -80,7 +80,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
       } });
       try {
         await locus.stage(w => {
-          const page = w.lib("page"), flat = w.lib("flat");
+          const page = w.doc.must("page"), flat = w.doc.must("flat");
           if (page.mode !== "document" || flat.mode !== "document") throw Error("Expected documents");
           if (cssOnly) { page.css.sel("main").setProp("color", "blue"); flat.css.sel("body").setProp("color", "red"); }
           else { page.at([]).asElement().attrs.set("title", "s"); flat.at([]).asElement().attrs.set("title", "f"); }
@@ -92,7 +92,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
           css: a.stylesheet(id), scopes: a.documentScopes(id) }));
         const issued = a.identityEpoch().issued(), epoch = a.identityEpoch().current();
         await assert.rejects(locus.stage(w => {
-          const page = w.lib("page"), flat = w.lib("flat");
+          const page = w.doc.must("page"), flat = w.doc.must("flat");
           if (page.mode !== "document" || flat.mode !== "document") throw Error("Expected documents");
           flat.css.clearAll(); page.at([0]).replace(node('<hson-part lib="parts" at="x"/>'));
           page.css.clearAll(); flat.at([99]).asElement().attrs.set("invalid", true);
@@ -131,7 +131,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     });
     const accepted = await locus.stage(writer => {
       insert(writer); insert(writer, 1);
-      const parts = writer.lib("parts"); if (parts.mode === "document") throw Error();
+      const parts = writer.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
       parts.at(["secret", "document"]).set( '<strong "UPDATED_PRIVATE_SENTINEL"/>');
     });
     assert.equal(accepted, gate.commit); assert.equal(f.map.rev, 1);
@@ -305,7 +305,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     });
     try { assert.throws(() => f.a.prepareManaged(owner, [write(f)], true), /changed/); }
     finally { allocator(f.a.identityEpoch().owner, undefined); f.a.releaseManagement(owner); }
-    assert.equal(f.map.rev, 1); assert.equal(f.map.lib("other").snap(["n"]), 7);
+    assert.equal(f.map.rev, 1); assert.equal(f.map.data.must("other").snap(["n"]), 7);
     assert.ok(equal(initial, f.a.scopedDocumentState(f.library)));
   });
   await check("complete envelopes reject reordered, duplicated, missing and mismatched Library evidence", async () => {
@@ -422,7 +422,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     } });
     await locus.stage(writer => {
       insert(writer, 0, "plain");
-      const second = writer.lib("second"); if (second.mode !== "document") throw Error();
+      const second = writer.doc.must("second"); if (second.mode !== "document") throw Error();
       second.content.insert({ kind: "path", path: path([0, 0]) }, 0, connector("plain"));
       insert(writer, 1, "plain");
     });

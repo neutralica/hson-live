@@ -92,7 +92,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   replica.advanceHostedProgress({ ...snapshot.authority, registryDigest: snapshot.registryDigest, prevRev: 0, rev: 1 });
   engine.accept(prepared);
   assert.equal(client.rev, 1);
-  assert.equal(client.lib("ui").mode, "data-object");
+  assert.equal(client.data.must("ui").mode, "data-object");
   replica.dispose();
 }
 
@@ -102,7 +102,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   const prepared = engine.prepare([{ target: engine.target(uiId, ["value"]), kind: "set", value: 7 }]);
   let hosted;
   const stop = internal_livemap_aggregate_authority(server).observe((commit) => { hosted = commit.hosted; });
-  const state = server.lib("state");
+  const state = server.data.must("state");
   state.at(["value"]).set(1);
   stop();
   if (hosted === undefined) throw new Error("Missing authority effect.");
@@ -117,7 +117,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
 // A transport interruption leaves the same client-owned registry, revision, and local document alive.
 {
   const server = authority();
-  const initialState = server.lib("state");
+  const initialState = server.data.must("state");
   initialState.at(["value"]).set(1);
   const locus = create_locus_fixture(authority_definition_from_fixture_options({ map: server, ...test_public_projection(server) }));
   const pair = socket_pair();
@@ -132,9 +132,9 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
     ui: { data: { value: 0 }, schema: DataSchema },
     panel: { document: "<aside/>", schema: LocalSchema },
   }));
-  const ui = client.lib("ui");
-  const panel = client.lib("panel");
-  if (ui.mode === "document" || panel.mode !== "document") throw new Error("Wrong local library modes.");
+  const ui = client.data.must("ui");
+  const panel = client.doc.must("panel");
+  if (String(ui.mode) === "document" || panel.mode !== "document") throw new Error("Wrong local library modes.");
   const localMirror = hsonMirror(panel);
   const localTree = retained_subject(localMirror.tree);
   assert.equal(client.rev, 0);
@@ -157,7 +157,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   assert.equal(pair.clientSent.length, sentDuringOffline);
   assert.equal(echo.sync.appliedRev, 0);
   assert.equal(retained_subject(localMirror.tree), localTree);
-  await locus.stage((draft) => { draft.lib("state").at(["value"]).set(4); });
+  await locus.stage((draft) => { draft.data.must("state").at(["value"]).set(4); });
   bind_locus_websocket(locus, pair.server);
   echo.connect();
   await echo.awaitReconnect();
@@ -166,8 +166,8 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   assert.equal(echo.sync.appliedRev, 1);
   assert.equal(client.rev, before + 4);
   assert.equal(ui.at(["value"]).snap(), 2);
-  const projectedState = client.lib("state");
-  if (projectedState.mode === "document") throw new Error("Expected projected data library.");
+  const projectedState = client.data.must("state");
+  if (String(projectedState.mode) === "document") throw new Error("Expected projected data library.");
   assert.equal(projectedState.snap(["value"]), 4);
   assert.equal(panel.document.attrs.get({ kind: "path", path: [0] }, "title"), "offline");
   assert.equal(retained_subject(localMirror.tree), localTree);
@@ -178,11 +178,11 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
 
 {
   const { server, snapshot, client, engine, replica } = setup();
-  const ui = client.lib("ui");
-  const state = client.lib("state");
-  const page = client.lib("page");
-  const panel = client.lib("panel");
-  if (ui.mode === "document" || state.mode === "document" || page.mode !== "document" || panel.mode !== "document") throw new Error("Wrong library modes.");
+  const ui = client.data.must("ui");
+  const state = client.data.must("state");
+  const page = client.doc.must("page");
+  const panel = client.doc.must("panel");
+  if (String(ui.mode) === "document" || String(state.mode) === "document" || page.mode !== "document" || panel.mode !== "document") throw new Error("Wrong library modes.");
   assert.equal(client.rev, 0);
   ui.at(["value"]).set(1);
   assert.equal(client.rev, 1);
@@ -220,7 +220,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
 
   let hosted;
   const stop = internal_livemap_aggregate_authority(server).observe((commit) => { hosted = commit.hosted; });
-  const serverState = server.lib("state");
+  const serverState = server.data.must("state");
   serverState.at(["value"]).set(1);
   stop();
   if (hosted === undefined) throw new Error("Missing hosted commit.");
@@ -233,7 +233,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   assert.equal(localHandle.active, true);
   assert.equal(projectedHandle.active, true);
 
-  const serverPage = server.lib("page");
+  const serverPage = server.doc.must("page");
   if (serverPage.mode !== "document") throw new Error("Expected projected document.");
   let hostedPage;
   const stopPage = internal_livemap_aggregate_authority(server).observe((commit) => { hostedPage = commit.hosted; });
@@ -309,8 +309,8 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
     ui: { data: { value: 0 }, schema: DataSchema },
   }));
   const replica = create_echo_aggregate_replica_capability_internal(local);
-  const ui = local.lib("ui");
-  if (ui.mode === "document") throw new Error("Expected local data library.");
+  const ui = local.data.must("ui");
+  if (String(ui.mode) === "document") throw new Error("Expected local data library.");
   ui.at(["value"]).set(1);
   assert.equal(local.rev, 1);
   replica.advanceHostedProgress({ ...snapshot.authority, registryDigest: snapshot.registryDigest, prevRev: 0, rev: 1 });
@@ -331,10 +331,10 @@ for (const fixture of orderedRootReconstructionFixtures) {
   let client;
   try { client = compose_client_portable_aggregate_internal(snapshot, seeds); }
   finally { stopConstruction(); }
-  assert.equal(canonical_hson_graph_equal(client.lib("state").root(), original), true);
-  assert.equal(canonical_hson_graph_equal(client.lib("ui").root(), original), true);
-  const ui = client.lib("ui");
-  const shared = client.lib("state");
+  assert.equal(canonical_hson_graph_equal(client.data.must("state").root(), original), true);
+  assert.equal(canonical_hson_graph_equal(client.data.must("ui").root(), original), true);
+  const ui = client.data.must("ui");
+  const shared = client.data.must("state");
   const engine = internal_livemap_aggregate_authority(client);
   const identities = engine.libraries();
   const accounting = livemap_identity_epoch_accounting(ui);
@@ -342,9 +342,9 @@ for (const fixture of orderedRootReconstructionFixtures) {
   const stopLocal = forbid_structural_js_enumeration();
   try { install_client_local_initializers_internal(client, laterSeeds); }
   finally { stopLocal(); }
-  assert.equal(canonical_hson_graph_equal(client.lib("later").root(), original), true);
-  assert.equal(client.lib("ui"), ui);
-  assert.equal(client.lib("state"), shared);
+  assert.equal(canonical_hson_graph_equal(client.data.must("later").root(), original), true);
+  assert.equal(client.data.must("ui"), ui);
+  assert.equal(client.data.must("state"), shared);
   assert.deepEqual(engine.libraries().slice(0, identities.length), identities);
   assert.deepEqual(livemap_identity_epoch_accounting(ui), accounting);
 
@@ -363,19 +363,19 @@ for (const fixture of orderedRootReconstructionFixtures) {
   const stopTopology = forbid_structural_js_enumeration();
   try { replica.installProjectedTopology(topology, digest); }
   finally { stopTopology(); }
-  assert.equal(canonical_hson_graph_equal(client.lib("zzAdded").root(), original), true);
+  assert.equal(canonical_hson_graph_equal(client.data.must("zzAdded").root(), original), true);
   assert.equal(client.capture().libraries.find(entry => entry.name === "zzAdded")!.root.payload,
     server.capture().libraries.find(entry => entry.name === "zzAdded")!.root.payload);
-  assert.equal(client.lib("ui"), ui);
-  assert.equal(client.lib("state"), shared);
+  assert.equal(client.data.must("ui"), ui);
+  assert.equal(client.data.must("state"), shared);
   assert.deepEqual(livemap_identity_epoch_accounting(ui), accounting);
   replica.dispose();
 }
 
 {
   const { snapshot, client, engine, replica } = setup();
-  const shared = client.lib("state");
-  const local = client.lib("panel");
+  const shared = client.data.must("state");
+  const local = client.doc.must("panel");
   const before = client.capture();
   const identities = engine.libraries();
   const accounting = livemap_identity_epoch_accounting(local);
@@ -393,8 +393,8 @@ for (const fixture of orderedRootReconstructionFixtures) {
     assert.deepEqual(client.capture(), before);
     assert.deepEqual(engine.libraries(), identities);
     assert.deepEqual(livemap_identity_epoch_accounting(local), accounting);
-    assert.equal(client.lib("state"), shared);
-    assert.equal(client.lib("panel"), local);
+    assert.equal(client.data.must("state"), shared);
+    assert.equal(client.doc.must("panel"), local);
     assert.equal(publications, 0);
   }
   for (const kind of ["empty metadata", "nested empty metadata"] as const) {
@@ -407,10 +407,10 @@ for (const fixture of orderedRootReconstructionFixtures) {
   }
   stop();
   install_client_local_initializers_internal(client, seeds);
-  assert.equal(canonical_hson_graph_equal(client.lib("later").root(), hsonTransform.fromJson({ items: ["a", "b"] }).toNode()), true);
-  assert.equal(client.lib("panel"), local);
+  assert.equal(canonical_hson_graph_equal(client.data.must("later").root(), hsonTransform.fromJson({ items: ["a", "b"] }).toNode()), true);
+  assert.equal(client.doc.must("panel"), local);
   replica.restoreHosted(snapshot);
-  assert.equal(client.lib("state"), shared);
+  assert.equal(client.data.must("state"), shared);
   replica.dispose();
 }
 

@@ -32,20 +32,20 @@ try {
   let baseline: string;
   try {
     await locus.stage(w => {
-      w.lib("page").at([]).asElement().attrs.set("title", "checkpoint");
-      w.lib("flat").at([]).asElement().attrs.set("title", "checkpoint");
-      w.lib("flat").css.sel("body").setProp("color", "navy");
-      w.lib("bare").at([0]).delete();
+      w.doc.must("page").at([]).asElement().attrs.set("title", "checkpoint");
+      w.doc.must("flat").at([]).asElement().attrs.set("title", "checkpoint");
+      w.doc.must("flat").css.sel("body").setProp("color", "navy");
+      w.doc.must("bare").at([0]).delete();
     });
     await hsonLiveMap.locus.checkpoint(locus);
     await locus.addLibraries({ shared: [{ name: "later", definition: page }] });
     await locus.stage(w => {
-      w.lib("page").at([0]).delete();
-      w.lib("page").at([]).asElement().attrs.set("title", "durable-tail");
-      w.lib("page").css.sel("main").setProp("color", "teal");
-      w.lib("flat").at([]).asElement().attrs.set("title", "durable-tail");
-      w.lib("flat").css.sel("body").setProp("color", "maroon");
-      w.lib("data").at(["n"]).set(7);
+      w.doc.must("page").at([0]).delete();
+      w.doc.must("page").at([]).asElement().attrs.set("title", "durable-tail");
+      w.doc.must("page").css.sel("main").setProp("color", "teal");
+      w.doc.must("flat").at([]).asElement().attrs.set("title", "durable-tail");
+      w.doc.must("flat").css.sel("body").setProp("color", "maroon");
+      w.data.must("data").at(["n"]).set(7);
     });
     await caught(active.echo, locus);
     baseline = JSON.stringify({ rev: locus.rev, css: document(active.echo).css.snapshot(), incarnation: locus.incarnationId });

@@ -93,9 +93,9 @@ const locus = hsonLiveMap.locus.create({ shared: [
   { name: "slide01", definition: { document: '<html <head/> <body <main "Slide"/>/>/>', schema: Hson.schema`<type "document">` } },
 ] });
 try {
-  const home = locus.lib("home");
-  const slide01 = locus.lib("slide01");
-  const slide02 = locus.lib("slide01");
+  const home = locus.doc.must("home");
+  const slide01 = locus.doc.must("slide01");
+  const slide02 = locus.doc.must("slide01");
   if (home.mode !== "document" || slide01.mode !== "document" || slide02.mode !== "document") {
     throw new Error("Deck fixture requires document libraries.");
   }

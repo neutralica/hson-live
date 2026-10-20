@@ -29,7 +29,7 @@ function check(name: string, run: () => void): void {
 const Q1 = "000004b01";
 const Q2 = "000004b02";
 const DataSchema = Hson.schema`<type "data" content <a <optional "any"> b <optional "any"> items <optional "any">>>`;
-const data = () => hsonLiveMap.fromLibraries({ state: { data: { a: {}, b: {}, items: [{ id: 1 }, { id: 2 }] }, schema: DataSchema } }).lib("state");
+const data = () => hsonLiveMap.fromLibraries({ state: { data: { a: {}, b: {}, items: [{ id: 1 }, { id: 2 }] }, schema: DataSchema } }).data.must("state");
 const document = () => element('<main <item/> <item/>/>');
 const target = (...parts: number[]) => ({ kind: "path" as const, path: [0, ...parts] });
 

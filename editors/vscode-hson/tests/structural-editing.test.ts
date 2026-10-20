@@ -62,7 +62,7 @@ check("authored document formatting preserves nested QUADs, connector admission,
       parts: part_collection_definition_internal({ content: { kind: "document", document: '<article "Body"/>' } }),
       page: { document: formattedBody },
     });
-    const page = map.lib("page");
+    const page = map.doc.must("page");
     if (page.mode !== "document") throw new Error("Expected document Library");
     for (const declaration of parse_authored_document_library(body).declarations) assert.ok(page.q(declaration.name));
     assert.doesNotMatch(JSON.stringify(page.at([]).snap()), /\$_meta|@:|hson-part/);

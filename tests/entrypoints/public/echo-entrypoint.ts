@@ -15,19 +15,19 @@ const endpointHasMap: "map" extends keyof typeof endpoint ? true : false = false
 // @ts-expect-error Endpoint-only Echo has no synchronization diagnostics.
 endpoint.sync;
 const replica = await hsonLiveMap.echo.create({ transport, now, credential });
-void [replica.rev, replica.lib, replica.cut, replica.commits, replica.sync.appliedRev,
+void [replica.rev, replica.doc, replica.data, replica.parts, replica.cut, replica.commits, replica.sync.appliedRev,
   replica.sync.status, replica.session, replica.connect, replica.disconnect];
 const replicaHasMap: "map" extends keyof typeof replica ? true : false = false;
 void [endpointHasMap, replicaHasMap];
-const selected = replica.lib("state");
-if (selected.source === "authority-projected" && selected.mode !== "document") {
+const selected = replica.data.must("state");
+if (selected.source === "authority-projected") {
   selected.at(["value"]).snap();
   // @ts-expect-error Projected data has no generic setter.
   selected.at(["value"]).set(1);
   // @ts-expect-error Projected Schema attachment is unavailable.
   selected.schema.use;
 }
-if (selected.source === "client-local" && selected.mode !== "document") {
+if (selected.source === "client-local") {
   selected.at(["value"]).set(1);
   selected.schema.use;
 }

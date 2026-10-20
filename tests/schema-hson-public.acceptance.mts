@@ -56,8 +56,8 @@ check("named library Schemas retain construction evidence and expose tightening"
   assert.match(declaration, /schema: Readonly<\{\s*get: \(\) => LiveMapCurrentDocumentSchema<TSchema>;\s*use: LiveMapSchemaUse<LiveMapDocumentSchemaUse<TSchema>, TLibrary>;\s*\}>;/);
   const schema = root.Hson.schema`<type "data" content <age "number">>`;
   const registry = root.hsonLiveMap.fromLibraries({ state: { data: { age: 37 }, schema } });
-  assert.equal(registry.lib("state").schema.get(), schema);
-  assert.equal(typeof registry.lib("state").schema.use, "function");
+  assert.equal(registry.data.must("state").schema.get(), schema);
+  assert.equal(typeof registry.data.must("state").schema.use, "function");
 });
 
 check("Schema object owns certification and portable Schema data", () => {

@@ -73,7 +73,7 @@ replica.replayHosted(decoded, before.revision);
 assert.equal(client.rev, 1);
 assert.deepEqual(clientEngine.documentOverlay(clientId).pathForQuid(clientQuid), [0, 0, 0]);
 assert.equal(clientEngine.documentOverlay(clientId).pathForQuid(quid), undefined);
-const page = client.lib("page");
+const page = client.doc.must("page");
 if (page.mode !== "document") throw new Error("Expected document.");
 const main = page.root().$_content[0];
 assert.equal(typeof main, "object");

@@ -266,7 +266,7 @@ export function create_lazy_replica_echo_internal<
   const stopHandoffStatus = connection.onReadyChange(() => {
     if (echo.session.status === "disposed") releaseHandoff?.();
   });
-  const lib = make_echo_library_selector(options.map, (selected) => {
+  const families = make_echo_library_selector(options.map, (selected) => {
     if (strategy === undefined) throw new Error("Echo replica library authority is not ready.");
     return strategy.ensureDocumentAuthority(selected);
   });
@@ -279,7 +279,7 @@ export function create_lazy_replica_echo_internal<
   };
   const publicEcho = {
     get rev() { return options.map.rev; },
-    lib,
+    ...families,
     cut: options.map.cut.bind(options.map),
     commits: options.map.commits,
     sync,

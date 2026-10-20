@@ -17,7 +17,7 @@ import type { LiveMap, LiveMapDocumentLibrary } from "../../src/types/livemap.ty
 
 const fixture = () => authored({ page: { document: '<main @:page <button @:nextButton "Next"/> <aside/>/>' } });
 function page(map: LiveMap): LiveMapDocumentLibrary {
-  const selected = map.lib("page"); if (selected.mode !== "document") throw Error("document"); return selected;
+  const selected = map.doc.must("page"); if (selected.mode !== "document") throw Error("document"); return selected;
 }
 function atomic(map: LiveMap, run: () => unknown): void {
   const before = map.capture(), ledger = owner(map).identityEpoch().issued();
@@ -116,7 +116,7 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     const localSource = fixture(), localOwner = owner(localSource), localCapture = localSource.capture().libraries[0]!;
     add_client_local_libraries_internal(client, [{ name: "local", family: "document",
       root: decode_hosted_root(localCapture.root), schema: localOwner.librarySchema(localOwner.libraries()[0]!), quads: localCapture.quads }], {});
-    const local = client.lib("local"); if (local.mode !== "document") throw new Error("Expected local document");
+    const local = client.doc.must("local"); if (String(local.mode) !== "document") throw new Error("Expected local document");
     const localFamily = local.q("nextButton")!, localChild = localFamily.at([0]), projectedFamily = page(client).q("nextButton")!;
     const clientOwner = owner(client), localIdentity = clientOwner.libraries().find(identity =>
       clientOwner.documentOverlay(identity).quidAtPath(lookup(local, "nextButton")!.path) === lookup(local, "nextButton")!.quid)!;
@@ -270,7 +270,7 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     assert.equal(allocations, 0); assert.equal(commits, 0); assert.equal(positions, 0);
     const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' }, data: { data: { member: {} } } });
     const clean = plain.capture(); assert.equal(page(plain).q("anything"), undefined);
-    assert.equal("q" in plain.lib("data"), false); assert.equal(owner(plain).identityEpoch().issued().size, 0);
+    assert.equal("q" in plain.data.must("data"), false); assert.equal(owner(plain).identityEpoch().issued().size, 0);
     assert.deepEqual(plain.capture(), clean);
   });
   check("public q edits publish through the owner and movement follows the subject while at stays fixed", () => {

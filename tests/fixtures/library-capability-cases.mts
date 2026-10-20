@@ -27,30 +27,30 @@ export async function library_capability_cases() {
   assert.equal(Object.getPrototypeOf(admitted.libraries), null);
   assert.equal(Object.isFrozen(admitted.libraries), true);
   assert.equal(admitted.libraries.page.render(), "<main></main>");
-  assert.equal(admitted.libraries.page, empty.lib("page"));
+  assert.equal(admitted.libraries.page, empty.doc.must("page"));
   assert.throws(() => empty.addLibraries({ page: { document: "<aside/>" } }));
   assert.equal(empty.rev, 1);
   const direct = hsonLiveMap.fromLibraries({ page: { document: page, schema: PageSchema } });
   const batch = hsonLiveMap.fromLibraries({ page: { document: page, schema: PageSchema } });
-  direct.lib("page").at([1, 0]).asElement()!.attrs.set("title", "button");
-  batch.batch(w => { w.lib("page").at([1, 0]).asElement().attrs.set("title", "button"); });
-  assert.equal(batch.lib("page").render(), direct.lib("page").render());
+  direct.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "button");
+  batch.batch(w => { w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "button"); });
+  assert.equal(batch.doc.must("page").render(), direct.doc.must("page").render());
   const simple = hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' } });
-  simple.batch(w => { w.lib("page").at([0]).asElement().attrs.set("title", "button"); });
-  assert.equal(simple.lib("page").render(), '<main><button title="button"></button></main>');
+  simple.batch(w => { w.doc.must("page").at([0]).asElement().attrs.set("title", "button"); });
+  assert.equal(simple.doc.must("page").render(), '<main><button title="button"></button></main>');
   batch.batch(w => {
-    w.lib("page").at([1]).insert(0, element("<i/>"));
-    w.lib("page").at([1, 1]).asElement().attrs.set("moved", true);
-    w.lib("page").at([1]).move(1, 0);
-    w.lib("page").at([1, 1]).asElement().attrs.set("inserted", true);
+    w.doc.must("page").at([1]).insert(0, element("<i/>"));
+    w.doc.must("page").at([1, 1]).asElement().attrs.set("moved", true);
+    w.doc.must("page").at([1]).move(1, 0);
+    w.doc.must("page").at([1, 1]).asElement().attrs.set("inserted", true);
   });
-  assert.match(batch.lib("page").render(), /<button moved="" title="button"><\/button><i inserted=""><\/i>/);
-  const before = batch.lib("page").render(), rev = batch.rev;
+  assert.match(batch.doc.must("page").render(), /<button moved="" title="button"><\/button><i inserted=""><\/i>/);
+  const before = batch.doc.must("page").render(), rev = batch.rev;
   assert.throws(() => batch.batch(w => {
-    w.lib("page").at([1, 0]).delete();
-    w.lib("page").at([1, 99]).asElement().attrs.set("invalid", true);
+    w.doc.must("page").at([1, 0]).delete();
+    w.doc.must("page").at([1, 99]).asElement().attrs.set("invalid", true);
   }));
-  assert.equal(batch.lib("page").render(), before); assert.equal(batch.rev, rev);
+  assert.equal(batch.doc.must("page").render(), before); assert.equal(batch.rev, rev);
 
   const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: page, schema: PageSchema } }],
     local: [{ name: "panel", initializer: { document: '<aside/>' } }],
@@ -59,16 +59,16 @@ export async function library_capability_cases() {
     const admitted = await locus.addLibraries({ private: [{ name: "privatePage", definition: { document: "<aside/>" } }] });
     assert.equal(admitted.libraries.privatePage.render(), "<aside></aside>");
     await assert.rejects(locus.addLibraries({ shared: [{ name: "privatePage", definition: { data: 1 } }] }));
-    await locus.stage(w => { w.lib("page").at([1, 0]).asElement().attrs.set("title", "button"); });
-    const selected = locus.lib("page");
+    await locus.stage(w => { w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "button"); });
+    const selected = locus.doc.must("page");
     if (selected.mode !== "document") throw Error("Expected document");
-    assert.equal(selected.render(), direct.lib("page").render());
+    assert.equal(selected.render(), direct.doc.must("page").render());
     const session = await locus.session.create({ libraries: ["page", "panel"] });
     const pair = sockets(), detach = bind_locus_websocket(locus, pair.server);
     const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
     try {
       for (const name of ["page", "panel"]) {
-        const library = echo.lib(name);
+        const library = echo.doc.must(name);
         if (library.mode !== "document") throw Error("Expected document");
         const html = library.render();
         const host = hsonLiveHost.create({ name: "producer" });
@@ -88,7 +88,7 @@ export async function library_capability_cases() {
 export async function collection_capability_cases() {
   const initial = { slides: [{ id: "one", column1: [{ kind: "heading", content: "Title" }] }] };
   const local = hsonLiveMap.fromLibraries({ deck: { data: initial, schema: DeckSchema }, page: { document: page, schema: PageSchema } });
-  const slides = local.lib("deck").at(["slides"]);
+  const slides = local.data.must("deck").at(["slides"]);
   assert.equal("push" in slides, false);
   assert.deepEqual(slides.array.map(slide => slide.id), ["one"]);
   const transformed = slides.array.map(slide => { Reflect.set(slide.column1[0]!, "content", "detached"); return slide.id; });
@@ -102,34 +102,34 @@ export async function collection_capability_cases() {
   assert.deepEqual(once, ["one"]);
   slides.array.pop();
   local.batch(writer => {
-    writer.lib("deck").at(["slides"]).array.push({ id: "two", column1: [] });
-    writer.lib("deck").at(["slides"]).array.push({ id: "three", column1: [] });
-    writer.lib("page").at([1, 0]).asElement().attrs.set("title", "mixed");
+    writer.data.must("deck").at(["slides"]).array.push({ id: "two", column1: [] });
+    writer.data.must("deck").at(["slides"]).array.push({ id: "three", column1: [] });
+    writer.doc.must("page").at([1, 0]).asElement().attrs.set("title", "mixed");
   });
   assert.deepEqual(slides.array.map(slide => slide.id), ["one", "two", "three"]);
-  assert.match(local.lib("page").render(), /title="mixed"/);
+  assert.match(local.doc.must("page").render(), /title="mixed"/);
   const before = local.capture();
   assert.throws(() => local.batch(writer => {
-    writer.lib("deck").at(["slides"]).array.push({ id: "four", column1: [] });
-    writer.lib("deck").at(["slides"]).array.remove(999);
+    writer.data.must("deck").at(["slides"]).array.push({ id: "four", column1: [] });
+    writer.data.must("deck").at(["slides"]).array.remove(999);
   }));
   assert.deepEqual(local.capture(), before);
   assert.throws(() => local.batch(writer => {
-    writer.lib("page").at([1, 0]).asElement().attrs.set("title", "rejected");
-    Reflect.apply(writer.lib("deck").at(["slides"]).array.push, undefined, [{ id: 9, column1: [] }]);
+    writer.doc.must("page").at([1, 0]).asElement().attrs.set("title", "rejected");
+    Reflect.apply(writer.data.must("deck").at(["slides"]).array.push, undefined, [{ id: 9, column1: [] }]);
   }));
   assert.deepEqual(local.capture(), before);
   class InvalidSlide { id = "invalid"; column1 = []; }
   assert.throws(() => local.batch(writer => {
-    writer.lib("deck").at(["slides"]).array.push(new InvalidSlide());
+    writer.data.must("deck").at(["slides"]).array.push(new InvalidSlide());
   }), { reasonCode: "UNSUPPORTED_PROTOTYPE" });
   assert.deepEqual(local.capture(), before);
   let expired: (() => void) | undefined;
-  local.batch(writer => { const array = writer.lib("deck").at(["slides"]).array; expired = () => array.clear(); });
+  local.batch(writer => { const array = writer.data.must("deck").at(["slides"]).array; expired = () => array.clear(); });
   assert.throws(() => expired!(), /expired/i);
 
   const updates = hsonLiveMap.fromLibraries({ values: { data: [1] } });
-  const updatePath = updates.lib("values").at([]).asArray()!;
+  const updatePath = updates.data.must("values").at([]).asArray()!;
   const updateCommit = updatePath.update(snapshot => {
     updatePath.array.push(2);
     assert.deepEqual(snapshot, [1]);
@@ -141,7 +141,7 @@ export async function collection_capability_cases() {
   for (const action of [() => updatePath.array.pop(), () => updatePath.array.shift(), () => updatePath.array.first(), () => updatePath.array.at(0)]) assert.throws(action);
 
   const ordered = hsonLiveMap.fromLibraries({ record: { data: '{"10":10,"2":2,"a":1}' } });
-  const object = ordered.lib("record").at([]).asObject()!.object;
+  const object = ordered.data.must("record").at([]).asObject()!.object;
   assert.deepEqual(object.keys(), ["10", "2", "a"]);
   assert.deepEqual(object.entries().map(([key]) => key), ["10", "2", "a"]);
   object.renameKey("10", "first");
@@ -159,36 +159,36 @@ export async function collection_capability_cases() {
   authorizeProjection: () => ({ libraries: ["deck", "state", "page", "ui"] }),
   authorizeAction: () => false,
   actions: { inspect(context) {
-    const library = context.lib("state");
+    const library = context.data.must("state");
     const location = library.at(["values"]).asArray()!;
     assert.equal("push" in location.array, false);
     assert.equal("set" in location, false);
     assert.deepEqual(location.array.map(value => value), [3, 1, 2]);
     assert.equal(location.at([0]).asScalar()!.snap(), 3);
-    const document = context.lib("page");
+    const document = context.doc.must("page");
     if (document.mode !== "document") throw Error("Expected document");
     assert.equal(document.at([1]).at([0]).asElement()!.attrs.get("title"), undefined);
     assert.equal("set" in document.at([1]).at([0]).asElement()!.attrs, false);
     actionReads++;
   } } });
-  const retained = locus.lib("state").at(["values"]).array;
+  const retained = locus.data.must("state").at(["values"]).array;
   try {
     assert.equal((await locus.dispatchAction({ type: "action", id: "inspect", name: "inspect" })).type, "ack");
     assert.equal(actionReads, 1);
     await locus.stage(writer => {
-      writer.lib("deck").at(["slides"]).array.push({ id: "two", column1: [] });
-      writer.lib("deck").at(["slides"]).array.push({ id: "three", column1: [] });
-      writer.lib("page").at([1, 0]).asElement().attrs.set("title", "mixed");
+      writer.data.must("deck").at(["slides"]).array.push({ id: "two", column1: [] });
+      writer.data.must("deck").at(["slides"]).array.push({ id: "three", column1: [] });
+      writer.doc.must("page").at([1, 0]).asElement().attrs.set("title", "mixed");
     });
-    assert.deepEqual(locus.lib("deck").at(["slides"]).array.map(slide => slide.id), ["one", "two", "three"]);
+    assert.deepEqual(locus.data.must("deck").at(["slides"]).array.map(slide => slide.id), ["one", "two", "three"]);
     const revision = locus.rev;
     await assert.rejects(locus.stage(writer => {
-      writer.lib("deck").at(["slides"]).array.clear();
-      writer.lib("state").at(["values"]).array.move(999, 0);
+      writer.data.must("deck").at(["slides"]).array.clear();
+      writer.data.must("state").at(["values"]).array.move(999, 0);
     }));
     assert.equal(locus.rev, revision);
-    assert.equal(locus.lib("deck").at(["slides"]).array.length(), 3);
-    const values = locus.lib("state").at(["values"]).array;
+    assert.equal(locus.data.must("deck").at(["slides"]).array.length(), 3);
+    const values = locus.data.must("state").at(["values"]).array;
     class InvalidValue { n = 1; }
     const beforeInvalid = locus.rev;
     await assert.rejects(Reflect.apply(values.push, undefined, [new InvalidValue()]), { reasonCode: "UNSUPPORTED_PROTOTYPE" });
@@ -208,12 +208,12 @@ export async function collection_capability_cases() {
     await values.insert(1, 7);
     await values.remove(1);
     assert.deepEqual(values.toArray(), [8, 2, 9, 5]);
-    const record = locus.lib("state").at(["record"]).object;
+    const record = locus.data.must("state").at(["record"]).object;
     await record.renameKey("a", "first");
     await record.setMany({ c: 3, d: 4 });
     await record.deleteMany(["b", "c"]);
     assert.deepEqual(record.entries(), [["first", 1], ["d", 4]]);
-    const changing = locus.lib("state").at(["choice"]);
+    const changing = locus.data.must("state").at(["choice"]);
     const stale = changing.asArray()!;
     await changing.replace({ n: 1 });
     await assert.rejects(stale.array.push(2), /array/i);
@@ -224,8 +224,8 @@ export async function collection_capability_cases() {
     const pair = sockets(), detach = bind_locus_websocket(locus, pair.server);
     const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
     try {
-      const projected = echo.lib("state"), ui = echo.lib("ui");
-      if (projected.mode === "document" || ui.mode === "document" || ui.source !== "client-local") throw Error("Expected data sources");
+      const projected = echo.data.must("state"), ui = echo.data.must("ui");
+      if (String(projected.mode) === "document" || String(ui.mode) === "document" || ui.source !== "client-local") throw Error("Expected data sources");
       const read = projected.at(["values"]).asArray()!;
       assert.equal("push" in read.array, false);
       assert.deepEqual(read.array.map(value => value), [8, 2, 9, 5]);
@@ -273,16 +273,16 @@ export async function collection_command_parity_cases() {
     const direct = hsonLiveMap.locus.create({ shared: [{ name: "state", definition }] });
     const invoke = (location: object) => Reflect.apply(Reflect.get(Reflect.get(location, namespace), method), undefined, args);
     try {
-      assert.equal(invoke(local.lib("state").at([path])).changed, true, method);
-      const expected = local.lib("state").at([path]).data();
-      assert.equal(staged.batch(w => { assert.equal(invoke(w.lib("state").at([path])), undefined); }).changed, true);
-      assert.equal(staged.lib("state").at([path]).data(), expected, method);
-      assert.equal(await locus.stage(w => { assert.equal(invoke(w.lib("state").at([path])), undefined); }), undefined);
-      assert.equal(locus.lib("state").at([path]).data(), expected, method);
-      const pending = invoke(direct.lib("state").at([path]));
+      assert.equal(invoke(local.data.must("state").at([path])).changed, true, method);
+      const expected = local.data.must("state").at([path]).data();
+      assert.equal(staged.batch(w => { assert.equal(invoke(w.data.must("state").at([path])), undefined); }).changed, true);
+      assert.equal(staged.data.must("state").at([path]).data(), expected, method);
+      assert.equal(await locus.stage(w => { assert.equal(invoke(w.data.must("state").at([path])), undefined); }), undefined);
+      assert.equal(locus.data.must("state").at([path]).data(), expected, method);
+      const pending = invoke(direct.data.must("state").at([path]));
       assert.ok(pending instanceof Promise);
       assert.equal(await pending, undefined);
-      assert.equal(direct.lib("state").at([path]).data(), expected, method);
+      assert.equal(direct.data.must("state").at([path]).data(), expected, method);
     } finally { locus.dispose(); direct.dispose(); }
   }
 }
@@ -298,7 +298,7 @@ export async function refinement_repair_cases() {
     assert.equal("optionalPage" in receipt.libraries, present);
     if (receipt.libraries.optionalPage) {
       assert.equal(receipt.libraries.optionalPage.render(), "<main></main>");
-      assert.equal(receipt.libraries.optionalPage, map.lib("optionalPage"));
+      assert.equal(receipt.libraries.optionalPage, map.doc.must("optionalPage"));
     }
     else assert.equal(present, false);
     let failedReceipt: unknown;
@@ -317,8 +317,8 @@ export async function refinement_repair_cases() {
       { name: "state", definition: definitions.state }, { name: "deck", definition: definitions.deck },
     ] });
     const selected = governed ? locus : map;
-    const state = governed ? locus.lib("state") : map.lib("state");
-    const deck = governed ? locus.lib("deck") : map.lib("deck");
+    const state = governed ? locus.data.must("state") : map.data.must("state");
+    const deck = governed ? locus.data.must("deck") : map.data.must("deck");
     type Writer = import("hson-live/livemap").LiveMapStagedWriter<typeof map, void>;
     const stage = async (run: (writer: Writer) => void) => {
       if (governed) await locus.stage(run);
@@ -335,29 +335,29 @@ export async function refinement_repair_cases() {
     };
     try {
       // A standalone assertion is required, even with no later mutation.
-      await rejects_atomically(w => { w.lib("state").at(["value"]).asArray(); });
-      await rejects_atomically(w => { w.lib("state").at(["value"]).asObject(); });
-      await rejects_atomically(w => { w.lib("deck").at(["slides", 0, "column2"]).asArray(); });
-      await rejects_atomically(w => { w.lib("deck").at(["slides", 99, "column2"]).asArray(); });
+      await rejects_atomically(w => { w.data.must("state").at(["value"]).asArray(); });
+      await rejects_atomically(w => { w.data.must("state").at(["value"]).asObject(); });
+      await rejects_atomically(w => { w.data.must("deck").at(["slides", 0, "column2"]).asArray(); });
+      await rejects_atomically(w => { w.data.must("deck").at(["slides", 99, "column2"]).asArray(); });
       await rejects_atomically(w => {
-        w.lib("state").at(["value"]).asArray();
-        w.lib("state").at(["value"]).set([]); // A later repair cannot rescue an earlier failed assertion.
+        w.data.must("state").at(["value"]).asArray();
+        w.data.must("state").at(["value"]).set([]); // A later repair cannot rescue an earlier failed assertion.
       });
       const rev = selected.rev;
-      await stage(w => { w.lib("state").at(["required"]).asArray(); });
+      await stage(w => { w.data.must("state").at(["required"]).asArray(); });
       assert.equal(selected.rev, rev, "A successful assertion alone publishes no mutation");
 
       await stage(w => {
-        const value = w.lib("state").at(["value"]);
+        const value = w.data.must("state").at(["value"]);
         value.set([]);
         const array = value.asArray();
         assert.equal("snap" in array, false);
         assert.equal("map" in Reflect.get(array, "array"), false);
         array.array.push(1);
         array.array.push(2);
-        w.lib("state").at(["record"]).asObject().object.setKey("ready", true);
-        const optional = w.lib("deck").at(["slides", 0, "column2"]);
-        w.lib("deck").at(["slides", 0]).asObject().object.setKey("column2", []);
+        w.data.must("state").at(["record"]).asObject().object.setKey("ready", true);
+        const optional = w.data.must("deck").at(["slides", 0, "column2"]);
+        w.data.must("deck").at(["slides", 0]).asObject().object.setKey("column2", []);
         optional.asArray().array.push({ kind: "paragraph", content: "first" });
         optional.asArray().array.push({ kind: "paragraph", content: "second" });
       });
@@ -367,33 +367,33 @@ export async function refinement_repair_cases() {
         { kind: "paragraph", content: "first" }, { kind: "paragraph", content: "second" },
       ]);
       await rejects_atomically(w => {
-        w.lib("state").at(["value"]).asArray().array.push(3);
-        w.lib("state").at(["value"]).replace({ wrong: true });
-        w.lib("state").at(["value"]).asArray();
+        w.data.must("state").at(["value"]).asArray().array.push(3);
+        w.data.must("state").at(["value"]).replace({ wrong: true });
+        w.data.must("state").at(["value"]).asArray();
       });
       await rejects_atomically(w => {
-        w.lib("state").at(["value"]).delete();
-        w.lib("state").at(["value"]).asArray().array.push(3);
+        w.data.must("state").at(["value"]).delete();
+        w.data.must("state").at(["value"]).asArray().array.push(3);
       });
       await rejects_atomically(w => {
-        const refined = w.lib("state").at(["value"]).asArray();
-        w.lib("state").at(["value"]).replace(0);
+        const refined = w.data.must("state").at(["value"]).asArray();
+        w.data.must("state").at(["value"]).replace(0);
         refined.array.push(3); // A retained command facade must recheck current candidate shape.
       });
       await rejects_atomically(w => {
-        w.lib("state").at(["value"]).asArray().array.push(3);
-        const array = w.lib("deck").at(["slides", 0, "column2"]).asArray().array;
+        w.data.must("state").at(["value"]).asArray().array.push(3);
+        const array = w.data.must("deck").at(["slides", 0, "column2"]).asArray().array;
         Reflect.apply(array.push, undefined, [{ kind: "paragraph", content: 123 }]);
       });
       await stage(w => {
-        w.lib("state").at(["value"]).replace({ count: 0 });
-        w.lib("state").at(["value"]).asObject().object.setKey("count", 2);
+        w.data.must("state").at(["value"]).replace({ count: 0 });
+        w.data.must("state").at(["value"]).asObject().object.setKey("count", 2);
       });
       assert.deepEqual(state.at(["value"]).snap(), { count: 2 });
       let escapedRefinement: (() => unknown) | undefined;
       let escapedCommand: (() => unknown) | undefined;
       await stage(w => {
-        const location = w.lib("state").at(["required"]);
+        const location = w.data.must("state").at(["required"]);
         escapedRefinement = () => location.asArray();
         const array = location.asArray().array;
         escapedCommand = () => array.push(1);
@@ -403,11 +403,11 @@ export async function refinement_repair_cases() {
       if (governed) {
         let blocked: Promise<void> | undefined;
         await locus.stage(w => {
-          blocked = assert.rejects(locus.lib("state").at(["required"]).asArray()!.array.push(99), /forbidden/i);
-          w.lib("state").at(["required"]).asArray().array.push(1);
+          blocked = assert.rejects(locus.data.must("state").at(["required"]).asArray()!.array.push(99), /forbidden/i);
+          w.data.must("state").at(["required"]).asArray().array.push(1);
         });
         await blocked;
-        assert.deepEqual(locus.lib("state").at(["required"]).snap(), [1]);
+        assert.deepEqual(locus.data.must("state").at(["required"]).snap(), [1]);
         const receipt = await locus.addLibraries({ shared: [{ name: "admitted", definition: { document: "<aside/>" } }] });
         assert.equal(receipt.libraries.admitted.render(), "<aside></aside>");
         let failedReceipt: unknown;

@@ -20,7 +20,7 @@ export async function library_evidence_cases() {
   } finally { optionalLocus.dispose(); }
 
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: [1], parent: { value: { count: 1 } } } }, array: { data: [1] } });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const aggregate = internal_livemap_aggregate_authority(map);
   const before = map.capture(), issued = aggregate.identityEpoch().issued(), issuedBefore = enumerate_livemap_issued_quids(issued);
   const value = state.at(["value"]), array = value.asArray()!;
@@ -80,14 +80,14 @@ export async function library_evidence_cases() {
   assert.deepEqual(objectValues, [undefined, undefined]);
   stopObject();
 
-  const roots = map.lib("array").at([]);
+  const roots = map.data.must("array").at([]);
   roots.array.push({ fresh: true });
   assert.deepEqual(roots.snap(), [1, { fresh: true }]);
   assert.throws(() => Reflect.apply(roots.replace, undefined, [{}]), /root|mode|array/i);
   assert.throws(() => Reflect.apply(state.at([]).replace, undefined, [[]]), /root|mode|object/i);
   const current = map.capture();
   assert.throws(() => map.batch(writer => {
-    const raw = writer.lib("state").at(["value"]);
+    const raw = writer.data.must("state").at(["value"]);
     const checked = raw.asArray();
     raw.replace({ count: 1 });
     // Recheck the retained assertion even when the later operation is a generic write.
@@ -95,11 +95,11 @@ export async function library_evidence_cases() {
   }), /array/);
   assert.deepEqual(map.capture(), current);
   let expired: (() => void) | undefined;
-  map.batch(writer => { const checked = writer.lib("state").at(["value"]).asArray(); expired = () => checked.array.push(9); });
+  map.batch(writer => { const checked = writer.data.must("state").at(["value"]).asArray(); expired = () => checked.array.push(9); });
   assert.throws(() => expired!(), /expired/i);
 
   const staleMap = hsonLiveMap.fromLibraries({ old: { data: [1] } });
-  const stale = staleMap.lib("old").at([]).asArray()!;
+  const stale = staleMap.data.must("old").at([]).asArray()!;
   internal_livemap_aggregate_authority(staleMap).restorePortableLibraries(hsonLiveMap.fromLibraries({ next: { data: [2] } }).capture());
   assert.throws(() => stale.snap(), /another map authority/i);
   assert.throws(() => stale.array.push(3), /another map authority/i);
@@ -108,7 +108,7 @@ export async function library_evidence_cases() {
   let retainedRead: ReturnType<ReadDataLocation["asArray"]>;
   const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { value: [1], parent: { value: { n: 1 } } }, schema } }],
     actions: { inspect(context) {
-      retainedRead = context.lib("state").at(["value"]).asArray();
+      retainedRead = context.data.must("state").at(["value"]).asArray();
       assert.ok(retainedRead);
       assert.equal("set" in retainedRead, false);
       const checked = retainedRead.asArray()!;
@@ -118,10 +118,10 @@ export async function library_evidence_cases() {
   });
   try {
     assert.equal((await locus.dispatchAction({ type: "action", id: "inspect", name: "inspect" })).type, "ack");
-    const raw = locus.lib("state").at(["value"]);
+    const raw = locus.data.must("state").at(["value"]);
     const checked = raw.asArray()!;
     const nested = checked.at([]);
-    const parent = locus.lib("state").at(["parent"]).asObject()!;
+    const parent = locus.data.must("state").at(["parent"]).asObject()!;
     const nestedObject = parent.at(["value"]).asObject()!;
     const watched: unknown[] = [];
     const stop = checked.watch(value => watched.push(value));
@@ -133,20 +133,20 @@ export async function library_evidence_cases() {
     assert.throws(() => checked.array.length(), /array/);
     await assert.rejects(checked.array.push(2), /array/);
     assert.equal(retainedRead!.asObject(), undefined);
-    await locus.lib("state").at(["parent"]).delete();
+    await locus.data.must("state").at(["parent"]).delete();
     assert.equal(nestedObject.snap(), undefined);
     assert.throws(() => nestedObject.object.keys(), /object/);
     await assert.rejects(nestedObject.object.setKey("n", 2), /object/);
     await raw.delete();
     assert.equal(checked.snap(), undefined);
     assert.equal(retainedRead!.snap(), undefined);
-    await locus.lib("state").at([]).asObject()!.object.setKey("value", [2]);
+    await locus.data.must("state").at([]).asObject()!.object.setKey("value", [2]);
     assert.deepEqual(checked.snap(), [2]);
     assert.deepEqual(retainedRead!.snap(), [2]);
     assert.deepEqual(watched, [undefined, undefined, [2]]);
     stop();
     let expired: (() => void) | undefined;
-    await locus.stage(writer => { const path = writer.lib("state").at(["value"]).asArray(); expired = () => path.array.clear(); });
+    await locus.stage(writer => { const path = writer.data.must("state").at(["value"]).asArray(); expired = () => path.array.clear(); });
     assert.throws(() => expired!(), /expired/i);
   } finally { locus.dispose(); }
 }
@@ -162,19 +162,19 @@ export async function echo_refinement_cases() {
     fetch: (input, init) => binding.handle(new Request(input, init), {}) });
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport });
   try {
-    const state = echo.lib("state"), ui = echo.lib("ui");
-    if (state.mode === "document" || state.source !== "authority-projected" || ui.mode === "document" || ui.source !== "client-local") throw Error("Expected data ownership");
+    const state = echo.data.must("state"), ui = echo.data.must("ui");
+    if (String(state.mode) === "document" || state.source !== "authority-projected" || String(ui.mode) === "document" || ui.source !== "client-local") throw Error("Expected data ownership");
     const array = state.at(["value"]).asArray()!;
     assert.equal("push" in array.array, false);
     assert.equal("replace" in array, false);
     const watched: unknown[] = [];
     const stop = array.watch(value => watched.push(value));
-    await locus.lib("state").at(["value"]).replace({ n: 2 });
+    await locus.data.must("state").at(["value"]).replace({ n: 2 });
     await until(() => state.at(["value"]).kind() === "object");
     assert.equal(array.snap(), undefined);
     assert.equal(array.at([]).snap(), undefined);
     assert.throws(() => array.array.map(() => assert.fail("stale Echo callback")), /array/);
-    await locus.lib("state").at(["value"]).delete();
+    await locus.data.must("state").at(["value"]).delete();
     await until(() => state.at(["value"]).kind() === "missing");
     assert.equal(array.snap(), undefined);
     assert.deepEqual(watched, [undefined, undefined]);

@@ -52,13 +52,13 @@ function expect_phase(phase: "select" | "realize", operation: () => unknown): vo
 }
 
 function data(map: ReturnType<typeof install_libraries_snapshot>["map"], name: string) {
-  const selected = map.lib(name);
-  if (selected.mode === "document") throw new Error(`Expected data Library ${name}.`);
+  const selected = map.data.must(name);
+  if (String(selected.mode) === "document") throw new Error(`Expected data Library ${name}.`);
   return selected;
 }
 
 function document(map: ReturnType<typeof install_libraries_snapshot>["map"], name: string) {
-  const selected = map.lib(name);
+  const selected = map.doc.must(name);
   if (selected.mode !== "document") throw new Error(`Expected document Library ${name}.`);
   return selected;
 }
@@ -91,18 +91,18 @@ await check("capture and local install preserve the complete detached aggregate 
     "state", "page", INTERACTION_RESERVED_LIBRARY_KEY,
   ]);
   assert.equal(snapshot.registry.libraries[2]?.scope, "hson-internal");
-  map.lib("state").at(["count"]).set(1);
-  map.lib("page").at([]).asElement()!.attrs.set("title", "source-moved");
+  map.data.must("state").at(["count"]).set(1);
+  map.doc.must("page").at([]).asElement()!.attrs.set("title", "source-moved");
   assert.equal(JSON.stringify(snapshot), retained);
 
   const installed = install_libraries_snapshot(snapshot);
   assert.notEqual(installed.map, map);
-  assert.notEqual(installed.map.lib("page"), map.lib("page"));
+  assert.notEqual(installed.map.doc.must("page"), map.doc.must("page"));
   assert.deepEqual(installed.map.capture(), snapshot);
   assert.equal(installed.map.rev, snapshot.revision);
   assert.equal(data(installed.map, "state").snap(["count"]), 0);
   assert.equal(document(installed.map, "page").at([]).asElement()!.attrs.get("title"), "zero");
-  assert.throws(() => (installed.map.lib as (name: string) => unknown)(INTERACTION_RESERVED_LIBRARY_KEY), /Unknown/);
+  assert.throws(() => installed.map.data.must(INTERACTION_RESERVED_LIBRARY_KEY), /Unknown/);
   data(installed.map, "state").at(["count"]).set(2);
   assert.equal(JSON.stringify(snapshot), retained);
 });
@@ -130,7 +130,7 @@ await check("HTML selection switches realization while retaining default state",
   assert.match(page.html, /^<main/);
   assert.match(admin.html, /^<aside/);
   assert.deepEqual(page.libs, admin.libs);
-  assert.equal(install_libraries_snapshot(page.libs).map.lib("admin").mode, "document");
+  assert.equal(install_libraries_snapshot(page.libs).map.doc.must("admin").mode, "document");
   assert.throws(() => map.cut({ html: "state" } as any));
   assert.throws(() => map.cut({ html: "missing" } as any));
 });
@@ -147,7 +147,7 @@ await check("hidden storage travels automatically and cannot be selected", () =>
 
 await check("retired server QUID history stays outside local SSR/install", () => {
   const map = map_fixture();
-  map.lib("page").at([]).at([0]).delete();
+  map.doc.must("page").at([]).at([0]).delete();
   const ssr = map.cut({ html: "page" });
   assert.equal("identity" in ssr.libs, false);
   assert.equal(JSON.stringify(ssr.libs).includes(QUID), false);
@@ -181,8 +181,8 @@ await check("cut retains its HTML, data and interactions after source mutation",
   enable_interactions(map);
   const before = map.capture();
   const ssr = map.cut({ html: "page" });
-  map.lib("page").at([]).asElement()!.attrs.set("title", "one");
-  map.lib("state").at(["count"]).set(1);
+  map.doc.must("page").at([]).asElement()!.attrs.set("title", "one");
+  map.data.must("state").at(["count"]).set(1);
   add_interaction(map, Object.freeze({
     id: "after-cut",
     subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
@@ -314,7 +314,7 @@ await check("subset contracts retain the current governing Schema after tighteni
 await check("aggregate-scale roots are consumable without changing ordinary exact-value limits", () => {
   const payload = "x".repeat(5 * 1024 * 1024);
   const map = hsonLiveMap.fromLibraries({ large: { data: { payload } }, page: { document: `<main "${payload}"/>` }, omitted: { data: false } });
-  assert.equal(map.lib("page").render(), `<main>${payload}</main>`);
+  assert.equal(map.doc.must("page").render(), `<main>${payload}</main>`);
   const cut = map.cut({ data: ["large"], documents: ["page"], html: "page" });
   assert.ok(cut.libs.libraries.every(entry => entry.root.payload.length > 4 * 1024 * 1024));
   const installed = install_libraries_snapshot(cut.libs).map;
@@ -363,7 +363,7 @@ await check("HTML cut retains complete transferable state", async () => {
   assert.equal(rendered.document, "page");
   assert.equal(rendered.libs.registry.libraries.some((entry) => entry.name === "state"), true);
   assert.equal(rendered.libs.registry.libraries.some((entry) => entry.scope === "hson-internal"), true);
-  map.lib("state").at(["count"]).set(1);
+  map.data.must("state").at(["count"]).set(1);
   assert.equal(data(install_libraries_snapshot(rendered.libs).map, "state").snap(["count"]), 0);
   assert.equal(typeof encode_ssr_bootstrap(rendered.libs), "string");
   const hostedMap = hosted_map_fixture();
@@ -394,7 +394,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
   await check(`SSR cut and bootstrap retain independent source order: ${fixture.id}`, () => {
     const expected: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
     const source = hsonLiveMap.fromLibraries({ state: { data: fixture.expectedJson }, page: { document: "<main/>" } });
-    assert.equal(canonical_hson_graph_equal(source.lib("state").root(), expected), true);
+    assert.equal(canonical_hson_graph_equal(source.data.must("state").root(), expected), true);
     const cut = source.cut({ html: "page" });
     const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(cut.libs));
     assert.equal(decoded.kind, "libraries");
@@ -402,7 +402,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
     const stop = forbid_structural_js_enumeration();
     try {
       const installed = install_libraries_snapshot(decoded.bootstrap).map;
-      assert.equal(canonical_hson_graph_equal(installed.lib("state").root(), expected), true);
+      assert.equal(canonical_hson_graph_equal(installed.data.must("state").root(), expected), true);
       assert.deepEqual(installed.cut().libs.libraries.find(entry => entry.name === "state")?.root,
         cut.libs.libraries.find(entry => entry.name === "state")?.root);
       assert.equal(document(installed, "page").render(), cut.html);

@@ -64,7 +64,7 @@ check("document identity changes only runtime overlay and issued ledger", () => 
 
 check("projected identity changes no value, graph, revision, or commit", () => {
   const registry = hsonLiveMap.fromLibraries({ state: { data: { child: {} }, schema: DataSchema } });
-  const map = registry.lib("state");
+  const map = registry.data.must("state");
   const before = map.root();
   const value = map.snap();
   let commits = 0;
@@ -81,7 +81,7 @@ check("projected identity changes no value, graph, revision, or commit", () => {
 
 check("prepared graph transition rejects identity-generation drift", () => {
   const registry = hsonLiveMap.fromLibraries({ state: { data: { child: {}, value: 0 }, schema: DataSchema } });
-  const map = registry.lib("state");
+  const map = registry.data.must("state");
   const authority = internal_livemap_aggregate_authority(registry);
   const library = authority.libraries()[0]!;
   const prepared = authority.prepare([{ target: authority.target(library, ["value"]), kind: "set", value: 1 }]);
@@ -180,7 +180,7 @@ check("portable registry capture restores without an overlay-only acquired QUID"
 
 check("graph transition before demand resolves the new current path", () => {
   const registry = hsonLiveMap.fromLibraries({ state: { data: { first: {}, second: {} }, schema: DataSchema } });
-  const map = registry.lib("state");
+  const map = registry.data.must("state");
   map.at([]).asObject()!.object.renameKey("first", "moved");
   assert.equal(map.rev, 1);
   set_livemap_projected_quid_candidate_source_for_tests(map, () => Q2);

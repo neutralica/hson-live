@@ -198,7 +198,7 @@ check("case-row order is canonical identity but cannot change acceptance", () =>
 check("registry admission, mutation, staging, restore, and aggregate commits converge", () => {
   const initial = { cells: [{ position: "top-right", body: "a" }, { position: "bottom-left", body: "b" }] };
   const map = hsonLiveMap.fromLibraries({ state: { data: initial, schema: DecksSchema } });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const aggregate = internal_livemap_aggregate_authority(map);
   const library = aggregate.libraries()[0];
   if (library === undefined) throw new Error("Expected one application Library.");

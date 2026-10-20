@@ -36,13 +36,13 @@ const map = admit_exact_runtime_livemap_libraries({
   },
 });
 
-const state = map.lib("state");
+const state = map.data.must("state");
 assert.equal(state.at(["nested"]).kind(), "object");
 state.at(["nested"]).object.setKey("value", 2);
 assert.equal(state.at(["nested", "value"]).snap(), 2);
 assert.equal(state.at(["nested"]).asArray(), undefined);
 
-const sequence = map.lib("sequence");
+const sequence = map.data.must("sequence");
 assert.equal(sequence.at(["flags"]).kind(), "array");
 sequence.at(["flags"]).array.push(2);
 assert.deepEqual(sequence.at(["flags"]).snap(), [1, 2]);
@@ -51,7 +51,7 @@ assert.equal(sequence.at(["flags"]).asObject(), undefined);
 assert.equal(state.at(["count"]).kind(), "scalar");
 assert.notEqual(state.at(["count"]).asScalar(), undefined);
 assert.equal(state.at(["count"]).asObject(), undefined);
-const dynamic = map.lib("dynamic");
+const dynamic = map.data.must("dynamic");
 assert.equal(dynamic.at(["maybe"]).kind(), "missing");
 assert.equal(dynamic.at(["maybe"]).present(), undefined);
 
@@ -65,7 +65,7 @@ assert.deepEqual(dynamic.at(["choice"]).snap(), { value: 3 });
 dynamic.at(["choice"]).asObject()!.object.setKey("value", 4);
 assert.deepEqual(dynamic.at(["choice"]).snap(), { value: 4 });
 
-const page = map.lib("page");
+const page = map.doc.must("page");
 page.at([]).asElement()!.attrs.set("id", "root");
 page.at([]).asElement()!.flags.set("hidden");
 assert.equal(page.at([]).asElement()!.attrs.get("id"), "root");

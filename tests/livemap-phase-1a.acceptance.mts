@@ -71,7 +71,7 @@ check("primitive data roots admit, expose scalar handles, commit, and round trip
   ] as const;
   for (const entry of cases) {
     const map = hsonLiveMap.fromLibraries({ value: { data: entry.data, schema: ANY_DATA } });
-    const library = map.lib("value");
+    const library = map.data.must("value");
     assert.equal(library.mode, entry.mode);
     assert.deepEqual(library.snap(), entry.value);
     const root = library.at([]);
@@ -83,7 +83,7 @@ check("primitive data roots admit, expose scalar handles, commit, and round trip
     assert.equal("push" in root, false);
     const capture = map.capture();
     assert.equal(capture.registry.libraries[0]?.mode, entry.mode);
-    const installed = install_libraries_snapshot(capture).map.lib("value");
+    const installed = install_libraries_snapshot(capture).map.data.must("value");
     if (!("snap" in installed)) throw new Error("Expected a data Library after installation.");
     assert.deepEqual(installed.snap(), entry.value);
     map.restore(capture);
@@ -118,7 +118,7 @@ check("empty maps are complete runtimes with capture, restore, and ordinary fail
     stop();
     assert.equal(map.rev, 0);
     assert.deepEqual(commits, []);
-    assert.throws(() => Reflect.apply(map.lib, map, ["whatever"]), /Unknown LiveMap Library/);
+    assert.throws(() => Reflect.apply(map.data.must, map, ["whatever"]), /Unknown LiveMap Library/);
   }
 });
 
@@ -131,7 +131,7 @@ check("empty maps retain independent internal system state", () => {
   assert.equal(capture.registry.libraries[0]?.scope, "hson-internal");
   map.restore(capture);
   assert.equal(map.rev, 0);
-  assert.throws(() => Reflect.apply(map.lib, map, ["whatever"]), /Unknown LiveMap Library/);
+  assert.throws(() => Reflect.apply(map.data.must, map, ["whatever"]), /Unknown LiveMap Library/);
 });
 
 events.terminal("pass");

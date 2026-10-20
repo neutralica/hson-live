@@ -1,3 +1,4 @@
+import { require_livemap_library_internal } from "../../src/api/livemap/livemap.libraries.js";
 import { client_projection_map } from "../helpers/client-projection.mts";
 import { without_structured_clone } from "../helpers/without-structured-clone.mts";
 import { admit_locus_local_initializers, install_client_local_initializers_internal } from "../../src/api/locus/locus.local-initializer.ts";
@@ -43,7 +44,7 @@ const parts = () => ({
 });
 const fixture = () => hsonLiveMap.fromLibraries({ collection: definition(parts()) });
 function data(map: LiveMap, name = "collection"): LiveMapDataLibrary {
-  const library = map.lib(name); if (library.mode === "document") throw Error("Expected data Library"); return library;
+  const library = require_livemap_library_internal(map, name); if (library.mode === "document") throw Error("Expected data Library"); return library;
 }
 function atomic(map: LiveMap, run: () => unknown, pattern?: RegExp) {
   const aggregate = owner(map), before = map.capture(), registry = aggregate.hostedRegistry();
@@ -100,7 +101,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
           if (captured && key === "schema" && !reentered) {
             reentered = true;
             if (effect === "management") aggregate.claimManagement(manager);
-            else { map.lib("state").at(["count"]).set(2); expected = map.capture(); }
+            else { map.data.must("state").at(["count"]).set(2); expected = map.capture(); }
           }
           return Reflect.has(target, key);
         },
@@ -110,11 +111,11 @@ export async function part_collection_cases(check: (name: string, run: () => voi
           effect === "edit" ? /changed during capture/ : /controlled by an exclusive Locus authority/);
         assert.equal(reentered, true); assert.deepEqual(map.capture(), expected);
         assert.equal(observations, effect === "edit" ? 1 : 0);
-        assert.throws(() => map.lib("earlier")); assert.throws(() => map.lib("parts"));
+        assert.throws(() => map.data.must("earlier")); assert.throws(() => map.parts.must("parts"));
       } finally { if (effect === "management" && reentered) aggregate.releaseManagement(manager); stop(); }
       map.addLibraries({ earlier: { data: 2 }, parts: { parts: {} } });
-      const earlier = map.lib("earlier");
-      if (earlier.mode === "document") throw Error("Expected data Library");
+      const earlier = map.data.must("earlier");
+      if (String(earlier.mode) === "document") throw Error("Expected data Library");
       assert.equal(earlier.snap(), 2);
     }
   });
@@ -133,7 +134,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       const identity = aggregate.libraries()[0]!;
       assert.ok(identity);
       const attempts = [
-        () => library.schema.use(schema), () => map.lib(name).schema.use(ANY_DATA),
+        () => library.schema.use(schema), () => data(map, name).schema.use(ANY_DATA),
         () => aggregate.useLibrarySchema(identity, schema, binding.schemaDigest), () => map.replay({ ...replay, prevRev: map.rev, rev: map.rev + 1 }),
       ];
       for (let repeat = 0; repeat < 2; repeat++) for (const attempt of attempts) {
@@ -143,14 +144,14 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       }
       // A pending batch prefix must never publish if an indirect attachment rejects.
       atomic(map, () => map.batch(writer => {
-        const target = writer.lib(name);
-        if (target.mode === "document") throw Error("Expected data");
+        const target = writer.parts.must(name);
+        if (String(target.mode) === "document") throw Error("Expected data");
         target.at(["p", "document"]).set('<p "discarded"/>');
         library.schema.use(schema);
       }));
       library.at(["p"]).replace({ kind: "document", document: '<p "valid after rejection"/>', css: "p{color:red}" });
-      map.batch(writer => { const target = writer.lib(name);
-        if (target.mode === "document") throw Error("Expected data");
+      map.batch(writer => { const target = writer.parts.must(name);
+        if (String(target.mode) === "document") throw Error("Expected data");
         target.at(["p", "document"]).set('<p "staged after rejection"/>'); });
       assert.equal(library.snap(["p", "document"]), '<p "staged after rejection"/>');
       assert.equal(library.schema.get(), contract);
@@ -170,12 +171,12 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     data(client, "local").at(["p"]).replace({ kind: "document", document: "<aside/>" });
     const locus = hsonLiveMap.locus.create({ shared: [{ name: "collection", definition: { parts: {} } }] });
     try {
-      assert.equal("use" in locus.lib("collection").schema, false);
+      assert.equal("use" in locus.parts.must("collection").schema, false);
       const authorityMap = locus_map_internal(locus), before = owner(authorityMap).hostedPosition();
       atomic(authorityMap, () => data(authorityMap).schema.use(ANY_DATA));
       assert.deepEqual(owner(authorityMap).hostedPosition(), before);
-      await locus.lib("collection").at([]).replace({ p: { kind: "document", document: "<p/>" } });
-      await locus.stage(writer => { writer.lib("collection").at(["p", "document"]).set("<aside/>"); });
+      await locus.parts.must("collection").at([]).replace({ p: { kind: "document", document: "<p/>" } });
+      await locus.stage(writer => { writer.parts.must("collection").at(["p", "document"]).set("<aside/>"); });
     } finally { locus.dispose(); }
   });
 
@@ -196,10 +197,10 @@ export async function part_collection_cases(check: (name: string, run: () => voi
 
   await check("ordinary data and document post-admission Schemas retain governance", () => {
     const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } }, page: { document: "<main/>" } });
-    const state = map.lib("state"), page = map.lib("page");
+    const state = map.data.must("state"), page = map.doc.must("page");
     assert.equal(state.schema.get(), ANY_DATA); assert.equal(page.schema.get(), ANY_DOCUMENT);
     assert.equal(data(map, "state").schema.use(Hson.schema`<type "data" content <count "number">>` as HsonSchema<unknown, "data">).changed, true);
-    assert.equal(map.lib(String("page")).schema.use(Hson.schema`<type "document" tag "main" content "empty">`).changed, true);
+    assert.equal(map.doc.must(String("page")).schema.use(Hson.schema`<type "document" tag "main" content "empty">`).changed, true);
     atomic(map, () => state.at(["count"]).set("bad" as never));
     atomic(map, () => page.at([0]).replace("<aside/>"));
     state.at(["count"]).set(2);
@@ -219,8 +220,8 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       assert.equal(op.libraries[0]!.validation, validation);
       assert.deepEqual(map.capture().registry.libraries.map(entry => entry.name), ["collection"]);
       assert.equal(aggregate.libraries().length, 1); assert.equal(aggregate.telemetry().acceptedTransitions, 1);
-      assert.equal(data(map), map.lib("collection"));
-      for (const member of Object.keys(parts())) assert.throws(() => map.lib(member));
+      assert.equal(data(map), map.parts.must("collection"));
+      for (const member of Object.keys(parts())) assert.throws(() => map.data.must(member));
       assert.equal(aggregate.projectedOverlay(aggregate.libraries()[0]!).size, 0);
       assert.equal(aggregate.identityEpoch().issued().size, 0); assert.deepEqual(enumerate_livemap_issued_quids(aggregate.identityEpoch().issued()), []); assert.equal(attempts, 0);
     } finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
@@ -285,7 +286,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       assert.throws(() => hsonLiveMap.fromLibraries({ collection: { data: candidate, validation } } as never));
       const map = fixture(); atomic(map, () => collect(map, "next", candidate));
       atomic(map, () => map.addLibraries({ next: { data: candidate, validation } } as never).commit);
-      assert.throws(() => map.lib("next"));
+      assert.throws(() => map.data.must("next"));
     }
   });
   await check("descriptor-exact portable data admission rejects getters undefined hidden and nonportable fields", () => {
@@ -329,14 +330,14 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     library.at([]).update(() => parts());
     const rev = map.rev;
     map.batch(writer => {
-      writer.lib("collection").at(["first/β", "document"]).set('<bad');
-      writer.lib("collection").at(["first/β", "kind"]).delete();
-      writer.lib("collection").at(["first/β", "document"]).set('<p @:label/>');
-      writer.lib("collection").at(["first/β"]).set({ kind: "document" });
+      writer.parts.must("collection").at(["first/β", "document"]).set('<bad');
+      writer.parts.must("collection").at(["first/β", "kind"]).delete();
+      writer.parts.must("collection").at(["first/β", "document"]).set('<p @:label/>');
+      writer.parts.must("collection").at(["first/β"]).set({ kind: "document" });
     });
     assert.equal(map.rev, rev + 1);
-    atomic(map, () => map.batch(writer => { writer.lib("collection").at(["二", "document"]).set('<p/>');
-      writer.lib("collection").at(["first/β", "css"]).set('@import "x";'); }));
+    atomic(map, () => map.batch(writer => { writer.parts.must("collection").at(["二", "document"]).set('<p/>');
+      writer.parts.must("collection").at(["first/β", "css"]).set('@import "x";'); }));
     atomic(map, () => map.batch(() => collect(map, "extra", parts())));
   });
   await check("ordinary Library uniqueness and aggregate authority fences apply uniformly", () => {
@@ -358,7 +359,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       library.at(["二", "document"]).set('<b/>'); return Reflect.ownKeys(target);
     } });
     assert.throws(() => collect(map, "extra", candidate), /changed during capture/);
-    assert.equal(library.snap(["二", "document"]), '<b/>'); assert.throws(() => map.lib("extra"));
+    assert.equal(library.snap(["二", "document"]), '<b/>'); assert.throws(() => map.data.must("extra"));
   });
   await check("late serialization and identity reentrancy fence Part admission and preserve independent effects", () => {
     for (const mode of ["throw", "management"]) {
@@ -378,7 +379,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
         assert.equal(reached, true);
       } finally { if (mode === "management" && reached) aggregate.releaseManagement(manager); }
     }
-    const map = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } }), library = map.lib("page");
+    const map = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } }), library = map.doc.must("page");
     if (library.mode !== "document") throw Error("Expected document");
     const aggregate = owner(map), before = map.capture();
     let reentered = false;
@@ -386,7 +387,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       acquire_document_identity(library.document, { kind: "path", path: [0] }); } return Reflect.ownKeys(target); } });
     assert.throws(() => collect(map, "extra", input), /changed during capture/);
     assert.deepEqual(map.capture(), before); assert.equal(aggregate.identityEpoch().issued().size, 1);
-    assert.throws(() => map.lib("extra"));
+    assert.throws(() => map.data.must("extra"));
   });
   await check("capture read and materialization are observational and fail during incomplete identity transactions", () => {
     const map = hsonLiveMap.fromLibraries({ collection: definition(parts()), page: { document: '<main/>' } });
@@ -430,7 +431,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     for (const phase of ["state-size", "html-size", "html-realization"]) {
       const map = hsonLiveMap.fromLibraries({ collection: definition(parts()), state: { data: { count: 0 } },
         page: { document: '<html <head/> <body data-cut=before/>/>' } });
-      const library = data(map), page = map.lib("page");
+      const library = data(map), page = map.doc.must("page");
       if (page.mode !== "document") throw Error("Expected document");
       const body = page.at([]).at([1]).asElement(); assert.ok(body);
       page.css.sel("body").set.color("blue");
@@ -463,7 +464,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
         assert.equal(detachedBoundReached, true); assert.equal(entered, true);
         assert.deepEqual(result, expected); assert.equal(result.libs.revision, revision);
         if ("html" in result) assert.equal(result.html, capturedHtml);
-        const restored = install_libraries_snapshot(result.libs).map, restoredPage = restored.lib("page");
+        const restored = install_libraries_snapshot(result.libs).map, restoredPage = restored.doc.must("page");
         if (restoredPage.mode !== "document") throw Error("Expected restored document");
         assert.deepEqual(data(restored).snap(), capturedParts);
         assert.equal(data(restored, "state").snap(["count"]), 0);
@@ -643,8 +644,8 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       private: [{ name: "hidden", definition: definition({ secret: { kind: "document", document: '<secret-only/>' } }) }] as const,
       authorizeProjection: () => ({ libraries: ["collection", "hidden"] }),
       actions: {
-        valid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.lib("collection").at(["二", "document"]).set('<p @:label/>'); },
-        invalid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.lib("collection").at(["二", "css"]).set('@import "x";'); },
+        valid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二", "document"]).set('<p @:label/>'); },
+        invalid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二", "css"]).set('@import "x";'); },
       },
     };
     const locus = await hsonLiveMap.locus.resume(options), map = locus_map_internal(locus), pair = sockets();
@@ -652,14 +653,14 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const detach = bind_locus_websocket(locus, pair.server);
     const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
     try {
-      assert.equal(echo.lib("collection").mode, "data-object"); assert.throws(() => echo.lib("hidden"));
+      assert.equal(echo.parts.must("collection").mode, "data-object"); assert.throws(() => echo.data.must("hidden"));
       assert.equal(JSON.stringify(session.now()).includes('secret-only'), false);
       const before = map.capture(), appended = adapter.appendCalls.length;
       const rejected = await echo.action("invalid"); assert.equal(rejected.type, "error");
       assert.deepEqual(map.capture(), before); assert.equal(adapter.appendCalls.length, appended);
       const accepted = await echo.action("valid"); assert.equal(accepted.type, "ack");
       assert.equal(adapter.appendCalls.length, appended + 1);
-      const receiving = echo.lib("collection"); if (receiving.mode === "document") throw Error("Expected data replica");
+      const receiving = echo.parts.must("collection"); if (String(receiving.mode) === "document") throw Error("Expected data replica");
       assert.equal(receiving.snap(["二", "document"]), '<p @:label/>');
       assert.equal(pair.wire.some(raw => raw.includes('secret-only')), false);
       assert.equal(owner(map).identityEpoch().issued().size, 0);
@@ -692,8 +693,8 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const detach = bind_locus_websocket(locus, pair.server);
     const echo = await hsonLiveMap.echo.create({ now, credential: session.credential!, transport: test_echo_transport(pair.client) });
     try {
-      const map = echo_map_internal(echo), local = echo.lib("collection");
-      if (local.mode === "document" || local.source !== "client-local") throw Error("Expected local data Library");
+      const map = echo_map_internal(echo), local = echo.parts.must("collection");
+      if (String(local.mode) === "document" || local.source !== "client-local") throw Error("Expected local data Library");
       assert.equal(read(map, "collection", "二").key, "二");
       atomic(map, () => data(map).at(["二", "document"]).set('<p'));
       local.at(["二", "document"]).set('<p @:label/>');
@@ -794,15 +795,15 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.equal(bootstrap.kind, "libraries");
     if (bootstrap.kind !== "libraries") throw Error("Expected local Library transfer");
     const receiving = install_libraries_snapshot(bootstrap.bootstrap).map;
-    assert.equal(receiving.lib("page").mode, "document");
-    assert.throws(() => receiving.lib("collection")); assert.throws(() => receiving.lib("source"));
+    assert.equal(receiving.doc.must("page").mode, "document");
+    assert.throws(() => receiving.parts.must("collection")); assert.throws(() => receiving.doc.must("source"));
     assert.deepEqual(receiving.capture(), cut.libs);
   });
   await check("Part materialization is detached and collection values cannot become initial document shells", () => {
     const map = fixture(), materialized = read(map, "collection", "first/β"), initial = read(map, "collection", "first/β");
     data(map).at(["first/β", "document"]).set('<section/>'); assert.deepEqual(materialized, initial);
     assert.equal(owner(map).identityEpoch().issued().size, 0); atomic(map, () => compose(map, "collection", "page"));
-    const ordinary = hsonLiveMap.fromLibraries({ source: { document: '<p/>' } }), source = ordinary.lib("source");
+    const ordinary = hsonLiveMap.fromLibraries({ source: { document: '<p/>' } }), source = ordinary.doc.must("source");
     if (source.mode !== "document") throw Error("Expected document"); source.css.stylesheet('p{color:red}');
     atomic(ordinary, () => compose(ordinary, "source", "page"), /managed stylesheet/);
     assert.equal(validate_part_collection(projected_value_from_hson_node(data(map).root())).length, 2);

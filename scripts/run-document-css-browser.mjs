@@ -19,7 +19,7 @@ if (chromeBinary === undefined) throw new Error("Document CSS browser check requ
 const map = hsonLiveMap.fromLibraries({ page: {
   document: '<html <head <title "CSS"/> <style "#home-screen{color:red;}"/>/> <body <main id=home-screen "Styled"/> <p id=layer-first-paint/> <p id="t " class=x/> <p id=animation-first-paint/> <p id=escaped-newline/>/>/>',
 } });
-map.lib("page").css.stylesheet(String.raw`#home-screen { color: rgb(0, 0, 255); display: grid; }
+map.doc.must("page").css.stylesheet(String.raw`#home-screen { color: rgb(0, 0, 255); display: grid; }
   @layer { #layer-first-paint { color: red !important; } #layer-first-paint { color: blue !important; } }
   #t\ { CoLoR:red; font-family:foo\ ; }
   @layer { @media screen { #escaped-newline { --x:"review\
@@ -27,9 +27,9 @@ word"; font-family:var(--x); } } }
   @keyframes first { 0% { opacity:.2; } from { opacity:.8; } to { opacity:1; } }
   #animation-first-paint { animation: first 100s linear both paused; }
 `);
-map.lib("page").css.scope("escaped", "@layer").media("screen").sel("#escaped-newline").setProp("--x", '"review\\\nword"');
-map.lib("page").css.scope("escaped", "@layer").media("screen").sel("#escaped-newline").setProp("font-family", "var(--x)");
-const html = map.lib("page").render();
+map.doc.must("page").css.scope("escaped", "@layer").media("screen").sel("#escaped-newline").setProp("--x", '"review\\\nword"');
+map.doc.must("page").css.scope("escaped", "@layer").media("screen").sel("#escaped-newline").setProp("font-family", "var(--x)");
+const html = map.doc.must("page").render();
 assert.equal((html.match(/data-hson-managed-document-css/g) ?? []).length, 1);
 
 const server = createServer((_request, response) => {

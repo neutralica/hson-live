@@ -64,14 +64,14 @@ for (const hidden of ["PRIVATE_NAME_SENTINEL", "PRIVATE_ROOT_SENTINEL", "hson:qu
 assert.match(artifact, /PUBLIC_PAGE_SENTINEL/);
 assert.equal(cut.libs.libraries.length, 1);
 const oldCut = JSON.stringify(cut);
-const local = echo.map?.lib("local");
-if (local === undefined || local.mode === "document") throw new Error("Local Library missing.");
+const local = echo.map?.data.must("local");
+if (local === undefined || String(local.mode) === "document") throw new Error("Local Library missing.");
 const localHandle = local.at(["value"]);
 echo.disconnect();
 detach();
 localHandle.set("LOCAL_AFTER_DISCONNECT");
-await locus.stage((draft) => { const page = draft.lib("page"); if ("attrs" in page) page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "PUBLIC_NEXT_SENTINEL"); });
-await locus.stage((draft) => { const privateLib = draft.lib("privateSignal"); privateLib.at(["value"]).set(`PRIVATE_SMALL_COMMIT_SENTINEL${"q".repeat(2 * 1024 * 1024)}`); });
+await locus.stage((draft) => { const page = draft.doc.must("page"); if ("attrs" in page) page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "PUBLIC_NEXT_SENTINEL"); });
+await locus.stage((draft) => { const privateLib = draft.data.must("privateSignal"); privateLib.at(["value"]).set(`PRIVATE_SMALL_COMMIT_SENTINEL${"q".repeat(2 * 1024 * 1024)}`); });
 assert.equal(JSON.stringify(cut), oldCut);
 const nextCut = locus.session.get(session.sessionId)!.now({ html: "page" });
 assert.equal(nextCut.libs.revision, locus.rev);
@@ -81,7 +81,7 @@ const recovered = await echo.connect();
 assert.equal(recovered.outcome, "reconcile");
 assert.equal(echo.lastAppliedRev, locus.rev);
 assert.equal(localHandle.snap(), "LOCAL_AFTER_DISCONNECT");
-assert.equal(echo.map?.lib("local"), local);
+assert.equal(echo.map?.data.must("local"), local);
 const snapshots = sent.filter((raw) => JSON.parse(raw).type === "recovery-snapshot");
 assert.equal(snapshots.length, 2);
 assert.equal(snapshots[1]?.includes("PRIVATE_NAME_SENTINEL"), false);
@@ -109,7 +109,7 @@ assert.equal(endpoint.map, undefined);
 assert.equal(endpoint.lastAppliedRev, zeroLocus.rev);
 endpoint.disconnect();
 detachZero();
-await zeroLocus.stage((draft) => { const privateLib = draft.lib("privateSignal");
+await zeroLocus.stage((draft) => { const privateLib = draft.data.must("privateSignal");
   privateLib.at(["value"]).set(`PRIVATE_ENDPOINT_SENTINEL${"z".repeat(3 * 1024 * 1024)}`); });
 detachZero = bind_locus_websocket(zeroLocus, serverSocket);
 const zeroRecovered = await endpoint.connect();
@@ -133,7 +133,7 @@ const mediumSnapshot = capture_selected_authority_projection_snapshot(medium, me
 assert.ok(JSON.stringify(mediumSnapshot).length > 4 * 1024 * 1024);
 const installed = client_projection_map({ authority: mediumSnapshot,
   local: { local: { data: { value: "local" }, schema: Data } } });
-assert.equal(installed.lib("selected").mode, "data-object");
+assert.equal(installed.data.must("selected").mode, "data-object");
 
 const oversized = hsonLiveMap.fromLibraries({ selected: { data: { value: "o".repeat(65 * 1024 * 1024) }, schema: Data } });
 const oversizedAuthority = internal_livemap_aggregate_authority(oversized);
@@ -150,7 +150,7 @@ const persistentMap = hsonLiveMap.fromLibraries({
 });
 const persistent = await resume_locus_fixture({ ...authority_groups_from_map_fixture(persistentMap, [{ name: "page", ownership: "shared" }, { name: "privateSignal", ownership: "private" }]),
   logicalMapId: "selected-capture-z3a", persistence, defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }) });
-await persistent.stage((draft) => { const privateLib = draft.lib("privateSignal");
+await persistent.stage((draft) => { const privateLib = draft.data.must("privateSignal");
   privateLib.at(["value"]).set("p".repeat(5 * 1024 * 1024)); });
 assert.equal(persistence.appendCalls.length, 1);
 await hsonLiveMap.locus.checkpoint(persistent);

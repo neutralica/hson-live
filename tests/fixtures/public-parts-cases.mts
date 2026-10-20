@@ -39,16 +39,16 @@ function writePartMember<TResult>(
 export async function public_parts_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
   await check("public widened Parts access rejects supplemental Schema without publication", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: "document", document: "<p/>" } } }, ordinary: { data: 1 } });
-    const name: string = "parts", selected = map.lib(name), before = map.capture(), schema = selected.schema.get();
+    const name: string = "parts", selected = map.parts.must(name), before = map.capture(), schema = selected.schema.get();
     let observations = 0; const stop = map.commits.observe(() => observations++);
     try {
       for (const supplemental of [ANY_DATA, Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>`]) {
-        assert.throws(() => selected.schema.use(supplemental), /Part collections do not support supplemental Schema/);
+        assert.throws(() => Reflect.get(selected.schema, "use")(supplemental), /Part collections do not support supplemental Schema/);
         assert.deepEqual(map.capture(), before); assert.equal(selected.schema.get(), schema); assert.equal(observations, 0);
       }
-      map.lib("parts").at(["p"]).replace({ kind: "document", document: "<aside/>" });
-      assert.equal(map.lib("parts").at(["p", "document"]).snap(), "<aside/>");
-      assert.equal(map.lib("ordinary").snap(), 1);
+      map.parts.must("parts").at(["p"]).replace({ kind: "document", document: "<aside/>" });
+      assert.equal(map.parts.must("parts").at(["p", "document"]).snap(), "<aside/>");
+      assert.equal(map.data.must("ordinary").snap(), 1);
     } finally { stop(); }
   });
 
@@ -57,8 +57,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     const definitions = { page: { document: deck }, parts: { parts: deckParts } };
     const map = dynamic ? hsonLiveMap.create() : hsonLiveMap.fromLibraries(definitions);
     if (dynamic) map.addLibraries(definitions);
-    const page = map.lib("page"), parts = map.lib("parts");
-    if (page.mode !== "document" || parts.mode === "document") throw Error("Wrong Library family");
+    const page = map.doc.must("page"), parts = map.parts.must("parts");
+    if (page.mode !== "document" || String(parts.mode) === "document") throw Error("Wrong Library family");
     assert.equal(parts.mode, "data-object");
     assertDeck(page);
     assert.deepEqual(parts.snap(), deckParts);
@@ -86,8 +86,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
               if (admission === "same-batch") additions[ownership].push(collection);
               await locus.addLibraries(additions);
             }
-            const selected = locus.lib("page"), parts = locus.lib("parts");
-            if (selected.mode !== "document" || parts.mode === "document") throw Error("Wrong Library family");
+            const selected = locus.doc.must("page"), parts = locus.parts.must("parts");
+            if (selected.mode !== "document" || String(parts.mode) === "document") throw Error("Wrong Library family");
             assert.equal(parts.mode, "data-object"); assert.deepEqual(parts.snap(), deckParts);
             if (admission === "initial") assertDeck(selected);
             else assert.match(JSON.stringify(selected.root()), /Dynamic paragraph/);
@@ -137,7 +137,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         await assert.rejects(locus.addLibraries({ shared: [{ name: "earlier", definition: { data: 2 } },
           { name: "invalid", definition: invalid }] } as never));
         assert.deepEqual(map.capture(), before); assert.equal(locus.rev, revision);
-        assert.throws(() => locus.lib("earlier")); assert.throws(() => locus.lib("invalid"));
+        assert.throws(() => locus.data.must("earlier")); assert.throws(() => locus.data.must("invalid"));
       }
       for (const invalid of [{ parts: deckParts, data: {} }, { parts: deckParts, document: "<p/>" }, { parts: deckParts, schema: ANY_DOCUMENT }]) {
         assert.throws(() => map.addLibraries({ invalid } as never));
@@ -166,7 +166,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
             { name: "earlier", definition: { data: 2 } }, { name: "parts", definition },
           ] } as never), message);
           assert.deepEqual(map.capture(), before); assert.equal(locus.rev, revision);
-          assert.throws(() => locus.lib("earlier")); assert.throws(() => locus.lib("parts"));
+          assert.throws(() => locus.data.must("earlier")); assert.throws(() => locus.parts.must("parts"));
         }
       }
       // Hidden, inherited, and getter-introduced fields cannot bypass capture.
@@ -190,7 +190,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     };
     const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 }, schema: ANY_DATA } });
     const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { count: 1 }, schema: ANY_DATA } }] });
-    const before = map.capture(), revision = locus.rev, state = locus.lib("state").snap();
+    const before = map.capture(), revision = locus.rev, state = locus.data.must("state").snap();
     let mapEvents = 0, locusEvents = 0;
     const stopMap = map.commits.observe(() => mapEvents++), stopLocus = locus.commits.observe(() => locusEvents++);
     try {
@@ -221,8 +221,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
             await assert.rejects(locus.addLibraries({ [ownership]: [
               { name: "earlier", definition: { data: 2 } }, { name: "parts", definition: definition() },
             ] } as never), message);
-            assert.equal(locus.rev, revision); assert.deepEqual(locus.lib("state").snap(), state);
-            assert.throws(() => locus.lib("earlier")); assert.throws(() => locus.lib("parts"));
+            assert.equal(locus.rev, revision); assert.deepEqual(locus.data.must("state").snap(), state);
+            assert.throws(() => locus.data.must("earlier")); assert.throws(() => locus.parts.must("parts"));
             assert.equal(locusEvents, 0);
           }
           assert.throws(() => hsonLiveMap.locus.create({ local: [{ name: "parts", initializer: definition() }] } as never), message);
@@ -234,13 +234,13 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         { name: "earlier", definition: { data: 2 } }, { name: "parts", definition: { parts: {} } },
         { name: "page", definition: { document: "<main/>", schema: ANY_DOCUMENT } },
       ] });
-      const parts = map.lib("parts"), authorityParts = locus.lib("parts");
-      if (parts.mode === "document" || authorityParts.mode === "document") throw Error("Expected data Libraries");
+      const parts = map.parts.must("parts"), authorityParts = locus.parts.must("parts");
+      if (String(parts.mode) === "document" || String(authorityParts.mode) === "document") throw Error("Expected data Libraries");
       assert.deepEqual(parts.snap(), {}); assert.deepEqual(authorityParts.snap(), {});
-      assert.equal(map.lib("state").schema.get(), ANY_DATA);
-      assert.equal(map.lib("page").schema.get(), ANY_DOCUMENT);
-      assert.equal(locus.lib("state").schema.get(), ANY_DATA);
-      assert.equal(locus.lib("page").schema.get(), ANY_DOCUMENT);
+      assert.equal(map.data.must("state").schema.get(), ANY_DATA);
+      assert.equal(map.doc.must("page").schema.get(), ANY_DOCUMENT);
+      assert.equal(locus.data.must("state").schema.get(), ANY_DATA);
+      assert.equal(locus.doc.must("page").schema.get(), ANY_DOCUMENT);
       assert.equal(mapEvents, 1); assert.equal(locusEvents, 1);
       const valid = hsonLiveMap.locus.create({ local: [{ name: "parts", initializer: { parts: {} } }] });
       valid.dispose();
@@ -275,7 +275,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
               const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
               const before = map.capture(), revision = map.rev;
               let commits = 0, watches = 0;
-              const stop = map.commits.observe(() => commits++), unwatch = map.lib("state").at([]).watch(() => watches++);
+              const stop = map.commits.observe(() => commits++), unwatch = map.data.must("state").at([]).watch(() => watches++);
               try {
                 const invalid = { earlier: legitimate.earlier, page: legitimate.page, parts: definition };
                 if (dynamic) assert.throws(() => map.addLibraries(invalid as never), message);
@@ -283,13 +283,13 @@ export async function public_parts_cases(check: (name: string, run: () => void |
                 assert.ok(injected > 0, "The late caller-controlled capture boundary must run.");
                 assert.deepEqual(map.capture(), before); assert.equal(map.rev, revision);
                 assert.equal(commits, 0); assert.equal(watches, 0);
-                for (const name of ["earlier", "parts", "page"]) assert.throws(() => map.lib(name));
+                for (const name of ["earlier", "parts", "page"]) assert.throws(() => map.data.must(name));
                 const admitted = dynamic ? (map.addLibraries(legitimate), map) : hsonLiveMap.fromLibraries(legitimate);
-                const parts = admitted.lib("parts");
-                if (parts.mode === "document") throw Error("Expected data Library");
+                const parts = admitted.parts.must("parts");
+                if (String(parts.mode) === "document") throw Error("Expected data Library");
                 assert.deepEqual(parts.snap(), { para: deckParts.para });
-                assert.equal(admitted.lib("earlier").schema.get(), ANY_DATA);
-                assert.equal(admitted.lib("page").schema.get(), ANY_DOCUMENT);
+                assert.equal(admitted.data.must("earlier").schema.get(), ANY_DATA);
+                assert.equal(admitted.doc.must("page").schema.get(), ANY_DOCUMENT);
                 assert.equal(commits, dynamic ? 1 : 0); assert.equal(watches, 0);
               } finally { stop(); unwatch(); }
             } else {
@@ -297,7 +297,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
               const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { count: 1 } } }] });
               // Inspect this valid authority through the same public runtime that created it.
               const before = locus.cut().libs, revision = locus.rev;
-              const state = locus.lib("state");
+              const state = locus.data.must("state");
               if (!("snap" in state)) throw Error("Expected data Library");
               let commits = 0, watches = 0;
               const stop = locus.commits.observe(() => commits++), unwatch = state.at([]).watch(() => watches++);
@@ -309,15 +309,15 @@ export async function public_parts_cases(check: (name: string, run: () => void |
                 assert.ok(injected > 0, "The late caller-controlled capture boundary must run.");
                 assert.deepEqual(locus.cut().libs, before); assert.equal(locus.rev, revision);
                 assert.equal(commits, 0); assert.equal(watches, 0);
-                for (const name of ["earlier", "parts", "page"]) assert.throws(() => locus.lib(name));
+                for (const name of ["earlier", "parts", "page"]) assert.throws(() => locus.data.must(name));
                 const valid = { [ownership]: Object.entries(legitimate).map(([name, definition]) => ({ name, definition })) };
                 const admitted = dynamic ? (await locus.addLibraries(valid), locus) : hsonLiveMap.locus.create(valid);
                 try {
-                  const parts = admitted.lib("parts");
-                  if (parts.mode === "document") throw Error("Expected data Library");
+                  const parts = admitted.parts.must("parts");
+                  if (String(parts.mode) === "document") throw Error("Expected data Library");
                   assert.deepEqual(parts.snap(), { para: deckParts.para });
-                  assert.equal(admitted.lib("earlier").schema.get(), ANY_DATA);
-                  assert.equal(admitted.lib("page").schema.get(), ANY_DOCUMENT);
+                  assert.equal(admitted.data.must("earlier").schema.get(), ANY_DATA);
+                  assert.equal(admitted.doc.must("page").schema.get(), ANY_DOCUMENT);
                   assert.equal(commits, dynamic ? 1 : 0); assert.equal(watches, 0);
                 } finally { if (!dynamic) admitted.dispose(); }
               } finally { stop(); unwatch(); locus.dispose(); }
@@ -349,16 +349,16 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       if (route === "LiveMap") {
         const map = dynamic ? hsonLiveMap.create() : hsonLiveMap.fromLibraries({ parts: definition });
         if (dynamic) map.addLibraries({ parts: definition });
-        const parts = map.lib("parts");
-        if (parts.mode === "document") throw Error("Expected data Library");
+        const parts = map.parts.must("parts");
+        if (String(parts.mode) === "document") throw Error("Expected data Library");
         assert.deepEqual(parts.snap(), { para: deckParts.para });
       } else {
         const additions = { [route]: [{ name: "parts", definition }] };
         const locus = hsonLiveMap.locus.create(dynamic ? {} : additions);
         try {
           if (dynamic) await locus.addLibraries(additions);
-          const parts = locus.lib("parts");
-          if (parts.mode === "document") throw Error("Expected data Library");
+          const parts = locus.parts.must("parts");
+          if (String(parts.mode) === "document") throw Error("Expected data Library");
           assert.deepEqual(parts.snap(), { para: deckParts.para });
         } finally { locus.dispose(); }
       }
@@ -371,7 +371,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     let captured: ReturnType<typeof map.capture> | undefined, observations = 0;
     const stop = map.commits.observe(() => observations++);
     const definition = new Proxy({ get parts() {
-      map.lib("state").at(["count"]).set(2);
+      map.data.must("state").at(["count"]).set(2);
       captured = map.capture();
       Object.defineProperty(this, "schema", { value: undefined, configurable: true });
       return {};
@@ -379,11 +379,11 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     try {
       assert.throws(() => map.addLibraries({ earlier: { data: 2 }, parts: definition }), /Parts Library definitions do not support a supplemental Schema/);
       assert.ok(captured !== undefined); assert.deepEqual(map.capture(), captured); assert.equal(observations, 1);
-      map.lib("state").at(["count"]).set(3);
+      map.data.must("state").at(["count"]).set(3);
       map.addLibraries({ earlier: { data: 2 }, parts: { parts: {} } });
-      assert.equal(map.lib("state").at(["count"]).snap(), 3);
-      const parts = map.lib("parts");
-      if (parts.mode === "document") throw Error("Expected data Library");
+      assert.equal(map.data.must("state").at(["count"]).snap(), 3);
+      const parts = map.parts.must("parts");
+      if (String(parts.mode) === "document") throw Error("Expected data Library");
       assert.deepEqual(parts.snap(), {}); assert.equal(observations, 3);
     } finally { stop(); }
   });
@@ -393,21 +393,21 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       const map = hsonLiveMap.fromLibraries({ parts: { parts: {} } });
       const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: {} } }] });
       const governed = route.startsWith("Locus");
-      const selected = governed ? locus.lib("parts") : map.lib("parts");
+      const selected = governed ? locus.parts.must("parts") : map.parts.must("parts");
       let changes = 0;
       const stop = selected.at([]).watch(() => changes++);
       // Unknown values intentionally cross the typed proposal boundary to test runtime enforcement.
       const replace = async (value: unknown) => {
-        if (route === "LiveMap direct") map.lib("parts").at([]).replace(value as never);
-        else if (route === "LiveMap staged") map.batch(writer => { writer.lib("parts").at([]).replace(value as never); });
-        else if (route === "Locus direct") await locus.lib("parts").at([]).replace(value as never);
-        else await locus.stage(writer => { writer.lib("parts").at([]).replace(value as never); });
+        if (route === "LiveMap direct") map.parts.must("parts").at([]).replace(value as never);
+        else if (route === "LiveMap staged") map.batch(writer => { writer.parts.must("parts").at([]).replace(value as never); });
+        else if (route === "Locus direct") await locus.parts.must("parts").at([]).replace(value as never);
+        else await locus.stage(writer => { writer.parts.must("parts").at([]).replace(value as never); });
       };
       const member = async (method: "set" | "replace", value: unknown) => {
-        if (route === "LiveMap direct") writePartMember(map.lib("parts").at(["para"]), method, value as never);
-        else if (route === "LiveMap staged") map.batch(writer => { writePartMember(writer.lib("parts").at(["para"]), method, value as never); });
-        else if (route === "Locus direct") await writePartMember(locus.lib("parts").at(["para"]), method, value as never);
-        else await locus.stage(writer => { writePartMember(writer.lib("parts").at(["para"]), method, value as never); });
+        if (route === "LiveMap direct") writePartMember(map.parts.must("parts").at(["para"]), method, value as never);
+        else if (route === "LiveMap staged") map.batch(writer => { writePartMember(writer.parts.must("parts").at(["para"]), method, value as never); });
+        else if (route === "Locus direct") await writePartMember(locus.parts.must("parts").at(["para"]), method, value as never);
+        else await locus.stage(writer => { writePartMember(writer.parts.must("parts").at(["para"]), method, value as never); });
       };
       const unchanged = async (run: () => Promise<void>) => {
         const before = selected.snap(), revision = selected.rev, observed = changes;
@@ -440,14 +440,14 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         assert.ok(changes > 0);
         if (route === "LiveMap staged") await unchanged(async () => {
           map.batch(writer => {
-            writer.lib("parts").at(["para", "document"]).set('<p "valid prefix"/>');
-            writer.lib("parts").at(["para", "kind"]).set("data" as never);
+            writer.parts.must("parts").at(["para", "document"]).set('<p "valid prefix"/>');
+            writer.parts.must("parts").at(["para", "kind"]).set("data" as never);
           });
         });
         if (route === "Locus staged") await unchanged(async () => {
           await locus.stage(writer => {
-            writer.lib("parts").at(["para", "document"]).set('<p "valid prefix"/>');
-            writer.lib("parts").at(["para", "kind"]).set("data" as never);
+            writer.parts.must("parts").at(["para", "document"]).set('<p "valid prefix"/>');
+            writer.parts.must("parts").at(["para", "kind"]).set("data" as never);
           });
         });
       } finally { stop(); locus.dispose(); }
@@ -460,19 +460,19 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     const map = hsonLiveMap.fromLibraries({ data: definition });
     const locus = hsonLiveMap.locus.create({ private: [{ name: "data", definition }] });
     try {
-      assert.equal(map.lib("data").schema.get(), schema);
+      assert.equal(map.data.must("data").schema.get(), schema);
       assert.throws(() => hsonLiveMap.fromLibraries({ data: { data: deckParts, schema } }));
-      assert.throws(() => map.lib("data").at([]).replace({} as never));
-      assert.throws(() => map.batch(writer => { writer.lib("data").at(["para", "document"]).set(1 as never); }));
+      assert.throws(() => map.data.must("data").at([]).replace({} as never));
+      assert.throws(() => map.batch(writer => { writer.data.must("data").at(["para", "document"]).set(1 as never); }));
       const revision = locus.rev;
-      await assert.rejects(locus.lib("data").at([]).replace({} as never));
-      await assert.rejects(locus.stage(writer => { writer.lib("data").at(["para", "document"]).set(1 as never); }));
+      await assert.rejects(locus.data.must("data").at([]).replace({} as never));
+      await assert.rejects(locus.stage(writer => { writer.data.must("data").at(["para", "document"]).set(1 as never); }));
       assert.equal(locus.rev, revision);
-      map.lib("data").at(["para", "kind"]).set("ordinary");
-      map.batch(writer => { writer.lib("data").at(["para", "document"]).set("not a document"); });
-      await locus.lib("data").at(["para", "kind"]).set("ordinary");
-      await locus.stage(writer => { writer.lib("data").at(["para", "document"]).set("not a document"); });
-      assert.deepEqual(locus.lib("data").snap(), map.lib("data").snap());
+      map.data.must("data").at(["para", "kind"]).set("ordinary");
+      map.batch(writer => { writer.data.must("data").at(["para", "document"]).set("not a document"); });
+      await locus.data.must("data").at(["para", "kind"]).set("ordinary");
+      await locus.stage(writer => { writer.data.must("data").at(["para", "document"]).set("not a document"); });
+      assert.deepEqual(locus.data.must("data").snap(), map.data.must("data").snap());
     } finally { locus.dispose(); }
   });
 
@@ -481,7 +481,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts } }],
       shared: [{ name: "page", definition: { document: deck } }] });
     try {
-      const page = locus.lib("page");
+      const page = locus.doc.must("page");
       for (const value of ["Deck title", "Deck paragraph", "const x = 1;", "/next", "Next", "One item"]) {
         assert.ok(JSON.stringify(page.root()).includes(value), value);
       }
@@ -499,8 +499,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       if (dynamic) map.addLibraries({ parts: definition });
       assert.equal(reads, 1);
       parts.para.document = '<p "caller mutation"/>';
-      const selected = map.lib("parts");
-      if (selected.mode === "document") throw Error("Expected data");
+      const selected = map.parts.must("parts");
+      if (String(selected.mode) === "document") throw Error("Expected data");
       assert.deepEqual(selected.snap(), { para: deckParts.para });
     }
   });
@@ -538,7 +538,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       assert.deepEqual(map.capture(), before);
       // Exercise the mutation resolver separately from authored admission.
       map.addLibraries({ page: { document: '<main/>' } });
-      const page = map.lib("page");
+      const page = map.doc.must("page");
       if (page.mode !== "document") throw Error("Expected document");
       const connector = hsonTransform.fromHson('<hson-part lib="parts" at="para" text="text"/>').toNode().$_content[0];
       assert.ok(typeof connector === "object" && connector !== null);

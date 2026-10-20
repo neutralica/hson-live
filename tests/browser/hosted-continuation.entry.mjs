@@ -83,7 +83,7 @@ globalThis.hostedContinuationStart = async ({ sessions, endpoint, url, scoped })
     for (const name of scoped ? ['left', 'right', 'outside', 'bare'] : ['a', 'b']) {
       const subject = c.map.q(name); assert(subject?.active, `Authored QUAD ${name} active`);
       const el = doc.querySelector(scoped ? name === 'bare' ? 'aside:last-of-type' : `#${name}` : `#hosted-${name}`);
-      assert(lookup_document_quad_internal(echo_map_internal(c.echo).lib("page"), name)?.quid === get_node_for_el(el)?.$_meta?.quid, `Authored QUAD ${name} owns intended Element`);
+      assert(lookup_document_quad_internal(echo_map_internal(c.echo).doc.must("page"), name)?.quid === get_node_for_el(el)?.$_meta?.quid, `Authored QUAD ${name} owns intended Element`);
     }
     button.dispatchEvent(new Event('click')); assert(clicks === 1, 'Existing listener survives');
     await rejects(() => continue_hosted_document(options), 'Repeated continuation rejects');

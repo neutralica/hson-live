@@ -14,9 +14,9 @@ import { encode_portable_document_stylesheet } from "../../src/internal/css/port
 import { node } from "./locus-scoped-ssr-cases.mts";
 import type { LiveMap, LiveMapStagedWriter } from "../../src/types/livemap.types.ts";
 const sel = (id: string) => `[hson\\:quid="${id}"]`;
-const page = (map: LiveMap) => { const lib = map.lib("page"); if (lib.mode !== "document") throw Error("document"); return lib; };
+const page = (map: LiveMap) => { const lib = map.doc.must("page"); if (lib.mode !== "document") throw Error("document"); return lib; };
 function staged(writer: LiveMapStagedWriter<LiveMap, void>) {
-  const selected = writer.lib("page"); if (selected.mode !== "document") throw Error("document"); return selected;
+  const selected = writer.doc.must("page"); if (selected.mode !== "document") throw Error("document"); return selected;
 }
 function state(map: LiveMap) {
   const aggregate = owner(map), id = aggregate.libraries()[0]!;
@@ -158,15 +158,15 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
       const applied = new Promise<void>(resolve => {
         const stop = echo.commits.observe(() => queueMicrotask(() => { if (echo.sync.appliedRev === 1) { stop(); resolve(); } }));
       });
-      await locus.stage(w => { w.lib("page").at([0]).asElement().attrs.set("title", "flat"); w.lib("scoped").at([0]).asElement().flags.set("hidden"); });
+      await locus.stage(w => { w.doc.must("page").at([0]).asElement().attrs.set("title", "flat"); w.doc.must("scoped").at([0]).asElement().flags.set("hidden"); });
       await applied;
       assert.equal(aggregate.documentScopes(id), undefined);
       const scoped = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(e => e.name === "scoped")]!;
       assert.equal(aggregate.documentScopes(scoped)?.occurrences.length, 1);
       assert.equal(aggregate.documentOverlay(id).quidAtPath(path([0,0,0])), quid);
-      assert.throws(() => echo.lib("parts"));
+      assert.throws(() => echo.parts.must("parts"));
       const before = session.now();
-      await assert.rejects(locus.stage(w => { w.lib("page").at([0]).delete(); w.lib("scoped").at([0]).delete(); }));
+      await assert.rejects(locus.stage(w => { w.doc.must("page").at([0]).delete(); w.doc.must("scoped").at([0]).delete(); }));
       assert.deepEqual(session.now(), before); assert.equal(echo.sync.appliedRev, 1);
       assert.throws(() => page(map).document.attrs.set({ kind: "path", path: path([0]) }, "title", "forbidden"));
       await locus.addLibraries({ shared: [{ name: "added", definition: { document: '<aside @:new "Dynamic"/>' }, css: '[hson\\:quad="new"]{color:purple}' }] });
@@ -176,9 +176,9 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
       try {
         const addedMap = echo_map_internal(second), addedOwner = owner(addedMap), addedId = addedOwner.libraries()[0]!;
         assert.equal(addedOwner.documentScopes(addedId), undefined);
-        const added = addedMap.lib("added"); assert.ok(added.mode === "document");
+        const added = addedMap.doc.must("added"); assert.ok(added.mode === "document");
         const subject = lookup(added, "new"); assert.ok(subject); assert.ok(added.css.snapshot().includes(subject.quid));
-        assert.throws(() => second.lib("page"));
+        assert.throws(() => second.doc.must("page"));
       } finally { second.dispose(); secondTransport.dispose(); }
 
     } finally { echo.dispose(); transport.dispose(); binding.dispose(); locus.dispose(); }

@@ -44,9 +44,9 @@ const echo = create_echo_aggregate_client_internal({ transport: test_echo_transp
 await echo.connect();
 const map = echo.map;
 assert.ok(map);
-const page = map.lib("page");
+const page = map.doc.must("page");
 if (page.mode !== "document") throw new Error("Expected document Library.");
-const local = map.lib("preferences");
+const local = map.data.must("preferences");
 const mirror = hsonMirror(page);
 const tree = retained_subject(mirror.tree);
 const sessionId = echo.session.sessionId;
@@ -56,15 +56,15 @@ detach();
 await server.add_libraries({ added: { data: { value: 1 } },
   hidden: { data: { secret: "HIDDEN_FALLBACK_SENTINEL" } } }, { added: "shared" });
 await server.stage((draft) => {
-  const added = draft.lib("added");
-  if (added.mode === "document") throw new Error("Expected data Library.");
+  const added = draft.data.must("added");
+  if (String(added.mode) === "document") throw new Error("Expected data Library.");
   added.at(["value"]).set(2);
 });
 await server.add_libraries({ batchHidden: { data: { secret: "BATCH_HIDDEN_FALLBACK_SENTINEL" } },
   batchVisible: { data: { value: 6 } } }, { batchVisible: "shared" });
 await server.stage((draft) => {
-  const visible = draft.lib("batchVisible");
-  if (visible.mode === "document") throw new Error("Expected batch data Library.");
+  const visible = draft.data.must("batchVisible");
+  if (String(visible.mode) === "document") throw new Error("Expected batch data Library.");
   visible.at(["value"]).set(7);
 });
 await server.sessions.updateProjection(sessionId,
@@ -73,19 +73,19 @@ const beforeFallback = wire.serverSent.length;
 detach = bind_locus_websocket(server, wire.server, { principalId: "alice" });
 assert.equal((await echo.connect()).outcome, "reconcile");
 assert.equal(echo.map, map);
-assert.equal(map.lib("page"), page);
-assert.equal(map.lib("preferences"), local);
+assert.equal(map.doc.must("page"), page);
+assert.equal(map.data.must("preferences"), local);
 assert.equal(retained_subject(mirror.tree), tree);
 assert.equal(echo.lastAppliedRev, server.rev);
-const added = map.lib("added");
+const added = map.data.must("added");
 if (!("snap" in added) || !("snap" in local)) throw new Error("Expected data Libraries.");
 assert.equal(added.snap(["value"]), 2);
-const batchVisible = map.lib("batchVisible");
+const batchVisible = map.data.must("batchVisible");
 if (!("snap" in batchVisible)) throw new Error("Expected batch data Library.");
 assert.equal(batchVisible.snap(["value"]), 7);
 assert.equal(local.snap(["theme"]), "dark");
-assert.throws(() => map.lib("hidden"), /Unknown/);
-assert.throws(() => map.lib("batchHidden"), /Unknown/);
+assert.throws(() => map.data.must("hidden"), /Unknown/);
+assert.throws(() => map.data.must("batchHidden"), /Unknown/);
 assert.equal(wire.serverSent.slice(beforeFallback).some((raw) =>
   raw.includes("HIDDEN_FALLBACK_SENTINEL") || raw.includes("BATCH_HIDDEN_FALLBACK_SENTINEL")), false);
 process.stdout.write("ok - changed-topology fallback reconciles authority only\n");
@@ -93,7 +93,7 @@ process.stdout.write("ok - changed-topology fallback reconciles authority only\n
 const authorityRev = server.rev;
 const authorityMapRev = authority.rev;
 const clientRev = map.rev;
-const oldAdded = map.lib("added");
+const oldAdded = map.data.must("added");
 const contraction = await server.sessions.updateProjection(sessionId,
   { libraries: ["page"] });
 assert.equal(contraction.changed, true);
@@ -101,28 +101,28 @@ assert.equal(contraction.authorityRev, authorityRev);
 assert.equal(server.rev, authorityRev);
 assert.equal(authority.rev, authorityMapRev);
 assert.equal(map.rev, clientRev + 1);
-assert.throws(() => map.lib("added"), /Unknown/);
-assert.throws(() => map.lib("batchVisible"), /Unknown/);
+assert.throws(() => map.data.must("added"), /Unknown/);
+assert.throws(() => map.data.must("batchVisible"), /Unknown/);
 if (!("snap" in oldAdded)) throw new Error("Expected stale data Library.");
 assert.throws(() => oldAdded.snap(["value"]), /authority|map/i);
-assert.equal(map.lib("page"), page);
-assert.equal(map.lib("preferences"), local);
+assert.equal(map.doc.must("page"), page);
+assert.equal(map.data.must("preferences"), local);
 assert.equal(retained_subject(mirror.tree), tree);
 process.stdout.write("ok - live contraction removes only projected authority state\n");
 
 const regrant = await server.sessions.updateProjection(sessionId,
   { libraries: ["page", "added"] });
 assert.equal(regrant.changed, true);
-const newAdded = map.lib("added");
+const newAdded = map.data.must("added");
 assert.notEqual(newAdded, oldAdded);
 if (!("snap" in newAdded)) throw new Error("Expected regranted data Library.");
 assert.equal(newAdded.snap(["value"]), 2);
 assert.throws(() => oldAdded.snap(["value"]), /authority|map/i);
 await server.sessions.updateProjection(sessionId, { libraries: [] });
-assert.throws(() => map.lib("page"), /Unknown/);
-assert.throws(() => map.lib("added"), /Unknown/);
-assert.throws(() => map.lib("batchVisible"), /Unknown/);
-assert.equal(map.lib("preferences"), local);
+assert.throws(() => map.doc.must("page"), /Unknown/);
+assert.throws(() => map.data.must("added"), /Unknown/);
+assert.throws(() => map.data.must("batchVisible"), /Unknown/);
+assert.equal(map.data.must("preferences"), local);
 assert.equal(local.snap(["theme"]), "dark");
 assert.equal(mirror.status, "failed");
 assert.throws(() => page.root(), /authority|map/i);
@@ -144,7 +144,7 @@ const beforeRestartEcho = create_echo_aggregate_client_internal({ transport: tes
 await beforeRestartEcho.connect();
 const continuedMap = beforeRestartEcho.map;
 assert.ok(continuedMap);
-const continuedLocal = continuedMap.lib("preferences");
+const continuedLocal = continuedMap.data.must("preferences");
 beforeRestartEcho.disconnect();
 detachBeforeRestart();
 await persistent.addLibraries({
@@ -152,8 +152,8 @@ await persistent.addLibraries({
   private: [{ name: "durableHidden", definition: { data: { secret: `DURABLE_HIDDEN_FALLBACK_SENTINEL${"x".repeat(1024 * 1024)}` } } }],
 });
 await persistent.stage((draft) => {
-  const publicLibrary = draft.lib("durablePublic");
-  if (publicLibrary.mode === "document") throw new Error("Expected durable public data Library.");
+  const publicLibrary = draft.data.must("durablePublic");
+  if (String(publicLibrary.mode) === "document") throw new Error("Expected durable public data Library.");
   publicLibrary.at(["value"]).set(5);
 });
 await hsonLiveMap.locus.checkpoint(persistent);
@@ -171,13 +171,13 @@ const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo
   logicalMapId: resumed.logicalMapId, map: continuedMap });
 assert.equal((await resumedEcho.connect()).outcome, "reconcile");
 assert.equal(resumedEcho.map, continuedMap);
-assert.equal(continuedMap.lib("preferences"), continuedLocal);
+assert.equal(continuedMap.data.must("preferences"), continuedLocal);
 if (!("snap" in continuedLocal)) throw new Error("Expected local data Library.");
 assert.equal(continuedLocal.snap(["theme"]), "light");
-const durablePublic = continuedMap.lib("durablePublic");
+const durablePublic = continuedMap.data.must("durablePublic");
 if (!("snap" in durablePublic)) throw new Error("Expected restored public data Library.");
 assert.equal(durablePublic.snap(["value"]), 5);
-assert.throws(() => continuedMap.lib("durableHidden"), /Unknown/);
+assert.throws(() => continuedMap.data.must("durableHidden"), /Unknown/);
 assert.equal(resumedWire.serverSent.some((raw) => raw.includes("DURABLE_HIDDEN_FALLBACK_SENTINEL")), false);
 const restartFallback = resumedWire.serverSent.find((raw) => JSON.parse(raw).type === "recovery-snapshot");
 assert.ok(restartFallback);
@@ -198,8 +198,8 @@ const detachedEcho = create_echo_aggregate_client_internal({ transport: test_ech
 await detachedEcho.connect();
 const detachedMap = detachedEcho.map;
 assert.ok(detachedMap);
-const detachedLocal = detachedMap.lib("preferences");
-const retiredAlpha = detachedMap.lib("alpha");
+const detachedLocal = detachedMap.data.must("preferences");
+const retiredAlpha = detachedMap.data.must("alpha");
 const detachedSession = detachedEcho.session.sessionId;
 assert.ok(detachedSession);
 detachedEcho.disconnect();
@@ -210,9 +210,9 @@ detachDetached = bind_locus_websocket(detachedServer, detachedWire.server, { pri
 assert.equal((await detachedEcho.connect()).outcome, "reconcile");
 assert.equal(detachedEcho.map, detachedMap);
 assert.equal(detachedEcho.lastAppliedRev, revBeforeDetachedContraction);
-assert.throws(() => detachedMap.lib("alpha"), /Unknown/);
-assert.throws(() => detachedMap.lib("beta"), /Unknown/);
-assert.equal(detachedMap.lib("preferences"), detachedLocal);
+assert.throws(() => detachedMap.data.must("alpha"), /Unknown/);
+assert.throws(() => detachedMap.data.must("beta"), /Unknown/);
+assert.equal(detachedMap.data.must("preferences"), detachedLocal);
 if (!("snap" in detachedLocal) || !("snap" in retiredAlpha)) throw new Error("Expected data Libraries.");
 assert.equal(detachedLocal.snap(["theme"]), "local");
 assert.throws(() => retiredAlpha.snap(["value"]), /authority|map/i);
@@ -239,7 +239,7 @@ assert.equal(cutServer.rev, cutAuthorityRev);
 assert.match(cutServer.session.get(cutSession)!.now({ html: "firstPage" }).html, /First/);
 assert.throws(() => cutServer.session.get(cutSession)!.now({ html: "secondPage" }), /unavailable|authorized/i);
 assert.equal(JSON.stringify(cutServer.session.get(cutSession)!.now({ html: "firstPage" }).libs).includes("secondPage"), false);
-assert.throws(() => cutEcho.map?.lib("secondPage"), /Unknown/);
+assert.throws(() => cutEcho.map?.doc.must("secondPage"), /Unknown/);
 cutEcho.dispose();
 detachCut();
 cutServer.dispose();
@@ -260,8 +260,8 @@ const collisionEcho = create_echo_aggregate_client_internal({ transport: test_ec
 await collisionEcho.connect();
 const collisionMap = collisionEcho.map;
 assert.ok(collisionMap);
-const collisionLocal = collisionMap.lib("preferences");
-const collisionAnchor = collisionMap.lib("anchor");
+const collisionLocal = collisionMap.data.must("preferences");
+const collisionAnchor = collisionMap.data.must("anchor");
 const collisionSession = collisionEcho.session.sessionId;
 assert.ok(collisionSession);
 collisionEcho.disconnect();
@@ -274,8 +274,8 @@ const collisionRevision = collisionMap.rev;
 detachCollision = bind_locus_websocket(collisionServer, collisionWire.server, { principalId: "alice" });
 await assert.rejects(collisionEcho.connect(), /collid/i);
 assert.equal(collisionMap.rev, collisionRevision);
-assert.equal(collisionMap.lib("preferences"), collisionLocal);
-assert.equal(collisionMap.lib("anchor"), collisionAnchor);
+assert.equal(collisionMap.data.must("preferences"), collisionLocal);
+assert.equal(collisionMap.data.must("anchor"), collisionAnchor);
 if (!("snap" in collisionLocal)) throw new Error("Expected local data Library.");
 assert.equal(collisionLocal.snap(["owner"]), "local");
 collisionEcho.dispose();
@@ -318,8 +318,8 @@ await cutEntered;
 await assert.rejects(tailServer.sessions.updateProjection(tailSession,
   { libraries: ["anchor"] }, { principalId: "alice" }), /unavailable/i);
 await tailServer.stage((draft) => {
-  const target = draft.lib("target");
-  if (target.mode === "document") throw new Error("Expected queued target data Library.");
+  const target = draft.data.must("target");
+  if (String(target.mode) === "document") throw new Error("Expected queued target data Library.");
   target.at(["value"]).set(3);
 });
 await tailServer.add_libraries({ hiddenTail: { data: { secret: "HIDDEN_FALLBACK_TAIL_SENTINEL" } } });
@@ -330,10 +330,10 @@ for (let attempt = 0; attempt < 100 && (tailEcho.lastAppliedRev ?? -1) < tailSer
 }
 assert.equal(tailEcho.map, tailMap);
 assert.equal(tailEcho.lastAppliedRev, tailServer.rev);
-const tailTarget = tailMap.lib("target");
+const tailTarget = tailMap.data.must("target");
 if (!("snap" in tailTarget)) throw new Error("Expected queued target data Library.");
 assert.equal(tailTarget.snap(["value"]), 3);
-assert.throws(() => tailMap.lib("hiddenTail"), /Unknown/);
+assert.throws(() => tailMap.data.must("hiddenTail"), /Unknown/);
 const tailMessages = tailWire.serverSent.slice(tailStart).map((raw) => JSON.parse(raw));
 assert.deepEqual(tailMessages.filter((message) => ["recovery-snapshot", "recovery-caught-up", "commit", "progress"]
   .includes(message.type)).map((message) => message.type),
@@ -357,7 +357,7 @@ const interactionEcho = create_echo_aggregate_client_internal({ transport: test_
 await interactionEcho.connect();
 const interactionMap = interactionEcho.map;
 assert.ok(interactionMap);
-const keep = interactionMap.lib("keep"), revoke = interactionMap.lib("revoke");
+const keep = interactionMap.doc.must("keep"), revoke = interactionMap.doc.must("revoke");
 if (keep.mode !== "document" || revoke.mode !== "document") throw new Error("Expected document Libraries.");
 const keepMirror = hsonMirror(keep), revokedMirror = hsonMirror(revoke);
 const keepTree = retained_subject(keepMirror.tree);
@@ -373,11 +373,11 @@ const interactionSession = interactionEcho.session.sessionId;
 assert.ok(interactionSession);
 const interactionStart = interactionWire.serverSent.length;
 await interactionServer.session.get(interactionSession)!.update({ libraries: ["keep"], systemFeatures: ["interactions"] });
-assert.equal(interactionMap.lib("keep"), keep);
+assert.equal(interactionMap.doc.must("keep"), keep);
 assert.equal(retained_subject(keepMirror.tree), keepTree);
 assert.equal(keepMirror.status, "active");
 assert.equal(revokedMirror.status, "failed");
-assert.throws(() => interactionMap.lib("revoke"), /Unknown/);
+assert.throws(() => interactionMap.doc.must("revoke"), /Unknown/);
 const contractionWire = interactionWire.serverSent.slice(interactionStart);
 assert.equal(contractionWire.some((raw) => raw.includes("REVOKED_INTERACTION_SENTINEL")), false);
 const obsoleteCommit = JSON.parse(obsoleteCommitRaw);
@@ -388,7 +388,7 @@ obsoleteCommit.commit.commit.rev = obsoleteAuthorityRev + 1;
 interactionWire.server.send(JSON.stringify(obsoleteCommit));
 await new Promise<void>((resolve) => setImmediate(resolve));
 assert.equal(interactionEcho.diagnostics().status, "failed");
-assert.throws(() => interactionMap.lib("revoke"), /Unknown/);
+assert.throws(() => interactionMap.doc.must("revoke"), /Unknown/);
 interactionEcho.dispose();
 detachInteraction();
 revokedMirror.dispose();
@@ -413,9 +413,9 @@ const replaceEcho = create_echo_aggregate_client_internal({ transport: test_echo
 await replaceEcho.connect();
 const replaceMap = replaceEcho.map;
 assert.ok(replaceMap);
-const retainedA = replaceMap.lib("A");
-const retiredB = replaceMap.lib("B");
-const retainedLocal = replaceMap.lib("preferences");
+const retainedA = replaceMap.data.must("A");
+const retiredB = replaceMap.data.must("B");
+const retainedLocal = replaceMap.data.must("preferences");
 const replaceRev = replaceMap.rev;
 const replaceSession = replaceEcho.session.sessionId;
 assert.ok(replaceSession);
@@ -427,12 +427,12 @@ detachReplace = bind_locus_websocket(replaceServer, replaceWire.server, { princi
 assert.equal((await replaceEcho.connect()).outcome, "reconcile");
 assert.equal(replaceEcho.map, replaceMap);
 assert.equal(replaceMap.rev, replaceRev + 1);
-assert.equal(replaceMap.lib("A"), retainedA);
-assert.equal(replaceMap.lib("preferences"), retainedLocal);
-assert.throws(() => replaceMap.lib("B"), /Unknown/);
+assert.equal(replaceMap.data.must("A"), retainedA);
+assert.equal(replaceMap.data.must("preferences"), retainedLocal);
+assert.throws(() => replaceMap.data.must("B"), /Unknown/);
 if (!("snap" in retiredB)) throw new Error("Expected the retired data Library.");
 assert.throws(() => retiredB.snap(["value"]), /authority|map/i);
-const projectedC = replaceMap.lib("C");
+const projectedC = replaceMap.data.must("C");
 if (!("snap" in projectedC)) throw new Error("Expected projected C data Library.");
 assert.equal(projectedC.snap(["value"]), 3);
 assert.equal(replaceEcho.lastAppliedRev, replaceServer.rev);
@@ -457,12 +457,12 @@ const boundedEcho = create_echo_aggregate_client_internal({ transport: test_echo
 await boundedEcho.connect();
 const boundedMap = boundedEcho.map;
 assert.ok(boundedMap);
-const retainedLarge = boundedMap.lib("retained");
+const retainedLarge = boundedMap.data.must("retained");
 const boundedSession = boundedEcho.session.sessionId;
 assert.ok(boundedSession);
 await boundedServer.sessions.updateProjection(boundedSession, { libraries: ["retained"] });
-assert.equal(boundedMap.lib("retained"), retainedLarge);
-assert.throws(() => boundedMap.lib("revoked"), /Unknown/);
+assert.equal(boundedMap.data.must("retained"), retainedLarge);
+assert.throws(() => boundedMap.data.must("revoked"), /Unknown/);
 assert.equal(boundedEcho.diagnostics().status, "live");
 boundedEcho.dispose();
 detachBounded();

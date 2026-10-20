@@ -29,13 +29,13 @@ const Text = Hson.schema`<type "document" tag "main" content "string">`;
 const registry = (document: string, schema = Items) => hsonLiveMap.fromLibraries({ page: { document, schema } });
 
 check("logical root resolves the ordinary document element", () => {
-  const page = registry('<main <item id="a"/>/>').lib("page");
+  const page = registry('<main <item id="a"/>/>').doc.must("page");
   assert.equal((page.at([]).snap() as { $_tag: string }).$_tag, "main");
   assert.equal(page.at([]).asElement()?.kind(), "element");
 });
 
 check("logical child paths hide physical content carriers", () => {
-  const page = registry('<main <item id="a"/> <item id="b"/>/>').lib("page");
+  const page = registry('<main <item id="a"/> <item id="b"/>/>').doc.must("page");
   assert.equal((page.at([0]).snap() as { $_tag: string }).$_tag, "item");
   assert.equal(page.at([0]).asElement()?.attrs.get("id"), "a");
   assert.equal(page.at([1]).asElement()?.attrs.get("id"), "b");
@@ -48,32 +48,32 @@ check("nested logical traversal descends through each canonical carrier", () => 
 });
 
 check("multi-node document root is an ordered content container", () => {
-  const page = hsonLiveMap.fromLibraries({ page: { document: '<item id="a"/> <item id="b"/>', schema: Multi } }).lib("page");
+  const page = hsonLiveMap.fromLibraries({ page: { document: '<item id="a"/> <item id="b"/>', schema: Multi } }).doc.must("page");
   assert.equal(page.at([]).asRoot()?.kind(), "root");
   assert.equal(page.at([0]).asElement()?.attrs.get("id"), "a");
   assert.equal(page.at([1]).asElement()?.attrs.get("id"), "b");
 });
 
 check("empty document root stays addressable", () => {
-  const page = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: Multi } }).lib("page");
+  const page = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: Multi } }).doc.must("page");
   assert.equal(page.at([]).asRoot()?.kind(), "root");
   assert.equal(page.at([0]).snap(), undefined);
 });
 
 check("text content resolves the authored string rather than its carrier", () => {
-  const page = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>', schema: Text } }).lib("page");
+  const page = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>', schema: Text } }).doc.must("page");
   assert.equal(page.at([0]).snap(), "hello");
   assert.equal(page.at([0]).asText()?.kind(), "text");
 });
 
 check("out-of-range logical locations report missing state", () => {
-  const page = registry('<main <item/>/>').lib("page");
+  const page = registry('<main <item/>/>').doc.must("page");
   assert.equal(page.at([2]).snap(), undefined);
   assert.equal(page.at([2]).present(), undefined);
 });
 
 check("location handles stay fixed while occupants move", () => {
-  const page = registry('<main <item id="a"/> <item id="b"/>/>').lib("page");
+  const page = registry('<main <item id="a"/> <item id="b"/>/>').doc.must("page");
   const first = page.at([0]);
   page.at([]).asElement()!.move(0, 1);
   assert.equal(first, page.at([0]));
@@ -81,14 +81,14 @@ check("location handles stay fixed while occupants move", () => {
 });
 
 check("insertion before a fixed location changes the current occupant", () => {
-  const page = registry('<main <item id="a"/>/>').lib("page");
+  const page = registry('<main <item id="a"/>/>').doc.must("page");
   const first = page.at([0]);
   page.at([]).asElement()!.insert(0, projected_element('<item id="new"/>'));
   assert.equal(first.asElement()?.attrs.get("id"), "new");
 });
 
 check("empty element content materializes on the first valid insertion", () => {
-  const page = registry('<main/>').lib("page");
+  const page = registry('<main/>').doc.must("page");
   const commit = page.at([]).asElement()!.insert(0, projected_element('<item/>'));
   assert.equal(commit.operations[0]?.operation.op, "insert-content");
   assert.equal((page.at([0]).snap() as { $_tag: string }).$_tag, "item");
@@ -97,18 +97,18 @@ check("empty element content materializes on the first valid insertion", () => {
 check("invalid insertion index leaves an empty element unchanged", () => {
   const map = registry('<main/>');
   const before = map.capture();
-  assert.throws(() => map.lib("page").at([]).asElement()!.insert(1, projected_element('<item/>')));
+  assert.throws(() => map.doc.must("page").at([]).asElement()!.insert(1, projected_element('<item/>')));
   assert.deepEqual(map.capture(), before);
 });
 
 check("first empty-document insertion lowers through root content", () => {
   const map = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: Multi } });
-  map.lib("page").at([]).asRoot()!.insert(0, projected_element('<item/>'));
-  assert.match(map.lib("page").render(), /<item/);
+  map.doc.must("page").at([]).asRoot()!.insert(0, projected_element('<item/>'));
+  assert.match(map.doc.must("page").render(), /<item/);
 });
 
 check("Mirror consumes first element content materialization", () => {
-  const page = registry('<main/>').lib("page");
+  const page = registry('<main/>').doc.must("page");
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), page);
   page.at([]).asElement()!.insert(0, projected_element('<item/>'));
   assert.equal(binding.status, "active");

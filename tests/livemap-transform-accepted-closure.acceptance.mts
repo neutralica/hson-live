@@ -124,7 +124,7 @@ check("ordinary mixed key order closes identically", () => {
 check("structural JSON text preserves authored integer-like order", () => {
   const text = '{"10":"ten","2":"two","1":"one"}';
   const transformGraph = parse_json(text);
-  const liveMapGraph = hson.liveMap.fromLibraries({ state: { data: text, schema: Hson.schema`<type "data" content <'10' "string" '2' "string" '1' "string">>` } }).lib("state").root();
+  const liveMapGraph = hson.liveMap.fromLibraries({ state: { data: text, schema: Hson.schema`<type "data" content <'10' "string" '2' "string" '1' "string">>` } }).data.must("state").root();
   const carrierGraph = projected_value_to_hson_root(ordered_projected_object([["10", "ten"], ["2", "two"], ["1", "one"]]));
   assert_closed_graph(liveMapGraph, transformGraph, "structural JSON LiveMap closure");
   assert_closed_graph(carrierGraph, transformGraph, "structural JSON carrier closure");
@@ -133,7 +133,7 @@ check("structural JSON text preserves authored integer-like order", () => {
 check("structural JSON text preserves mixed key classes", () => {
   const text = '{"a":1,"10":10,"2":2,"01":1,"4294967294":4,"4294967295":5,"-1":-1,"b":2}';
   const transformGraph = parse_json(text);
-  const liveMapGraph = hson.liveMap.fromLibraries({ state: { data: text, schema: Hson.schema`<type "data" content <a "number" '10' "number" '2' "number" '01' "number" '4294967294' "number" '4294967295' "number" '-1' "number" b "number">>` } }).lib("state").root();
+  const liveMapGraph = hson.liveMap.fromLibraries({ state: { data: text, schema: Hson.schema`<type "data" content <a "number" '10' "number" '2' "number" '01' "number" '4294967294' "number" '4294967295' "number" '-1' "number" b "number">>` } }).data.must("state").root();
   assert_closed_graph(liveMapGraph, transformGraph, "mixed structural JSON closure");
   assert.deepEqual(graph_object_keys(liveMapGraph), ["a", "10", "2", "01", "4294967294", "4294967295", "-1", "b"]);
 });
@@ -162,13 +162,13 @@ check("repeated acyclic references copy structurally", () => {
 });
 check("scalar object wrappers close through a LiveMap set", () => {
   const map = hson.liveMap.fromLibraries({ state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` } });
-  map.lib("state").at(["value"]).set(-0);
-  assert_closed_graph(map.lib("state").root(), parse_json({ value: -0 }), "scalar wrapper set closure");
+  map.data.must("state").at(["value"]).set(-0);
+  assert_closed_graph(map.data.must("state").root(), parse_json({ value: -0 }), "scalar wrapper set closure");
 });
 check("array index wrappers close through a LiveMap splice", () => {
   const map = hson.liveMap.fromLibraries({ state: { data: { items: [0] }, schema: Hson.schema`<type "data" content <items <array "any">>>` } });
-  map.lib("state").at(["items"]).asArray()!.array.splice(0, 1, -0, own_data([["__proto__", "data"]]) as JsonValue);
-  assert_closed_graph(map.lib("state").root(), parse_json({ items: [-0, own_data([["__proto__", "data"]]) as JsonValue] }), "array index closure");
+  map.data.must("state").at(["items"]).asArray()!.array.splice(0, 1, -0, own_data([["__proto__", "data"]]) as JsonValue);
+  assert_closed_graph(map.data.must("state").root(), parse_json({ items: [-0, own_data([["__proto__", "data"]]) as JsonValue] }), "array index closure");
 });
 
 assert.equal(checks, 24);

@@ -34,7 +34,7 @@ const page = Hson.document`<main "Hello"/>`;
 
 check("missing library fails at lookup", () => {
   const map = hsonLiveMap.create();
-  assert.throws(() => map.lib("missing"), /Unknown LiveMap Library "missing"/);
+  assert.throws(() => map.data.must("missing"), /Unknown LiveMap Library "missing"/);
 });
 
 check("map admission keeps one map and commit evidence", () => {
@@ -45,16 +45,16 @@ check("map admission keeps one map and commit evidence", () => {
   map.addLibraries({ home: { document: page } });
   assert.equal(map, original);
   assert.equal(map.rev, 1);
-  assert.equal(map.lib("home").mode, "document");
-  const home = map.lib("home");
+  assert.equal(map.doc.must("home").mode, "document");
+  const home = map.doc.must("home");
   map.addLibraries({ state: { data: { count: 0 } } });
   assert.equal(map.rev, 2);
-  assert.equal(map.lib("home"), home);
-  const state = map.lib("state");
-  if (state.mode === "document") throw new Error("Expected a data Library.");
+  assert.equal(map.doc.must("home"), home);
+  const state = map.data.must("state");
+  if (String(state.mode) === "document") throw new Error("Expected a data Library.");
   assert.deepEqual(state.snap(), { count: 0 });
-  assert.throws(() => state.css, /data Library; document CSS is unavailable/);
-  assert.equal("add" in map.lib, false);
+  assert.throws(() => Reflect.get(state, "css"), /data Library; document CSS is unavailable/);
+  assert.equal("add" in map.data, false);
   assert.equal("addLibraries" in hsonLiveMap, false);
   const beforeFailure = map.capture();
   const duplicateName: string = "home";
@@ -63,8 +63,8 @@ check("map admission keeps one map and commit evidence", () => {
   }), /duplicated/);
   assert.deepEqual(map.capture(), beforeFailure);
   assert.equal(commits.length, 2);
-  map.lib("home").css.stylesheet("body { margin: 0; }");
-  assert.match(map.lib("home").css.snapshot(), /margin/);
+  map.doc.must("home").css.stylesheet("body { margin: 0; }");
+  assert.match(map.doc.must("home").css.snapshot(), /margin/);
   assert.equal(commits.length, 3);
   const styled = map.capture();
   const replayed = hsonLiveMap.create();
@@ -92,13 +92,13 @@ check("empty map admits a document and data atomically with top Schemas", () => 
   const operation = commit.operations[0]?.operation;
   assert.equal(operation !== undefined && "kind" in operation && operation.kind, "library-add");
   assert.deepEqual(observations, [{ rev: 1, names: ["page", "state"] }]);
-  assert.equal(map.lib("page").schema.get(), ANY_DOCUMENT);
-  assert.equal(map.lib("state").schema.get(), ANY_DATA);
+  assert.equal(map.doc.must("page").schema.get(), ANY_DOCUMENT);
+  assert.equal(map.data.must("state").schema.get(), ANY_DATA);
   const explicit = hsonLiveMap.create();
   explicit.addLibraries({ page: { document: page, schema: ANY_DOCUMENT },
     state: { data: { count: 0 }, schema: ANY_DATA } });
   assert.equal(explicit.capture().registry.digest, map.capture().registry.digest);
-  assert.equal(document_html(map.lib("page")), "<main>Hello</main>");
+  assert.equal(document_html(map.doc.must("page")), "<main>Hello</main>");
   assert.notEqual(map.capture().registry.digest, before.registry.digest);
   assert.equal(map.capture().revision, 1);
   let emptyObservations = 0;
@@ -112,16 +112,16 @@ check("empty map admits a document and data atomically with top Schemas", () => 
 check("existing handles survive unrelated admission and explicit Schema governs", () => {
   const schema = Hson.schema`<type "data" content <count "number">>`;
   const map = hsonLiveMap.fromLibraries({ state: { data: { count: 2 } } });
-  const state = map.lib("state");
+  const state = map.data.must("state");
   const root = state.at([]);
   const epoch = livemap_identity_epoch_accounting(state).epoch;
   const commit = map.addLibraries({ page: { document: page }, exact: { data: { count: 4 }, schema } }).commit;
   assert.equal(commit.rev, 1);
-  assert.equal(map.lib("state"), state);
+  assert.equal(map.data.must("state"), state);
   assert.equal(livemap_identity_epoch_accounting(state).epoch, epoch);
   assert.deepEqual(root.snap(), { count: 2 });
   assert.deepEqual(state.snap(), { count: 2 });
-  assert.equal(map.lib("exact").schema.get(), schema);
+  assert.equal(map.data.must("exact").schema.get(), schema);
   assert.throws(() => map.addLibraries({ invalid: { data: { count: "no" }, schema } }), /Schema|number/i);
   assert.equal(map.rev, 1);
 });
@@ -136,7 +136,7 @@ check("primitive data families remain scalar under runtime admission", () => {
     ["text", "hello", "data-string"], ["number", 3, "data-number"],
     ["flag", true, "data-boolean"], ["empty", null, "data-null"],
   ] as const) {
-    const selected = map.lib(name);
+    const selected = map.data.must(name);
     if (!("snap" in selected)) throw new Error("Expected data Library.");
     assert.deepEqual(selected.snap(), value);
     assert.equal(selected.mode, mode);
@@ -146,7 +146,7 @@ check("primitive data families remain scalar under runtime admission", () => {
 
 check("failed admission leaves revision, registry, observers and identity alone", () => {
   const map = hsonLiveMap.fromLibraries({ existing: { data: { count: 1 } } });
-  const old = map.lib("existing");
+  const old = map.data.must("existing");
   const baseline = map.capture();
   const epoch = livemap_identity_epoch_accounting(old);
   let observations = 0;
@@ -169,7 +169,7 @@ check("failed admission leaves revision, registry, observers and identity alone"
   for (const [index, input] of bad.entries()) {
     assert.throws(() => map.addLibraries(input as never), /./, `Failure case ${index} was admitted.`);
     assert.deepEqual(map.capture(), baseline);
-    assert.equal(map.lib("existing"), old);
+    assert.equal(map.data.must("existing"), old);
     assert.deepEqual(livemap_identity_epoch_accounting(old), epoch);
     assert.equal(observations, 0);
   }
@@ -184,7 +184,7 @@ check("portable replay and fresh install preserve topology guarantees", () => {
   const installed = install_libraries_snapshot(after).map;
   assert.equal(installed.rev, 1);
   assert.equal(installed.capture().registry.digest, after.registry.digest);
-  assert.equal(document_html(installed.lib("page")), "<main>Hello</main>");
+  assert.equal(document_html(installed.doc.must("page")), "<main>Hello</main>");
   const replayed = hsonLiveMap.create();
   const replayCommit = replayed.replay(JSON.parse(JSON.stringify(commit)));
   assert.deepEqual(replayCommit.operations, commit.operations);
@@ -195,10 +195,10 @@ check("portable replay and fresh install preserve topology guarantees", () => {
   const rejectedBefore = rejectedReplica.capture();
   assert.throws(() => rejectedReplica.replay(invalidReplay));
   assert.deepEqual(rejectedReplica.capture(), rejectedBefore);
-  const oldPage = map.lib("page");
+  const oldPage = map.doc.must("page");
   assert.throws(() => map.restore(before), /current Library topology/);
   assert.deepEqual(map.capture(), after);
-  assert.equal(map.lib("page"), oldPage);
+  assert.equal(map.doc.must("page"), oldPage);
   assert.deepEqual(install_libraries_snapshot(before).map.capture(), before);
   const invalidRestore = JSON.parse(JSON.stringify(after));
   invalidRestore.libraries[0].root.payload = "<not-valid";
@@ -207,14 +207,14 @@ check("portable replay and fresh install preserve topology guarantees", () => {
   map.restore(after);
   assert.equal(map.rev, 1);
   assert.equal(map.capture().registry.digest, after.registry.digest);
-  assert.equal(document_html(map.lib("page")), "<main>Hello</main>");
-  assert.equal(map.lib("page"), oldPage);
+  assert.equal(document_html(map.doc.must("page")), "<main>Hello</main>");
+  assert.equal(map.doc.must("page"), oldPage);
 });
 
 check("topology tagged payload contradictions reject atomically and valid retry succeeds", () => {
   const source = hsonLiveMap.fromLibraries({ existing: { data: { count: 1 } } });
   const target = install_libraries_snapshot(source.capture()).map;
-  const existing = target.lib("existing");
+  const existing = target.data.must("existing");
   const before = target.capture();
   const epoch = livemap_identity_epoch_accounting(existing);
   let published = 0;
@@ -228,32 +228,32 @@ check("topology tagged payload contradictions reject atomically and valid retry 
         payload: corrupt_tagged_payload(entry.root.payload, kind) } })) } }] };
     assert.throws(() => target.replay(invalid));
     assert.deepEqual(target.capture(), before);
-    assert.equal(target.lib("existing"), existing);
+    assert.equal(target.data.must("existing"), existing);
     assert.deepEqual(livemap_identity_epoch_accounting(existing), epoch);
     assert.equal(published, 0);
   }
   target.replay(valid);
   assert.equal(published, 1);
-  assert.equal(target.lib("existing"), existing);
-  assert.equal(canonical_hson_graph_equal(target.lib("added").root(), source.lib("added").root()), true);
+  assert.equal(target.data.must("existing"), existing);
+  assert.equal(canonical_hson_graph_equal(target.data.must("added").root(), source.data.must("added").root()), true);
   stop();
 });
 
 check("forward replay and compatible restore preserve shared library handles", () => {
   const source = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
   const initial = source.capture();
-  const state = source.lib("state");
+  const state = source.data.must("state");
   const transition = source.addLibraries({ page: { document: page } }).commit;
   const later = source.capture();
   const replica = install_libraries_snapshot(initial).map;
   replica.replay(transition);
   assert.equal(replica.capture().registry.digest, later.registry.digest);
   assert.throws(() => source.restore(initial), /current Library topology/);
-  assert.equal(source.lib("state"), state);
+  assert.equal(source.data.must("state"), state);
   assert.deepEqual(source.capture(), later);
   assert.deepEqual(install_libraries_snapshot(initial).map.capture(), initial);
   source.restore(later);
-  assert.equal(source.lib("state"), state);
+  assert.equal(source.data.must("state"), state);
   assert.deepEqual(state.snap(), { count: 1 });
 });
 
@@ -278,7 +278,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
     const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
     const source = hsonLiveMap.fromLibraries({ control: { document: "<main/>" } });
     const receiver = hsonLiveMap.fromLibraries({ control: { document: "<main/>" } });
-    const control = receiver.lib("control");
+    const control = receiver.doc.must("control");
     const engine = internal_livemap_aggregate_authority(receiver);
     const beforeIdentity = engine.inspect().libraries[0]!.identity;
     const beforeRoot = control.root();
@@ -288,10 +288,10 @@ for (const fixture of orderedRootReconstructionFixtures) {
     try {
       const replayed = receiver.replay(commit);
       assert.deepEqual(replayed.operations, commit.operations);
-      assert.equal(canonical_hson_graph_equal(receiver.lib("ordered").root(), original), true);
+      assert.equal(canonical_hson_graph_equal(receiver.data.must("ordered").root(), original), true);
       assert.equal(receiver.capture().libraries.find(entry => entry.name === "ordered")!.root.payload,
         source.capture().libraries.find(entry => entry.name === "ordered")!.root.payload);
-      assert.equal(receiver.lib("control"), control);
+      assert.equal(receiver.doc.must("control"), control);
       assert.equal(engine.inspect().libraries[0]!.identity, beforeIdentity);
       assert.equal(canonical_hson_graph_equal(control.root(), beforeRoot), true);
       assert.deepEqual(livemap_identity_epoch_accounting(control), beforeAccounting);
