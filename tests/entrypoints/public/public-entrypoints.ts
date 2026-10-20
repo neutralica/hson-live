@@ -429,7 +429,7 @@ declare const multiActionContext: LocusActionContext;
 declare const soloLocus: Locus;
 void soloLocus.dispatchAction;
 void multiLocus.dispatchAction;
-void multiLocus.addLibraries({ shared: [{ name: "runtimeState", definition: { data: { count: 1 } } }] });
+void multiLocus.admit({ "runtimeState": { data: { count: 1 }, access: "shared" } });
 void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] });
 void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] },
   { principalId: "alice" });

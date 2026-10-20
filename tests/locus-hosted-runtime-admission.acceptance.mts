@@ -1,6 +1,7 @@
+import { create_locus_fixture, resume_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
@@ -38,7 +39,7 @@ function sockets() {
 
 const authority = hsonLiveMap.fromLibraries({ base: { data: { count: 1 } } });
 let allowNew = false;
-const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(authority, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries.filter((name) =>
+const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries.filter((name) =>
     allowNew || (name !== "newPublic" && name !== "page")) }) });
 const wire = sockets();
 bind_locus_websocket(locus, wire.server);
@@ -69,7 +70,7 @@ assert.deepEqual(observedCommits, []);
 assert.equal(wire.sent.length, beforeSent);
 for (const name of ["preferences", "localPage", "replayed"]) assert.throws(() => clientMap.data.must(name), /unknown/i);
 const beforeAdmissionWire = wire.received.length;
-await locus.addLibraries({ private: [{ name: "privateState", definition: { data: { secret: "PRIVATE_ROOT_SENTINEL" } } }], shared: [{ name: "newPublic", definition: { data: { count: 2 } } }, { name: "page", definition: { document: Hson.document`<html <head/> <body <main <p "RUNTIME_PAGE_SENTINEL"/>/>/>/>` }, css: "main { display: block; }" }] });
+await locus.admit({ "privateState": { data: { secret: "PRIVATE_ROOT_SENTINEL" }, access: "private" }, "newPublic": { data: { count: 2 }, access: "shared" }, "page": { document: Hson.document`<html <head/> <body <main <p "RUNTIME_PAGE_SENTINEL"/>/>/>/>`, css: "main { display: block; }", access: "shared" } });
 assert.equal(locus.rev, beforeAuthorityRev + 1);
 assert.equal(echo.lastAppliedRev, locus.rev);
 assert.equal(clientMap.rev, beforeClientRev);
@@ -131,17 +132,14 @@ assert.ok(newSnapshot.includes("RUNTIME_PAGE_SENTINEL"));
 assert.equal(newSnapshot.includes("privateState"), false);
 
 const beforeInvalid = locus.rev;
-await assert.rejects(locus.addLibraries({
-  private: [{ name: "invalid", definition: { data: 1 } }],
-  shared: [{ name: "invalid", definition: { data: 2 } }],
-}), /duplicat/i);
+await assert.rejects(locus.admit(new Proxy({ invalid: { data: 1 } }, { ownKeys: () => ["invalid", "invalid"] })), /duplicat/i);
 assert.equal(locus.rev, beforeInvalid);
 assert.throws(() => locus.data.must("invalid"), /Unknown/);
 const NumberSchema = Hson.schema`<type "data" content <value "number">>`;
-await assert.rejects(locus.addLibraries({ private: [{ name: "valid", definition: { data: { value: 1 } } }, { name: "invalidSchema", definition: { data: { value: "wrong" }, schema: NumberSchema } }] }), /Schema|schema|number/i);
+await assert.rejects(locus.admit({ "valid": { data: { value: 1 }, access: "private" }, "invalidSchema": { data: { value: "wrong" }, schema: NumberSchema, access: "private" } }), /Schema|schema|number/i);
 assert.equal(locus.rev, beforeInvalid);
 assert.throws(() => locus.data.must("valid"), /Unknown/);
-await locus.addLibraries({ private: [{ name: "explicitPrivate", definition: { data: { secret: "EXPLICIT_PRIVATE_SENTINEL" } } }] });
+await locus.admit({ "explicitPrivate": { data: { secret: "EXPLICIT_PRIVATE_SENTINEL" }, access: "private" } });
 assert.equal(echo.lastAppliedRev, locus.rev);
 assert.equal(wire.received.at(-1)?.includes("explicitPrivate"), false);
 assert.equal(wire.received.at(-1)?.includes("EXPLICIT_PRIVATE_SENTINEL"), false);
@@ -152,7 +150,7 @@ process.stdout.write("ok - public runtime admission and explicit live projection
 
 const interactionMap = hsonLiveMap.fromLibraries({ basePage: { document: Hson.document`<main/>` } });
 enable_interactions(interactionMap);
-const interactionLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(interactionMap, [{ name: "basePage", ownership: "shared" }]), defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }) });
+const interactionLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(interactionMap, [{ name: "basePage", ownership: "shared" }]), defaultProjection: { libraries: ["basePage"], systemFeatures: ["interactions"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }) });
 const interactionWire = sockets();
 bind_locus_websocket(interactionLocus, interactionWire.server);
 const interactionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(interactionWire.client),
@@ -165,7 +163,7 @@ if (initialPage.mode !== "document") throw new Error("Expected initial document 
 const existingMirror = hsonMirror(initialPage);
 const existingTree = retained_subject(existingMirror.tree);
 const existingMirrorUpdates = existingMirror.diagnostics().updatesApplied;
-await interactionLocus.addLibraries({ shared: [{ name: "nextPage", definition: { document: Hson.document`<main <button "Next"/>/>` } }] });
+await interactionLocus.admit({ "nextPage": { document: Hson.document`<main <button "Next"/>/>`, access: "shared" } });
 const listener = Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
   passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false,
   stopImmediatePropagation: false });
@@ -195,7 +193,7 @@ interactionLocus.dispose();
 process.stdout.write("ok - projected runtime document interaction\n");
 
 const collisionMap = hsonLiveMap.fromLibraries({ base: { data: { value: 1 } } });
-const collisionLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(collisionMap, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const collisionLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(collisionMap, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const collisionWire = sockets();
 bind_locus_websocket(collisionLocus, collisionWire.server);
 const collisionEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(collisionWire.client),
@@ -203,7 +201,7 @@ const collisionEcho = create_echo_aggregate_client_internal({ transport: test_ec
 await collisionEcho.connect();
 const collisionClientMap = collisionEcho.map;
 assert.ok(collisionClientMap);
-await collisionLocus.addLibraries({ shared: [{ name: "shared", definition: { data: { owner: "authority" } } }] });
+await collisionLocus.admit({ "shared": { data: { owner: "authority" }, access: "shared" } });
 const localRev = collisionClientMap.rev;
 assert.throws(() => collisionClientMap.addLibraries({ shared: { data: { owner: "local" } } }), /managed|authority|controlled/i);
 assert.equal(collisionClientMap.rev, localRev);
@@ -227,7 +225,7 @@ let authorizationEntered = (): void => {};
 const entered = new Promise<void>((resolve) => { authorizationEntered = resolve; });
 const authorization = new Promise<void>((resolve) => { releaseAuthorization = resolve; });
 let sawCurrentContext = false;
-const revokeLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(revokeMap, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: async ({ requested, connection }) => {
+const revokeLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(revokeMap, [{ name: "base", ownership: "shared" }]), defaultProjection: { libraries: ["base"] }, authorizeProjection: async ({ requested, connection }) => {
     if (!requested.libraries.includes("later")) return { libraries: requested.libraries };
     sawCurrentContext = connection?.principalId === "alice" && connection.attachment !== undefined;
     authorizationEntered();
@@ -239,7 +237,7 @@ bind_locus_websocket(revokeLocus, revokeWire.server, { principalId: "alice", att
 const revokeEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(revokeWire.client),
   logicalMapId: revokeLocus.logicalMapId });
 await revokeEcho.connect();
-await revokeLocus.addLibraries({ shared: [{ name: "later", definition: { data: { value: 2 } } }] });
+await revokeLocus.admit({ "later": { data: { value: 2 }, access: "shared" } });
 const revokeSessionId = revokeEcho.session.sessionId;
 assert.ok(revokeSessionId);
 const pendingUpdate = revokeLocus.session.get(revokeSessionId)!.update({ libraries: ["base", "later"] });
@@ -257,7 +255,7 @@ const durableMap = hsonLiveMap.create();
 
 const reservedAdapter = new MemoryCheckpointAdapter();
 const reservedMap = hsonLiveMap.create();
-const reserved = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(reservedMap, [
+const reserved = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(reservedMap, [
     { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
   ]), persistence: reservedAdapter, logicalMapId: "local-name-reservation", authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const reservedSession = await reserved.session.create({ libraries: ["ui"] });
@@ -266,9 +264,7 @@ assert.equal("map" in reserved, false);
 for (const ownership of ["private", "shared"] as const) {
   const beforeRev = reserved.rev;
   const beforeCommits = reservedAdapter.appendCalls.length;
-  await assert.rejects(reserved.addLibraries({
-    [ownership]: [{ name: "ui", definition: { data: { value: 99 } } }],
-  }), /local initializer|collides/i);
+  await assert.rejects(reserved.admit({ ui: { data: { value: 1 }, access: ownership } }), /local initializer|collides/i);
   assert.equal(reserved.rev, beforeRev);
   assert.equal(reservedAdapter.appendCalls.length, beforeCommits);
   assert.throws(() => reserved.data.must("ui"), /Unknown/i);
@@ -278,17 +274,17 @@ for (const ownership of ["private", "shared"] as const) {
 reserved.dispose();
 
 const adapter = new MemoryCheckpointAdapter();
-const durable = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(durableMap, []), persistence: adapter, logicalMapId: "public-hosted-admission" });
-await durable.addLibraries({ private: [{ name: "second", definition: { data: { value: 2 } } }], shared: [{ name: "first", definition: { data: { value: 1 } } }] });
+const durable = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(durableMap, []), persistence: adapter, logicalMapId: "public-hosted-admission" });
+await durable.admit({ "second": { data: { value: 2 }, access: "private" }, "first": { data: { value: 1 }, access: "shared" } });
 assert.equal(durable.rev, 1);
 assert.equal(adapter.state(durable.logicalMapId)?.commits.length, 1);
 adapter.failAppend = new Error("append failed");
-await assert.rejects(durable.addLibraries({ shared: [{ name: "refused", definition: { data: { value: 3 } } }] }), /append/i);
+await assert.rejects(durable.admit({ "refused": { data: { value: 3 }, access: "shared" } }), /append/i);
 assert.equal(durable.rev, 1);
 assert.throws(() => durable.data.must("refused"), /Unknown/);
 durable.dispose();
 const resumedMap = hsonLiveMap.create();
-const resumed = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(resumedMap, []),
+const resumed = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(resumedMap, []),
   persistence: adapter, logicalMapId: "public-hosted-admission" });
 assert.equal(resumed.rev, 1);
 const resumedFirst = resumed.data.must("first");
@@ -297,11 +293,11 @@ assert.equal(resumedFirst.snap(["value"]), 1);
 resumed.dispose();
 const sortedAdapter = new MemoryCheckpointAdapter();
 const sortedInitial = hsonLiveMap.fromLibraries({ middle: { data: { value: 1 } } });
-const sortedLocus = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(sortedInitial, [{ name: "middle", ownership: "shared" }]), persistence: sortedAdapter, logicalMapId: "sorted-hosted-admission" });
-await sortedLocus.addLibraries({ shared: [{ name: "aardvark", definition: { data: { value: 2 } } }] });
+const sortedLocus = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(sortedInitial, [{ name: "middle", ownership: "shared" }]), persistence: sortedAdapter, logicalMapId: "sorted-hosted-admission" });
+await sortedLocus.admit({ "aardvark": { data: { value: 2 }, access: "shared" } });
 sortedLocus.dispose();
 const sortedRestartMap = hsonLiveMap.fromLibraries({ middle: { data: { value: 0 } } });
-const sortedRestart = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(sortedRestartMap, [
+const sortedRestart = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(sortedRestartMap, [
     { name: "middle", ownership: "shared" },
   ]), persistence: sortedAdapter, logicalMapId: "sorted-hosted-admission" });
 assert.equal(sortedRestart.data.must("aardvark").mode, "data-object");
@@ -309,16 +305,15 @@ sortedRestart.dispose();
 process.stdout.write("ok - public admission uses the durable authority gate atomically\n");
 
 const capturedMap = hsonLiveMap.create();
-const capturedLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(capturedMap, []), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const capturedLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(capturedMap, []), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const mutableBatch = { one: { data: { value: 1 } } };
-const pendingBatch = capturedLocus.addLibraries({ shared: [{ name: "one", definition: mutableBatch.one }] });
+const pendingBatch = capturedLocus.admit({ "one": { ...mutableBatch.one, access: "shared" } });
 Object.assign(mutableBatch, { unclassified: { data: { secret: "LATE_LIBRARY_SENTINEL" } } });
 await pendingBatch;
 assert.equal(capturedLocus.rev, 1);
 assert.equal(capturedLocus.data.must("one").mode, "data-object");
 assert.throws(() => capturedLocus.data.must("unclassified"), /Unknown/);
-await capturedLocus.addLibraries({ private: [{ name: "inherited",
-  definition: { data: { secret: "INHERITED_EXPOSURE_SENTINEL" } } }] });
+await capturedLocus.admit({ "inherited": { data: { secret: "INHERITED_EXPOSURE_SENTINEL" }, access: "private" } });
 const capturedWire = sockets();
 bind_locus_websocket(capturedLocus, capturedWire.server);
 capturedWire.client.send(JSON.stringify({ type: "session-create", id: "captured-session",

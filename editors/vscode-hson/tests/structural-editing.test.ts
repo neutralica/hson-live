@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
 import { hsonLiveMap } from "../../../src/api/livemap/livemap.public.js";
-import { part_collection_definition_internal } from "../../../src/api/livemap/livemap.parts.js";
 import { formatting_target_is_current } from "../src/formatting-target.js";
 import {
   StructuralDocumentEvidenceCache,
@@ -59,7 +58,7 @@ check("authored document formatting preserves nested QUADs, connector admission,
     const formattedBody = result.slice(hostPrefix.length, -2);
     assert.deepEqual(parse_authored_document_library(formattedBody), parse_authored_document_library(body));
     const map = hsonLiveMap.fromLibraries({
-      parts: part_collection_definition_internal({ content: { kind: "document", document: '<article "Body"/>' } }),
+      parts: { parts: { content: { kind: "document", document: '<article "Body"/>' } } },
       page: { document: formattedBody },
     });
     const page = map.doc.must("page");

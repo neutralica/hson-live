@@ -112,21 +112,10 @@ try {
     key: "state.interaction",
     payload: Hson.data.from(null),
   });
-  librariesLocus = hsonLiveMap.locus.create({
-    sessions: {},
-    shared: [
-      { name: "state", definition: { data: { count: 0 }, schema: StateSchema } },
-      { name: "page", definition: { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema } },
-      { name: "admin", definition: { document: "<aside/>", schema: AdminSchema } },
-    ],
-    interactions: [browserInteraction, authorityInteraction],
-    defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] },
-    authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }),
-    actions: {
+  librariesLocus = hsonLiveMap.locus.create({ "state": { data: { count: 0 }, schema: StateSchema, access: "shared" }, "page": { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema, access: "shared" }, "admin": { document: "<aside/>", schema: AdminSchema, access: "shared" } }, { sessions: {}, interactions: [browserInteraction, authorityInteraction], defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }), actions: {
       "state.increment": (context) => context.stage.data.must("state").at(["count"]).set(2),
       "state.interaction": (context) => context.stage.data.must("state").at(["count"]).set(5),
-    },
-  });
+    } });
   const retained = await librariesLocus.session.create({ libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] });
   const libraries = retained.now({ html: "page" });
   const encoded = Object.freeze({
@@ -151,11 +140,7 @@ try {
   if (librariesSocketAddress === null || typeof librariesSocketAddress === "string") throw new Error("Libraries browser socket server has no TCP address.");
   const librariesSocketUrl = `ws://127.0.0.1:${librariesSocketAddress.port}`;
 
-  cssLocus = hsonLiveMap.locus.create({
-    shared: [{ name: "page", definition: { document: '<html <head/> <body <p id="hosted-css-target" "hosted"/> <p id="hosted-layer-target" "grouped"/>/>/>' } }],
-    defaultProjection: { libraries: ["page"] },
-    authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
-  });
+  cssLocus = hsonLiveMap.locus.create({ "page": { document: '<html <head/> <body <p id="hosted-css-target" "hosted"/> <p id="hosted-layer-target" "grouped"/>/>/>', access: "shared" } }, { defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
   await cssLocus.stage(draft => { draft.doc.must("page").css({domain:"css",kind:"append",
     stylesheet:parse_document_stylesheet('@layer { #hosted-layer-target { CoLoR: red !important; } #hosted-layer-target { color: blue !important; } }', [])}); });
   await cssLocus.stage((draft) => { draft.doc.must("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],

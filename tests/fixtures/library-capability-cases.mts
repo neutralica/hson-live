@@ -52,13 +52,11 @@ export async function library_capability_cases() {
   }));
   assert.equal(batch.doc.must("page").render(), before); assert.equal(batch.rev, rev);
 
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: page, schema: PageSchema } }],
-    local: [{ name: "panel", initializer: { document: '<aside/>' } }],
-    authorizeProjection: () => ({ libraries: ["page", "panel"] }) });
+  const locus = hsonLiveMap.locus.create({ "page": { document: page, schema: PageSchema, access: "shared" } }, { local: [{ name: "panel", initializer: { document: '<aside/>' } }], authorizeProjection: () => ({ libraries: ["page", "panel"] }) });
   try {
-    const admitted = await locus.addLibraries({ private: [{ name: "privatePage", definition: { document: "<aside/>" } }] });
-    assert.equal(admitted.libraries.privatePage.render(), "<aside></aside>");
-    await assert.rejects(locus.addLibraries({ shared: [{ name: "privatePage", definition: { data: 1 } }] }));
+    await locus.admit({ "privatePage": { document: "<aside/>", access: "private" } });
+    assert.equal(locus.doc.must("privatePage").render(), "<aside></aside>");
+    await assert.rejects(locus.admit({ "privatePage": { data: 1, access: "shared" } }));
     await locus.stage(w => { w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "button"); });
     const selected = locus.doc.must("page");
     if (selected.mode !== "document") throw Error("Expected document");
@@ -151,14 +149,7 @@ export async function collection_capability_cases() {
   const schema = Hson.schema`<type "data" content <values <array "number"> record "any" choice "any">>` as HsonSchema<Values, "data">;
   const state = { values: [3, 1, 2], record: { a: 1, b: 2 }, choice: [1] };
   let actionReads = 0;
-  const locus = hsonLiveMap.locus.create({ shared: [
-    { name: "deck", definition: { data: initial, schema: DeckSchema } },
-    { name: "state", definition: { data: state, schema } },
-    { name: "page", definition: { document: page, schema: PageSchema } },
-  ], local: [{ name: "ui", initializer: { data: { values: [1] } } }],
-  authorizeProjection: () => ({ libraries: ["deck", "state", "page", "ui"] }),
-  authorizeAction: () => false,
-  actions: { inspect(context) {
+  const locus = hsonLiveMap.locus.create({ "deck": { data: initial, schema: DeckSchema, access: "shared" }, "state": { data: state, schema, access: "shared" }, "page": { document: page, schema: PageSchema, access: "shared" } }, { local: [{ name: "ui", initializer: { data: { values: [1] } } }], authorizeProjection: () => ({ libraries: ["deck", "state", "page", "ui"] }), authorizeAction: () => false, actions: { inspect(context) {
     const library = context.data.must("state");
     const location = library.at(["values"]).asArray()!;
     assert.equal("push" in location.array, false);
@@ -269,8 +260,8 @@ export async function collection_command_parity_cases() {
   for (const [path, namespace, method, args] of commands) {
     const local = hsonLiveMap.fromLibraries({ state: definition });
     const staged = hsonLiveMap.fromLibraries({ state: definition });
-    const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition }] });
-    const direct = hsonLiveMap.locus.create({ shared: [{ name: "state", definition }] });
+    const locus = hsonLiveMap.locus.create({ "state": { ...definition, access: "shared" } });
+    const direct = hsonLiveMap.locus.create({ "state": { ...definition, access: "shared" } });
     const invoke = (location: object) => Reflect.apply(Reflect.get(Reflect.get(location, namespace), method), undefined, args);
     try {
       assert.equal(invoke(local.data.must("state").at([path])).changed, true, method);
@@ -313,9 +304,7 @@ export async function refinement_repair_cases() {
   };
   for (const governed of [false, true]) {
     const map = hsonLiveMap.fromLibraries(definitions);
-    const locus = hsonLiveMap.locus.create({ shared: [
-      { name: "state", definition: definitions.state }, { name: "deck", definition: definitions.deck },
-    ] });
+    const locus = hsonLiveMap.locus.create({ "state": { ...definitions.state, access: "shared" }, "deck": { ...definitions.deck, access: "shared" } });
     const selected = governed ? locus : map;
     const state = governed ? locus.data.must("state") : map.data.must("state");
     const deck = governed ? locus.data.must("deck") : map.data.must("deck");
@@ -408,10 +397,10 @@ export async function refinement_repair_cases() {
         });
         await blocked;
         assert.deepEqual(locus.data.must("state").at(["required"]).snap(), [1]);
-        const receipt = await locus.addLibraries({ shared: [{ name: "admitted", definition: { document: "<aside/>" } }] });
-        assert.equal(receipt.libraries.admitted.render(), "<aside></aside>");
+        await locus.admit({ "admitted": { document: "<aside/>", access: "shared" } });
+        assert.equal(locus.doc.must("admitted").render(), "<aside></aside>");
         let failedReceipt: unknown;
-        await assert.rejects((async () => { failedReceipt = await locus.addLibraries({ shared: [{ name: "admitted", definition: { data: 1 } }] }); })());
+        await assert.rejects((async () => { failedReceipt = await locus.admit({ "admitted": { data: 1, access: "shared" } }); })());
         assert.equal(failedReceipt, undefined);
       }
     } finally { locus.dispose(); }

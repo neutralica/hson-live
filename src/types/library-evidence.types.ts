@@ -26,7 +26,9 @@ type EntryDefinitions<T> = {
   readonly [Entry in GroupEntries<T> as Entry["name"]]: Entry["definition"];
 };
 
-/** Construction and admission use the same tuple/group membership proof. */
+/** Internal named-entry catalogs retain conservative tuple membership evidence.
+ * Required suffixes after variadic or optional entries remain a tracked inference limitation.
+ * Flat public construction uses LibraryLiteralDefinitions instead. */
 export type LibraryGroupDefinitions<T> = {
   readonly [K in keyof EntryDefinitions<T> as K extends CertainGroupNames<T> ? K : never]: Extract<EntryDefinitions<T>[K], LiveMapLibraryDefinition>;
 } & {

@@ -1,4 +1,4 @@
-import { resume_locus_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { resume_locus_fixture, authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -148,7 +148,7 @@ const persistentMap = hsonLiveMap.fromLibraries({
   page: { document: '<main <p "PERSISTENT_PUBLIC"/>/>', schema: Page },
   privateSignal: { data: { value: "small" }, schema: Data },
 });
-const persistent = await resume_locus_fixture({ ...authority_groups_from_map_fixture(persistentMap, [{ name: "page", ownership: "shared" }, { name: "privateSignal", ownership: "private" }]),
+const persistent = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(persistentMap, [{ name: "page", ownership: "shared" }, { name: "privateSignal", ownership: "private" }]),
   logicalMapId: "selected-capture-z3a", persistence, defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }) });
 await persistent.stage((draft) => { const privateLib = draft.data.must("privateSignal");
   privateLib.at(["value"]).set("p".repeat(5 * 1024 * 1024)); });

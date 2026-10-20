@@ -1,5 +1,6 @@
+import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
-import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { exact_tagged_payload, invalid_tagged_graphs } from "./helpers/tagged-codec-fixture.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { local_initializers } from "./helpers/client-projection.mts";
@@ -246,7 +247,7 @@ const interactionMap = hsonLiveMap.fromLibraries({
   hiddenDoc: { document: "<main/>", schema: PageSchema },
 });
 enable_interactions(interactionMap);
-const interactionServer = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(interactionMap, [
+const interactionServer = create_locus_fixture({ ...authority_definitions_from_map_fixture(interactionMap, [
   { name: "page", ownership: "shared" }, { name: "hiddenDoc", ownership: "private" },
 ]), defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
 const interactionConnection = pair();

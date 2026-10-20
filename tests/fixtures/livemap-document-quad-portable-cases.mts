@@ -1,7 +1,6 @@
 import { legacy_flat_styled_map } from "./livemap-styled-composition-cases.mts";
 import { local_initializers } from "../helpers/client-projection.mts";
 import { create_echo_scoped_replica_internal } from "../../src/api/echo/echo.aggregate-replica.lifecycle.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { encode_ssr_bootstrap, decode_ssr_bootstrap } from "../../src/api/ssr/ssr-bootstrap.ts";
 import { create_echo_aggregate_client_internal } from "../../src/api/echo/echo.aggregate-replica.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../../src/api/locus/locus.aggregate.authority.ts";
@@ -82,8 +81,8 @@ async function projection(map: LiveMap, names: readonly string[], privateNames: 
 export async function portable_quad_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
   await document_css_subject_cases(check);
   await check("automatic private Parts project only realized markup and owned CSS; clients never need definitions", async () => {
-    const map = hsonLiveMap.fromLibraries({ hidden: collection({ used: { kind: "document", document: '<section @:PRIVATE_LOCAL <button "Shared"/>/>', css: 'button{color:rgb(12,34,56)}' },
-      secret: { kind: "document", document: '<p "UNUSED_PRIVATE_SOURCE"/>', css: 'p{--private:UNUSED_PRIVATE_CSS}' } }),
+    const map = hsonLiveMap.fromLibraries({ hidden: { parts: { used: { kind: "document", document: '<section @:PRIVATE_LOCAL <button "Shared"/>/>', css: 'button{color:rgb(12,34,56)}' },
+      secret: { kind: "document", document: '<p "UNUSED_PRIVATE_SOURCE"/>', css: 'p{--private:UNUSED_PRIVATE_CSS}' } } },
       page: { document: '<html <head/> <body <hson-part @:slot lib="hidden" at="used"/>/>/>' } });
     const effective = await projection(map, ["page"], ["hidden"]);
     assert.throws(() => capture_selected_authority_projection_snapshot(map, effective));
@@ -99,9 +98,8 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<hson-part lib="hidden" at="used"/>' } }), /collection/);
   });
   await check("initial Locus construction delivers coherent scoped HTML and owned CSS", async () => {
-    const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: collection({ x: { kind: "document", document: '<section <button "Shared"/>/>', css: 'button{color:red}' },
-      unused: { kind: "document", document: '<p "PRIVATE_UNVISITED"/>' } }) }],
-      shared: [{ name: "page", definition: { document: '<html <head/> <body <hson-part lib="parts" at="x"/>/>/>' }, css: 'body{margin:0}' }], defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    const locus = hsonLiveMap.locus.create({ "parts": { ...{ parts: { x: { kind: "document", document: '<section <button "Shared"/>/>', css: 'button{color:red}' },
+      unused: { kind: "document", document: '<p "PRIVATE_UNVISITED"/>' } } }, access: "private" }, "page": { document: '<html <head/> <body <hson-part lib="parts" at="x"/>/>/>', css: 'body{margin:0}', access: "shared" } }, { defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
       const selected = locus.doc.must("page"); if (selected.mode !== "document") throw Error("document");
       assert.match(selected.css.snapshot(), /body\{margin:0/); assert.match(selected.css.snapshot(), /button:where\(:scope,:scope \*\)\{color:red/);
@@ -122,8 +120,8 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     } finally { locus.dispose(); }
   });
   await check("managed authored topology retains complete scopes and occurrence CSS before publication", async () => {
-    const map = hsonLiveMap.fromLibraries({ hidden: collection({ plain: { kind: "document", document: '<nav @:private "Shared"/>' },
-      styled: { kind: "document", document: '<button/>', css: 'button{color:red}' } }) });
+    const map = hsonLiveMap.fromLibraries({ hidden: { parts: { plain: { kind: "document", document: '<nav @:private "Shared"/>' },
+      styled: { kind: "document", document: '<button/>', css: 'button{color:red}' } } } });
     const aggregate = owner(map), manager = {}; aggregate.claimManagement(manager);
     try {
       const prepared = hostedAdd(map, manager, { page: { document: '<main <hson-part @:slot lib="hidden" at="plain"/>/>' } });
@@ -142,7 +140,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   });
   await check("legacy flat owned CSS survives semantic checkpoints and fresh durable restoration, then retires without stale rules", async () => {
     // Explicit historical flat fixture; dynamic admission itself now preserves scopes.
-    const full = legacy_flat_styled_map({ parts: collection({ x: { kind: "document", document: '<section <button/>/>', css: 'button{color:red}' } }),
+    const full = legacy_flat_styled_map({ parts: { parts: { x: { kind: "document", document: '<section <button/>/>', css: 'button{color:red}' } } },
       page: { document: '<html <head/> <body <hson-part @:slot lib="parts" at="x"/>/>/>' } });
     const map = install_libraries_snapshot(full.cut({ data: [], documents: ["page"] }).libs).map, aggregate = owner(map);
     aggregate.setInitialHostedAuthority({ logicalMapId: "owned-part-checkpoint", incarnationId: "run" });
@@ -272,7 +270,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   });
   await check("independent composed occurrences use receiving identities and final-only restoration", async () => {
     const source = authored({ layout: { document: '<main <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>' },
-      components: collection({ button: { kind: "document", document: '<button @:source/>' } }) });
+      components: { parts: { button: { kind: "document", document: '<button @:source/>' } } } });
     compose(source, "layout", "final");
     assert.throws(() => source.cut({ documents: ["final"], data: [] }), /Scoped/);
     const snapshot = capture_selected_authority_projection_snapshot(source, await projection(source, ["final"], ["layout", "components"]), true);
@@ -740,7 +738,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     } finally { clientOwner.releaseManagement(management); seedOwner.releaseManagement(serverManager); }
   });
   await check("legacy flat selected cuts and authorized projections preserve private source separation and Echo registry restoration", async () => {
-    const map = legacy_flat_styled_map({ hidden: collection({ private: { kind: "document", document: '<aside @:PRIVATE_ADDRESS/>' } }), layout: { document: '<main <hson-part lib="hidden" at="private"/>/>' },
+    const map = legacy_flat_styled_map({ hidden: { parts: { private: { kind: "document", document: '<aside @:PRIVATE_ADDRESS/>' } } }, layout: { document: '<main <hson-part lib="hidden" at="private"/>/>' },
       public: { document: '<button @:shared/>' } });
     compose(map, "layout", "composed");
     const effective = await projection(map, ["hidden", "composed", "public"], ["hidden", "layout"]);
@@ -793,7 +791,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.notEqual(authority_projection_state_fingerprint_internal(projected), authority_projection_state_fingerprint_internal(changedAddress));
   });
   await check("legacy flat restored Parts compose independently with preserved shell and local Part addresses", () => {
-    const original = legacy_flat_styled_map({ parts: collection({ header: { kind: "document", document: '<header @:header <hson-part at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } }), layout: { document: '<main @:layout <hson-part lib="parts" at="header"/> <hson-part lib="parts" at="header"/>/>' } });
+    const original = legacy_flat_styled_map({ parts: { parts: { header: { kind: "document", document: '<header @:header <hson-part at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } } }, layout: { document: '<main @:layout <hson-part lib="parts" at="header"/> <hson-part lib="parts" at="header"/>/>' } });
     const received = install_libraries_snapshot(original.capture()).map;
     const result = compose(received, "layout", "result");
     assert.equal(lookup(result, "button"), undefined); assert.ok(lookup(result, "layout"));

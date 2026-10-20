@@ -1,3 +1,4 @@
+import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
@@ -487,7 +488,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
     const options = { ...test_public_projection(authority), map: authority };
     const locus = strategy === "reconcile"
       ? create_registry_locus_internal(options, { maxHistoryBytes: 1 }).locus
-      : hsonLiveMap.locus.create(authority_definition_from_fixture_options(options));
+      : create_locus_fixture(authority_definition_from_fixture_options(options));
     const session = await locus.session.create({ libraries: ["state", "page"] });
     const notices = new Set<(event: EchoAttachmentEvent) => void>();
     const attachment = attach_locus_semantic_transport_internal(locus, {

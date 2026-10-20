@@ -4,7 +4,7 @@ import { FileCheckpointAdapter } from "../helpers/file-checkpoint-adapter.mts";
 import { definition, assert_cut } from "./locus-scoped-ssr-cases.mts";
 const [file, revision] = process.argv.slice(2);
 assert.ok(file && revision);
-const locus = await hsonLiveMap.locus.resume({ ...definition, logicalMapId: "h2-restart", persistence: new FileCheckpointAdapter(file) });
+const locus = await hsonLiveMap.locus.resume({ ...definition[0] }, { ...definition[1], logicalMapId: "h2-restart", persistence: new FileCheckpointAdapter(file) });
 try {
   const session = await locus.session.create({ libraries: ["page", "flat", "later", "bare"] });
   assert.equal(locus.rev, Number(revision));

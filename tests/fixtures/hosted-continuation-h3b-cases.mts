@@ -15,12 +15,7 @@ export async function hosted_h3b_cases(check: (name: string, run: () => Promise<
   install_fake_document();
   for (const failure of ["none", "recovered", "publish", "cleanup"] as const) {
     await check(`scoped continuation, introduced identities and ${failure} startup rollback`, async () => {
-      const locus = hsonLiveMap.locus.create({
-        private: [{ name: "parts", definition: { parts: { item: { kind: "document", document: '<b @:root <span @:label "Original"/>/>' } } } }],
-        shared: [{ name: "page", definition: { document: '<main @:root <hson-part @:left lib="parts" at="item"/> <hson-part @:right lib="parts" at="item"/>/>' } },
-          { name: "flat", definition: { document: '<main <i/>/>' } }],
-        authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-      });
+      const locus = hsonLiveMap.locus.create({ "parts": { parts: { item: { kind: "document", document: '<b @:root <span @:label "Original"/>/>' } }, access: "private" }, "page": { document: '<main @:root <hson-part @:left lib="parts" at="item"/> <hson-part @:right lib="parts" at="item"/>/>', access: "shared" }, "flat": { document: '<main <i/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
       const session = await locus.session.create({ libraries: ["page", "flat"] });
       const now = session.now({ html: "page" });
       const root = new FakeElement("main"), left = new FakeElement("b"), right = new FakeElement("b");

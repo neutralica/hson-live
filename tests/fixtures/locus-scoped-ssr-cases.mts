@@ -13,20 +13,14 @@ export const page = { document: '<html @:page <head/> <body <hson-part @:left li
 const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection }) => ({
   libraries: connection?.principalId === "denied" ? ["data"] : requested.libraries,
 });
-export const definition = {
-  private: [{ name: "parts", definition: { parts: {
+export const definition = [{ "parts": { parts: {
     panel: { kind: "document", document: '<section @:root id="%{id}" <hson-part @:child at="leaf"/>/>', css: ':scope{border:3px solid black}' },
     leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>',
       css: ':scope{--tone:rgb(10,20,30);padding:7px}[hson\\:quad="label"]{color:var(--tone)}' },
     global: { kind: "document", document: '<aside "Bare"/>', css: '@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
     bare: { kind: "document", document: '<aside "Bare"/>' },
     unused: { kind: "document", document: '<i "PRIVATE_TEMPLATE"/>', css: 'i{--private:PRIVATE_CSS}' },
-  } } }, { name: "secret", definition: { document: '<html <head/> <body "PRIVATE_DOCUMENT"/>/>' }, css: 'body{--private:PRIVATE_LIBRARY_CSS}' }],
-  shared: [{ name: "page", definition: page, css: 'p{color:red}p{CoLoR:rgb(40,50,60)}#left{--own:11px}#right{--own:13px}section{margin-left:var(--own)}' },
-    { name: "flat", definition: { document: '<html <head/> <body <p "Flat"/>/>/>' }, css: 'p{color:navy}' },
-    { name: "bare", definition: { document: '<main <hson-part lib="parts" at="bare"/>/>' } },
-    { name: "data", definition: { data: { n: 0 } } }], authorizeProjection,
-} as const;
+  }, access: "private" }, "secret": { document: '<html <head/> <body "PRIVATE_DOCUMENT"/>/>', css: 'body{--private:PRIVATE_LIBRARY_CSS}', access: "private" }, "page": { ...page, css: 'p{color:red}p{CoLoR:rgb(40,50,60)}#left{--own:11px}#right{--own:13px}section{margin-left:var(--own)}', access: "shared" }, "flat": { document: '<html <head/> <body <p "Flat"/>/>/>', css: 'p{color:navy}', access: "shared" }, "bare": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" }, "data": { data: { n: 0 }, access: "shared" } }, { authorizeProjection }] as const;
 export function node(source: string) {
   const value = hsonTransform.fromHson(source).toNode().$_content[0];
   if (typeof value !== "object" || value === null) throw Error("Expected element");
@@ -50,14 +44,14 @@ export function assert_cut(cut: LocusSessionHtmlNow, occurrences?: number) {
   assert.deepEqual(decoded.bootstrap.libs, cut.libs);
 }
 export async function fixture() {
-  const locus = hsonLiveMap.locus.create(definition);
+  const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
   const session = await locus.session.create({ libraries: ["page", "flat", "bare", "data", "parts", "secret"] });
   return { locus, session };
 }
 
 export async function scoped_ssr_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   await check("Library rendering is observational before any hosted session exists", async () => {
-    const locus = hsonLiveMap.locus.create(definition);
+    const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
     const map = locus_map_internal(locus), aggregate = internal_livemap_aggregate_authority(map);
     const pageOwner = aggregate.inspect().libraries.find(entry => entry.mode === "document" && aggregate.documentQuad(entry.identity, "outside", undefined))!.identity;
     const subject = aggregate.documentQuad(pageOwner, "outside", undefined)!;
@@ -149,7 +143,7 @@ export async function scoped_ssr_cases(check: (name: string, run: () => Promise<
       const empty = session.now({ html: "page" }); assert_cut(empty, 0);
       assert.doesNotMatch(empty.html, /@scope|@keyframes|@property|padding:7px|border:3px/);
       assert.equal(empty.libs.libraries.find(e => e.name === "flat")!.scopes, undefined);
-      await locus.addLibraries({ shared: [{ name: "later", definition: page }] });
+      await locus.admit({ "later": { ...page, access: "shared" } });
       assert.throws(() => session.now({ html: "later" }), /unavailable/);
       await session.update({ libraries: ["page", "flat", "later"] });
       assert_cut(session.now({ html: "later" }), 5);
@@ -195,7 +189,7 @@ export async function scoped_ssr_cases(check: (name: string, run: () => Promise<
   });
   await check("authorization pending at capture and synchronous revocation fence", async () => {
     const entered = deferred(), release = deferred(); let block = false;
-    const locus = hsonLiveMap.locus.create({ ...definition, authorizeProjection: async ({ requested }) => {
+    const locus = hsonLiveMap.locus.create({ ...definition[0] }, { ...definition[1], authorizeProjection: async ({ requested }) => {
       if (block) { entered.resolve(); await release.promise; }
       return { libraries: requested.libraries };
     } });
@@ -225,7 +219,7 @@ export async function scoped_ssr_cases(check: (name: string, run: () => Promise<
       }
     }
     const persistence = new PausedAdapter();
-    const locus = await hsonLiveMap.locus.resume({ ...definition, logicalMapId: "h2-pending", persistence });
+    const locus = await hsonLiveMap.locus.resume({ ...definition[0] }, { ...definition[1], logicalMapId: "h2-pending", persistence });
     try {
       const session = await locus.session.create({ libraries: ["page", "flat"] });
       const before = session.now({ html: "page" }); persistence.pause = true;

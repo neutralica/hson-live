@@ -11,7 +11,7 @@ import { deferred } from "../helpers/memory-checkpoint-adapter.mts";
 
 /** Actual package exports and native HTTP/1.1 + HTTP/2, with no WebSocket route. */
 export async function scoped_ssr_http() {
-  const locus = hsonLiveMap.locus.create(definition);
+  const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
   const session = await locus.session.create({ libraries: ["page", "flat"] });
   const cut = session.now({ html: "page" });
   const tls = { key: await readFile(new URL("./livehost-tls/key.pem", import.meta.url)),

@@ -8,7 +8,7 @@ declare const socket: LocusWebSocketLike;
 declare const transport: EchoReplicaTransport;
 const pageDefinition = { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` };
 const map = hsonLiveMap.fromLibraries({ page: pageDefinition });
-const locus: Locus<typeof map> = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: pageDefinition }] });
+const locus: Locus<typeof map> = hsonLiveMap.locus.create({ "page": { ...pageDefinition, access: "shared" } });
 const page = locus.doc.must("page");
 if (page.mode === "document") {
   const authored = hsonLiveHost.create({ name: "worker-deck" });

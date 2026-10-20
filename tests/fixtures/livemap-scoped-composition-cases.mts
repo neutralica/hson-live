@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { read_livemap_part_internal as readPart } from "../../src/api/livemap/livemap.libraries.ts";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
 import { expand_document_composition, document_composition_options } from "../../src/api/livemap/livemap.document.composition.ts";
@@ -15,7 +14,7 @@ import { canonical_graph_equal } from "../../src/api/livemap/livemap.document.in
 import { is_Node } from "../../src/core/node-guards.ts";
 import type { LiveMapGraphOp } from "../../src/types/livemap.types.ts";
 
-const part = (document: string, css?: string) => ({ kind: "document", document, ...(css === undefined ? {} : { css }) });
+const part = (document: string, css?: string) => ({ kind: "document" as const, document, ...(css === undefined ? {} : { css }) });
 const parts = {
   panel: part('<section @:root <div @:body <button @:next/> <hson-part @:child at="inner"/>/>/>'),
   inner: part('<article @:root <hson-part @:child at="leaf"/>/>'),
@@ -42,7 +41,7 @@ const replace = (coordinate: readonly number[], index: number, member = "panel")
   ({ domain: "graph", op: "replace-content", target: target(coordinate), index, replacement: connector(member) });
 
 function fixture(text = shell) {
-  const map = hsonLiveMap.fromLibraries({ parts: collection(parts), state: { data: { n: 0 } },
+  const map = hsonLiveMap.fromLibraries({ parts: { parts: parts }, state: { data: { n: 0 } },
     page: { document: '<main/>' }, unrelated: { document: '<aside @:other/>' } });
   const unrelated = map.doc.must("unrelated");
   if (unrelated.mode !== "document") throw Error("Expected document Library.");

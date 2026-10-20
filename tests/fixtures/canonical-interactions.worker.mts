@@ -1,3 +1,4 @@
+import { create_locus_fixture } from "../helpers/locus-definition-fixture.mts";
 import { retained_subject } from "../helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../../src/internal/governor-maps.js";
 import { authority_definition_from_fixture_options } from "../helpers/locus-definition-fixture.mts";
@@ -64,7 +65,7 @@ const descriptor: InteractionDescriptor = Object.freeze({
 add_interaction(authorityMap, descriptor);
 let handled: HsonData | undefined;
 const configured = test_public_projection(authorityMap);
-const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ map: authorityMap, ...configured }),
+const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ map: authorityMap, ...configured }),
   interactions: [descriptor],
   actions: { save: (_context: LocusActionContext, payload: HsonData | undefined) => { handled = payload; } } });
 const captured = internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted();

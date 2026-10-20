@@ -1,5 +1,6 @@
+import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { CssRuntimeManager } from "../src/api/livetree/managers/css-manager.ts";
-import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 // @hson-live-external-test
@@ -43,11 +44,7 @@ install_fake_document();
 
 // Scoped SSR still requires an exact native realization before attachment.
 {
-  const locus = hsonLiveMap.locus.create({
-    private: [{ name: "parts", definition: { parts: { item: { kind: "document", document: '<b @:root/>' } } } }],
-    shared: [{ name: "page", definition: { document: '<main <hson-part lib="parts" at="item"/>/>' } }],
-    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-  });
+  const locus = hsonLiveMap.locus.create({ "parts": { parts: { item: { kind: "document", document: '<b @:root/>' } }, access: "private" }, "page": { document: '<main <hson-part lib="parts" at="item"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
   const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://guard.invalid/locus", fetch: async () => {
     throw Error("Mismatched scoped continuation must reject before connecting");
   } });
@@ -353,7 +350,7 @@ function socketPair(): Readonly<{
   enable_interactions(authority);
   add_interaction(authority, descriptor);
   let handled: HsonData | undefined;
-  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(authority, [...test_application_catalog(authority),
+  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [...test_application_catalog(authority),
       { name: "ui", ownership: "local", initializer: { data: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }), actions: { save: (_context, payload) => { handled = payload; } } });
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
   const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: ["interactions"] };
@@ -441,9 +438,9 @@ function socketPair(): Readonly<{
     page: { document: parse_hson_exact_runtime("<main <button/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(empty);
-  const emptyLocus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(empty, test_application_catalog(empty)), authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
+  const emptyLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(empty, test_application_catalog(empty)), authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
   const emptySession = await emptyLocus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
-  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(authority, [
+  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [
     ...test_application_catalog(authority),
     { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
   ]), authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }) });
@@ -487,7 +484,7 @@ function socketPair(): Readonly<{
       passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false,
       stopImmediatePropagation: false },
   });
-  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(authority, test_application_catalog(authority)), authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
+  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, test_application_catalog(authority)), authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
   const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
   const now = session.now({ html: "page" });
   const wire = () => {
@@ -634,8 +631,8 @@ function socketPair(): Readonly<{
 // project through the replica at one authority revision without CSS identity.
 {
   const authority = hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' } });
-  const locus = hsonLiveMap.locus.create({
-    ...authority_groups_from_map_fixture(authority, test_application_catalog(authority)),
+  const locus = create_locus_fixture({
+    ...authority_definitions_from_map_fixture(authority, test_application_catalog(authority)),
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
   });
   const session = await locus.session.create({ libraries: ["page"] });
@@ -666,8 +663,8 @@ function socketPair(): Readonly<{
 // Bound global capabilities retain hosted authority without subject identity demand.
 {
   const authority = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <button/>/>/>' } });
-  const locus = hsonLiveMap.locus.create({
-    ...authority_groups_from_map_fixture(authority, test_application_catalog(authority)),
+  const locus = create_locus_fixture({
+    ...authority_definitions_from_map_fixture(authority, test_application_catalog(authority)),
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
   });
   const session = await locus.session.create({ libraries: ["page"] });

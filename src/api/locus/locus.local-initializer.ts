@@ -95,7 +95,7 @@ function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "
   admit_portable_hson_node(decoded, `Locus local initializer (${entry.name})`);
   const css = registry.mode === "document"
     ? entry.css === undefined
-      ? canonical_local_css(encode_portable_document_stylesheet(empty_portable_document_stylesheet()))
+      ? canonical_local_css(library.css ?? encode_portable_document_stylesheet(empty_portable_document_stylesheet()))
       : canonical_local_css(entry.css)
     : undefined;
   if (registry.mode !== "document" && entry.css !== undefined) {

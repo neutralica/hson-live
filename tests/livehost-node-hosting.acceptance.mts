@@ -1,4 +1,4 @@
-import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -591,10 +591,7 @@ check("optional connection capability carries text and binary data", async () =>
 check("connection paths select applications without interpreting Locus topology", async () => {
   const selections: string[] = [];
   const Room = Hson.schema`<type "data" content <room "string">>`;
-  const oneLibrary = (room: string, logicalMapId: string) => hsonLiveMap.locus.create({
-    shared: [{ name: "room", definition: { data: { room }, schema: Room } }],
-    logicalMapId, defaultProjection: { libraries: ["room"] }, authorizeProjection: () => ({ libraries: ["room"] }),
-  });
+  const oneLibrary = (room: string, logicalMapId: string) => hsonLiveMap.locus.create({ "room": { data: { room }, schema: Room, access: "shared" } }, { logicalMapId, defaultProjection: { libraries: ["room"] }, authorizeProjection: () => ({ libraries: ["room"] }) });
   const loci = new Map([
     ["room-a", oneLibrary("a", "logical-a")],
     ["room-b", oneLibrary("b", "logical-b")],

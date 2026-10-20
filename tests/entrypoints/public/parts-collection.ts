@@ -1,12 +1,12 @@
 import { ANY_DATA, Hson, type HsonAuthored, type HsonSchema } from "hson-live/hson";
 import { hsonLiveMap, type LiveMapPartCollection, type LiveMapDocumentPart,
   type LiveMapPartsLibraryInput, type LiveMapLibraryDefinition } from "hson-live/livemap";
-import type { LocusAuthorityLibraryDefinition } from "hson-live/locus";
+import type { LocusLibraryDefinition } from "hson-live/locus";
 
 const document: HsonAuthored = Hson.document`<h1 "%{title}"/>`;
 const parts = { header: { kind: "document", document, css: "h1{color:red}" } } satisfies LiveMapPartCollection;
 const definition = { parts } satisfies LiveMapLibraryDefinition;
-const catalog = { name: "parts", definition } as const satisfies LocusAuthorityLibraryDefinition;
+const catalog = { ...definition } as const satisfies LocusLibraryDefinition;
 const map = hsonLiveMap.fromLibraries({ parts: definition });
 const part: LiveMapDocumentPart | undefined = map.parts.must("parts").at(["header"]).snap();
 const text: string | undefined = map.parts.must("parts").at(["header", "document"]).snap();
@@ -25,13 +25,13 @@ map.parts.must("parts").at(["header", "kind"]).set("data");
 map.parts.must("parts").at(["header", "document"]).set(1);
 // @ts-expect-error Staged writes retain Part field types.
 map.batch(writer => { writer.parts.must("parts").at(["header", "document"]).set(1); });
-const locus = hsonLiveMap.locus.create({ private: [catalog] });
+const locus = hsonLiveMap.locus.create({ parts: catalog });
 const locusText: string | undefined = locus.parts.must("parts").at(["header", "document"]).snap();
 void locus.parts.must("parts").at(["header", "document"]).set("<h3/>");
 void locus.stage(writer => { writer.parts.must("parts").at(["header", "document"]).set("<h4/>"); });
 // @ts-expect-error Locus retains the Part contract's fixed kind.
 void locus.parts.must("parts").at(["header", "kind"]).set("data");
-void locus.addLibraries({ shared: [{ name: "later", definition }] });
+void locus.admit({ "later": { ...definition, access: "shared" } });
 hsonLiveMap.create().addLibraries({ later: definition });
 
 declare const schema: HsonSchema<{ header: { kind: "document"; document: string } }, "data">;
@@ -39,7 +39,7 @@ const explicit: LiveMapPartsLibraryInput = { parts };
 const governed = hsonLiveMap.fromLibraries({ parts: explicit });
 const schemaValue: LiveMapPartCollection = governed.parts.must("parts").snap();
 const schemaHandle: HsonSchema<unknown, "data"> = governed.parts.must("parts").schema.get();
-const typedLocus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: explicit }] });
+const typedLocus = hsonLiveMap.locus.create({ "parts": { ...explicit, access: "private" } });
 const locusValue: LiveMapPartCollection = typedLocus.parts.must("parts").snap();
 // @ts-expect-error A definition cannot select two families.
 const mixed: LiveMapLibraryDefinition = { parts, data: {} };
@@ -61,7 +61,7 @@ void [part, text, kind, css, locusText, schemaValue, schemaHandle, locusValue,
 // @ts-expect-error Part members cannot select a Schema through constructor inference.
 hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: "document", document: "<p/>", schema: {} } } } });
 // @ts-expect-error Initial Locus inference must reject the same member-level field.
-hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: { p: { kind: "document", document: "<p/>", schema: {} } } } }] });
+hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: "<p/>", schema: {} } }, access: "private" } });
 
 const validPart = { kind: "document", document, css: "" } as const;
 const invalidPart = { ...validPart, schema: {} };
@@ -72,7 +72,7 @@ hsonLiveMap.fromLibraries({ parts: { parts: invalidParts } });
 // @ts-expect-error Spreading a collection must preserve the forbidden field.
 hsonLiveMap.fromLibraries({ parts: { parts: copiedInvalidParts } });
 // @ts-expect-error Reused values must also reject through initial Locus admission.
-hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: invalidParts } }] });
+hsonLiveMap.locus.create({ "parts": { parts: invalidParts, access: "private" } });
 // @ts-expect-error Explicit collection annotations must reject reused members.
 const invalidCollection: LiveMapPartCollection = invalidParts;
 // @ts-expect-error Explicit Part annotations must reject reused members.
@@ -80,11 +80,11 @@ const invalidDefinition: LiveMapDocumentPart = invalidPart;
 // @ts-expect-error Dynamic admission retains the public Part contract.
 map.addLibraries({ later: { parts: invalidParts } });
 // @ts-expect-error Dynamic Locus admission retains the public Part contract.
-void locus.addLibraries({ private: [{ name: "later", definition: { parts: invalidParts } }] });
+void locus.admit({ "later": { parts: invalidParts, access: "private" } });
 
 const validCollection: LiveMapPartCollection = { header: validPart, plain: { kind: "document", document }, schema: validPart };
 hsonLiveMap.fromLibraries({ parts: { parts: validCollection } });
-hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: validCollection } }] });
+hsonLiveMap.locus.create({ "parts": { parts: validCollection, access: "private" } });
 map.parts.must("parts").at(["header"]).set(validPart);
 map.parts.must("parts").at(["header"]).replace(validPart);
 map.parts.must("parts").at([]).replace(validCollection);
@@ -144,13 +144,13 @@ hsonLiveMap.fromLibraries({ parts: { parts, schema: ANY_DATA } });
 // @ts-expect-error Reused family-top evidence is also unsupported.
 hsonLiveMap.fromLibraries({ parts: topSupplemental });
 // @ts-expect-error Locus initial inference must reject supplemental Schema.
-hsonLiveMap.locus.create({ private: [{ name: "parts", definition: supplemental }] });
+hsonLiveMap.locus.create({ "parts": { ...supplemental, access: "private" } });
 // @ts-expect-error Shared Locus admission has the same contract.
-hsonLiveMap.locus.create({ shared: [{ name: "parts", definition: topSupplemental }] });
+hsonLiveMap.locus.create({ "parts": { ...topSupplemental, access: "shared" } });
 // @ts-expect-error Dynamic LiveMap admission cannot bypass the prohibition.
 map.addLibraries({ later: supplemental });
 // @ts-expect-error Dynamic Locus admission cannot bypass the prohibition.
-void locus.addLibraries({ private: [{ name: "later", definition: topSupplemental }] });
+void locus.admit({ "later": { ...topSupplemental, access: "private" } });
 void [rejectedInput, rejectedDefinition];
 
 // @ts-expect-error Supplemental Parts Schema is unsupported regardless of its evidence shape.
@@ -243,7 +243,7 @@ hsonLiveMap.fromLibraries({ parts: { parts, schema: memberIndexConflictSchema } 
 
 // Intrinsic collection writes need no Schema evidence or initial named members.
 const emptyMap = hsonLiveMap.fromLibraries({ parts: { parts: {} } });
-const emptyLocus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: {} } }] });
+const emptyLocus = hsonLiveMap.locus.create({ "parts": { parts: {}, access: "private" } });
 const complete = { header: validPart, plain: schemaPart };
 const badKind = { ...validPart, kind: "data" } as const;
 const badDocument = { ...validPart, document: 1 };
@@ -385,7 +385,7 @@ void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(
 
 // Ordinary data Libraries retain custom Schema projections, including staged Locus writes.
 const ordinaryGoverned = hsonLiveMap.fromLibraries({ data: { data: invalidParts, schema } });
-const ordinaryLocus = hsonLiveMap.locus.create({ private: [{ name: "data", definition: { data: invalidParts, schema } }] });
+const ordinaryLocus = hsonLiveMap.locus.create({ "data": { data: invalidParts, schema, access: "private" } });
 const ordinaryValue: { header: { kind: "document"; document: string } } = ordinaryGoverned.data.must("data").snap();
 const ordinarySchema: typeof schema = ordinaryGoverned.data.must("data").schema.get();
 ordinaryGoverned.data.must("data").at(["header"]).replace(schemaPart);
@@ -408,7 +408,7 @@ const undefinedMemberSchema = { ...validPart, schema: undefined };
 const undefinedMembers = { header: undefinedMemberSchema };
 const undefinedDefinition = { parts: undefinedMembers };
 const reusedUndefinedLibraries = { later: undefinedLibrarySchema };
-const reusedUndefinedCatalog = { private: [{ name: "later", definition: undefinedDefinition }] } as const;
+const reusedUndefinedCatalog = [{ "later": { ...undefinedDefinition, access: "private" } }, {  }] as const;
 // @ts-expect-error Known Parts facades expose only Schema inspection.
 map.parts.must("parts").schema.use(ANY_DATA);
 // @ts-expect-error Governor Parts facades expose only Schema inspection.
@@ -430,17 +430,17 @@ map.addLibraries(reusedUndefinedLibraries);
 // @ts-expect-error Dynamic admission preserves inferred member keys.
 map.addLibraries({ later: undefinedDefinition });
 // @ts-expect-error Private admission rejects present Library schema: undefined.
-hsonLiveMap.locus.create({ private: [{ name: "parts", definition: undefinedLibrarySchema }] });
+hsonLiveMap.locus.create({ "parts": { ...undefinedLibrarySchema, access: "private" } });
 // @ts-expect-error Shared admission rejects present member schema: undefined.
-hsonLiveMap.locus.create({ shared: [{ name: "parts", definition: undefinedDefinition }] });
+hsonLiveMap.locus.create({ "parts": { ...undefinedDefinition, access: "shared" } });
 // @ts-expect-error Local initializers have the same admission contract.
-hsonLiveMap.locus.create({ local: [{ name: "parts", initializer: undefinedLibrarySchema }] });
+hsonLiveMap.locus.create({  }, { local: [{ name: "parts", initializer: undefinedLibrarySchema }] });
 // @ts-expect-error Local member admission also preserves inferred keys.
-hsonLiveMap.locus.create({ local: [{ name: "parts", initializer: undefinedDefinition }] });
+hsonLiveMap.locus.create({  }, { local: [{ name: "parts", initializer: undefinedDefinition }] });
 // @ts-expect-error Dynamic Locus admission rejects Library key presence.
-void locus.addLibraries({ shared: [{ name: "later", definition: undefinedLibrarySchema }] });
+void locus.admit({ "later": { ...undefinedLibrarySchema, access: "shared" } });
 // @ts-expect-error Reused grouped input retains member key presence.
-void locus.addLibraries(reusedUndefinedCatalog);
+void locus.admit(reusedUndefinedCatalog[0]);
 // @ts-expect-error Direct member patches retain inferred schema: undefined.
 map.parts.must("parts").at(["header"]).set(undefinedMemberSchema);
 // @ts-expect-error Direct member replacements retain inferred schema: undefined.
@@ -470,7 +470,7 @@ const ordinaryUndefined = hsonLiveMap.fromLibraries({ data: { data: 1 } });
 ordinaryUndefined.data.must("data").schema.use(ANY_DATA);
 hsonLiveMap.fromLibraries({ data: { data: 1, schema: ANY_DATA } });
 hsonLiveMap.fromLibraries({ parts: { parts: {} } });
-hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: {} } }] });
+hsonLiveMap.locus.create({ "parts": { parts: {}, access: "private" } });
 
 // @ts-expect-error Object helpers must retain key-presence evidence for new members.
 map.parts.must("parts").at([]).asObject()?.object.setKey("header", undefinedMemberSchema);
@@ -486,6 +486,6 @@ map.parts.must("parts").at(["header"]).update(() => undefinedMemberSchema);
 map.parts.must("parts").at(["header"]).update(() => ({ css: "p{color:blue}" }));
 declare const persistence: import("hson-live/locus").LocusPersistenceAdapter;
 // @ts-expect-error Durable construction uses the same Library key checks.
-void hsonLiveMap.locus.resume({ logicalMapId: "parts-types", persistence, private: [{ name: "parts", definition: undefinedLibrarySchema }] });
+void hsonLiveMap.locus.resume({ "parts": { ...undefinedLibrarySchema, access: "private" } }, { logicalMapId: "parts-types", persistence });
 // @ts-expect-error Durable construction uses the same member key checks.
-void hsonLiveMap.locus.resume({ logicalMapId: "parts-types", persistence, shared: [{ name: "parts", definition: undefinedDefinition }] });
+void hsonLiveMap.locus.resume({ "parts": { ...undefinedDefinition, access: "shared" } }, { logicalMapId: "parts-types", persistence });

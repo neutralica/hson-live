@@ -1,5 +1,5 @@
 import { echo_map_internal } from "../src/internal/governor-maps.js";
-import { create_locus_fixture, authority_groups_from_map_fixture, authority_groups_from_catalog_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, authority_definitions_from_map_fixture, authority_definitions_from_catalog_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -145,7 +145,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 // Expiration is driven by the existing public session scheduler, with no wall-clock race.
 {
   const expirations = new Set<() => void>();
-  const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: { value: "value" } } }), [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }), sessions: { schedule: (_delay, callback) => { expirations.add(callback); return () => { expirations.delete(callback); }; } } });
+  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: { value: "value" } } }), [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }), sessions: { schedule: (_delay, callback) => { expirations.add(callback); return () => { expirations.delete(callback); }; } } });
   for (const id of ["", "unknown"]) assert.equal(locus.session.get(id), undefined);
   const initial = await session(locus);
   initial.detach();
@@ -159,7 +159,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 for (const libraries of [["page"], ["page", "state"]]) {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body <main/>/>/>" }, state: { data: { value: 1 } } });
   map.doc.must("page").css.stylesheet("main { color: blue; }");
-  const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }, { name: "state", ownership: "shared" }]), defaultProjection: { libraries }, authorizeProjection: () => ({ libraries }) });
+  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "page", ownership: "shared" }, { name: "state", ownership: "shared" }]), defaultProjection: { libraries }, authorizeProjection: () => ({ libraries }) });
   const initial = await session(locus);
   const snapshot = initial.capability.now().libs;
   assert.deepEqual(snapshot, initial.capability.now({ html: "page" }).libs);

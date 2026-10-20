@@ -2,7 +2,7 @@ import type { DocumentGraphReplaceContentOp } from "../src/api/livemap/livemap.d
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { create_locus_fixture, resume_locus_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, resume_locus_fixture, authority_definitions_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -648,7 +648,7 @@ draft.doc.must("page").graph(insert_item()); })();
   restored.dispose();
 
   await assert.rejects(
-    () => resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.fromLibraries({
+    () => resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({
         state: { data: { theme: "light", count: 0 }, schema: StateSchema },
       }), test_application_catalog(hsonLiveMap.fromLibraries({
         state: { data: { theme: "light", count: 0 }, schema: StateSchema },

@@ -20,7 +20,7 @@ const repositoryRoot = resolve(import.meta.dirname, "..");
 const ROOT_EXPORTS = `
 LibraryFamily LibraryFamilySelector LibraryFamilyNamespaces
 LibraryArrayCommands LibraryArrayRead LibraryObjectCommands LibraryObjectRead
-LiveMapAdmittedLibraries LiveMapLibraryAdmission LocusLibraryAdmission
+LiveMapAdmittedLibraries LiveMapLibraryAdmission
 LocusLibrary LocusDataLibrary LocusDataLocation LocusDocumentLibrary LocusDocumentLocation
 ReadLibrary ReadDataLibrary ReadDataLocation ReadDocumentLibrary
 ANY_DATA ANY_DOCUMENT AsyncLiveTree AsyncLiveTreeAttrs AsyncLiveTreeClasslist AsyncLiveTreeFlags AsyncLiveTreeForm AsyncLiveTreeId AsyncLiveTreeText LocusInteractionDescriptor
@@ -36,7 +36,7 @@ LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocu
 LiveMapLibraryAddOperation LiveMapLibraryDefinition LiveMapDefinitions LiveMapDynamicLibrary LiveMapKnownNames LiveMapLibraryInput LiveMapLibrarySchemaUseOperation LiveMapDocumentPart LiveMapPartCollection LiveMapPartsLibraryInput LiveMapStagedWriter LiveMapWithLibrarySchema LiveTree LiveTreeAlreadyAttachedError LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult LiveTreeLinkedIdentityRequiredError
 LiveTreeProtectedRootError LiveTreeQuidReuseError BrowserInteractionDescriptor Locus LocusActionContext LocusActionHandler LocusActionName LocusActionPayloads
 LocusActions LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError LocusDisconnectedError LocusHttpBinding
-LocusDuplicateActionIdError LocusAuthorityLibraryDefinition LocusLocalLibraryDefinition LocusRuntimeLibraryAdditions LocusDefinitionOptions LocusResumeOptions LocusResult LocusStage LocusWebSocketLike Mirror ReadonlyHsonNode HsonFromSchema JsonFromSchema SsrBootstrapCodecError SsrBootstrapCodecOptions
+LocusDuplicateActionIdError LocusLibraryDefinition LocusDefinitions LocusLocalLibraryDefinition LocusDefinitionOptions LocusResumeOptions LocusResult LocusStage LocusWebSocketLike Mirror ReadonlyHsonNode HsonFromSchema JsonFromSchema SsrBootstrapCodecError SsrBootstrapCodecOptions
 SsrBootstrapKind TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource TreeSelector activate_interactions
 add_interaction bind_locus_http bind_locus_websocket continue_document continue_hosted_document create_livehost_locus_registry decode_ssr_bootstrap enable_interactions
 encode_ssr_bootstrap hson hsonCalc hsonLiveMap hsonLiveTree hsonMirror hsonLiveHost
@@ -337,7 +337,7 @@ await check("packed consumer resolves only curated package entrypoints", () => {
       ["create", "hsonLiveMap.create()"],
       ["fromLibraries", "hsonLiveMap.fromLibraries({ state: { data: { value: 1 } } })"],
       ["echo", "hsonLiveMap.echo.create({ transport: { operations: { async submit() { return { kind: 'not-submitted' }; } }, attachment: { observe() { return () => {}; } } } })"],
-      ["locus", "hsonLiveMap.locus.create({ shared: [{ name: 'state', definition: { data: { value: 1 } } }] })"],
+      ["locus", "hsonLiveMap.locus.create({ state: { data: { value: 1 }, access: 'shared' } })"],
     ] as const) {
       const fixture = join(consumerRoot, `${name}.mjs`);
       writeFileSync(fixture, `import * as hsonLiveMap from "hson-live/livemap"; globalThis.result = ${call};`);

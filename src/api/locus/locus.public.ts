@@ -1,80 +1,56 @@
-import type { LiveMap, LiveMapDefinitions } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapKnownDefinitions, LiveMapDefinitionsCheck } from "../../types/livemap.types.js";
 import type {
-  Locus, LocusAuthorityLibraryDefinition, LocusLocalLibraryDefinition,
-  LocusDefinitionOptions, LocusDefinitionNameCheck, LocusPartsEntriesCheck, LocusMapDefinitions, LocusRegistryOptions, LocusResumeOptions,
+  Locus, LocusDefinitions, LocusLocalLibraryDefinition, LocusLocalNameCheck,
+  LocusDefinitionOptions, LocusLocalEntriesCheck, LocusRegistryOptions, LocusResumeOptions,
 } from "../../types/locus.core.types.js";
 import type { LocusActionPayloads } from "../../types/locus.protocol.types.js";
 import type { LocusLibraryCatalogEntry } from "../../types/locus.projection.types.js";
-import { make_livemap_libraries } from "../livemap/livemap.libraries.js";
+import { admit_public_livemap_definitions, make_livemap_libraries } from "../livemap/livemap.libraries.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { enable_interactions, add_interaction } from "../interactions/interactions.js";
 import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
-import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { create_registry_locus } from "./locus.registry.js";
 import { resume_registry_locus, checkpoint_registry_locus } from "./locus.registry.persistence.js";
 
-export function construct_locus_definition<
-  TPrivate extends readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TShared extends readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TLocal extends readonly (LocusLocalLibraryDefinition | undefined)[],
-  TActions extends LocusActionPayloads,
-  TGroups,
->(options: LocusDefinitionOptions<TPrivate, TShared, TLocal, TActions, TGroups>):
-  LocusRegistryOptions<LiveMap<LocusMapDefinitions<TPrivate, TShared, TGroups>>, TActions> {
-  if (typeof options !== "object" || options === null || Array.isArray(options)
-    || "map" in options || "libraries" in options) throw new TypeError("Locus requires grouped library definitions.");
-  const fields = ["private", "shared", "local", "interactions", "defaultProjection", "authorizeProjection",
-    "actions", "logicalMapId", "incarnationId", "sessionId", "sessions", "actionDedupe", "schema",
-    "authorizeAction", "persistence"];
-  if (Reflect.ownKeys(options).some((key) => typeof key !== "string" || !fields.includes(key))) {
-    throw new TypeError("Locus definition contains an unsupported field.");
+type LocalEntries = readonly (LocusLocalLibraryDefinition | undefined)[];
+type ConfigurationCheck<D, L> = LocusLocalNameCheck<D, L> & Readonly<{ local?: LocusLocalEntriesCheck<NoInfer<L>> }>;
+
+/** Preserve owner configuration separately from all possible Library names. */
+function capture_configuration<T extends object>(input: T, durable: boolean): T {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) throw new TypeError("Locus configuration must be an object.");
+  const fields = ["local", "interactions", "defaultProjection", "authorizeProjection", "actions", "logicalMapId",
+    "incarnationId", "sessionId", "sessions", "actionDedupe", "schema", "authorizeAction", ...(durable ? ["persistence"] : [])];
+  const captured: T = Object.create(null);
+  for (const key of Reflect.ownKeys(input)) {
+    if (typeof key !== "string" || !fields.includes(key)) throw new TypeError("Locus configuration contains an unsupported field.");
+    Object.defineProperty(captured, key, { value: Reflect.get(input, key), enumerable: true });
   }
-  const definitions: Record<string, LiveMapDefinitions[string]> = Object.create(null);
-  const catalog: LocusLibraryCatalogEntry[] = [];
-  const css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord> = Object.create(null);
-  const names = new Set<string>();
-  const group = (entries: readonly (LocusAuthorityLibraryDefinition | LocusLocalLibraryDefinition | undefined)[] | undefined,
-    ownership: "private" | "shared" | "local") => {
-    if (entries === undefined) return;
-    if (!Array.isArray(entries)) throw new TypeError("Locus library group must be an array.");
-    for (const entry of entries) {
-      if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !entry.name || names.has(entry.name)) {
-        throw new TypeError("Locus application library catalog contains an invalid or duplicate name.");
-      }
-      const allowed = ownership === "local" ? ["name", "initializer", "css"] : ["name", "definition", "css"];
-      if (Reflect.ownKeys(entry).some((key) => typeof key !== "string" || !allowed.includes(key))) {
-        throw new TypeError("Locus library entry contains an unsupported field.");
+  return Object.freeze(captured);
+}
+
+/** Normalize construction into the existing registry owner. Admission has its own managed lifecycle. */
+function construct_locus_definition<D extends LocusDefinitions, A extends LocusActionPayloads>(
+  definitions: D, options: LocusDefinitionOptions<D, A>,
+): LocusRegistryOptions<LiveMap<LiveMapKnownDefinitions<D>>, A> {
+  const captured = admit_public_livemap_definitions(definitions, true);
+  const catalog: LocusLibraryCatalogEntry[] = Object.entries(captured.definitions).map(([name, definition]) => ({
+    name, definition, ownership: captured.ownership[name]!,
+    ...(captured.css[name] === undefined ? {} : { css: captured.css[name] }),
+  }));
+  const names = new Set(Object.keys(captured.definitions));
+  if (options.local !== undefined) {
+    if (!Array.isArray(options.local)) throw new TypeError("Locus local initializers must be an array.");
+    for (const entry of options.local) {
+      if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !entry.name || names.has(entry.name)
+        || entry.initializer === undefined || Reflect.ownKeys(entry).some(key => key !== "name" && key !== "initializer" && key !== "css")) {
+        throw new TypeError("Locus local initializer is invalid or duplicated.");
       }
       names.add(entry.name);
-      if (ownership === "local") {
-        if (!("initializer" in entry) || entry.initializer === undefined || "definition" in entry) {
-          throw new TypeError("Local Library requires an initializer.");
-        }
-        catalog.push({ name: entry.name, ownership, initializer: entry.initializer,
-          ...(entry.css === undefined ? {} : { css: parse_document_stylesheet(entry.css, []) }) });
-      } else {
-        if (!("definition" in entry) || entry.definition === undefined || "initializer" in entry) {
-          throw new TypeError("Authority Library requires a definition.");
-        }
-        definitions[entry.name] = entry.definition;
-        if (entry.css !== undefined) {
-          if (!("document" in entry.definition)) throw new TypeError("Initial CSS requires a document definition.");
-          css[entry.name] = parse_document_stylesheet(entry.css, []);
-        }
-        catalog.push({ name: entry.name, ownership, definition: entry.definition,
-          ...(entry.css === undefined ? {} : { css: css[entry.name] }) });
-      }
-    }
-  };
-  group(options.private, "private");
-  group(options.shared, "shared");
-  group(options.local, "local");
-  for (const [name, input] of Object.entries(definitions)) {
-    if ("document" in input && input.document !== undefined && typeof input.document !== "string") {
-      admit_portable_hson_node(input.document, `Locus Library ${name}`);
+      catalog.push({ name: entry.name, ownership: "local", initializer: entry.initializer,
+        ...(entry.css === undefined ? {} : { css: parse_document_stylesheet(entry.css, []) }) });
     }
   }
-  const map = make_livemap_libraries(definitions, [], undefined, css);
+  const map = make_livemap_libraries(captured.definitions, [], undefined, captured.css);
   if (options.logicalMapId !== undefined || options.incarnationId !== undefined) {
     const aggregate = internal_livemap_aggregate_authority(map);
     const original = aggregate.hostedPosition().authority;
@@ -85,74 +61,33 @@ export function construct_locus_definition<
   }
   if (options.interactions !== undefined) enable_interactions(map);
   for (const descriptor of options.interactions ?? []) add_interaction(map, descriptor);
-  const { private: _private, shared: _shared, local: _local, interactions: _interactions, ...rest } = options;
-  const typedMap = map as unknown as LiveMap<LocusMapDefinitions<TPrivate, TShared, TGroups>>;
+  const { local: _local, interactions: _interactions, ...rest } = options;
+  const typedMap = map as unknown as LiveMap<LiveMapKnownDefinitions<D>>;
   return { ...rest, map: typedMap, libraries: catalog };
 }
 
-type AuthorityEntries = readonly (LocusAuthorityLibraryDefinition | undefined)[];
-type LocalEntries = readonly (LocusLocalLibraryDefinition | undefined)[];
-type ConstructionGroups<P, S, Required extends "private" | "shared"> =
-  Partial<{ private: P; shared: S }> & Pick<{ private: P; shared: S }, Required>;
-type ConstructionOptions<P extends AuthorityEntries, S extends AuthorityEntries, L extends LocalEntries,
-  A extends LocusActionPayloads, Required extends "private" | "shared"> =
-  LocusDefinitionOptions<P, S, L, A, ConstructionGroups<P, S, Required>> &
-  ([Required] extends [never] ? unknown : Pick<ConstructionGroups<P, S, Required>, Required>) & LocusDefinitionNameCheck<P, S, L> & Readonly<{
-    private?: LocusPartsEntriesCheck<NoInfer<P>>;
-    shared?: LocusPartsEntriesCheck<NoInfer<S>>;
-    local?: LocusPartsEntriesCheck<NoInfer<L>>;
-  }>;
-type ConstructedLocus<P extends AuthorityEntries, S extends AuthorityEntries, A extends LocusActionPayloads,
-  Required extends "private" | "shared"> = Locus<LiveMap<LocusMapDefinitions<P, S, ConstructionGroups<P, S, Required>>>, A>;
-type PersistenceOptions = Pick<LocusResumeOptions, "logicalMapId" | "persistence">;
-
-// Presence overloads keep optional groups honest, including in contextually typed callbacks.
-// Tuple membership and family/Schema inference still use the single shared evidence model.
-/** Create a fresh authority from a Locus definition. */
-export function create<const P extends AuthorityEntries = readonly [], const S extends AuthorityEntries = readonly [],
-  const L extends LocalEntries = readonly [], A extends LocusActionPayloads = LocusActionPayloads>(
-  options: ConstructionOptions<P, S, L, A, "private" | "shared">,
-): ConstructedLocus<P, S, A, "private" | "shared">;
-export function create<const P extends AuthorityEntries = readonly [], const S extends AuthorityEntries = readonly [],
-  const L extends LocalEntries = readonly [], A extends LocusActionPayloads = LocusActionPayloads>(
-  options: ConstructionOptions<P, S, L, A, "private">,
-): ConstructedLocus<P, S, A, "private">;
-export function create<const P extends AuthorityEntries = readonly [], const S extends AuthorityEntries = readonly [],
-  const L extends LocalEntries = readonly [], A extends LocusActionPayloads = LocusActionPayloads>(
-  options: ConstructionOptions<P, S, L, A, "shared">,
-): ConstructedLocus<P, S, A, "shared">;
-export function create<const P extends AuthorityEntries = readonly [], const S extends AuthorityEntries = readonly [],
-  const L extends LocalEntries = readonly [], A extends LocusActionPayloads = LocusActionPayloads>(
-  options: ConstructionOptions<P, S, L, A, never>,
-): ConstructedLocus<P, S, A, never>;
-export function create(options: LocusDefinitionOptions): Locus {
-  if ("persistence" in options) throw new TypeError("Use hsonLiveMap.locus.resume for durable authority.");
-  return create_registry_locus(construct_locus_definition(options));
+/** Establish initial authority from flat keyed definitions; omitted access is private. */
+export function create<const D extends LocusDefinitions, A extends LocusActionPayloads = LocusActionPayloads,
+  const L extends LocalEntries = readonly []>(
+  definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
+  configuration?: LocusDefinitionOptions<D, A, L> & ConfigurationCheck<NoInfer<D>, L>,
+): Locus<LiveMap<LiveMapKnownDefinitions<D>>, A> {
+  const options = capture_configuration<LocusDefinitionOptions<D, A, L>>(configuration === undefined ? {} : configuration, false);
+  return create_registry_locus(construct_locus_definition<D, A>(definitions, options));
 }
 
-/** Restore a durable authority or establish the declared authority durably. */
-export function resume<const P extends AuthorityEntries = readonly [], const S extends AuthorityEntries = readonly [],
-  const L extends LocalEntries = readonly [], A extends LocusActionPayloads = LocusActionPayloads>(
-  options: ConstructionOptions<P, S, L, A, "private" | "shared"> & PersistenceOptions,
-): Promise<ConstructedLocus<P, S, A, "private" | "shared">>;
-export function resume<const P extends AuthorityEntries = readonly [], const S extends AuthorityEntries = readonly [],
-  const L extends LocalEntries = readonly [], A extends LocusActionPayloads = LocusActionPayloads>(
-  options: ConstructionOptions<P, S, L, A, "private"> & PersistenceOptions,
-): Promise<ConstructedLocus<P, S, A, "private">>;
-export function resume<const P extends AuthorityEntries = readonly [], const S extends AuthorityEntries = readonly [],
-  const L extends LocalEntries = readonly [], A extends LocusActionPayloads = LocusActionPayloads>(
-  options: ConstructionOptions<P, S, L, A, "shared"> & PersistenceOptions,
-): Promise<ConstructedLocus<P, S, A, "shared">>;
-export function resume<const P extends AuthorityEntries = readonly [], const S extends AuthorityEntries = readonly [],
-  const L extends LocalEntries = readonly [], A extends LocusActionPayloads = LocusActionPayloads>(
-  options: ConstructionOptions<P, S, L, A, never> & PersistenceOptions,
-): Promise<ConstructedLocus<P, S, A, never>>;
-export async function resume(options: LocusResumeOptions): Promise<Locus> {
-  if (typeof options?.logicalMapId !== "string" || options.logicalMapId.trim().length === 0) {
+/** Restore a durable authority or establish the declared initial authority durably. */
+export async function resume<const D extends LocusDefinitions, A extends LocusActionPayloads = LocusActionPayloads,
+  const L extends LocalEntries = readonly []>(
+  definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
+  configuration: LocusResumeOptions<D, A, L> & ConfigurationCheck<NoInfer<D>, L>,
+): Promise<Locus<LiveMap<LiveMapKnownDefinitions<D>>, A>> {
+  const options = capture_configuration(configuration, true);
+  if (typeof options.logicalMapId !== "string" || options.logicalMapId.trim().length === 0) {
     throw new TypeError("Locus resume requires a stable logicalMapId.");
   }
   if (options.persistence === undefined) throw new TypeError("Locus persistence adapter is required.");
-  return resume_registry_locus({ ...construct_locus_definition(options), persistence: options.persistence }, { scopedDocuments: "auto" });
+  return resume_registry_locus({ ...construct_locus_definition<D, A>(definitions, options), persistence: options.persistence }, { scopedDocuments: "auto" });
 }
 
 /** Compact a resumed Locus's already durable authority. */

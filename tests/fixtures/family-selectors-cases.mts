@@ -79,7 +79,7 @@ export async function family_selector_cases() {
   assert.equal(map.data.state.snap(["count"]), 2);
 
   let read: object | undefined;
-  const locus = hsonLiveMap.locus.create({ shared: Object.entries(definitions).map(([name, definition]) => ({ name, definition })),
+  const locus = hsonLiveMap.locus.create(Object.fromEntries(Object.entries(definitions).map(([name, definition]) => [name, { ...definition, access: "shared" as const }])), {
     actions: { inspect: context => {
       const selected = context.data.must("state", same);
       assert.equal(selected, context.data("state")); assert.equal(selected, Reflect.get(context.data, "state"));
@@ -101,7 +101,7 @@ export async function family_selector_cases() {
     assert.equal(locus.parts.must("components"), locus.parts("components"));
     assert.notEqual(locus.data.must("state"), locus_map_internal(locus).data.must("state"));
     for (const id of ["one", "two"]) assert.equal((await locus.dispatchAction({ type: "action", id, name: "inspect" })).type, "ack");
-    await locus.addLibraries({ shared: [{ name: "incoming", definition: { data: { count: 9 }, schema } }] });
+    await locus.admit({ "incoming": { data: { count: 9 }, schema, access: "shared" } });
     assert.equal(locus.data.must("incoming", same).snap(["count"]), 9);
     assert.equal(locus.data("incoming", other), undefined);
     await locus.stage(writer => {
@@ -113,7 +113,7 @@ export async function family_selector_cases() {
 }
 
 export async function family_selector_echo_cases() {
-  const locus = hsonLiveMap.locus.create({ shared: Object.entries(definitions).map(([name, definition]) => ({ name, definition })),
+  const locus = hsonLiveMap.locus.create(Object.fromEntries(Object.entries(definitions).map(([name, definition]) => [name, { ...definition, access: "shared" as const }])), {
     local: [{ name: "local", initializer: { data: { count: 3 }, schema } },
       { name: "widgets", initializer: definitions.components }],
     authorizeProjection: () => ({ libraries: ["page", "state", "components", "local", "widgets"] }),

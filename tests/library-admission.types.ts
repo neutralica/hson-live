@@ -13,44 +13,31 @@ declare const dynamic: string;
 const dynamicReceipt = map.addLibraries({ [dynamic]: { document: "<main/>" } });
 // @ts-expect-error Dynamic names cannot certify arbitrary membership.
 dynamicReceipt.libraries.anything.render();
-const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" } }] });
+const locus = hsonLiveMap.locus.create({ "page": { document: "<main/>", access: "shared" } });
 locus.doc.page.render();
-const admitted = await locus.addLibraries({ shared: [{ name: "deck", definition: { data: { slides: [] }, schema } }, { name: "next", definition: { document: "<aside/>" } }] });
-admitted.libraries.next.render();
-admitted.libraries.deck.at(["optional", "count"]).snap() satisfies number | undefined;
+const admitted: void = await locus.admit({ deck: { data: { slides: [] }, schema }, next: { document: "<aside/>" } });
+locus.doc.must("next").render();
+locus.data.must("deck", schema).at(["optional", "count"]).snap() satisfies number | undefined;
 // @ts-expect-error Impossible governed literal path.
-admitted.libraries.deck.at(["slides", 0, "wrong"]);
+locus.data.must("deck", schema).at(["slides", 0, "wrong"]);
 // @ts-expect-error No numeric child below a scalar.
-admitted.libraries.deck.at(["optional", "count", 0]);
-// @ts-expect-error Original Locus binding does not acquire dynamic types.
+locus.data.must("deck", schema).at(["optional", "count", 0]);
+// @ts-expect-error Original Locus binding does not acquire dynamic inventory.
 locus.data.deck.snap();
-const unknown = await locus.addLibraries({ shared: [{ name: dynamic, definition: { data: 1 } }] });
-// @ts-expect-error Dynamic string does not establish arbitrary registry evidence.
-unknown.libraries.anything.snap();
-
+// @ts-expect-error Admission returns no Library receipt.
+admitted.libraries;
+await locus.admit({ [dynamic]: { data: 1 } });
+locus.data.must(dynamic).snap();
 const maybeLocal = dynamicReceipt.libraries[dynamic];
 if (maybeLocal?.mode === "document") maybeLocal.render();
-const maybeAuthority = unknown.libraries[dynamic];
-if (maybeAuthority?.mode === "document") maybeAuthority.render();
-
-// A possible name in a union or variable-length list is not certain membership.
 declare const choiceName: "first" | "second";
-const choiceReceipt = await locus.addLibraries({ shared: [{ name: choiceName, definition: { document: "<main/>" } }] });
-// @ts-expect-error Only the runtime choice was admitted.
-choiceReceipt.libraries.first.render();
-choiceReceipt.libraries.first?.render();
-declare const variableEntries: readonly { name: "maybe"; definition: { document: string } }[];
-const listReceipt = await locus.addLibraries({ shared: variableEntries, private: [{ name: "certain", definition: { document: "<aside/>" } }] });
-// @ts-expect-error The variable-length list may be empty.
-listReceipt.libraries.maybe.render();
-listReceipt.libraries.maybe?.render();
-listReceipt.libraries.certain.render();
-declare const optionalGroups: { shared?: readonly [{ name: "optional"; definition: { document: string } }]; private: readonly [{ name: "present"; definition: { document: string } }] };
-const optionalReceipt = await locus.addLibraries(optionalGroups);
-// @ts-expect-error An absent group supplies no successful evidence.
-optionalReceipt.libraries.optional.render();
-optionalReceipt.libraries.optional?.render();
-optionalReceipt.libraries.present.render();
+await locus.admit({ [choiceName]: { document: "<main/>" } });
+// @ts-expect-error Dynamic admission does not add guaranteed properties.
+locus.doc.first.render();
+locus.doc("first")?.render();
+declare const uncertain: { maybe?: { document: string }; present: { document: string } };
+await locus.admit(uncertain);
+locus.doc.must("present").render();
 
 // Optional definition keys preserve membership and their present-family evidence.
 declare const optionalDefinitions: {

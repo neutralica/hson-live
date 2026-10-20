@@ -112,7 +112,7 @@ users.data.must("user").at(["flags"]).update(current => current);
 // @ts-expect-error Readonly tuple forwarding must not broaden position types.
 users.data.must("user").at(["pair"]).replace([true, "bad"]);
 
-const locus = hsonLiveMap.locus.create({ shared: [{ name: "slides", definition: { data: { slides: [] }, schema: DeckSchema } }], actions: {
+const locus = hsonLiveMap.locus.create({ "slides": { data: { slides: [] }, schema: DeckSchema, access: "shared" } }, { actions: {
   read(context) {
     const snapshot = context.data.must("slides").snap();
     const root: Assert<Equal<typeof snapshot, Deck>> = true;

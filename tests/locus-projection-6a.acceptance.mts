@@ -1,5 +1,6 @@
+import { create_locus_fixture, resume_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { Hson, hsonLiveMap, enable_interactions, type HsonSchema } from "../src/index.ts";
@@ -57,24 +58,23 @@ function attachment(server: ReturnType<typeof create_locus_hosted_aggregate_auth
 
 assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 
-// Grouped construction owns every authority Library and rejects ambiguous names.
+// Flat construction owns every authority Library and rejects ambiguous names.
 {
   const authority = map();
   enable_interactions(authority);
-  assert.throws(() => hsonLiveMap.locus.create({ libraries: CATALOG } as never), /grouped/i);
-  assert.throws(() => hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" } }],
-    local: [{ name: "page", initializer: { document: "<aside/>" } }] } as never), /duplicate/i);
-  assert.throws(() => hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" },
-    ownership: "private" }] } as never), /unsupported/i);
-  const hosted = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(authority, CATALOG) });
+  assert.throws(() => hsonLiveMap.locus.create({ libraries: CATALOG } as never), /input object/i);
+  // @ts-expect-error Exercise the collision runtime guard.
+  assert.throws(() => hsonLiveMap.locus.create({ "page": { document: "<main/>", access: "shared" } }, { local: [{ name: "page", initializer: { document: "<aside/>" } }] }), /duplicate/i);
+  assert.throws(() => hsonLiveMap.locus.create({ page: { document: "<main/>", ownership: "private" } } as never), /unsupported/i);
+  const hosted = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, CATALOG) });
   hosted.dispose();
 
   const one = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
-  const empty = hsonLiveMap.locus.create({});
+  const empty = hsonLiveMap.locus.create({  });
   assert.deepEqual(locus_map_internal(empty).capture().registry.libraries, []);
   empty.dispose();
-  hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(one, [{ name: "page", ownership: "private" }]) }).dispose();
-  const allPrivate = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map(), CATALOG.map((entry) => ({ name: entry.name, ownership: "private" as const }))) });
+  create_locus_fixture({ ...authority_definitions_from_map_fixture(one, [{ name: "page", ownership: "private" }]) }).dispose();
+  const allPrivate = create_locus_fixture({ ...authority_definitions_from_map_fixture(map(), CATALOG.map((entry) => ({ name: entry.name, ownership: "private" as const }))) });
   allPrivate.dispose();
 }
 
@@ -231,14 +231,14 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 // The source definition supplies original ownership; checkpoint metadata carries runtime additions only.
 {
   const adapter = new MemoryCheckpointAdapter();
-  const first = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(map(), CATALOG), logicalMapId: "projection-persist", persistence: adapter });
+  const first = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(map(), CATALOG), logicalMapId: "projection-persist", persistence: adapter });
   await hsonLiveMap.locus.checkpoint(first);
   const checkpoint = adapter.state("projection-persist")?.checkpoint;
   assert.equal(JSON.stringify(checkpoint).includes("private"), false);
   assert.equal(JSON.stringify(checkpoint).includes("shared"), false);
   first.dispose();
-  await assert.rejects(() => hsonLiveMap.locus.resume({ shared: authority_groups_from_map_fixture(map(), CATALOG).shared, logicalMapId: "projection-persist", persistence: adapter }), /source definition conflicts/i);
-  const restored = await hsonLiveMap.locus.resume({ ...authority_groups_from_map_fixture(map(), CATALOG), logicalMapId: "projection-persist", persistence: adapter });
+  await assert.rejects(() => hsonLiveMap.locus.resume(Object.fromEntries(Object.entries(authority_definitions_from_map_fixture(map(), CATALOG).definitions).filter(([, definition]) => definition.access === "shared")), { logicalMapId: "projection-persist", persistence: adapter }), /source definition conflicts/i);
+  const restored = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(map(), CATALOG), logicalMapId: "projection-persist", persistence: adapter });
   restored.dispose();
 }
 

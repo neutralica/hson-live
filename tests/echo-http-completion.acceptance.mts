@@ -1,5 +1,6 @@
+import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
-import { authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { authority_definitions_from_catalog_fixture, authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { Hson, bind_locus_http, hsonLiveMap } from "../src/index.ts";
 import { start_node_application_host } from "../src/api/livehost/node/livehost.node-application-host.ts";
@@ -16,7 +17,7 @@ events.case_begin("completion", "Admitted document completion waits across lost 
 
 const schema = Hson.schema`<type "document" tag "main" content "empty">`;
 const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema } });
-const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
+const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
 const application: LiveHostApplication = { name: "echo-completion",
   requests: ["/_hson", "/_hson/sync"].map((path) => ({ method: "POST", path,

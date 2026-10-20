@@ -182,7 +182,7 @@ check("native /livemap namespace keeps LiveMap, Echo, and Locus browser graphs s
       attachment: { observe() { return () => {}; } } };
     globalThis.echo = hsonLiveMap.echo.create({ transport });`);
   const locus = browser_graph("livemap-locus-public.mjs", `${prefix}
-    globalThis.locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { value: 1 } } }] });`);
+    globalThis.locus = hsonLiveMap.locus.create({ state: { data: { value: 1 }, access: "shared" } });`);
   const subsystem = (graph: typeof plain, name: "livemap" | "echo" | "locus"): string[] =>
     graph.inputs.filter((input) => input.includes(`/api/${name}/`));
   const noSibling = (graph: typeof plain, name: "livemap" | "echo" | "locus", label: string): void => {

@@ -1,6 +1,6 @@
 import type { LibraryFamilySelector } from "./library-selectors.types.js";
 import type { LiveMapEffectiveDefinitions } from "./livemap.types.js";
-import type { LibraryGroupDefinitions } from "./library-evidence.types.js";
+import type { LibraryCertainNames } from "./library-evidence.types.js";
 // Shared hosted contracts for the fixed library registry.
 // locus.types.ts
 
@@ -11,7 +11,8 @@ import type {
   LiveMapDefinitions,
   LiveMapLibraryDefinition,
   LiveMapKnownDefinitions,
-  LiveMapPartsDefinitionCheck,
+  LiveMapDefinitionCheck,
+  LiveMapDefinitionsCheck,
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { LibraryCut, LibraryCommits } from "./governor.types.js";
@@ -110,88 +111,40 @@ export type LocusRegistryOptions<
   libraries: readonly LocusLibraryCatalogEntry[];
 }>;
 
-export type LocusAuthorityLibraryDefinition = Readonly<{ name: string } & (
-  | { definition: LiveMapLibraryDefinition; css?: never }
-  | { definition: Extract<LiveMapLibraryDefinition, { document: unknown }>; css: string }
-)>;
+/** Flat authority Library definition shared by construction and atomic admission. */
+export type LocusLibraryDefinition = LiveMapLibraryDefinition & Readonly<{ access?: "private" | "shared" }>;
+export type LocusDefinitions = Readonly<Record<string, LocusLibraryDefinition>>;
 
+/** Client-local seeds remain separate from the authority inventory. */
 export type LocusLocalLibraryDefinition = Readonly<{ name: string } & (
   | { initializer: LiveMapLibraryDefinition; css?: never }
   | { initializer: Extract<LiveMapLibraryDefinition, { document: unknown }>; css: string }
 )>;
 
-export type LocusRuntimeLibraryAdditions = Readonly<{
-  private?: readonly (LocusAuthorityLibraryDefinition | undefined)[];
-  shared?: readonly (LocusAuthorityLibraryDefinition | undefined)[];
-}>;
-
-export type LocusLibraryAdmission<TAdditions extends LocusRuntimeLibraryAdditions> = Readonly<{
-  libraries: {
-    readonly [TName in keyof LibraryGroupDefinitions<TAdditions> as string extends TName ? never : TName]:
-      import("./governor.types.js").DefinitionLibrary<NonNullable<LibraryGroupDefinitions<TAdditions>[TName]>>;
-  } & (string extends keyof LibraryGroupDefinitions<TAdditions>
-    ? Readonly<Record<string, import("./governor.types.js").LocusLibrary | undefined>> : {});
-}>;
-
-/** Check only inferred Parts definitions; preserve the established grouped admission grammar. */
-type LocusInvalidPartsEntry<TEntry> = TEntry extends { readonly definition: infer TDefinition }
-  ? TDefinition extends LiveMapPartsDefinitionCheck<TDefinition> ? never : TEntry
-  : TEntry extends { readonly initializer: infer TInitializer }
-    ? TInitializer extends LiveMapPartsDefinitionCheck<TInitializer> ? never : TEntry
-    : never;
-
-export type LocusPartsEntriesCheck<TEntries> = TEntries extends readonly (infer TEntry)[]
-  ? [LocusInvalidPartsEntry<TEntry>] extends [never] ? unknown : never
+type InvalidLocalEntry<T> = T extends { initializer: infer D }
+  ? Exclude<keyof T, "name" | "initializer" | "css"> extends never
+    ? D extends LiveMapDefinitionCheck<D> ? never : T
+    : T
+  : never;
+export type LocusLocalEntriesCheck<TEntries> = TEntries extends readonly (infer TEntry)[]
+  ? [InvalidLocalEntry<TEntry>] extends [never] ? unknown : never
   : unknown;
 
-export type LocusPartsAdditionsCheck<TAdditions> = {
-  readonly [TGroup in keyof TAdditions]: LocusPartsEntriesCheck<TAdditions[TGroup]>;
-};
+type LocusTupleDuplicateNames<TEntries, TSeen extends string = never> =
+  TEntries extends readonly [infer TFirst extends { name: string }, ...infer TRest]
+    ? string extends TFirst["name"] ? LocusTupleDuplicateNames<TRest, TSeen>
+      : TFirst["name"] extends TSeen ? TFirst["name"] : LocusTupleDuplicateNames<TRest, TSeen | TFirst["name"]>
+    : never;
+export type LocusLocalNameCheck<D, L> =
+  [LocusTupleDuplicateNames<L, LibraryCertainNames<D>>] extends [never] ? unknown : never;
 
-type LocusConstructionGroups<TPrivate, TShared, TGroups> = {
-  readonly [K in keyof TGroups as K extends "private" | "shared" ? K : never]:
-    K extends "private" ? TPrivate : TShared;
-};
-type LocusConstructionDefinitions<TPrivate, TShared, TGroups> = LibraryGroupDefinitions<LocusConstructionGroups<TPrivate, TShared, TGroups>>;
-export type LocusMapDefinitions<
-  TPrivate extends readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TShared extends readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TGroups = { private: TPrivate; shared: TShared },
-> = LiveMapKnownDefinitions<{
-  readonly [K in keyof LocusConstructionDefinitions<TPrivate, TShared, TGroups>]:
-    Extract<LocusConstructionDefinitions<TPrivate, TShared, TGroups>[K], LiveMapLibraryDefinition>;
-}>;
-
-type LocusTupleDuplicateNames<TEntries extends readonly (Readonly<{ name: string }> | undefined)[], TSeen extends string = never> =
-  number extends TEntries["length"] ? never
-    : TEntries extends readonly [infer TFirst, ...infer TRest]
-      ? TFirst extends Readonly<{ name: string }>
-        ? TRest extends readonly (Readonly<{ name: string }> | undefined)[]
-          ? TFirst["name"] extends TSeen
-            ? TFirst["name"] | LocusTupleDuplicateNames<TRest, TSeen>
-            : LocusTupleDuplicateNames<TRest, TSeen | TFirst["name"]>
-          : never
-        : never
-      : never;
-
-export type LocusDefinitionNameCheck<
-  TPrivate extends readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TShared extends readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TLocal extends readonly (LocusLocalLibraryDefinition | undefined)[],
-> = [LocusTupleDuplicateNames<[...TPrivate, ...TShared, ...TLocal]>] extends [never] ? unknown : never;
-
+/** Existing owner configuration, separate from the flat authority definitions. */
 export type LocusDefinitionOptions<
-  TPrivate extends readonly (LocusAuthorityLibraryDefinition | undefined)[] = readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TShared extends readonly (LocusAuthorityLibraryDefinition | undefined)[] = readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TLocal extends readonly (LocusLocalLibraryDefinition | undefined)[] = readonly (LocusLocalLibraryDefinition | undefined)[],
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-  TGroups = { private?: TPrivate; shared?: TShared },
-> = LocusConfigurationOptions<LiveMap<LocusMapDefinitions<TPrivate, TShared, TGroups>>, TActions> & Readonly<{
-  map?: never;
-  libraries?: never;
-  private?: TPrivate;
-  shared?: TShared;
-  local?: TLocal;
+  D extends LocusDefinitions = LocusDefinitions,
+  A extends LocusActionPayloads = LocusActionPayloads,
+  L extends readonly (LocusLocalLibraryDefinition | undefined)[] = readonly (LocusLocalLibraryDefinition | undefined)[],
+> = LocusConfigurationOptions<LiveMap<LiveMapKnownDefinitions<D>>, A> & Readonly<{
+  local?: L;
   interactions?: readonly import("./interaction.descriptor.types.js").InteractionDescriptor[];
 }>;
 
@@ -509,9 +462,9 @@ export type Locus<
   readonly parts: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "locus", "parts">;
   cut: LibraryCut;
   commits: LibraryCommits;
-  addLibraries: <const TAdditions extends LocusRuntimeLibraryAdditions>(
-    additions: TAdditions & LocusPartsAdditionsCheck<NoInfer<TAdditions>>,
-  ) => Promise<LocusLibraryAdmission<TAdditions>>;
+  admit: <const D extends LocusDefinitions>(
+    definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
+  ) => Promise<void>;
   readonly logicalMapId: LocusLogicalMapId;
   readonly incarnationId: LocusIncarnationId;
   readonly rev: number;
@@ -542,12 +495,10 @@ export interface LocusPersistenceAdapter {
 }
 
 export type LocusResumeOptions<
-  TPrivate extends readonly (LocusAuthorityLibraryDefinition | undefined)[] = readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TShared extends readonly (LocusAuthorityLibraryDefinition | undefined)[] = readonly (LocusAuthorityLibraryDefinition | undefined)[],
-  TLocal extends readonly (LocusLocalLibraryDefinition | undefined)[] = readonly (LocusLocalLibraryDefinition | undefined)[],
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-  TGroups = { private?: TPrivate; shared?: TShared },
-> = LocusDefinitionOptions<TPrivate, TShared, TLocal, TActions, TGroups> & Readonly<{
+  D extends LocusDefinitions = LocusDefinitions,
+  A extends LocusActionPayloads = LocusActionPayloads,
+  L extends readonly (LocusLocalLibraryDefinition | undefined)[] = readonly (LocusLocalLibraryDefinition | undefined)[],
+> = LocusDefinitionOptions<D, A, L> & Readonly<{
   logicalMapId: LocusLogicalMapId;
   persistence: LocusPersistenceAdapter;
 }>;

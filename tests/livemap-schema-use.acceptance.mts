@@ -1,3 +1,4 @@
+import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -202,7 +203,7 @@ check("Schema attachment preserves retained facades, locations, identity epoch, 
 
 check("Locus-managed authority rejects synchronous attachment", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
-  const locus = hsonLiveMap.locus.create(authority_definition_from_fixture_options({ map, ...test_public_projection(map) }));
+  const locus = create_locus_fixture(authority_definition_from_fixture_options({ map, ...test_public_projection(map) }));
   const before = locus_map_internal(locus).capture();
   assert.equal("use" in locus.data.must("state").schema, false);
   assert.deepEqual(locus_map_internal(locus).capture(), before);

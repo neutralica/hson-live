@@ -8,7 +8,6 @@ import { set_document_adoption_fault_hook_for_tests as fault } from "../../src/a
 import { set_livemap_quid_candidate_source_for_tests as allocator } from "../../src/api/livemap/livemap.quid-allocation.ts";
 import { runtime_for_tree } from "../../src/api/livetree/runtime/livetree-runtime.ts";
 import { hsonLiveMap } from "../../src/api/livemap/livemap.facade.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 
 const assert = (condition, message) => { if (!condition) throw Error(message); };
 const equal = (a, b, message) => assert(JSON.stringify(a) === JSON.stringify(b), `${message}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`);
@@ -268,9 +267,9 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
   await check('continued CSS carriers install and retire through supported direct and staged operations', async () => {
     const read = (doc, element) => { const css = doc.defaultView.getComputedStyle(element); return [css.color, css.paddingLeft]; };
     for (const staged of [false, true]) {
-      const map = hsonLiveMap.fromLibraries({ parts: collection({
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: {
         x: { kind:'document', document:'<button id="live"/>', css:'button{color:rgb(10,20,30);padding-left:13px}' },
-      }), page: { document:'<html <head/> <body <button id="live"/> <button id="outside"/>/>/>' } });
+      } }, page: { document:'<html <head/> <body <button id="live"/> <button id="outside"/>/>/>' } });
       const selected = map.doc.must('page'), frame = document.createElement('iframe');
       frame.srcdoc = selected.render(); const loaded = new Promise(resolve => frame.onload = resolve);
       document.body.append(frame); await loaded;

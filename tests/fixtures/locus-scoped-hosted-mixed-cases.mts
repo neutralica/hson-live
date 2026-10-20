@@ -31,7 +31,7 @@ function classification(all: Receiver, flat: Receiver, occurrences: number) {
 export async function hosted_mixed_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   for (const kind of ["http", "websocket"] as const) {
     await check(`${kind}: atomic mixed graph attributes and CSS preserve flat provenance in either order`, async () => {
-      const locus = hsonLiveMap.locus.create(definition);
+      const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
       const all = await receiver(locus, kind, ["page", "flat", "data"]);
       const flat = await receiver(locus, kind, ["flat"]);
       let observations = 0;
@@ -95,7 +95,7 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
     });
 
     await check(`${kind}: scoped-empty provenance and candidate-relative promotion survive replay and fresh receiving`, async () => {
-      const locus = hsonLiveMap.locus.create(definition);
+      const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
       const all = await receiver(locus, kind, ["page", "flat"]), flat = await receiver(locus, kind, ["flat"]);
       try {
         const left = document(all.echo).q("left")!, right = document(all.echo).q("right")!;
@@ -114,8 +114,7 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
           w.doc.must("page").at([]).asElement().attrs.set("title", "still-scoped-empty");
         });
         await caught(all.echo, locus); await caught(flat.echo, locus); classification(all, flat, 0);
-        await locus.addLibraries({ shared: [{ name: "later", definition: page },
-          { name: "promote", definition: { document: '<main @:promote <i @:gone/>/>' } }] });
+        await locus.admit({ "later": { ...page, access: "shared" }, "promote": { document: '<main @:promote <i @:gone/>/>', access: "shared" } });
         await caught(all.echo, locus);
         await all.session.update({ libraries: ["page", "flat", "later", "promote"] });
         await until(() => { try { return !!document(all.echo, "promote").q("gone"); } catch { return false; } });
@@ -157,7 +156,7 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
 
     await check(`${kind}: ordinary flat effects cannot downgrade active or empty scoped receiving provenance`, async () => {
       for (const empty of [false, true]) {
-        const locus = hsonLiveMap.locus.create(definition);
+        const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
         const all = await receiver(locus, kind, ["page", "flat"]), flat = await receiver(locus, kind, ["flat"]);
         try {
           if (empty) {

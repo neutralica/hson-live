@@ -1,5 +1,5 @@
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { create_locus_fixture, authority_groups_from_catalog_fixture, authority_groups_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, authority_definitions_from_catalog_fixture, authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -40,7 +40,7 @@ return map;
 
 const map = hostile_map();
 
-const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, [
+const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [
     { name: "page", ownership: "shared" },
     { name: "permittedData", ownership: "shared" },
     { name: "PRIVATE_NAME_SENTINEL", ownership: "private" },
@@ -293,10 +293,10 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
 // recovery machinery. It gains no implicit libraries, projection, or document.
 {
   const oneMap = hsonLiveMap.fromLibraries({ page: { document: '<main <p "ONE_LIBRARY_HTML"/>/>', schema: Page } });
-  const emptyLocus = hsonLiveMap.locus.create({});
+  const emptyLocus = hsonLiveMap.locus.create({  });
   assert.equal(locus_map_internal(emptyLocus).capture().registry.libraries.length, 0);
   emptyLocus.dispose();
-  const oneLocus = create_locus_fixture({ ...authority_groups_from_map_fixture(oneMap, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"] }) });
+  const oneLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(oneMap, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"] }) });
   let receive: ((raw: string) => void) | undefined;
   let sessionId: string | undefined;
   let credential: string | undefined;

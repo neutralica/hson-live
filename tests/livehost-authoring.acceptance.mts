@@ -88,10 +88,7 @@ for (const method of ["POST", "PUT", "DELETE"] as const) {
   assert.deepEqual(routes.map((route) => route.method), [method, method]);
 }
 
-const locus = hsonLiveMap.locus.create({ shared: [
-  { name: "home", definition: { document: '<html <head/> <body <main "Home"/>/>/>', schema: Hson.schema`<type "document">` } },
-  { name: "slide01", definition: { document: '<html <head/> <body <main "Slide"/>/>/>', schema: Hson.schema`<type "document">` } },
-] });
+const locus = hsonLiveMap.locus.create({ "home": { document: '<html <head/> <body <main "Home"/>/>/>', schema: Hson.schema`<type "document">`, access: "shared" }, "slide01": { document: '<html <head/> <body <main "Slide"/>/>/>', schema: Hson.schema`<type "document">`, access: "shared" } });
 try {
   const home = locus.doc.must("home");
   const slide01 = locus.doc.must("slide01");

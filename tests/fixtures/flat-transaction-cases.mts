@@ -3,7 +3,6 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { bind_locus_http, hsonLiveMap } from "../../src/index.ts";
 import { make_livemap_libraries, make_livemap_mirror_from_semantic_checkpoint_internal as restore } from "../../src/api/livemap/livemap.libraries.ts";
-import { part_collection_definition_internal as parts } from "../../src/api/livemap/livemap.parts.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { lookup_document_quad_internal as lookup } from "../../src/api/livemap/livemap.document.quad.ts";
 import { enumerate_livemap_issued_quids as issued } from "../../src/api/livemap/livemap.identity-epoch.ts";
@@ -43,7 +42,7 @@ function unchanged(map: LiveMap, before: ReturnType<typeof snapshot>) {
 }
 async function fixture() {
   const map = make_livemap_libraries({ page: { document }, other: { document }, data: { data: { n: 0 } },
-    parts: parts({ p: { kind: "document", document: '<i "Scoped"/>', css: 'i{color:green}' } }),
+    parts: { parts: { p: { kind: "document", document: '<i "Scoped"/>', css: 'i{color:green}' } } },
     scoped: { document: '<aside <hson-part lib="parts" at="p"/>/>' } }, [], undefined,
   { page: parse_document_stylesheet(css, []), other: parse_document_stylesheet(css, []) });
   const adapter = new MemoryCheckpointAdapter(), locus = await persist({ map, persistence: adapter, scopedDocuments: true });
@@ -170,12 +169,7 @@ export async function flat_transaction_cases(check: (name: string, run: () => Pr
     } finally { stops.forEach(stop => stop()); f.locus.dispose(); }
   });
   await check("styled flat Echo accepts no-op participants alongside scoped and data progress", async () => {
-    const locus = hsonLiveMap.locus.create({
-      private: [{ name: "parts", definition: { parts: { p: { kind: "document", document: '<i "Scoped"/>' } } } }],
-      shared: [{ name: "page", definition: { document }, css }, { name: "data", definition: { data: { n: 0 } } },
-        { name: "scoped", definition: { document: '<aside <hson-part lib="parts" at="p"/>/>' } }],
-      authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-    });
+    const locus = hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: '<i "Scoped"/>' } }, access: "private" }, "page": { document, css, access: "shared" }, "data": { data: { n: 0 }, access: "shared" }, "scoped": { document: '<aside <hson-part lib="parts" at="p"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     const session = await locus.session.create({ libraries: ["page", "data", "scoped"] });
     const binding = bind_locus_http(locus, { endpoint: "/flat-noop" });
     const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://flat.test/flat-noop", fetch: (input, init) => binding.handle(new Request(input, init), {}) });

@@ -65,13 +65,7 @@ function assert_recovered(locus: Parameters<typeof locus_map_internal>[0], origi
   assert_style_fidelity(main(library_root(current, "page")));
 }
 async function resume(adapter: FileCheckpointAdapter, id: string, data = data_fixture(), document = document_fixture()) {
-  return hsonLiveMap.locus.resume({ logicalMapId: id, persistence: adapter, shared: [
-    { name: "state", definition: { data, schema: Data } },
-    { name: "page", definition: { document, schema: Page } },
-    { name: "scalar", definition: { data: -0, schema: Data } },
-    { name: "numeric", definition: { data: { negative: -0, ordinary: 0 }, schema: Numeric } },
-    { name: "exact", definition: { data: { negative: -0 }, schema: Exact } },
-  ] });
+  return hsonLiveMap.locus.resume({ "state": { data, schema: Data, access: "shared" }, "page": { document, schema: Page, access: "shared" }, "scalar": { data: -0, schema: Data, access: "shared" }, "numeric": { data: { negative: -0, ordinary: 0 }, schema: Numeric, access: "shared" }, "exact": { data: { negative: -0 }, schema: Exact, access: "shared" } }, { logicalMapId: id, persistence: adapter });
 }
 
 // Integrity-valid corrupt roots exercise contextual qualification independently

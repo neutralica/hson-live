@@ -1,3 +1,4 @@
+import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
 import { data_path_kind, data_location_check, require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
@@ -22,6 +23,7 @@ import type {
   LiveMapSnapshot,
   LiveMapInput,
   LiveMapDefinitions,
+  LiveMapLibraryDefinition,
   LiveMapKnownDefinitions,
   LiveMapDataLibraryInput,
   LiveMapDocumentLibraryInput,
@@ -491,18 +493,24 @@ export function require_livemap_library_internal(map: LiveMap, name: string): Li
   return selected.handle;
 }
 
-/** Select public configuration once; only admitted material crosses into ownership. @internal */
-export function admit_public_livemap_definitions<const TLibraries extends LiveMapDefinitions>(inputs: TLibraries): TLibraries {
-  const entries = Object.entries(inputs);
-  const admitted: TLibraries = Object.create(null);
-  for (const [name, value] of entries) {
-    const selected = must_library_input(name, value);
-    const input = Object.hasOwn(selected, "document") && typeof selected.document !== "string"
-      ? Object.freeze(Object.assign(Object.create(null), selected, { document: admit_public_livemap_root(selected.document, "document", `LiveMap.fromLibraries(${name})`) }))
-      : selected;
-    Object.defineProperty(admitted, name, { value: input, enumerable: true, configurable: true, writable: true });
+/** Capture the flat public envelope once, before entering existing ownership machinery. @internal */
+export function admit_public_livemap_definitions(inputs: unknown, hosted = false): Readonly<{
+  definitions: LiveMapDefinitions;
+  css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>;
+  ownership: Readonly<Record<string, "private" | "shared">>;
+}> {
+  if (!is_record(inputs)) throw new TypeError("Library definitions must be a keyed object.");
+  const definitions: Record<string, LiveMapLibraryDefinition> = Object.create(null);
+  const css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord> = Object.create(null);
+  const ownership: Record<string, "private" | "shared"> = Object.create(null);
+  for (const name of Reflect.ownKeys(inputs)) {
+    if (typeof name !== "string" || hosted && name.length === 0) throw new TypeError("Invalid Library name.");
+    const input = must_library_input(name, inputs[name], { hosted, css, ownership });
+    definitions[name] = Object.hasOwn(input, "document") && typeof input.document !== "string"
+      ? Object.freeze(Object.assign(Object.create(null), input, { document: admit_public_livemap_root(input.document, "document", `Library ${name}`) }))
+      : input;
   }
-  return admitted;
+  return Object.freeze({ definitions: Object.freeze(definitions), css: Object.freeze(css), ownership: Object.freeze(ownership) });
 }
 
 /**
@@ -757,9 +765,10 @@ function make_livemap_library_receiver(
   const addLibraries = (inputs: LiveMapDefinitions) => {
     aggregate.assertPublicMutationAllowed();
     const checkCapture = aggregate.captureFence();
-    const definitions = realize_authored_definitions(public_library_definitions(inputs), readPart);
+    const captured = admit_public_livemap_definitions(inputs);
+    const definitions = realize_authored_definitions(public_library_definitions(captured.definitions), readPart);
     checkCapture();
-    const commit = addLibrariesInternal(definitions, {}, false, checkCapture);
+    const commit = addLibrariesInternal(definitions, captured.css, false, checkCapture);
     const admitted: Record<string, ReturnType<typeof selected>> = Object.create(null);
     for (const definition of definitions) admitted[definition.name] = selected(definition.name);
     return Object.freeze({ commit, libraries: Object.freeze(admitted) });
@@ -1677,14 +1686,18 @@ function make_document_library(
 
 type NormalizedLibraryInput = LiveMapDataLibraryInput | LiveMapDocumentLibraryInput;
 
-function must_library_input(name: string, value: unknown): NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle; validation?: DataLibraryValidation }> {
+function must_library_input(name: string, value: unknown, metadata?: {
+  hosted: boolean;
+  css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord>;
+  ownership: Record<string, "private" | "shared">;
+}): NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle; validation?: DataLibraryValidation }> {
   if (name === INTERACTION_RESERVED_LIBRARY_KEY) {
     throw new Error(`LiveMap Library name ${JSON.stringify(name)} is reserved for system state.`);
   }
   if (!is_record(value)) {
     throw new TypeError(`LiveMap Library ${JSON.stringify(name)} must be an input object.`);
   }
-  if (Object.hasOwn(value, "css")) {
+  if (metadata === undefined && Object.hasOwn(value, "css")) {
     throw new TypeError("Initial Library CSS input is not supported; author through the document Library css handle.");
   }
   own_document_quads(value);
@@ -1699,7 +1712,27 @@ function must_library_input(name: string, value: unknown): NormalizedLibraryInpu
   if (hasParts && (Object.hasOwn(value, "schema") || "schema" in value)) {
     throw new TypeError("Parts Library definitions do not support a supplemental Schema.");
   }
-  const selected: Record<string, unknown> = Object.assign(Object.create(null), value);
+  const selected: Record<string, unknown> = Object.create(null);
+  for (const key of Reflect.ownKeys(value)) {
+    if (metadata !== undefined && (typeof key !== "string" || !["data", "document", "parts", "schema", "css", ...(metadata.hosted ? ["access"] : [])].includes(key))) {
+      throw new TypeError("Library definition contains unsupported metadata.");
+    }
+    Object.defineProperty(selected, key, { value: Reflect.get(value, key), enumerable: true, configurable: true, writable: true });
+  }
+  if (metadata !== undefined) {
+    if (metadata.hosted) {
+      const access = selected.access;
+      if (Object.hasOwn(selected, "access") && access !== "private" && access !== "shared") throw new TypeError("Library access must be private or shared.");
+      metadata.ownership[name] = access === "shared" ? "shared" : "private";
+    }
+    if (Object.hasOwn(selected, "css") && !hasDocument) throw new TypeError("Initial CSS requires a document definition.");
+    if (selected.css !== undefined) {
+      if (typeof selected.css !== "string") throw new TypeError("Document CSS requires stylesheet text.");
+      metadata.css[name] = parse_document_stylesheet(selected.css, []);
+    }
+    delete selected.access;
+    delete selected.css;
+  }
   if (hasParts && (Object.hasOwn(value, "schema") || "schema" in value || Object.hasOwn(selected, "schema"))) {
     throw new TypeError("Parts Library definitions do not support a supplemental Schema.");
   }

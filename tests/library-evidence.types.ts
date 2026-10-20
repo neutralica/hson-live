@@ -1,14 +1,14 @@
 import { hsonLiveMap, type HsonSchema } from "../src/index.js";
 import type { JsonValue } from "../src/core/types.js";
-import type { LocusActionContext, LocusDefinitionOptions, LocusRuntimeLibraryAdditions } from "../src/types/locus.core.types.js";
+import type { LocusActionContext, LocusDefinitions } from "../src/types/locus.core.types.js";
 import type { ReadDataLocation } from "../src/types/governor.types.js";
 import type { LiveMapKnownNames, LiveMapDefinitions, LiveMapLibraryDefinition } from "../src/types/livemap.types.js";
 
 declare const schema: HsonSchema<{ rows: readonly { title: string }[]; optional?: { list: number[] }; unknown: unknown; choice: number[] | { count: number } }, "data">;
 declare const otherSchema: HsonSchema<{ different: string }, "data">;
 const definition = { data: { rows: [], unknown: [], choice: [] }, schema } as const satisfies LiveMapLibraryDefinition;
-const groups = { shared: [{ name: "deck", definition }], private: [{ name: "page", definition: { document: "<main/>" } }] } as const satisfies LocusRuntimeLibraryAdditions;
-const loc = hsonLiveMap.locus.create(groups);
+const definitions = { deck: { ...definition, access: "shared" }, page: { document: "<main/>" } } as const satisfies LocusDefinitions;
+const loc = hsonLiveMap.locus.create(definitions);
 loc.doc.page.render();
 loc.data.deck.schema.get() satisfies typeof schema;
 loc.data.deck.at(["rows", 0, "title"]).snap() satisfies string | undefined;
@@ -40,38 +40,29 @@ optional.at(["list"]).asArray()!.snap() satisfies number[] | undefined;
 // @ts-expect-error Presence is transient when the Schema permits removal.
 optional.snap() satisfies { list: number[] };
 
-declare const maybeGroups: { shared?: typeof groups.shared; private: typeof groups.private };
-const maybe = hsonLiveMap.locus.create(maybeGroups);
+declare const maybeDefinitions: { deck?: typeof definition; page: { document: string } };
+const maybe = hsonLiveMap.locus.create(maybeDefinitions);
 maybe.doc.page.render();
-// @ts-expect-error Optional group cannot establish governing Schema or family.
+// @ts-expect-error Optional definitions cannot establish guaranteed membership.
 maybe.data.deck.at(["rows"]).array;
-const later = await maybe.addLibraries({ shared: [{ name: "deck", definition: { data: { different: "new" }, schema: otherSchema } }] });
-later.libraries.deck.schema.get() satisfies typeof otherSchema;
-later.libraries.deck.at(["different"]).snap() satisfies string;
-// @ts-expect-error Absent construction evidence cannot govern a later admission.
-later.libraries.deck.at(["rows"]);
-// @ts-expect-error The earlier alias still has no certain governing evidence.
+await maybe.admit({ deck: { data: { different: "new" }, schema: otherSchema } }) satisfies void;
+maybe.data.must("deck", otherSchema).schema.get() satisfies typeof otherSchema;
+maybe.data.must("deck", otherSchema).at(["different"]).snap() satisfies string;
+// @ts-expect-error Checked Schema evidence rejects unrelated paths.
+maybe.data.must("deck", otherSchema).at(["rows"]);
+// @ts-expect-error The original inventory still has no certain governing evidence.
 maybe.data.deck.snap() satisfies { rows: unknown[] };
-
-declare const tuple: readonly [typeof groups.private[0], { name: "deck"; definition: typeof definition }?];
-const tupleLoc = hsonLiveMap.locus.create({ shared: tuple });
-tupleLoc.doc.page.render();
-// @ts-expect-error Optional tuple entry cannot establish certain membership.
-tupleLoc.data.deck.at(["rows"]).array;
-const tupleReceipt = await loc.addLibraries({ shared: tuple });
-tupleReceipt.libraries.page.render();
-// @ts-expect-error Admission and construction share certainty rules.
-tupleReceipt.libraries.deck.at(["rows"]);
-tupleReceipt.libraries.deck?.at(["rows"]).array.map(row => row.title);
-declare const list: readonly { name: "deck"; definition: typeof definition }[];
-const listLoc = hsonLiveMap.locus.create({ shared: list });
-// @ts-expect-error A list may be empty.
-listLoc.data.deck.at(["rows"]).array;
+declare const optionalKey: { page: { document: string }; deck?: typeof definition };
+const optionalLoc = hsonLiveMap.locus.create(optionalKey);
+optionalLoc.doc.page.render();
+// @ts-expect-error Optional keyed entries cannot establish certain membership.
+optionalLoc.data.deck.at(["rows"]).array;
+optionalLoc.data.must("deck", schema).at(["rows"]).array.map(row => row.title);
 declare const unionName: "first" | "second";
-const unionLoc = hsonLiveMap.locus.create({ shared: [{ name: unionName, definition }] });
+const unionLoc = hsonLiveMap.locus.create({ [unionName]: { ...definition, access: "shared" } });
 // @ts-expect-error A union name does not establish both members.
 unionLoc.data.first.at(["rows"]).array;
-declare const widened: LocusDefinitionOptions;
+declare const widened: LocusDefinitions;
 const wideLoc = hsonLiveMap.locus.create(widened);
 // @ts-expect-error Widened definitions cannot manufacture literal membership.
 wideLoc.data.deck.render();
@@ -103,9 +94,9 @@ roots.data.object.at([]).object.deleteKey("initial");
 roots.data.object.at(["initial"]).snap() satisfies number;
 // @ts-expect-error Root category does not prove any nested collection.
 roots.data.object.at(["initial"]).array;
-const rootReceipt = await loc.addLibraries({ shared: [{ name: "array", definition: { data: [] } }, { name: "object", definition: { data: {} } }] });
-rootReceipt.libraries.array.at([]).array.push("new");
-rootReceipt.libraries.object.at([]).object.setKey("new", 1);
+await loc.admit({ "array": { data: [], access: "shared" }, "object": { data: {}, access: "shared" } });
+loc.data.must("array").at([]).asArray()!.array.push("new");
+loc.data.must("object").at([]).asObject()!.object.setKey("new", 1);
 roots.batch(writer => {
   writer.data.array.at([]).array.push("new");
   writer.data.object.at([]).object.setKey("new", 1);
@@ -126,20 +117,20 @@ readArray.at([0]).asObject()!.object.setKey("bad", 1);
 // @ts-expect-error Generic refinements have no writable location methods.
 read.asObject()!.replace({});
 
-hsonLiveMap.locus.create({ ...groups, actions: { inspect(context) {
+hsonLiveMap.locus.create(definitions, { actions: { inspect(context) {
   context.data.deck.at(["rows"]).array.map(row => row.title);
   // @ts-expect-error A read context has no direct setter after refinement.
   context.data.deck.at(["unknown"]).asArray()!.set([]);
 } } });
-hsonLiveMap.locus.create({ ...maybeGroups, actions: { inspect(context) {
+hsonLiveMap.locus.create(maybeDefinitions, { actions: { inspect(context) {
   context.doc.page.render();
-  // @ts-expect-error Contextual callbacks cannot certify an optional group.
+  // @ts-expect-error Contextual callbacks cannot certify an optional definition.
   context.data.deck.at(["rows"]).array;
 } } });
-// @ts-expect-error Presence overloads retain the existing duplicate-name check.
-hsonLiveMap.locus.create({ shared: [{ name: "duplicate", definition }], local: [{ name: "duplicate", initializer: definition }] });
-// @ts-expect-error Presence overloads retain Parts validation, including explicit undefined Schema claims.
-hsonLiveMap.locus.create({ shared: [{ name: "parts", definition: { parts: { p: { kind: "document", document: "<p/>", schema: undefined } } } }] });
+// @ts-expect-error Flat construction retains the existing duplicate-name check.
+hsonLiveMap.locus.create({ "duplicate": { ...definition, access: "shared" } }, { local: [{ name: "duplicate", initializer: definition }] });
+// @ts-expect-error Flat construction retains Parts validation, including explicit undefined Schema claims.
+hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: "<p/>", schema: undefined } }, access: "shared" } });
 const uncertainLocal = hsonLiveMap.fromLibraries({ state: definition }).data.state.at(["choice"]).asArray()!;
 uncertainLocal.watch(value => {
   value satisfies number[] | undefined;
@@ -155,7 +146,7 @@ const maybeChild = loc.data.deck.at(["optional"]).present()!.at(["list"]);
 maybeChild.array;
 maybeChild.asArray()!.array.push(1);
 
-// @ts-expect-error Empty grouped options must not accept an unrelated bare map.
+// @ts-expect-error Flat definitions must not accept an unrelated bare map.
 hsonLiveMap.locus.create(roots);
 
 // Dictionary collection reads cannot turn requested names into required members.

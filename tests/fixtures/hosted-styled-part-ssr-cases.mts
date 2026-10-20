@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform, encode_ssr_bootstrap, decode_ssr_bootstrap } from "../../src/index.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { set_livemap_quid_candidate_source_for_tests as allocation } from "../../src/api/livemap/livemap.quid-allocation.ts";
 import { locus_map_internal } from "../../src/internal/governor-maps.ts";
@@ -12,17 +11,10 @@ import { normalize_document_root } from "../../src/api/livemap/livemap.document.
 import { encode_hosted_root } from "../../src/api/livemap/livemap.hosted.ts";
 
 async function hosted_subject_fixture(page: string, css?: string) {
-  const locus = hsonLiveMap.locus.create({
-    private: [{ name: "PRIVATE_PARTS_SENTINEL", definition: collection({
+  const locus = hsonLiveMap.locus.create({ "PRIVATE_PARTS_SENTINEL": { ...{ parts: {
       button: { kind: "document", document: '<button id="%{id}" "Styled"/>', css: 'button{color:rgb(12,34,56)}' },
       unused: { kind: "document", document: '<i "PRIVATE_UNUSED_SENTINEL"/>', css: 'i{color:rgb(98,76,54)}' },
-    }) }],
-    shared: [
-      { name: "page", definition: { document: page }, ...(css === undefined ? {} : { css }) },
-      { name: "ungranted", definition: { document: '<aside "UNGRANTED_DOCUMENT_SENTINEL"/>' } },
-    ],
-    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-  });
+    } }, access: "private" }, "page": { document: page, ...(css === undefined ? {} : { css }), access: "shared" }, "ungranted": { document: '<aside "UNGRANTED_DOCUMENT_SENTINEL"/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
   try {
     const session = await locus.session.create({ libraries: ["page", "PRIVATE_PARTS_SENTINEL"] });
     return { locus, session };
@@ -208,10 +200,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
     }
   });
   await check("ordinary hosted unscoped CSS leaves authored QUAD rendering unchanged", async () => {
-    const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: {
-      document: '<html <head/> <body <button @:ordinary "Ordinary"/>/>/>' },
-      css: 'button{color:red}' }],
-      authorizeProjection: () => ({ libraries: ["page"] }) });
+    const locus = hsonLiveMap.locus.create({ "page": { document: '<html <head/> <body <button @:ordinary "Ordinary"/>/>/>', css: 'button{color:red}', access: "shared" } }, { authorizeProjection: () => ({ libraries: ["page"] }) });
     try {
       const session = await locus.session.create({ libraries: ["page"] }), cut = session.now({ html: "page" });
       assert.doesNotMatch(cut.html, /hson:quad/); assert.match(cut.html, /button\{color:red;\}/);

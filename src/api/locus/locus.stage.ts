@@ -1,5 +1,5 @@
 import { make_family_selectors } from "../../internal/library-selectors.js";
-import { require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
+import { admit_public_livemap_definitions, require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { document_css_commands, document_css_reads, dispatch_document_css_command } from "../../internal/document-css-commands.js";
 import { collection_commands } from "../livemap/livemap.collection-command.js";
 import { collection_observations, read_document_location } from "../../internal/library-observation.js";
@@ -9,10 +9,9 @@ import type {
   LiveMapDocumentRequestTarget, LiveMapDocumentContent,
   LiveMapStagedWriter, LivePath, LiveMapDataLibrary, LiveMapDocumentLibrary,
 } from "../../types/livemap.types.js";
-import type { LocusRuntimeLibraryAdditions, LocusStage } from "../../types/locus.core.types.js";
+import type { LocusDefinitions, LocusStage } from "../../types/locus.core.types.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
-import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import { register_governed_document, write_document_quad } from "../../internal/governed-document.js";
 
@@ -27,7 +26,7 @@ export function make_locus_stage<TMap extends LiveMap>(
   submitLibraries: (definitions: LiveMapDefinitions, ownership: Readonly<Record<string, "private" | "shared">>,
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>,
   assertSubmissionAllowed: () => void,
-): Pick<import("../../types/locus.core.types.js").Locus<TMap>, "stage" | "doc" | "data" | "parts" | "addLibraries"> {
+): Pick<import("../../types/locus.core.types.js").Locus<TMap>, "stage" | "doc" | "data" | "parts" | "admit"> {
   const selected_document = (writer: Writer, name: string): Document => {
     const selected = writer.doc.must(name);
     if (selected.mode !== "document") throw new Error(`Staged Library ${JSON.stringify(name)} is not a document.`);
@@ -106,42 +105,12 @@ export function make_locus_stage<TMap extends LiveMap>(
       }),
     });
   };
-  const addLibraries = (additions: LocusRuntimeLibraryAdditions) => {
-        try { assertSubmissionAllowed(); }
-        catch (cause) { return Promise.reject(cause); }
-        if (typeof additions !== "object" || additions === null || Array.isArray(additions)
-          || Reflect.ownKeys(additions).some((key) => key !== "private" && key !== "shared")) {
-          return Promise.reject(new TypeError("Locus runtime additions require private/shared groups."));
-        }
-        const definitions: Record<string, LiveMapDefinitions[string]> = Object.create(null);
-        const ownership: Record<string, "private" | "shared"> = Object.create(null);
-        const css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord> = Object.create(null);
-        for (const group of ["private", "shared"] as const) {
-          const entries = additions[group];
-          if (entries === undefined) continue;
-          if (!Array.isArray(entries)) return Promise.reject(new TypeError("Locus runtime library group must be an array."));
-          for (const entry of entries) {
-            if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !entry.name
-              || Object.hasOwn(definitions, entry.name) || entry.definition === undefined
-              || Reflect.ownKeys(entry).some((key) => key !== "name" && key !== "definition" && key !== "css")) {
-              return Promise.reject(new TypeError("Locus runtime Library addition is invalid or duplicated."));
-            }
-            if (entry.css !== undefined) {
-              if (!("document" in entry.definition)) return Promise.reject(new TypeError("Initial CSS requires a document definition."));
-              try { css[entry.name] = parse_document_stylesheet(entry.css, []); }
-              catch (cause) { return Promise.reject(cause); }
-            }
-            definitions[entry.name] = entry.definition;
-            ownership[entry.name] = group;
-          }
-        }
-        if (Object.keys(definitions).length === 0) return Promise.reject(new TypeError("Locus runtime addition requires a Library."));
-        return submitLibraries(definitions, ownership, css).then(() => {
-          const libraries: Record<string, ReturnType<typeof lib>> = Object.create(null);
-          for (const name of Object.keys(definitions)) libraries[name] = lib(name);
-          return Object.freeze({ libraries: Object.freeze(libraries) });
-        });
-      };
+  const admit = async (definitions: LocusDefinitions): Promise<void> => {
+    assertSubmissionAllowed();
+    const captured = admit_public_livemap_definitions(definitions, true);
+    if (Object.keys(captured.definitions).length === 0) throw new TypeError("Locus admission requires a Library.");
+    await submitLibraries(captured.definitions, captured.ownership, captured.css);
+  };
   const facades = new WeakMap<object, ReturnType<typeof makeLibrary>>();
   const makeLibrary = (name: string) => {
         const selected = require_livemap_library_internal(map, name);
@@ -235,5 +204,5 @@ export function make_locus_stage<TMap extends LiveMap>(
   return Object.freeze({ stage: submit, ...make_family_selectors(name => {
     const binding = resolve_livemap_library_internal(map, name);
     return binding === undefined ? undefined : { ...binding, handle: lib(name) };
-  }), addLibraries }) as unknown as Pick<import("../../types/locus.core.types.js").Locus<TMap>, "stage" | "doc" | "data" | "parts" | "addLibraries">;
+  }), admit }) as unknown as Pick<import("../../types/locus.core.types.js").Locus<TMap>, "stage" | "doc" | "data" | "parts" | "admit">;
 }

@@ -4,7 +4,7 @@ import type { EchoLibrary } from "hson-live/echo";
 import { firstSchema } from "./fixtures/hson-schema-document/out/deck.js";
 const definition = { document: '<html <head/> <body/>/>', schema: firstSchema };
 const map = hsonLiveMap.fromLibraries({ page: definition });
-const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }] });
+const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
 locus.doc.must("page").at([1]).attrs.setMany({ title: "yes" }) satisfies Promise<void>;
 locus.doc.must("page").at([1]).flags.set("hidden") satisfies Promise<void>;
 locus.doc.must("page").at([1]).attrs.must.get("title");
@@ -72,11 +72,11 @@ if (echo.mode === "document") {
   }
 }
 async function admission() {
-  const receipt = await locus.addLibraries({ private: [{ name: "added", definition }] });
-  receipt.libraries.added.at([1]).attrs.clear();
-  receipt.libraries.added.css.sel("body").setProp("color", "red");
+  await locus.admit({ "added": { ...definition, access: "private" } });
+  locus.doc.must("added", firstSchema).at([1]).attrs.clear();
+  locus.doc.must("added", firstSchema).css.sel("body").setProp("color", "red");
   // @ts-expect-error Dynamic admission preserves exact document Schema paths.
-  receipt.libraries.added.at([2]);
+  locus.doc.must("added", firstSchema).at([2]);
   const optional: { maybe?: typeof definition } = {};
   const local = map.addLibraries(optional);
   // @ts-expect-error An optional receipt entry does not guarantee admission.
@@ -85,7 +85,7 @@ async function admission() {
 }
 
 // Broad and dynamically discovered endpoints require a shape check before element observations.
-const broad = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" } }] });
+const broad = hsonLiveMap.locus.create({ "page": { document: "<main/>", access: "shared" } });
 // @ts-expect-error An untyped location does not certify an element.
 broad.doc.must("page").at([]).attrs.get("title");
 // @ts-expect-error ID discovery is optional and does not certify an element.
@@ -94,7 +94,7 @@ broad.doc.must("page").at([]).asElement()?.attrs.must.get("title");
 
 
 import { PageSchema } from "./fixtures/hson-schema-document/out/producer.js";
-const strict = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: '<main id="hero" <section "body"/>/>', schema: PageSchema } }] });
+const strict = hsonLiveMap.locus.create({ "page": { document: '<main id="hero" <section "body"/>/>', schema: PageSchema, access: "shared" } });
 // Generated graph evidence retains document shape; attribute rules are validated at admission,
 // matching local LiveMap's materialized-graph evidence contract.
 strict.doc.must("page").at([]).attrs.setMany({ id: "next", hidden: "hidden" });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Hson, ANY_DATA, ANY_DOCUMENT } from "hson-live/hson";
 import { hsonLiveMap, type LiveMapPartCollection, type LiveMapDefinitions } from "hson-live/livemap";
 import { hsonTransform } from "hson-live/transform";
-import type { LocusAuthorityLibraryDefinition } from "hson-live/locus";
+import type { LocusLibraryDefinition } from "hson-live/locus";
 
 // Deck-shaped authored definitions: no internal factory or validation marker.
 export const deckParts = {
@@ -72,19 +72,17 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     for (const destination of ownership === "private" ? ["private", "shared"] as const : ["shared"] as const) {
       for (const admission of ["initial", "dynamic", "same-batch"] as const) {
         await check(`public Locus ${ownership} Parts to ${destination} document via ${admission}`, async () => {
-          const collection = { name: "parts", definition: { parts: deckParts } };
-          // Hosted incremental styled topology retains its existing correspondence guard.
-          const page = { name: "page", definition: { document: admission === "initial" ? deck : plain } };
-          const groups: { private: LocusAuthorityLibraryDefinition[]; shared: LocusAuthorityLibraryDefinition[] } = { private: [], shared: [] };
-          if (admission !== "same-batch") groups[ownership].push(collection);
-          if (admission === "initial") groups[destination].unshift(page);
-          const locus = hsonLiveMap.locus.create({ ...groups, authorizeProjection: () => ({ libraries: ["parts", "page"] }) });
+          const collection = { parts: deckParts, access: ownership };
+          const page = { document: admission === "initial" ? deck : plain, access: destination };
+          const definitions: Record<string, LocusLibraryDefinition> = {};
+          if (admission === "initial") definitions.page = page;
+          if (admission !== "same-batch") definitions.parts = collection;
+          const locus = hsonLiveMap.locus.create(definitions, { authorizeProjection: () => ({ libraries: ["parts", "page"] }) });
           try {
             if (admission !== "initial") {
-              const additions: typeof groups = { private: [], shared: [] };
-              additions[destination].push(page);
-              if (admission === "same-batch") additions[ownership].push(collection);
-              await locus.addLibraries(additions);
+              const additions: Record<string, LocusLibraryDefinition> = { page };
+              if (admission === "same-batch") additions.parts = collection;
+              await locus.admit(additions);
             }
             const selected = locus.doc.must("page"), parts = locus.parts.must("parts");
             if (selected.mode !== "document" || String(parts.mode) === "document") throw Error("Wrong Library family");
@@ -117,7 +115,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
 
   await check("public admission rejects malformed collections and mixed families atomically", async () => {
     const map = hsonLiveMap.fromLibraries({ state: { data: 1 } });
-    const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: 1 } }] });
+    const locus = hsonLiveMap.locus.create({ "state": { data: 1, access: "shared" } });
     let mapEvents = 0, locusEvents = 0;
     map.commits.observe(() => mapEvents++); locus.commits.observe(() => locusEvents++);
     const bad: unknown[] = [null, [], 1, "{}", { x: null }, { x: { kind: "data", document: "<p/>" } },
@@ -131,11 +129,10 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         const invalid = { parts };
         // Deliberately exercise runtime admission of untyped external input.
         assert.throws(() => hsonLiveMap.fromLibraries({ invalid } as LiveMapDefinitions));
-        assert.throws(() => hsonLiveMap.locus.create({ private: [{ name: "invalid", definition: invalid }] } as never));
+        assert.throws(() => hsonLiveMap.locus.create({ invalid } as never));
         const before = map.capture(), revision = locus.rev;
         assert.throws(() => map.addLibraries({ earlier: { data: 2 }, invalid } as LiveMapDefinitions));
-        await assert.rejects(locus.addLibraries({ shared: [{ name: "earlier", definition: { data: 2 } },
-          { name: "invalid", definition: invalid }] } as never));
+        await assert.rejects(locus.admit({ earlier: { data: 2 }, invalid } as never));
         assert.deepEqual(map.capture(), before); assert.equal(locus.rev, revision);
         assert.throws(() => locus.data.must("earlier")); assert.throws(() => locus.data.must("invalid"));
       }
@@ -149,7 +146,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
   await check("public Parts reject supplemental Schemas at every admission surface atomically", async () => {
     const custom = Hson.schema`<type "data" content <para <content <kind "string" document "string">>>>`;
     const map = hsonLiveMap.fromLibraries({ state: { data: 1 } });
-    const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: 1 } }] });
+    const locus = hsonLiveMap.locus.create({ "state": { data: 1, access: "shared" } });
     let mapEvents = 0, locusEvents = 0;
     map.commits.observe(() => mapEvents++); locus.commits.observe(() => locusEvents++);
     const message = /Parts Library definitions do not support a supplemental Schema/;
@@ -159,12 +156,10 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         const definition = { parts: { para: deckParts.para }, schema };
         assert.throws(() => hsonLiveMap.fromLibraries({ parts: definition } as never), message);
         for (const ownership of ["private", "shared"] as const) {
-          assert.throws(() => hsonLiveMap.locus.create({ [ownership]: [{ name: "parts", definition }] } as never), message);
+          assert.throws(() => hsonLiveMap.locus.create({ parts: { ...definition, access: ownership } } as never), message);
           const before = map.capture(), revision = locus.rev;
           assert.throws(() => map.addLibraries({ earlier: { data: 2 }, parts: definition } as never), message);
-          await assert.rejects(locus.addLibraries({ [ownership]: [
-            { name: "earlier", definition: { data: 2 } }, { name: "parts", definition },
-          ] } as never), message);
+          await assert.rejects(locus.admit({ earlier: { data: 2, access: ownership }, parts: { ...definition, access: ownership } } as never), message);
           assert.deepEqual(map.capture(), before); assert.equal(locus.rev, revision);
           assert.throws(() => locus.data.must("earlier")); assert.throws(() => locus.parts.must("parts"));
         }
@@ -189,7 +184,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       has: (target, key) => key === "schema" ? false : Reflect.has(target, key),
     };
     const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 }, schema: ANY_DATA } });
-    const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { count: 1 }, schema: ANY_DATA } }] });
+    const locus = hsonLiveMap.locus.create({ "state": { data: { count: 1 }, schema: ANY_DATA, access: "shared" } });
     const before = map.capture(), revision = locus.rev, state = locus.data.must("state").snap();
     let mapEvents = 0, locusEvents = 0;
     const stopMap = map.commits.observe(() => mapEvents++), stopLocus = locus.commits.observe(() => locusEvents++);
@@ -217,23 +212,18 @@ export async function public_parts_cases(check: (name: string, run: () => void |
           assert.throws(() => map.addLibraries({ earlier: { data: 2 }, parts: definition() } as never), message);
           assert.deepEqual(map.capture(), before); assert.equal(mapEvents, 0);
           for (const ownership of ["private", "shared"] as const) {
-            assert.throws(() => hsonLiveMap.locus.create({ [ownership]: [{ name: "parts", definition: definition() }] } as never), message);
-            await assert.rejects(locus.addLibraries({ [ownership]: [
-              { name: "earlier", definition: { data: 2 } }, { name: "parts", definition: definition() },
-            ] } as never), message);
+            assert.throws(() => hsonLiveMap.locus.create({ parts: Object.assign(definition(), { access: ownership }) } as never), message);
+            await assert.rejects(locus.admit({ earlier: { data: 2, access: ownership }, parts: Object.assign(definition(), { access: ownership }) } as never), message);
             assert.equal(locus.rev, revision); assert.deepEqual(locus.data.must("state").snap(), state);
             assert.throws(() => locus.data.must("earlier")); assert.throws(() => locus.parts.must("parts"));
             assert.equal(locusEvents, 0);
           }
-          assert.throws(() => hsonLiveMap.locus.create({ local: [{ name: "parts", initializer: definition() }] } as never), message);
+          assert.throws(() => hsonLiveMap.locus.create({  }, { local: [{ name: "parts", initializer: definition() }] }), message);
         }
       }
       // Rejected prefixes reserve no names and do not poison subsequent preparation.
       map.addLibraries({ earlier: { data: 2 }, parts: { parts: {} }, page: { document: "<main/>", schema: ANY_DOCUMENT } });
-      await locus.addLibraries({ private: [
-        { name: "earlier", definition: { data: 2 } }, { name: "parts", definition: { parts: {} } },
-        { name: "page", definition: { document: "<main/>", schema: ANY_DOCUMENT } },
-      ] });
+      await locus.admit({ "earlier": { data: 2, access: "private" }, "parts": { parts: {}, access: "private" }, "page": { document: "<main/>", schema: ANY_DOCUMENT, access: "private" } });
       const parts = map.parts.must("parts"), authorityParts = locus.parts.must("parts");
       if (String(parts.mode) === "document" || String(authorityParts.mode) === "document") throw Error("Expected data Libraries");
       assert.deepEqual(parts.snap(), {}); assert.deepEqual(authorityParts.snap(), {});
@@ -242,7 +232,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       assert.equal(locus.data.must("state").schema.get(), ANY_DATA);
       assert.equal(locus.doc.must("page").schema.get(), ANY_DOCUMENT);
       assert.equal(mapEvents, 1); assert.equal(locusEvents, 1);
-      const valid = hsonLiveMap.locus.create({ local: [{ name: "parts", initializer: { parts: {} } }] });
+      const valid = hsonLiveMap.locus.create({  }, { local: [{ name: "parts", initializer: { parts: {} } }] });
       valid.dispose();
     } finally { stopMap(); stopLocus(); locus.dispose(); }
   });
@@ -294,7 +284,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
               } finally { stop(); unwatch(); }
             } else {
               const ownership = route === "private Locus" ? "private" : "shared";
-              const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { count: 1 } } }] });
+              const locus = hsonLiveMap.locus.create({ "state": { data: { count: 1 }, access: "shared" } });
               // Inspect this valid authority through the same public runtime that created it.
               const before = locus.cut().libs, revision = locus.rev;
               const state = locus.data.must("state");
@@ -302,16 +292,15 @@ export async function public_parts_cases(check: (name: string, run: () => void |
               let commits = 0, watches = 0;
               const stop = locus.commits.observe(() => commits++), unwatch = state.at([]).watch(() => watches++);
               try {
-                const invalid = { [ownership]: [{ name: "earlier", definition: legitimate.earlier },
-                  { name: "page", definition: legitimate.page }, { name: "parts", definition }] };
-                if (dynamic) await assert.rejects(locus.addLibraries(invalid as never), message);
+                const invalid = { earlier: { ...legitimate.earlier, access: ownership }, page: { ...legitimate.page, access: ownership }, parts: Object.assign(definition, { access: ownership }) };
+                if (dynamic) await assert.rejects(locus.admit(invalid as never), message);
                 else assert.throws(() => hsonLiveMap.locus.create(invalid as never), message);
                 assert.ok(injected > 0, "The late caller-controlled capture boundary must run.");
                 assert.deepEqual(locus.cut().libs, before); assert.equal(locus.rev, revision);
                 assert.equal(commits, 0); assert.equal(watches, 0);
                 for (const name of ["earlier", "parts", "page"]) assert.throws(() => locus.data.must(name));
-                const valid = { [ownership]: Object.entries(legitimate).map(([name, definition]) => ({ name, definition })) };
-                const admitted = dynamic ? (await locus.addLibraries(valid), locus) : hsonLiveMap.locus.create(valid);
+                const valid = Object.fromEntries(Object.entries(legitimate).map(([name, definition]) => [name, { ...definition, access: ownership as "private" | "shared" }]));
+                const admitted = dynamic ? (await locus.admit(valid), locus) : hsonLiveMap.locus.create(valid);
                 try {
                   const parts = admitted.parts.must("parts");
                   if (String(parts.mode) === "document") throw Error("Expected data Library");
@@ -353,10 +342,10 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         if (String(parts.mode) === "document") throw Error("Expected data Library");
         assert.deepEqual(parts.snap(), { para: deckParts.para });
       } else {
-        const additions = { [route]: [{ name: "parts", definition }] };
+        const additions = { parts: Object.assign(definition, { access: route }) };
         const locus = hsonLiveMap.locus.create(dynamic ? {} : additions);
         try {
-          if (dynamic) await locus.addLibraries(additions);
+          if (dynamic) await locus.admit(additions);
           const parts = locus.parts.must("parts");
           if (String(parts.mode) === "document") throw Error("Expected data Library");
           assert.deepEqual(parts.snap(), { para: deckParts.para });
@@ -391,7 +380,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
   for (const route of ["LiveMap direct", "LiveMap staged", "Locus direct", "Locus staged"] as const) {
     await check(`public intrinsic Part writes: ${route}`, async () => {
       const map = hsonLiveMap.fromLibraries({ parts: { parts: {} } });
-      const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts: {} } }] });
+      const locus = hsonLiveMap.locus.create({ "parts": { parts: {}, access: "private" } });
       const governed = route.startsWith("Locus");
       const selected = governed ? locus.parts.must("parts") : map.parts.must("parts");
       let changes = 0;
@@ -458,7 +447,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     const schema = Hson.schema`<type "data" content <para <content <kind "string" document "string">>>>`;
     const definition = { data: { para: deckParts.para }, schema };
     const map = hsonLiveMap.fromLibraries({ data: definition });
-    const locus = hsonLiveMap.locus.create({ private: [{ name: "data", definition }] });
+    const locus = hsonLiveMap.locus.create({ "data": { ...definition, access: "private" } });
     try {
       assert.equal(map.data.must("data").schema.get(), schema);
       assert.throws(() => hsonLiveMap.fromLibraries({ data: { data: deckParts, schema } }));
@@ -478,8 +467,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
 
   await check("CSS-free Deck composition uses private Parts and scalar parameters", () => {
     const parts = Object.fromEntries(Object.entries(deckParts).map(([name, part]) => [name, { kind: part.kind, document: part.document }]));
-    const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts } }],
-      shared: [{ name: "page", definition: { document: deck } }] });
+    const locus = hsonLiveMap.locus.create({ "parts": { parts, access: "private" }, "page": { document: deck, access: "shared" } });
     try {
       const page = locus.doc.must("page");
       for (const value of ["Deck title", "Deck paragraph", "const x = 1;", "/next", "Next", "One item"]) {
@@ -507,12 +495,10 @@ export async function public_parts_cases(check: (name: string, run: () => void |
 
   await check("public dynamic Locus delivers scoped subject CSS while CSS fragments still require a document shell", async () => {
     const parts = { styled: { kind: "document" as const, document: '<p @:label/>', css: '[hson\\:quad="label"]{color:red}' } };
-    const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: { parts } }], authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    const locus = hsonLiveMap.locus.create({ "parts": { parts, access: "private" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
       const revision = locus.rev;
-      await locus.addLibraries({ shared: [{ name: "page", definition: {
-        document: '<main <hson-part lib="parts" at="styled"/>/>',
-      } }] });
+      await locus.admit({ "page": { document: '<main <hson-part lib="parts" at="styled"/>/>', access: "shared" } });
       assert.equal(locus.rev, revision + 1);
       const session = await locus.session.create({ libraries: ["page"] });
       const snapshot = session.now().libs;
@@ -543,8 +529,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       const connector = hsonTransform.fromHson('<hson-part lib="parts" at="para" text="text"/>').toNode().$_content[0];
       assert.ok(typeof connector === "object" && connector !== null);
       assert.throws(() => page.document.content.insert({ kind: "path", path: [] }, 0, connector), message);
-      const locus = hsonLiveMap.locus.create({ shared: Object.entries(definitions).map(([name, definition]) => ({ name, definition })) });
-      try { await assert.rejects(locus.addLibraries({ shared: [{ name: "page", definition: { document: plain } }] }), message); }
+      const locus = hsonLiveMap.locus.create(Object.fromEntries(Object.entries(definitions).map(([name, definition]) => [name, { ...definition, access: "shared" as const }])));
+      try { await assert.rejects(locus.admit({ "page": { document: plain, access: "shared" } }), message); }
       finally { locus.dispose(); }
     }
   });

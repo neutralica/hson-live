@@ -56,7 +56,7 @@ binding.dispose();
 const hostedPageDefinition = { document: "<main/>",
   schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` };
 const hostedMap = hsonLiveMap.fromLibraries({ page: hostedPageDefinition });
-const hosted = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: hostedPageDefinition }] });
+const hosted = hsonLiveMap.locus.create({ "page": { ...hostedPageDefinition, access: "shared" } });
 void hosted;
 
 const localSsr = libraries.cut({ html: "page" });

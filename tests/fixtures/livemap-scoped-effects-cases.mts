@@ -3,7 +3,6 @@ import { canonical_graph_equal } from "../../src/api/livemap/livemap.document.in
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
 import { document_scoped_libraries_semantically_equal as equal, type PortableDocumentScopedLibrary } from "../../src/api/livemap/livemap.document.scoped-portable.ts";
 import { capture_document_scoped_effect, encode_document_scoped_effects } from "../../src/api/livemap/livemap.document.scoped-effects.ts";
@@ -28,13 +27,13 @@ const replace = (p: readonly number[], index: number, member: string): LiveMapGr
 const move = (p: readonly number[], from: number, to: number): LiveMapGraphOp => ({ domain: "graph", op: "move-content", target: target(p), from, to });
 const remove = (p: readonly number[], index: number): LiveMapGraphOp => ({ domain: "graph", op: "remove-content", target: target(p), index });
 function sender(text = '<main <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/>/>') {
-  const map = hsonLiveMap.fromLibraries({ parts: collection({
+  const map = hsonLiveMap.fromLibraries({ parts: { parts: {
     leaf: { kind: "document", document: '<b @:root <span @:label "click"/>/>', css: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
     panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: '@media screen{:scope{color:red}}' },
     green: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: ':scope{color:green}' },
     plain: { kind: "document", document: '<i/>' },
     globals: { kind: "document", document: '<em @:root/>', css: ':scope{animation:pulse 1s} @keyframes pulse{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
-  }), page: { document: '<main/>' }, other: { data: { n: 0 } } });
+  } }, page: { document: '<main/>' }, other: { data: { n: 0 } } });
   const a = authority(map), owner = a.libraries()[1]!;
   map.doc.must("page").css.stylesheet('main{padding:7px}');
   return { map, a, owner, before: a.prepareScopedDocument(owner, source(text)) };

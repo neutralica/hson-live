@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { hsonLiveMap, type LiveMap } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
 import { document_scoped_libraries_semantically_equal as equal,
   type PortableDocumentScopedLibrary } from "../../src/api/livemap/livemap.document.scoped-portable.ts";
@@ -28,7 +27,7 @@ function unchanged(f: { map: Pick<LiveMap, "capture" | "rev" | "commits">; aggre
   assert.equal(f.aggregate.identityEpoch().issued(), ledger); assert.equal(f.map.rev, rev); assert.equal(commits, 0);
 }
 function fixture() {
-  const map = hsonLiveMap.fromLibraries({ parts: collection({
+  const map = hsonLiveMap.fromLibraries({ parts: { parts: {
     leaf: { kind: "document", document: '<button @:root <span @:label "Click"/>/>',
       css: ':scope{color:blue} @supports(display:grid){[hson\\:quad="label"]{display:grid}}' },
     panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>',
@@ -36,7 +35,7 @@ function fixture() {
     global: { kind: "document", document: '<i/>',
       css: ':scope{animation:glow 1s} @keyframes glow{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
     empty: { kind: "document", document: '<em/>' },
-  }), page: { document: '<main/>' } });
+  } }, page: { document: '<main/>' } });
   map.doc.must("page").css.stylesheet('main{margin:7px}');
   const aggregate = authority(map), owner = aggregate.libraries()[1]!;
   const parsed = parse_authored_document_library('<main @:_000000002 <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <hson-part lib="parts" at="global"/> <hson-part lib="parts" at="empty"/>/>');

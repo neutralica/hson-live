@@ -6,7 +6,7 @@ import { definition, document, receiver, caught } from "./locus-scoped-hosted-ca
 const [file, baseline] = process.argv.slice(2);
 assert.ok(file && baseline);
 const source: { rev: number; css: string; incarnation: string } = JSON.parse(baseline);
-const locus = await hsonLiveMap.locus.resume({ ...definition, logicalMapId: "h1-restart", persistence: new FileCheckpointAdapter(file) });
+const locus = await hsonLiveMap.locus.resume({ ...definition[0] }, { ...definition[1], logicalMapId: "h1-restart", persistence: new FileCheckpointAdapter(file) });
 assert.equal(locus.rev, source.rev);
 assert.equal(locus.incarnationId, source.incarnation, "durable authority position survives; runtime identities do not");
 const a = await receiver(locus, "http", ["page", "data", "later", "flat", "bare"]);

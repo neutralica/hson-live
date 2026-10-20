@@ -1144,7 +1144,7 @@ export type LiveMapDocumentLibraryInput<
   schema: TSchema;
   data?: never;
   parts?: never;
-  css?: never;
+  css?: string;
 }>;
 
 /** Established data, document, or intrinsically governed Parts input. */
@@ -1187,6 +1187,24 @@ export type LiveMapPartsDefinitionCheck<TInput> = TInput extends { readonly part
 export type LiveMapPartsDefinitionsCheck<TDefinitions> = {
   readonly [TName in keyof TDefinitions]: LiveMapPartsDefinitionCheck<TDefinitions[TName]>;
 };
+
+/** Reject required contradictory family fields even without exact optional properties. */
+type RequiredDefinitionKeys<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T];
+type LiveMapDefinitionValidity<T, Metadata extends string> = T extends unknown
+  ? (Exclude<keyof T, "data" | "document" | "parts" | "schema" | "css" | Metadata> extends never ? unknown : never)
+    & ("access" extends Metadata ? T extends { access: infer A } ? [A] extends ["private" | "shared"] ? unknown : never : unknown : unknown)
+    & LiveMapPartsDefinitionCheck<T> & (
+    T extends { parts: unknown } ? Extract<RequiredDefinitionKeys<T>, "data" | "document" | "schema" | "css"> extends never ? unknown : never
+    : T extends { data: unknown } ? Extract<RequiredDefinitionKeys<T>, "document" | "parts" | "css"> extends never ? unknown : never
+    : T extends { document: unknown } ? Extract<RequiredDefinitionKeys<T>, "data" | "parts"> extends never ? unknown : never
+    : never)
+  : never;
+type InvalidLiveMapDefinition<T, Metadata extends string> = T extends unknown
+  ? T extends LiveMapDefinitionValidity<T, Metadata> ? never : T
+  : never;
+export type LiveMapDefinitionCheck<T, Metadata extends string = never> = 0 extends (1 & T) ? unknown
+  : [InvalidLiveMapDefinition<NonNullable<T>, Metadata>] extends [never] ? unknown : never;
+export type LiveMapDefinitionsCheck<T, Metadata extends string = never> = { readonly [K in keyof T]: LiveMapDefinitionCheck<T[K], Metadata> };
 
 /** Only Part-shaped write positions infer additional key evidence; ordinary proposals keep their signatures. */
 export type LiveMapPartWrite<TValue, TProposal, TResult> =
@@ -1899,7 +1917,7 @@ export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
   batch: LiveMapSynchronousAuthoring<LiveMapStagedWriter<this, void>, LiveMapCommit>;
   /** Admit one atomic batch of new libraries into this map's registry. */
   addLibraries<const TDefinitions extends LiveMapDefinitions>(
-    definitions: TDefinitions & LiveMapPartsDefinitionsCheck<NoInfer<TDefinitions>> & (Extract<LibraryCertainNames<LiveMapKnownDefinitions<TDefinitions>>, LibraryCertainNames<LiveMapKnownDefinitions<TLibraries>>> extends never
+    definitions: TDefinitions & LiveMapDefinitionsCheck<NoInfer<TDefinitions>> & (Extract<LibraryCertainNames<LiveMapKnownDefinitions<TDefinitions>>, LibraryCertainNames<LiveMapKnownDefinitions<TLibraries>>> extends never
       ? unknown : never),
   ): LiveMapLibraryAdmission<TDefinitions>;
   /** Replay one portable local library-add commit at its recorded base revision. */

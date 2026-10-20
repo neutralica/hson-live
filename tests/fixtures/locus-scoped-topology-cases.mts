@@ -143,8 +143,9 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       const libraries = batch ? [{ name: "initial", ownership: "shared" as const }] : [{ name: "parts", ownership }, { name: "initial", ownership: "shared" as const }];
       const { locus } = create_registry_locus_internal({ map, libraries, defaultProjection: { libraries: ["initial"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
       try {
-        const defs = [{ name: "page", definition: page, css: '[hson\\:quad="footer"]{color:purple}' }];
-        await locus.addLibraries(batch ? { [ownership]: [{ name: "parts", definition: parts }], shared: ownership === "shared" ? [{ name: "parts", definition: parts }, ...defs] : defs } : { shared: defs });
+        const definitions = { page: { ...page, css: '[hson\\:quad="footer"]{color:purple}', access: "shared" as const },
+          ...(batch ? { parts: { ...parts, access: ownership } } : {}) };
+        await locus.admit(definitions);
         assert.equal(map.rev, 1); assert.equal(state(map).scopes.occurrences.length, 5);
         const session = await locus.session.create({ libraries: ["page"] });
         assert.equal(session.now().libs.libraries[0]!.scopes!.occurrences.length, 5);
@@ -157,7 +158,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       logicalMapId: f.state.checkpoint.logicalMapId, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) }, { scopedDocuments: true });
     try {
       assert.ok(checkpoint_libraries_equal(f.expected.libraries, authority(map).captureSemanticCheckpoint().libraries));
-      await locus.addLibraries({ shared: [{ name: "later", definition: page, css: '[hson\\:quad="footer"]{color:purple}' }] });
+      await locus.admit({ "later": { ...page, css: '[hson\\:quad="footer"]{color:purple}', access: "shared" } });
       const nextMap = initial(), restarted = await resume_registry_locus({ map: nextMap, libraries: initialCatalog,
         persistence: f.adapter, logicalMapId: f.state.checkpoint.logicalMapId }, { scopedDocuments: true });
       try { assert.ok(checkpoint_libraries_equal(authority(map).captureSemanticCheckpoint().libraries,
@@ -174,7 +175,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
     try {
       const session = await locus.session.create({ libraries: ["initial"] }, { resumable: true });
       const sessionBefore = session.now(), verify = preserved(map);
-      await assert.rejects(locus.addLibraries({ shared: [{ name: "earlier", definition: { data: 1 } }, { name: "page", definition: { document: '<hson-part lib="parts" at="missing"/>' } }] }), /Unknown Part/);
+      await assert.rejects(locus.admit({ "earlier": { data: 1, access: "shared" }, "page": { document: '<hson-part lib="parts" at="missing"/>', access: "shared" } }), /Unknown Part/);
       verify(); assert.deepEqual(session.now(), sessionBefore); assert.throws(() => locus.data.must("earlier"));
     } finally { locus.dispose(); }
   });

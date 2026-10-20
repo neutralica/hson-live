@@ -37,9 +37,9 @@ export type {
   LocusActionContext,
   LocusActionHandler,
   LocusActions,
-  LocusAuthorityLibraryDefinition,
+  LocusLibraryDefinition,
+  LocusDefinitions,
   LocusLocalLibraryDefinition,
-  LocusRuntimeLibraryAdditions,
   LocusDefinitionOptions,
   LocusResumeOptions,
   LocusActionDedupeSchedule,
@@ -66,7 +66,6 @@ export type {
   LocusActivity,
 } from "../../types/locus.core.types.js";
 
-export type { LocusLibraryAdmission } from "../../types/locus.core.types.js";
 export type { LocusLibrary, LocusDataLibrary, LocusDataLocation, LocusDocumentLibrary, LocusDocumentLocation, ReadLibrary, ReadDataLibrary, ReadDataLocation, ReadDocumentLibrary } from "../../types/governor.types.js";
 
 export type { LibraryFamily, LibraryFamilySelector, LibraryFamilyNamespaces } from "../../types/library-selectors.types.js";

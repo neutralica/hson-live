@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
 import { validate_document_path as path } from "../../src/api/livemap/livemap.document.path.ts";
 import { encode_document_scoped_quads as encode, make_document_scoped_quads as make,
@@ -21,7 +20,7 @@ import type { LiveMapGraphOp } from "../../src/types/livemap.types.ts";
 const source = (text: string) => {
   const parsed = parse_authored_document_library(text); return { root: parsed.root, quads: parsed.declarations };
 };
-const part = (document: string, css?: string) => ({ kind: "document", document, ...(css === undefined ? {} : { css }) });
+const part = (document: string, css?: string) => ({ kind: "document" as const, document, ...(css === undefined ? {} : { css }) });
 const definitions = {
   leaf: part('<b @:root/>', ':scope{color:blue}'),
   panel: part('<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', ':scope{color:red}'),
@@ -41,7 +40,7 @@ const at = (c: PreparedDocumentScopedLibrary, p: readonly number[]) => {
   const scope = c.scopes.occurrences.find(scope => scope.rootQuid === c.overlay.quidAtPath(path(p))); assert.ok(scope); return scope;
 };
 function fixture() {
-  const map = hsonLiveMap.fromLibraries({ parts: collection(definitions), page: { document: '<main/>' }, other: { data: { n: 0 } } });
+  const map = hsonLiveMap.fromLibraries({ parts: { parts: definitions }, page: { document: '<main/>' }, other: { data: { n: 0 } } });
   const page = map.doc.must("page"); assert.equal(page.mode, "document"); if (page.mode !== "document") throw Error();
   page.css.stylesheet('main{padding:3px}');
   const aggregate = internal_livemap_aggregate_authority(map), owner = aggregate.libraries()[1]!;

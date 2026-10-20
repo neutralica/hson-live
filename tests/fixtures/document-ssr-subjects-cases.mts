@@ -1,4 +1,3 @@
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { make_livemap_from_authored_libraries_internal as authored,
@@ -60,7 +59,7 @@ export function ssr_subject_fixture(): DocumentSsrSubjectFixture {
 export function flat_final_subject_fixture(): DocumentSsrSubjectFixture {
   const map = authored({
     layout: { document: '<html <head/> <body <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>/>' },
-    components: collection({ button: { kind: "document", document: '<button @:source/>' } }),
+    components: { parts: { button: { kind: "document", document: '<button @:source/>' } } },
     final: { document: '<html <head/> <body <button/> <button/>/>/>' },
   });
   const page = map.doc.must("final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;

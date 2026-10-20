@@ -1,6 +1,7 @@
+import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
-import { authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { authority_definitions_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
@@ -399,7 +400,7 @@ for (const sharedFeature of [true, false]) {
   replica.dispose();
   let executed = 0;
   const authorityIdentity = internal_livemap_aggregate_authority(authority).hostedPosition().authority;
-  const locus = hsonLiveMap.locus.create({ ...authority_definition_from_fixture_options({ map: authority, ...test_public_projection(authority) }),
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ map: authority, ...test_public_projection(authority) }),
     ...authorityIdentity, authorizeAction: () => false, actions: { save: () => { executed += 1; } } });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
@@ -416,7 +417,7 @@ for (const sharedFeature of [true, false]) {
 
 {
   const authority = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } });
-  const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(authority, [
+  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [
       { name: "page", ownership: "shared" },
       { name: "panel", ownership: "local", initializer: { document: "<aside <button/>/>", schema: PanelSchema } },
     ]), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: [] }) });

@@ -141,12 +141,7 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
     } finally { mirror.dispose(); }
   });
   await check("mixed flat subject CSS and scoped delivery remain atomic and projection-owned", async () => {
-    const locus = hsonLiveMap.locus.create({
-      private: [{ name: "parts", definition: { parts: { p: { kind: "document", document: '<b @:label "Scoped"/>', css: 'b{color:blue}' } } } }],
-      shared: [{ name: "page", definition: { document: '<main <button @:a "Flat"/>/>' }, css: '[hson\\:quad="a"]{color:red}' },
-        { name: "scoped", definition: { document: '<main <hson-part lib="parts" at="p"/>/>' } }],
-      authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
-    });
+    const locus = hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: '<b @:label "Scoped"/>', css: 'b{color:blue}' } }, access: "private" }, "page": { document: '<main <button @:a "Flat"/>/>', css: '[hson\\:quad="a"]{color:red}', access: "shared" }, "scoped": { document: '<main <hson-part lib="parts" at="p"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     const session = await locus.session.create({ libraries: ["page", "scoped", "parts"] });
     const binding = bind_locus_http(locus, { endpoint: "/flat" });
     const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://flat.test/flat", fetch: (input, init) => binding.handle(new Request(input, init), {}) });
@@ -169,7 +164,7 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
       await assert.rejects(locus.stage(w => { w.doc.must("page").at([0]).delete(); w.doc.must("scoped").at([0]).delete(); }));
       assert.deepEqual(session.now(), before); assert.equal(echo.sync.appliedRev, 1);
       assert.throws(() => page(map).document.attrs.set({ kind: "path", path: path([0]) }, "title", "forbidden"));
-      await locus.addLibraries({ shared: [{ name: "added", definition: { document: '<aside @:new "Dynamic"/>' }, css: '[hson\\:quad="new"]{color:purple}' }] });
+      await locus.admit({ "added": { document: '<aside @:new "Dynamic"/>', css: '[hson\\:quad="new"]{color:purple}', access: "shared" } });
       const admitted = await locus.session.create({ libraries: ["added"] });
       const secondTransport = hsonLiveMap.echo.transport.http({ endpoint: "http://flat.test/flat", fetch: (input, init) => binding.handle(new Request(input, init), {}) });
       const second = await hsonLiveMap.echo.create({ now: admitted.now(), credential: admitted.credential!, transport: secondTransport });

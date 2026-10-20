@@ -41,13 +41,7 @@ try {
       missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
   };
   let handled = false;
-  locus = hsonLiveMap.locus.create({
-    shared: [{ name: "page", definition: { document: "<main <button/>/>", schema } }],
-    interactions: [interaction],
-    defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
-    authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
-    actions: { save: () => { handled = true; } },
-  });
+  locus = hsonLiveMap.locus.create({ "page": { document: "<main <button/>/>", schema, access: "shared" } }, { interactions: [interaction], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }), actions: { save: () => { handled = true; } } });
   const retained = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] },
     { connection: { principalId: "development-anonymous" } });
   const setup = JSON.stringify({ now: retained.now(), credential: retained.credential });

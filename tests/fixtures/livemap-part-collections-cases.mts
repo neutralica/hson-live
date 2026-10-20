@@ -10,7 +10,7 @@ import { add_livemap_part_collection_internal as collect, read_livemap_part_inte
   compose_livemap_document_internal as compose, make_livemap_from_canonical_libraries_internal,
   make_livemap_mirror_from_semantic_checkpoint_internal, make_livemap_client_composition_from_portable_aggregate_internal,
   reconcile_client_projection_snapshot_internal, install_client_projected_topology_internal } from "../../src/api/livemap/livemap.libraries.ts";
-import { PART_COLLECTION_VALIDATION as validation, part_collection_definition_internal as definition,
+import { PART_COLLECTION_VALIDATION as validation,
   validate_part_collection } from "../../src/api/livemap/livemap.parts.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { decode_hosted_root, encode_hosted_root, make_portable_aggregate_snapshot, make_portable_aggregate_commit,
@@ -33,15 +33,16 @@ import { locus_map_internal, echo_map_internal } from "../../src/internal/govern
 import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
 import { test_echo_transport } from "../helpers/echo-websocket-transport.mts";
 import { acquire_document_identity, acquire_projected_identity } from "../helpers/livemap-identity-internal.mts";
-import type { LiveMap, LiveMapDataLibrary, LiveMapCommit, LiveMapSnapshot } from "../../src/types/livemap.types.ts";
+import type { LiveMapPartCollection, LiveMap, LiveMapDataLibrary, LiveMapCommit, LiveMapSnapshot } from "../../src/types/livemap.types.ts";
 import type { LocusWebSocketLike } from "../../src/index.ts";
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 
 const css = '@layer base{}@layer theme{}@property --tone{syntax:"<color>";inherits:false;initial-value:red}@layer base{article{color:var(--tone)}@media (min-width:1px){article>span{display:block}}}@keyframes pulse{from{opacity:0}to{opacity:1}}article{animation:pulse 1s}';
 const parts = () => ({
-  "first/β": { kind: "document", document: '<article @:root <span @:label "First"/> <i/>/>', css },
-  "二": { kind: "document", document: '<a @:label href="/" "Second"/>', css: "" },
+  "first/β": { kind: "document" as const, document: '<article @:root <span @:label "First"/> <i/>/>', css },
+  "二": { kind: "document" as const, document: '<a @:label href="/" "Second"/>', css: "" },
 });
+const definition = (parts: LiveMapPartCollection) => ({ parts });
 const fixture = () => hsonLiveMap.fromLibraries({ collection: definition(parts()) });
 function data(map: LiveMap, name = "collection"): LiveMapDataLibrary {
   const library = require_livemap_library_internal(map, name); if (library.mode === "document") throw Error("Expected data Library"); return library;
@@ -169,7 +170,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     atomic(client, () => data(client, "local").schema.use(ANY_DATA), /Part collections/);
     atomic(client, () => data(client).schema.use(ANY_DATA), /Shared|Locus authority/);
     data(client, "local").at(["p"]).replace({ kind: "document", document: "<aside/>" });
-    const locus = hsonLiveMap.locus.create({ shared: [{ name: "collection", definition: { parts: {} } }] });
+    const locus = hsonLiveMap.locus.create({ "collection": { parts: {}, access: "shared" } });
     try {
       assert.equal("use" in locus.parts.must("collection").schema, false);
       const authorityMap = locus_map_internal(locus), before = owner(authorityMap).hostedPosition();
@@ -638,17 +639,11 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("hosted managed actions Echo acceptance durable replay and restart enforce the same collection contract", async () => {
     const adapter = new MemoryCheckpointAdapter();
-    const options = {
-      logicalMapId: "part-collection-durable", persistence: adapter,
-      shared: [{ name: "collection", definition: definition(parts()) }] as const,
-      private: [{ name: "hidden", definition: definition({ secret: { kind: "document", document: '<secret-only/>' } }) }] as const,
-      authorizeProjection: () => ({ libraries: ["collection", "hidden"] }),
-      actions: {
+    const options = [{ "collection": { parts: parts(), access: "shared" }, "hidden": { parts: { secret: { kind: "document", document: '<secret-only/>' } }, access: "private" } }, { logicalMapId: "part-collection-durable", persistence: adapter, authorizeProjection: () => ({ libraries: ["collection", "hidden"] }), actions: {
         valid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二", "document"]).set('<p @:label/>'); },
         invalid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二", "css"]).set('@import "x";'); },
-      },
-    };
-    const locus = await hsonLiveMap.locus.resume(options), map = locus_map_internal(locus), pair = sockets();
+      } }] as const;
+    const locus = await hsonLiveMap.locus.resume(options[0], options[1]), map = locus_map_internal(locus), pair = sockets();
     const session = await locus.session.create({ libraries: ["collection", "hidden"] });
     const detach = bind_locus_websocket(locus, pair.server);
     const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
@@ -665,27 +660,26 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       assert.equal(pair.wire.some(raw => raw.includes('secret-only')), false);
       assert.equal(owner(map).identityEpoch().issued().size, 0);
     } finally { echo.dispose(); detach(); locus.dispose(); }
-    const durable = await load_persistent_locus_hosted_aggregate_internal(options.logicalMapId, { persistence: adapter });
+    const durable = await load_persistent_locus_hosted_aggregate_internal(options[1].logicalMapId, { persistence: adapter });
     assert.ok(durable); assert.equal(data(durable!.map).snap(["二", "document"]), '<p @:label/>'); durable!.dispose();
-    const restarted = await hsonLiveMap.locus.resume(options);
+    const restarted = await hsonLiveMap.locus.resume(options[0], options[1]);
     try {
       assert.equal(data(locus_map_internal(restarted)).snap(["二", "document"]), '<p @:label/>');
       const rev = restarted.rev, appended = adapter.appendCalls.length;
       assert.equal((await restarted.dispatchAction({ type: "action", id: "restart-invalid", name: "invalid" })).type, "error");
       assert.equal(restarted.rev, rev); assert.equal(adapter.appendCalls.length, appended);
       await hsonLiveMap.locus.checkpoint(restarted);
-      const manifest = adapter.state(options.logicalMapId)!.checkpoint;
+      const manifest = adapter.state(options[1].logicalMapId)!.checkpoint;
       assert.equal(manifest.format, "hson-locus-durable-aggregate-checkpoint");
       if (manifest.format !== "hson-locus-durable-aggregate-checkpoint") throw Error("Expected durable manifest");
       assert.equal(manifest.registry.libraries[0]!.validation, validation);
     } finally { restarted.dispose(); }
-    const reconstructed = await load_persistent_locus_hosted_aggregate_internal(options.logicalMapId, { persistence: adapter });
+    const reconstructed = await load_persistent_locus_hosted_aggregate_internal(options[1].logicalMapId, { persistence: adapter });
     assert.ok(reconstructed); atomic(reconstructed!.map, () => data(reconstructed!.map).at(["二", "document"]).set('<p'));
     reconstructed!.dispose();
   });
   await check("client-local Part initializer and repeated installation preserve validation and reject malformed seeds", async () => {
-    const locus = hsonLiveMap.locus.create({ shared: [{ name: "base", definition: { data: { value: 1 } } }],
-      local: [{ name: "collection", initializer: definition(parts()) }], authorizeProjection: () => ({ libraries: ["base", "collection"] }) });
+    const locus = hsonLiveMap.locus.create({ "base": { data: { value: 1 }, access: "shared" } }, { local: [{ name: "collection", initializer: definition(parts()) }], authorizeProjection: () => ({ libraries: ["base", "collection"] }) });
     const session = await locus.session.create({ libraries: ["base", "collection"] }), pair = sockets();
     const now = session.now(); assert.equal(now.local[0]!.validation, validation);
     const bad = now.local.map(entry => ({ ...entry, root: encode_hosted_root(graph({ bad: { kind: "document", document: '<p' } })) }));
@@ -706,17 +700,15 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     } finally { echo.dispose(); detach(); locus.dispose(); }
   });
   await check("runtime hosted admission projects one data binding and durable reconstruction retains its contract", async () => {
-    const adapter = new MemoryCheckpointAdapter(), options = { logicalMapId: "runtime-part-collection", persistence: adapter,
-      shared: [{ name: "base", definition: { data: { value: 1 } } }],
-      authorizeProjection: ({ requested }: { requested: { libraries: readonly string[] } }) => ({ libraries: requested.libraries }) };
-    const locus = await hsonLiveMap.locus.resume(options), map = locus_map_internal(locus), pair = sockets();
+    const adapter = new MemoryCheckpointAdapter(), options = [{ "base": { data: { value: 1 }, access: "shared" } }, { logicalMapId: "runtime-part-collection", persistence: adapter, authorizeProjection: ({ requested }: { requested: { libraries: readonly string[] } }) => ({ libraries: requested.libraries }) }] as const;
+    const locus = await hsonLiveMap.locus.resume(options[0], options[1]), map = locus_map_internal(locus), pair = sockets();
     const session = await locus.session.create({ libraries: ["base"] }), detach = bind_locus_websocket(locus, pair.server);
     const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
     try {
       const before = map.capture(), appended = adapter.appendCalls.length;
-      await assert.rejects(locus.addLibraries({ shared: [{ name: "bad", definition: { data: { late: { kind: "document", document: '<p' } }, validation } }] } as never));
+      await assert.rejects(locus.admit({ "bad": { parts: { late: { kind: "document", document: '<p' } }, access: "shared" } }));
       assert.deepEqual(map.capture(), before); assert.equal(adapter.appendCalls.length, appended);
-      await locus.addLibraries({ shared: [{ name: "collection", definition: definition(parts()) }] });
+      await locus.admit({ "collection": { parts: parts(), access: "shared" } });
       assert.equal(map.rev, before.revision + 1); assert.equal(adapter.appendCalls.length, appended + 1);
       const topology = adapter.appendCalls.at(-1)!.commit.topology;
       assert.equal(topology!.operation.libraries.length, 1); assert.equal(topology!.operation.libraries[0]!.validation, validation);
@@ -725,10 +717,10 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       assert.equal(owner(echo_map_internal(echo)).libraries().length, 2);
       assert.equal(pair.wire.some(raw => raw.includes('hson-part-collection-v1')), true);
       const revision = map.rev;
-      await assert.rejects(locus.addLibraries({ shared: [{ name: "collection", definition: { data: {} } }] } as never));
+      await assert.rejects(locus.admit({ "collection": { data: {}, access: "shared" } }));
       assert.equal(map.rev, revision);
     } finally { echo.dispose(); detach(); locus.dispose(); }
-    const resumed = await hsonLiveMap.locus.resume(options);
+    const resumed = await hsonLiveMap.locus.resume(options[0], options[1]);
     try { assert.equal(read(locus_map_internal(resumed), "collection", "二").key, "二");
       assert.equal(owner(locus_map_internal(resumed)).identityEpoch().issued().size, 0); }
     finally { resumed.dispose(); }

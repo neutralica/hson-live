@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform, enable_interactions, add_interaction } from "../../src/index.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
 import { create_locus_hosted_aggregate_internal as create, type LocusHostedAggregateStageWriter } from "../../src/api/locus/locus.aggregate.ts";
 import { prepare_locus_scoped_commit_internal as encode } from "../../src/api/locus/locus.scoped-preparation.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../../src/api/locus/locus.projection.ts";
@@ -36,13 +35,13 @@ const listener = { event: "click", target: "element" as const, capture: false, o
   missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false };
 
 async function fixture() {
-  const map = hsonLiveMap.fromLibraries({ parts: collection({
+  const map = hsonLiveMap.fromLibraries({ parts: { parts: {
     leaf: { kind: "document", document: '<b @:root <span @:label "visible"/>/>', css: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
     panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: '@media screen{:scope{color:red}}' },
     green: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: ':scope{color:green}' },
     plain: { kind: "document", document: '<i/>' },
     secret: { kind: "document", document: '<strong "PRIVATE_DEFINITION_SENTINEL"/>' },
-  }), page: { document: '<main @:page <footer @:_abcdefghj/>/>' }, other: { data: { n: 0 } }, hidden: { document: '<aside/>' } });
+  } }, page: { document: '<main @:page <footer @:_abcdefghj/>/>' }, other: { data: { n: 0 } }, hidden: { document: '<aside/>' } });
   const a = authority(map), library = a.libraries()[1]!;
   const footer = a.documentOverlay(library).quidAtPath(path([0, 0, 0]))!;
   enable_interactions(map);

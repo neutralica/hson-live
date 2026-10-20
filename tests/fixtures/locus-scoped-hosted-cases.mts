@@ -17,12 +17,7 @@ const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection 
   libraries: connection?.principalId === "denied" ? requested.libraries.filter(n => n === "data") : requested.libraries,
   writableDocuments: connection?.principalId === "writer" ? requested.libraries : [],
 });
-export const definition = {
-  private: [{ name: "parts", definition: parts }, { name: "hidden", definition: { data: { secret: "PRIVATE_DATA" } } }],
-  shared: [{ name: "page", definition: page }, { name: "bare", definition: { document: '<main <hson-part lib="parts" at="bare"/>/>' } },
-    { name: "flat", definition: { document: '<html @:flat <head/> <body/>/>' } }, { name: "data", definition: { data: { n: 0 } } }],
-  local: [{ name: "local", initializer: { data: { n: 0 } } }], authorizeProjection,
-} as const;
+export const definition = [{ "parts": { ...parts, access: "private" }, "hidden": { data: { secret: "PRIVATE_DATA" }, access: "private" }, "page": { ...page, access: "shared" }, "bare": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" }, "flat": { document: '<html @:flat <head/> <body/>/>', access: "shared" }, "data": { data: { n: 0 }, access: "shared" } }, { local: [{ name: "local", initializer: { data: { n: 0 } } }], authorizeProjection }] as const;
 export const names = ["page", "bare", "flat", "data", "local", "parts", "hidden"];
 export type Replica = Echo<LiveMap>;
 export type Route = "http" | "websocket";
@@ -121,7 +116,7 @@ function subjectIds(css: string) { return [...css.matchAll(/hson\\:quid="([^"]+)
 export async function hosted_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   for (const kind of ["http", "websocket"] as const) {
     await check(`${kind}: public scoped state, ordered updates, grants, retirement and disposal`, async () => {
-      const locus = hsonLiveMap.locus.create(definition);
+      const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
       const a = await receiver(locus, kind), b = await receiver(locus, kind, names, "writer"), denied = await receiver(locus, kind, names, "denied");
       try {
         const now = a.session.now();
@@ -182,7 +177,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         assert.equal(locus.rev, 3); assert.equal(left.active, false); assert.equal(right.active, true);
         assert.deepEqual({ graph: document(a.echo).root(), css: document(a.echo).css.snapshot(), rev: a.echo.sync.appliedRev, observations: revisions.length }, beforeClaims);
         assert.deepEqual(revisions, [1, 2, 3]); stop();
-        await locus.addLibraries({ shared: [{ name: "later", definition: page }], private: [{ name: "privateLater", definition: page }] });
+        await locus.admit({ "later": { ...page, access: "shared" }, "privateLater": { ...page, access: "private" } });
         await caught(a.echo, locus); assert.throws(() => a.echo.doc.must("later"));
         await a.session.update({ libraries: ["page", "later", "data", "local", "privateLater"] });
         await until(() => { if (a.echo.sync.failure) throw a.echo.sync.failure.cause ?? Error(a.echo.sync.failure.message); try { return document(a.echo, "later").q("left") !== undefined; } catch { return false; } }, "dynamic scoped grant");
@@ -215,7 +210,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
     });
 
     await check(`${kind}: flat delivery stays flat until an authored Part is inserted`, async () => {
-      const locus = hsonLiveMap.locus.create(definition), active = await receiver(locus, kind, ["flat", "data"]);
+      const locus = hsonLiveMap.locus.create(definition[0], definition[1]), active = await receiver(locus, kind, ["flat", "data"]);
       try {
         const subject = document(active.echo, "flat").q("flat")!;
         await locus.stage(w => {
@@ -239,7 +234,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
     });
 
     await check(`${kind}: missed-tail replay, stale initialization and fresh session isolation`, async () => {
-      const locus = hsonLiveMap.locus.create(definition), a = await receiver(locus, kind);
+      const locus = hsonLiveMap.locus.create(definition[0], definition[1]), a = await receiver(locus, kind);
       try {
         const local = a.echo.data.must("local"); assert.ok(String(local.mode) !== "document" && local.source === "client-local"); local.at(["n"]).set(42);
         const left = document(a.echo).q("left")!, right = document(a.echo).q("right")!;
@@ -280,7 +275,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
 export async function hosted_scoped_rejection_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   for (const kind of ["http", "websocket"] as const) {
     await check(`${kind}: corrupt initial scoped evidence and cross-session state fail atomically`, async () => {
-      const locus = hsonLiveMap.locus.create(definition), active = await receiver(locus, kind);
+      const locus = hsonLiveMap.locus.create(definition[0], definition[1]), active = await receiver(locus, kind);
       try {
         const graph = document(active.echo).root(), css = document(active.echo).css.snapshot();
         let observations = 0; const stop = active.echo.commits.observe(() => observations++);
@@ -305,9 +300,9 @@ export async function hosted_scoped_rejection_cases(check: (name: string, run: (
       } finally { active.dispose(); locus.dispose(); }
     });
     await check(`${kind}: corrupt projection reconciliation cannot install a partial Library grant`, async () => {
-      const locus = hsonLiveMap.locus.create(definition), active = await receiver(locus, kind);
+      const locus = hsonLiveMap.locus.create(definition[0], definition[1]), active = await receiver(locus, kind);
       try {
-        await locus.addLibraries({ shared: [{ name: "later", definition: page }] }); await caught(active.echo, locus);
+        await locus.admit({ "later": { ...page, access: "shared" } }); await caught(active.echo, locus);
         const graph = document(active.echo).root(), css = document(active.echo).css.snapshot();
         const subject = document(active.echo).q("left")!; let observations = 0;
         const stop = active.echo.commits.observe(() => observations++);
@@ -328,7 +323,7 @@ export async function hosted_scoped_rejection_cases(check: (name: string, run: (
     });
     await check(`${kind}: invalid scoped effects reject without partial graph CSS progress or observations`, async () => {
       for (const corruption of ["before", "ordinal", "created", "missing"] as const) {
-        const locus = hsonLiveMap.locus.create(definition), active = await receiver(locus, kind);
+        const locus = hsonLiveMap.locus.create(definition[0], definition[1]), active = await receiver(locus, kind);
         try {
           const graph = document(active.echo).root(), css = document(active.echo).css.snapshot(), subject = document(active.echo).q("left")!;
           let observations = 0; const stop = active.echo.commits.observe(() => observations++);
@@ -360,7 +355,7 @@ export async function hosted_scoped_rejection_cases(check: (name: string, run: (
     });
   }
   for (const kind of ["http", "websocket"] as const) await check(`${kind}: duplicate and out-of-order scoped revisions use existing recovery fences`, async () => {
-    const locus = hsonLiveMap.locus.create(definition), active = await receiver(locus, kind);
+    const locus = hsonLiveMap.locus.create(definition[0], definition[1]), active = await receiver(locus, kind);
     try {
       let observations = 0; const stop = active.echo.commits.observe(() => observations++);
       active.control.transform = raw => JSON.parse(raw).type === "commit" ? [raw, raw] : [raw];

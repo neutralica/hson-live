@@ -27,7 +27,7 @@ try {
 const dir = await mkdtemp(join(tmpdir(), "hson-h1-"));
 try {
   const file = join(dir, "state.json"), persistence = new FileCheckpointAdapter(file);
-  const locus = await hsonLiveMap.locus.resume({ ...definition, logicalMapId: "h1-restart", persistence });
+  const locus = await hsonLiveMap.locus.resume({ ...definition[0] }, { ...definition[1], logicalMapId: "h1-restart", persistence });
   const active = await receiver(locus, "websocket");
   let baseline: string;
   try {
@@ -38,7 +38,7 @@ try {
       w.doc.must("bare").at([0]).delete();
     });
     await hsonLiveMap.locus.checkpoint(locus);
-    await locus.addLibraries({ shared: [{ name: "later", definition: page }] });
+    await locus.admit({ "later": { ...page, access: "shared" } });
     await locus.stage(w => {
       w.doc.must("page").at([0]).delete();
       w.doc.must("page").at([]).asElement().attrs.set("title", "durable-tail");

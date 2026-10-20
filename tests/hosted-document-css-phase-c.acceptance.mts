@@ -1,4 +1,4 @@
-import { create_locus_fixture, resume_locus_fixture, authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, resume_locus_fixture, authority_definitions_from_catalog_fixture, authority_definitions_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -55,7 +55,7 @@ assert.deepEqual(fidelityRecord.order[1], {kind:"group", header:"@layer", entrie
 assert.deepEqual(fidelityRecord.keyframes[0]?.steps.map(step => step.at), ["0%", "from"]);
 privatePage.css.stylesheet(`.PRIVATE_CSS_SENTINEL { color: red; --blob: ${"x".repeat(25_000)}; }`);
 ungranted.css.stylesheet(".UNGRANTED_CSS_SENTINEL { color: blue; }");
-const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, [
+const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [
     { name: "page", ownership: "shared" },
     { name: "privatePage", ownership: "private" },
     { name: "ungrantedPage", ownership: "shared" },
@@ -324,12 +324,7 @@ assert.equal(restartLocal.css.snapshot(), restartLocalCss);
 resumedEcho.dispose(); stopRestart(); restarted.dispose();
 
 // Construction and client-local initializers use the same occurrence-bearing record.
-const initialGroups = hsonLiveMap.locus.create({
-  shared: [{name:"page", definition:{document:'<html <head/> <body/>/>'}, css:fidelitySource}],
-  local: [{name:"local", initializer:{document:'<html <head/> <body/>/>'}, css:fidelitySource}],
-  defaultProjection:{libraries:["page","local"]},
-  authorizeProjection:()=>({libraries:["page","local"]}),
-});
+const initialGroups = hsonLiveMap.locus.create({ "page": { document:'<html <head/> <body/>/>', css:fidelitySource, access: "shared" } }, { local: [{name:"local", initializer:{document:'<html <head/> <body/>/>'}, css:fidelitySource}], defaultProjection:{libraries:["page","local"]}, authorizeProjection:()=>({libraries:["page","local"]}) });
 const initialSession=await initialGroups.session.create({libraries:["page","local"]});
 const initialCut=initialSession.now({html:"page"});
 assert.deepEqual(initialCut.libs.libraries.find(entry=>entry.name==="page")?.css, fidelityRecord);

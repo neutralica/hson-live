@@ -50,12 +50,7 @@ libraries.data.must("user").at(["name"]).set(37);
 // Dynamic names are type-safe unions and checked against the live registry at runtime.
 const dynamicLibraryName: string = "users";
 void dynamicLibraryName;
-const hostedLibraries = hsonLiveMap.locus.create({
-  shared: [
-    { name: "user", definition: definitions.user },
-    { name: "tree", definition: definitions.tree },
-  ],
-  actions: {
+const hostedLibraries = hsonLiveMap.locus.create({ "user": { ...definitions.user, access: "shared" }, "tree": { ...definitions.tree, access: "shared" } }, { actions: {
     async rename(context) {
       const currentName: string = context.data.must("user").at(["name"]).snap();
       const noRawMap: "map" extends keyof typeof context ? true : false = false;
@@ -67,11 +62,9 @@ const hostedLibraries = hsonLiveMap.locus.create({
         draft.data.must("user").at(["name"]).set(37);
       }
     },
-  },
-});
+  } });
 const hostedLibraryName: string = hostedLibraries.data.must("user").at(["name"]).snap();
-const owned = hsonLiveMap.locus.create({ shared: [{ name: "user", definition: definitions.user }],
-  private: [{ name: "tree", definition: definitions.tree }], actions: {
+const owned = hsonLiveMap.locus.create({ "user": { ...definitions.user, access: "shared" }, "tree": { ...definitions.tree, access: "private" } }, { actions: {
   rename(context) {
     context.stage.data.must("user").at(["name"]).set("Mira");
     // @ts-expect-error Owned actions retain generated Schema write types.

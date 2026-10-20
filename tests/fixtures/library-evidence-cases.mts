@@ -12,11 +12,11 @@ export async function library_evidence_cases() {
   const receipt = optionalMap.addLibraries({ maybe: { data: { later: "present" }, schema: later } });
   assert.equal(receipt.libraries.maybe.schema.get(), later);
   assert.deepEqual(receipt.libraries.maybe.snap(), { later: "present" });
-  const groups: { shared?: readonly [{ name: "maybe"; definition: { data: { earlier: number }; schema: typeof earlier } }] } = {};
+  const groups: { maybe?: { data: { earlier: number }; schema: typeof earlier } } = {};
   const optionalLocus = hsonLiveMap.locus.create(groups);
   try {
-    const receipt = await optionalLocus.addLibraries({ shared: [{ name: "maybe", definition: { data: { later: "present" }, schema: later } }] });
-    assert.equal(receipt.libraries.maybe.schema.get(), later);
+    await optionalLocus.admit({ "maybe": { data: { later: "present" }, schema: later, access: "shared" } });
+    assert.equal(optionalLocus.data.must("maybe", later).schema.get(), later);
   } finally { optionalLocus.dispose(); }
 
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: [1], parent: { value: { count: 1 } } } }, array: { data: [1] } });
@@ -106,16 +106,14 @@ export async function library_evidence_cases() {
 
   const schema = Hson.schema`<type "data" content <value <optional "any"> parent <optional <content <value "any">>>>>`;
   let retainedRead: ReturnType<ReadDataLocation["asArray"]>;
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { value: [1], parent: { value: { n: 1 } } }, schema } }],
-    actions: { inspect(context) {
+  const locus = hsonLiveMap.locus.create({ "state": { data: { value: [1], parent: { value: { n: 1 } } }, schema, access: "shared" } }, { actions: { inspect(context) {
       retainedRead = context.data.must("state").at(["value"]).asArray();
       assert.ok(retainedRead);
       assert.equal("set" in retainedRead, false);
       const checked = retainedRead.asArray()!;
       assert.equal("push" in checked.array, false);
       assert.equal("delete" in checked.at([0]), false);
-    } },
-  });
+    } } });
   try {
     assert.equal((await locus.dispatchAction({ type: "action", id: "inspect", name: "inspect" })).type, "ack");
     const raw = locus.data.must("state").at(["value"]);
@@ -152,10 +150,7 @@ export async function library_evidence_cases() {
 }
 
 export async function echo_refinement_cases() {
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "state", definition: { data: { value: [1] } } }],
-    local: [{ name: "ui", initializer: { data: { value: { n: 1 } } } }],
-    authorizeProjection: () => ({ libraries: ["state", "ui"] }),
-  });
+  const locus = hsonLiveMap.locus.create({ "state": { data: { value: [1] }, access: "shared" } }, { local: [{ name: "ui", initializer: { data: { value: { n: 1 } } } }], authorizeProjection: () => ({ libraries: ["state", "ui"] }) });
   const session = await locus.session.create({ libraries: ["state", "ui"] });
   const binding = bind_locus_http(locus, { endpoint: "/evidence" });
   const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://evidence.test/evidence",

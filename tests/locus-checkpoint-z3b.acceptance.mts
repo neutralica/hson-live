@@ -4,7 +4,7 @@ import { encode_checkpoint_chunks } from "../src/api/locus/locus.checkpoint-chun
 import { exact_tagged_payload, invalid_tagged_graphs } from "./helpers/tagged-codec-fixture.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { resume_locus_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { resume_locus_fixture, authority_definitions_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -85,12 +85,12 @@ await case_("checkpoint prefix compares semantic Schema identity and retains reg
 await case_("empty authority checkpoint restores without a placeholder library", async () => {
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-empty";
-  const locus = await resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
+  const locus = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
   const manifest = active(adapter, id);
   assert.deepEqual(manifest.registry.libraries, []);
   assert.deepEqual(manifest.chunks, []);
   locus.dispose();
-  const restored = await resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
+  const restored = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
   assert.ok(restored);
   assert.equal(restored.rev, 0);
   assert.deepEqual(locus_map_internal(restored).capture().registry.libraries, []);
@@ -137,11 +137,11 @@ await case_("restart reapplies deployment local definitions without persisting c
 
   const conflictAdapter = new MemoryCheckpointAdapter();
   const conflictId = "z3b-restored-local-collision";
-  const oldDeployment = await resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), []), persistence: conflictAdapter, logicalMapId: conflictId });
-  await oldDeployment.addLibraries({ private: [{ name: "ui", definition: { data: { value: 9 } } }] });
+  const oldDeployment = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.create(), []), persistence: conflictAdapter, logicalMapId: conflictId });
+  await oldDeployment.admit({ "ui": { data: { value: 9 }, access: "private" } });
   await hsonLiveMap.locus.checkpoint(oldDeployment);
   oldDeployment.dispose();
-  await assert.rejects(resume_locus_fixture({ ...authority_groups_from_map_fixture(hsonLiveMap.create(), [
+  await assert.rejects(resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.create(), [
       { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
     ]), persistence: conflictAdapter, logicalMapId: conflictId }), /collid|catalog|authority|topology/i);
 });

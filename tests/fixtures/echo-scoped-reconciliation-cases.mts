@@ -1,8 +1,9 @@
+import { create_locus_fixture } from "../helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
 import { project_interaction_state_internal as projectInteractions } from "../../src/api/interactions/interactions.projection.ts";
 import { add_interaction, bind_locus_http, hsonLiveMap } from "../../src/index.ts";
-import { authority_groups_from_map_fixture } from "../helpers/locus-definition-fixture.mts";
+import { authority_definitions_from_map_fixture } from "../helpers/locus-definition-fixture.mts";
 import { scoped_initial_fixture as fixture, scoped_receiver_view as view, assert_scoped_unchanged as unchanged, page, node, listener } from "./echo-scoped-initial-state-cases.mts";
 import { create_echo_aggregate_client_internal as client } from "../../src/api/echo/echo.aggregate-replica.ts";
 import { create_echo_aggregate_replica_capability_internal as replica } from "../../src/api/echo/echo.aggregate-replica.lifecycle.ts";
@@ -780,7 +781,7 @@ export async function terminal_progress_open_cases(check: (name: string, run: ()
 
   await check("public HTTP Echo terminal session disposal cannot retain caught-up readiness", async () => {
     const map = hsonLiveMap.fromLibraries({ state: { data: { n: 0 } } });
-    const locus = hsonLiveMap.locus.create({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]),
+    const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]),
       defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
     const retained = await locus.session.create({ libraries: ["state"] }, { connection: { principalId: "terminal-review" } });
     const binder = bind_locus_http(locus, { endpoint: "/_hson" });

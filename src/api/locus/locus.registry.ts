@@ -298,7 +298,7 @@ export function create_registry_locus_internal<
     doc: governed.doc, data: governed.data, parts: governed.parts,
     cut: options.map.cut.bind(options.map),
     commits: options.map.commits,
-    addLibraries: governed.addLibraries,
+    admit: governed.admit,
     logicalMapId: authority.logicalMapId,
     incarnationId: authority.incarnationId,
     get rev() { return authority.rev; },

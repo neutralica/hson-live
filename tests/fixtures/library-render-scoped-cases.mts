@@ -5,7 +5,7 @@ import { definition, page, node } from "./locus-scoped-ssr-cases.mts";
 /** Public package entrypoints, also executed inside an actual Worker. */
 export async function library_render_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   await check("Library render works before sessions and matches hosted graph/CSS realization", async () => {
-    const locus = hsonLiveMap.locus.create(definition);
+    const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
     try {
       const rendered = new Map<string, string>();
       for (const name of ["page", "flat", "bare"] as const) rendered.set(name, locus.doc.must(name).render());
@@ -29,8 +29,7 @@ export async function library_render_scoped_cases(check: (name: string, run: () 
       const cut = session.now({ html: "page" });
       const subjects = cut.libs.libraries.find(e => e.name === "page")!.scopes!.subjects;
       for (const subject of subjects) assert.equal(styled.split(`hson:quad="${subject.name}"`).length, 2);
-      await locus.addLibraries({ shared: [{ name: "later", definition: page },
-        { name: "one", definition: { document: '<html <head/> <body <hson-part lib="parts" at="leaf"/>/>/>' } }] });
+      await locus.admit({ "later": { ...page, access: "shared" }, "one": { document: '<html <head/> <body <hson-part lib="parts" at="leaf"/>/>/>', access: "shared" } });
       const later = locus.doc.must("later"), one = locus.doc.must("one");
       if (String(later.mode) !== "document" || one.mode !== "document") throw Error("Expected documents");
       // Dynamic Libraries render before any session selects them.
@@ -45,8 +44,7 @@ export async function library_render_scoped_cases(check: (name: string, run: () 
       assert.equal(locus.doc.must("page").render(), empty.html);
       assert.doesNotMatch(empty.html, /@scope|padding:7px|border:3px/);
       // CSS-free scoped documents need no HTML shell; CSS-bearing ones do.
-      await locus.addLibraries({ shared: [{ name: "badShell", definition: { document: '<main <hson-part lib="parts" at="leaf"/>/>' } },
-        { name: "badParser", definition: { document: '<p <div/>/>' } }] });
+      await locus.admit({ "badShell": { document: '<main <hson-part lib="parts" at="leaf"/>/>', access: "shared" }, "badParser": { document: '<p <div/>/>', access: "shared" } });
       for (const name of ["badShell", "badParser"]) {
         const library = locus.doc.must(name);
         if (library.mode !== "document") throw Error("Expected document");

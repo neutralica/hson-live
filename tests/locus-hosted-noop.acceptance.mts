@@ -1,5 +1,5 @@
 import { locus_map_internal } from "../src/internal/governor-maps.js";
-import { create_locus_fixture, resume_locus_fixture, authority_groups_from_catalog_fixture, authority_groups_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
+import { create_locus_fixture, resume_locus_fixture, authority_definitions_from_catalog_fixture, authority_definitions_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
@@ -337,14 +337,13 @@ for (const strategy of ["replay", "reconcile"] as const) {
     assert.equal(locus.rev, 3);
     let nestedAddition: Promise<unknown> | undefined;
     await locus.stage(() => {
-      nestedAddition = locus.addLibraries({ shared: [{ name: "later",
-        definition: { data: { value: 1 } } }] });
+      nestedAddition = locus.admit({ "later": { data: { value: 1 }, access: "shared" } });
     });
     if (nestedAddition === undefined) throw new Error("Nested library addition was not attempted.");
     await assert.rejects(nestedAddition, /active stage/i);
     assert.equal(locus.rev, 3);
     assert.throws(() => locus.data.must("later"), /Unknown/);
-    await locus.addLibraries({ shared: [{ name: "later", definition: { data: { value: 1 } } }] });
+    await locus.admit({ "later": { data: { value: 1 }, access: "shared" } });
     assert.equal(locus.rev, 4);
     assert.equal(locus.data.must("later").mode, "data-object");
   } finally { locus.dispose(); }
@@ -352,8 +351,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 }
 
 {
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition: { document: "<main/>" } }],
-    actions: { tamper: async (ctx) => {
+  const locus = hsonLiveMap.locus.create({ "page": { document: "<main/>", access: "shared" } }, { actions: { tamper: async (ctx) => {
       const command: Record<string, unknown> = { domain: "graph", op: "set-attr",
         target: { kind: "path", path: validate_document_path([0]) }, name: "data-action", value: "captured" };
       ctx.stage.doc.must("page").graph(command as never);
@@ -362,8 +360,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
       delete command.value;
       command.op = "ensure-quid";
       command.quid = "012345678";
-    } },
-  });
+    } } });
   const target = { kind: "path", path: validate_document_path([0]) } as const;
   const grouped: Record<string, unknown> = { domain: "graph", op: "set-attr", target,
     name: "title", value: "grouped" };
@@ -436,7 +433,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 {
   const schema = Hson.schema`<type "data" content <count "number">>`;
   let map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema } });
-  const locus = create_locus_fixture({ ...authority_groups_from_map_fixture(map, [{ name: "state", ownership: "shared" }]) });
+  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]) });
   map = locus_map_internal(locus);
   try {
     await locus.stage(stage => {

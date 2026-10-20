@@ -42,8 +42,8 @@ export async function document_capability_parity_cases() {
   for (const [namespace, method, args] of cases) {
     const local = hsonLiveMap.fromLibraries({ page: definition });
     const batched = hsonLiveMap.fromLibraries({ page: definition });
-    const direct = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }] });
-    const staged = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }] });
+    const direct = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
+    const staged = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
     const invoke = (location: object) => Reflect.apply(Reflect.get(Reflect.get(location, namespace), method), undefined, args);
     try {
       invoke(local.doc.must("page").at([0]).at([0]).asElement()!);
@@ -59,7 +59,7 @@ export async function document_capability_parity_cases() {
   }
   for (const governed of [false, true]) {
     const local = hsonLiveMap.fromLibraries({ page: definition });
-    const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }] });
+    const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
     const selected = governed ? locus : local;
     type Writer = import("hson-live/livemap").LiveMapStagedWriter<typeof local, void>;
     const stage = async (run: (writer: Writer) => void) => { if (governed) await locus.stage(run); else local.batch(run); };
@@ -140,7 +140,7 @@ export async function document_capability_parity_cases() {
 
 export async function document_css_parity_cases() {
   const local = hsonLiveMap.fromLibraries({ page: definition });
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }] });
+  const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
   const direct = local.doc.must("page").css, governed = locus.doc.must("page").css;
   const apply = async (run: (css: typeof direct | typeof governed) => unknown) => {
     run(direct); await run(governed); assert.equal(governed.snapshot(), direct.snapshot());
@@ -175,10 +175,7 @@ export async function document_css_parity_cases() {
 
 export async function document_read_authority_cases() {
   let inspected = 0;
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }],
-    local: [{ name: "panel", initializer: { document: '<aside <button id="localButton"/>/>' } }],
-    authorizeProjection: () => ({ libraries: ["page", "panel"] }), authorizeAction: () => false,
-    actions: { inspect(context) {
+  const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } }, { local: [{ name: "panel", initializer: { document: '<aside <button id="localButton"/>/>' } }], authorizeProjection: () => ({ libraries: ["page", "panel"] }), authorizeAction: () => false, actions: { inspect(context) {
       const page = context.doc.must("page"); if (page.mode !== "document") throw Error("Expected document");
       const selected = page.at([]).id("button")!.asElement()!;
       assert.equal(selected.attrs.must.get("title"), "old"); assert.equal(selected.flags.has("disabled"), true);
@@ -192,11 +189,11 @@ export async function document_read_authority_cases() {
   try {
     assert.equal((await locus.dispatchAction({ type: "action", id: "inspect", name: "inspect" })).type, "ack");
     assert.equal(inspected, 1);
-    const dynamic = await locus.addLibraries({ private: [{ name: "dynamic", definition: { document: '<html <head/> <body/>/>', schema: firstSchema } }] });
-    await dynamic.libraries.dynamic.at([1]).attrs.setMany({ title: "admitted" });
-    assert.equal(dynamic.libraries.dynamic.at([1]).attrs.must.get("title"), "admitted");
+    await locus.admit({ "dynamic": { document: '<html <head/> <body/>/>', schema: firstSchema, access: "private" } });
+    await locus.doc.must("dynamic", firstSchema).at([1]).attrs.setMany({ title: "admitted" });
+    assert.equal(locus.doc.must("dynamic", firstSchema).at([1]).attrs.must.get("title"), "admitted");
     const rev = locus.rev;
-    await assert.rejects(dynamic.libraries.dynamic.at([1]).replace(node("<aside/>")));
+    await assert.rejects(locus.doc.must("dynamic", firstSchema).at([1]).replace(node("<aside/>")));
     assert.equal(locus.rev, rev);
     const session = await locus.session.create({ libraries: ["page", "panel"] });
     const pair = sockets(), detach = bind_locus_websocket(locus, pair.server);
@@ -230,8 +227,7 @@ export async function document_read_authority_cases() {
 }
 
 export async function document_echo_submission_cases() {
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }],
-    authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }), authorizeAction: () => true });
+  const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } }, { authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }), authorizeAction: () => true });
   const session = await locus.session.create({ libraries: ["page"] });
   const pair = sockets(), detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
@@ -275,7 +271,7 @@ export async function document_echo_submission_cases() {
 export async function document_shape_cases() {
   const definition = { document: '<p "one"/> <p "two"/>' };
   const local = hsonLiveMap.fromLibraries({ page: definition });
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }] });
+  const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
   try {
     for (const page of [local.doc.must("page"), locus.doc.must("page")]) {
       assert.equal(page.at([]).kind(), "root");
@@ -300,7 +296,7 @@ export async function document_shape_cases() {
 export async function document_schema_atomicity_cases() {
   const definition = { document: '<main id="hero" <section "body"/>/>', schema: PageSchema };
   const local = hsonLiveMap.fromLibraries({ page: definition });
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }] });
+  const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
   try {
     assert.throws(() => local.doc.must("page").at([]).attrs.clear());
     const before = locus.doc.must("page").root(), rev = locus.rev;
@@ -333,8 +329,7 @@ export async function document_schema_atomicity_cases() {
 
 export async function document_identity_authority_cases() {
   const definition = { document: '<main @:page <button @:button title="initial"/> <aside/>/>' };
-  const locus = hsonLiveMap.locus.create({ shared: [{ name: "page", definition }],
-    authorizeProjection: () => ({ libraries: ["page"] }), actions: { inspect(context) {
+  const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } }, { authorizeProjection: () => ({ libraries: ["page"] }), actions: { inspect(context) {
       const page = context.doc.must("page"); if (page.mode !== "document") throw Error("Expected document");
       const selected = page.q("button")!;
       assert.equal(selected.attrs.must.get("title"), "moved");
@@ -381,7 +376,7 @@ export async function document_scoped_guard_cases() {
   const parts = { parts: { button: { kind: "document" as const, document: '<button @:root "part"/>', css: ':scope{color:red}' } } };
   const definition = { document: '<html <head/> <body <hson-part lib="parts" at="button"/>/>/>' };
   const local = hsonLiveMap.fromLibraries({ parts, page: definition });
-  const locus = hsonLiveMap.locus.create({ private: [{ name: "parts", definition: parts }], shared: [{ name: "page", definition }] });
+  const locus = hsonLiveMap.locus.create({ "parts": { ...parts, access: "private" }, "page": { ...definition, access: "shared" } });
   try {
     assert.deepEqual(local.doc.must("page").root(), locus.doc.must("page").root());
     assert.equal(local.doc.must("page").at([1, 0]).asElement()!.kind(), "element");
