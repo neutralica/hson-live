@@ -1,3 +1,4 @@
+import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { empty_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
@@ -28,6 +29,7 @@ export function make_echo_library_selector(
     const cached = selected.get(name);
     if (cached?.raw === raw) return cached.handle;
     const source = client_library_source_internal(raw);
+    const parts = resolve_livemap_library_internal(map, name)?.family === "parts";
     if (source === undefined) throw new Error("Echo Library ownership is unavailable.");
     if (source === "client-local") {
       const local = raw.mode === "document"
@@ -39,8 +41,10 @@ export function make_echo_library_selector(
         : Object.freeze({ source, mode: raw.mode, get rev() { return raw.rev; }, root: () => raw.root(),
           snap: raw.snap.bind(raw), at: raw.at.bind(raw), schema: raw.schema });
       if (raw.mode === "document") register_governed_document(local, raw);
-      selected.set(name, Object.freeze({ raw, handle: local as EchoLibrary }));
-      return local as EchoLibrary;
+      const handle = raw.mode !== "document" && local.mode !== "document" && parts
+        ? make_parts_facade(local, key => raw.snap([key]) !== undefined) : local;
+      selected.set(name, Object.freeze({ raw, handle: handle as EchoLibrary }));
+      return handle as EchoLibrary;
     }
     if (raw.mode !== "document") {
       const data = raw as LiveMapDataLibrary;
@@ -48,8 +52,9 @@ export function make_echo_library_selector(
       const projected = Object.freeze({ source, mode: data.mode, get rev() { return data.rev; },
         root: () => data.root(), snap: data.snap.bind(data), at,
         schema: Object.freeze({ get: () => data.schema.get() }) });
-      selected.set(name, Object.freeze({ raw, handle: projected as EchoLibrary }));
-      return projected as EchoLibrary;
+      const handle = parts ? make_parts_facade(projected, key => data.snap([key]) !== undefined) : projected;
+      selected.set(name, Object.freeze({ raw, handle: handle as EchoLibrary }));
+      return handle as EchoLibrary;
     }
     const document = raw as LiveMapDocumentLibrary;
     const authority = ensureDocumentAuthority(document) ?? echo_document_authority_for(document);

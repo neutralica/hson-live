@@ -1,3 +1,4 @@
+import type { PartsLibrary } from "./parts-library.types.js";
 import type { LibraryFamilySelector, LibraryFamilyNamespaces } from "./library-selectors.types.js";
 import type { LibraryLiteralDefinitions, LibraryCertainNames, LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 // livemap.types.ts
@@ -1624,9 +1625,9 @@ type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
   LibraryDefinitionEvidence<TInput> extends infer E
     ? E extends { family: infer F; value: infer V; schema: infer S extends HsonSchema }
       ? F extends "parts"
-        ? Omit<LiveMapDataLibrary<V, TLibrary, S>, "schema"> & Readonly<{
+        ? PartsLibrary<TInput, Omit<LiveMapDataLibrary<V, TLibrary, S>, "schema"> & Readonly<{
             schema: Readonly<{ get: () => HsonSchema<unknown, "data"> }>;
-          }>
+          }>, LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined, TLibrary>>
         : F extends "data" ? LiveMapDataLibrary<V, TLibrary, S>
           : LiveMapDocumentLibrary<V, TLibrary, S>
       : never

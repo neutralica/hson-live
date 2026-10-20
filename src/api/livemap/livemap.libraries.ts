@@ -1,3 +1,4 @@
+import { make_parts_facade } from "../../internal/parts-facade.js";
 import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
 import { data_path_kind, data_location_check, require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
@@ -1299,7 +1300,9 @@ function make_data_library(
   Object.defineProperty(facade, "css", {
     get: () => { throw new Error(`LiveMap Library ${JSON.stringify(library.name)} is a data Library; document CSS is unavailable.`); },
   });
-  const selected = Object.freeze(facade);
+  const frozen = Object.freeze(facade);
+  const selected = contract.validation === PART_COLLECTION_VALIDATION
+    ? make_parts_facade(frozen, name => snap([name]) !== undefined) : frozen;
   register_livemap_projected_identity_api(selected, make_livemap_projected_identity_api(
     () => selected,
     Object.freeze({

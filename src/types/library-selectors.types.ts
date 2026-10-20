@@ -1,10 +1,11 @@
+import type { PartsLibrary } from "./parts-library.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
 import type { LibraryCertainNames, LibraryDefinitionEvidence, LibraryLiteralDefinitions } from "./library-evidence.types.js";
-import type { LiveMapDataLibrary, LiveMapDocumentLibrary, LiveMapPartCollection,
+import type { LiveMapDataLibrary, LiveMapDocumentLibrary, LiveMapPartCollection, LiveMapDocumentPart, LiveMapLibraryPathHandle, LiveMapStagedDataPath,
   LiveMapStagedDataLibrary, LiveMapStagedDocumentLibrary } from "./livemap.types.js";
-import type { LocusDataLibrary, LocusDocumentLibrary, ReadDataLibrary, ReadDocumentLibrary,
+import type { LocusDataLibrary, LocusDocumentLibrary, ReadDataLibrary, ReadDocumentLibrary, LocusDataLocation, ReadDataLocation,
   EchoProjectedDataLibrary, EchoLocalDataLibrary, EchoProjectedDocumentLibrary, EchoLocalDocumentLibrary } from "./governor.types.js";
 
 export type LibraryFamily = "doc" | "data" | "parts";
@@ -24,9 +25,21 @@ type Handle<C extends LibrarySelectorContext, F extends LibraryFamily, V, S exte
       ? Omit<EchoLocalDataLibrary<DataValue<V>, S>, "schema"> & { readonly schema: { readonly get: () => HsonSchema<unknown, "data"> } }
       : EchoLocalDataLibrary<DataValue<V>, S>);
 
+type PartLocation<C, N extends string, R, H> = C extends "local"
+  ? LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined, N>
+  : C extends "locus" ? LocusDataLocation<LiveMapDocumentPart | undefined>
+  : C extends "stage" ? LiveMapStagedDataPath<LiveMapDocumentPart | undefined, R>
+  : C extends "echo" ? H extends { source: "client-local" }
+    ? LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined>
+    : ReadDataLocation<LiveMapDocumentPart | undefined>
+  : ReadDataLocation<LiveMapDocumentPart | undefined>;
+// Distribute Echo ownership before intersecting members so source narrowing remains authoritative.
+type WithParts<D, H, C, N extends string, R> = H extends unknown ? PartsLibrary<D, H, PartLocation<C, N, R, H>> : never;
+
 type FamilyEvidence<T, F extends LibraryFamily> = Extract<LibraryDefinitionEvidence<T>, { family: F extends "doc" ? "document" : F }>;
-type FromEvidence<E, C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R> =
-  E extends { value: infer V; schema: infer S extends HsonSchema } ? Handle<C, F, V, S, N, R> : never;
+type FromEvidence<E, C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R, D> =
+  E extends { value: infer V; schema: infer S extends HsonSchema }
+    ? F extends "parts" ? WithParts<D, Handle<C, F, V, S, N, R>, C, N, R> : Handle<C, F, V, S, N, R> : never;
 type DynamicSchema<H, C, F> = C extends "local" ? F extends "parts" ? H
   : H extends { schema: { get: infer G } } ? Omit<H, "schema"> & { readonly schema: { readonly get: G; readonly use: (schema: HsonSchema) => import("./livemap.types.js").LiveMapCommit } } : H
   : H;
@@ -35,11 +48,12 @@ type Broad<C extends LibrarySelectorContext, F extends LibraryFamily, N extends 
     HsonSchema<unknown, F extends "doc" ? "document" : "data">, N, R>, C, F>;
 type Selected<D, C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R> =
   N extends LibraryCertainNames<D> & keyof LibraryLiteralDefinitions<D>
-    ? [FamilyEvidence<D[N], F>] extends [never] ? Broad<C, F, N, R> : FromEvidence<FamilyEvidence<D[N], F>, C, F, N, R>
+    ? [FamilyEvidence<D[N], F>] extends [never] ? Broad<C, F, N, R> : FromEvidence<FamilyEvidence<D[N], F>, C, F, N, R, D[N]>
     : Broad<C, F, N, R>;
 // Distribute over possible absence: Schema | undefined cannot create unconditional evidence.
 type Checked<D, C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, S, R> =
-  S extends HsonSchema ? Handle<C, F, F extends "doc" ? DocumentSchemaGraph<S> : F extends "parts" ? LiveMapPartCollection : DataSchemaValue<S>, S, N, R>
+  S extends HsonSchema ? F extends "parts" ? Selected<D, C, F, N, R>
+    : Handle<C, F, F extends "doc" ? DocumentSchemaGraph<S> : DataSchemaValue<S>, S, N, R>
     : Selected<D, C, F, N, R>;
 
 type Reserved = keyof Function | keyof Object | "must" | "then" | "toJSON" | "__proto__" | "prototype" | "arguments" | "caller"

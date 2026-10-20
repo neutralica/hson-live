@@ -24,8 +24,7 @@ map.lib;
 map.data.page;
 // @ts-expect-error A function intrinsic is not a Library handle.
 map.doc.name.render();
-// @ts-expect-error Parts definitions are not direct named members in Cut 2.
-map.parts.components.button;
+map.parts.components.button.snap() satisfies import("../src/types/livemap.types.js").LiveMapDocumentPart | undefined;
 // @ts-expect-error Known Schema paths remain checked.
 map.data.deck.at(["misspelled"]);
 // @ts-expect-error Callable lookup is optional even for certain inventory.

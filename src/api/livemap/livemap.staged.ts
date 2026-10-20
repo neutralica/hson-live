@@ -1,3 +1,4 @@
+import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { PART_COLLECTION_VALIDATION } from "./livemap.parts.js";
 import { normalize_document_request_target } from "./livemap.document.target.js";
@@ -246,8 +247,15 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
     const facade = binding.mode === "document"
       ? document_library(binding.identity)
       : Object.freeze({ mode: binding.mode, at: (path: LivePath) => { assert_open(); return data_path(binding.identity, path); } });
-    selectedFacades.set(binding.identity, facade);
-    return facade;
+    const contract = registry.libraries.find(entry => entry.name === name && entry.scope === undefined);
+    const handle = facade.mode !== "document" && contract?.validation === PART_COLLECTION_VALIDATION
+      ? make_parts_facade(facade, key => {
+        assert_open();
+        // Stages collect commands; membership reads the current committed binding.
+        return aggregate.snap(binding.identity, [key]) !== undefined;
+      }) : facade;
+    selectedFacades.set(binding.identity, handle);
+    return handle;
   };
   const writer = Object.freeze(make_family_selectors(name => {
     assert_open();

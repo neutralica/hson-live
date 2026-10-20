@@ -1,3 +1,4 @@
+import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { read_document_quad } from "../../internal/governed-document.js";
@@ -112,12 +113,15 @@ export function create_registry_locus_internal<
     message?: LocusClientActionMessage,
   ) => unknown | void | Promise<unknown | void>> = {};
   const readFacades = new WeakMap<object, ReturnType<typeof readLib>>();
-  const readLib = (selected: import("../../types/livemap.types.js").LiveMapDataLibrary | import("../../types/livemap.types.js").LiveMapDocumentLibrary) => {
-    if (selected.mode !== "document") return Object.freeze({
-      mode: selected.mode, get rev() { return selected.rev; }, root: () => selected.root(),
-      snap: selected.snap.bind(selected), schema: Object.freeze({ get: () => selected.schema.get() }),
-      at: (path: import("../../types/livemap.types.js").LivePath) => read_data_location(selected.at(path)),
-    });
+  const readLib = (selected: import("../../types/livemap.types.js").LiveMapDataLibrary | import("../../types/livemap.types.js").LiveMapDocumentLibrary, parts: boolean) => {
+    if (selected.mode !== "document") {
+      const handle = Object.freeze({
+        mode: selected.mode, get rev() { return selected.rev; }, root: () => selected.root(),
+        snap: selected.snap.bind(selected), schema: Object.freeze({ get: () => selected.schema.get() }),
+        at: (path: import("../../types/livemap.types.js").LivePath) => read_data_location(selected.at(path)),
+      });
+      return parts ? make_parts_facade(handle, key => selected.snap([key]) !== undefined) : handle;
+    }
     return Object.freeze({
       mode: "document" as const, get rev() { return selected.rev; }, root: () => selected.root(),
       render: mark_browser_html_producer(() => selected.render()), commits: selected.commits,
@@ -137,7 +141,7 @@ export function create_registry_locus_internal<
     const binding = resolve_livemap_library_internal(options.map, name);
     if (binding === undefined) return undefined;
     let handle = readFacades.get(binding.handle);
-    if (handle === undefined) { handle = readLib(binding.handle); readFacades.set(binding.handle, handle); }
+    if (handle === undefined) { handle = readLib(binding.handle, binding.family === "parts"); readFacades.set(binding.handle, handle); }
     return { ...binding, handle };
   });
 

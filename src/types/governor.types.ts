@@ -1,3 +1,4 @@
+import type { PartsLibrary } from "./parts-library.types.js";
 import type { LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 import type { LibraryShapeCapabilities, LibraryArrayRead, LibraryObjectRead, LibraryArrayCommands, LibraryObjectCommands, LiveMapArrayBranch, LiveMapObjectBranch, LiveMapScalarBranch } from "./livemap.types.js";
 import type { JsonValue, HsonNode } from "../core/types.js";
@@ -116,7 +117,9 @@ export type ReadLibrary = ReadDataLibrary | ReadDocumentLibrary;
 export type DefinitionLibrary<TDefinition> =
   LibraryDefinitionEvidence<TDefinition> extends infer E
     ? E extends { family: infer F; value: infer V; schema: infer S extends HsonSchema }
-      ? F extends "document" ? LocusDocumentLibrary<V, S> : LocusDataLibrary<V, S>
+      ? F extends "document" ? LocusDocumentLibrary<V, S>
+        : F extends "parts" ? PartsLibrary<TDefinition, LocusDataLibrary<V, S>, LocusDataLocation<import("./livemap.types.js").LiveMapDocumentPart | undefined>>
+        : LocusDataLibrary<V, S>
       : LocusLibrary
     : never;
 

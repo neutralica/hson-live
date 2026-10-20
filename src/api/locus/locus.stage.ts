@@ -1,3 +1,4 @@
+import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { admit_public_livemap_definitions, require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { document_css_commands, document_css_reads, dispatch_document_css_command } from "../../internal/document-css-commands.js";
@@ -119,7 +120,8 @@ export function make_locus_stage<TMap extends LiveMap>(
           const handle = Object.freeze({ mode: data.mode, get rev() { return data.rev; }, root: () => data.root(),
             snap: data.snap.bind(data), schema: Object.freeze({ get: () => data.schema.get() }),
             at: (path: LivePath) => data_path(name, path, data) });
-          return handle;
+          return resolve_livemap_library_internal(map, name)?.family === "parts"
+            ? make_parts_facade(handle, key => data.snap([key]) !== undefined) : handle;
         }
         const document = selected as LiveMapDocumentLibrary;
         const edit = (run: (draft: Document) => void) => submit(writer => {
