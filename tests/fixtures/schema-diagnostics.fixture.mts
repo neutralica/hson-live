@@ -9,6 +9,9 @@ import { CANONICAL_SCHEMA_FORMAT, type CanonicalSchemaNode } from "../../src/int
 import { verify_canonical_schema_graph } from "../../src/internal/canonical-schema/verify.ts";
 import { parse_hson_with_provenance } from "../../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
 import { evaluate_static_schema_candidate } from "../../src/internal/hson-schema/candidate-evaluation.ts";
+import { hsonLiveMap } from "../../src/api/livemap/livemap.facade.ts";
+import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
+import type { LiveMapPartCollection } from "../../src/types/livemap.types.ts";
 
 export function run_schema_diagnostic_cases(): void {
   // Capture real JS template objects; runtime, rather than a test escape
@@ -152,4 +155,57 @@ export function run_schema_diagnostic_cases(): void {
     assert.equal(collision.slice(failure.range.start, failure.range.end), '"b"');
     assert.equal(collision.slice(failure.relatedRange.start, failure.relatedRange.end), '"a"');
   }
+
+  const page: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;
+  const pageCompiled = compiled_hson_schema_of(page);
+  const shell = '<main <hson-part lib="bits" at="title" text="Hello"/>/>';
+  const parts = { title: { kind: "document", document: '<h1 "%{text}"/>' } } satisfies LiveMapPartCollection;
+  const inventory = new Map<string, unknown>([["bits", parts]]);
+  const candidateDoc = { source: shell, family: "document" } as const;
+  assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc).kind, "unknown");
+  assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, new Map()).kind, "unknown");
+  assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, inventory).kind, "valid");
+  assert.equal(evaluate_static_schema_candidate(pageCompiled, { source: shell, family: "canonical" }, inventory).kind, "valid");
+  const invalid = evaluate_static_schema_candidate(pageCompiled, candidateDoc,
+    new Map([["bits", { title: { kind: "document", document: '<p "%{text}"/>' } }]]));
+  assert.equal(invalid.kind, "invalid");
+  if (invalid.kind === "invalid") {
+    assert.equal(invalid.issue.expected, '"h1"'); assert.equal(invalid.issue.received, '"p"');
+    assert.equal(invalid.range, undefined, "Realized paths must not masquerade as authored source ranges");
+  }
+  // The existing complete collection validator also checks unused members.
+  for (const unavailable of [undefined, {}, { title: parts.title, broken: { kind: "document", document: "<h1" } },
+    { title: { kind: "document", document: '<h1 <hson-part at="title"/>/>' } }]) {
+    assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, new Map([["bits", unavailable]])).kind, "unknown");
+  }
+  const nested = new Map<string, unknown>([["bits", {
+    title: { kind: "document", document: '<h1 <hson-part at="child"/>/>' },
+    child: { kind: "document", document: '<span/>' },
+  }]]);
+  assert.equal(evaluate_static_schema_candidate(pageCompiled,
+    { source: '<main <hson-part lib="bits" at="title"/>/>', family: "document" }, nested).kind, "valid");
+  const plain = evaluate_static_schema_candidate(pageCompiled, { source: '<main <p/>/>', family: "document" });
+  assert.equal(plain.kind, "invalid");
+  assert.ok(plain.kind === "invalid" && plain.range !== undefined);
+  // Static realization never installs a runtime or touches existing authority.
+  const map = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
+  const aggregate = internal_livemap_aggregate_authority(map);
+  const before = { revision: map.rev, position: aggregate.hostedPosition(), ledger: aggregate.identityEpoch().issued(),
+    root: map.doc.must("page").snap(), parts: JSON.stringify(parts), shell: candidateDoc.source };
+  let commits = 0, positions = 0;
+  const stop = map.commits.observe(() => commits++), stopPosition = aggregate.observeAuthorityPosition(() => positions++);
+  const random = globalThis.crypto.getRandomValues;
+  globalThis.crypto.getRandomValues = () => { throw new Error("Static candidate analysis must not issue QUIDs"); };
+  try {
+    // A swallowed issuance error would return unknown and fail this assertion.
+    assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, inventory).kind, "valid");
+    assert.equal(evaluate_static_schema_candidate(pageCompiled,
+      { source: '<main <hson-part @:title lib="bits" at="title" text="Hello"/>/>', family: "document" }, inventory).kind, "valid");
+  } finally { globalThis.crypto.getRandomValues = random; stop(); stopPosition(); }
+  assert.equal(map.rev, before.revision); assert.deepEqual(aggregate.hostedPosition(), before.position);
+  assert.equal(aggregate.identityEpoch().issued(), before.ledger); assert.deepEqual(map.doc.must("page").snap(), before.root);
+  assert.equal(commits, 0); assert.equal(positions, 0);
+  assert.equal(JSON.stringify(parts), before.parts); assert.equal(candidateDoc.source, before.shell);
+  const realized = hsonLiveMap.fromLibraries({ page: { document: shell, schema: page }, bits: { parts } });
+  assert.match(realized.doc.must("page").render(), /<h1>Hello<\/h1>/);
 }

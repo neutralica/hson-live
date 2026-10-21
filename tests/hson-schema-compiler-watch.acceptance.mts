@@ -10,6 +10,7 @@ import { discover_hson_schema_declarations } from "../src/internal/hson-schema/s
 import { library_schema_attachment_plan } from "../src/internal/hson-schema/source-transformation.ts";
 import { schema_tooling_fingerprint } from "../src/internal/hson-schema/tooling-fingerprint.ts";
 import { SchemaProjectSnapshot } from "../src/internal/hson-schema/project-snapshot.ts";
+import { static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -124,6 +125,56 @@ await check("cross-file producer records cannot publish proof and invalidation w
     assert.deepEqual(readFileSync(manifestPath), priorManifest);
     assert.throws(() => verify_schema_compiler_project(config), /Stale generated Hson project/);
     fabricate = false; await watch.poll(); assertUnproven();
+  } finally { watch.stop(); }
+});
+await check("Part source changes rejudge unchanged receiving consumers without expanding compiler input", async () => {
+  const directory = join(project, "part-consumer"); mkdirSync(directory);
+  const config = join(directory, "tsconfig.json"), partPath = join(directory, "part.ts"), consumerPath = join(directory, "consumer.ts");
+  writeFileSync(join(directory, "package.json"), '{"type":"module"}');
+  writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], paths: {
+    "hson-live": [join(root, "dist/index.d.ts")],
+  } }, files: ["part.ts", "consumer.ts"] }));
+  const part = 'import { Hson } from "hson-live"; export const title = Hson.document`<h1 "Hello"/>`;';
+  const consumer = 'import { Hson, hsonLiveMap } from "hson-live"; import { title } from "./part.js";\n'
+    + 'const Page = Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <hson-part lib="bits" at="title"/>/>`, schema: Page }, bits: { parts: { title: { kind: "document", document: title } } } });\n';
+  writeFileSync(partPath, part); writeFileSync(consumerPath, consumer);
+  let analyses = 0;
+  const watch = create_schema_compiler_project_watch(config, (_config, program) => {
+    analyses++;
+    return { schemas: [], overlays: [], diagnostics: static_schema_candidate_diagnostics(ts, program).map(diagnostic => diagnostic.message) };
+  }, () => {});
+  const current = () => verify_schema_compiler_project(config);
+  try {
+    await watch.poll();
+    assert.deepEqual(current().manifest.diagnostics, []);
+    const first = current().manifest.publication;
+    await watch.poll(); assert.equal(analyses, 1); assert.equal(current().manifest.publication, first);
+    writeFileSync(partPath, part.replace("<h1", "<p")); await watch.poll();
+    assert.equal(analyses, 2);
+    // Invalid manifests remain inspectable but cannot establish current proof.
+    const manifestPath = join(directory, ".hson/compiler-input/tsconfig.json/manifest.json");
+    const invalid = JSON.parse(readFileSync(manifestPath, "utf8"));
+    assert.equal(invalid.diagnostics.length, 1);
+    assert.match(invalid.diagnostics[0], /expected "h1"; received "p"/);
+    assert.throws(current, /Static Hson does not satisfy/);
+    // This callback isolates candidate diagnostics; the editor/CLI regressions
+    // separately verify that each rejected producer's own error remains visible.
+    for (const producer of ['Hson.document`// \\8\n<p/>`', 'Hson?.document`<p/>`', 'Hson.document?.`<p/>`']) {
+      writeFileSync(partPath, `import { Hson } from "hson-live"; export const title = ${producer};`);
+      await watch.poll();
+      assert.deepEqual(current().manifest.diagnostics, [], producer);
+      assert.equal(readFileSync(consumerPath, "utf8"), consumer);
+    }
+    writeFileSync(partPath, 'export declare const title: string;'); await watch.poll();
+    assert.deepEqual(current().manifest.diagnostics, []);
+    const mirrored = current().files.get(join(directory, ".hson/compiler-input/tsconfig.json/sources/consumer.ts"))!.toString();
+    assert.ok(mirrored.endsWith(consumer));
+    assert.doesNotMatch(mirrored, /as unknown as|\$_quid/);
+    assert.equal(readFileSync(consumerPath, "utf8"), consumer);
+    writeFileSync(partPath, part); await watch.poll();
+    assert.deepEqual(current().manifest.diagnostics, []);
+    assert.equal(analyses, 7);
   } finally { watch.stop(); }
 });
 await check("unchanged invalid state is reused across watcher startup", async () => {

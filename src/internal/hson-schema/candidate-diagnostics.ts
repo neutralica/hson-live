@@ -2,6 +2,7 @@ import type ts from "typescript";
 import { discover_hson_schema_declarations } from "./schema-discovery.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { hson_tagged_source, admit_hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
 import { evaluate_static_schema_candidate, type StaticSchemaCandidate } from "./candidate-evaluation.js";
 import { resolve_immutable_schema } from "./schema-identity.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
@@ -87,11 +88,11 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   };
   const output: StaticSchemaDiagnostic[] = [];
   const reported = new Set<string>();
-  const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data"): void => {
+  const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data", parts?: ReadonlyMap<string, unknown>): void => {
     if (contract === undefined) return;
     const possible = candidates(input, family);
     if (possible === undefined || possible.length === 0) return;
-    const failures = possible.map(candidate => evaluate_static_schema_candidate(contract.compiled, candidate));
+    const failures = possible.map(candidate => evaluate_static_schema_candidate(contract.compiled, candidate, parts));
     // A valid branch, opaque branch or malformed Hson belongs to runtime/authoring diagnostics.
     if (failures.some(failure => failure.kind !== "invalid")) return;
     const first = failures[0];
@@ -118,13 +119,35 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   for (const source of sources) {
     const mapSymbols = read_supported_hson_import_symbols(source, checker, [], "hsonLiveMap", typescript);
     const construction = (node: ts.Expression) => library_source_definitions(node, checker, mapSymbols, false, typescript);
-    const validateDefinition = (definition: ts.Expression, attached?: Schema): void => {
+    const inventory = (definitions: ts.ObjectLiteralExpression): ReadonlyMap<string, unknown> => {
+      const parts = new Map<string, unknown>();
+      for (const [name, definition] of library_source_fields(definitions, typescript) ?? []) {
+        if (!typescript.isObjectLiteralExpression(definition)) continue;
+        const fields = library_source_fields(definition, typescript), input = fields?.get("parts");
+        if (input === undefined || fields?.size !== 1) continue;
+        // Fresh literal records only: const object aliases can still be mutated.
+        const value = json_literal(unwrap(input), typescript, node => {
+          const possible = candidates(node, "document");
+          const only = possible?.length === 1 ? possible[0] : undefined;
+          if (only === undefined || !("source" in only) || only.family !== "document") return undefined;
+          if (!typescript.isTaggedTemplateExpression(only.node)) return only.source;
+          // Official binding recognition above is not producer admission: rejected
+          // escapes and optional-chain tags cannot establish Part inventory evidence.
+          const source = hson_tagged_source(typescript, only.node, "document");
+          if (source === undefined || "substitutionRanges" in source) return undefined;
+          try { return admit_hson_tagged_source(source); } catch { return undefined; }
+        });
+        if (value.known) parts.set(name, value.value);
+      }
+      return parts;
+    };
+    const validateDefinition = (definition: ts.Expression, attached?: Schema, parts?: ReadonlyMap<string, unknown>): void => {
       if (!typescript.isObjectLiteralExpression(definition)) return;
       const fields = library_source_fields(definition, typescript);
       if (fields === undefined) return;
       const document = fields.get("document"), data = fields.get("data");
       const contract = attached ?? (fields.get("schema") === undefined ? undefined : schema(fields.get("schema")!));
-      if (document !== undefined && data === undefined) report(contract, document, "document");
+      if (document !== undefined && data === undefined) report(contract, document, "document", parts);
       if (data !== undefined && document === undefined) report(contract, data, "data");
     };
     const facts: PreciseSchemaFact[] = [...schemas].map(([declaration, contract]) => ({ declaration,
@@ -140,7 +163,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       if (index < 1 || owner.statements[index - 1] !== found.parent.parent) continue;
       const initial = construction(found.initializer);
       const definition = initial === undefined ? undefined : library_source_fields(initial, typescript)?.get(attachment.library.text);
-      if (definition !== undefined) validateDefinition(definition, schema(attachment.schema));
+      if (definition !== undefined && initial !== undefined) validateDefinition(definition, schema(attachment.schema), inventory(initial));
     }
     // Annotation relationships retain the direct, official, substitution-free
     // initializer boundary used to establish compiler/editor assignment proof.
@@ -177,7 +200,10 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       if (typescript.isCallExpression(node)) {
         if (typescript.isPropertyAccessExpression(node.expression) && node.expression.name.text === "certify" && node.arguments.length === 1) report(schema(node.expression.expression), node.arguments[0]!, "certify");
         const definitions = construction(node);
-        if (definitions !== undefined) for (const definition of library_source_fields(definitions, typescript)?.values() ?? []) validateDefinition(definition);
+        if (definitions !== undefined) {
+          const parts = inventory(definitions);
+          for (const definition of library_source_fields(definitions, typescript)?.values() ?? []) validateDefinition(definition, undefined, parts);
+        }
       }
       typescript.forEachChild(node, visit);
     };
@@ -193,7 +219,11 @@ function issue_detail(issue: CanonicalGraphIssue): string {
 
 type Literal = Readonly<{ known: true; value: unknown }> | Readonly<{ known: false }>;
 /** JSON syntax only: no property reads, spreads, functions or application execution. */
-function json_literal(node: ts.Expression, typescript: typeof ts): Literal {
+function json_literal(node: ts.Expression, typescript: typeof ts, authored?: (node: ts.Expression) => string | undefined): Literal {
+  if (authored !== undefined && (typescript.isTaggedTemplateExpression(node) || typescript.isIdentifier(node))) {
+    const source = authored(node);
+    return source === undefined ? { known: false } : { known: true, value: source };
+  }
   if (typescript.isStringLiteral(node) || typescript.isNoSubstitutionTemplateLiteral(node)) return { known: true, value: node.text };
   if (typescript.isNumericLiteral(node)) return { known: true, value: Number(node.text) };
   if (typescript.isPrefixUnaryExpression(node) && node.operator === typescript.SyntaxKind.MinusToken && typescript.isNumericLiteral(node.operand)) return { known: true, value: -Number(node.operand.text) };
@@ -201,7 +231,7 @@ function json_literal(node: ts.Expression, typescript: typeof ts): Literal {
   if (node.kind === typescript.SyntaxKind.FalseKeyword) return { known: true, value: false };
   if (node.kind === typescript.SyntaxKind.NullKeyword) return { known: true, value: null };
   if (typescript.isArrayLiteralExpression(node)) {
-    const entries = node.elements.map(entry => json_literal(entry, typescript));
+    const entries = node.elements.map(entry => json_literal(entry, typescript, authored));
     return entries.every(entry => entry.known) ? { known: true, value: entries.map(entry => entry.value) } : { known: false };
   }
   if (typescript.isObjectLiteralExpression(node)) {
@@ -209,7 +239,7 @@ function json_literal(node: ts.Expression, typescript: typeof ts): Literal {
     if (fields === undefined) return { known: false };
     const value: Record<string, unknown> = Object.create(null);
     for (const [key, input] of fields) {
-      const entry = json_literal(input, typescript);
+      const entry = json_literal(input, typescript, authored);
       if (!entry.known || key === "__proto__") return { known: false };
       value[key] = entry.value;
     }

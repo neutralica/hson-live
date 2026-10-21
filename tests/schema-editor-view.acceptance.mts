@@ -820,6 +820,137 @@ hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
   assert.throws(() => Reflect.apply(map.doc.must("page").schema.use, undefined, [runtime]), /Schema validation failed/);
 });
 
+check("document candidates judge realized same-batch Parts and withdraw uncertain composition", () => {
+  const prefix = 'import { Hson, hsonLiveMap, type HsonDocument } from "hson-live";\n'
+    + 'const Page = Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;\n'
+    + 'const shell = Hson.document`<main <hson-part lib="bits" at="title"/>/>`;\n';
+  const good = 'bits: { parts: { title: { kind: "document", document: Hson.document`<h1 "Hello"/>` } } }';
+  const bad = good.replace('<h1', '<p');
+  const source = prefix + [
+    `hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page }, ${good} });`,
+    `hsonLiveMap.fromLibraries({ ${good}, page: { document: shell, schema: Page } });`,
+    `hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page }, ${bad} });`,
+    `const map = hsonLiveMap.fromLibraries({ page: { document: Hson.document\`<main <hson-part lib="bits" at="title"/>/>\` }, ${bad} });`,
+    'map.doc.must("page").schema.use(Page);',
+    // These receiving contexts cannot borrow inventory from another call.
+    'const known = hsonLiveMap.fromLibraries({ bits: { parts: { title: { kind: "document", document: "<p/>" } } } });',
+    'known.addLibraries({ page: { document: shell, schema: Page } });',
+    'declare const dynamic: typeof known; dynamic.addLibraries({ page: { document: shell, schema: Page } });',
+    'hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page } });',
+    'Page.certify(shell);',
+    'const unproven: HsonDocument<typeof Page> = Hson.document`<main <hson-part lib="bits" at="title"/>/>`;',
+    // Independent non-Part failures still get their precise source ranges.
+    'Page.certify(Hson.document`<main <aside/>/>`);',
+  ].join('\n');
+  const test = project("part-candidates", { "index.ts": source });
+  const before = bytes(test.directory);
+  const errors = test.errors("index.ts");
+  const candidates = errors.filter(error => error.code === 95002);
+  assert.equal(candidates.length, 3, messages(errors));
+  assert.equal(candidates.filter(error => String(error.messageText).includes('received "p"')).length, 2);
+  assert.ok(!messages(candidates).includes('received "hson-part"'));
+  assert.ok(errors.some(error => error.code === 2322 && error.start === source.indexOf("unproven:")), messages(errors));
+  assert.ok(candidates.some(error => source.slice(error.start, error.start! + error.length!) === 'aside'));
+  assert.ok(candidates.filter(error => String(error.messageText).includes('received "p"'))
+    .every(error => source.slice(error.start, error.start! + error.length!) === 'Hson.document`<main <hson-part lib="bits" at="title"/>/>`'));
+  assert.deepEqual(bytes(test.directory), before);
+
+  const config = test.file("tsconfig.json");
+  writeFileSync(config, JSON.stringify({ compilerOptions: { ...test.options, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext" }, files: [test.file("index.ts")] }));
+  const generated = spawnSync(process.execPath, ["--import=tsx", "scripts/hson-schema.mts", "generate", "--project", config], { cwd: root, encoding: "utf8" });
+  assert.notEqual(generated.status, 0);
+  const manifest = JSON.parse(readFileSync(test.file(".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
+  const failures: string[] = manifest.diagnostics.filter((message: string) => message.includes("Static Hson does not satisfy"));
+  assert.equal(failures.length, candidates.length, failures.join("\n"));
+  for (const error of candidates) {
+    const location = error.file!.getLineAndCharacterOfPosition(error.start!);
+    assert.ok(failures.includes(`${test.file("index.ts")}:${location.line + 1}:${location.character + 1}: ${error.messageText}`));
+  }
+  const compilerSource = readFileSync(test.file(".hson/compiler-input/tsconfig.json/sources/index.ts"), "utf8");
+  assert.match(compilerSource, /const shell = Hson.document`<main <hson-part/);
+  assert.doesNotMatch(compilerSource.slice(compilerSource.indexOf("const unproven:")), /as unknown as HsonDocument/);
+
+  const unknown = [
+    'bits: { parts: opaque }',
+    'bits: { parts: { ...opaque } }',
+    'bits: { parts: { [key]: { kind: "document", document: "<p/>" } } }',
+    'bits: { parts: { title: { kind: "document", document: getDocument() } } }',
+    'bits: { parts: { title: { kind: "document", document: "<p/>" }, broken: { kind: "document", document: "<p" } } }',
+    'bits: { data: { title: { kind: "document", document: "<p/>" } } }',
+    'bits: { parts: { other: { kind: "document", document: "<p/>" } } }',
+    'bits: { parts: aliased }',
+  ];
+  for (const inventory of unknown) {
+    test.edit("index.ts", prefix + 'declare const opaque: Record<string, { kind: "document"; document: string }>; declare const key: string; declare function getDocument(): string;\n'
+      + 'const aliased = { title: { kind: "document" as const, document: "<p/>" } };\n'
+      + `hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page }, ${inventory} });`);
+    assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 0, inventory);
+  }
+  for (const operation of ["addLibraries", "admit"]) {
+    test.edit("index.ts", prefix + (operation === "admit" ? 'const receiver = hsonLiveMap.locus.create({});\n' : 'const receiver = hsonLiveMap.fromLibraries({});\n')
+      + `receiver.${operation}({ page: { document: shell, schema: Page }, ${bad} });`);
+    const errors = test.errors("index.ts").filter(error => error.code === 95002);
+    assert.equal(errors.length, 1, `${operation}: ${messages(errors)}`);
+  }
+  const independent = prefix + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main @:same <hson-part @:same lib="bits" at="title"/>/>`, schema: Page } });\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <hson-part lib="bits" at="title"/>`, schema: Page } });';
+  test.edit("index.ts", independent);
+  const authoring = produce_document_diagnostics({ fileName: test.file("index.ts"), languageId: "typescript", text: independent });
+  assert.ok(authoring.some(issue => issue.code === "HSON_LIBRARY_QUAD_DUPLICATE"), JSON.stringify(authoring));
+  assert.ok(authoring.some(issue => issue.code !== "HSON_LIBRARY_QUAD_DUPLICATE"), JSON.stringify(authoring));
+  assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 0);
+  test.service.dispose();
+});
+
+check("rejected Part producers retain source errors without receiving Schema conclusions", () => {
+  const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\n'
+    + 'const Page = Hson.schema`<type "document" tag "h1">`;\n';
+  const receiving = (producer: string) => 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="bits" at="title"/>`, schema: Page },'
+    + ` bits: { parts: { title: { kind: "document", document: ${producer} } } } });\n`;
+  const test = project("rejected-part-producers", { "index.ts": prefix });
+  const config = test.file("tsconfig.json");
+  writeFileSync(config, JSON.stringify({ compilerOptions: { ...test.options, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext" }, files: [test.file("index.ts")] }));
+  const rejected = ['Hson.document`// \\8\n<p/>`', 'Hson?.document`<p/>`', 'Hson.document?.`<p/>`'];
+  for (const producer of rejected) for (const alias of [false, true]) {
+    const source = prefix + (alias ? `const title = (${producer});\n` : '') + receiving(alias ? "title" : producer);
+    test.edit("index.ts", source);
+    const errors = test.errors("index.ts");
+    assert.equal(errors.filter(error => error.code === 95002).length, 0, messages(errors));
+    const authoring = produce_document_diagnostics({ fileName: test.file("index.ts"), languageId: "typescript", text: source });
+    if (producer.includes("\\8")) {
+      const issue = authoring.find(issue => issue.code === "HSON_TAGGED_TEMPLATE_REQUIRED");
+      assert.ok(issue, JSON.stringify(authoring));
+      assert.ok(issue.range.start >= source.indexOf(producer) && issue.range.end <= source.indexOf(producer) + producer.length);
+    } else {
+      assert.equal(errors.filter(error => error.code === 1358).length, 1, messages(errors));
+    }
+    if (alias) {
+      writeFileSync(test.file("index.ts"), source);
+      const generated = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "generate", "--project", config], { cwd: root, encoding: "utf8" });
+      assert.equal(generated.error, undefined);
+      const manifest = JSON.parse(readFileSync(test.file(".hson/compiler-input/tsconfig.json/manifest.json"), "utf8"));
+      const diagnostics = manifest.diagnostics.join("\n");
+      assert.doesNotMatch(diagnostics, /Static Hson does not satisfy Page/);
+      // General escape admission belongs to authoring diagnostics above; the
+      // Schema CLI also retains TypeScript's optional-chain grammar diagnostic.
+      if (!producer.includes("\\8")) {
+        assert.notEqual(generated.status, 0, generated.stdout + generated.stderr);
+        assert.match(diagnostics, /optional chain/);
+      }
+    }
+    // Repair only the producer: valid forward composition still proves a real
+    // mismatch, and then the expected realized element clears that mismatch.
+    const repaired = source.replace(producer, 'Hson.document`<p/>`');
+    test.edit("index.ts", repaired);
+    const failures = test.errors("index.ts").filter(error => error.code === 95002);
+    assert.equal(failures.length, 1, messages(failures));
+    assert.match(messages(failures), /expected "h1"; received "p"/);
+    test.edit("index.ts", repaired.replace('<p/>', '<h1/>'));
+    assert.deepEqual(test.errors("index.ts"), []);
+  }
+  test.service.dispose();
+});
+
 check("annotation proof, certification, aliases and generated diagnostics converge", () => {
   const source = `import { Hson, hsonLiveMap, type HsonAuthored, type HsonData, type HsonDocument } from "hson-live";
 const Text = Hson.schema\`<type "document" content "string">\`;
