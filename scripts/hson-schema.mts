@@ -173,7 +173,7 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
       if (declaration === undefined || declaration.type === undefined || declaration.initializer === undefined) continue;
       const annotation = resolve_hson_schema_annotation(ts, checker, declaration.type);
       if (annotation === undefined || annotation.kind === "projected" || annotation.schema === undefined) continue;
-      const schema = resolve_immutable_schema(ts, checker, annotation.schema, item => byDeclaration.get(item));
+      const schema = resolve_immutable_schema(ts, checker, annotation.schema, item => byDeclaration.get(item), new Set(), undefined, "type-query");
       if (schema === undefined) continue;
       const mode = annotation.kind === "hson" ? schema_mode(schema) : annotation.kind;
       const typeName = mode === "data" ? "HsonData" : "HsonDocument";

@@ -1,5 +1,5 @@
 import type ts from "typescript";
-import { is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { hson_source_syntactic_eligibility, is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { admit_hson_tagged_template } from "../embedded-hson/hson-tagged-source-admission.js";
 
 export type DiscoveredHsonSchemaDeclaration = Readonly<{
@@ -24,6 +24,7 @@ export function discover_hson_schema_declarations(
   typescript: typeof ts,
   sourceFile: ts.SourceFile,
   checker: ts.TypeChecker,
+  eligible = hson_source_syntactic_eligibility(typescript),
 ): readonly DiscoveredHsonSchemaDeclaration[] {
   const counts = new Map<string, number>();
   for (const statement of sourceFile.statements) {
@@ -55,7 +56,8 @@ export function discover_hson_schema_declarations(
     }
     output.push(Object.freeze({
       sourceFile, statement, declaration, tagged, name: declaration.name.text,
-      ambiguous, complete, eligible: !ambiguous && source !== undefined,
+      ambiguous, complete, eligible: !ambiguous && source !== undefined && eligible(declaration)
+        && is_official_hson_package_binding(tagged.tag.expression, "Hson", checker, true, typescript, eligible),
       ...(source === undefined ? {} : { source }),
       ...(admissionError === undefined ? {} : { admissionError }),
     }));

@@ -360,6 +360,10 @@ class HsonScanner {
   private editorAngleCloser(openPos: Position): CloseKind {
     try { return this.classifyAngleCloser(openPos); }
     catch (error) {
+      // Source-fact observation in an explicit Document region may advance to
+      // the actual fault. Lookahead failure alone must not erase earlier headers.
+      // This does not admit source or broaden cursor-completion recovery.
+      if (this.editorMode === "document" && this.collector?.elementHeader !== undefined) return CLOSE_KIND.elem;
       // The requested cursor ends inside this angle. Only the explicit semantic
       // tag mode may decide its unfinished grammar; canonical remains ambiguous.
       const code = read_transform_error_details(error)?.code;
@@ -666,9 +670,14 @@ class HsonScanner {
     let quad: AuthoredQuadDeclaration | undefined;
     let contentStarted = false;
     let separatedBeforeSlot = false;
+    const observeHeader = (complete = false): void => {
+      this.collector?.elementHeader?.(tag, { start: openPos.index, end: this.index }, attrs, complete);
+    };
+    observeHeader();
 
     const emitOpen = (): void => {
       if (openEmitted) return;
+      observeHeader(true);
       const token = this.emit(CREATE_OPEN_TOKEN(tag, attrs, openPos, quid));
       if (quad !== undefined) token.quad = quad;
       if (this.collector !== undefined) this.recordToken(token, {
@@ -789,6 +798,7 @@ class HsonScanner {
           const attr = this.scanAttributeValue(name, namePos);
           this.assertUniqueAttribute(attrDeclarations, attr);
           attrs.push(attr);
+          observeHeader();
           separatedBeforeSlot = false;
           continue;
         }
@@ -800,6 +810,7 @@ class HsonScanner {
         });
         this.assertUniqueAttribute(attrDeclarations, attr);
         attrs.push(attr);
+        observeHeader();
         continue;
       }
 

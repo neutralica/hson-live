@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { create_hson_source_program, discover_hson_tagged_templates, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { create_hson_source_program, discover_hson_tagged_templates, hson_source_syntactic_eligibility, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../../src/internal/hson-schema/compiler.js";
 import { query_hson_editor_context, type HsonEditorCandidate } from "../../../src/internal/editor-introspection/query.js";
 import { interpolation_site } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
@@ -13,6 +13,7 @@ export type HostCompletion = Readonly<{ candidate: HsonEditorCandidate; range: R
 type CachedDocument = Readonly<{
   version: number; text: string; program: ts.Program; file: ts.SourceFile; checker: ts.TypeChecker; discovery: HsonTaggedTemplateDiscoveryResult;
   schemaDeclarations: Map<ts.SourceFile, ReturnType<typeof discover_hson_schema_declarations>>;
+  eligible: (node: ts.Node) => boolean;
 }>;
 
 /** Version-scoped discovery and bounded Schema compilation, with no workspace execution. */
@@ -36,7 +37,8 @@ export class HsonEditorCompletionCache {
       const program = sourceProgram ?? create_hson_source_program(fileName, text, {}, this.typescript);
       const file = program.getSourceFile(fileName);
       if (file === undefined || file.text !== text) return [];
-      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program, undefined, this.typescript), schemaDeclarations: new Map() };
+      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program, undefined, this.typescript),
+        schemaDeclarations: new Map(), eligible: hson_source_syntactic_eligibility(this.typescript, program) };
       this.documents.set(fileName, cached);
       if (this.documents.size > 8) {
         const oldest = this.documents.keys().next().value;
@@ -107,7 +109,7 @@ export class HsonEditorCompletionCache {
     if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer !== tagged || declaration.type === undefined
       || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
       || declaration.parent.declarations.length !== 1) return undefined;
-    const annotation = resolve_hson_schema_annotation(ts, document.checker, declaration.type);
+    const annotation = resolve_hson_schema_annotation(ts, document.checker, declaration.type, document.eligible);
     if (annotation === undefined) return undefined;
     if (annotation.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson") return null;
     const source = resolve_immutable_schema(ts, document.checker, annotation.schema, producer => {
@@ -116,11 +118,11 @@ export class HsonEditorCompletionCache {
         || file.fileName.replaceAll("\\", "/").split("/").includes(".hson")) return undefined;
       let declarations = document.schemaDeclarations.get(file);
       if (declarations === undefined) {
-        declarations = discover_hson_schema_declarations(ts, file, document.checker);
+        declarations = discover_hson_schema_declarations(ts, file, document.checker, document.eligible);
         document.schemaDeclarations.set(file, declarations);
       }
       return declarations.find(found => found.declaration === producer && found.eligible)?.source;
-    });
+    }, new Set(), document.eligible, "type-query");
     if (source === undefined) return null;
     const raw = source;
     if (!this.schemas.has(raw)) {

@@ -2,7 +2,7 @@ import type ts from "typescript";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../../src/internal/hson-schema/compiler.js";
 import { evaluate_static_schema_candidate, type StaticSchemaEvaluation } from "../../../src/internal/hson-schema/candidate-evaluation.js";
 import { resolve_immutable_schema } from "../../../src/internal/hson-schema/schema-identity.js";
-import { is_official_hson_package_binding, type HsonTaggedTemplateSource } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { hson_source_syntactic_eligibility, is_official_hson_package_binding, type HsonTaggedTemplateSource } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { hson_tagged_source as tagged_source, admit_hson_tagged_template } from "../../../src/internal/embedded-hson/hson-tagged-source-admission.js";
 import { generate_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
 import { resolve_hson_schema_annotation } from "../../../src/internal/hson-schema/schema-annotation.js";
@@ -23,20 +23,21 @@ export function verified_schema_assignment_ranges(
   const sourceFile = program.getSourceFile(fileName);
   if (sourceFile === undefined || sourceFile.isDeclarationFile) return Object.freeze([]);
   const checker = program.getTypeChecker();
+  const eligible = hson_source_syntactic_eligibility(typescript, program);
   const output: VerifiedSchemaAssignmentRange[] = [];
   for (const statement of sourceFile.statements) {
     if (!typescript.isVariableStatement(statement) || (statement.declarationList.flags & typescript.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
     const declaration = statement.declarationList.declarations[0];
     if (declaration === undefined || declaration.type === undefined || declaration.initializer === undefined) continue;
-    const annotation = resolve_hson_schema_annotation(typescript, checker, declaration.type);
+    const annotation = resolve_hson_schema_annotation(typescript, checker, declaration.type, eligible);
     if (annotation === undefined || annotation.kind === "projected" || annotation.schema === undefined) continue;
-    const association = resolve_schema_association(typescript, program, checker, annotation.schema, evidenceFile);
+    const association = resolve_schema_association(typescript, program, checker, annotation.schema, eligible, evidenceFile);
     if (association === undefined || annotation.kind !== "hson" && association.mode !== annotation.kind) continue;
     // Hson.document always produces authored source, including QUAD-free text.
     // A structural match cannot remove the missing canonical qualification.
     if (association.mode === "document") continue;
     const initializer = declaration.initializer;
-    if (!typescript.isTaggedTemplateExpression(initializer) || !is_official_member_tag(typescript, checker, initializer, association.mode)) continue;
+    if (!typescript.isTaggedTemplateExpression(initializer) || !is_official_member_tag(typescript, checker, initializer, association.mode, eligible)) continue;
     const source = tagged_source(typescript, initializer, association.mode);
     if (source === undefined) continue;
     // These producers classify admission failures of this exact template only.
@@ -69,13 +70,14 @@ function resolve_schema_association(
   program: ts.Program,
   checker: ts.TypeChecker,
   identifier: ts.Identifier,
+  eligible: (node: ts.Node) => boolean,
   evidenceFile?: (producer: string, name: string) => string | undefined,
 ): SchemaAssociation | undefined {
   return resolve_immutable_schema(typescript, checker, identifier, declaration => {
     if (!typescript.isIdentifier(declaration.name) || declaration.initializer === undefined) return undefined;
     const producer = declaration.getSourceFile();
     const tagged = unwrap_tagged_schema(typescript, declaration.initializer);
-    if (tagged === undefined || !is_official_member_tag(typescript, checker, tagged, "schema") || !typescript.isNoSubstitutionTemplateLiteral(tagged.template)) return undefined;
+    if (tagged === undefined || !is_official_member_tag(typescript, checker, tagged, "schema", eligible) || !typescript.isNoSubstitutionTemplateLiteral(tagged.template)) return undefined;
     let source: string;
     try { source = admit_hson_tagged_template(typescript, tagged, "schema"); }
     catch { return undefined; }
@@ -88,7 +90,7 @@ function resolve_schema_association(
     if (artifact?.text !== expected) return undefined;
     const mode = compiled.value.semantic.kind === "document" || compiled.value.semantic.kind === "document-element" ? "document" : "data";
     return Object.freeze({ declaration, compiled: compiled.value, mode });
-  });
+  }, new Set(), eligible, "type-query");
 }
 
 function template_raw(source: HsonTaggedTemplateSource): string {
@@ -112,13 +114,10 @@ function unwrap_tagged_schema(typescript: typeof ts, node: ts.Expression): ts.Ta
   return undefined;
 }
 
-function is_official_member_tag(typescript: typeof ts, checker: ts.TypeChecker, tagged: ts.TaggedTemplateExpression, member: string): boolean {
-  return typescript.isPropertyAccessExpression(tagged.tag)
+function is_official_member_tag(typescript: typeof ts, checker: ts.TypeChecker, tagged: ts.TaggedTemplateExpression, member: string,
+  eligible: (node: ts.Node) => boolean): boolean {
+  return eligible(tagged) && typescript.isPropertyAccessExpression(tagged.tag)
     && tagged.tag.name.text === member
     && typescript.isIdentifier(tagged.tag.expression)
-    && official_binding(typescript, checker, tagged.tag.expression, "Hson");
-}
-
-function official_binding(typescript: typeof ts, checker: ts.TypeChecker, identifier: ts.Identifier, expected: "Hson" | "HsonData" | "HsonDocument"): boolean {
-  return is_official_hson_package_binding(identifier, expected, checker, true, typescript);
+    && is_official_hson_package_binding(tagged.tag.expression, "Hson", checker, true, typescript, eligible);
 }

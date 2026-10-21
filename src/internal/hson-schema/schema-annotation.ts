@@ -1,5 +1,5 @@
 import type ts from "typescript";
-import { is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { hson_source_alias_eligible, hson_source_syntactic_eligibility, is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
 
 export type HsonSchemaAnnotation = Readonly<{
   kind: "data" | "document" | "hson" | "projected";
@@ -12,6 +12,7 @@ export function resolve_hson_schema_annotation(
   typescript: typeof ts,
   checker: ts.TypeChecker,
   annotation: ts.TypeNode,
+  eligible = hson_source_syntactic_eligibility(typescript),
 ): HsonSchemaAnnotation | undefined {
   const substitute = (input: Argument): Argument | undefined => {
     let current = input;
@@ -29,11 +30,11 @@ export function resolve_hson_schema_annotation(
   };
   const visit = (input: Argument, seen: ReadonlySet<ts.Declaration>): HsonSchemaAnnotation | undefined => {
     const current = substitute(input);
-    if (current === undefined || !typescript.isTypeReferenceNode(current.node)) return undefined;
+    if (current === undefined || !eligible(current.node) || !typescript.isTypeReferenceNode(current.node)) return undefined;
     const { node, parameters } = current;
     if (typescript.isIdentifier(node.typeName)) {
       for (const [name, kind] of [["HsonData", "data"], ["HsonDocument", "document"], ["HsonFromSchema", "hson"], ["JsonFromSchema", "projected"]] as const) {
-        if (!is_official_hson_package_binding(node.typeName, name, checker, true, typescript)) continue;
+        if (!is_official_hson_package_binding(node.typeName, name, checker, true, typescript, eligible)) continue;
         // Bare HsonData/HsonDocument intentionally request no Schema proof.
         if (node.typeArguments?.length !== 1) return undefined;
         const argument = node.typeArguments[0];
@@ -43,6 +44,7 @@ export function resolve_hson_schema_annotation(
       }
     }
     let symbol = checker.getSymbolAtLocation(node.typeName);
+    if (symbol === undefined || !hson_source_alias_eligible(symbol, checker, eligible, typescript)) return undefined;
     if (symbol !== undefined && (symbol.flags & typescript.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
     if (symbol?.declarations?.length !== 1) return undefined;
     const declaration = symbol.declarations[0];

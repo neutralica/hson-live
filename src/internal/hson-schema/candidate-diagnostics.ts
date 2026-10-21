@@ -2,18 +2,19 @@ import type ts from "typescript";
 import { discover_hson_schema_declarations } from "./schema-discovery.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
-import { hson_tagged_source, admit_hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
-import { evaluate_static_schema_candidate, type StaticSchemaCandidate } from "./candidate-evaluation.js";
+import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
 import { resolve_immutable_schema } from "./schema-identity.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
 import { library_schema_attachment_plan, type PreciseSchemaFact } from "./source-transformation.js";
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { library_source_definitions, library_source_fields } from "./library-source.js";
+import { static_source_candidates } from "./source-candidates.js";
+import { static_part_inventory } from "./part-source.js";
 
 type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
 export type StaticSchemaDiagnostic = StaticSchemaDiagnosticLocation & Readonly<{ code: string; related?: readonly StaticSchemaDiagnosticLocation[] }>;
 type Schema = Readonly<{ declaration: ts.VariableDeclaration; name: string; compiled: CompiledHsonSchema }>;
-type Candidate = StaticSchemaCandidate & Readonly<{ node: ts.Expression; bodyStart?: number }>;
+
 
 /** Pure preflight over authored ASTs. Unknown expressions withdraw the entire proof. */
 export function static_schema_candidate_diagnostics(typescript: typeof ts, program: ts.Program): readonly StaticSchemaDiagnostic[] {
@@ -21,71 +22,14 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   const schemas = new Map<ts.Declaration, Schema>();
   const sources = program.getSourceFiles().filter(source => !source.isDeclarationFile && !program.isSourceFileFromExternalLibrary(source)
     && !source.fileName.replaceAll("\\", "/").split("/").includes(".hson"));
-  for (const source of sources) for (const found of discover_hson_schema_declarations(typescript, source, checker)) {
+  const sourceCandidates = static_source_candidates(typescript, checker, program);
+  for (const source of sources) for (const found of discover_hson_schema_declarations(typescript, source, checker, sourceCandidates.eligible)) {
     if (!found.eligible || found.source === undefined) continue;
     const compiled = compile_hson_schema(found.source);
     if (compiled.ok) schemas.set(found.declaration, { declaration: found.declaration, name: found.name, compiled: compiled.value });
   }
-  const declaration = (node: ts.Identifier): ts.VariableDeclaration | undefined => {
-    let symbol = typescript.isShorthandPropertyAssignment(node.parent) ? checker.getShorthandAssignmentValueSymbol(node.parent) : checker.getSymbolAtLocation(node);
-    if (symbol !== undefined && (symbol.flags & typescript.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-    if (symbol?.declarations?.length !== 1) return undefined;
-    const found = symbol.declarations[0];
-    return found !== undefined && typescript.isVariableDeclaration(found) && typescript.isIdentifier(found.name)
-      && typescript.isVariableDeclarationList(found.parent) && (found.parent.flags & typescript.NodeFlags.Const) !== 0 ? found : undefined;
-  };
-  const unwrap = (node: ts.Expression): ts.Expression => typescript.isParenthesizedExpression(node) || typescript.isAsExpression(node) || typescript.isSatisfiesExpression(node)
-    ? unwrap(node.expression) : node;
-  const schema = (input: ts.Expression): Schema | undefined => resolve_immutable_schema(typescript, checker, input, found => schemas.get(found));
-  const candidates = (input: ts.Expression, family: "certify" | "document" | "data", seen = new Set<ts.Declaration>(), depth = 0): readonly Candidate[] | undefined => {
-    if (depth > 16) return undefined;
-    const node = unwrap(input);
-    if (typescript.isIdentifier(node)) {
-      const found = declaration(node);
-      if (found === undefined || found.initializer === undefined || seen.has(found)) return undefined;
-      // Nonprimitive JSON (including alternatives) is known only at its sole use.
-      const initial = unwrap(found.initializer);
-      const primitive = typescript.isStringLiteral(initial) || typescript.isNoSubstitutionTemplateLiteral(initial)
-        || typescript.isNumericLiteral(initial) || typescript.isPrefixUnaryExpression(initial)
-        || [typescript.SyntaxKind.TrueKeyword, typescript.SyntaxKind.FalseKeyword, typescript.SyntaxKind.NullKeyword].includes(initial.kind);
-      if (family === "data" && !primitive) {
-        if (found.getSourceFile() !== node.getSourceFile() || found.getEnd() >= node.getStart()) return undefined;
-        let uncertain = false;
-        const references = (entry: ts.Node): void => {
-          if (typescript.isIdentifier(entry) && entry !== found.name && entry !== node && declaration(entry) === found) uncertain = true;
-          typescript.forEachChild(entry, references);
-        };
-        references(node.getSourceFile());
-        if (uncertain) return undefined;
-      }
-      const next = new Set(seen); next.add(found);
-      return candidates(found.initializer, family, next, depth + 1);
-    }
-    if (typescript.isConditionalExpression(node)) {
-      const left = candidates(node.whenTrue, family, new Set(seen), depth + 1);
-      const right = candidates(node.whenFalse, family, new Set(seen), depth + 1);
-      return left === undefined || right === undefined || left.length + right.length > 16 ? undefined : [...left, ...right];
-    }
-    if (family !== "data" && typescript.isTaggedTemplateExpression(node) && typescript.isPropertyAccessExpression(node.tag)
-      && typescript.isIdentifier(node.tag.expression) && is_official_hson_package_binding(node.tag.expression, "Hson", checker, true, typescript)
-      && ["document", "data", "canonical"].includes(node.tag.name.text)
-      && typescript.isNoSubstitutionTemplateLiteral(node.template) && !node.template.isUnterminated) {
-      return [{ node, source: node.template.getText(node.getSourceFile()).slice(1, -1), family: node.tag.name.text === "document" ? "document" : node.tag.name.text === "canonical" ? "canonical" : "data", bodyStart: node.template.getStart() + 1 }];
-    }
-    if (family === "document" && (typescript.isStringLiteral(node) || typescript.isNoSubstitutionTemplateLiteral(node))) {
-      // Escaped JS strings have no direct raw-Hson correspondence; anchor on the expression.
-      return [{ node, source: node.text, family: "document", bodyStart: -1 }];
-    }
-    if (family === "data") {
-      const value = json_literal(node, typescript);
-      if (!value.known) return undefined;
-      if (typeof value.value === "string") {
-        try { return [{ node, json: JSON.parse(value.value) }]; } catch { return undefined; }
-      }
-      return [{ node, json: value.value }];
-    }
-    return undefined;
-  };
+  const { declaration, candidates } = sourceCandidates;
+  const schema = (input: ts.Expression, use: "value" | "type-query" = "value"): Schema | undefined => resolve_immutable_schema(typescript, checker, input, found => schemas.get(found), new Set(), sourceCandidates.eligible, use);
   const output: StaticSchemaDiagnostic[] = [];
   const reported = new Set<string>();
   const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data", parts?: ReadonlyMap<string, unknown>): void => {
@@ -118,29 +62,9 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   };
   for (const source of sources) {
     const mapSymbols = read_supported_hson_import_symbols(source, checker, [], "hsonLiveMap", typescript);
-    const construction = (node: ts.Expression) => library_source_definitions(node, checker, mapSymbols, false, typescript);
-    const inventory = (definitions: ts.ObjectLiteralExpression): ReadonlyMap<string, unknown> => {
-      const parts = new Map<string, unknown>();
-      for (const [name, definition] of library_source_fields(definitions, typescript) ?? []) {
-        if (!typescript.isObjectLiteralExpression(definition)) continue;
-        const fields = library_source_fields(definition, typescript), input = fields?.get("parts");
-        if (input === undefined || fields?.size !== 1) continue;
-        // Fresh literal records only: const object aliases can still be mutated.
-        const value = json_literal(unwrap(input), typescript, node => {
-          const possible = candidates(node, "document");
-          const only = possible?.length === 1 ? possible[0] : undefined;
-          if (only === undefined || !("source" in only) || only.family !== "document") return undefined;
-          if (!typescript.isTaggedTemplateExpression(only.node)) return only.source;
-          // Official binding recognition above is not producer admission: rejected
-          // escapes and optional-chain tags cannot establish Part inventory evidence.
-          const source = hson_tagged_source(typescript, only.node, "document");
-          if (source === undefined || "substitutionRanges" in source) return undefined;
-          try { return admit_hson_tagged_source(source); } catch { return undefined; }
-        });
-        if (value.known) parts.set(name, value.value);
-      }
-      return parts;
-    };
+    const construction = (node: ts.Expression) => sourceCandidates.eligible(node)
+      ? library_source_definitions(node, checker, mapSymbols, false, typescript, sourceCandidates.eligible) : undefined;
+    const inventory = (definitions: ts.ObjectLiteralExpression) => static_part_inventory(typescript, checker, definitions, sourceCandidates);
     const validateDefinition = (definition: ts.Expression, attached?: Schema, parts?: ReadonlyMap<string, unknown>): void => {
       if (!typescript.isObjectLiteralExpression(definition)) return;
       const fields = library_source_fields(definition, typescript);
@@ -173,14 +97,14 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       const found = statement.declarationList.declarations[0];
       if (found?.type === undefined || found.initializer === undefined) continue;
       const annotationNode = found.type;
-      const annotation = resolve_hson_schema_annotation(typescript, checker, annotationNode);
+      const annotation = resolve_hson_schema_annotation(typescript, checker, annotationNode, sourceCandidates.eligible);
       if (annotation === undefined) continue;
       const initializer = found.initializer;
       if (!typescript.isTaggedTemplateExpression(initializer) || !typescript.isPropertyAccessExpression(initializer.tag)
         || !["data", "document"].includes(initializer.tag.name.text) || !typescript.isIdentifier(initializer.tag.expression)
-        || !is_official_hson_package_binding(initializer.tag.expression, "Hson", checker, true, typescript)
+        || !is_official_hson_package_binding(initializer.tag.expression, "Hson", checker, true, typescript, sourceCandidates.eligible)
         || !typescript.isNoSubstitutionTemplateLiteral(initializer.template) || initializer.template.isUnterminated) continue;
-      const contract = annotation.schema === undefined ? undefined : schema(annotation.schema);
+      const contract = annotation.schema === undefined ? undefined : schema(annotation.schema, "type-query");
       const annotationDiagnostic = (code: string, message: string): void => {
         output.push({ file: source.fileName, start: annotationNode.getStart(), end: annotationNode.getEnd(), code, message });
       };
@@ -215,35 +139,4 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
 function issue_detail(issue: CanonicalGraphIssue): string {
   const description = issue.code === "MISSING_REQUIRED" ? "missing required child/value" : issue.evidence.kind === "document-tag-mismatch" ? "wrong tag" : issue.code.replaceAll("_", " ").toLowerCase();
   return `${description} at ${issue.path.join(".") || "root"}${issue.attributeName === undefined ? "" : ` attribute ${JSON.stringify(issue.attributeName)}`}${issue.expected === undefined ? "" : `; expected ${issue.expected}`}${issue.received === undefined ? "" : `; received ${issue.received}`}`;
-}
-
-type Literal = Readonly<{ known: true; value: unknown }> | Readonly<{ known: false }>;
-/** JSON syntax only: no property reads, spreads, functions or application execution. */
-function json_literal(node: ts.Expression, typescript: typeof ts, authored?: (node: ts.Expression) => string | undefined): Literal {
-  if (authored !== undefined && (typescript.isTaggedTemplateExpression(node) || typescript.isIdentifier(node))) {
-    const source = authored(node);
-    return source === undefined ? { known: false } : { known: true, value: source };
-  }
-  if (typescript.isStringLiteral(node) || typescript.isNoSubstitutionTemplateLiteral(node)) return { known: true, value: node.text };
-  if (typescript.isNumericLiteral(node)) return { known: true, value: Number(node.text) };
-  if (typescript.isPrefixUnaryExpression(node) && node.operator === typescript.SyntaxKind.MinusToken && typescript.isNumericLiteral(node.operand)) return { known: true, value: -Number(node.operand.text) };
-  if (node.kind === typescript.SyntaxKind.TrueKeyword) return { known: true, value: true };
-  if (node.kind === typescript.SyntaxKind.FalseKeyword) return { known: true, value: false };
-  if (node.kind === typescript.SyntaxKind.NullKeyword) return { known: true, value: null };
-  if (typescript.isArrayLiteralExpression(node)) {
-    const entries = node.elements.map(entry => json_literal(entry, typescript, authored));
-    return entries.every(entry => entry.known) ? { known: true, value: entries.map(entry => entry.value) } : { known: false };
-  }
-  if (typescript.isObjectLiteralExpression(node)) {
-    const fields = library_source_fields(node, typescript);
-    if (fields === undefined) return { known: false };
-    const value: Record<string, unknown> = Object.create(null);
-    for (const [key, input] of fields) {
-      const entry = json_literal(input, typescript, authored);
-      if (!entry.known || key === "__proto__") return { known: false };
-      value[key] = entry.value;
-    }
-    return { known: true, value };
-  }
-  return { known: false };
 }

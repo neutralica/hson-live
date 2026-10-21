@@ -101,6 +101,28 @@ export function create_static_hson_source(
   literal: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral,
   boundary: StaticHsonBoundary,
 ): StaticHsonSource | undefined {
+  const correspondence = static_hson_literal_correspondence(hostText, file, literal);
+  if (correspondence === undefined) return undefined;
+  const literalStart = literal.getStart(file), literalEnd = literal.end;
+  const calleeRange = range(call.expression.getStart(file), call.expression.end);
+  const literalRange = range(literalStart, literalEnd);
+  return Object.freeze({
+    kind: "javascript-string",
+    fileName,
+    hostText,
+    boundary,
+    callRange: range(call.getStart(file), call.end),
+    calleeRange,
+    tagRange: calleeRange,
+    templateRange: literalRange,
+    literalRange,
+    ...correspondence,
+  });
+}
+
+/** Reuse ordinary JS literal cooking correspondence outside fromHson call sites. */
+export function static_hson_literal_correspondence(hostText: string, file: ts.SourceFile,
+  literal: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral): Pick<StaticHsonSource, "runtimeText" | "bodyRange" | "spans"> | undefined {
   const literalStart = literal.getStart(file);
   const literalEnd = literal.end;
   const bodyStart = literalStart + 1;
@@ -125,22 +147,7 @@ export function create_static_hson_source(
   // Refuse correspondence when TypeScript's authoritative cooked value and
   // the syntax-only span accounting disagree.
   if (runtimeOffset !== literal.text.length) return undefined;
-  const calleeRange = range(call.expression.getStart(file), call.expression.end);
-  const literalRange = range(literalStart, literalEnd);
-  return Object.freeze({
-    kind: "javascript-string",
-    fileName,
-    hostText,
-    boundary,
-    callRange: range(call.getStart(file), call.end),
-    calleeRange,
-    tagRange: calleeRange,
-    templateRange: literalRange,
-    literalRange,
-    bodyRange: range(bodyStart, bodyEnd),
-    runtimeText: literal.text,
-    spans: Object.freeze(spans),
-  });
+  return { bodyRange: range(bodyStart, bodyEnd), runtimeText: literal.text, spans: Object.freeze(spans) };
 }
 
 /** Map one Unicode-safe runtime point through complete authored escape spans. */
@@ -150,7 +157,7 @@ export function map_static_hson_point(source: StaticHsonSource, index: number): 
 }
 
 /** Map one half-open runtime range to the smallest truthful host range. */
-export function map_static_hson_range(source: StaticHsonSource, runtimeRange: HostSourceRange): HostSourceRange | undefined {
+export function map_static_hson_range(source: Pick<StaticHsonSource, "runtimeText" | "bodyRange" | "spans">, runtimeRange: HostSourceRange): HostSourceRange | undefined {
   const { start, end } = runtimeRange;
   if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > source.runtimeText.length) return undefined;
   if (start === end) {

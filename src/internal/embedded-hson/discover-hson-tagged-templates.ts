@@ -22,6 +22,7 @@ export function is_official_hson_package_binding(
   checker: ts.TypeChecker,
   requireResolvedOrigin = false,
   typescript: typeof ts = defaultTs,
+  eligible?: (node: ts.Node) => boolean,
 ): boolean {
   const symbol = checker.getSymbolAtLocation(identifier);
   if (symbol === undefined || symbol.declarations?.length !== 1) return false;
@@ -34,7 +35,8 @@ export function is_official_hson_package_binding(
     && supportedPackageSpecifiers.has(imported.moduleSpecifier.text)
     && (declaration.propertyName?.text ?? declaration.name.text) === expected
     && (expected !== "Hson" || !declaration.isTypeOnly && !clause.isTypeOnly);
-  if (!officialImport || !requireResolvedOrigin) return officialImport;
+  if (!officialImport || eligible !== undefined && !hson_source_alias_eligible(symbol, checker, eligible, typescript, expected === "Hson")) return false;
+  if (!requireResolvedOrigin) return officialImport;
   const target = checker.getAliasedSymbol(symbol);
   return target.declarations?.some(item => official_declaration_origin(item.getSourceFile().fileName, expected)) === true;
 }
@@ -156,6 +158,73 @@ function hasOverlappingDiagnostic(
   range: HostSourceRange,
 ): boolean {
   return diagnostics.some((diagnostic) => diagnosticOverlapsRange(diagnostic, range));
+}
+
+/** Local syntax eligibility over the existing Program or syntax-only source host. */
+export function hson_source_syntactic_eligibility(typescript: typeof ts = defaultTs, program?: ts.Program): (node: ts.Node) => boolean {
+  const diagnostics = new Map<ts.SourceFile, readonly ts.Diagnostic[]>();
+  return node => {
+    const file = node.getSourceFile();
+    let errors = diagnostics.get(file);
+    if (errors === undefined) {
+      const syntax = program ?? create_hson_source_program(file.fileName, file.text, {}, typescript);
+      errors = syntax.getSyntacticDiagnostics(syntax.getSourceFile(file.fileName));
+      diagnostics.set(file, errors);
+    }
+    return !hasOverlappingDiagnostic(errors, nodeRange(node, file));
+  };
+}
+
+/** Check each supported import/export hop, rather than skipping to a recovered target. */
+export function hson_source_alias_eligible(symbol: ts.Symbol, checker: ts.TypeChecker, eligible: (node: ts.Node) => boolean,
+  typescript: typeof ts = defaultTs, valueOnly = false, namespaceMember?: string): boolean {
+  const unalias = (value: ts.Symbol) => (value.flags & typescript.SymbolFlags.Alias) === 0 ? value : checker.getAliasedSymbol(value);
+  // The checker elides export-star hops from alias symbols. Recover only the
+  // selected value's routes from its module AST, preserving every possible hop.
+  const moduleExportEligible = (specifier: ts.Expression, name: string, visited = new Set<ts.Symbol>()): boolean => {
+    const module = checker.getSymbolAtLocation(specifier);
+    if (module === undefined || visited.has(module) || visited.size >= 16) return false;
+    const selected = checker.getExportsOfModule(module).find(value => value.name === name);
+    if (selected === undefined) return false;
+    const files = (module.declarations ?? []).filter(typescript.isSourceFile);
+    if (selected.declarations?.some(declaration => files.includes(declaration.getSourceFile()))) return true;
+    const next = new Set(visited); next.add(module);
+    const routes = files.flatMap(file => file.statements.filter(typescript.isExportDeclaration).filter(statement => {
+      if (statement.exportClause !== undefined || statement.moduleSpecifier === undefined) return false;
+      const target = checker.getSymbolAtLocation(statement.moduleSpecifier);
+      const exported = target === undefined ? undefined : checker.getExportsOfModule(target).find(value => value.name === name);
+      return exported !== undefined && unalias(exported) === unalias(selected);
+    }));
+    return routes.length > 0 && routes.every(route => eligible(route) && (!valueOnly || !route.isTypeOnly)
+      && route.moduleSpecifier !== undefined && moduleExportEligible(route.moduleSpecifier, name, next));
+  };
+  const seen = new Set<ts.Symbol>();
+  while (true) {
+    if (seen.has(symbol) || seen.size >= 16 || symbol.declarations === undefined || symbol.declarations.length === 0) return false;
+    seen.add(symbol);
+    for (const declaration of symbol.declarations) {
+      let dependency: ts.Node = declaration;
+      if (typescript.isImportSpecifier(declaration) || typescript.isNamespaceImport(declaration) || typescript.isExportSpecifier(declaration)) {
+        while (dependency.parent !== undefined && !typescript.isSourceFile(dependency.parent)
+          && !typescript.isImportDeclaration(dependency) && !typescript.isExportDeclaration(dependency)) dependency = dependency.parent;
+      }
+      // A namespace's module contains unrelated declarations; only the selected
+      // exported value and the import/export hops establish this dependency.
+      if (!typescript.isSourceFile(dependency) && !eligible(dependency)) return false;
+      if (valueOnly && (typescript.isImportDeclaration(dependency) && (dependency.importClause?.isTypeOnly
+        || typescript.isImportSpecifier(declaration) && declaration.isTypeOnly)
+        || typescript.isExportDeclaration(dependency) && (dependency.isTypeOnly || typescript.isExportSpecifier(declaration) && declaration.isTypeOnly))) return false;
+      if ((typescript.isImportDeclaration(dependency) || typescript.isExportDeclaration(dependency)) && dependency.moduleSpecifier !== undefined) {
+        const name = typescript.isImportSpecifier(declaration) || typescript.isExportSpecifier(declaration)
+          ? (declaration.propertyName ?? declaration.name).text : typescript.isNamespaceImport(declaration) ? namespaceMember : undefined;
+        if (name !== undefined && !moduleExportEligible(dependency.moduleSpecifier, name)) return false;
+      }
+    }
+    if ((symbol.flags & typescript.SymbolFlags.Alias) === 0) return true;
+    const next = checker.getImmediateAliasedSymbol(symbol);
+    if (next === undefined) return false;
+    symbol = next;
+  }
 }
 
 export function read_supported_hson_import_symbols(

@@ -124,6 +124,31 @@ const privateLocus = hsonLiveMap.locus.create({ deck: { data: certificate, schem
 export const privatePart = privateLocus.parts.components.submit;
 export const privateGoverned = privateLocus.data.deck;
 `);
+check("packaged compiler proves type-only Schema queries through re-exports and immutable aliases", () => {
+  const directory = join(temporary, "type-only-schema");
+  const source = `
+import { Hson, type HsonData } from "hson-live";
+import type { S } from "./schema.js";
+import { S as Value } from "./schema.js";
+import { type Reexported, type Chained } from "./bridge.js";
+export const value: HsonData<typeof S> = Hson.data\`<name "Ada">\`;
+export const reexported: HsonData<typeof Reexported> = Hson.data\`<name "Ada">\`;
+export const chained: HsonData<typeof Chained> = Hson.data\`<name "Ada">\`;
+export const ordinary: HsonData<typeof Value> = Hson.data\`<name "Ada">\`;
+`;
+  project(directory, source, { ...options, lib: ["ESNext", "DOM"] });
+  writeFileSync(join(directory, "schema.ts"), 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data" content <name "string">>`; export const Alias = S; export const Next = Alias;');
+  writeFileSync(join(directory, "bridge.ts"), 'export type { Alias as Reexported, Next as Chained } from "./schema.js";');
+  const cli = join(installed, "dist/hson-schema.mjs");
+  for (const action of ["generate", "check", "build"]) run([cli, action, "--project", join(directory, "tsconfig.json")]);
+  assert.equal(readFileSync(join(directory, "index.ts"), "utf8"), source);
+  assert.match(readFileSync(join(directory, "out/index.d.ts"), "utf8"), /export declare const value:/);
+  writeFileSync(join(directory, "index.ts"), source.replaceAll('<name "Ada">', "<name 42>"));
+  const invalid = spawnSync(process.execPath, [cli, "generate", "--project", join(directory, "tsconfig.json")], { cwd: temporary, encoding: "utf8", timeout: 120_000 });
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stdout + invalid.stderr, /Static Hson does not satisfy S/);
+  assert.doesNotMatch(invalid.stdout + invalid.stderr, /Unable to resolve the Schema proof/);
+});
 check("Worker producer generates evidence and emits public declarations", () => {
   const before = readFileSync(join(producer, "index.ts"), "utf8");
   for (const action of ["generate", "build"]) run([join(installed, "dist/hson-schema.mjs"), action, "--project", join(producer, "tsconfig.json")]);

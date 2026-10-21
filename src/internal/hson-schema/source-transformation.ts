@@ -100,7 +100,8 @@ export function library_schema_attachment_plan(
   ts: typeof defaultTs = defaultTs,
 ): Readonly<{ edits: readonly SchemaSourceEdit[]; generatedNames: readonly string[]; attachments: readonly LibrarySchemaAttachmentFact[] }> {
   const hsonLiveMapSymbols = read_supported_hson_import_symbols(source, checker, [], "hsonLiveMap", ts);
-  if (hsonLiveMapSymbols.size === 0 || schemas.length === 0) return { edits: [], generatedNames: [], attachments: [] };
+  if (schemas.length === 0 || hsonLiveMapSymbols.size === 0
+    && read_supported_hson_import_symbols(source, checker, [], "hson", ts).size === 0) return { edits: [], generatedNames: [], attachments: [] };
   const facts = new Map<ts.Declaration, PreciseSchemaFact>(schemas.map(fact => [fact.declaration, fact]));
   const names = new Set<string>();
   const collect = (node: ts.Node): void => { if (ts.isIdentifier(node)) names.add(node.text); ts.forEachChild(node, collect); };

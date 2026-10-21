@@ -1,4 +1,4 @@
-import { part_placeholder_matches, part_placeholder_pattern } from "../../internal/part-placeholder.js";
+import { part_placeholder_matches, part_placeholder_pattern, transform_part_parameter_strings } from "../../internal/part-placeholder.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { decode_public_attrs, is_public_attr_name } from "../../core/public-attrs.js";
@@ -557,30 +557,7 @@ function substitute_part_parameters(root: HsonNode, parameters: ReadonlyMap<stri
     if (matches.length === 1 && matches[0]![0] === value) return read(matches[0]![1]!);
     return value.replace(pattern, (_, name: string) => String(read(name)));
   };
-  const stack = [copy];
-  while (stack.length) {
-    const node = stack.pop()!;
-    if (node.$_tag.includes("%{")) throw new TypeError("Part placeholders cannot occur in tags.");
-    if (node.$_meta !== undefined && JSON.stringify(node.$_meta).includes("%{")) throw new TypeError("Part placeholders cannot occur in identity metadata.");
-    if (node.$_attrs !== undefined) {
-      const attrs: NonNullable<HsonNode["$_attrs"]> = Object.create(null);
-      for (const [name, value] of Object.entries(node.$_attrs)) {
-        if (name.includes("%{")) throw new TypeError("Part placeholders cannot occur in attribute names.");
-        if (/^on/i.test(name) && typeof value === "string" && value.includes("%{")) throw new TypeError("Part placeholders in event-handler attributes are unsupported.");
-        if (typeof value === "object" && value !== null && JSON.stringify(value).includes("%{")) throw new TypeError("Part placeholders in structured attributes are unsupported.");
-        attrs[name] = typeof value === "string" ? substitute(value) : value;
-      }
-      node.$_attrs = attrs;
-    }
-    if (node.$_tag === STR_TAG && typeof node.$_content[0] === "string") {
-      const value = substitute(node.$_content[0]);
-      // Canonical document text is STR-only; strong scalar types apply to attributes.
-      node.$_content = [String(value)];
-    } else {
-      if (["script", "style"].includes(node.$_tag.toLowerCase()) && JSON.stringify(node.$_content).includes("%{")) throw new TypeError("Part placeholders in script/style content are unsupported.");
-      for (const child of node.$_content) if (is_Node(child)) stack.push(child);
-    }
-  }
+  transform_part_parameter_strings(copy, substitute);
   for (const name of parameters.keys()) if (!used.has(name)) throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)}.`);
   return copy;
 }

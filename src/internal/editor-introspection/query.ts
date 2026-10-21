@@ -3,6 +3,21 @@ import { serialize_hson_tag_name } from "../../api/transform/utils/hson-utils/hs
 import { serialize_primitive_hson } from "../../api/transform/utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { HSON_SCHEMA_DATA_ROOT_ORDER, type CompiledHsonSchema, type HsonSchemaDataSemanticNode } from "../hson-schema/compiler.js";
+import type { PartSourceFacts, PartDocumentSource, PartConnectorSource } from "../hson-schema/part-source.js";
+
+/** Locate compiler source facts only; completion and reference diagnostics are separate consumers. */
+export function query_hson_part_source(facts: PartSourceFacts, file: string, offset: number): Readonly<{
+  document: PartDocumentSource; connector?: PartConnectorSource;
+}> | undefined {
+  if (!Number.isInteger(offset) || offset < 0) return undefined;
+  const document = facts.documents.filter(found => found.location.file === file
+    && found.authoredRanges.some(range => range.start <= offset && offset < range.end))
+    .reduce<PartDocumentSource | undefined>((inner, found) => inner === undefined
+      || found.location.end - found.location.start < inner.location.end - inner.location.start ? found : inner, undefined);
+  if (document === undefined) return undefined;
+  const connector = document.connectors.find(found => found.location.start <= offset && offset <= found.location.end);
+  return { document, ...(connector === undefined ? {} : { connector }) };
+}
 
 export type HsonEditorCandidate = Readonly<{
   label: string;

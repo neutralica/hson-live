@@ -45,6 +45,16 @@ assert.equal(filtered_schema_assignment_errors(document, documentConsumer).lengt
 assert.equal(verified_schema_assignment_ranges(ts, document, documentConsumer).length, 0);
 
 const consumerText = readFileSync(mvpConsumer, "utf8");
+(() => {
+  const malformedProducerImport = program_for(mvpConfig, new Map([[mvpConsumer,
+    consumerText.replace('const authored: HsonData<typeof UserSchema> = Hson.data', 'const authored: HsonData<typeof UserSchema> = BrokenHson.data')
+    + '\nimport { Hson as BrokenHson } from "hson-live\n']]));
+  assert.ok(malformedProducerImport.getSyntacticDiagnostics().length > 0);
+  assert.equal(verified_schema_assignment_ranges(ts, malformedProducerImport, mvpConsumer).length, 4,
+    "A recovered producer import cannot suppress assignment proof errors; unrelated producers survive");
+  assert.equal(filtered_schema_assignment_errors(malformedProducerImport, mvpConsumer).length, 1);
+  assert.deepEqual(static_schema_candidate_diagnostics(ts, authoredPrograms.get(malformedProducerImport)!), []);
+})();
 const mvpProducer = resolve(repositoryRoot, "tests/fixtures/hson-schema-mvp/producer.ts");
 const aliases = `
 import type { HsonSchema, HsonFromSchema, HsonData as Data } from "hson-live";
