@@ -18,6 +18,14 @@ assert.equal(checkpoint("«1,")?.kind, "value");
 assert.deepEqual(checkpoint("«1,")?.path, [1]);
 assert.deepEqual(checkpoint("<outer <in")?.path, ["outer"]);
 assert.equal(checkpoint("<foo", "document")?.kind, "tag");
+// Authored Document checkpoints share the production QUAD grammar.
+for (const source of ['<span title=', '<span @:label title=', '<main @:root <span @:label title=']) {
+  assert.equal(checkpoint(source, "document")?.kind, "attribute-value", source);
+  if (source.includes("@:")) assert.equal(checkpoint(source, "canonical"), undefined, source);
+}
+assert.equal(checkpoint('<span @:same @:again title=', "document"), undefined);
+assert.equal(checkpoint('<span @:label title=', "data"), undefined);
+assert.equal(checkpoint('<span @:label title=', "schema"), undefined);
 assert.equal(checkpoint("<", "canonical"), undefined);
 assert.equal(checkpoint('<style "', "document"), undefined);
 assert.equal(checkpoint("< // comment", "data"), undefined);

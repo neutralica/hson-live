@@ -99,29 +99,31 @@ try {
       `--user-data-dir=${userDataDir}`,
       `--extensions-dir=${extensionsDir}`,
     ],
-    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath },
+    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_TYPING_TEST_ONLY: process.env.HSON_TYPING_TEST_ONLY ?? "0" },
   });
-  const lifecycleAfterDeactivation = (await readFile(localHostLifecycle, "utf8")).trim().split("\n").filter(Boolean);
-  if (lifecycleAfterDeactivation.at(-2) !== "start" || lifecycleAfterDeactivation.at(-1) !== "stop") {
-    throw new Error(`VS Code extension deactivation did not dispose its live local host: ${JSON.stringify(lifecycleAfterDeactivation)}`);
+  if (process.env.HSON_TYPING_TEST_ONLY !== "1") {
+    const lifecycleAfterDeactivation = (await readFile(localHostLifecycle, "utf8")).trim().split("\n").filter(Boolean);
+    if (lifecycleAfterDeactivation.at(-2) !== "start" || lifecycleAfterDeactivation.at(-1) !== "stop") {
+      throw new Error(`VS Code extension deactivation did not dispose its live local host: ${JSON.stringify(lifecycleAfterDeactivation)}`);
+    }
+    process.stdout.write("ok - real VS Code extension deactivation disposed its live local host\n");
+    const executable = process.env.HSON_VSCODE_EXECUTABLE ?? await downloadAndUnzipVSCode({ version: "1.95.3", cachePath: vscodeCacheDir });
+    const restrictedArgs = [
+      "--no-sandbox", "--disable-gpu-sandbox", "--disable-updates", "--skip-welcome", "--skip-release-notes",
+      `--extensionDevelopmentPath=${resolve(here, "../..")}`,
+      `--extensionTestsPath=${resolve(here, "../../.test-dist/integration.cjs")}`,
+      workspaceDir,
+      `--user-data-dir=${restrictedUserDataDir}`,
+      `--extensions-dir=${restrictedExtensionsDir}`,
+    ];
+    await new Promise((resolveRun, rejectRun) => {
+      const child = spawn(executable, restrictedArgs, { env: { ...process.env, HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_RESTRICTED_TEST: "1" } });
+      child.stdout.on("data", data => process.stdout.write(data));
+      child.stderr.on("data", data => process.stderr.write(data));
+      child.once("error", rejectRun);
+      child.once("close", code => code === 0 ? resolveRun() : rejectRun(new Error(`Restricted VS Code integration exited with ${code}.`)));
+    });
   }
-  process.stdout.write("ok - real VS Code extension deactivation disposed its live local host\n");
-  const executable = process.env.HSON_VSCODE_EXECUTABLE ?? await downloadAndUnzipVSCode({ version: "1.95.3", cachePath: vscodeCacheDir });
-  const restrictedArgs = [
-    "--no-sandbox", "--disable-gpu-sandbox", "--disable-updates", "--skip-welcome", "--skip-release-notes",
-    `--extensionDevelopmentPath=${resolve(here, "../..")}`,
-    `--extensionTestsPath=${resolve(here, "../../.test-dist/integration.cjs")}`,
-    workspaceDir,
-    `--user-data-dir=${restrictedUserDataDir}`,
-    `--extensions-dir=${restrictedExtensionsDir}`,
-  ];
-  await new Promise((resolveRun, rejectRun) => {
-    const child = spawn(executable, restrictedArgs, { env: { ...process.env, HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_RESTRICTED_TEST: "1" } });
-    child.stdout.on("data", data => process.stdout.write(data));
-    child.stderr.on("data", data => process.stderr.write(data));
-    child.once("error", rejectRun);
-    child.once("close", code => code === 0 ? resolveRun() : rejectRun(new Error(`Restricted VS Code integration exited with ${code}.`)));
-  });
 } finally {
   await rm(testRoot, { recursive: true, force: true });
 }

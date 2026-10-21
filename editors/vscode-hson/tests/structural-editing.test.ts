@@ -13,6 +13,8 @@ import {
   structural_newline_plan,
   structural_newline_plan_from_evidence,
   structural_regions,
+  structural_region_at_evidence,
+  structural_typing_snippet,
 } from "../src/structural-editing.js";
 
 let checks = 0;
@@ -42,6 +44,227 @@ const arrayPair = (marked: string, language: "typescript" | "markdown" = "typesc
   const text = marked.slice(0, offset) + marked.slice(offset + 1);
   return structural_array_pair_for_bracket(language === "markdown" ? "/workspace/readme.md" : "/workspace/source.ts", language, text, offset);
 };
+
+
+const typingSnippet = (marked: string, typed: "=" | "{"): string | undefined => {
+  const cursor = marked.indexOf("|");
+  const text = marked.slice(0, cursor) + marked.slice(cursor + 1);
+  return structural_typing_snippet(structural_document_evidence("/workspace/source.ts", "typescript", text), cursor, typed);
+};
+const authored = (body: string, kind = "document"): string => prefix.replace("Hson.canonical", `Hson.${kind}`) + body + "`;";
+
+const assertTypingResult = (marked: string, typed: "=" | "{", expected: string): void => {
+  const snippet = typingSnippet(marked, typed);
+  assert.equal(snippet, expected, marked);
+  assert.ok(snippet !== undefined);
+  const offset = marked.indexOf('|');
+  const text = marked.replace('|', '');
+  const insertion = snippet.replace('$0', '');
+  const cursor = offset + snippet.indexOf('$0');
+  assert.equal(text.slice(0, offset) + insertion + text.slice(offset), marked.replace('|', insertion));
+  assert.equal(cursor, offset + (typed === '=' ? 2 : 1));
+};
+
+check("formatting preserves the exact LF/CRLF interpolation before a data closer", () => {
+  for (const eol of ['\n', '\r\n']) {
+    const host = 'import { Hson } from "hson-live/hson";' + eol + 'const value = Hson.data`';
+    const hole = '${' + eol + '  1' + eol + '}';
+    const input = host + '<value' + eol + hole + ' >`;';
+    const expected = host + '<' + eol + '  value' + eol + '  ' + hole + eol + '>`;';
+    const edits = structural_formatting_edits('/workspace/source.ts', 'typescript', input, { insertSpaces: true, tabSize: 2 });
+    assert.equal(applyEdits(input, edits), expected, JSON.stringify(eol));
+    assert.equal(format(expected), expected, 'safe formatting is idempotent');
+    const region = structural_regions('/workspace/source.ts', 'typescript', input)[0]!;
+    for (const edit of edits) for (const range of region.protectedRanges) {
+      assert.ok(edit.start === edit.end ? edit.start <= range.start || edit.start >= range.end : edit.end <= range.start || edit.start >= range.end,
+        `protected expression intersected by ${JSON.stringify(edit)}`);
+    }
+    assert.equal(applyEdits(input, edits).slice(expected.indexOf('${'), expected.indexOf('${') + hole.length), hole);
+    const ranged = structural_formatting_edits('/workspace/source.ts', 'typescript', input, { insertSpaces: true, tabSize: 2 }, region.bodyRange);
+    assert.equal(applyEdits(input, ranged), expected, 'Format Selection shares the protected edit invariant');
+  }
+});
+
+check("formatting distinguishes real whitespace from multiple opaque JavaScript substitutions", () => {
+  for (const eol of ['\n', '\r\n']) {
+    const first = '${' + eol + '  (() => ({ label: "😀", nested: { list: [1, { ok: true }] } }))()' + eol + '}';
+    const second = '${' + eol + '  fn({ value: { another: "🚀" } })' + eol + '}';
+    const input = authored('<main   ' + first + '   <span   title="ok"/>   ' + second + '   />');
+    const expected = input.replace('<main   ', '<main ').replace('<span   title=', '<span title=').replace('/>   ' + second, '/> ' + second);
+    const edits = structural_formatting_edits('/workspace/source.ts', 'typescript', input, { insertSpaces: true, tabSize: 2 });
+    const result = applyEdits(input, edits);
+    assert.equal(result, expected);
+    for (const hole of [first, second]) assert.equal(result.slice(result.indexOf(hole), result.indexOf(hole) + hole.length), hole);
+    for (const range of structural_regions('/workspace/source.ts', 'typescript', input)[0]!.protectedRanges) {
+      assert.ok(edits.every(edit => edit.start === edit.end ? edit.start <= range.start || edit.start >= range.end : edit.end <= range.start || edit.start >= range.end));
+      // A selection containing only a protected expression must not acquire edits.
+      assert.deepEqual(structural_formatting_edits('/workspace/source.ts', 'typescript', input, { insertSpaces: true, tabSize: 2 }, { start: range.start + 1, end: range.end - 1 }), []);
+    }
+  }
+});
+
+check("multiline substitutions retain later attribute and Part positions in UTF-16 for LF and CRLF", () => {
+  for (const eol of ['\n', '\r\n']) {
+    const hole = '${' + eol + '  fragment("😀", {' + eol + '    value: 1' + eol + '  })' + eol + '}';
+    for (const [body, typed, snippet] of [
+      ['<main ' + hole + ' <span title|/>/>', '=', '="$0"'],
+      ['<main ' + hole + ' "Hello %|"/>', '{', '{$0}'],
+      ['<main ' + hole + ' <span title="%|"/>/>', '{', '{$0}'],
+      ['<main ' + hole + '<span data-title|/>/>', '=', '="$0"'],
+      ['<main ' + hole + '"%|"/>', '{', '{$0}'],
+      ['<span title="' + hole + '" data-title|/>', '=', '="$0"'],
+      ['<span title="' + hole + '" data-next="%|"/>', '{', '{$0}'],
+      ['<main $|' + hole + '/>', '{', '{$0}'],
+      ['<main ' + hole + '$|/>', '{', '{$0}'],
+    ] satisfies readonly (readonly [string, "=" | "{", string])[]) {
+      const exact = '// 🚀' + eol + authored(body).replace(';\nconst', ';' + eol + 'const');
+      assertTypingResult(exact, typed, snippet);
+      const result = exact.replace('|', snippet.replace('$0', ''));
+      assert.ok(result.includes(hole));
+      assert.equal(result.slice(0, exact.indexOf('|')), exact.slice(0, exact.indexOf('|')));
+      assert.equal(result.slice(exact.indexOf('|') + snippet.replace('$0', '').length), exact.slice(exact.indexOf('|') + 1));
+    }
+  }
+});
+
+check("multiline protection keeps JavaScript and malformed substitutions outside every gesture", () => {
+  for (const body of ['<main ${\n fn("😀 title|")\n}/>', '<main ${\n ({ key: 1| })\n}/>',
+    '<main ${\n fragment(\n} <span title|/>/>', '<main ${\n fragment\n <span title|/>/>',
+    '<main @:same @:again ${\n fragment\n} <span title|/>/>']) {
+    for (const typed of ['=', '{'] satisfies readonly ('=' | '{')[]) assert.equal(typingSnippet(authored(body), typed), undefined, body);
+  }
+  const hole = '${\r\n fragment("😀")\r\n}';
+  const input = authored('\r\n<main   @:root\r\n' + hole + '\r\n<span   title="hello"/>\r\n/>\r\n');
+  const evidence = structural_document_evidence('/workspace/source.ts', 'typescript', input);
+  const protectedRange = evidence.regions[0]!.protectedRanges[0]!;
+  const edits = structural_formatting_edits('/workspace/source.ts', 'typescript', input, { insertSpaces: true, tabSize: 2 });
+  assert.ok(edits.length > 0);
+  assert.ok(edits.every(edit => edit.end <= protectedRange.start || edit.start >= protectedRange.end));
+  assert.ok(applyEdits(input, edits).includes(hole));
+});
+
+const nestedAuthoring = (inner: string, depth = 1): string => {
+  let expression = inner;
+  for (let level = 0; level < depth; level++) expression = 'Hson.document`<main ${' + expression + '}/>`';
+  return 'import { Hson } from "hson-live/hson";\n// 😀\nconst page = ' + expression + ';';
+};
+check("innermost recognized templates retain all conveniences through multiple protected ancestors", () => {
+  for (const depth of [1, 2, 3]) {
+    for (const [inner, typed, expected] of [
+      ['Hson.document`<span title|/>`', '=', '="$0"'],
+      ['Hson.document`<span $|/>`', '{', '{$0}'],
+      ['Hson.document`<span "%|"/>`', '{', '{$0}'],
+      ['Hson.document`<span title="%|"/>`', '{', '{$0}'],
+      ['Hson.document`<main ${fragment} <span title|/>/>`', '=', '="$0"'],
+      ['Hson.document`<main ${\n fragment("😀")\n} <span title="%|"/>/>`', '{', '{$0}'],
+      ['Hson.data`$|`', '{', '{$0}'],
+      ['Hson.data`<value $|>`', '{', '{$0}'],
+    ] satisfies readonly (readonly [string, "=" | "{", string])[]) {
+      const marked = nestedAuthoring(inner, depth);
+      assertTypingResult(marked, typed, expected);
+      const text = marked.replace('|', '');
+      const region = structural_region_at_evidence(structural_document_evidence('/workspace/source.ts', 'typescript', text), marked.indexOf('|'));
+      assert.equal(text.slice(region!.bodyRange.start, region!.bodyRange.end), inner.slice(inner.indexOf('`') + 1, -1).replace('|', ''));
+    }
+  }
+});
+check("inner modes, unrelated nested templates, escapes and protected expressions remain authoritative", () => {
+  for (const inner of ['Hson.data`<span title|/>`', 'Hson.schema`$|`', 'Hson.schema`<value "%|">`',
+    'Hson.data`"%|"`', '`<span title|/>`', 'String.raw`<span "%|"/>`',
+    'Hson.document`<span \\$|/>`', 'Hson.document`<span "\\%|"/>`',
+    'Hson.document`<span ${fn("$|")}/>`', 'Hson.document`<span // %|\n/>`']) {
+    for (const typed of ['=', '{'] satisfies readonly ('=' | '{')[]) assert.equal(typingSnippet(nestedAuthoring(inner, 2), typed), undefined, inner);
+  }
+  const marked = nestedAuthoring('Hson.document`<span title|/>`');
+  const text = marked.replace('|', '');
+  const evidence = structural_document_evidence('/workspace/source.ts', 'typescript', text);
+  const inner = structural_region_at_evidence(evidence, marked.indexOf('|'))!;
+  assert.equal(structural_region_at_evidence(evidence, inner.bodyRange.start), inner);
+  assert.equal(structural_region_at_evidence(evidence, inner.bodyRange.end), inner);
+  assert.equal(structural_region_at_evidence(evidence, inner.bodyRange.start - 1), undefined);
+  assert.equal(structural_region_at_evidence(evidence, inner.bodyRange.end + 1), undefined);
+  for (const offset of [-1, text.length + 1, NaN]) assert.equal(structural_region_at_evidence(evidence, offset), undefined);
+  const sibling = nestedAuthoring('[Hson.data`1`, Hson.document`<span title|/>`, Hson.data`2`]');
+  assertTypingResult(sibling, '=', '="$0"');
+});
+
+check("shared nested lookup also preserves closer, Enter, array and formatting consumers", () => {
+  const marked = nestedAuthoring('Hson.document`<main @:inner |/>`', 2);
+  const offset = marked.indexOf('|');
+  const text = marked.replace('|', '');
+  assert.equal(structural_closer_for_less_than('/workspace/source.ts', 'typescript', text.slice(0, offset) + '<' + text.slice(offset), offset + 1), '/>');
+  assert.deepEqual(structural_newline_plan('/workspace/source.ts', 'typescript', text, offset, { insertSpaces: true, tabSize: 2 }, '\n'), { beforeCursor: '\n  ', afterCursor: '\n' });
+  const data = nestedAuthoring('Hson.data`<values |>`', 2);
+  assert.equal(arrayPair(data), true);
+  const input = nestedAuthoring('Hson.document`<span   title="😀"/>`', 2);
+  assert.equal(format(input), input.replace('<span   title=', '<span title='));
+});
+
+check("attribute assignment snippets use authored checkpoints and preserve exact source/cursor", () => {
+  for (const body of ['<span title|/>', '<span data-title|/>', '<span title| />', '<span title |/>',
+    '<span title| disabled/>', '<span id="one" title|/>', '<main @:main <span @:label title|/>/>',
+    '<hson-part @:part lib| at="card"/>', '<hson-part lib="parts" at|/>', '<span title|>']) {
+    const marked = authored(body);
+    const snippet = typingSnippet(marked, "=");
+    // A mismatched structural closer is rejected by the production parser.
+    if (body.endsWith('|>')) { assert.equal(snippet, undefined); continue; }
+    assert.equal(snippet, '="$0"', body);
+    const cursor = marked.indexOf('|');
+    const result = marked.replace('|', snippet!.replace('$0', '|'));
+    assert.equal(result, marked.replace('|', '="|"'));
+    assert.equal(result.indexOf('|'), cursor + 2);
+  }
+});
+check("attribute assignment leaves existing values, syntax, protected source and other modes alone", () => {
+  for (const body of ['<span title|="old"/>', '<span title| = "old"/>', '<span title=|"old"/>',
+    '<span title|"text"/>', '<span title| "text"/>', '<span title| 42/>', '<span title|\n = "old"/>', '<span title="${first} partial" next|/>', '<span ti|tle/>',
+    '<span "ti|tle"/>', '<span title="ti|tle"/>', '<span // title|\n/>', '<span ${fn("title|")} />',
+    '<span "content" title|/>', '<span @:same @:again title|/>', '<span title|', '<span bad="\\q" title|/>']) {
+    assert.equal(typingSnippet(authored(body), '='), undefined, body);
+  }
+  for (const kind of ['data', 'schema', 'canonical']) assert.equal(typingSnippet(authored('<span title|/>', kind), '='), undefined);
+  for (const marked of ['let title|;', 'const x = `<span title|/>`;', 'const Hson = String.raw; const x = Hson.document`<span title|/>`;']) {
+    assert.equal(typingSnippet(marked, '='), undefined, marked);
+  }
+  assert.equal(typingSnippet(authored('<span title|/>').slice(0, -2), '='), undefined, 'unterminated host template');
+});
+check("JavaScript interpolation pairs only scanner-proven content and whole quoted values", () => {
+  for (const [body, kind] of [
+    ['<span $|/>', 'document'], ['<span @:label $|/>', 'document'], ['<span title="$|"/>', 'document'],
+    ['<span "$|"/>', 'document'], ['<span ${first} $|/>', 'document'], ['<span $|${last}/>', 'document'],
+    ['$|', 'data'], ['<value $|', 'data'], ['<value $|>', 'data'], ['«$|»', 'data'], ['"$|"', 'data'], ['$|', 'canonical'],
+  ]) assert.equal(typingSnippet(authored(body!, kind), '{'), '{$0}', `${kind}: ${body}`);
+  for (const [body, kind] of [['<span $|}/>', 'document'], ['$|}', 'data'], ['"$|}"', 'data'], ['<span $|name}/>', 'document'], ['<span $|fn({ value: 1 })}/>', 'document'], ['"$|name}"', 'data']]) {
+    assert.equal(typingSnippet(authored(body!, kind), '{'), '{$0', `existing closer ${body}`);
+  }
+});
+check("interpolation pairing rejects names, comments, partial strings, escapes, schema and JavaScript", () => {
+  for (const [body, kind] of [
+    ['<sp$|an/>', 'document'], ['<span ti$|tle/>', 'document'], ['<span title=$|/>', 'document'],
+    ['<span "before $|"/>', 'document'], ['<span title="$|after"/>', 'document'],
+    ['<span // $|\n/>', 'document'], ['<span ${fn("$|")}/>', 'document'],
+    ['<span \\$|/>', 'document'], ['<value \\$|>', 'data'], ['<value "\\$|">', 'data'],
+    ['$|', 'schema'], ['<value $|>', 'schema'], ['<value +1 next $|>', 'data'],
+  ]) assert.equal(typingSnippet(authored(body!, kind), '{'), undefined, `${kind}: ${body}`);
+  for (const marked of ['const x = `$|`;', 'const x = $|;', '// $|', 'const x = `%|`;', 'const x = "%|";']) {
+    assert.equal(typingSnippet(marked, '{'), undefined, marked);
+  }
+});
+check("Part placeholders pair in quoted document text and ordinary attribute values", () => {
+  for (const body of ['<span "%|"/>', '<span "Hello %|!"/>', '<span title="%|"/>', '<span title=%|/>', '<span title=prefix-%|/>', '<script src="%|"/>', '<style media="%|"/>',
+    '<span @:label title="prefix %| suffix"/>', '<main <span "%{first}%|"/>/>',
+    '<span ${fragment} "%|"/>', '<span "%|%{last}"/>', '<span "%{first}%|%{last}"/>', '<span title="%|}"/>', '<span "%|name}"/>']) {
+    assert.equal(typingSnippet(authored(body), '{'), body.includes('%|}') || body.includes('%|name}') ? '{$0' : '{$0}', body);
+  }
+});
+check("Part placeholders exclude unsupported Part payloads and other template modes", () => {
+  for (const body of ['<span %|/>', '<sp%|an/>', '<span style="color:%|"/>', '<span onClick="%|"/>',
+    '<script "%|"/>', '<style <span "%|"/>/>', '<span ${fn("%|")}/>', '<span // %|\n/>',
+    '<span "\\%|"/>', '<span "%|', '<span @:one @:two "%|"/>', '<span "%{par%|}"/>', '<span title="%{open %|"/>', '<span "${first} %|"/>', '<main @:same <span @:same "%|"/>/>']) {
+    assert.equal(typingSnippet(authored(body), '{'), undefined, body);
+  }
+  for (const kind of ['data', 'schema', 'canonical']) assert.equal(typingSnippet(authored('"%|"', kind), '{'), undefined, kind);
+});
 
 check("authored QUADs preserve closer and Enter plans, including nested declarations and slots", () => {
   const hostPrefix = prefix.replace("Hson.canonical", "Hson.document");

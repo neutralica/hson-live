@@ -109,6 +109,275 @@ async function runSchemaConsumer(workspace: string): Promise<void> {
   }
 }
 
+async function runProtectedSourceFormatting(workspace: string): Promise<void> {
+  const uri = vscode.Uri.file(join(workspace, 'protected-formatting.ts'));
+  const settings = [
+    { section: 'editor', key: 'formatOnSave', value: false },
+    { section: 'typescript.format', key: 'enable', value: false },
+    { section: 'hson.formatting', key: 'formatOnSave', value: true },
+    { section: 'files', key: 'trimTrailingWhitespace', value: false },
+    { section: 'files', key: 'insertFinalNewline', value: false },
+  ].map(setting => ({ ...setting, previous: vscode.workspace.getConfiguration(setting.section, uri).inspect(setting.key)?.workspaceValue }));
+  try {
+    for (const setting of settings) await vscode.workspace.getConfiguration(setting.section, uri).update(setting.key, setting.value, vscode.ConfigurationTarget.Workspace);
+    for (const eol of ['\n', '\r\n']) {
+      const target = vscode.Uri.file(join(workspace, eol === '\n' ? 'protected-formatting-lf.ts' : 'protected-formatting-crlf.ts'));
+      const prefix = 'import { Hson } from "hson-live/hson";' + eol + 'const value = Hson.data`';
+      const hole = '${' + eol + '  1' + eol + '}';
+      const input = prefix + '<value' + eol + hole + ' >`;';
+      const expected = prefix + '<' + eol + '  value' + eol + '  ' + hole + eol + '>`;';
+      await vscode.workspace.fs.writeFile(target, Buffer.from(input + ' '));
+      const document = await vscode.workspace.openTextDocument(target);
+      const editor = await vscode.window.showTextDocument(document);
+      const replace = async (): Promise<void> => {
+        if (document.eol !== (eol === '\r\n' ? vscode.EndOfLine.CRLF : vscode.EndOfLine.LF)) {
+          assert.ok(await editor.edit(edit => edit.setEndOfLine(eol === '\r\n' ? vscode.EndOfLine.CRLF : vscode.EndOfLine.LF)));
+        }
+        assert.ok(await editor.edit(edit => edit.replace(new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), input)));
+        assert.equal(document.getText(), input);
+      };
+      await replace();
+      assert.equal(document.isDirty, true, 'exercise an actual Save participant');
+      assert.equal(await document.save(), true);
+      assert.equal(document.getText(), expected, `Save preserves exact ${JSON.stringify(eol)} expression`);
+      assert.equal(Buffer.from(await vscode.workspace.fs.readFile(target)).toString(), expected, 'saved bytes preserve the complete expression');
+      await replace();
+      await vscode.commands.executeCommand('hson.formatDocument');
+      assert.equal(document.getText(), expected, 'Format Document preserves the exact source');
+      assert.ok(document.getText().includes(hole));
+      process.stdout.write(`ok - isolated Save and Format Document preserve exact protected source (${JSON.stringify(eol)})\n`);
+    }
+  } finally {
+    for (const setting of settings) await vscode.workspace.getConfiguration(setting.section, uri).update(setting.key, setting.previous, vscode.ConfigurationTarget.Workspace);
+    await vscode.workspace.fs.delete(uri).then(undefined, () => undefined);
+    for (const name of ['protected-formatting-lf.ts', 'protected-formatting-crlf.ts']) await vscode.workspace.fs.delete(vscode.Uri.file(join(workspace, name))).then(undefined, () => undefined);
+  }
+}
+
+async function runTypingConveniences(workspace: string): Promise<void> {
+  const uri = vscode.Uri.file(join(workspace, "typing-conveniences.ts"));
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(""));
+  const document = await vscode.workspace.openTextDocument(uri);
+  const editor = await vscode.window.showTextDocument(document);
+  const prefix = 'import { Hson } from "hson-live/hson";\nconst x=Hson.';
+  const setup = async (marked: string): Promise<{ text: string; offset: number }> => {
+    const eol = marked.includes('\r\n') ? vscode.EndOfLine.CRLF : vscode.EndOfLine.LF;
+    marked = marked.replace(/\r\n|\r|\n/g, eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n');
+    if (document.eol !== eol) assert.ok(await editor.edit(edit => edit.setEndOfLine(eol)));
+    const offset = marked.indexOf('|');
+    assert.ok(offset >= 0);
+    const text = marked.replace('|', '');
+    assert.ok(await editor.edit(edit => edit.replace(new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), text)));
+    assert.equal(document.getText(), text, 'fixture source and EOL must match before computing cursor positions');
+    editor.selection = new vscode.Selection(document.positionAt(offset), document.positionAt(offset));
+    return { text, offset };
+  };
+  const selectionAt = (offset: number): void => {
+    assert.ok(editor.selection.isEmpty);
+    assert.equal(document.offsetAt(editor.selection.anchor), offset);
+    assert.equal(document.offsetAt(editor.selection.active), offset);
+  };
+  const cases = [
+    { label: 'attribute', body: 'document`<span title|/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
+    { label: 'interpolation', body: 'document`<span $|/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'placeholder', body: 'document`<span title="%|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+  ];
+  for (const fixture of cases) {
+    const before = await setup(prefix + fixture.body);
+    await vscode.commands.executeCommand('type', { text: fixture.typed });
+    const expected = before.text.slice(0, before.offset) + fixture.inserted + before.text.slice(before.offset);
+    assert.equal(document.getText(), expected, fixture.label + ' exact snippet source');
+    selectionAt(before.offset + fixture.delta);
+    // Insertion at the snippet cursor is observable without graphical focus.
+    await editor.insertSnippet(new vscode.SnippetString('value'), editor.selection);
+    assert.equal(document.getText(), expected.slice(0, before.offset + fixture.delta) + 'value' + expected.slice(before.offset + fixture.delta));
+    selectionAt(before.offset + fixture.delta + 5);
+    process.stdout.write(`ok - ${fixture.label}: native SnippetString source and collapsed cursor, including interior insertion\n`);
+  }
+  for (const [body, typed, inserted, delta] of [
+    ['document`<main @:root <span @:label data-title| />/>`;', '=', '=""', 2],
+    ['document`<hson-part lib| at="card"/>`;', '=', '=""', 2],
+    ['data`<value $|>`;', '{', '{}', 1],
+    ['document`<span title="$|"/>`;', '{', '{}', 1],
+    ['document`<span "Hello %|"/>`;', '{', '{}', 1],
+    ['document`<main @:root |/>`;', '<', '</>', 1],
+    ['data`|`;', '[', '«»', 1],
+  ] satisfies readonly (readonly [string, string, string, number])[]) {
+    const before = await setup(prefix + body);
+    await vscode.commands.executeCommand('type', { text: typed });
+    assert.equal(document.getText(), before.text.slice(0, before.offset) + inserted + before.text.slice(before.offset), body);
+    selectionAt(before.offset + delta);
+  }
+  const multilineHole = '${\r\n fragment("😀")\r\n}';
+  for (const [body, typed, inserted, delta] of [
+    ['<main ' + multilineHole + ' <span title|/>/>', '=', '=""', 2],
+    ['<main ' + multilineHole + ' "Hello %|"/>', '{', '{}', 1],
+    ['<main ' + multilineHole + ' <span title="%|"/>/>', '{', '{}', 1],
+  ] satisfies readonly (readonly [string, string, string, number])[]) {
+    const before = await setup(prefix + 'document`' + body + '`;');
+    await vscode.commands.executeCommand('type', { text: typed });
+    assert.equal(document.getText(), before.text.slice(0, before.offset) + inserted + before.text.slice(before.offset));
+    selectionAt(before.offset + delta);
+    assert.ok(document.getText().includes(multilineHole));
+  }
+  for (const [inner, typed, inserted, delta] of [
+    ['Hson.document`<span title|/>`', '=', '=""', 2],
+    ['Hson.document`<span $|/>`', '{', '{}', 1],
+    ['Hson.document`<span "%|"/>`', '{', '{}', 1],
+    ['Hson.data`$|`', '{', '{}', 1],
+  ] satisfies readonly (readonly [string, string, string, number])[]) {
+    const before = await setup(prefix + 'document`<main ${Hson.document`<div ${' + inner + '}/>`}/>`;');
+    await vscode.commands.executeCommand('type', { text: typed });
+    assert.equal(document.getText(), before.text.slice(0, before.offset) + inserted + before.text.slice(before.offset));
+    selectionAt(before.offset + delta);
+  }
+  process.stdout.write('ok - current host: multiline CRLF/astral and nested template source/cursor regressions\n');
+  process.stdout.write('ok - current host: QUAD/hyphenated/Part attributes, Data and quoted interpolation, text placeholders, existing structural and «» snippets\n');
+  // Existing closers use one opener snippet and leave the existing brace intact.
+  for (const body of ['data`$|}`;', 'document`<span "%|}"/>`;', 'data`$|fn({ value: 1 })}`;', 'document`<span "%|name}"/>`;']) {
+    const before = await setup(prefix + body);
+    await vscode.commands.executeCommand('type', { text: '{' });
+    assert.equal(document.getText(), before.text.slice(0, before.offset) + '{' + before.text.slice(before.offset));
+    selectionAt(before.offset + 1);
+  }
+  // Probe each native command separately: editor actions may be available even
+  // when default:type has no focused code editor. No unchanged command verifies
+  // a lifecycle behavior, and observable mismatches always fail the test.
+  await setup('abc|');
+  await vscode.commands.executeCommand('deleteLeft');
+  const nativeDelete = document.getText() !== 'abc';
+  if (nativeDelete) { assert.equal(document.getText(), 'ab'); selectionAt(2); }
+  else process.stdout.write('UNVERIFIED - native Backspace command unavailable in this host\n');
+
+  const undoBefore = await setup('abc|');
+  await editor.insertSnippet(new vscode.SnippetString('x'), editor.selection, { undoStopBefore: true, undoStopAfter: true });
+  assert.equal(document.getText(), 'abcx');
+  selectionAt(4);
+  await vscode.commands.executeCommand('undo');
+  const nativeUndoRedo = document.getText() !== 'abcx';
+  if (nativeUndoRedo) {
+    assert.equal(document.getText(), undoBefore.text);
+    selectionAt(undoBefore.offset);
+    await vscode.commands.executeCommand('redo');
+    assert.equal(document.getText(), 'abcx');
+    selectionAt(4);
+  } else process.stdout.write('UNVERIFIED - native undo/redo commands unavailable in this host\n');
+
+  // Compare pair registration independently of Hson activation. The equivalent
+  // replacement replaces exactly the authored closing brace in one snippet.
+  let authoredCloserConflict = false;
+  for (const mode of ['complete', 'opener-only', 'replace-closer']) {
+    const authoredClose = mode !== 'complete';
+    const before = await setup(prefix + 'data`$|' + (authoredClose ? '}' : '') + '`;');
+    const range = new vscode.Range(document.positionAt(before.offset), document.positionAt(before.offset + (mode === 'replace-closer' ? 1 : 0)));
+    await editor.insertSnippet(new vscode.SnippetString(mode === 'opener-only' ? '{$0' : '{$0}'), range);
+    const expected = before.text.slice(0, before.offset) + '{}' + before.text.slice(before.offset + (authoredClose ? 1 : 0));
+    assert.equal(document.getText(), expected, mode + ' produces identical visible source');
+    selectionAt(before.offset + 1);
+    if (nativeDelete) {
+      await vscode.commands.executeCommand('deleteLeft');
+      if (mode === 'complete') {
+        assert.equal(document.getText(), before.text, 'new complete pair deletes both newly inserted delimiters');
+        selectionAt(before.offset);
+      } else {
+        // Observe existing-closer behavior without inventing a native contract.
+        // A changed result that loses the authored brace requires human review.
+        const result = document.getText();
+        const changed = result !== expected;
+        const preserved = result.slice(before.offset).startsWith('}');
+        if (changed && !preserved) authoredCloserConflict = true;
+        process.stdout.write('REUSED_CLOSER_OBSERVATION ' + JSON.stringify({ mode, result, cursor: document.offsetAt(editor.selection.active),
+          status: changed ? 'observed' : 'UNVERIFIED', authoredCloserPreserved: changed ? preserved : undefined }) + '\n');
+        if (changed && !preserved) process.stdout.write('HUMAN DECISION REQUIRED - native Backspace removed a previously authored closer; production behavior is unchanged\n');
+      }
+    }
+  }
+  process.stdout.write('UNVERIFIED - reused-closer Backspace/overtyping contract is not established; insertion source and cursor are verified\n');
+
+  const lifecycleCases = [
+    ...cases,
+    { label: 'adjacent attribute', body: 'document`<span first="one" next|/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
+    { label: 'adjacent interpolation', body: 'document`<span ${first}$|/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'adjacent placeholder', body: 'document`<span "%{first}%|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'nested attribute', body: 'document`<main ${Hson.document`<span title|/>`}/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
+    { label: 'nested interpolation', body: 'document`<main ${Hson.document`<span $|/>`}/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'nested placeholder', body: 'document`<main ${Hson.document`<span "%|"/>`}/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+  ];
+  for (const fixture of lifecycleCases) {
+    const before = await setup(prefix + fixture.body);
+    await vscode.commands.executeCommand('type', { text: fixture.typed });
+    const paired = document.getText();
+    assert.equal(paired, before.text.slice(0, before.offset) + fixture.inserted + before.text.slice(before.offset));
+    selectionAt(before.offset + fixture.delta);
+    if (nativeDelete) {
+      await vscode.commands.executeCommand('deleteLeft');
+      assert.equal(document.getText(), paired.slice(0, before.offset + fixture.delta - 1) + paired.slice(before.offset + fixture.delta + 1), fixture.label + ' deletes untouched native pair');
+      selectionAt(before.offset + fixture.delta - 1);
+      await setup(prefix + fixture.body);
+      await vscode.commands.executeCommand('type', { text: fixture.typed });
+      await editor.insertSnippet(new vscode.SnippetString('x'), editor.selection);
+      await vscode.commands.executeCommand('deleteLeft');
+      assert.equal(document.getText(), paired, fixture.label + ' native Backspace deletes inserted interior content');
+      selectionAt(before.offset + fixture.delta);
+      await vscode.commands.executeCommand('deleteLeft');
+      assert.equal(document.getText(), paired.slice(0, before.offset + fixture.delta - 1) + paired.slice(before.offset + fixture.delta + 1), fixture.label + ' pair deletion after interior edit');
+      selectionAt(before.offset + fixture.delta - 1);
+    }
+    if (nativeUndoRedo) {
+      await setup(prefix + fixture.body);
+      await vscode.commands.executeCommand('type', { text: fixture.typed });
+      await vscode.commands.executeCommand('undo');
+      assert.equal(document.getText(), before.text, fixture.label + ' one undo restores preceding source');
+      selectionAt(before.offset);
+      await vscode.commands.executeCommand('redo');
+      assert.equal(document.getText(), paired, fixture.label + ' redo restores pair');
+      selectionAt(before.offset + fixture.delta);
+    }
+  }
+  // Nest and adjoin real snippet pairs; assert their native deletion boundaries.
+  if (nativeDelete) {
+    for (const marked of ['const x=Hson.data`$|`;', 'const x=Hson.document`<span "%{first}%|"/>`;']) {
+      const before = await setup(prefix.slice(0, prefix.indexOf('const x=')) + marked);
+      await vscode.commands.executeCommand('type', { text: '{' });
+      const outer = document.getText();
+      await editor.insertSnippet(new vscode.SnippetString('{$0}'), editor.selection);
+      assert.equal(document.getText(), outer.slice(0, before.offset + 1) + '{}' + outer.slice(before.offset + 1));
+      selectionAt(before.offset + 2);
+      await vscode.commands.executeCommand('deleteLeft');
+      assert.equal(document.getText(), outer);
+      selectionAt(before.offset + 1);
+    }
+  }
+  await setup('const probe = "|";');
+  await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+  const probe = document.getText();
+  await vscode.commands.executeCommand('default:type', { text: 'z' });
+  const nativeTyping = document.getText() !== probe;
+  if (!nativeTyping) {
+    process.stdout.write(`UNVERIFIED - graphical native typing/overtyping unavailable (window focused=${vscode.window.state.focused}); no typing or overtype behavior inferred\n`);
+  } else {
+    assert.equal(document.getText(), 'const probe = "z";');
+    for (const fixture of lifecycleCases) {
+      const before = await setup(prefix + fixture.body);
+      await vscode.commands.executeCommand('type', { text: fixture.typed });
+      const paired = document.getText();
+      await vscode.commands.executeCommand('type', { text: 'x' });
+      const content = paired.slice(0, before.offset + fixture.delta) + 'x' + paired.slice(before.offset + fixture.delta);
+      assert.equal(document.getText(), content, fixture.label + ' native interior typing');
+      selectionAt(before.offset + fixture.delta + 1);
+      await vscode.commands.executeCommand('type', { text: fixture.close });
+      assert.equal(document.getText(), content, fixture.label + ' native closing-delimiter overtype');
+      selectionAt(before.offset + fixture.delta + 2);
+    }
+  }
+  process.stdout.write('HSON_TYPING_ACCEPTANCE ' + JSON.stringify({ sourceCursor: 'passed', nativeDelete, nativeUndoRedo, nativeTyping,
+    reusedCloserLifecycle: 'UNVERIFIED', authoredCloserConflict, windowFocused: vscode.window.state.focused,
+    newPairAcceptance: vscode.window.state.focused && nativeTyping && nativeDelete && nativeUndoRedo ? 'passed' : 'UNVERIFIED',
+    graphicalAcceptance: authoredCloserConflict ? 'human-decision-required' : 'UNVERIFIED' }) + '\n');
+  await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  await vscode.workspace.fs.delete(uri);
+}
+
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("terminal-gothic.hson-language");
   assert.ok(extension, "Hson extension was not discovered by the extension host");
@@ -116,6 +385,11 @@ export async function run(): Promise<void> {
   const workspace = process.env.HSON_TEST_WORKSPACE;
 
   assert.ok(workspace);
+  if (process.env.HSON_RESTRICTED_TEST !== "1") {
+    await runProtectedSourceFormatting(workspace);
+    await runTypingConveniences(workspace);
+  }
+  if (process.env.HSON_TYPING_TEST_ONLY === "1") return;
   const commands = await vscode.commands.getCommands(true);
   for (const command of ["hson.actions", "hson.formatDocument", "hson.formatSelection", "hson.runAll", "hson.stopAll", "hson.startLocalHost", "hson.runAndOpenLocalApp", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.copyLocalAppUrl", "hson.showLocalHostOutput"]) {
     assert.ok(commands.includes(command), `${command} is registered`);

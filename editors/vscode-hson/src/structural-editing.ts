@@ -1,8 +1,11 @@
 import { OBJ_TAG } from "../../../src/core/constants.js";
+import { decode_hson_content_string } from "../../../src/core/hson-content-string.js";
+import { part_placeholder_matches, part_placeholder_pattern } from "../../../src/internal/part-placeholder.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import { serialize_hson } from "../../../src/api/transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../../../src/api/transform/utils/node-utils/detach-hson-root-value.js";
-import { tokenize_hson, tokenize_authored_document_library } from "../../../src/api/transform/parsers/tokenize-hson.js";
+import { split_attrs_meta } from "../../../src/api/transform/utils/hson-utils/split-attrs-meta.js";
+import { tokenize_hson, tokenize_authored_document_library, hson_grammar_checkpoint, hson_interpolation_roles, type HsonEditorMode, type HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
 import type { Tokens } from "../../../src/api/transform/token.types.js";
 import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
@@ -18,6 +21,7 @@ export type StructuralRegion = Readonly<{
   baseIndentation: string;
   bodyStartsAtLineStart: boolean;
   authoredDocument?: boolean;
+  authoringKind?: HsonEditorMode;
 }>;
 export type StructuralDocumentEvidence = Readonly<{
   fileName: string;
@@ -79,6 +83,7 @@ function discoverStructuralRegions(
   for (const source of discovery.sources) regions.push(Object.freeze({
     kind: "template",
     authoredDocument: source.authoringKind === "document",
+    authoringKind: source.authoringKind,
     bodyRange: source.bodyRange,
     protectedRanges: Object.freeze([]),
     baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
@@ -87,6 +92,7 @@ function discoverStructuralRegions(
   for (const source of discovery.interpolated) regions.push(Object.freeze({
     kind: "template",
     authoredDocument: source.authoringKind === "document",
+    authoringKind: source.authoringKind,
     bodyRange: source.bodyRange,
     protectedRanges: Object.freeze(source.substitutionRanges),
     baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
@@ -163,15 +169,23 @@ export function structural_region_at_evidence(
   evidence: StructuralDocumentEvidence,
   offset: number,
 ): StructuralRegion | undefined {
+  if (!Number.isInteger(offset) || offset < 0 || offset > evidence.text.length) return undefined;
   let low = 0;
-  let high = evidence.regions.length - 1;
-  while (low <= high) {
+  let high = evidence.regions.length;
+  // Discovery orders by body start. Find the last possible containing region,
+  // then walk outwards: recognized nested templates own their literal segments.
+  while (low < high) {
     const middle = (low + high) >>> 1;
     const region = evidence.regions[middle];
     if (region === undefined) return undefined;
-    if (offset < region.bodyRange.start) high = middle - 1;
-    else if (offset > region.bodyRange.end) low = middle + 1;
-    else return region.protectedRanges.some(range => offset > range.start && offset < range.end)
+    if (region.bodyRange.start <= offset) low = middle + 1;
+    else high = middle;
+  }
+  for (let index = low - 1; index >= 0; index--) {
+    const region = evidence.regions[index];
+    if (offset > region.bodyRange.end) continue;
+    // Never fall back to an outer region through an inner protected expression.
+    return region.protectedRanges.some(range => offset > range.start && offset < range.end)
       ? undefined
       : region;
   }
@@ -206,7 +220,10 @@ function maskProtectedSource(text: string, region: StructuralRegion): string | u
       else if (character === "/" && body[cursor + 1] === "/") { comment = true; cursor += 1; }
     }
     const original = body.slice(start, end);
-    if (original.includes("\n") || original.includes("\r") || original.length < 3) return undefined;
+    if (original.length < 3) return undefined;
+    // Expression bytes are opaque, including physical newlines and surrogate
+    // pairs. Fixed UTF-16 width keeps every later source offset unchanged. Only
+    // this parser probe is masked; edits retain the original protected bytes.
     const replacement = (quoted ? "x" : '"x"').padEnd(original.length, " ");
     body = body.slice(0, start) + replacement + body.slice(end);
     cursor = end;
@@ -220,6 +237,128 @@ function parses(source: string, authoredDocument = false): boolean {
     else parse_hson(source);
     return true;
   } catch { return false; }
+}
+
+function templateInterpolationRoles(text: string, region: StructuralRegion) {
+  if (region.authoringKind === undefined || region.protectedRanges.length === 0) return [];
+  let source = "";
+  let start = region.bodyRange.start;
+  const slots: HsonTemplateSlot[] = [];
+  for (const range of region.protectedRanges) {
+    source += text.slice(start, range.start);
+    slots.push({ offset: source.length, substitution: slots.length });
+    start = range.end;
+  }
+  source += text.slice(start, region.bodyRange.end);
+  return hson_interpolation_roles(source, region.authoringKind, slots);
+}
+
+function templateInterpolationRole(text: string, region: StructuralRegion, targetStart: number): boolean {
+  const target = region.protectedRanges.findIndex(range => range.start === targetStart);
+  const roles = templateInterpolationRoles(text, region);
+  return target >= 0 && roles[target] !== undefined && roles.every(role => role !== undefined);
+}
+
+/** Only compiler-proven template positions receive these bounded snippet gestures. */
+export function structural_typing_snippet(
+  evidence: StructuralDocumentEvidence,
+  cursor: number,
+  typed: "=" | "{",
+): string | undefined {
+  const region = structural_region_at_evidence(evidence, cursor);
+  if (region?.kind !== "template" || region.authoringKind === undefined || region.authoringKind === "schema"
+    || region.protectedRanges.some(range => cursor > range.start && cursor < range.end)) return undefined;
+  const text = evidence.text;
+  if ((typed === "=" || text[cursor - 1] === "%")
+    && templateInterpolationRoles(text, region).some(role => role === undefined)) return undefined;
+  if (typed === "=") {
+    if (!region.authoredDocument) return undefined;
+    const body = maskProtectedSource(text, region);
+    if (body === undefined) return undefined;
+    const local = cursor - region.bodyRange.start;
+    if (local < body.length && !/[ \t\r\n]/.test(body[local]) && !body.startsWith("/>", local) && body[local] !== ">") return undefined;
+    // A checkpoint can also precede an existing value. Never capture it or an
+    // assignment to the right, including across authored whitespace.
+    if (/^[ \t\r\n]*[="']/.test(body.slice(local))) return undefined;
+    const assigned = body.slice(0, local) + "=" + body.slice(local);
+    const checkpoint = hson_grammar_checkpoint(assigned, local + 1, "document");
+    if (checkpoint?.kind !== "attribute-value" || checkpoint.range.start !== local + 1
+      || !parses(body.slice(0, local) + '=""' + body.slice(local), true)) return undefined;
+    return '="$0"';
+  }
+  const sigil = text[cursor - 1];
+  if (sigil !== "$" && sigil !== "%") return undefined;
+  let escapeStart = cursor - 2;
+  while (escapeStart >= region.bodyRange.start && text[escapeStart] === "\\") escapeStart--;
+  if ((cursor - 2 - escapeStart) % 2 !== 0) return undefined;
+  if (sigil === "%") {
+    if (!region.authoredDocument) return undefined;
+    const body = maskProtectedSource(text, region);
+    if (body === undefined || !parses(body, true)) return undefined;
+    const local = cursor - region.bodyRange.start;
+    // Production ranges and attribute lowering own the payload. Part semantics
+    // exclude structured attributes, event handlers and script/style content.
+    type Payload = StructuralRange & Readonly<{ quoted: boolean }>;
+    let payload: Payload | undefined;
+    const values = new WeakMap<Tokens, StructuralRange>();
+    const attributes = new Map<number, Payload>();
+    try {
+      const tokens = tokenize_authored_document_library(body, {
+        recordToken(token, found) { if (found.roles.value !== undefined) values.set(token, found.roles.value); },
+        recordAttribute(attr, found) {
+          if (attr.value !== undefined && !/^on/i.test(attr.name) && found.value !== undefined
+            && typeof split_attrs_meta([attr]).attrs[attr.name] === "string") {
+            const quoted = attr.value.quoted === true;
+            attributes.set(attr.start.index, { start: found.value.start + (quoted ? 1 : 0), end: found.value.end - (quoted ? 1 : 0), quoted });
+          }
+        },
+      });
+      const parents: string[] = [];
+      for (const token of tokens) {
+        if (token.kind === "OPEN") {
+          if (!parents.some(tag => tag === "script" || tag === "style")) {
+            for (const attr of token.rawAttrs) {
+              const range = attributes.get(attr.start.index);
+              if (range !== undefined && local > range.start && local <= range.end) payload = range;
+            }
+          }
+          parents.push(token.tag.toLowerCase());
+        } else if (token.kind === "CLOSE") parents.pop();
+        else if (token.kind === "TEXT" && token.quoted && parents.length > 0
+          && !parents.some(tag => tag === "script" || tag === "style")) {
+          const range = values.get(token);
+          if (range !== undefined && local > range.start + 1 && local < range.end) payload = { start: range.start + 1, end: range.end - 1, quoted: true };
+        }
+      }
+    } catch { return undefined; }
+    if (payload === undefined) return undefined;
+    const suffix = body.slice(local, payload.end);
+    const existingClose = suffix[0] === "}" || part_placeholder_pattern().exec("%{" + suffix)?.index === 0;
+    const probe = existingClose ? suffix[0] === "}" ? "{hson_editor_probe" : "{" : "{hson_editor_probe}";
+    try {
+      const raw = body.slice(payload.start, local) + probe + suffix;
+      const value = payload.quoted ? decode_hson_content_string(raw) : raw;
+      if (part_placeholder_matches(value) === undefined) return undefined;
+    } catch { return undefined; }
+    return existingClose ? "{$0" : "{$0}";
+  }
+  // Let the host compiler identify an already-authored expression and closer.
+  // This covers arbitrary JavaScript (including nested braces), not just names.
+  if (text.slice(cursor, region.bodyRange.end).includes("}")) {
+    const prospective = text.slice(0, cursor) + "{" + text.slice(cursor);
+    const found = discover_hson_tagged_templates(evidence.fileName, prospective).interpolated.find(source =>
+      source.substitutionRanges.some(range => range.start === cursor - 1));
+    if (found !== undefined && templateInterpolationRole(prospective, {
+      ...region, bodyRange: found.bodyRange, protectedRanges: found.substitutionRanges,
+    }, cursor - 1)) return "{$0";
+  }
+  // A proposed compiler slot replaces the dollar and an immediate existing
+  // closer. Empty expressions need this probe because they are incomplete JS.
+  const existingClose = text[cursor] === "}";
+  const proposed = { start: cursor - 1, end: cursor + (existingClose ? 1 : 0) };
+  const protectedRanges = [...region.protectedRanges, proposed].sort((a, b) => a.start - b.start);
+  return templateInterpolationRole(text, { ...region, protectedRanges }, proposed.start)
+    ? existingClose ? "{$0" : "{$0}" : undefined;
 }
 
 /** Parser-probed closer selection. Exactly one valid structural mode must win. */
@@ -508,7 +647,9 @@ export function structural_formatting_edits(
       if (!/^[ \t]*$/.test(beforeCloser)) {
         const newline = newlineNear(body, pair.close);
         let closerStart = pair.close;
-        while (closerStart > closerLineStart && (body[closerStart - 1] === " " || body[closerStart - 1] === "\t")) closerStart -= 1;
+        // Mask padding proves grammar, not authored whitespace. Trim only the
+        // original Hson trivia; a substitution's closing brace stops this scan.
+        while (closerStart > closerLineStart && (text[region.bodyRange.start + closerStart - 1] === " " || text[region.bodyRange.start + closerStart - 1] === "\t")) closerStart -= 1;
         edits.push(Object.freeze({
           start: region.bodyRange.start + closerStart,
           end: region.bodyRange.start + pair.close,
@@ -563,6 +704,15 @@ export function structural_formatting_edits(
       const end = region.bodyRange.start + edit.end;
       if (requestedRange !== undefined && (end < requestedRange.start || start > requestedRange.end)) continue;
       edits.push(Object.freeze({ start, end, text: edit.text }));
+    }
+    // Every producer above must respect this region's opaque host expressions,
+    // including zero-width insertions. A nested admitted Hson region is checked
+    // separately against its own substitutions when its turn is reached.
+    for (let index = edits.length - 1; index >= regionEditStart; index--) {
+      const edit = edits[index];
+      if (region.protectedRanges.some(range => edit.start === edit.end
+        ? edit.start > range.start && edit.start < range.end
+        : overlaps(edit, range))) edits.splice(index, 1);
     }
     const regionEdits = edits.slice(regionEditStart).map(edit => ({
       start: edit.start - region.bodyRange.start,

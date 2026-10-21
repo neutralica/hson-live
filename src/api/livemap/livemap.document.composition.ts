@@ -1,3 +1,4 @@
+import { part_placeholder_matches, part_placeholder_pattern } from "../../internal/part-placeholder.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { decode_public_attrs, is_public_attr_name } from "../../core/public-attrs.js";
@@ -546,9 +547,9 @@ function parameter_scalar(value: unknown): value is Primitive {
 function substitute_part_parameters(root: HsonNode, parameters: ReadonlyMap<string, Primitive>): HsonNode {
   const copy = clone_hson_graph_without_quids(root), used = new Set<string>();
   const substitute = (value: string): Primitive => {
-    const pattern = /%\{([A-Za-z_][A-Za-z0-9_-]*)\}/g;
-    const matches = [...value.matchAll(pattern)];
-    if (value.replace(pattern, "").includes("%{")) throw new TypeError("Invalid Part placeholder; expected %{name}.");
+    const pattern = part_placeholder_pattern();
+    const matches = part_placeholder_matches(value);
+    if (matches === undefined) throw new TypeError("Invalid Part placeholder; expected %{name}.");
     const read = (name: string): Primitive => {
       if (!parameters.has(name)) throw new TypeError(`Missing Part parameter ${JSON.stringify(name)}.`);
       used.add(name); return parameters.get(name)!;

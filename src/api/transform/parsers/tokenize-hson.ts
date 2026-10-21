@@ -63,7 +63,7 @@ export function hson_grammar_checkpoint(
       // Data observations may include a discriminator after the cursor. Stop at
       // the first syntax failure, retaining only facts the scanner actually saw.
       if (mode !== "data") throw stop;
-    }, undefined, undefined, false, fact => { dataFacts.push(fact); });
+    }, undefined, undefined, mode === "document", fact => { dataFacts.push(fact); });
   try { scanner.scan(); } catch (error) {
     if (error !== stop && result === undefined) return undefined;
     if (mode === "data" && read_transform_error_details(error)?.code === "HSON_OBJECT_DUPLICATE_MEMBER") return undefined;

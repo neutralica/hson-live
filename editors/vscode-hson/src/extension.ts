@@ -44,6 +44,7 @@ import {
   structural_formatting_edits,
   structural_newline_plan_from_evidence,
   structural_region_at_evidence,
+  structural_typing_snippet,
   type StructuralHostLanguage,
 } from "./structural-editing.js";
 
@@ -180,7 +181,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const editor = vscode.window.activeTextEditor;
       const typed = args?.text;
       const language = editor === undefined ? undefined : structuralLanguage(editor.document);
-      if ((typed !== "<" && typed !== "[") || editor === undefined || language === undefined
+      if ((typed !== "<" && typed !== "[" && typed !== "=" && typed !== "{") || editor === undefined || language === undefined
         || editor.selections.length !== 1 || !editor.selection.isEmpty) {
         await vscode.commands.executeCommand("default:type", args);
         return;
@@ -188,6 +189,15 @@ export function activate(context: vscode.ExtensionContext): void {
       const document = editor.document;
       const offset = document.offsetAt(editor.selection.active);
       const text = document.getText();
+      if (typed === "=" || typed === "{") {
+        const snippet = structural_typing_snippet(evidenceFor(document, language), offset, typed);
+        if (snippet === undefined) await vscode.commands.executeCommand("default:type", args);
+        else await editor.insertSnippet(new vscode.SnippetString(snippet), editor.selection, {
+          undoStopBefore: false,
+          undoStopAfter: false,
+        });
+        return;
+      }
       if (typed === "[") {
         if (structural_array_pair_for_bracket(document.fileName, language, text, offset)) {
           await editor.insertSnippet(new vscode.SnippetString("«$0»"), editor.selection, {

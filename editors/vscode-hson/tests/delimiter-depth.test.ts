@@ -82,6 +82,16 @@ async function run(): Promise<void> {
     const next = documents.get('file:///source.ts', 2, '/workspace/source.ts', 'typescript', 'const ordinary=1;');
     assert.deepEqual(cache.get(grammar, next), []);
   });
+  check("nested templates keep independent depth, protected JavaScript and exact CRLF/astral offsets", () => {
+    const text = prefix + 'const page=Hson.document`<main ${\r\n fn("😀", Hson.data`<items «1»>`, `<ordinary [0]/>`)\r\n} <span/>/>`;';
+    const result = depths(text);
+    assert.deepEqual(result.map(item => text.slice(item.range.start, item.range.end)), ['<', '<', '>', '>', '<', '«', '»', '>']);
+    const inner = text.indexOf('<items');
+    assert.deepEqual(result.filter(item => item.range.start >= inner && item.range.start < inner + '<items «1»>'.length).map(item => item.depth), [1, 2, 2, 1]);
+    assert.ok(result.every(item => !item.unexpected));
+    const ordinary = text.indexOf('<ordinary');
+    assert.ok(result.every(item => item.range.end <= ordinary || item.range.start >= ordinary + '<ordinary [0]/>'.length));
+  });
   check("deep regions use an iterative stack with no cross-region depth carry", () => {
     const text = template('«'.repeat(2000) + '»'.repeat(2000)) + 'const other=Hson.data`<>`;';
     const result = depths(text);
