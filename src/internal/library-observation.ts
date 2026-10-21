@@ -1,4 +1,5 @@
 import { required_reads } from "./required-reads.js";
+import { forward_part_write } from "./part-write.js";
 import type { JsonValue } from "../core/types.js";
 import type { LiveMapDocumentLibrary, LibraryArrayRead, LibraryObjectRead, AuthorityDocumentLocation } from "../types/livemap.types.js";
 import type { ReadDataLocation } from "../types/governor.types.js";
@@ -39,7 +40,7 @@ export function collection_observations(raw: DataLocationObservations): Readonly
 export function read_data_location(raw: DataLocationObservations, assertReadable: () => void = () => {}): ReadDataLocation {
   const snap = () => { assertReadable(); return raw.snap(); };
   const hson = () => { assertReadable(); return raw.hson(); };
-  return Object.freeze({
+  const facade = {
     get rev() { return raw.rev; }, path: () => raw.path(), snap, hson, must: required_reads(snap, hson),
     watch: raw.watch.bind(raw), kind: () => raw.kind(),
     at: (path: Parameters<typeof raw.at>[0]) => read_data_location(raw.at(path), assertReadable),
@@ -48,7 +49,8 @@ export function read_data_location(raw: DataLocationObservations, assertReadable
     asObject: () => { const checked = raw.asObject(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
     asScalar: () => { const checked = raw.asScalar(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
     ...collection_observations(raw),
-  }) as unknown as ReadDataLocation;
+  };
+  return Object.freeze(forward_part_write(facade, raw, assertReadable)) as unknown as ReadDataLocation;
 }
 
 export function read_document_location(raw: ReturnType<LiveMapDocumentLibrary["at"]>, assertReadable: () => void = () => {}): NonNullable<ReturnType<AuthorityDocumentLocation<unknown, never>["asElement"]>> {

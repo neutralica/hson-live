@@ -1,4 +1,4 @@
-import type { PartsLibrary } from "./parts-library.types.js";
+import type { PartsLibrary, DataLocationAt } from "./parts-library.types.js";
 import type { LibraryFamilySelector, LibraryFamilyNamespaces } from "./library-selectors.types.js";
 import type { LibraryLiteralDefinitions, LibraryCertainNames, LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 // livemap.types.ts
@@ -1333,9 +1333,7 @@ type LiveMapLibraryPathHandleBase<
   /** Read this path as exact canonical data. */
   hson: () => EndpointRepresentation<TRead, HsonData>;
   readonly must: RequiredReads<TRead, HsonData>;
-  at: <const TPath extends LivePath>(
-    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => LiveMapLibraryPathHandle<LiveMapPathValue<TRead, TPath>, TLibrary>;
+  at: DataLocationAt<"local", TValue, TRead, TLibrary>;
   set: LiveMapPartWrite<TValue, LiveMapSetValue<TValue>, LiveMapCommit<TLibrary, LiveMapDataOp>>;
   replace: LiveMapPartWrite<TValue, LiveMapWriteValue<TValue>, LiveMapCommit<TLibrary, LiveMapDataOp>>;
   delete: () => LiveMapCommit<TLibrary, LiveMapDataOp>;
@@ -1651,7 +1649,7 @@ type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
       ? F extends "parts"
         ? PartsLibrary<TInput, Omit<LiveMapDataLibrary<V, TLibrary, S>, "schema"> & Readonly<{
             schema: Readonly<{ get: () => HsonSchema<unknown, "data"> }>;
-          }>, LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined, TLibrary>>
+          }>, LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined, TLibrary>, "local", TLibrary>
         : F extends "data" ? LiveMapDataLibrary<V, TLibrary, S>
           : LiveMapDocumentLibrary<V, TLibrary, S>
       : never

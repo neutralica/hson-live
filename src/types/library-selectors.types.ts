@@ -34,7 +34,8 @@ type PartLocation<C, N extends string, R, H> = C extends "local"
     : ReadDataLocation<LiveMapDocumentPart | undefined>
   : ReadDataLocation<LiveMapDocumentPart | undefined>;
 // Distribute Echo ownership before intersecting members so source narrowing remains authoritative.
-type WithParts<D, H, C, N extends string, R> = H extends unknown ? PartsLibrary<D, H, PartLocation<C, N, R, H>> : never;
+type WithParts<D, H, C extends LibrarySelectorContext, N extends string, R> = H extends unknown
+  ? PartsLibrary<D, H, PartLocation<C, N, R, H>, C extends "echo" ? H extends { source: "client-local" } ? "local" : "read" : C, N, R> : never;
 
 type FamilyEvidence<T, F extends LibraryFamily> = Extract<LibraryDefinitionEvidence<T>, { family: F extends "doc" ? "document" : F }>;
 type FromEvidence<E, C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R, D> =
@@ -43,9 +44,11 @@ type FromEvidence<E, C extends LibrarySelectorContext, F extends LibraryFamily, 
 type DynamicSchema<H, C, F> = C extends "local" ? F extends "parts" ? H
   : H extends { schema: { get: infer G } } ? Omit<H, "schema"> & { readonly schema: { readonly get: G; readonly use: (schema: HsonSchema) => import("./livemap.types.js").LiveMapCommit } } : H
   : H;
-type Broad<C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R> =
+type BroadHandle<C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R> =
   DynamicSchema<Handle<C, F, F extends "doc" ? unknown : F extends "parts" ? LiveMapPartCollection : JsonValue,
     HsonSchema<unknown, F extends "doc" ? "document" : "data">, N, R>, C, F>;
+type Broad<C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R> =
+  F extends "parts" ? WithParts<{}, BroadHandle<C, F, N, R>, C, N, R> : BroadHandle<C, F, N, R>;
 type Selected<D, C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R> =
   N extends LibraryCertainNames<D> & keyof LibraryLiteralDefinitions<D>
     ? [FamilyEvidence<D[N], F>] extends [never] ? Broad<C, F, N, R> : FromEvidence<FamilyEvidence<D[N], F>, C, F, N, R, D[N]>

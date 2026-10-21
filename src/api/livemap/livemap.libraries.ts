@@ -1,6 +1,7 @@
 import { document_markup, document_hson } from "../../internal/document-representation.js";
 import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
+import { attach_part_write, write_part_invocation } from "../../internal/part-write.js";
 import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
 import { data_path_kind, data_location_check, require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
@@ -1273,6 +1274,21 @@ function make_data_library(
       ...(currentKind() === "object" ? { object: Object.freeze(objectCapabilities) } : {}),
       ...(currentKind() === "array" ? { array: Object.freeze(arrayCapabilities) } : {}),
     };
+    if (contract.validation === PART_COLLECTION_VALIDATION && stablePath.length === 1 && typeof stablePath[0] === "string") {
+      const member = stablePath[0];
+      attach_part_write(facade, (...input) => {
+        const assertCurrent = aggregate.captureFence();
+        const assertMember = () => {
+          require_data_location(check);
+          if (read() === undefined) throw new Error(`Unknown Part member ${JSON.stringify(member)}.`);
+        };
+        assertMember();
+        const source = write_part_invocation(library.name, member, input);
+        assertCurrent();
+        assertMember();
+        return source;
+      });
+    }
     return Object.freeze(facade) as unknown as LiveMapLibraryPathHandle<TValue>;
   };
 

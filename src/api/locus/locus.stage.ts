@@ -1,4 +1,5 @@
 import { required_reads } from "../../internal/required-reads.js";
+import { forward_part_write } from "../../internal/part-write.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { admit_public_livemap_definitions, require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
@@ -54,7 +55,7 @@ export function make_locus_stage<TMap extends LiveMap>(
     }), cause => Promise.reject(cause));
     const snap = () => { assertReadable(); return raw.snap(); };
     const hson = () => { assertReadable(); return raw.hson(); };
-    return Object.freeze({
+    return Object.freeze(forward_part_write({
       get rev() { return raw.rev; },
       path: () => raw.path(),
       snap, hson, must: required_reads(snap, hson),
@@ -70,7 +71,7 @@ export function make_locus_stage<TMap extends LiveMap>(
       set: (value: JsonValue) => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).set(value); }),
       replace: (value: JsonValue) => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).replace(value); }),
       delete: () => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).delete(); }),
-    }) as unknown as import("../../types/governor.types.js").LocusDataLocation;
+    }, raw, assertReadable)) as unknown as import("../../types/governor.types.js").LocusDataLocation;
   };
   const document_location = (name: string, path: readonly number[], document: LiveMapDocumentLibrary, retained?: ReturnType<LiveMapDocumentLibrary["at"]>): NonNullable<ReturnType<import("../../types/governor.types.js").LocusDocumentLocation["asElement"]>> => {
     const stable = validate_document_path(path);

@@ -1,4 +1,5 @@
 import { make_parts_facade } from "../../internal/parts-facade.js";
+import { forward_part_write } from "../../internal/part-write.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { empty_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
@@ -32,12 +33,12 @@ export function make_echo_library_selector(
   const local_data_location = <T extends DataLocationObservations>(raw: T): T => {
     const refine = <U extends DataLocationObservations>(checked: U | undefined) =>
       checked === undefined ? undefined : local_data_location(checked);
-    return Object.freeze({
+    return Object.freeze(forward_part_write({
       ...raw, get rev() { return raw.rev; }, ...representations(raw),
       at: (path: LivePath) => local_data_location(raw.at(path)),
       present: () => refine(raw.present()), asArray: () => refine(raw.asArray()),
       asObject: () => refine(raw.asObject()), asScalar: () => refine(raw.asScalar()),
-    }) as T;
+    }, raw, assertReadable)) as T;
   };
   const local_document_location = (raw: ReturnType<LiveMapDocumentLibrary["at"]>): ReturnType<LiveMapDocumentLibrary["at"]> => {
     const refine = (checked: ReturnType<LiveMapDocumentLibrary["at"]> | undefined) =>

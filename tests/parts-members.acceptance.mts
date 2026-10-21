@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { parts_member_cases, parts_member_echo_cases } from "./fixtures/parts-members-cases.mts";
+import { parts_write_cases } from "./fixtures/parts-write-cases.mts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -56,6 +57,10 @@ assert.equal(root, hsonLiveMap);
 const map = hsonLiveMap.fromLibraries({components: {parts: {submit: {kind: 'document', document: '<button/>'}}}});
 assert.equal(map.parts.components.submit.snap().document, '<button/>');
 assert.equal('render' in map.parts.components.submit, false);
+const invocation = map.parts.components.submit.write();
+assert.equal(invocation, map.parts.components.at(['submit']).write());
+map.addLibraries({page: {document: invocation}});
+assert.match(JSON.stringify(map.doc.must('page').root()), /button/);
 const loc = hsonLiveMap.locus.create({components: {parts: {submit: {kind: 'document', document: '<button/>'}}}});
 await loc.parts.components.submit.set({document: '<button "Updated"/>'});
 assert.equal(loc.parts.components.submit.snap().document, '<button "Updated"/>');
@@ -65,6 +70,7 @@ loc.dispose();
 } finally { rmSync(temporary, { recursive: true, force: true }); }
 await parts_member_cases();
 await parts_member_echo_cases();
+await parts_write_cases();
 const worker = repository_typescript_worker(new URL("./fixtures/parts-members.worker.mts", import.meta.url));
 try {
   assert.deepEqual(await new Promise((resolve, reject) => {
