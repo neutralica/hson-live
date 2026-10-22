@@ -107,31 +107,30 @@ assert.deepEqual(hson_interpolation_roles(firstLiteral + secondLiteral + finalLi
   { offset: firstLiteral.length + secondLiteral.length, substitution: 1 },
 ]), ["document-content", undefined]);
 const recoveredSlots: readonly { raw: readonly string[]; roles: readonly (HsonInterpolationRole | undefined)[] }[] = [
-  { raw: ['<main "prefix', '" ', '/>'], roles: [undefined, "document-content"] },
-  { raw: ['<main ', ' "prefix', '" ', '/>'], roles: ["document-content", undefined, "document-content"] },
-  { raw: ['<main "prefix', '" "other', '" ', '/>'], roles: [undefined, undefined, "document-content"] },
-  { raw: ['<main "', '', '" ', '/>'], roles: [undefined, undefined, "document-content"] },
-  { raw: ['<main title="prefix', '" ', '/>'], roles: [undefined, "document-content"] },
+  { raw: ['<main "prefix', '" ', '/>'], roles: ["quoted-string", "document-content"] },
+  { raw: ['<main ', ' "prefix', '" ', '/>'], roles: ["document-content", "quoted-string", "document-content"] },
+  { raw: ['<main "prefix', '" "other', '" ', '/>'], roles: ["quoted-string", "quoted-string", "document-content"] },
+  { raw: ['<main "', '', '" ', '/>'], roles: ["quoted-string", "quoted-string", "document-content"] },
+  { raw: ['<main title="prefix', '" ', '/>'], roles: ["quoted-string", "document-content"] },
 ];
 for (const { raw, roles: expected } of recoveredSlots) {
   const substitutions = Array(raw.length - 1).fill("text");
   const { source, slots } = scan_hson_template_segments(raw, substitutions);
   assert.deepEqual(hson_interpolation_roles(source, "document", slots), expected);
-  assert.throws(() => tokenize_hson(source, 0, undefined, slots, "document", substitutions, "document"),
-    /interpolation must occupy the entire quoted Hson string/);
-  assert.equal(hson_grammar_checkpoint(source, source.length, "document", slots), undefined);
+  assert.doesNotThrow(() => tokenize_hson(source, 0, undefined, slots, "document", substitutions, "document"));
+  assert.equal(hson_grammar_checkpoint(source, source.length, "document", slots)?.kind, "value");
 }
 // Other malformed lexemes remain fail-fast: an unterminated quote cannot prove
-// a later content role, even when its slot boundaries can be discarded.
+// a later content role.
 const unterminated = scan_hson_template_segments(['<main "prefix', ' ', '/>'], ["", ""]);
 assert.deepEqual(hson_interpolation_roles(unterminated.source, "document", unterminated.slots), [undefined, undefined]);
 
 // A known authored object closer cannot become document structure after a
-// partial quoted slot. The crossing stops observation before either later slot.
+// quoted slot. The crossing stops observation before either later slot.
 const crossing = scan_hson_template_segments(['<main "prefix', '" <x ', '> ', '/>'], ["", "", ""]);
-assert.deepEqual(hson_interpolation_roles(crossing.source, "document", crossing.slots), [undefined, undefined, undefined]);
+assert.deepEqual(hson_interpolation_roles(crossing.source, "document", crossing.slots), ["quoted-string", undefined, undefined]);
 assert.throws(() => tokenize_hson(crossing.source, 0, undefined, crossing.slots, "document", ["text", "37", "37"]),
-  error => read_transform_error_details(error)?.code === "HSON_QUOTED_INTERPOLATION_PARTIAL");
+  error => read_transform_error_details(error)?.code === "HSON_STRUCTURAL_MODE_CROSSING");
 
 // Evidence is accumulated outside the scanner, so a fatal crossing retains
 // earlier observed roles but cannot assign roles beyond the failure.
@@ -153,21 +152,36 @@ for (const raw of stoppedSlots) {
 }
 
 // Coincident boundaries remain distinct, both with a safe resume point and
-// when a later malformed lexeme prevents the original scan from reaching them.
+// when a later malformed lexeme stops scanning after the completed string.
 for (const raw of [['"', '', '" "unfinished'], ['<main "', '', '" "unfinished/>']]) {
   const template = scan_hson_template_segments(raw, ["", ""]);
   assert.equal(template.slots[0].offset, template.slots[1].offset);
-  assert.deepEqual(hson_interpolation_roles(template.source, "document", template.slots), [undefined, undefined]);
+  assert.deepEqual(hson_interpolation_roles(template.source, "document", template.slots), raw[0].startsWith("<") ? [undefined, undefined] : ["quoted-string", "quoted-string"]);
 }
 const cursorSlots = scan_hson_template_segments(['<main "', '', '" ', '/>'], ["", "", ""]);
 const cursorContext = query_hson_editor_context({ mode: "document", source: cursorSlots.source, cursor: cursorSlots.slots[0].offset, slots: cursorSlots.slots });
-assert.deepEqual(cursorContext.interpolationRoles, [undefined, undefined, "document-content"]);
+assert.deepEqual(cursorContext.interpolationRoles, ["quoted-string", "quoted-string", "document-content"]);
 assert.deepEqual(cursorContext.checkpoint, hson_grammar_checkpoint(cursorSlots.source, cursorSlots.slots[0].offset, "document"));
+for (const mode of ["data", "document"] as const) {
+  const raw = mode === "data" ? ['<kind "l', 'eft" sh'] : ['<hson-part lib="co', 'mponents"/>'];
+  const template = scan_hson_template_segments(raw, [""]);
+  assert.deepEqual(hson_interpolation_roles(template.source, mode, template.slots), ["quoted-string"]);
+  for (let cursor = raw[0].indexOf('"') + 1; cursor <= raw[0].length + 2; cursor++) {
+    const context = query_hson_editor_context({ mode, source: template.source, cursor, slots: template.slots });
+    assert.deepEqual(context.candidates, [], "No edit may replace a quoted value across expressions");
+    assert.equal(context.checkpoint?.quoted, undefined);
+  }
+  if (mode === "data") {
+    const context = query_hson_editor_context({ mode, source: template.source, cursor: template.source.length, slots: template.slots, schema: union.value });
+    assert.deepEqual(context.candidates.map(candidate => candidate.label), ["shared"]);
+    assert.ok(context.checkpoint?.dataFacts?.some(fact => fact.kind === "unknown" && fact.path[0] === "kind"));
+  }
+}
 for (const count of [10, 257, 10_000]) {
   const raw = ['<main "prefix', '" ', ...Array(count - 2).fill(" "), '/>'];
   const template = scan_hson_template_segments(raw, Array(count).fill(""));
   assert.deepEqual(hson_interpolation_roles(template.source, "document", template.slots),
-    [undefined, ...Array(count - 1).fill("document-content")]);
+    ["quoted-string", ...Array(count - 1).fill("document-content")]);
 }
 const coincidentRaw = ['<main "prefix', '" ', ...Array(254).fill(" ")];
 coincidentRaw[coincidentRaw.length - 1] += '"';

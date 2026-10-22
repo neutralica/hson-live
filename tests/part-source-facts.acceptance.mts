@@ -69,6 +69,7 @@ const malformedPlaceholder = maps.fromLibraries({ components: { parts: { heading
 const unfinished = Text.document\`<main <hson-part lib="components" at="hea\`;
 const malformed = Text.document\`<main <hson-part lib="components" at="heading"/> <bad attr="\`;
 const dynamicCoordinate = Text.document\`<hson-part lib="\${key}" at="heading" content="\${dynamic}"/>\`;
+const partialQuoted = Text.document\`<main title="%{pre\${key}fix}" "%{pre\${key}fix}" <hson-part lib="co\${key}mponents" at="head\${key}ing"/><hson-part lib="components" at="heading"/>/>\`;
 const placeholderCoordinate = Text.document\`<hson-part lib="%{Library}" at="%{Member}"/>\`;
 const ordinaryString = maps.fromLibraries({ page: { document: '<hson-part lib="mixed-Library" at="\u0061.b"/>' } });
 const mismatch = kit.liveMap.locus.create({ page: { document: Shared, schema: Page }, components: { parts: { heading: { kind: "document", document: "<p \"%{content} %{mixed-Case}\"/>" } } } });
@@ -140,6 +141,13 @@ check("complete same-batch forward references are independent of field order", (
   }
   assert.equal(batch("later").receivingInventory, "open");
   assert.equal(batch("later").libraries.some(item => item.name === "components"), false);
+});
+check("partial quoted source stays opaque without hiding later literal facts", () => {
+  const found = doc("partialQuoted");
+  assert.equal(found.parameterCompleteness, "unknown");
+  assert.deepEqual(found.parameters, []);
+  assert.deepEqual(found.connectors[0]!.attributes.map(attr => attr.value), [undefined, undefined]);
+  assert.deepEqual(found.connectors[1]!.attributes.map(attr => attr.value), ["components", "heading"]);
 });
 check("partial, dynamic, computed and aliased inventories retain uncertainty", () => {
   assert.equal(library("literalName").name, "mixed-Library");

@@ -153,7 +153,7 @@ export type TokenText = {
   kind: typeof TOKEN_KIND.TEXT;
   raw: string;
   quoted?: boolean;
-  /** Direct runtime string for a whole quoted template slot. */
+  /** Decoded runtime string for a quoted value containing template slots. */
   directValue?: string;
   pos: Position;
 };

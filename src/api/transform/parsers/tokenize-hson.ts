@@ -222,6 +222,9 @@ class HsonScanner {
     let value: string;
     if (typeof candidate === "string") value = candidate;
     else if (candidate === null || typeof candidate === "boolean" || typeof candidate === "number") {
+      if (typeof candidate === "number" && !Number.isFinite(candidate)) {
+        this.fail("quoted interpolation requires a finite number", this.position(), "HSON_NUMBER_NONFINITE");
+      }
       value = serialize_primitive_hson(typeof candidate === "number" ? admit_hson_number(candidate) : candidate);
     } else this.fail("quoted interpolation requires a primitive string, finite number, boolean, or null", this.position(), "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
     this.nextSlot += 1;
@@ -1166,34 +1169,36 @@ class HsonScanner {
   private scanContentString(): { raw: string; directValue?: string } {
     const start = this.position();
     this.consumeExpected(`"`);
-    if (this.slotHere() !== undefined) {
-      const { slot, value } = this.quotedSlot();
-      if (this.slotHere() !== undefined || this.peek() !== `"`) {
-        if (this.editorRejectedSlot === undefined) this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
-        this.editorRejectedSlot(slot);
-      } else {
-        this.editorSlot?.(slot, "quoted-string");
-        this.consumeExpected(`"`);
-        this.observeData({ kind: "unknown" }, start.index);
-        return { raw: `""`, directValue: value };
-      }
-    }
+    const interpolations: number[] = [];
+    const boundaries: number[] = [];
     let raw = `"`;
     const observation = this.editorStringObservation();
 
-    while (!this.atEnd()) {
+    while (!this.atEnd() || this.slotHere() !== undefined) {
       if (this.slotHere() !== undefined) {
-        if (this.recoverRejectedSlots()) continue;
-        this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
+        const { slot, value } = this.quotedSlot();
+        interpolations.push(slot);
+        boundaries.push(raw.length - 1);
+        // Runtime text is never source layout: escape its newlines, controls,
+        // quotes and backslashes. Protect spaces from the literal margin too.
+        raw += JSON.stringify(value).slice(1, -1).replace(/ /g, "\\u0020");
+        continue;
       }
       const ch = this.peek();
 
       if (ch === `"`) {
-        this.documentStringCheckpoint(start.index + 1, true, "value", observation);
-        this.quotedValueCheckpoint(start.index + 1, true);
+        if (interpolations.length === 0) {
+          this.documentStringCheckpoint(start.index + 1, true, "value", observation);
+          this.quotedValueCheckpoint(start.index + 1, true);
+        }
         this.consumeExpected(`"`);
         const lowered = raw.includes("\n") || raw.includes("\t")
-          ? JSON.stringify(decode_hson_content_string(raw.slice(1))) : raw + `"`;
+          ? JSON.stringify(decode_hson_content_string(raw.slice(1), boundaries)) : raw + `"`;
+        if (interpolations.length !== 0) {
+          for (const slot of interpolations) this.editorSlot?.(slot, "quoted-string");
+          this.observeData({ kind: "unknown" }, start.index);
+          return { raw: lowered, directValue: JSON.parse(lowered) };
+        }
         if (this.editorDataFact !== undefined) this.observeData({ kind: "scalar", value: JSON.parse(lowered) }, start.index);
         return { raw: lowered };
       }
@@ -1218,8 +1223,10 @@ class HsonScanner {
       this.observeStringCharacter(observation, character);
     }
 
-    this.documentStringCheckpoint(start.index + 1, false, "value", observation);
-    this.quotedValueCheckpoint(start.index + 1, false);
+    if (interpolations.length === 0) {
+      this.documentStringCheckpoint(start.index + 1, false, "value", observation);
+      this.quotedValueCheckpoint(start.index + 1, false);
+    }
     const final = this.source[this.source.length - 1];
     const mixed = final === "'" && !raw.includes("\n");
     this.fail(mixed ? `mixed quote boundary in quoted string` : `unterminated quoted string`,
@@ -1290,31 +1297,27 @@ class HsonScanner {
   private scanAttributeString(name: string): { text: string; end: Position; direct?: boolean } {
     const start = this.position();
     this.consumeExpected(`"`);
-    if (this.slotHere() !== undefined) {
-      const { slot, value } = this.quotedSlot();
-      if (this.slotHere() !== undefined || this.peek() !== `"`) {
-        if (this.editorRejectedSlot === undefined) this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
-        this.editorRejectedSlot(slot);
-      } else {
-        this.editorSlot?.(slot, "quoted-string");
-        const end = this.position();
-        this.consumeExpected(`"`);
-        return { text: value, end, direct: true };
-      }
-    }
+    const interpolations: number[] = [];
     let text = "";
     const observation = this.editorStringObservation();
 
-    while (!this.atEnd()) {
+    while (!this.atEnd() || this.slotHere() !== undefined) {
       if (this.slotHere() !== undefined) {
-        if (this.recoverRejectedSlots()) continue;
-        this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
+        const { slot, value } = this.quotedSlot();
+        interpolations.push(slot);
+        text += JSON.stringify(value).slice(1, -1);
+        continue;
       }
       const ch = this.peek();
       if (ch === `"`) {
-        this.documentStringCheckpoint(start.index + 1, true, "attribute-value", observation);
+        if (interpolations.length === 0) this.documentStringCheckpoint(start.index + 1, true, "attribute-value", observation);
         const end = this.position();
         this.consumeExpected(`"`);
+        if (interpolations.length !== 0) {
+          for (const slot of interpolations) this.editorSlot?.(slot, "quoted-string");
+          // Keep unknown interpolated values out of literal-only source facts.
+          return { text: JSON.parse('"' + text + '"'), end, direct: true };
+        }
         return { text, end };
       }
 
@@ -1338,7 +1341,7 @@ class HsonScanner {
       this.observeStringCharacter(observation, character);
     }
 
-    this.documentStringCheckpoint(start.index + 1, false, "attribute-value", observation);
+    if (interpolations.length === 0) this.documentStringCheckpoint(start.index + 1, false, "attribute-value", observation);
     const final = this.source[this.source.length - 1];
     this.fail(
       final === "'"

@@ -1,6 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Hson, type HsonCanonical, type HsonData, type HsonAuthored } from "../src/hson-authoring.ts";
+import { ANY_DATA, ANY_DOCUMENT, Hson, type HsonCanonical, type HsonData, type HsonAuthored } from "../src/hson-authoring.ts";
 import { hsonTransform } from "../src/api/transform/transform.facade.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { tokenize_hson, scan_hson_template_segments } from "../src/api/transform/parsers/tokenize-hson.ts";
@@ -9,6 +9,8 @@ import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/de
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode, NodeContent } from "../src/core/types.ts";
 import { TransformError } from "../src/core/errors.ts";
+import { discover_hson_tagged_templates } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
+import { interpolation_site, map_interpolation_range } from "../src/internal/trusted-schema-diagnostics/interpolation-source.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -214,9 +216,9 @@ check("whole quoted primitive slots build STRs consistently, including signed ze
   }
   for (const tag of [Hson.canonical, Hson.data, Hson.document]) {
     for (const value of [NaN, Infinity, -Infinity]) rejects(() => tag`"${value}"`, "HSON_NUMBER_NONFINITE");
-    rejects(() => tag`"page-${1}"`, "HSON_QUOTED_INTERPOLATION_PARTIAL");
-    rejects(() => tag`"${1}-page"`, "HSON_QUOTED_INTERPOLATION_PARTIAL");
-    rejects(() => tag`"${1}${2}"`, "HSON_QUOTED_INTERPOLATION_PARTIAL");
+    closes(tag`"page-${1}"`, '"page-1"');
+    closes(tag`"${1}-page"`, '"1-page"');
+    closes(tag`"${1}${2}"`, '"12"');
   }
 });
 
@@ -309,6 +311,162 @@ check("slots cannot manufacture keywords, names, delimiters, comments, or escape
     const acrossNewline = tokenize_hson('// \r\n', 0, undefined, [{ offset: 4, substitution: 0 }], mode, ['\"hello\"']);
     assert.equal(acrossNewline.filter(token => token.kind === "INTERPOLATION_SLOT").length, 1);
   }
+});
+
+check("partial quoted values share scalar spelling across authoring modes", () => {
+  for (const value of ["", "null", "true", "NaN", "Infinity", "-0", 0, -0, 1.25, 1e30, true, false, null]) {
+    const text = Object.is(value, -0) ? "-0" : String(value);
+    for (const tag of [Hson.canonical, Hson.data, Hson.document]) {
+      closes(tag`"pre${value}post"`, JSON.stringify(`pre${text}post`));
+      closes(tag`"${value}${""}${value}"`, JSON.stringify(text + text));
+    }
+    assert.deepEqual(Hson.data.materialize(Hson.data`<label "pre${value}post">`), { label: `pre${text}post` });
+    closes(Hson.document`<a href="/slides/${value}" title="Slide ${value} of ${2}"/>`,
+      `<a href=${JSON.stringify(`/slides/${text}`)} title=${JSON.stringify(`Slide ${text} of 2`)}/>`);
+    closes(Hson.document`<a title="${value}${""}${value}"/>`, `<a title=${JSON.stringify(text + text)}/>`);
+  }
+  // Data quoted values share scalar substitution, but do not gain attributes.
+  rejects(() => Hson.data`<a title="prefix${1}"/>`);
+  rejects(() => Hson.data`<a title="prefix${1}">`);
+});
+
+check("partial strings escape runtime text exactly and cannot inject attributes or nodes", () => {
+  const values = ['" injected="yes', '\\"/><script src="/evil.js"/>', "\n\r\n\r\t\0\b\f\u001f",
+    '\\u0022\\n\\', '<«[]»> // @000000001', '${javascript} %{part}', "😀\ud800"];
+  for (const value of values) {
+    for (const tag of [Hson.canonical, Hson.data, Hson.document]) {
+      closes(tag`"pre${value}post"`, JSON.stringify(`pre${value}post`));
+    }
+    const actual = Hson.document`<a title="pre${value}post" "pre${value}post"/>`;
+    const expected = `<a title=${JSON.stringify(`pre${value}post`)} ${JSON.stringify(`pre${value}post`)}/>`;
+    closes(actual, expected);
+    const tokens = tokenize_hson(actual);
+    const open = tokens.filter(token => token.kind === "OPEN");
+    assert.equal(open.length, 1);
+    assert.deepEqual(open[0].rawAttrs?.map(attr => attr.name), ["title"]);
+  }
+  const nested = Hson.document`<b title="n${2}"/>`;
+  closes(Hson.document`<p title="pre${nested}post" "pre${nested}post"/>`,
+    `<p title=${JSON.stringify(`pre${nested}post`)} ${JSON.stringify(`pre${nested}post`)}/>`);
+  assert.equal(Hson.document`<main ${Hson.document`<p "pre${1}post"/>`}/>`, Hson.document`<main <p "pre1post"/>/>`);
+});
+
+check("authored escapes and multiline layout remain distinct from runtime text", () => {
+  const value = '  lead\r\nnext\n  ';
+  for (const tag of [Hson.canonical, Hson.data, Hson.document]) {
+    closes(tag`"\u0024{literal} %{part}\n\"\\${value}\u0021"`, JSON.stringify('${literal} %{part}\n"\\' + value + '!'));
+    closes(tag`"
+      before ${value}
+      after
+    "`, JSON.stringify(`before ${value}\nafter`));
+    closes(tag`"
+      ${value}
+    "`, JSON.stringify(value));
+  }
+  closes(Hson.document`<a title="\u0024{literal} %{part}\n\"\\${value}\u0021"/>`,
+    `<a title=${JSON.stringify('${literal} %{part}\n"\\' + value + '!')}/>`);
+  const raw = ['"\r\n  before ', '\r\n  after\r\n"'];
+  const template = scan_hson_template_segments(raw, [value]);
+  const tokens = tokenize_hson(template.source, 0, undefined, template.slots, "data", [value]);
+  assert.equal(tokens[0].kind, "TEXT");
+  if (tokens[0].kind === "TEXT") assert.equal(tokens[0].directValue, `before ${value}\nafter`);
+});
+
+check("empty scalar slots retain their position through multiline framing and margins", () => {
+  const cases = [
+    { raw: ['"', '\n  tail\n"'], values: [""], expected: '\n  tail\n' },
+    { raw: ['"\n  head\n  ', '\n    tail\n"'], values: [""], expected: 'head\n\n  tail' },
+    { raw: ['"\n  head\n  ', '"'], values: [""], expected: 'head\n' },
+    { raw: ['"', '', '\n  tail\n"'], values: ["", ""], expected: '\n  tail\n' },
+    { raw: ['"', '\n  ', '\n"'], values: ["", "x"], expected: '\n  x\n' },
+    { raw: ['"', ' \t\n', '\n \t', '"'], values: ["", "", ""], expected: ' \t\n\n \t' },
+    { raw: ['"\n  ', '\n    ', '\n"'], values: ["", ""], expected: '\n  ' },
+    { raw: ['"\n', '\n"'], values: [""], expected: '' },
+    { raw: ['"\n  head\n', '  "'], values: [""], expected: '  head\n  ' },
+    { raw: ['"', '\n  ', '\n"'], values: ["\0", ""], expected: '\0\n  \n' },
+  ];
+  const decoded = (source: string): unknown => hsonTransform.fromHson(source).toNode().$_content[0];
+  for (const eol of ["\n", "\r\n"]) for (const { raw, values, expected } of cases) {
+    const literals = raw.map(text => text.replaceAll("\n", eol));
+    const template: TemplateStringsArray = Object.freeze(Object.assign([...literals], { raw: Object.freeze(literals) }));
+    for (const tag of [Hson.canonical, Hson.data, Hson.document]) {
+      assert.equal(decoded(Reflect.apply(tag, undefined, [template, ...values])), expected);
+      // Empty boundaries have the same layout significance as nonempty text,
+      // without introducing that text into the decoded value.
+      const reference = Reflect.apply(tag, undefined, [template, ...values.map(value => value === "" ? "§" : value)]);
+      assert.equal(String(decoded(reference)).replaceAll("§", ""), expected);
+    }
+  }
+  assert.equal(Hson.data.materialize(Hson.data`"${""}
+  tail
+"`), '\n  tail\n');
+});
+
+check("invalid partial candidates reject without coercion at the original slot offset", () => {
+  let coerced = false;
+  const hostile = { toString() { coerced = true; return "unsafe"; } };
+  const templates = [((parts: TemplateStringsArray, _value: number) => parts)`"pre${0}post"`,
+    ((parts: TemplateStringsArray, _value: number) => parts)`<p title="pre${0}post"/>`];
+  for (const tag of [Hson.canonical, Hson.data, Hson.document]) {
+    for (const value of [undefined, {}, [], hostile, new String("x"), Symbol(), 1n, () => "x", NaN, Infinity, -Infinity]) {
+      const code = typeof value === "number" ? "HSON_NUMBER_NONFINITE" : "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED";
+      for (const template of templates.slice(0, tag === Hson.data ? 1 : 2)) {
+        assert.throws(() => Reflect.apply(tag, undefined, [template, value]), error =>
+          error instanceof TransformError && error.code === code && error.source?.index === template.raw[0].length);
+      }
+    }
+  }
+  assert.equal(coerced, false);
+  const template = scan_hson_template_segments(['\r\n<p title="\\u0041prefix', 'suffix"/>'], [undefined]);
+  assert.throws(() => tokenize_hson(template.source, 0, undefined, template.slots, "document", [undefined]), error =>
+    error instanceof TransformError && error.code === "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED"
+      && error.source?.index === template.slots[0].offset && error.source.line === 2);
+  for (const raw of [['"prefix\\', 'n"'], ['<p title="prefix\\u00', '41"/>']]) {
+    const template = scan_hson_template_segments(raw, ["x"]);
+    rejects(() => tokenize_hson(template.source, 0, undefined, template.slots, "document", ["x"]), "HSON_INTERPOLATION_POSITION_INVALID");
+  }
+});
+
+check("scanner evidence retains raw literal offsets and host CRLF correspondence", () => {
+  const host = 'import { Hson } from "hson-live/hson";\r\nHson.document`\r\n<a title="\\u0041${value}suffix"/>`;';
+  const found = discover_hson_tagged_templates("/workspace/source.ts", host).interpolated[0];
+  assert.ok(found);
+  const site = interpolation_site(found, "file:///workspace/source.ts");
+  const template = scan_hson_template_segments(site.literals.map(literal => literal.raw), ["\"\n\\"]);
+  const attributes: { range: { start: number; end: number }; text: string | undefined }[] = [];
+  tokenize_hson(template.source, 0, {
+    recordToken() {},
+    recordAttribute(attr, ranges) { assert.ok(ranges.value); attributes.push({ range: ranges.value, text: attr.value?.text }); },
+  }, template.slots, "document", ['"\n\\']);
+  assert.equal(attributes[0].text, 'A"\n\\suffix');
+  const range = attributes[0].range;
+  assert.equal(template.source.slice(range.start, range.end), '"\\u0041suffix"');
+  const offset = site.literals[0].raw.length;
+  const segments = [
+    { kind: "literal", index: 0, start: 0, end: offset },
+    { kind: "literal", index: 1, start: offset, end: template.source.length },
+  ] satisfies Parameters<typeof map_interpolation_range>[1];
+  const prefix = map_interpolation_range(site, segments, { precision: "exact", start: range.start + 1, end: offset });
+  assert.equal(prefix.kind, "literal-exact");
+  assert.equal(host.slice(prefix.range.start, prefix.range.end), '\\u0041');
+  const composite = map_interpolation_range(site, segments, { precision: "exact", ...range });
+  assert.equal(composite.kind, "composite");
+  assert.equal(host.slice(composite.range.start, composite.range.end), '"\\u0041${value}suffix"');
+});
+
+check("governing Schemas validate the resulting strings and retain authored qualification", () => {
+  const schema = Hson.schema`<type "document" tag "a" attrs <props <href <exact "/slides/2"> title <exact "Slide 2 of 3">> closed true> content "empty">`;
+  const source = Hson.document`<a href="/slides/${2}" title="Slide ${2} of ${3}"/>`;
+  const certified = schema.certify(source);
+  assert.deepEqual(Hson.document.toNode(ANY_DOCUMENT.certify(certified)).$_content[0], Hson.document.toNode(ANY_DOCUMENT.certify(schema.certify(Hson.document`<a href="/slides/2" title="Slide 2 of 3"/>`))).$_content[0]);
+  assert.throws(() => schema.certify(Hson.document`<a href="/slides/${4}" title="Slide ${2} of ${3}"/>`));
+  assert.throws(() => schema.certify(Hson.document`<a href="/slides/${'2" injected="yes'}" title="Slide ${2} of ${3}"/>`));
+  const data = Hson.schema`<type "data" content <label <exact "pre2post">>>`;
+  assert.deepEqual(Hson.data.materialize(ANY_DATA.certify(data.certify(Hson.data`<label "pre${2}post">`))), { label: "pre2post" });
+  assert.throws(() => data.certify(Hson.data`<label "pre${3}post">`));
+  const authored = Hson.document`<a @:slide title="Slide ${2}"/>`;
+  assert.match(authored, /@:slide/);
+  assert.notEqual(authored, Hson.document`<a title="Slide 2"/>`);
 });
 
 process.stdout.write(`# ${checks} shared interpolation boundary checks passed\n`);

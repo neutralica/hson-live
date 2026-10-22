@@ -112,18 +112,16 @@ check("unquoted data primitives and candidate modes are checked independently", 
   assert.equal(Hson.document`<body ${"<main/>"}/>`, Hson.document`<body <main/>/>`);
 });
 
-check("whole quoted slots accept primitives; unsupported values and partial strings reject", () => {
+check("quoted slots accept primitives and literal segments; unsupported values reject", () => {
   for (const value of [undefined, {}, new String("x")]) {
     error(() => (Hson.document as any)`<p "${value}"/>`, "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
   }
   const value = "x";
-  for (const run of [
-    () => Hson.document`<p "hello ${value}"/>`,
-    () => Hson.document`<p "${value} world"/>`,
-    () => Hson.data`<a "a ${value} b">`,
-    () => Hson.document`<p "a ${value} b ${value}"/>`,
-    () => Hson.document`<p title="${value} world"/>`,
-  ]) error(run, "HSON_QUOTED_INTERPOLATION_PARTIAL");
+  assert.equal(Hson.document`<p "hello ${value}"/>`, Hson.document`<p "hello x"/>`);
+  assert.equal(Hson.document`<p "${value} world"/>`, Hson.document`<p "x world"/>`);
+  assert.equal(Hson.data`<a "a ${value} b">`, Hson.data`<a "a x b">`);
+  assert.equal(Hson.document`<p "a ${value} b ${value}"/>`, Hson.document`<p "a x b x"/>`);
+  assert.equal(Hson.document`<p title="${value} world"/>`, Hson.document`<p title="x world"/>`);
 });
 
 check("attribute values require complete quoted strings", () => {
@@ -179,6 +177,9 @@ check("style and script quoted slots use normal document admission", () => {
   error(() => Hson.document`<style "${""}"/>`, "HSON_INTERPOLATION_COMPOSED_INVALID");
   assert.equal(Hson.document`<script src="${"/app.js"}"/>`, Hson.document`<script src="/app.js"/>`);
   error(() => Hson.document`<script "${"go()"}"/>`, "HSON_INTERPOLATION_COMPOSED_INVALID");
+  assert.equal(Hson.document`<style "body{color:${"red"}}"/>`, Hson.document`<style "body{color:red}"/>`);
+  assert.equal(Hson.document`<p style="color:${"red"};display:${"block"}"/>`, Hson.document`<p style="color:red;display:block"/>`);
+  error(() => Hson.document`<script "pre${"go()"}post"/>`, "HSON_INTERPOLATION_COMPOSED_INVALID");
 });
 
 check("portable document templates reject runtime QUID claims", () => {

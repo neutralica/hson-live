@@ -140,6 +140,7 @@
     "test:static-hson-js-literal-mapping": "node --import=tsx tests/static-hson-js-literal-mapping.acceptance.mts",
     "test:from-hson-static-discovery": "node --import=tsx tests/from-hson-static-discovery.acceptance.mts",
     "test:hson-authoring-package": "node tests/hson-authoring-package.acceptance.mjs",
+    "test:hson-partial-quoted-package": "node tests/hson-partial-quoted-package.acceptance.mjs",
     "test:hson-tokenizer": "node --import=tsx tests/hson-tokenizer.acceptance.mts",
     "test:hson-source-provenance-core": "node --import=tsx tests/hson-source-provenance-core.acceptance.mts",
     "test:hson-source-provenance-parser": "node --import=tsx tests/hson-source-provenance-parser.acceptance.mts",

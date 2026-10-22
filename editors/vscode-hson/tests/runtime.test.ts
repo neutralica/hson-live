@@ -312,13 +312,13 @@ check("document source diagnostics reject empty and trivia but retain empty text
   assert.deepEqual(diagnose(officialImport + '\nconst value = Hson.document`""`;', "typescript", "/workspace/empty.ts"), []);
 });
 
-check("grammar-context interpolation diagnoses illegal positions and partial strings", () => {
+check("grammar-context interpolation diagnoses illegal positions and accepts partial strings", () => {
   const invalid = `${officialImport}\nconst x = Hson.document\`<\${value}/><p \"hello \${value}\"/>\`;`;
   const document = diagnose(invalid, "typescript", "/workspace/page.ts")[0];
   assert.equal(document?.code, "HSON_INTERPOLATION_POSITION_INVALID");
   assert.equal(invalid.slice(document?.range.start, document?.range.end), '${value}');
   const partial = `${officialImport}\nconst x = Hson.document\`<p \"hello \${value}\"/>\`;`;
-  assert.equal(diagnose(partial, "typescript", "/workspace/page.ts")[0]?.code, "HSON_QUOTED_INTERPOLATION_PARTIAL");
+  assert.deepEqual(diagnose(partial, "typescript", "/workspace/page.ts"), []);
 });
 
 check("complete official member tags agree with runtime contextual admission", () => {
@@ -668,6 +668,59 @@ check("editor completion uses current same-file Schema and exact partial token r
   const interpolated = source.replace('Hson.data`<co`', 'Hson.data`<count ${count} co`');
   assert.deepEqual(complete("/workspace/completion.ts", interpolated, 4, interpolated.indexOf("${count}") + 3), []);
   assert.deepEqual(complete("/workspace/completion.ts", interpolated, 4, interpolated.length - 1).map(entry => entry.candidate.label), ["color"]);
+  const partial = source.replace('Hson.data`<co`', 'Hson.data`<color "pre${value}post" co`');
+  assert.deepEqual(complete("/workspace/completion.ts", partial, 5, partial.length - 1).map(entry => entry.candidate.label), ["count"]);
+  assert.deepEqual(complete("/workspace/completion.ts", partial, 5, partial.indexOf('pre${') + 2), []);
+  assert.deepEqual(complete("/workspace/completion.ts", partial, 5, partial.indexOf('}post') + 3), []);
+});
+
+check("partial quoted diagnostics preserve CRLF and raw escape expression ranges", () => {
+  const prefix = 'import { Hson } from "hson-live/hson";\r\ndeclare const value: string;\r\n';
+  for (const body of [
+    'Hson.document`\r\n<a title="\\u0041${value}${undefined}suffix"/>`;',
+    'Hson.data`\r\n<label "\\u0041${value}${undefined}suffix">`;',
+    'Hson.canonical`"\\u0024{literal} %{part} ${value}${undefined}suffix"`;',
+    'Hson.document`<a title="pre${Hson.document`<b title="pre${undefined}post"/>`}post"/>`;',
+  ]) {
+    const text = prefix + body;
+    const diagnostics = diagnose(text, "typescript", "/workspace/quoted-source.ts");
+    const start = text.indexOf("undefined");
+    assert.deepEqual(diagnostics.map(d => ({ code: d.code, range: d.range, precision: d.precision })),
+      [{ code: "HSON_QUOTED_INTERPOLATION_STATIC_TYPE", range: { start, end: start + 9 }, precision: "exact" }]);
+  }
+  for (const body of ['Hson.document`<a title="pre${null}${-0}${false}post"/>`;',
+    'Hson.data`<label "pre${null}${-0}${false}post">`;',
+    'Hson.document`<p "\\u0024{literal} %{part}${value}suffix"/>`;']) {
+    assert.deepEqual(diagnose(prefix + body, "typescript", "/workspace/quoted-source.ts"), []);
+  }
+});
+
+check("literal escape failures survive opaque partial quoted slots with exact host points", () => {
+  for (const eol of ["\n", "\r\n"]) {
+    const prefix = 'import { Hson } from "hson-live/hson";' + eol + 'declare const v: string;' + eol;
+    for (const body of [
+      'Hson.document`<a title="pre${v}\\q"/>`;',
+      'Hson.document`<p "pre${v}\\q"/>`;',
+      'Hson.data`<label "pre${v}\\q">`;',
+      'Hson.canonical`"pre${v}\\q"`;',
+      'Hson.document`<a title="\\u0041\\\\${v}\\q"/>`;',
+      'Hson.document`<p "pre${v}' + eol + '\\q"/>`;',
+      'Hson.data`"\\q${v}"`;',
+    ]) {
+      const text = prefix + body;
+      const start = text.lastIndexOf('\\q');
+      const diagnostics = diagnose(text, "typescript", "/workspace/literal-escape.ts");
+      assert.deepEqual(diagnostics.map(d => ({ code: d.code, range: d.range, precision: d.precision })),
+        [{ code: "invalid-json-escape", range: { start, end: start + 1 }, precision: "point" }], body);
+    }
+    for (const body of [
+      'Hson.document`<a title="pre${v}\\\\q"/>`;',
+      'Hson.document`<p "pre${v}\\u0041"/>`;',
+      'Hson.data`<label "pre${"\\\\q"}post">`;',
+    ]) assert.deepEqual(diagnose(prefix + body, "typescript", "/workspace/literal-escape.ts"), []);
+  }
+  assert.throws(() => Hson.document`<a title="pre${"v"}\q"/>`,
+    (error: unknown) => error instanceof TransformError && error.code === "invalid-json-escape");
 });
 
 check("static interpolation diagnostics report position failures without inferring branded source", () => {
@@ -714,8 +767,8 @@ check("Canonical static diagnostics accept string candidates and reject object c
     assert.deepEqual(codes('// @ts-expect-error\nHson.canonical`${' + candidate + '}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
     assert.deepEqual(codes('Hson.canonical`"${' + candidate + '}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
   }
-  assert.deepEqual(codes('Hson.canonical`"prefix${dynamicString}"`;'), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
-  assert.deepEqual(codes('Hson.canonical`"${dynamicString}${canonical}"`;'), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
+  assert.deepEqual(codes('Hson.canonical`"prefix${dynamicString}"`;'), []);
+  assert.deepEqual(codes('Hson.canonical`"${dynamicString}${canonical}"`;'), []);
 });
 
 check("unsupported primitive candidates use context-specific diagnostics through literals, bindings, and aliases", () => {
@@ -735,8 +788,8 @@ check("unsupported primitive candidates use context-specific diagnostics through
     for (const candidate of ["u", "b", "s"]) {
       assert.deepEqual(codes('Hson.' + tag + '`"${' + candidate + '}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
     }
-    assert.deepEqual(codes('Hson.' + tag + '`"x${u}"`;'), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
-    assert.deepEqual(codes('Hson.' + tag + '`"${b}${s}"`;'), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
+    assert.deepEqual(codes('Hson.' + tag + '`"x${u}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
+    assert.deepEqual(codes('Hson.' + tag + '`"${b}${s}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE", "HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
   }
   assert.deepEqual(codes('Hson.canonical`<main ${u}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
   assert.deepEqual(codes('Hson.canonical`<value ${u}>`;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
@@ -835,29 +888,29 @@ check("positional failures suppress only their own candidate diagnostics", () =>
   const prefix = 'import { Hson } from "hson-live"; declare const s: string; ';
   const diagnostics = (body: string) => diagnose(prefix + body, "typescript", "/workspace/independent-slots.ts");
   const canonical = diagnostics('Hson.canonical`${{}} "prefix${s}"`;');
-  assert.deepEqual(canonical.map(diagnostic => diagnostic.code), ["HSON_QUOTED_INTERPOLATION_PARTIAL", "HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
+  assert.deepEqual(canonical.map(diagnostic => diagnostic.code), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
   const document = diagnostics('Hson.document`<main ${1n} "prefix${s}"/>`;');
-  assert.deepEqual(document.map(diagnostic => diagnostic.code), ["HSON_QUOTED_INTERPOLATION_PARTIAL", "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(document.map(diagnostic => diagnostic.code), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
   assert.deepEqual(diagnostics('Hson.document`<main ${1n}/><other attr=${s}/>`;').map(diagnostic => diagnostic.code),
     ["HSON_INTERPOLATION_POSITION_INVALID", "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
   for (const tag of ["canonical", "data", "document"]) {
-    assert.deepEqual(diagnostics('Hson.' + tag + '`"${1n}${undefined}"`;').map(diagnostic => diagnostic.code), ["HSON_QUOTED_INTERPOLATION_PARTIAL"]);
+    assert.deepEqual(diagnostics('Hson.' + tag + '`"${1n}${undefined}"`;').map(diagnostic => diagnostic.code), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE", "HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
   }
 });
 
 check("role recovery diagnoses independent later slots at their exact host ranges", () => {
   const prefix = 'import { Hson } from "hson-live"; declare const s: string; declare const t: string; declare const valid: string; ';
-  const partial = "HSON_QUOTED_INTERPOLATION_PARTIAL";
+  const quoted = "HSON_QUOTED_INTERPOLATION_STATIC_TYPE";
   const candidate = "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE";
   const cases: readonly { body: string; expected: readonly [string, string][] }[] = [
-    { body: 'Hson.document`<main "prefix${s}" ${1n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
-    { body: 'Hson.document`<main ${1n} "prefix${s}"/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
-    { body: 'Hson.document`<main ${1n} "prefix${s}" ${2n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"], [candidate, "2n"]] },
-    { body: 'Hson.document`<main "prefix${s}" "other${t}" ${1n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
-    { body: 'Hson.document`<main ${valid} "prefix${s}" "${valid}" ${valid} ${1n} "other${t}" ${valid}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
-    { body: 'Hson.document`<main "${s}suffix" ${1n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
-    { body: 'Hson.document`<main "${1n}${undefined}" ${2n}/>`;', expected: [[partial, "${1n}"], [candidate, "2n"]] },
-    { body: 'Hson.document`<main title="prefix${s}" ${1n}/>`;', expected: [[partial, "${s}"], [candidate, "1n"]] },
+    { body: 'Hson.document`<main "prefix${s}" ${1n}/>`;', expected: [[candidate, "1n"]] },
+    { body: 'Hson.document`<main ${1n} "prefix${s}"/>`;', expected: [[candidate, "1n"]] },
+    { body: 'Hson.document`<main ${1n} "prefix${s}" ${2n}/>`;', expected: [[candidate, "1n"], [candidate, "2n"]] },
+    { body: 'Hson.document`<main "prefix${s}" "other${t}" ${1n}/>`;', expected: [[candidate, "1n"]] },
+    { body: 'Hson.document`<main ${valid} "prefix${s}" "${valid}" ${valid} ${1n} "other${t}" ${valid}/>`;', expected: [[candidate, "1n"]] },
+    { body: 'Hson.document`<main "${s}suffix" ${1n}/>`;', expected: [[candidate, "1n"]] },
+    { body: 'Hson.document`<main "${1n}${undefined}" ${2n}/>`;', expected: [[quoted, "1n"], [quoted, "undefined"], [candidate, "2n"]] },
+    { body: 'Hson.document`<main title="prefix${s}" ${1n}/>`;', expected: [[candidate, "1n"]] },
     { body: 'Hson.document`<main attr=${s}/><other ${1n}/>`;', expected: [["HSON_INTERPOLATION_POSITION_INVALID", "${s}"], [candidate, "1n"]] },
   ];
   for (const { body, expected } of cases) {
@@ -874,12 +927,12 @@ check("role recovery diagnoses independent later slots at their exact host range
 
 check("role recovery leaves malformed public authoring templates rejected", () => {
   const value = "text";
-  const partial = (error: unknown) => error instanceof TransformError && error.code === "HSON_QUOTED_INTERPOLATION_PARTIAL";
-  assert.throws(() => Hson.document`<main "prefix${value}" ${value}/>`, partial);
-  assert.throws(() => Hson.document`<main ${value} "prefix${value}"/>`, partial);
-  assert.throws(() => Hson.document`<main ${value} "prefix${value}" ${value}/>`, partial);
-  assert.throws(() => Hson.document`<main "prefix${value}" "other${value}" ${value}/>`, partial);
-  assert.throws(() => Hson.document`<main title="prefix${value}" ${value}/>`, partial);
+  const invalid = (error: unknown) => error instanceof TransformError && error.code === "HSON_INTERPOLATION_CANDIDATE_INVALID";
+  assert.throws(() => Hson.document`<main "prefix${value}" ${value}/>`, invalid);
+  assert.throws(() => Hson.document`<main ${value} "prefix${value}"/>`, invalid);
+  assert.throws(() => Hson.document`<main ${value} "prefix${value}" ${value}/>`, invalid);
+  assert.throws(() => Hson.document`<main "prefix${value}" "other${value}" ${value}/>`, invalid);
+  assert.throws(() => Hson.document`<main title="prefix${value}" ${value}/>`, invalid);
   assert.throws(() => Hson.document`<main attr=${value}/><other ${value}/>`,
     (error: unknown) => error instanceof TransformError && error.code === "HSON_INTERPOLATION_POSITION_INVALID");
 });
@@ -888,9 +941,7 @@ check("role discovery respects original structural evidence and retains only obs
   const prefix = 'import { Hson } from "hson-live"; declare const s: string; ';
   const text = prefix + 'Hson.document`<main "prefix${s}" <x ${37}> ${2n}/>`;';
   const diagnostics = diagnose(text, "typescript", "/workspace/original-structure.ts");
-  const start = text.indexOf("${s}");
-  assert.deepEqual(diagnostics.map(diagnostic => ({ code: diagnostic.code, range: diagnostic.range, precision: diagnostic.precision })),
-    [{ code: "HSON_QUOTED_INTERPOLATION_PARTIAL", range: { start, end: start + 4 }, precision: "exact" }]);
+  assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), ["HSON_STRUCTURAL_MODE_CROSSING"]);
 
   const observed = prefix + 'Hson.document`<main ${1n} "${s}" <x ${37}> ${2n}/>`;';
   const retained = diagnose(observed, "typescript", "/workspace/partial-evidence.ts");
@@ -900,10 +951,10 @@ check("role discovery respects original structural evidence and retains only obs
 
   const value = "37";
   assert.throws(() => Hson.document`<main "prefix${value}" <x ${value}> ${value}/>`,
-    (error: unknown) => error instanceof TransformError && error.code === "HSON_QUOTED_INTERPOLATION_PARTIAL");
+    (error: unknown) => error instanceof TransformError && error.code === "HSON_STRUCTURAL_MODE_CROSSING");
 });
 
-check("coincident partial slots stay unknown despite later malformed source and high slot counts", () => {
+check("coincident quoted slots stay unknown despite later malformed source and high slot counts", () => {
   const prefix = 'import { Hson } from "hson-live"; declare const s: string; ';
   for (const count of [3, 257]) {
     const body = '<main "prefix${s}" ' + '${s} '.repeat(count - 3) + '"${1n}${undefined}" "unfinished/>';
@@ -911,8 +962,8 @@ check("coincident partial slots stay unknown despite later malformed source and 
   }
   const resumed = prefix + 'Hson.document`<main "prefix${s}" ' + '${s} '.repeat(255) + '${1n}/>`;';
   const diagnostics = diagnose(resumed, "typescript", "/workspace/high-slot-count.ts");
-  assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), ["HSON_QUOTED_INTERPOLATION_PARTIAL", "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
-  assert.deepEqual(diagnostics[1]?.range, { start: resumed.indexOf("1n"), end: resumed.indexOf("1n") + 2 });
+  assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(diagnostics[0]?.range, { start: resumed.indexOf("1n"), end: resumed.indexOf("1n") + 2 });
 });
 
 check("inferred Hson brands leave serialized candidate qualification to runtime", () => {

@@ -1,17 +1,25 @@
-/** Decode source layout before JSON escapes. The scanner validates escape/control syntax. */
-export function decode_hson_content_string(interior: string): string {
+/** Decode source layout before JSON escapes. The scanner validates escape/control syntax.
+ * Boundaries mark zero-width content in the scanner's LF-normalized raw interior.
+ */
+export function decode_hson_content_string(interior: string, boundaries: readonly number[] = []): string {
   let source = interior.replace(/\r\n|\r/g, "\n");
-  if (source.startsWith("\n")) {
-    source = source.slice(1);
+  if (source.startsWith("\n") && boundaries[0] !== 0) {
+    // A slot is content even when its value is empty. It stops framing and
+    // indentation just as nonempty content does, without contributing a glyph.
     const closingLine = source.lastIndexOf("\n") + 1;
-    if (/^[ \t]*$/.test(source.slice(closingLine))) {
-      source = source.slice(0, closingLine === 0 ? 0 : closingLine - 1);
-    }
-    const lines = source.split("\n");
+    const end = /^[ \t]*$/.test(source.slice(closingLine)) && !boundaries.some(offset => offset >= closingLine)
+      ? Math.max(1, closingLine - 1) : source.length;
+    const lines = source.slice(1, end).split("\n");
     let margin: string | undefined;
+    let offset = 1;
+    let boundary = 0;
     for (const line of lines) {
-      if (/^[ \t]*$/.test(line)) continue;
-      const prefix = /^[ \t]*/.exec(line)![0];
+      while (boundary < boundaries.length && boundaries[boundary]! < offset) boundary++;
+      const first = boundaries[boundary];
+      const slot = first !== undefined && first <= offset + line.length ? first - offset : undefined;
+      offset += line.length + 1;
+      if (/^[ \t]*$/.test(line) && slot === undefined) continue;
+      const prefix = /^[ \t]*/.exec(line)![0].slice(0, slot);
       if (margin === undefined) margin = prefix;
       else {
         let length = 0;

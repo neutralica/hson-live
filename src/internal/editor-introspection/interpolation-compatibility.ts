@@ -11,7 +11,7 @@ export function interpolation_semantic_mismatch(role: HsonInterpolationRole | un
     ? { code: "HSON_QUOTED_INTERPOLATION_STATIC_TYPE", message: "Quoted Hson interpolation requires a string, finite number, boolean, or null." } : undefined;
   if (role === "document-content") {
     if (family === "number" || family === "boolean" || family === "null" || unsupported
-      || family === "undefined" && (mode === "canonical" || mode === "data")) return { code: "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE", message: `Element/document content requires Hson source containing strings or elements${mode === "document" ? ", or undefined for structural omission" : ""}. Whole quoted slots accept strings, finite numbers, booleans, or null.` };
+      || family === "undefined" && (mode === "canonical" || mode === "data")) return { code: "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE", message: `Element/document content requires Hson source containing strings or elements${mode === "document" ? ", or undefined for structural omission" : ""}. Quoted slots accept strings, finite numbers, booleans, or null.` };
     return undefined;
   }
   if (role === "canonical-value") return unsupported || family === "undefined"

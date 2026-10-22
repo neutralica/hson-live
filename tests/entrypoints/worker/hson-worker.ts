@@ -41,6 +41,12 @@ const falseAuthored: HsonAuthored = document;
 void primitive; void canonicalDocument;
 
 const certifiedAuthored: HsonDocument = ANY_DOCUMENT.certify(plain);
+const partial: HsonAuthored = Hson.document`<a href="/slides/${2}" title="Slide ${2} of ${3}"/>`;
+const partialData: HsonData = Hson.data`<label "Slide ${2} of ${3}">`;
+const partialCanonical: HsonCanonical = Hson.canonical`"${true}:${null}:${-0}"`;
+// @ts-expect-error Partial interpolation still produces authored Document source.
+const partialUncertified: HsonDocument = partial;
+void ANY_DOCUMENT.certify(partial); void partialData; void partialCanonical;
 // @ts-expect-error Data certification does not accept authored documents.
 ANY_DATA.certify(plain);
 void certifiedAuthored;

@@ -25,8 +25,7 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
   const diagnostics: DocumentDiagnosticSpec[] = [];
   for (const template of discovery.interpolated) {
     if (template.authoringKind === "schema") continue;
-    const invalidPositions = diagnose_hson_prefix(template).filter(diagnostic => diagnostic.code === "HSON_QUOTED_INTERPOLATION_PARTIAL"
-      || diagnostic.code === "HSON_INTERPOLATION_POSITION_INVALID");
+    const invalidPositions = diagnose_hson_prefix(template).filter(diagnostic => diagnostic.code === "HSON_INTERPOLATION_POSITION_INVALID");
     const site = interpolation_site(template, fileName);
     let source = "";
     const slots: { offset: number; substitution: number }[] = [];

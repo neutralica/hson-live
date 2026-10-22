@@ -217,7 +217,7 @@ check("attribute assignment snippets use authored checkpoints and preserve exact
 });
 check("attribute assignment leaves existing values, syntax, protected source and other modes alone", () => {
   for (const body of ['<span title|="old"/>', '<span title| = "old"/>', '<span title=|"old"/>',
-    '<span title|"text"/>', '<span title| "text"/>', '<span title| 42/>', '<span title|\n = "old"/>', '<span title="${first} partial" next|/>', '<span ti|tle/>',
+    '<span title|"text"/>', '<span title| "text"/>', '<span title| 42/>', '<span title|\n = "old"/>', '<span ti|tle/>',
     '<span "ti|tle"/>', '<span title="ti|tle"/>', '<span // title|\n/>', '<span ${fn("title|")} />',
     '<span "content" title|/>', '<span @:same @:again title|/>', '<span title|', '<span bad="\\q" title|/>']) {
     assert.equal(typingSnippet(authored(body), '='), undefined, body);
@@ -228,20 +228,49 @@ check("attribute assignment leaves existing values, syntax, protected source and
   }
   assert.equal(typingSnippet(authored('<span title|/>').slice(0, -2), '='), undefined, 'unterminated host template');
 });
-check("JavaScript interpolation pairs only scanner-proven content and whole quoted values", () => {
+check("JavaScript interpolation pairs only scanner-proven content and quoted values", () => {
   for (const [body, kind] of [
     ['<span $|/>', 'document'], ['<span @:label $|/>', 'document'], ['<span title="$|"/>', 'document'],
     ['<span "$|"/>', 'document'], ['<span ${first} $|/>', 'document'], ['<span $|${last}/>', 'document'],
+    ['<span "before $|"/>', 'document'], ['<span title="$|after"/>', 'document'],
     ['$|', 'data'], ['<value $|', 'data'], ['<value $|>', 'data'], ['«$|»', 'data'], ['"$|"', 'data'], ['$|', 'canonical'],
   ]) assert.equal(typingSnippet(authored(body!, kind), '{'), '{$0}', `${kind}: ${body}`);
   for (const [body, kind] of [['<span $|}/>', 'document'], ['$|}', 'data'], ['"$|}"', 'data'], ['<span $|name}/>', 'document'], ['<span $|fn({ value: 1 })}/>', 'document'], ['"$|name}"', 'data']]) {
     assert.equal(typingSnippet(authored(body!, kind), '{'), '{$0', `existing closer ${body}`);
   }
 });
-check("interpolation pairing rejects names, comments, partial strings, escapes, schema and JavaScript", () => {
+check("partial quoted gestures preserve surrounding source, quotes, closers and cursor positions", () => {
+  for (const [body, kind, typed, inserted, delta] of [
+    ['<span title="${first} partial" next|/>', 'document', '=', '=""', 2],
+    ['<span "before $|"/>', 'document', '{', '{}', 1],
+    ['<span title="$|after"/>', 'document', '{', '{}', 1],
+    ['<span title="pre${first}$|suffix" next="fixed"/>', 'document', '{', '{}', 1],
+    ['<label "pre$|suffix">', 'data', '{', '{}', 1],
+    ['"pre$|suffix"', 'canonical', '{', '{}', 1],
+    ['<span title="pre$|}suffix"/>', 'document', '{', '{', 1],
+    ['<span title="pre$|name}suffix"/>', 'document', '{', '{', 1],
+    ['<span "${first} %|"/>', 'document', '{', '{}', 1],
+  ] satisfies readonly (readonly [string, string, "=" | "{", string, number])[]) {
+    const marked = authored(body, kind), cursor = marked.indexOf('|'), before = marked.replace('|', '');
+    const snippet = typingSnippet(marked, typed);
+    assert.equal(snippet, inserted.slice(0, delta) + '$0' + inserted.slice(delta));
+    assert.ok(snippet !== undefined);
+    const after = before.slice(0, cursor) + snippet.replace('$0', '') + before.slice(cursor);
+    assert.equal(after, authored(body.replace('|', inserted), kind));
+    assert.equal(cursor + snippet.indexOf('$0'), cursor + delta);
+    assert.equal(after.slice(0, cursor), before.slice(0, cursor));
+    assert.equal(after.slice(cursor + inserted.length), before.slice(cursor));
+    assert.equal((after.match(/"/g) ?? []).length, (before.match(/"/g) ?? []).length + (typed === '=' ? 2 : 0));
+    if (typed === '{') assert.ok(after.endsWith(before.slice(before.lastIndexOf('"'))), 'authored closing quote and structural suffix survive');
+    const complete = after.replace('${}', '${0}');
+    const regions = structural_regions('/workspace/source.ts', 'typescript', complete);
+    assert.equal(regions.length, 1);
+    if (before.includes('${first}')) assert.ok(complete.includes('${first}'));
+  }
+});
+check("interpolation pairing rejects names, comments, escapes, schema and JavaScript", () => {
   for (const [body, kind] of [
     ['<sp$|an/>', 'document'], ['<span ti$|tle/>', 'document'], ['<span title=$|/>', 'document'],
-    ['<span "before $|"/>', 'document'], ['<span title="$|after"/>', 'document'],
     ['<span // $|\n/>', 'document'], ['<span ${fn("$|")}/>', 'document'],
     ['<span \\$|/>', 'document'], ['<value \\$|>', 'data'], ['<value "\\$|">', 'data'],
     ['$|', 'schema'], ['<value $|>', 'schema'], ['<value +1 next $|>', 'data'],
@@ -260,7 +289,7 @@ check("Part placeholders pair in quoted document text and ordinary attribute val
 check("Part placeholders exclude unsupported Part payloads and other template modes", () => {
   for (const body of ['<span %|/>', '<sp%|an/>', '<span style="color:%|"/>', '<span onClick="%|"/>',
     '<script "%|"/>', '<style <span "%|"/>/>', '<span ${fn("%|")}/>', '<span // %|\n/>',
-    '<span "\\%|"/>', '<span "%|', '<span @:one @:two "%|"/>', '<span "%{par%|}"/>', '<span title="%{open %|"/>', '<span "${first} %|"/>', '<main @:same <span @:same "%|"/>/>']) {
+    '<span "\\%|"/>', '<span "%|', '<span @:one @:two "%|"/>', '<span "%{par%|}"/>', '<span title="%{open %|"/>', '<main @:same <span @:same "%|"/>/>']) {
     assert.equal(typingSnippet(authored(body), '{'), undefined, body);
   }
   for (const kind of ['data', 'schema', 'canonical']) assert.equal(typingSnippet(authored('"%|"', kind), '{'), undefined, kind);

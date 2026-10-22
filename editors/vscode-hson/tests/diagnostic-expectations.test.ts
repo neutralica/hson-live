@@ -351,7 +351,7 @@ check("one processor handles complete-template and positional codes but does not
   for (const [code, body] of [
     ["HSON_NUMBER_LEADING_PLUS", 'Hson.canonical`+1`;'],
     ["HSON_INTERPOLATION_POSITION_INVALID", 'Hson.document`<main attr=${bad}/>`;'],
-    ["HSON_QUOTED_INTERPOLATION_PARTIAL", 'Hson.canonical`"prefix${bad}"`;'],
+    ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE", 'Hson.canonical`"prefix${1n}"`;'],
     ["HSON_SCHEMA_INTERPOLATION_FORBIDDEN", 'Hson.schema`${bad}`;'],
   ]) {
     assert.deepEqual(produce(prefix + `// @hson-expect-error ${code}\n` + body), []);

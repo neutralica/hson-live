@@ -109,7 +109,8 @@ export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate, l
     } catch (error) {
       if (literalQuadsOnly) return quadDiagnostics;
       const details = read_transform_error_details(error);
-      if (details !== undefined && declarationFailures.has(details.code) && details.source !== undefined
+      // A malformed literal escape remains certain across opaque scalar slots.
+      if (details !== undefined && (declarationFailures.has(details.code) || details.code === "invalid-json-escape") && details.source !== undefined
         && mapPreview(details.source.index) !== undefined) {
         return [...quadDiagnostics, diagnostic(error, literal, source.bodyRange, source.authoringKind, mapPreview)];
       }
@@ -122,7 +123,7 @@ export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate, l
         return [...quadDiagnostics, { message: error instanceof Error ? error.message : "Invalid Hson context.",
           range: source.bodyRange, source: "Hson", code: details.code, precision: "fallback", related: [] }];
       }
-      if (details?.code === "HSON_INTERPOLATION_POSITION_INVALID" || details?.code === "HSON_QUOTED_INTERPOLATION_PARTIAL") {
+      if (details?.code === "HSON_INTERPOLATION_POSITION_INVALID") {
         const slot = preview.slots.find(item => item.offset === details.source?.index) ?? preview.slots[0]!;
         return [...quadDiagnostics, { message: error instanceof Error ? error.message : "Interpolation is not allowed here.",
           range: source.substitutionRanges[slot.substitution]!, source: "Hson", code: details.code, precision: "exact", related: [] }];

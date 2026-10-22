@@ -197,6 +197,7 @@ const adversarialText = '\uFEFF' + [
   'const raw: HsonData<typeof S> = Hson.data`<name "\\\\n">`;',
   'const validComment: HsonData<typeof S> = Hson.data`// \\n \\u0041 \\0\r\n<name "Ada">`;',
   'const outer: HsonData<typeof S> = Hson.data`<name ${dynamic}>`;',
+  'const partial: HsonData<typeof S> = Hson.data`<name "A${dynamic}a">`;',
   'const unrelated: number = "wrong";',
   'const field: JsonFromSchema<typeof S> = { name: 37 };',
 ].join('\r\n');
@@ -210,7 +211,7 @@ assert.deepEqual(rangeNames(true).filter(range => range.failed).map(range => ran
   "Only the assigned template's admission failures permit proof-only filtering");
 const adversarialErrors = filter_verified_schema_assignment_diagnostics(schema_assignment_errors(adversarial, mvpConsumer),
   assignment_ranges(ts, adversarial, mvpConsumer, evidence.get(adversarial), true));
-assert.deepEqual(adversarialErrors.map(error => adversarialSource.text.slice(error.start, error.start! + error.length!)), ["unused", "nested", "escapedDoc", "outer", "unrelated", "name"]);
+assert.deepEqual(adversarialErrors.map(error => adversarialSource.text.slice(error.start, error.start! + error.length!)), ["unused", "nested", "escapedDoc", "outer", "partial", "unrelated", "name"]);
 const authoring = produce_document_diagnostics({ fileName: mvpConsumer, text: adversarialText, languageId: "typescript" });
 assert.equal(authoring.filter(issue => issue.code === "HSON_TAGGED_TEMPLATE_REQUIRED").length, escapeSpellings.length + 1);
 assert.ok(authoring.some(issue => issue.code === "HSON_EXPECT_ERROR_UNUSED"));
