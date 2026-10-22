@@ -56,6 +56,8 @@ for (const ext of ["ts", "tsx", "mts", "cts", "local.ts"]) {
 }
 const proofSource = 'import { Hson, type HsonData } from "hson-live";\nconst S = Hson.schema`<type "data" content <name "string">>`;\nconst bad: HsonData<typeof S> = Hson.data`<name 3>`;';
 writeFileSync(file("proof.ts"), proofSource);
+const partProducer = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav "%{current}"/>` } } as const;';
+writeFileSync(file("parts.ts"), partProducer);
 const originals = new Map(readdirSync(directory).map(name => [name, readFileSync(file(name))]));
 const child = spawn(process.execPath, [serverPath, "--globalPlugins", plugin, "--pluginProbeLocations", extension, "--disableAutomaticTypingAcquisition", "--logVerbosity", "verbose", "--logFile", file("server.log")], { stdio: ["pipe", "pipe", "pipe"] });
 let sequence = 0, buffered = Buffer.alloc(0), stderr = "";
@@ -475,6 +477,62 @@ const loc = hsonLiveMap.locus.create({
       if (initializer.includes("?.")) assert.ok(errors.some(error => error.code === 1358), JSON.stringify(errors));
       await editConsumer(valid); await assertValid();
     }
+    await editConsumer(consumer);
+  });
+  await check("bundled Part completion applies exact edits in all four contexts and refreshes imported inventories", async () => {
+    const prefix = '\uFEFFimport { Hson, hson } from "hson-live";\r\nimport { parts } from "./parts.js";\r\ndeclare const dynamic: any;\r\nconst loc = hson.liveMap.locus.create({ components: { parts } });\r\nconst page = Hson.document`';
+    const suffix = '`;\r\nconst untouched = "keep";';
+    const fixtures = [
+      ['<hson-part lib=|/>', 'components', '<hson-part lib="components"/>'],
+      ['<hson-part lib=|"co"/>', 'components', '<hson-part lib="components"/>'],
+      ['<hson-part lib="components" at=|"he"/>', 'heading', '<hson-part lib="components" at="heading"/>'],
+      ['<hson-part lib="co|', 'components', '<hson-part lib="components"'],
+      ['<hson-part lib="components" at="\\u0068e|ading"/>', 'heading', '<hson-part lib="components" at="heading"/>'],
+      ['<hson-part lib="components" at="heading" Ti|tle-old="x" content="kept"/>', 'Title-Case', '<hson-part lib="components" at="heading" Title-Case="x" content="kept"/>'],
+      ['<main ${Hson.document`<hson-part lib="components" at="he|"/>`}/>', 'heading', '<main ${Hson.document`<hson-part lib="components" at="heading"/>`}/>'],
+    ];
+    const offsetAt = (source, position) => ts.createSourceFile("source.ts", source, ts.ScriptTarget.Latest).getPositionOfLineAndCharacter(position.line - 1, position.offset - 1);
+    for (const [body, label, expected] of fixtures) {
+      const source = prefix + body.replace("|", "") + suffix;
+      const offset = prefix.length + body.indexOf("|"); await editConsumer(source);
+      const result = await request("completionInfo", { file: file("consumer.ts"), ...location(source, offset) });
+      const entry = result.entries.find(entry => entry.name === label); assert.ok(entry, JSON.stringify(result));
+      const from = offsetAt(source, entry.replacementSpan.start), to = offsetAt(source, entry.replacementSpan.end);
+      assert.equal(source.slice(0, from) + entry.insertText + source.slice(to), prefix + expected + suffix);
+      const details = await request("completionEntryDetails", { file: file("consumer.ts"), ...location(source, offset), entryNames: [label] });
+      assert.match(details[0].displayParts.map(part => part.text).join(""), /possible source context/);
+    }
+    for (const [body, label, expected] of [
+      ['<h1 "%{Title-Case}" "%{Ti|}"/>', 'Title-Case', '<h1 "%{Title-Case}" "%{Title-Case}"/>'],
+      ['<h1 title="%{content}" id=%{co|}/>', 'content', '<h1 title="%{content}" id=%{content}/>'],
+      [String.raw`<h1 title="%{content}" id="%{\u0063o|}"/>`, 'content', '<h1 title="%{content}" id="%{content}"/>'],
+      ['<script src="/app.js" title="%{content}" id="%{co|}"/>', 'content', '<script src="/app.js" title="%{content}" id="%{content}"/>'],
+      ['<style media="%{content}" id=%{co|}/>', 'content', '<style media="%{content}" id=%{content}/>'],
+    ]) {
+      const before = 'import { Hson, hsonLiveMap } from "hson-live";\r\nconst page = Hson.document`';
+      const after = '`;\r\nconst loc = hsonLiveMap.fromLibraries({ components: { parts: { heading: { kind: "document", document: page } } } });';
+      const marked = before + body + after, source = marked.replace('|', ''); await editConsumer(source);
+      const spelling = (await request("completionInfo", { file: file("consumer.ts"), ...location(source, marked.indexOf("|")) })).entries.find(entry => entry.name === label);
+      assert.ok(spelling, body);
+      assert.equal(source.slice(0, offsetAt(source, spelling.replacementSpan.start)) + spelling.insertText + source.slice(offsetAt(source, spelling.replacementSpan.end)), before + expected + after);
+    }
+    for (const body of ['<hson-part lib=|"co', String.raw`<hson-part lib=|"co\q"/>`, '<script title="%{content}" <span id="%{co|}"/>/>', '<style media="%{content}" <span "%{co|}"/>/>', String.raw`<h1 title="%{content}" id="%{\u00|63o}"/>`]) {
+      const after = '`;\r\nconst owned = hson.liveMap.fromLibraries({ parts: { parts: { item: { kind: "document", document: page } } } });';
+      const source = prefix + body.replace('|', '') + after; await editConsumer(source);
+      const result = await request('completionInfo', { file: file('consumer.ts'), ...location(source, prefix.length + body.indexOf('|')) }).catch(error => {
+        if (!/No content available/.test(error.message)) throw error;
+      });
+      assert.ok(!result?.entries.some(entry => ['content', 'components'].includes(entry.name)), body);
+    }
+    const body = '<hson-part lib="components" at="|"/>';
+    const consumerSource = prefix + body.replace("|", "") + suffix;
+    await editConsumer(consumerSource); await request("open", { file: file("parts.ts") });
+    const names = async () => (await request("completionInfo", { file: file("consumer.ts"), ...location(consumerSource, prefix.length + body.indexOf("|")) })).entries.map(entry => entry.name);
+    assert.deepEqual(await names(), ["heading", "nav"]);
+    const changed = partProducer.replace('heading:', 'hero:');
+    await request("updateOpen", { changedFiles: [{ fileName: file("parts.ts"), textChanges: [{ start: { line: 1, offset: 1 }, end: location(partProducer, partProducer.length), newText: changed }] }] });
+    assert.deepEqual(await names(), ["hero", "nav"]);
+    await request("close", { file: file("parts.ts") });
     await editConsumer(consumer);
   });
   await check("real tsserver never writes authored source or generated evidence to disk", async () => {

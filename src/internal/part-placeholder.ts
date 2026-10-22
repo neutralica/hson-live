@@ -12,6 +12,16 @@ export function part_placeholder_matches(value: string): readonly RegExpMatchArr
   return value.replace(pattern, "").includes("%{") ? undefined : [...value.matchAll(pattern)];
 }
 
+/** contentTags are the owners of enclosing content, excluding an attribute's own element. */
+export function part_placeholder_placement_issue(contentTags: readonly string[], attribute?: Readonly<{ name: string; value: unknown }>): string | undefined {
+  if (contentTags.some(tag => ["script", "style"].includes(tag.toLowerCase()))) return "Part placeholders in script/style content are unsupported.";
+  if (attribute !== undefined) {
+    if (/^on/i.test(attribute.name) && typeof attribute.value === "string") return "Part placeholders in event-handler attributes are unsupported.";
+    if (typeof attribute.value === "object" && attribute.value !== null) return "Part placeholders in structured attributes are unsupported.";
+  }
+  return undefined;
+}
+
 /** Shared placement checks over an already detached, qualified document. */
 export function transform_part_parameter_strings(root: HsonNode, substitute: (value: string) => Primitive): void {
   const stack = [root];
@@ -23,8 +33,8 @@ export function transform_part_parameter_strings(root: HsonNode, substitute: (va
       const attrs: NonNullable<HsonNode["$_attrs"]> = Object.create(null);
       for (const [name, value] of Object.entries(node.$_attrs)) {
         if (name.includes("%{")) throw new TypeError("Part placeholders cannot occur in attribute names.");
-        if (/^on/i.test(name) && typeof value === "string" && value.includes("%{")) throw new TypeError("Part placeholders in event-handler attributes are unsupported.");
-        if (typeof value === "object" && value !== null && JSON.stringify(value).includes("%{")) throw new TypeError("Part placeholders in structured attributes are unsupported.");
+        const issue = part_placeholder_placement_issue([], { name, value });
+        if (issue !== undefined && (typeof value === "string" ? value.includes("%{") : value !== null && typeof value === "object" && JSON.stringify(value).includes("%{"))) throw new TypeError(issue);
         attrs[name] = typeof value === "string" ? substitute(value) : value;
       }
       node.$_attrs = attrs;
@@ -34,7 +44,8 @@ export function transform_part_parameter_strings(root: HsonNode, substitute: (va
       // Canonical document text is STR-only; strong scalar types apply to attributes.
       node.$_content = [String(value)];
     } else {
-      if (["script", "style"].includes(node.$_tag.toLowerCase()) && JSON.stringify(node.$_content).includes("%{")) throw new TypeError("Part placeholders in script/style content are unsupported.");
+      const issue = part_placeholder_placement_issue([node.$_tag]);
+      if (issue !== undefined && JSON.stringify(node.$_content).includes("%{")) throw new TypeError(issue);
       for (const child of node.$_content) if (is_Node(child)) stack.push(child);
     }
   }

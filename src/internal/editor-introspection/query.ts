@@ -4,14 +4,15 @@ import { serialize_primitive_hson } from "../../api/transform/utils/primitive-ut
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { HSON_SCHEMA_DATA_ROOT_ORDER, type CompiledHsonSchema, type HsonSchemaDataSemanticNode } from "../hson-schema/compiler.js";
 import type { PartSourceFacts, PartDocumentSource, PartConnectorSource } from "../hson-schema/part-source.js";
+import { part_candidates } from "./part-completion.js";
 
 /** Locate compiler source facts only; completion and reference diagnostics are separate consumers. */
-export function query_hson_part_source(facts: PartSourceFacts, file: string, offset: number): Readonly<{
+export function query_hson_part_source(facts: PartSourceFacts, file: string, offset: number, includeLiteralEnd = false): Readonly<{
   document: PartDocumentSource; connector?: PartConnectorSource;
 }> | undefined {
   if (!Number.isInteger(offset) || offset < 0) return undefined;
   const document = facts.documents.filter(found => found.location.file === file
-    && found.authoredRanges.some(range => range.start <= offset && offset < range.end))
+    && found.authoredRanges.some(range => range.start <= offset && (offset < range.end || includeLiteralEnd && offset === range.end)))
     .reduce<PartDocumentSource | undefined>((inner, found) => inner === undefined
       || found.location.end - found.location.start < inner.location.end - inner.location.start ? found : inner, undefined);
   if (document === undefined) return undefined;
@@ -25,6 +26,7 @@ export type HsonEditorCandidate = Readonly<{
   insertText: string;
   detail: string;
   sortText: string;
+  certainty?: "certain" | "possible";
 }>;
 export type HsonEditorContext = Readonly<{
   checkpoint?: HsonGrammarCheckpoint;
@@ -40,11 +42,17 @@ export function query_hson_editor_context(input: Readonly<{
   cursor?: number;
   slots?: readonly HsonTemplateSlot[];
   schema?: CompiledHsonSchema;
+  parts?: Readonly<{ facts: PartSourceFacts; file: string; offset: number }>;
 }>): HsonEditorContext {
   const slots = input.slots ?? [];
   const checkpoint = input.cursor === undefined ? undefined : hson_grammar_checkpoint(input.source, input.cursor, input.mode, slots);
   const interpolationRoles = slots.length === 0 ? [] : hson_interpolation_roles(input.source, input.mode, slots);
   if (checkpoint === undefined) return { candidates: [], interpolationRoles, expectedKinds: [] };
+  if (input.mode === "document" && input.parts !== undefined) {
+    const source = query_hson_part_source(input.parts.facts, input.parts.file, input.parts.offset, true);
+    return { checkpoint, candidates: source === undefined ? [] : part_candidates(input.source, input.cursor!, checkpoint, input.parts.facts, source.document),
+      interpolationRoles, expectedKinds: expected_kinds(checkpoint) };
+  }
   const candidates = input.mode === "schema" ? schema_candidates(checkpoint)
     : input.mode === "data" && input.schema !== undefined ? data_candidates(input.schema, checkpoint)
     : input.mode === "data" || input.mode === "canonical" ? grammar_candidates(checkpoint) : [];
@@ -68,6 +76,7 @@ function expected_kinds(context: HsonGrammarCheckpoint): readonly string[] {
     case "header": return ["attribute name", "flag", "document content"];
     case "child": return ["document content"];
     case "attribute-value": return ["attribute value"];
+    case "parameter": return ["Part parameter spelling"];
     case "value": return ["data value"];
   }
 }

@@ -1,12 +1,52 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { hson_grammar_checkpoint, hson_interpolation_roles, scan_hson_template_segments, tokenize_hson, type HsonInterpolationRole } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { query_hson_editor_context } from "../src/internal/editor-introspection/query.ts";
 import { interpolation_semantic_mismatch, type StaticInterpolationFamily } from "../src/internal/editor-introspection/interpolation-compatibility.ts";
 import { read_transform_error_details } from "../src/core/errors.ts";
+import { tokenize_authored_document_library } from "../src/api/transform/parsers/tokenize-hson.ts";
+import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
+import { transform_part_parameter_strings } from "../src/internal/part-placeholder.ts";
 
 const checkpoint = (source: string, mode: "data" | "document" | "schema" | "canonical" = "data") => hson_grammar_checkpoint(source, source.length, mode);
+for (const marked of ['<hson-part lib=|"co"/>', '<hson-part lib="components" at=|"he"/>']) {
+  const source = marked.replace('|', ''), cursor = marked.indexOf('|');
+  const context = hson_grammar_checkpoint(source, cursor, 'document');
+  assert.equal(context?.kind, 'attribute-value');
+  assert.equal(source.slice(context!.range.start, context!.range.end), marked.includes('lib=|') ? '"co"' : '"he"');
+}
+for (const marked of [String.raw`<h1 id=%{co|}/>`, String.raw`<h1 id="%{\u0063o|}"/>`, String.raw`<h1 id="%\u007b\u0063o|\u007d"/>`]) {
+  const source = marked.replace('|', '');
+  const context = hson_grammar_checkpoint(source, marked.indexOf('|'), 'document');
+  assert.equal(context?.kind, 'parameter'); assert.equal(context?.parameter?.prefix, 'co'); assert.equal(context?.parameter?.complete, true);
+  assert.equal(source.slice(context!.range.start, context!.range.end), marked.includes('\\u0063') ? String.raw`\u0063o` : 'co');
+  const raw = context?.parameter?.rawAttribute;
+  assert.equal(raw?.name, 'id');
+  assert.equal(raw?.value?.text, source.slice(raw!.start.index, raw!.end.index));
+  assert.equal(raw?.value?.quoted, marked.includes('id="'));
+}
+for (const marked of ['<h1 id=%{co|', String.raw`<h1 id="%{\u0063o|`]) {
+  const source = marked.replace('|', '');
+  const context = hson_grammar_checkpoint(source, marked.indexOf('|'), 'document');
+  assert.equal(context?.kind, 'parameter');
+  assert.equal(context?.parameter?.prefix, 'co');
+  assert.equal(context?.parameter?.rawAttribute?.value?.text, source.slice(context!.parameter!.rawAttribute!.start.index));
+}
+// A lexical checkpoint does not establish eligibility for Part completion.
+for (const marked of ['<script <p id="%{co|}"/>/>', '<style <p "%{co|}"/>/>', '<p onclick="%{co|}"/>', '<p style="color:%{co|}"/>']) {
+  const context = hson_grammar_checkpoint(marked.replace('|', ''), marked.indexOf('|'), 'document');
+  assert.equal(context?.kind, 'parameter', marked);
+  assert.equal(context?.parameter?.prefix, 'co', marked);
+}
+for (const marked of [String.raw`<h1 id="%{\u00|63o}"/>`, '<hson-part lib=|"co', String.raw`<hson-part lib=|"co\q"/>`]) {
+  const context = hson_grammar_checkpoint(marked.replace('|', ''), marked.indexOf('|'), 'document');
+  assert.ok(context === undefined || context.pendingValue, marked);
+}
 assert.equal(checkpoint("<")?.kind, "member");
 assert.equal(checkpoint("<foo")?.kind, "member");
 assert.equal(checkpoint("<foo ")?.kind, "value");
@@ -169,3 +209,38 @@ assert.deepEqual(hson_interpolation_roles("«»", "canonical", [{ offset: 1, sub
 assert.deepEqual(hson_interpolation_roles("<x >", "canonical", [{ offset: 3, substitution: 0 }]), ["data-value"]);
 assert.deepEqual(hson_interpolation_roles("<main />", "canonical", [{ offset: 6, substitution: 0 }]), ["document-content"]);
 console.log("ok - compiler-owned editor checkpoint, completion, and interpolation compatibility");
+
+// Compare runtime tokens, errors, mutation and rejection semantics with the pinned
+// committed implementation. Only import locations change in the temporary modules.
+const root = resolve(import.meta.dirname, '..');
+mkdirSync(join(root, 'tmp'), { recursive: true });
+const baselineDirectory = mkdtempSync(join(root, 'tmp', 'part-scanner-baseline-'));
+const baselineModule = (name: string) => {
+  const original = execFileSync('git', ['show', '6938769e:' + name], { cwd: root, encoding: 'utf8' });
+  const rewritten = original.replace(/(from\s+["'])(\.[^"']+)(["'])/g, (_match, before: string, specifier: string, after: string) =>
+    before + pathToFileURL(resolve(dirname(join(root, name)), specifier).replace(/\.js$/, '.ts')).href + after);
+  const path = join(baselineDirectory, name.endsWith('part-placeholder.ts') ? 'placement.mts' : 'scanner.mts');
+  writeFileSync(path, rewritten); return pathToFileURL(path).href;
+};
+const observed = (run: () => unknown) => {
+  try { return { value: run() }; }
+  catch (error) { return { message: error instanceof Error ? error.message : String(error), details: read_transform_error_details(error) }; }
+};
+try {
+  const baseline: Pick<typeof import('../src/api/transform/parsers/tokenize-hson.ts'), 'tokenize_hson' | 'tokenize_authored_document_library'> = await import(baselineModule('src/api/transform/parsers/tokenize-hson.ts'));
+  const sources = ['<a "hello">', '<main title="%{Mixed-name}"/>', '<hson-part lib="components" at="heading"/>', '<main\r\n "line\\ntext"\r\n/>',
+    '<h1 id=%{content}/>', String.raw`<h1 id="%{\u0063ontent}"/>`, '<script src="/a.js" type="%{Kind}"/>', '<style media=%{Media}/>',
+    '<script <p title="%{bad}"/>/>', '<style <p "%{bad}"/>/>', '<hson-part lib=', '<hson-part lib="co', String.raw`<h1 id="\q"/>`,
+    '<p x="a" x="b"/>', '<p "text" id="late"/>', '<p @:name/>', '<p "${ordinary text}"/>'];
+  for (const source of sources) {
+    assert.deepEqual(observed(() => tokenize_hson(source)), observed(() => baseline.tokenize_hson(source)), source);
+    assert.deepEqual(observed(() => tokenize_authored_document_library(source)), observed(() => baseline.tokenize_authored_document_library(source)), source);
+  }
+  const placement: Pick<typeof import('../src/internal/part-placeholder.ts'), 'transform_part_parameter_strings'> = await import(baselineModule('src/internal/part-placeholder.ts'));
+  for (const source of ['<script src="/a.js" type="%{Kind}"/>', '<style media=%{Media}/>', '<main title="%{Mixed-name}" "%{text}"/>',
+    '<script <p title="%{bad}"/>/>', '<style <p "%{bad}"/>/>', '<p onclick="%{bad}"/>', '<p style="color:%{bad}"/>']) {
+    const apply = (transform: typeof transform_part_parameter_strings) => { const node = parse_hson(source); transform(node, value => value.replace(/%\{[A-Za-z_-]+\}/g, 'filled')); return node; };
+    assert.deepEqual(observed(() => apply(transform_part_parameter_strings)), observed(() => apply(placement.transform_part_parameter_strings)), source);
+  }
+  console.log('ok - pinned runtime scanner and governed placeholder placement parity');
+} finally { rmSync(baselineDirectory, { recursive: true, force: true }); }

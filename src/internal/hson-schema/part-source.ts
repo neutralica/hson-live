@@ -9,7 +9,7 @@ import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-att
 import { qualify_authored_document_source } from "../../api/document/hson-authored.js";
 import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { part_placeholder_matches, transform_part_parameter_strings } from "../part-placeholder.js";
+import { part_placeholder_matches, part_placeholder_pattern, part_placeholder_placement_issue, transform_part_parameter_strings } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 
@@ -29,6 +29,8 @@ export type PartDocumentSource = Readonly<{
   admission: "qualified" | "unknown";
   connectors: readonly PartConnectorSource[];
   parameters: readonly PartParameterSource[];
+  /** Lexical reuse suggestions only, never a qualified parameter inventory. */
+  parameterSpellings: readonly PartParameterSource[];
   parameterCompleteness: "complete" | "unknown";
   /** Payload ranges, never guessed decoded-substring offsets. No type or optionality is implied. */
   receivers: readonly Readonly<{ batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible" }>[];
@@ -40,7 +42,7 @@ export type PartLibrarySource = Readonly<{
   family: "parts" | "document" | "data" | "unknown";
   /** Candidate evidence, not a claim about a live receiving inventory. */
   certainty: "certain" | "possible";
-  members: readonly Readonly<{ name: string; declaration: PartSourceLocation; certainty: "certain" | "possible"; documents: readonly PartDocumentSource[] }>[];
+  members: readonly Readonly<{ name: string; declaration: PartSourceLocation; admission: "qualified" | "unknown"; certainty: "certain" | "possible"; documents: readonly PartDocumentSource[] }>[];
   memberCompleteness: Completeness;
 }>;
 export type PartSourceBatch = Readonly<{
@@ -119,7 +121,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const existing = documents.get(producer);
     if (existing !== undefined) return existing;
     const file = producer.getSourceFile();
-    let text: string, slots: readonly HsonTemplateSlot[] = [], qualified = false;
+    let text: string, slots: readonly HsonTemplateSlot[] = [], qualified = false, spellingEligible = false;
     let authoredRanges: readonly PartSourceLocation[];
     let map: (range: HsonSourceRange) => PartSourceLocation | undefined;
     if (typescript.isTaggedTemplateExpression(producer)) {
@@ -128,6 +130,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         || !is_official_hson_package_binding(producer.tag.expression, "Hson", checker, true, typescript)) return undefined;
       const source = hson_tagged_source(typescript, producer, "document");
       if (source === undefined) return undefined;
+      spellingEligible = sources.eligible(producer)
+        && is_official_hson_package_binding(producer.tag.expression, "Hson", checker, true, typescript, sources.eligible);
       const site = interpolation_site({ ...source, substitutionRanges: "substitutionRanges" in source ? source.substitutionRanges : [],
         expressionRanges: "expressionRanges" in source ? source.expressionRanges : [] }, file.fileName);
       authoredRanges = site.literals.map(literal => ({ file: file.fileName, ...literal.range, precision: "exact" }));
@@ -150,6 +154,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       const correspondence = static_hson_literal_correspondence(file.text, file, producer);
       if (correspondence === undefined) return undefined;
       text = producer.text;
+      spellingEligible = sources.eligible(producer);
       authoredRanges = [{ file: file.fileName, ...correspondence.bodyRange, precision: "exact" }];
       map = range => { const mapped = map_static_hson_range(correspondence, range); return mapped === undefined ? undefined : { file: file.fileName, ...mapped, precision: "exact" }; };
       if (sources.eligible(producer)) {
@@ -161,18 +166,21 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" }[] = [];
     const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute"): void => {
       const mapped = range === undefined ? undefined : map(range);
-      if (mapped !== undefined) for (const match of part_placeholder_matches(value) ?? []) uses.push({ name: match[1]!, location: mapped, context });
+      if (mapped !== undefined) for (const match of value.matchAll(part_placeholder_pattern())) uses.push({ name: match[1]!, location: mapped, context });
     };
+    const tags: string[] = [];
     let scanned = true;
     try {
       tokenize_authored_document_library(text, {
         recordToken(token, evidence) {
-          if (token.kind === "TEXT" && token.directValue === undefined && token.quoted) observeUses(JSON.parse(token.raw), evidence.roles.value, "text");
+          if (token.kind === "OPEN") tags.push(token.tag.toLowerCase());
+          if (token.kind === "CLOSE") tags.pop();
+          if (token.kind === "TEXT" && token.directValue === undefined && token.quoted && part_placeholder_placement_issue(tags) === undefined) observeUses(JSON.parse(token.raw), evidence.roles.value, "text");
         },
         recordAttribute(attr, ranges) {
           attributeRanges.set(attr, ranges);
           const value = split_attrs_meta([attr]).attrs[attr.name];
-          if (attr.value?.direct !== true && typeof value === "string") observeUses(value, ranges.value, "attribute");
+          if (attr.value?.direct !== true && typeof value === "string" && part_placeholder_placement_issue(tags, { name: attr.name, value }) === undefined) observeUses(value, ranges.value, "attribute");
         },
         elementHeader(tag, range, attrs, complete) {
           if (tag.toLowerCase() !== "hson-part") return;
@@ -206,6 +214,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const receivers: { batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible" }[] = [];
     const result: PartDocumentSource = { producer, location: location(producer), authoredRanges, admission: qualified ? "qualified" : "unknown",
       connectors: [...headers.values()], parameters: [...names].map(name => ({ name, uses: uses.filter(use => use.name === name) })),
+      parameterSpellings: spellingEligible ? [...new Set(uses.map(use => use.name))].map(name => ({ name, uses: uses.filter(use => use.name === name) })) : [],
       parameterCompleteness, receivers };
     documents.set(producer, result);
     relationships.set(result, receivers);
@@ -245,7 +254,14 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               if (member.name === undefined || member.value === undefined) return [];
               const record = object(member.value), fields = record === undefined ? undefined : library_source_fields(record.node, typescript);
               const source = fields?.get("document");
+              const value = part_value(typescript, sources, member.value);
+              let qualified = false;
+              if (value.known) {
+                try { validate_part_collection(admit_projected_value({ [member.name]: value.value })); qualified = true; }
+                catch { /* A lexical member can survive without qualifying as a Part. */ }
+              }
               return [{ name: member.name, declaration: location(member.declaration), fresh: record?.fresh === true,
+                qualified,
                 evidence: source === undefined ? { documents: [], certain: false } : alternatives(source) }];
             });
             if (eligible && evidence !== undefined && members?.complete && evidence.members.length === observedMembers.length
@@ -259,6 +275,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               certainty: eligible && producerCertain && definitions?.fresh && fields?.complete && definition?.fresh && sources.eligible(definitions.node)
                 && sources.eligible(entry.declaration) ? "certain" : "possible",
               members: observedMembers.map(member => ({ name: member.name, declaration: member.declaration,
+                admission: member.qualified ? "qualified" : "unknown",
                 certainty: eligible && memberCompleteness === "complete" && collection?.fresh && member.fresh && member.evidence.certain ? "certain" : "possible",
                 documents: member.evidence.documents })), memberCompleteness,
             };

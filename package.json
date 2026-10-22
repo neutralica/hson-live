@@ -384,6 +384,7 @@
     "test:hson-completion-context": "node --import=tsx tests/hson-completion-context.acceptance.mts",
     "test:hson-editor-introspection": "node --import=tsx tests/hson-editor-introspection.acceptance.mts",
     "test:part-source-facts": "node --import=tsx tests/part-source-facts.acceptance.mts",
+    "test:part-completion": "node --import=tsx tests/part-completion.acceptance.mts",
     "test:representation-sha-worker": "node --import=tsx tests/representation-sha-worker.acceptance.mts",
     "test:binary-hson-rejection": "node --import=tsx tests/binary-hson-rejection.acceptance.mts",
     "test:certified-authored-hson-corpus": "node --import=tsx tests/certified-authored-hson-corpus.acceptance.mts",

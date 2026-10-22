@@ -73,6 +73,8 @@ const placeholderCoordinate = Text.document\`<hson-part lib="%{Library}" at="%{M
 const ordinaryString = maps.fromLibraries({ page: { document: '<hson-part lib="mixed-Library" at="\u0061.b"/>' } });
 const mismatch = kit.liveMap.locus.create({ page: { document: Shared, schema: Page }, components: { parts: { heading: { kind: "document", document: "<p \"%{content} %{mixed-Case}\"/>" } } } });
 const independent = Page.certify(Text.document\`<aside/>\`);
+const placementGood = Text.document\`<main <script src="/app.js" type="%{Script-Attr}"/> <style media=%{Style-Attr}/>/>\`;
+const placementBad = Text.document\`<main title="%{Good-name}" <script title="%{Own-attr}" <span title="%{Bad-attr}" "%{Bad-text}"/>/> <style <p id=%{Bad-style}/>/>/>\`;
 const fake = { liveMap: { locus: { create: (x: unknown) => x } } };
 fake.liveMap.locus.create({ wrong: { parts: {} } });
 const fakeMaps: typeof maps = dynamic;
@@ -182,6 +184,23 @@ check("production scanner preserves safe incomplete-header facts and stops at ma
   assert.equal(doc("dynamicCoordinate").connectors[0]!.attributes.find(item => item.name === "lib")?.value, undefined);
   assert.equal(doc("dynamicCoordinate").connectors[0]!.attributes.find(item => item.name === "at")?.value, "heading");
   assert.equal(doc("placeholderCoordinate").connectors[0]!.attributes.find(item => item.name === "lib")?.value, undefined);
+});
+check("advisory spelling and individual member admission never upgrade collection evidence", () => {
+  assert.equal(library("fresh").members[0]!.admission, "qualified");
+  assert.equal(library("partial").members[0]!.admission, "qualified");
+  assert.equal(library("partial").memberCompleteness, "partial");
+  for (const name of ["badEscape", "optionalTag", "wrongProducer", "invalidRoot"]) assert.equal(library(name).members[0]!.admission, "unknown", name);
+  assert.deepEqual(library("parameterBad").members[0]!.documents[0]!.parameterSpellings.map(item => item.name), ["good"]);
+  for (const name of ["structuredBad", "scriptBad"]) assert.deepEqual(library(name).members[0]!.documents[0]!.parameterSpellings, [], name);
+});
+check("shared placement excludes descendant vocabulary while retaining script/style own attributes", () => {
+  assert.equal(doc("placementGood").parameterCompleteness, "complete");
+  assert.deepEqual(doc("placementGood").parameters.map(item => item.name).sort(), ["Script-Attr", "Style-Attr"]);
+  assert.deepEqual(doc("placementGood").parameterSpellings.map(item => item.name).sort(), ["Script-Attr", "Style-Attr"]);
+  const rejected = doc("placementBad");
+  assert.equal(rejected.parameterCompleteness, "unknown"); assert.deepEqual(rejected.parameters, []);
+  assert.deepEqual(rejected.parameterSpellings.map(item => item.name).sort(), ["Good-name", "Own-attr"]);
+  assert.ok(rejected.parameterSpellings.flatMap(item => item.uses).every(use => !slice(use.location).includes("Bad-")));
 });
 check("declaration, attribute and placeholder ranges stay in original host coordinates", () => {
   const heading = library("fresh").members[0]!;

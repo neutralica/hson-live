@@ -99,9 +99,9 @@ try {
       `--user-data-dir=${userDataDir}`,
       `--extensions-dir=${extensionsDir}`,
     ],
-    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_TYPING_TEST_ONLY: process.env.HSON_TYPING_TEST_ONLY ?? "0" },
+    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_TYPING_TEST_ONLY: process.env.HSON_TYPING_TEST_ONLY ?? "0", HSON_PART_COMPLETION_TEST_ONLY: process.env.HSON_PART_COMPLETION_TEST_ONLY ?? "0" },
   });
-  if (process.env.HSON_TYPING_TEST_ONLY !== "1") {
+  if (process.env.HSON_TYPING_TEST_ONLY !== "1" && process.env.HSON_PART_COMPLETION_TEST_ONLY !== "1") {
     const lifecycleAfterDeactivation = (await readFile(localHostLifecycle, "utf8")).trim().split("\n").filter(Boolean);
     if (lifecycleAfterDeactivation.at(-2) !== "start" || lifecycleAfterDeactivation.at(-1) !== "stop") {
       throw new Error(`VS Code extension deactivation did not dispose its live local host: ${JSON.stringify(lifecycleAfterDeactivation)}`);

@@ -37,6 +37,18 @@ function writePartMember<TResult>(
 }
 
 export async function public_parts_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
+  await check("governed placement accepts script/style own attributes and rejects descendant placeholders", () => {
+    for (const document of ['<script src="/app.js" type="%{Mixed-Case}"/>', '<style media=%{Mixed-Case}/>']) {
+      const map = hsonLiveMap.fromLibraries({ components: { parts: { item: { kind: "document", document } } },
+        page: { document: '<main <hson-part lib="components" at="item" Mixed-Case="screen"/>/>' } });
+      assert.match(JSON.stringify(map.doc.must("page").snap()), /screen/);
+      assert.doesNotMatch(JSON.stringify(map.doc.must("page").snap()), /%\{/);
+    }
+    for (const document of ['<script <span title="%{bad}"/>/>', '<style <p id=%{bad}/>/>', '<script "%{bad}"/>', '<p onclick="%{bad}"/>', '<p style="color:%{bad}"/>']) {
+      assert.throws(() => hsonLiveMap.fromLibraries({ components: { parts: { item: { kind: "document", document } } },
+        page: { document: '<main <hson-part lib="components" at="item" bad="x"/>/>' } }), document);
+    }
+  });
   await check("public widened Parts access rejects supplemental Schema without publication", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: "document", document: "<p/>" } } }, ordinary: { data: 1 } });
     const name: string = "parts", selected = map.parts.must(name), before = map.capture(), schema = selected.schema.get();

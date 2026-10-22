@@ -8,6 +8,7 @@ import { resolve_immutable_schema } from "../../../src/internal/hson-schema/sche
 import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
 import { schema_reference_completion } from "./hson-schema-symbols.js";
 import type { HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
+import { collect_part_source_facts, type PartSourceFacts } from "../../../src/internal/hson-schema/part-source.js";
 
 export type HostCompletion = Readonly<{ candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }> }>;
 type CachedDocument = Readonly<{
@@ -22,14 +23,16 @@ export class HsonEditorCompletionCache {
   private readonly documents = new Map<string, CachedDocument>();
   private readonly schemas = new Map<string, CompiledHsonSchema | null>();
   private sourceProgram: ts.Program | undefined;
-  clear(): void { this.documents.clear(); this.schemas.clear(); this.sourceProgram = undefined; }
-  forget(fileName: string): void { this.documents.delete(fileName); }
+  private partFacts: Readonly<{ program: ts.Program; facts: PartSourceFacts }> | undefined;
+  clear(): void { this.documents.clear(); this.schemas.clear(); this.sourceProgram = undefined; this.partFacts = undefined; }
+  forget(fileName: string): void { this.documents.delete(fileName); this.partFacts = undefined; }
   complete(fileName: string, text: string, version: number, offset: number, sourceProgram?: ts.Program): readonly HostCompletion[] {
     if (!/\.(?:[cm]?ts|tsx)$/.test(fileName) || offset < 0 || offset > text.length) return [];
     // A producer edit can change every consumer without changing its text.
     // Retain discovery/checkers only for the current authored program.
     if (this.sourceProgram !== sourceProgram) {
       this.documents.clear();
+      this.partFacts = undefined;
       this.sourceProgram = sourceProgram;
     }
     let cached = this.documents.get(fileName);
@@ -45,9 +48,11 @@ export class HsonEditorCompletionCache {
         if (oldest !== undefined) this.documents.delete(oldest);
       }
     }
-    const interpolated = cached.discovery.interpolated.find(source => offset >= source.bodyRange.start && offset <= source.bodyRange.end);
-    const site = interpolated ?? cached.discovery.sources.find(source => offset >= source.bodyRange.start && offset <= source.bodyRange.end);
+    const site = [...cached.discovery.interpolated, ...cached.discovery.sources]
+      .filter(source => offset >= source.bodyRange.start && offset <= source.bodyRange.end)
+      .sort((a, b) => a.bodyRange.end - a.bodyRange.start - (b.bodyRange.end - b.bodyRange.start))[0];
     if (site === undefined) return [];
+    const interpolated = cached.discovery.interpolated.find(source => source === site);
     if (site.authoringKind === "schema" && interpolated === undefined) {
       const reference = schema_reference_completion(text.slice(site.bodyRange.start, site.bodyRange.end), offset - site.bodyRange.start);
       if (reference !== undefined) return reference.definitions.map((definition, index) => ({
@@ -59,8 +64,8 @@ export class HsonEditorCompletionCache {
     }
     let source: string, cursor: number, slots: readonly HsonTemplateSlot[] = [];
     let map: (range: Readonly<{ start: number; end: number }>) => Readonly<{ start: number; end: number }> | undefined;
-    if (interpolated !== undefined) {
-      const interpolation = interpolation_site(interpolated, fileName);
+    {
+      const interpolation = interpolation_site(interpolated ?? { ...site, substitutionRanges: [], expressionRanges: [] }, fileName);
       const literalIndex = interpolation.literals.findIndex(literal => offset >= literal.range.start && offset <= literal.range.end);
       if (literalIndex < 0) return [];
       const segments: { start: number; end: number; index: number }[] = [];
@@ -84,15 +89,14 @@ export class HsonEditorCompletionCache {
         const start = literal?.boundaries[range.start - owner.start], end = literal?.boundaries[range.end - owner.start];
         return start === undefined || end === undefined ? undefined : { start, end };
       };
-    } else {
-      source = text.slice(site.bodyRange.start, site.bodyRange.end);
-      cursor = offset - site.bodyRange.start;
-      map = range => range.start < 0 || range.end < range.start || range.end > source.length ? undefined
-        : { start: site.bodyRange.start + range.start, end: site.bodyRange.start + range.end };
     }
     const schema = site.authoringKind === "data" ? this.resolveSchema(cached, site.tagRange.start) : undefined;
     if (schema === null) return [];
-    const result = query_hson_editor_context({ mode: site.authoringKind, source, cursor, slots, schema });
+    if (site.authoringKind === "document" && this.partFacts?.program !== cached.program) {
+      this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program) };
+    }
+    const result = query_hson_editor_context({ mode: site.authoringKind, source, cursor, slots, schema,
+      ...(site.authoringKind !== "document" || this.partFacts === undefined ? {} : { parts: { facts: this.partFacts.facts, file: fileName, offset } }) });
     const range = result.checkpoint?.range === undefined ? undefined : map(result.checkpoint.range);
     return range === undefined ? [] : result.candidates.map(candidate => ({ candidate, range }));
   }

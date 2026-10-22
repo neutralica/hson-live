@@ -378,6 +378,82 @@ async function runTypingConveniences(workspace: string): Promise<void> {
   await vscode.workspace.fs.delete(uri);
 }
 
+async function runPartCompletions(workspace: string): Promise<void> {
+  const uri = vscode.Uri.file(join(workspace, "declarative-schema", "part-authoring.ts"));
+  const producer = vscode.Uri.file(join(workspace, "declarative-schema", "parts.ts"));
+  const parts = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav "%{current}"/>` } } as const;';
+  await vscode.workspace.fs.writeFile(producer, Buffer.from(parts));
+  const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { parts } from "./parts.js";\r\nconst loc = hsonLiveMap.locus.create({ components: { parts } });\r\nconst page = Hson.document`';
+  const suffix = '`;\r\nconst untouched = "keep";';
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(prefix + '<main/>' + suffix));
+  const document = await vscode.workspace.openTextDocument(uri);
+  await vscode.window.showTextDocument(document);
+  const replace = async (doc: vscode.TextDocument, text: string): Promise<void> => {
+    const edit = new vscode.WorkspaceEdit(); edit.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), text);
+    assert.equal(await vscode.workspace.applyEdit(edit), true);
+  };
+  const completions = async (offset: number, label: string): Promise<vscode.CompletionItem> => {
+    let found: vscode.CompletionItem | undefined;
+    await waitFor(async () => {
+      const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', uri, document.positionAt(offset), undefined, 100);
+      found = result?.items.find(item => (typeof item.label === "string" ? item.label : item.label.label) === label
+        && /Parts Library|Part member|Part argument|Part parameter/.test(item.detail ?? ""));
+      return found !== undefined;
+    }, `Missing Part completion ${label}`);
+    assert.ok(found); return found;
+  };
+  for (const [body, label, expected] of [
+    ['<hson-part lib=|/>', 'components', '<hson-part lib="components"/>'],
+    ['<hson-part lib=|"co"/>', 'components', '<hson-part lib="components"/>'],
+    ['<hson-part lib="components" at=|"he"/>', 'heading', '<hson-part lib="components" at="heading"/>'],
+    ['<hson-part lib="co|', 'components', '<hson-part lib="components"'],
+    ['<hson-part lib="components" at="\\u0068e|ading"/>', 'heading', '<hson-part lib="components" at="heading"/>'],
+    ['<hson-part lib="components" at="heading" Ti|tle-old="x" content="kept"/>', 'Title-Case', '<hson-part lib="components" at="heading" Title-Case="x" content="kept"/>'],
+    ['<main ${Hson.document`<hson-part lib="components" at="he|"/>`}/>', 'heading', '<main ${Hson.document`<hson-part lib="components" at="heading"/>`}/>'],
+  ]) {
+    await replace(document, prefix + body.replace("|", "") + suffix);
+    const item = await completions(prefix.length + body.indexOf("|"), label);
+    const range = item.textEdit?.range ?? (item.range instanceof vscode.Range ? item.range : item.range?.replacing);
+    const insertText = item.textEdit?.newText ?? item.insertText;
+    assert.ok(range); assert.equal(typeof insertText, "string");
+    const edit = new vscode.WorkspaceEdit(); edit.replace(uri, range, String(insertText));
+    assert.equal(await vscode.workspace.applyEdit(edit), true);
+    assert.equal(document.getText(), prefix + expected + suffix);
+  }
+  for (const [body, label, expected] of [
+    ['<h1 "%{Title-Case}" "%{Ti|}"/>', 'Title-Case', '<h1 "%{Title-Case}" "%{Title-Case}"/>'],
+    ['<h1 title="%{content}" id=%{co|}/>', 'content', '<h1 title="%{content}" id=%{content}/>'],
+    [String.raw`<h1 title="%{content}" id="%{\u0063o|}"/>`, 'content', '<h1 title="%{content}" id="%{content}"/>'],
+    ['<script src="/app.js" title="%{content}" id="%{co|}"/>', 'content', '<script src="/app.js" title="%{content}" id="%{content}"/>'],
+    ['<style media="%{content}" id=%{co|}/>', 'content', '<style media="%{content}" id=%{content}/>'],
+  ]) {
+    const before = 'import { Hson, hsonLiveMap } from "hson-live";\r\nconst page = Hson.document`';
+    const after = '`;\r\nconst loc = hsonLiveMap.fromLibraries({ components: { parts: { heading: { kind: "document", document: page } } } });';
+    const marked = before + body + after;
+    await replace(document, marked.replace('|', ''));
+    const spelling = await completions(marked.indexOf('|'), label);
+    const range = spelling.textEdit?.range ?? (spelling.range instanceof vscode.Range ? spelling.range : spelling.range?.replacing);
+    assert.ok(range);
+    const edit = new vscode.WorkspaceEdit(); edit.replace(uri, range, String(spelling.textEdit?.newText ?? spelling.insertText));
+    assert.equal(await vscode.workspace.applyEdit(edit), true); assert.equal(document.getText(), before + expected + after);
+  }
+  const body = '<hson-part lib="components" at="he|"/>';
+  await replace(document, prefix + body.replace("|", "") + suffix);
+  await completions(prefix.length + body.indexOf("|"), "heading");
+  const imported = await vscode.workspace.openTextDocument(producer);
+  await replace(imported, parts.replace('heading:', 'hero:'));
+  await completions(prefix.length + body.indexOf("|"), "hero");
+  const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', uri, document.positionAt(prefix.length + body.indexOf("|")));
+  assert.ok(!result?.items.some(item => (typeof item.label === "string" ? item.label : item.label.label) === "heading"));
+  for (const body of ['<main lib="co|"/>', '<main // at="he|"\n/>', '<main "at=he|"/>', '<main ${(() => { /* at=he| */ return "x"; })()}/>',
+    '<hson-part lib=|"co', String.raw`<hson-part lib=|"co\q"/>`, '<script title="%{content}" <span id="%{co|}"/>/>', '<style media="%{content}" <span "%{co|}"/>/>', String.raw`<h1 title="%{content}" id="%{\u00|63o}"/>`]) {
+    await replace(document, prefix + body.replace("|", "") + suffix + '\r\nconst owned = hsonLiveMap.fromLibraries({ own: { parts: { item: { kind: "document", document: page } } } });');
+    const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', uri, document.positionAt(prefix.length + body.indexOf("|")), undefined, 100);
+    assert.ok(!result?.items.some(item => /Parts Library|Part member|Part argument|Part parameter/.test(item.detail ?? "")), body);
+  }
+  process.stdout.write("ok - real VS Code Part completion applies exact edits in four contexts and refreshes unsaved imported Parts\n");
+}
+
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("terminal-gothic.hson-language");
   assert.ok(extension, "Hson extension was not discovered by the extension host");
@@ -385,6 +461,7 @@ export async function run(): Promise<void> {
   const workspace = process.env.HSON_TEST_WORKSPACE;
 
   assert.ok(workspace);
+  if (process.env.HSON_PART_COMPLETION_TEST_ONLY === "1") { await runPartCompletions(workspace); return; }
   if (process.env.HSON_RESTRICTED_TEST !== "1") {
     await runProtectedSourceFormatting(workspace);
     await runTypingConveniences(workspace);
