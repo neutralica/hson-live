@@ -876,8 +876,6 @@ check("document candidates judge realized same-batch Parts and withdraw uncertai
     'bits: { parts: { [key]: { kind: "document", document: "<p/>" } } }',
     'bits: { parts: { title: { kind: "document", document: getDocument() } } }',
     'bits: { parts: { title: { kind: "document", document: "<p/>" }, broken: { kind: "document", document: "<p" } } }',
-    'bits: { data: { title: { kind: "document", document: "<p/>" } } }',
-    'bits: { parts: { other: { kind: "document", document: "<p/>" } } }',
     'bits: { parts: aliased }',
   ];
   for (const inventory of unknown) {
@@ -885,6 +883,17 @@ check("document candidates judge realized same-batch Parts and withdraw uncertai
       + 'const aliased = { title: { kind: "document" as const, document: "<p/>" } };\n'
       + `hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page }, ${inventory} });`);
     assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 0, inventory);
+  }
+  // Complete reference failures are now editor errors, while composition Schema
+  // proof still withdraws rather than judging an unexpanded connector as markup.
+  for (const { inventory, message } of [
+    { inventory: 'bits: { data: { title: { kind: "document", document: "<p/>" } } }', message: /Unknown Parts Library "bits"/ },
+    { inventory: 'bits: { parts: { other: { kind: "document", document: "<p/>" } } }', message: /Unknown Part member "title"/ },
+  ]) {
+    test.edit("index.ts", prefix + `hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page }, ${inventory} });`);
+    const errors = test.errors("index.ts").filter(error => error.code === 95002);
+    assert.equal(errors.length, 1, messages(errors)); assert.match(messages(errors), message);
+    assert.doesNotMatch(messages(errors), /Static Hson does not satisfy/);
   }
   for (const operation of ["addLibraries", "admit"]) {
     test.edit("index.ts", prefix + (operation === "admit" ? 'const receiver = hsonLiveMap.locus.create({});\n' : 'const receiver = hsonLiveMap.fromLibraries({});\n')

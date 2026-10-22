@@ -1,7 +1,7 @@
 import type ts from "typescript";
 import { hson_source_syntactic_eligibility, is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
 import type { StaticSchemaCandidate } from "./candidate-evaluation.js";
-import { library_source_fields } from "./library-source.js";
+import { is_object_literal_prototype_setter, library_source_fields } from "./library-source.js";
 import { immutable_source_declaration } from "./schema-identity.js";
 
 export type StaticSourceCandidate = StaticSchemaCandidate & Readonly<{ node: ts.Expression; bodyStart?: number }>;
@@ -98,12 +98,17 @@ function json_literal(node: ts.Expression, typescript: typeof ts, eligible: (nod
     return entries.every(entry => entry.known) ? { known: true, value: entries.map(entry => entry.value) } : { known: false };
   }
   if (typescript.isObjectLiteralExpression(node)) {
+    for (const property of node.properties) if (typescript.isPropertyAssignment(property) && is_object_literal_prototype_setter(property, typescript)) {
+      const prototype = json_literal(property.initializer, typescript, eligible);
+      // Projected data rejects custom prototypes; an ignored primitive or null is safe.
+      if (!prototype.known || prototype.value !== null && typeof prototype.value === "object") return { known: false };
+    }
     const fields = library_source_fields(node, typescript);
     if (fields === undefined) return { known: false };
     const value: Record<string, unknown> = Object.create(null);
     for (const [key, input] of fields) {
       const entry = json_literal(input, typescript, eligible, authored);
-      if (!entry.known || key === "__proto__") return { known: false };
+      if (!entry.known) return { known: false };
       value[key] = entry.value;
     }
     return { known: true, value };

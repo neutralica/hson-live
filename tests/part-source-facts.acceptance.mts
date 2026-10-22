@@ -143,10 +143,13 @@ check("complete same-batch forward references are independent of field order", (
 });
 check("partial, dynamic, computed and aliased inventories retain uncertainty", () => {
   assert.equal(library("literalName").name, "mixed-Library");
-  for (const name of ["computed", "computedLiteral"]) {
+  for (const name of ["computed"]) {
     assert.equal(library(name).name, undefined); assert.equal(batch(name).inventoryCompleteness, "partial");
     assert.equal(library(name).certainty, "possible");
   }
+  assert.equal(library("computedLiteral").name, "components");
+  assert.equal(batch("computedLiteral").inventoryCompleteness, "complete");
+  assert.equal(library("computedLiteral").certainty, "certain");
   assert.equal(batch("opaque").inventoryCompleteness, "unknown");
   assert.equal(batch("partial").inventoryCompleteness, "partial");
   assert.equal(library("partial").memberCompleteness, "partial");

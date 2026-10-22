@@ -9,12 +9,76 @@ import { library_schema_attachment_plan, type PreciseSchemaFact } from "./source
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { library_source_definitions, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
-import { static_part_inventory } from "./part-source.js";
+import { static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
+import { is_part_argument_attribute, is_part_parameter_name } from "../part-placeholder.js";
 
 type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
 export type StaticSchemaDiagnostic = StaticSchemaDiagnosticLocation & Readonly<{ code: string; related?: readonly StaticSchemaDiagnosticLocation[] }>;
 type Schema = Readonly<{ declaration: ts.VariableDeclaration; name: string; compiled: CompiledHsonSchema }>;
 
+/** Editor-only projection of compiler-owned facts. Never included in Schema build/Watch policy. */
+export function static_part_reference_diagnostics(facts: PartSourceFacts): readonly StaticSchemaDiagnostic[] {
+  const output: StaticSchemaDiagnostic[] = [];
+  const reported = new Set<string>();
+  const report = (where: PartSourceLocation | undefined, code: string, message: string): void => {
+    if (where?.precision !== "exact") return;
+    const key = JSON.stringify([where.file, where.start, where.end, code, message]);
+    if (reported.has(key)) return;
+    reported.add(key);
+    output.push({ file: where.file, start: where.start, end: where.end, code, message });
+  };
+  for (const document of facts.documents) {
+    // Possible, conditional, multiple and open-world receivers cannot prove absence.
+    // Do not filter alternatives to turn an ambiguous relationship into a certain one.
+    if (document.admission !== "qualified" || document.librarySourceAdmission !== "qualified" || document.receivers.length !== 1) continue;
+    const receiver = document.receivers[0]!;
+    // A stored Part can be composed after later admissions or governed writes.
+    // Its collection relationship alone does not establish an initial execution context.
+    if (receiver.certainty !== "certain" || receiver.library?.family !== "document") continue;
+    const batch = facts.batches.find(batch => batch.call === receiver.batch);
+    if (batch === undefined || !batch.eligible || batch.receivingInventory !== "candidate-only"
+      || batch.inventoryCompleteness !== "complete" || batch.libraries.some(library => library.certainty !== "certain")) continue;
+    for (const connector of document.connectors) {
+      if (!connector.headerComplete || connector.location.precision !== "exact") continue;
+      const coordinate = (name: string) => {
+        const attributes = connector.attributes.filter(attribute => attribute.name === name);
+        return attributes.length === 1 ? attributes[0] : undefined;
+      };
+      const lib = coordinate("lib"), at = coordinate("at");
+      if (lib?.value === undefined || lib.value.length === 0 || at?.value === undefined
+        || lib.valueLocation?.precision !== "exact" || at.valueLocation?.precision !== "exact") continue;
+      const arguments_ = connector.attributes.filter(attribute => is_part_argument_attribute(attribute.name));
+      // Unknown values include interpolations, placeholders and structured attributes.
+      // Invalid connector inputs belong to the existing runtime/authoring validator.
+      if (arguments_.some(attribute => attribute.value === undefined || !is_part_parameter_name(attribute.name))) continue;
+      const libraries = batch.libraries.filter(library => library.name === lib.value);
+      if (libraries.length === 0 || libraries.length === 1 && libraries[0]!.family !== "parts") {
+        report(lib.valueLocation, "HSON_PART_LIBRARY_UNKNOWN", `Unknown Parts Library ${JSON.stringify(lib.value)}.`);
+        continue;
+      }
+      const library = libraries.length === 1 ? libraries[0] : undefined;
+      if (library?.family !== "parts" || library.memberCompleteness !== "complete") continue;
+      const members = library.members.filter(member => member.name === at.value);
+      if (members.length === 0) {
+        report(at.valueLocation, "HSON_PART_MEMBER_UNKNOWN", `Unknown Part member ${JSON.stringify(at.value)} in Parts Library ${JSON.stringify(lib.value)}.`);
+        continue;
+      }
+      const member = members.length === 1 ? members[0] : undefined;
+      if (member?.admission !== "qualified" || member.certainty !== "certain" || member.documents.length !== 1) continue;
+      const definition = member.documents[0]!;
+      if (definition.admission !== "qualified" || definition.parameterCompleteness !== "complete") continue;
+      const supplied = new Set(arguments_.map(attribute => attribute.name));
+      const vocabulary = new Set(definition.parameters.map(parameter => parameter.name));
+      for (const name of vocabulary) if (!supplied.has(name)) {
+        report(connector.location, "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)}.`);
+      }
+      for (const attribute of arguments_) if (!vocabulary.has(attribute.name)) {
+        report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)}.`);
+      }
+    }
+  }
+  return output;
+}
 
 /** Pure preflight over authored ASTs. Unknown expressions withdraw the entire proof. */
 export function static_schema_candidate_diagnostics(typescript: typeof ts, program: ts.Program): readonly StaticSchemaDiagnostic[] {

@@ -177,6 +177,26 @@ await check("Part source changes rejudge unchanged receiving consumers without e
     assert.equal(analyses, 7);
   } finally { watch.stop(); }
 });
+await check("Part reference editor errors do not enter Schema Watch failure policy", async () => {
+  const directory = join(project, "part-reference-policy"); mkdirSync(directory);
+  const config = join(directory, "tsconfig.json"), consumerPath = join(directory, "consumer.ts");
+  writeFileSync(join(directory, "package.json"), '{"type":"module"}');
+  writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], paths: {
+    "hson-live": [join(root, "dist/index.d.ts")],
+  } }, files: ["consumer.ts"] }));
+  const text = (body: string) => 'import { Hson, hsonLiveMap } from "hson-live";\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`' + body + '` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 "%{content}"/>` } } } });';
+  const watch = create_schema_compiler_project_watch(config, (_config, program) => ({ schemas: [], overlays: [],
+    diagnostics: static_schema_candidate_diagnostics(ts, program).map(diagnostic => diagnostic.message) }), () => {});
+  try {
+    for (const body of ['<hson-part lib="absent" at="heading"/>', '<hson-part lib="components" at="absent"/>', '<hson-part lib="components" at="heading" extra="x"/>', '<hson-part lib="components" at="heading" content="ok"/>']) {
+      writeFileSync(consumerPath, text(body)); await watch.poll();
+      assert.deepEqual(verify_schema_compiler_project(config).manifest.diagnostics, [], body);
+      check_schema_project(config, verify_schema_compiler_project(config), false);
+      assert.equal(readFileSync(consumerPath, "utf8"), text(body));
+    }
+  } finally { watch.stop(); }
+});
 await check("unchanged invalid state is reused across watcher startup", async () => {
   const quiet = mkdtempSync(join(root, "tmp/schema-watch-quiet-"));
   const emitted: string[] = [];

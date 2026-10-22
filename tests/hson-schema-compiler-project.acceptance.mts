@@ -388,6 +388,22 @@ check("existing Schema fixtures use the same evidence and transformation without
 });
 
 
+check("Part reference editor errors do not change compiler Project or CLI exit policy", () => {
+  const directory = prepare("part-reference-policy");
+  writeFileSync(join(directory, "part-references.ts"), 'import { Hson, hsonLiveMap } from "hson-live";\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="absent" at="heading"/>` } });\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="absent"/>` }, components: { parts: { heading: { kind: "document", document: "<h1/>" } } } });\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="heading" extra="x"/>` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 "%{content}"/>` } } } });\n');
+  const before = snapshot(directory);
+  succeed(generate(directory));
+  const config = join(directory, "tsconfig.json");
+  assert.deepEqual(verify_schema_compiler_project(config).manifest.diagnostics, []);
+  check_schema_project(config, verify_schema_compiler_project(config), false);
+  const cli = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "check", "--project", config], { cwd: root, encoding: "utf8", timeout: 120_000 });
+  assert.equal(cli.status, 0, cli.stdout + cli.stderr);
+  assert.deepEqual(snapshot(directory), before);
+});
+
 check("capture racing publication fails clearly and captured compiler reads never fall through to disk", () => {
   const config = join(project, "tsconfig.json");
   const prior = verify_schema_compiler_project(config);

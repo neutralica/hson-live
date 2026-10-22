@@ -2,6 +2,15 @@ import type { HsonNode, Primitive } from "../core/types.js";
 import { STR_TAG } from "../core/constants.js";
 import { is_Node } from "../core/node-guards.js";
 
+/** Connector coordinates are reserved; every other public attribute is an input. */
+export function is_part_argument_attribute(name: string): boolean {
+  return name !== "lib" && name !== "at";
+}
+
+export function is_part_parameter_name(name: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(name);
+}
+
 /** Shared authored Part grammar; parameter resolution remains composition-owned. */
 export function part_placeholder_pattern(): RegExp {
   return /%\{([A-Za-z_][A-Za-z0-9_-]*)\}/g;

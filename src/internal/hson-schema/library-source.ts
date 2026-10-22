@@ -195,7 +195,13 @@ function official_receiving_value(input: ts.Expression, family: "locus" | "local
   return construction(input);
 }
 
-/** Spreads, computed names, duplicate fields and accessors withdraw static evidence. */
+/** Only colon-form, noncomputed prototype setters alter [[Prototype]] instead of defining an own property. */
+export function is_object_literal_prototype_setter(property: ts.ObjectLiteralElementLike, ts: typeof defaultTs = defaultTs): boolean {
+  return ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+    && property.name.text === "__proto__";
+}
+
+/** Spreads, dynamic computed names, duplicate fields and accessors withdraw static evidence. */
 export function library_source_fields(node: ts.ObjectLiteralExpression, ts: typeof defaultTs = defaultTs): ReadonlyMap<string, ts.Expression> | undefined {
   const evidence = library_source_field_candidates(node, ts);
   return evidence.complete ? new Map(evidence.fields.flatMap(field => field.name === undefined || field.value === undefined ? [] : [[field.name, field.value]])) : undefined;
@@ -207,16 +213,21 @@ export function library_source_field_candidates(node: ts.ObjectLiteralExpression
   const candidates: { name?: string; value?: ts.Expression; declaration: ts.ObjectLiteralElementLike }[] = [];
   let complete = true;
   for (const property of node.properties) {
+    if (is_object_literal_prototype_setter(property, ts)) continue;
+    const name = property.name;
+    const key = name !== undefined && (ts.isIdentifier(name) || ts.isStringLiteral(name)) ? name.text
+      : name !== undefined && ts.isComputedPropertyName(name) && (ts.isStringLiteral(name.expression) || ts.isNoSubstitutionTemplateLiteral(name.expression))
+        ? name.expression.text : undefined;
     if ((!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property))
-      || (!ts.isIdentifier(property.name) && !ts.isStringLiteral(property.name))
+      || key === undefined
       || ts.isShorthandPropertyAssignment(property) && property.objectAssignmentInitializer !== undefined
-      || fields.has(property.name.text)) {
+      || fields.has(key)) {
       complete = false;
       candidates.push({ declaration: property, ...(ts.isPropertyAssignment(property) ? { value: property.initializer } : {}) });
       continue;
     }
-    fields.set(property.name.text, ts.isPropertyAssignment(property) ? property.initializer : property.name);
-    candidates.push({ name: property.name.text, value: fields.get(property.name.text)!, declaration: property });
+    fields.set(key, ts.isPropertyAssignment(property) ? property.initializer : property.name);
+    candidates.push({ name: key, value: fields.get(key)!, declaration: property });
   }
   return { fields: candidates, complete };
 }

@@ -535,6 +535,34 @@ const loc = hsonLiveMap.locus.create({
     await request("close", { file: file("parts.ts") });
     await editConsumer(consumer);
   });
+  await check("bundled static Part diagnostics use authored ranges and withdraw on unsaved repair or uncertainty", async () => {
+    const prefix = 'import { Hson, hsonLiveMap as maps } from "hson-live";\r\nconst page = Hson.document`';
+    const suffix = '`;\r\nconst loc = maps.fromLibraries({ page: { document: page }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 "%{content}"/>` } } } });';
+    for (const [body, message, anchor] of [
+      [String.raw`<hson-part lib="\u0061bsent" at="heading"/>`, /Unknown Parts Library/, '"\\u0061bsent"'],
+      ['<hson-part lib="components" at="absent"/>', /Unknown Part member/, '"absent"'],
+      ['<hson-part lib="components" at="heading"/>', /Missing Part parameter "content"/, '<hson-part lib="components" at="heading"'],
+      ['<hson-part lib="components" at="heading" content="ok" extra="x"/>', /Unknown Part parameter "extra"/, 'extra'],
+    ]) {
+      const source = prefix + body + suffix; await editConsumer(source);
+      const errors = (await diagnostics("consumer.ts")).filter(error => error.code === 95002);
+      assert.equal(errors.length, 1, JSON.stringify(errors)); assert.match(errors[0].text, message);
+      const start = source.indexOf(anchor);
+      assert.deepEqual(errors[0].start, location(source, start)); assert.deepEqual(errors[0].end, location(source, start + anchor.length));
+      const valid = prefix + '<hson-part lib="components" at="heading" content="ok"/>' + suffix;
+      await editConsumer(valid); assert.deepEqual((await diagnostics("consumer.ts")).filter(error => error.code === 95002), []);
+    }
+    const unknown = prefix + '<hson-part lib="absent" at="heading"/>' + suffix;
+    for (const source of [
+      unknown.replace('document: page }', 'document: true ? page : dynamic }').replace('const page =', 'declare const dynamic: any; const page ='),
+      unknown.replace('({ page:', '({ ...dynamic, page:').replace('const page =', 'declare const dynamic: any; const page ='),
+      unknown.replace('lib="absent" at="heading"/>', 'lib="absent" at="heading"'),
+      unknown.replace('maps.fromLibraries', 'maps.locus.resume').replace(' });', ' }, dynamic);').replace('const page =', 'declare const dynamic: any; const page ='),
+    ]) {
+      await editConsumer(source); assert.deepEqual((await diagnostics("consumer.ts")).filter(error => error.code === 95002), [], source);
+    }
+    await editConsumer(consumer);
+  });
   await check("real tsserver never writes authored source or generated evidence to disk", async () => {
     for (const [name, original] of originals) assert.deepEqual(readFileSync(file(name)), original);
     assert.equal(existsSync(file(".hson")), false);

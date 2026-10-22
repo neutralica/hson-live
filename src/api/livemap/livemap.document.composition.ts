@@ -1,4 +1,4 @@
-import { part_placeholder_matches, part_placeholder_pattern, transform_part_parameter_strings } from "../../internal/part-placeholder.js";
+import { is_part_argument_attribute, is_part_parameter_name, part_placeholder_matches, part_placeholder_pattern, transform_part_parameter_strings } from "../../internal/part-placeholder.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { decode_public_attrs, is_public_attr_name } from "../../core/public-attrs.js";
@@ -416,7 +416,7 @@ export function expand_document_composition(
     const receiving = [...(shellName === undefined ? [] : [shellName]), ...(configuration?.q === undefined ? [] : [configuration.q])];
     if (item.$_tag.toLowerCase() === "hson-part") {
       const attrs = item.$_attrs ?? {};
-      const parameterNames = Object.keys(attrs).filter(key => key !== "lib" && key !== "at");
+      const parameterNames = Object.keys(attrs).filter(is_part_argument_attribute);
       const libField = Object.getOwnPropertyDescriptor(attrs, "lib");
       let lib: unknown = libField === undefined ? frame.occurrence.collection : libField.value;
       if (typeof lib !== "string" || lib.length === 0) throw new TypeError("hson-part requires an unambiguous nonempty collection lib.");
@@ -425,7 +425,7 @@ export function expand_document_composition(
       const parameters = new Map<string, Primitive>();
       for (const name of parameterNames) {
         const value: unknown = Object.getOwnPropertyDescriptor(attrs, name)?.value;
-        if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name) || !parameter_scalar(value)) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(name)}: expected a scalar.`);
+        if (!is_part_parameter_name(name) || !parameter_scalar(value)) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(name)}: expected a scalar.`);
         parameters.set(name, value);
       }
       if (item.$_content.length !== 0) throw new TypeError("hson-part connectors must be empty; inputs are named scalar attributes.");

@@ -6,7 +6,8 @@ import { library_schema_attachment_plan, schema_source_plan, type PreciseSchemaF
 import { compile_hson_schema } from "../../../src/internal/hson-schema/compiler.js";
 import { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-mapping.js";
 import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
-import { static_schema_candidate_diagnostics, type StaticSchemaDiagnostic } from "../../../src/internal/hson-schema/candidate-diagnostics.js";
+import { static_part_reference_diagnostics, static_schema_candidate_diagnostics, type StaticSchemaDiagnostic } from "../../../src/internal/hson-schema/candidate-diagnostics.js";
+import { collect_part_source_facts } from "../../../src/internal/hson-schema/part-source.js";
 
 type Snapshot = Readonly<{ text: string; snapshot: ts.IScriptSnapshot; version: string }>;
 type SourceView = Snapshot & Readonly<{ mapping: SchemaSourceMapping; source: ts.SourceFile; generatedNames: readonly string[] }>;
@@ -57,7 +58,8 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     const program = authoredService.getProgram();
     if (program === undefined) return;
     if (program === previous) return;
-    candidateDiagnostics = static_schema_candidate_diagnostics(typescript, program);
+    candidateDiagnostics = [...static_schema_candidate_diagnostics(typescript, program),
+      ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program))];
     const nextSources = new Map<string, SourceView>();
     const nextEvidence = new Map<string, Snapshot>();
     const nextDeclarations = new Map<string, string>();

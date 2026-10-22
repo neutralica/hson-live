@@ -8,6 +8,7 @@ import { tokenize_authored_document_library, scan_hson_template_segments, type H
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
 import { qualify_authored_document_source } from "../../api/document/hson-authored.js";
 import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
+import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { part_placeholder_matches, part_placeholder_pattern, part_placeholder_placement_issue, transform_part_parameter_strings } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
@@ -27,6 +28,8 @@ export type PartDocumentSource = Readonly<{
   /** Original literal segments only; TypeScript expressions never belong to this region. */
   authoredRanges: readonly PartSourceLocation[];
   admission: "qualified" | "unknown";
+  /** Runtime Library-source admission is stronger than Hson authoring qualification (e.g. QUAD uniqueness). */
+  librarySourceAdmission: "qualified" | "unknown";
   connectors: readonly PartConnectorSource[];
   parameters: readonly PartParameterSource[];
   /** Lexical reuse suggestions only, never a qualified parameter inventory. */
@@ -211,9 +214,14 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         parameterCompleteness = "complete";
       } catch { names.clear(); }
     }
+    let librarySourceAdmission: "qualified" | "unknown" = "unknown";
+    if (qualified && scanned && slots.length === 0) {
+      try { parse_authored_document_library(text); librarySourceAdmission = "qualified"; }
+      catch { /* Keep authoring/completion facts; this source cannot establish a receiving Library. */ }
+    }
     const receivers: { batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible" }[] = [];
     const result: PartDocumentSource = { producer, location: location(producer), authoredRanges, admission: qualified ? "qualified" : "unknown",
-      connectors: [...headers.values()], parameters: [...names].map(name => ({ name, uses: uses.filter(use => use.name === name) })),
+      librarySourceAdmission, connectors: [...headers.values()], parameters: [...names].map(name => ({ name, uses: uses.filter(use => use.name === name) })),
       parameterSpellings: spellingEligible ? [...new Set(uses.map(use => use.name))].map(name => ({ name, uses: uses.filter(use => use.name === name) })) : [],
       parameterCompleteness, receivers };
     documents.set(producer, result);
