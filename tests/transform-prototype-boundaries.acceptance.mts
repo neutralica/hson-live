@@ -393,6 +393,23 @@ await check("ordered JSON sidecar and admission entry lists bypass numeric sette
   }
 });
 
+await check("recursive ordered-carrier admission and outputs bypass inherited numeric setters", async () => {
+  const input = { a: -0, b: { a: -0, b: [-0, "keep"] } };
+  const expected = await observations(hsonTransform.fromJson(input));
+  for (const [prototype, index] of indexTargets) {
+    const actual = await withIndexSetter(prototype, index,
+      value => Array.isArray(value) && value.length === 2 && (value[0] === "a" || value[0] === "b"),
+      () => ["corrupted", 42], async () => {
+        const source = hsonTransform.fromJson(input);
+        return { terminals: await observations(source), value: source.toJson().value(), repeated: source.toJson().value() };
+      });
+    assert.deepEqual(actual.terminals, expected);
+    assert.deepEqual(actual.value, input); assert.deepEqual(actual.repeated, input);
+    assert.deepEqual(JSON.parse(actual.terminals.json), input);
+    assertOwnArrays(actual.value);
+  }
+});
+
 await check("projected-value admission descriptor arrays bypass inherited numeric setters", async () => {
   const source = hsonTransform.fromJson([-0, -0, ["keep", true]]); const selected = source.toJson();
   for (const [prototype, index] of indexTargets) {

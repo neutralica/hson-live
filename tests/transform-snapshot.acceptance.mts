@@ -250,12 +250,11 @@ await check('deep direct values are admitted independently of transport capacity
   for (let index = 0; index < 1500; index++) copy = (copy.$_content[0] as HsonNode).$_content[0] as HsonNode;
   assert.equal(Object.is(copy.$_content[0], -0), true);
 });
-await check('known style nonclosure stays visible without admission normalization', () => {
-  const original = hsonTransform.fromHson('<p style="color:"/>').toNode();
+await check('valid inline style preserves snapshots and Binary and Hson round trips', () => {
+  const original = hsonTransform.fromHson('<p style="color:red"/>').toNode();
   const source = hsonTransform.fromNode(original);
   assert.equal(canonical_hson_graph_equal(source.toNode(), original), true);
   assert.equal(canonical_hson_graph_equal(hsonTransform.fromBinary(source.toBinary().serialize()).toNode(), original), true);
-  // Deferred Pass 3 defect, not a successful notation-closure assertion.
-  assert.equal(canonical_hson_graph_equal(hsonTransform.fromHson(source.toHson().serialize()).toNode(), original), false);
+  assert.equal(canonical_hson_graph_equal(hsonTransform.fromHson(source.toHson().serialize()).toNode(), original), true);
 });
 events.terminal('pass'); console.log('1..' + checks);

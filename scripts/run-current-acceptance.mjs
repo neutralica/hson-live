@@ -1,60 +1,32 @@
-import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { assertInventory, createInventory, repositoryRoot } from "./validation-inventory.mjs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-
-const root = resolve(import.meta.dirname, "..");
-const scripts = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).scripts;
-const browser = new Set([
-  "test:inline-style-browser",
-  "test:transform-trust-ingress-browser",
-  "test:canonical-interactions-browser",
-  "test:browser-realization-parser-closure",
-  "test:document-ssr-browser",
-  "test:document-ssr-subjects-browser",
-  "test:livemap-document-css-browser",
-  "test:stylesheet-ingress-browser",
-  "test:echo-http-browser",
-  "test:echo-receiving-handoff-browser",
-  "test:hosted-continuation-browser",
-]);
-const network = new Set(["test:livehost-node-http2", "test:livehost-node-hosting", "test:echo-http", "test:echo-http2", "test:echo-http-completion", "test:echo-http-redirect"]);
-const environmentDependent = new Set([...browser, ...network]);
-const testNames = Object.keys(scripts).filter((name) => name.startsWith("test:"));
-const standard = new Set([...scripts.check.matchAll(/npm run (test:[\w-]+)/g)].map((match) => match[1]));
-
-assert([...standard].every((name) => testNames.includes(name)), "Standard gate references an unknown test script.");
-assert([...environmentDependent].every((name) => testNames.includes(name)), "Extended gate references an unknown test script.");
-assert([...standard].every((name) => !environmentDependent.has(name)), "Environment-dependent test is in the standard gate.");
-for (const file of readdirSync(resolve(root, "tests"))) {
-  if (!/\.acceptance\.(?:mjs|mts)$/.test(file)) continue;
-  assert(Object.values(scripts).some((command) => command.includes(`tests/${file}`)),
-    `Unscripted current acceptance: ${file}`);
-}
-const browserRunners = readdirSync(resolve(root, "scripts"))
-  .filter((file) => /^run-.*\.mjs$/.test(file))
-  .map((file) => readFileSync(resolve(root, "scripts", file), "utf8"));
-for (const file of readdirSync(resolve(root, "tests/browser"))) {
-  if (!file.endsWith(".acceptance.html")) continue;
-  assert(browserRunners.some((source) => source.includes(file)), `Unscripted current browser acceptance: ${file}`);
-}
-assert(Object.values(scripts).every((command) => !command.includes("tests/historical/")),
-  "Historical acceptance must not be in current package scripts.");
+import { ordinary, gateCommands } from "./validation-config.mjs";
+import { runStages } from "./validation-execution.mjs";
 
 const mode = process.argv[2];
-assert(mode === "full" || mode === "extended", "Usage: run-current-acceptance.mjs full|extended");
-const selected = testNames.filter((name) => mode === "full"
-  ? !standard.has(name) && !environmentDependent.has(name)
-  : environmentDependent.has(name));
-const failed = [];
-const commands = mode === "full"
-  ? ["hson-schema:check", "measure:echo-browser-packaging", ...selected]
-  : selected;
-for (const [index, name] of commands.entries()) {
-  console.log(`[${index + 1}/${commands.length}] ${name}`);
-  const result = spawnSync("npm", ["run", name], { cwd: root, stdio: "inherit", timeout: 180_000 });
-  if (result.status !== 0) failed.push(`${name}: ${result.error?.message ?? `exit ${String(result.status)}`}`);
+if (mode === "--preflight") {
+  try {
+    const inventory = assertInventory(createInventory());
+    const gate = process.argv.find(arg => arg.startsWith("--gate="))?.slice(7);
+    if (gate && !inventory.gates[gate]) throw new Error(`Unknown preflight gate: ${gate}`);
+    if (process.argv.includes("--json")) console.log(JSON.stringify(inventory, null, 2));
+    else console.log(JSON.stringify({ inventory: "passed", suites: inventory.suites.length,
+      commands: Object.fromEntries(Object.entries(inventory.gates).map(([name, commands]) => [name, commands.length])),
+      gateRequirements: inventory.gateRequirements, missingLegacyMetadata: inventory.metadataMissing.length,
+      metadataPolicy: inventory.metadataPolicy, existingRepeatedBodies: inventory.duplicates }));
+  } catch (error) { console.error(error.message); process.exitCode = 1; }
+} else if (["check", "full", "extended"].includes(mode)) {
+  const scripts = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8")).scripts;
+  const gates = Object.fromEntries(["check", "full", "extended"].map(gate => [gate, gateCommands(scripts, gate)]));
+  const names = gates[mode];
+  const stages = names.map((name, index) => ({ name, command: scripts[name],
+    continueOnFailure: mode === "extended" || mode === "full" && index >= ordinary.length,
+    timeout: mode === "extended" || mode === "full" && index >= ordinary.length ? 180_000 : 0 }));
+  const result = await runStages({ root: repositoryRoot, mode, stages,
+    preflight: () => assertInventory(createInventory()), configuration: { gates, commands: Object.fromEntries(names.map(name => [name, scripts[name]])) } });
+  process.exitCode = result.exitStatus;
+} else {
+  console.error("Usage: run-current-acceptance.mjs check|full|extended|--preflight [--gate=full|extended|check] [--json]");
+  process.exitCode = 1;
 }
-console.log(JSON.stringify({ gate: mode, standard: standard.size, selected: selected.length,
-  environmentDependent: environmentDependent.size, failures: failed }));
-if (failed.length > 0) process.exitCode = 1;

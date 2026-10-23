@@ -2,17 +2,11 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { readMetadata } from "../scripts/validation-inventory.mjs";
 function read_metadata(source) {
-  const matches = [...source.matchAll(/export const HSON_LIVE_TEST_METADATA = Object\.freeze\((\{[\s\S]*?\})\);/g)];
-  if (matches.length !== 1) throw new Error("Expected exactly one literal suite metadata object.");
-  const literal = matches[0][1];
-  const grammar = /^\{\s*id:\s*"([^"]+)",\s*title:\s*"([^"]+)",\s*category:\s*"([^"]+)",\s*runtime:\s*"([^"]+)",\s*tags:\s*Object\.freeze\(\[\s*(?:(?:"[^"]*"\s*,\s*)*"[^"]*"\s*)?\]\),?\s*\}$/;
-  const parsed = grammar.exec(literal);
-  if (parsed === null) throw new Error("Suite metadata must use the exact static literal grammar.");
-  const [, id, title, category, runtime] = parsed;
-  if (!id || !title || !category) throw new Error("Suite metadata requires id, title, and category.");
-  if (!new Set(["node", "node-synthetic-dom", "node-real-websocket", "node-real-websocket-process", "node-real-http1", "node-real-http2"]).has(runtime)) throw new Error("Invalid suite runtime.");
-  return id;
+  const metadata = readMetadata(source);
+  if (!metadata) throw new Error("Expected exactly one literal suite metadata object.");
+  return metadata.id;
 }
 
 const valid = 'export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "one", title: "One", category: "Core", runtime: "node", tags: Object.freeze(["x"]) });';

@@ -43,7 +43,9 @@ export function ordered_projected_object(
     }
     keys.add(key);
     assert_ordered_projected_value(value);
-    copiedEntries.push(Object.freeze([key, value] as const));
+    Object.defineProperty(copiedEntries, copiedEntries.length, {
+      value: Object.freeze([key, value] as const), enumerable: true, writable: true, configurable: true,
+    });
   }
 
   const result: OrderedProjectedObject = Object.freeze({
