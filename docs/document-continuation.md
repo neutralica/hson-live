@@ -8,7 +8,13 @@ normalize, repair, or replace that DOM.
 
 For a full HTML document with portable `page.css`, exact adoption verifies the
 single marked managed style in the head and its CSS text against the selected
-document Library. It retains the parsed style element without an initial write.
+document Library. Identity-free exact adoption retains the parsed style element
+without an initial write. Subject-correspondence continuation can write
+receiving QUID attributes, replace the managed style element's text with the
+receiving stylesheet, and remove portable HTML identity carriers. It retains the
+same managed style Element across that handoff; the text is unchanged only when
+the portable and receiving stylesheets already match. Not every continuation
+path performs this rewrite.
 Authored `<style>` nodes remain ordinary document nodes. Local `page.css` and
 the continued `tree.css.global` read and write one semantic stylesheet; later
 commits update the same browser realization. QUID CSS remains runtime-local in
@@ -69,7 +75,7 @@ before continuation:
 ```ts
 const cut = aggregate.cut({ documents: ["page"], html: "page" });
 const installed = install_libraries_snapshot(cut.libs);
-const selected = installed.map.lib(cut.document);
+const selected = installed.map.doc.must(cut.document);
 continue_document({ map: installed.map, document: selected, root });
 ```
 
@@ -95,8 +101,8 @@ Continuation calls `activate_interactions`; it does not call
 ## Hosted continuation
 
 For hosted continuation, deliver the explicit `session.now({ html: "page" })`
-result and its credential separately. If a text carrier is needed, decode the
-projected state and place it back in the cut's `libs` field. Pass the cut,
+result and its credential separately. If a text carrier is needed, decode the whole hosted `now` composition, preserving `libs`, `local`,
+`initializerDigest`, and session binding together. Pass the cut,
 credential, transport, and existing root Element to `continue_hosted_document`.
 The document name is explicit in the HTML-bearing cut; a separate `document`
 name can select among multiple projected documents.
@@ -168,11 +174,15 @@ are paired by current ordered position, including when their historical DOM
 subjects were swapped. The proof does not establish historical runtime
 provenance.
 
-For corresponding input, admission writes nothing anywhere in the containing
+For corresponding identity-free input, admission writes nothing anywhere in the containing
 `Document`. It preserves the
 actual `Element` and `Text` objects, attributes, text boundaries, focus,
-selection, and browser dirty form properties. It neither mints QUIDs nor writes
-`hson:quid`. A pre-existing `hson:quid` in unbound SSR DOM rejects admission;
+selection, and browser dirty form properties on the identity-free path. That
+path neither mints QUIDs nor writes `hson:quid`. Subject-styled flat/scoped hosted
+continuation instead validates portable correspondence, issues receiver-local
+identity, writes verified QUID metadata, switches the existing managed CSS, and
+consumes portable carriers synchronously. Compatible Elements remain in place.
+A pre-existing `hson:quid` in unbound SSR DOM rejects admission;
 markup cannot claim browser runtime identity. Later local QUID demand may
 create browser-owned DOM metadata. Mirror checks the browser graph, runtime
 registry, and established local DOM QUID metadata. Arbitrary
@@ -216,6 +226,20 @@ Hosted continuation creates and returns its managed Echo replica. Ownership of
 that Echo transfers to the caller. `continuation.dispose()` releases continuation,
 Mirror, and adoption resources; `continuation.echo.dispose()` separately releases
 the replica, retained client credential, session attachment, and map management.
+
+## Scoped and flat subject correspondence
+
+Authorized hosted `session.now({ html: "page" })` carries scoped occurrence
+topology, local names, and owned CSS with the realized graph. Echo verifies this
+evidence before continuation; disposal, recovery, scope changes, and retirement
+retain their authority and lifetime fences. Disposable SSR subject labels never
+become receiving QUID claims or authored names. Authored document and occurrence
+names remain separate flat namespaces; public chained scoped `.q()` is unavailable.
+
+Public local `map.capture()`/`map.cut()` and full-authority `locus.cut()` still
+reject scoped documents. Internal portable handoff facilities are not public local
+continuation options. Standalone LiveTree raw admission and ordinary DOM graft
+do not reconstruct authored QUAD namespaces from markup.
 
 ## Boundaries
 

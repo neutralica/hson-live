@@ -27,7 +27,7 @@ The same `create` functions accept retained-session `now` state, its separate cr
 and a transport. It admits the shared authority state and authorized local
 initializers, constructs one composed client map, reattaches the session, and
 completes `current`, `replay`, or `reconcile` synchronization before resolving.
-The returned Echo exposes the endpoint capabilities plus `rev`, `lib(name)`,
+The returned Echo exposes the endpoint capabilities plus `rev`, family selectors `data`, `doc`, and `parts`,
 `cut(...)`, `commits.observe(...)`, and read-only `sync` state: `appliedRev`,
 `status`, `failure`, `strategy`, and `debug()`. `strategy`
 reports the latest completed recovery, including automatic same-attachment
@@ -143,8 +143,10 @@ is strictly re-admitted, and that transformed `HsonData` is the single value
 seen by authorization and execution. Hson Schema action validators evaluate the
 underlying exact data carrier directly.
 
-`echo.lib(name)` returns a source-discriminated handle. Check `source` for
-`"client-local"` or `"authority-projected"`, then `mode` for data or document.
+`echo.data`, `echo.doc`, and `echo.parts` select source-discriminated Library handles.
+For example, `echo.doc.must("page")` requires a document Library;
+`echo.doc("page")` permits absence. Check `source` for `"client-local"` or
+`"authority-projected"` before using ownership-specific writes.
 Reads are synchronous. Client-local data, document, CSS, and Schema writes use
 local synchronous LiveMap semantics. Projected data has no generic setter;
 application-defined Locus actions handle data changes. Supported projected

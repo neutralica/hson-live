@@ -1,3 +1,5 @@
+> Historical initial document-Mirror implementation contract. Persisted-QUID and missing-adoption/SSR statements below describe that stage. Use the [current Mirror API](../mirror/api-mirror.md), [runtime identity contract](livemap-identity.md), and [continuation](../document-continuation.md) for supported behavior.
+
 # Experimental document library → LiveTree binding
 
 ```ts

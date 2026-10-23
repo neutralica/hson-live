@@ -29,9 +29,9 @@ part of the current public surface. Use `remove()` or `detach()` for the calling
 tree, and `empty()` or `detachContents()` for its contents, according to whether
 identity is terminally retired or preserved.
 
-QUID identity follows those lifecycle boundaries. Valid supplied QUIDs remain
-cold during Transform parsing and are claimed only when a graph becomes
-actively owned. Detach and reattachment preserve the claim, cloning creates
+QUID identity follows those lifecycle boundaries. Public portable Transform and raw graph ingress reject supplied generated QUIDs.
+Authenticated same-runtime handoffs and managed DOM graft retain their distinct
+identity admission rules. Detach and reattachment preserve the claim, cloning creates
 fresh identity, and terminal removal releases it. Ordinary portable Hson output omits generated QUID metadata without
 mutating the graph or its active ownership.
 

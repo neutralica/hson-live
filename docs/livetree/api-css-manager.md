@@ -72,20 +72,24 @@ write to the backend.
 `CssValue` is:
 
 ```ts
-string | number | boolean | null | undefined | { value: string | number; unit?: string }
+string | number | null | undefined | { value: string | number; unit?: string }
 ```
 
 Rules for an individual setter call:
 
 - `null` and `undefined` mean remove.
-- Strings are trimmed.
-- Numbers and booleans are stringified.
+- CSS boundary whitespace is trimmed without discarding significant escapes, strings, comments, or Unicode separators.
+- Finite numbers are stringified; booleans and non-finite numbers reject.
 - `{ value, unit }` renders as `${value}${unit ?? ""}`.
 - Empty strings remove properties in `CssManager` QUID rules and global rules.
 
-`setMany()` has one important difference: entries whose value is `null` or
-`undefined` are skipped, not removed. Use `remove(prop)` for an explicit bulk
-update deletion.
+`setMany()` is declarative: authored `undefined` entries are omitted, while `null`
+and booleans reject before publication. Keys use the maintained CSS property
+inventory, supported camelCase/vendor aliases, or custom-property names;
+normalization collisions reject. Use `remove(prop)` or an individual
+`setProp(prop, null)` / `setProp(prop, undefined)` for imperative deletion.
+Structured map preflight validates supported branches before writes; backend
+CSS/DOM failures retain their own transaction boundaries.
 
 For portable unitless values across inline and stylesheet-backed setters, omit
 `unit`.
@@ -151,13 +155,10 @@ tree.style.clear();
 Inline style differences:
 
 - No stylesheet rule is created.
-- Pseudo blocks such as `_hover` and `__before` are ignored because inline
-  styles cannot represent pseudo selectors.
+- Pseudo and selector blocks reject before mutation because inline styles cannot represent them.
 - `style.get.*` reads inline style state, not QUID CSS, global CSS, or computed
   browser style.
-- In browser runtimes, proxy typing/key lists are based on
-  `document.documentElement.style`; in non-DOM runtimes a small fallback list is
-  used.
+- Property admission uses the maintained known-property inventory in browser and headless runtimes; it does not depend on an ambient browser style-key list. Inline storage/projection additionally obeys its bounded exact-style and declaration-order contract.
 
 ---
 
@@ -244,11 +245,11 @@ __before
 __after
 ```
 
-They render as selector siblings such as `:hover`, `:focus-visible`,
+They render as relative selectors such as `:hover`, `:focus-visible`,
 `::before`, and `::after`. For `__before` and `__after`, stylesheet-backed
-global/selector paths add `content: ""` when omitted.
+paths add `content: ""` when omitted.
 
-Pseudo blocks are not applied by `tree.style`.
+Pseudo blocks reject on `tree.style`.
 
 ---
 
@@ -283,6 +284,10 @@ tree.css.setMany({
 ---
 
 ## At-Rule Facades
+
+`setMany()` supports relative selectors and pseudos, but not structured `$media`
+groups or `"@:name"` resolution. Those root authoring forms belong to Part
+definitions. Use the explicit media facade below for LiveTree rules.
 
 QUID-scoped CSS handles support scoped facades:
 
@@ -523,8 +528,8 @@ has(name)
 get(name)
 ```
 
-Keyframes registered through this application surface are durable global
-definitions. LiveTree may also create owner-scoped keyframes internally so node
+Keyframes registered through this application surface are runtime-global
+definitions; they are not process-restart persistence identities. LiveTree may also create owner-scoped keyframes internally so node
 teardown can release them without exposing manual identity management.
 
 ---

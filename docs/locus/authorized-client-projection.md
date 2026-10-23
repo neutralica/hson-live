@@ -4,8 +4,9 @@ Locus owns current authority state containing private and shared libraries, plus
 
 ```ts
 const locus = hsonLiveMap.locus.create({
-  shared: [{ name: "page", definition: { document: "<main/>", schema: PageSchema } }],
-  private: [{ name: "credentials", definition: { data: { token: "secret" }, schema: CredentialsSchema } }],
+  page: { document: "<main/>", schema: PageSchema, access: "shared" },
+  credentials: { data: { token: "secret" }, schema: CredentialsSchema },
+}, {
   local: [{ name: "ui", initializer: { data: { open: false }, schema: UiSchema } }],
   authorizeProjection: () => ({ libraries: ["page"], writableDocuments: [] }),
 });

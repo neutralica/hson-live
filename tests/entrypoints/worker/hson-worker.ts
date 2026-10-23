@@ -39,7 +39,6 @@ Hson.document.fromHson(named);
 // @ts-expect-error The authored brand is distinct in both directions.
 const falseAuthored: HsonAuthored = document;
 void primitive; void canonicalDocument;
-
 const certifiedAuthored: HsonDocument = ANY_DOCUMENT.certify(plain);
 const partial: HsonAuthored = Hson.document`<a href="/slides/${2}" title="Slide ${2} of ${3}"/>`;
 const partialData: HsonData = Hson.data`<label "Slide ${2} of ${3}">`;

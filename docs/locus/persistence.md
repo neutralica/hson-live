@@ -2,5 +2,5 @@
 
 Use [Persistence](api-locus.md#persistence) in the maintained API reference for
 the public adapter, checkpoint, and constructor surface. The
-[Locus architecture overview](overview.md#persistent-document-hosts) explains
+[Locus architecture overview](overview.md) explains
 durability ordering and recovery boundaries.

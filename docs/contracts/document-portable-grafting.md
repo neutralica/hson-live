@@ -1,3 +1,5 @@
+> Cut 8E implementation-stage record. Its internal handoff remains distinct from public options; the final later-cut exclusions are historical. Current hosted subject correspondence, scoped composition ownership, and browser continuation are described in [continuation](../document-continuation.md) and [Parts](styled-part-composition.md).
+
 # Local portable document subject handoff (Cut 8E)
 
 This is a bounded internal connection between Cut 8D SSR and existing exact

@@ -1,7 +1,7 @@
-# Automatic Part admission and occurrence-owned CSS (Cut 9C-3)
+# Governed Parts, composition, and occurrence-owned CSS
 
 A governed Part collection is an inert object data Library. Its keyed members are
-exact `{ kind: "document", document: string, css?: string }` records with exactly
+exact `{ kind: "document", document: string, css?: CssMap, stylesheet?: string }` records with exactly
 one ordinary, non-connector element root. Admitting or editing definitions neither
 expands nested connectors nor changes documents previously constructed from them.
 
@@ -10,10 +10,14 @@ of Schema and validates every member of each complete candidate. It travels with
 portable registry/topology state and is enforced on reconstruction as well as
 mutation. A lookalike ordinary data object is not a governed collection. Collection
 admission neither registers separate member Libraries nor issues runtime identity
-for Part definitions. The marker and collection-admission helpers remain internal.
+for Part definitions. The marker and low-level collection-admission helpers remain internal. Public admission is
+`{ components: { parts: { heading: { kind: "document", document: '<h2 "%{content}"/>' } } } }`.
+`kind: "document"` is required on every member. Neither the Parts Library nor its
+members accept a supplemental `schema`, including an explicitly present undefined key.
+Select the Library through `map.parts.must("components")`, not `.data` or `.doc`.
 
 Authored Library admission (`fromLibraries`, local `addLibraries`, and initial
-Locus authority definitions) consumes `<hson-part lib="parts" at="navigation"/>`.
+Locus authority definitions and `locus.admit`) consumes `<hson-part lib="parts" at="navigation"/>`.
 The selected Part's actual root replaces the connector; there is no wrapper,
 custom element, subscription, instance object, `.template()` or `.compose()` API.
 The private structural traversal remains the construction mechanism. Native HTML
@@ -30,11 +34,99 @@ relative order of consumer and definition edits. Invalid final definitions rejec
 the entire candidate.
 
 The optional connector `@:name` becomes a receiving-document QUAD on the realized
-root. Authored Library source uses the existing QUAD scanner, diagnostics, name
-rules and receiving bindings. Ordinary Transform/HsonDocument parsing still does
-not accept QUAD declarations. Part-local QUADs remain construction addresses and
-are never implicitly registered in the receiving document. CSS can demand a root
+root. Authored Library source and `Hson.document` use the authored QUAD scanner and name
+rules. `Hson.document` returns `HsonAuthored`; ordinary Transform and canonical
+`HsonDocument` qualification do not accept those declarations. Shell declarations
+form one flat document namespace. Each realized Part occurrence retains a separate
+flat local namespace, including repeated and nested occurrences. Local names never
+become implicit shell names. Public `page.q(name)` selects shell bindings; chained
+scoped `.q()` navigation and structural slots are not implemented. CSS can demand a root
 QUID without an authored QUAD. Reads, capture and rendering allocate nothing.
+
+## Whole definitions and deferred invocation
+
+Read a detached whole definition with `parts.at(["heading"]).snap()`. Replace it
+with `.replace({ kind: "document", document, css, stylesheet })`, or admit complete
+members through collection `.object.setKey` / `.object.setMany` operations. Complete
+candidate validation also applies to staged and Locus writes. Changes never rebuild
+previously realized occurrences.
+
+`css` and `stylesheet` are protected authoring fields. Direct path access below
+`[member, "css"]` or `[member, "stylesheet"]`, object helpers targeting those fields,
+and partial member patches containing them reject. Retain/read or replace the whole
+member instead; a complete proposed definition is required to author either field.
+Ordinary lookalike data objects do not gain this protection or undefined omission.
+
+```ts
+import { Hson, hsonLiveMap } from "hson-live";
+
+const map = hsonLiveMap.fromLibraries({
+  components: { parts: {
+    heading: { kind: "document", document: '<h2 "%{content}"/>', css: { color: "navy" } },
+  } },
+});
+const invocation = map.parts.must("components").heading.write({ content: "Hello" });
+map.addLibraries({ page: { document: Hson.document`<main ${invocation}/>` } });
+```
+
+`write()` and `write(args)` return detached `HsonAuthored` connector source. They
+capture Library/member coordinates and scalar argument spellings; arguments become
+ordinary string attributes through `String(value)` (including `-0` becoming `"0"`).
+They allocate no subject
+identity, compile no occurrence CSS, and change no revision. Argument fields must
+be own enumerable data properties with finite scalar values. Reserved names such
+as `lib`, `at`, `style`, and `__proto__` reject. Missing/unused parameter validation
+is deferred until receiving admission. That receiver resolves its then-current
+matching definition, which may differ from the writer's original definition.
+The invocation is not a definition snapshot or a live binding. Staged writers have
+no `.write()`; ordinary, authoritative, and read-only whole-member handles do.
+
+## Structured declarations and textual stylesheets
+
+Import `CssMap` from `hson-live/livemap`.
+`css` accepts a structured map; use `stylesheet` for textual Part CSS. If both are
+present, textual contributions precede structured contributions in the merged
+occurrence stylesheet.
+
+```ts
+import type { CssMap } from "hson-live/livemap";
+
+const css: CssMap = {
+  color: "navy",                         // occurrence root
+  borderRadius: { value: 50, unit: "%" },
+  "& a, & button": { _hover: { opacity: 0.8 } },
+  "@:current": { fontWeight: "bold" },  // this Part's own authored QUAD
+  $media: {
+    "(max-width: 480px)": { gap: "0.5rem", "@:current": { fontSize: ".85rem" } },
+  },
+};
+```
+
+Every selector-list arm starts with `&`; bare nested selector keys and `@media`
+keys reject. Supported pseudos are `_hover`, `_active`, `_focus`, `_focusWithin`,
+`_focusVisible`, `_visited`, `_checked`, `_disabled`, `__before`, and `__after`.
+Before/after shorthand adds `content: ""` if absent. `"@:name"` resolves only an
+existing name declared in this Part, never a nested Part's namespace. It is allowed
+at the root and inside a root `$media` group's body, not beneath a selector, pseudo,
+or another local target. `$media` itself is root-only.
+
+Properties use the maintained known-property inventory, native names, camelCase,
+`cssFloat`, supported vendor aliases, or custom-property names. Normalization
+collisions reject. Values are strings, finite numbers, or `{ value, unit? }` with
+supported units. Declarative null and booleans reject. Authored `undefined` entries
+are omitted, including nested entries and `unit: undefined`, before canonical data
+admission; they do not delete retained declarations. CSS-significant Unicode
+whitespace, escapes, strings, and token boundaries survive projection. Own-data
+inspection rejects accessors, symbols, cycles, and unsupported prototypes.
+
+Grammar, selector/media syntax, local targets, and complete stylesheet compilation
+validate atomically with the whole candidate, before runtime identity issuance or
+publication. Structured source is then governed by the same occurrence CSS and
+retirement machinery as textual `stylesheet`. LiveTree `setMany()` supports a
+narrower relative declaration grammar: it has no `$media` groups or local QUAD
+resolution. Use its `.media(...)` facade for media rules. Imperative property
+removal and inline style storage have separate contracts in the
+[LiveTree CSS reference](../livetree/api-css-manager.md).
 
 ## Parameters
 
@@ -48,7 +140,9 @@ expressions, recursive configuration objects or ongoing bindings.
 
 Placeholders occur only in decoded document text and ordinary attribute values,
 including values forwarded to nested connectors. An attribute consisting entirely
-of `%{name}` preserves its scalar type. Partial attributes and all document text
+of `%{name}` preserves the admitted connector scalar type. Authored string
+connectors and `write()` supply string-valued attributes; programmatic receiving
+graph content can retain supported typed primitive attributes. Partial attributes and all document text
 become strings using the scalar's ordinary string spelling (`null`, `true`, etc.).
 Canonical document text is STR-only; it cannot contain a typed VAL leaf. A
 replacement value is never scanned again for placeholders and is never parsed as
@@ -188,28 +282,36 @@ inserted/replaced content, rather than recomposing the retained document.
 
 ## Transport and support boundaries
 
-Canonical restore, replay, capture, cut, rendering and graft never expand Parts.
-Residual connectors at canonical document ingress reject. Full snapshots and
-semantic checkpoints carry realized graph, owned CSS and portable correspondence;
-receivers allocate fresh identities. Final-only cuts need no Part collection.
-The local SSR bootstrap encoder currently rejects transfers that select a governed
-Part collection; exclude source collections from that transfer.
-SSR emits disposable carriers and CSS for the same subjects; synchronous graft
-switches CSS after receiving metadata is written, before carriers are consumed.
-Nonempty CSS rendering retains the existing explicit `html`/`head` requirement.
+Canonical restore, replay, rendering, and continuation consume realized state;
+they never expand Parts. Residual connectors at canonical document ingress reject.
+Coordinated hosted snapshots and semantic checkpoints carry realized graph,
+occurrence topology, flat local namespaces, owned CSS, and portable subject
+correspondence. Receivers issue fresh runtime identities; source collections are
+not needed to render or continue the final document.
 
-Authorized private definitions may be instantiated into initially shared markup
-and CSS. Projection shares only those realized values, never unvisited definitions
-or private source data. Receiving clients do not re-expand them. Public local
-mutation gates, projected-document authority, private/shared/local policies and
-incomplete-identity guards remain in force. Hosted incremental subject CSS,
-including occurrence topology/mutation and durable incremental encoding, remains
-unsupported and fails closed. Authored hosted topology definitions expand under the existing managed owner gate;
-identity-free Parts are supported there. Styled additions reject before identity
-allocation under the subject-CSS boundary. Receiving topology replay/projection
-admits only the realized canonical operation and never re-expands it. Local initializers retain their
-existing subject-correspondence limitation. Full authority snapshots/checkpoints
-remain the supported transport for realized subject CSS.
+Document `render()` supports scoped first paint. Nonempty managed CSS retains the
+explicit `html`/`head` requirement. Authorized `session.now({ html: "page" })`, SSR
+bootstrap encoding, Echo initial admission/replay/reconcile, durable checkpoints
+and tails, and hosted continuation support scoped Part documents. Continuation
+validates original carriers, establishes receiver-owned correspondence, switches
+CSS synchronously, and consumes disposable markers while retaining compatible
+Elements. See [document continuation](../document-continuation.md).
+
+Public local `map.capture()` / `map.cut()` and full-authority `locus.cut()` still
+reject scoped documents. This is an implemented local-transfer limitation, not a
+restriction on authorized hosted delivery. The local SSR text encoder also rejects
+selected governed Parts collections; exclude source collections from flat local
+transfers. Client-local initializer envelopes retain their subject-correspondence
+limitation. Ordinary standalone LiveTree admission and DOM graft do not reconstruct
+authored QUAD namespaces.
+
+Private definitions may be realized into shared markup and CSS. Projection shares
+those realized values, not private definitions or unvisited source. Public mutation
+gates, hosted document authorization, and complete-candidate identity guards still
+apply. Hosted flat/scoped effects use authenticated correspondence and ordered
+replay; arbitrary generated QUID claims remain forbidden. Repeated occurrences
+are independent, nonreactive realizations, with their own identity lifetimes and
+CSS owners.
 
 Permanent acceptance covers Node and actual Worker construction/mutation, scalar
 parameters, inert definitions, coherent batches, ownership retirement, local CSS

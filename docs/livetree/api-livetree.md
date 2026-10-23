@@ -4,8 +4,8 @@
 Updated: 2026-07-13
 
 This is the current public LiveTree-facing reference. For the architecture and
-behavioral model, see `hson-livetree.md`. For stylesheet details, see
-`api-css-manager.md`.
+behavioral model, see [LiveTree](../hson-livetree.md). For stylesheet details, see
+[CSS APIs](api-css-manager.md).
 
 LiveTree is independently usable. Its constructors create or graft a LiveTree
 directly; LiveMap, Mirror, Locus, and LiveHost are optional integrations, not
@@ -626,7 +626,9 @@ tree.attrs.replace(values)
 
 LiveTree attributes use the same canonical graph value domain as
 Document LiveMap: finite Hson primitives (`string`, `boolean`, `number`, and
-`null`) plus canonical structured `CssMap` for `style`. `attrs.get()` returns
+`null`) plus canonical structured inline-style storage for `style`. This flat storage
+is distinct from the nested Part `CssMap` authoring grammar; selector/pseudo/media
+branches are not inline attribute values. `attrs.get()` returns
 `undefined` only for absence. The values `false`, `0`, `null`, and `""` remain
 present and are returned without truthiness coercion. `attrs.must.get()` throws
 the structured `LiveTreeAttributeError` code `LIVETREE_ATTRIBUTE_NOT_FOUND`
@@ -777,10 +779,10 @@ tree.css.anim.resume()
 
 Bindings read the current data or document LiveMap passive location
 immediately, subscribe to later changes, and return a disposer function.
-`map.at(path)` is the source endpoint:
+`library.at(path)` is the source endpoint after family selection:
 
 ```ts
-const dispose = tree.bind.text(map.at(["profile", "name"]));
+const dispose = tree.bind.text(map.data.must("state").at(["profile", "name"]));
 dispose();
 ```
 
@@ -807,7 +809,7 @@ tree.bind.cssPaths(locations, (values, previous) => cssMap)
 ```
 
 Each source is a genuine passive location returned by data or document
-`map.at(path)` (including the identical location returned through a proxy
+`library.at(path)` (including the identical location returned through a proxy
 `$_` escape). Multi-source methods preserve heterogeneous tuple positions and
 may combine locations from different maps. Raw callbacks receive the source's
 exact detached value domain. Document locations therefore yield

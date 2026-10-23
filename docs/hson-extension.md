@@ -14,6 +14,17 @@ The exact code is required, with no trailing explanation. The comment targets th
 
 Schema authoring is centered on a direct, substitution-free `Hson.schema` declaration. The packaged `hson-schema` tool keeps private compiler evidence in the current `.hson/` project; the extension uses an equivalent in-memory view for unsaved text. Application code uses `HsonFromSchema<typeof Schema>` for canonical strings proven against either Schema family, and `JsonFromSchema<typeof DataSchema>` for a data Schema's readonly JS/JSON-shaped value projection. The lower-level `HsonData<S>` and `HsonDocument<S>` remain available. Direct authored assignments are validated by the Schema analyzer.
 
-Schema-aware diagnostics, completion, definitions, references, rename, and hover use the shared Schema compiler and local source facts. Schema Watch and Check call the workspace's installed `hson-schema` executable; they do not execute application code in the extension host. Dynamic certification is `schema.certify(candidate)`. A LiveMap library may establish its governing Schema at construction or tighten a family-top contract with a direct `map.lib("name").schema.use(Schema)` statement. The shared compiler/editor view inserts a type-only flow proof after supported direct calls, so subsequent getter, path, endpoint, and mutation types update immediately without changing emitted JavaScript.
+Schema-aware diagnostics, completion, definitions, references, rename, and hover use the shared Schema compiler and local source facts. Schema Watch and Check call the workspace's installed `hson-schema` executable; they do not execute application code in the extension host. Dynamic certification is `schema.certify(candidate)`. A LiveMap library may establish its governing Schema at construction or tighten a family-top contract with a direct `map.data.must("name").schema.use(Schema)` or `map.doc.must("name").schema.use(Schema)` statement. The shared compiler/editor view inserts a type-only flow proof after supported direct calls, so subsequent getter, path, endpoint, and mutation types update immediately without changing emitted JavaScript.
+
+Part authoring uses compiler-owned static source facts from supported official
+`fromLibraries`, Locus `create`/`resume`/`admit`, and local `addLibraries` calls.
+Contextual completion suggests collection/member coordinates, connector argument
+names, and `%{name}` spellings using the production grammar's source ranges.
+Suggestions from imported/aliased inventories can be possible rather than certain.
+Static reference diagnostics require a sufficiently complete, eligible receiving
+candidate; unknown or dynamic inventories are not treated as missing definitions.
+These tools neither execute application code nor prove future runtime registry
+membership. See the [Part contract](contracts/styled-part-composition.md) for the
+actual receiving grammar, deferred invocation, and namespace rules.
 
 See the [extension README](../editors/vscode-hson/README.md) for commands and setup, and the [Schema contract](contracts/hson-schema-mvp.md) for authoring and proof.

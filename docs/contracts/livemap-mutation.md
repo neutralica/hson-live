@@ -3,7 +3,11 @@
 # LiveMap Mutation Contract
 ## Status
 This document defines the normative mutation semantics of LiveMap.
-It describes data state mutation through LiveMap. It does not define arbitrary physical Hson graph surgery.
+It describes selected-Library mutation in one registry, not arbitrary physical graph surgery.
+Method notation below is Library-relative: use `map.data.must(name).at(path)` for
+endpoint writes, `.object` / `.array` for shape commands, `map.batch(writer => ...)`
+for an atomic local group, and Locus `stage` / action `ctx.stage` for authority.
+Conceptual operations are not map-root convenience APIs.
 ## Concepts
 LiveMap exposes data JSON-like state backed by an Hson graph.
 A data mutation:
@@ -54,31 +58,31 @@ A path identifies a data location, not a persistent identity.
 Paths are arrays of valid path segments. String path syntaxes are not canonical mutation inputs.
 The empty path `[]` identifies the data root.
 ## `set`
-`set(path, value)` performs constructive assignment.
+`library.at(path).set(value)` performs constructive assignment.
 For primitive and array endpoints, `set` ordinarily assigns the supplied value at the path.
 For object values, `set` may construct or update child state rather than requiring exact endpoint replacement.
 Callers must not assume that an object-valued `set` always produces one public operation.
 Use `replace` when exact endpoint replacement is required.
 ## `setMany`
-`setMany(path, values)` performs explicit child assignments beneath a path.
+`library.at(path).object.setMany(values)` performs explicit child assignments beneath a path.
 Its meaning is equivalent to a batch of deliberate child writes.
 It is not an alias for exact object replacement.
 ## `replace`
-`replace(path, value)` performs exact assignment at the endpoint.
+`library.at(path).replace(value)` performs exact assignment at the endpoint.
 The previous endpoint value is replaced by the supplied value.
-`replace([], value)` replaces the data root.
+`library.at([]).replace(value)` replaces the data root.
 Use `replace` when the complete endpoint value is authoritative.
 ## `delete`
-`delete(path)` removes the data value at the path.
+`library.at(path).delete()` removes a non-root data value at the path.
 A committed delete operation records:
 - `kind: "delete"`
 - `path`
 - `prev`
 - `next: undefined`
 Deleting a value that does not produce a state change must result in a no-op commit.
-The root deletion policy must remain explicit in implementation and tests. It must not be inferred from non-root delete behavior.
+Root deletion rejects rather than removing a Library; public Library removal is unsupported.
 ## `splice`
-`splice(path, start, deleteCount, ...items)` performs a semantic array splice.
+`library.at(path).array.splice(start, deleteCount, ...items)` performs a semantic array splice.
 A committed splice operation records:
 - `kind: "splice"`
 - `path`
@@ -108,15 +112,13 @@ A batch:
 A failure in any operation invalidates the entire batch.
 No earlier operation in the batch may remain applied after a later failure.
 ## Commits
-A `LiveMapCommit` has the form:
-```ts
-type LiveMapCommit = Readonly<{
-  changed: boolean;
-  prevRev: number;
-  rev: number;
-  ops: readonly LiveMapOp[];
-}>;
-```
+The public aggregate `LiveMapCommit` has `kind: "map"`, `changed`, `prevRev`,
+`rev`, and one ordered `operations` array. Ordinary entries are
+`{ library, operation }`; topology `library-add` and `library-schema-use` entries
+have their own tagged shapes. It is not the internal core `{ ops }` envelope.
+Local admission returns `{ commit, libraries }`, not a bare commit. See the
+[API reference](../livemap/api-livemap.md#local-runtime-admission).
+
 A changed commit:
 
 * has changed === true;
@@ -155,26 +157,15 @@ The following do not consume a revision:
 
 A multi-operation batch or replay advances the revision once.
 
-capture
+## Capture
 
-capture() returns detached data state, exact structural transport, and the
-revision at which it was observed.
-
-type LiveMapCapture = Readonly<{
-  rev: number;
-  root: HsonNode;
-  format: "structural-json";
-  payload: string;
-}>;
-
-A capture must remain stable after later map mutations.
-
-`payload` is the exact ordered representation and preserves `-0`. `root`
-preserves the detached canonical graph. Malformed current transport, a
-unexpected envelope field, or incomplete capture rejects; there is no
-compatibility fallback.
-
-A capture is observed state. It is not itself a mutation request.
+`map.capture()` returns a detached `LiveMapSnapshot`: the ordered registry,
+Schema sources/digests, encoded Library roots, document CSS, and a global revision.
+It omits generated QUIDs, epochs, and issued ledgers. Public local capture/cut
+currently reject scoped Part documents; coordinated hosted snapshots and durable
+checkpoints carry those documents through their own admission path. Internal
+single-Library structural payloads are not the public registry snapshot format.
+See [capture and replay](../livemap/capture-replay.md).
 
 ## Canonical document operations
 
@@ -277,28 +268,18 @@ structurally equal explicit replacement. Descendant leaf mutation does not
 retire an identified ancestor container. These are metadata/path effects only;
 ordinary mutation never allocates a QUID.
 
-apply
+## Conditional application and replay
 
-apply({ prevRev, value }) conditionally replaces the data root.
+There is no public registry `apply({ prevRev, value })` convenience method. Use
+selected endpoint replacement or `map.batch` for local writes. Locus admissions
+and stages enter the authority queue; clients use configured actions or supported
+governed document operations. Internal core conditional application does not add
+a public mutation surface.
 
-The operation succeeds only when:
-
-prevRev === map.rev
-
-A successful changed apply:
-
-* performs a root replace;
-* passes through schema and editor preflight;
-* produces one commit;
-* advances the revision once.
-
-An unchanged apply returns a no-op commit.
-
-A stale apply throws LiveMapRevError.
-
-replay
-
-replay({ prevRev, ops }) applies semantic operation records conditionally.
+`map.replay(commit)` consumes a complete public aggregate commit at its recorded
+base revision, with ordered named operations. The internal `{ prevRev, ops }`
+form is not that public API. Public topology replay on Echo-composed maps is
+fenced; Echo uses its managed replay path.
 
 Replay validation occurs in this order:
 
@@ -369,8 +350,8 @@ Schema concerns shape and validity. It does not redefine mutation semantics.
 
 Schema validates the same admitted data value domain. Optional means a
 property may be missing; a present `undefined` value is invalid. Schema literals
-are detached at definition and compared with ordered SameValue equality. Custom
-refinements intentionally execute on fresh detached public materializations.
+are detached at definition and compared with ordered SameValue equality. Declarative refinements run in the canonical evaluator; executable callback
+constraints are not part of the current public Hson Schema language.
 
 Feed behavior
 

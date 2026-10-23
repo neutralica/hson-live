@@ -2,11 +2,15 @@
 
 ## Local rendering
 
-A document handle renders its own state with `map.lib("page").render()` and
+A document handle renders its own state with `map.doc.must("page").render()` and
 returns `BrowserRealizationHtml`. It reads only that document and its CSS, preserves
 fragments and authored document shells, and performs browser-parser checks.
 
-For transferable local state, use a coherent selection:
+Direct rendering supports scoped Part documents too. Public local `capture()`/`cut()`
+and full-authority `locus.cut()` currently reject scoped documents; their supported
+public transfer/continuation path is authorized hosted `session.now()`.
+
+For transferable flat local state, use a coherent selection:
 
 ```ts
 const stateOnly = map.cut();
@@ -26,7 +30,9 @@ The selected registry is self-contained, including Schemas, digests, portable
 roots, CSS, and the source revision. Canonical interactions follow the selected
 documents automatically, preserving enabled-empty storage without synthesizing
 absent storage. `install_libraries_snapshot(libs)` reconstructs a fresh local map.
-Local transfer uses `hson-ssr-bootstrap` with kind `libraries`. Snapshot root
+Local transfer uses `hson-ssr-bootstrap` with kind `libraries`. The `data` axis
+also selects governed Parts collections; the local text encoder rejects those
+collections, so exclude source collections explicitly when encoding a flat cut. Snapshot root
 consumers use the aggregate 64 MiB bound, with unchanged depth and node limits.
 
 ## Hosted session current state

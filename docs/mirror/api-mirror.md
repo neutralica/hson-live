@@ -41,7 +41,7 @@ The `.collection(...)` member accepts a keyed array projection configuration.
 const PageSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
 const map = hson.liveMap.fromLibraries({ page: { document: `<main <p "hello"/>/>`, schema: PageSchema } });
 {
-  const reflected = hson.mirror(map.lib("page"));
+  const reflected = hson.mirror(map.doc.must("page"));
   reflected.tree;           // LiveTree projection
   reflected.status;         // "active"
   reflected.sourceRevision; // map revision already applied
@@ -56,7 +56,7 @@ fresh LiveTree projection, establishes path/QUID correspondence, registers its
 identity participant, then subscribes to LiveMap commit observations. If the
 map changes during that initialization window, construction fails instead of
 publishing a binding that skipped a revision. Only one active document Mirror
-may own a given exact map object.
+may own a given selected document Library.
 
 The returned object has live getters:
 
@@ -160,9 +160,10 @@ enqueueing:
 
 The first AsyncLiveTree surface also includes `flags.set/clear`, `id.set/clear`,
 `classlist.set/add/remove/toggle/clear`, and `form.setValue/setChecked`.
-`text.overwrite`, `form.setSelected`, arbitrary append/create/reparent/detach,
-style/data/SVG/canvas convenience parity, reads, DOM/runtime capabilities, and
-application/domain actions are intentionally absent.
+The async facade also exposes governed document-global CSS through
+`tree.async.css.global`. `text.overwrite`, `form.setSelected`, arbitrary
+append/create/reparent/detach, inline-style/data/SVG/canvas convenience parity,
+reads, DOM/runtime capabilities, and application/domain actions remain absent.
 
 Direct structural LiveTree operations that cannot be expressed as one
 supported canonical map operation are rejected with
@@ -231,7 +232,7 @@ known-limitations contract, see
 
 Current Mirror provides no:
 
-- adoption or hydration of existing DOM;
+- an existing-DOM option on direct `reflect_document`; use `continue_document` or `continue_hosted_document` for exact adoption;
 - arbitrary DOM observation or DOM-to-Hson diffing;
 - DOM-as-authority mode;
 - separate shape-specific document reflectors;

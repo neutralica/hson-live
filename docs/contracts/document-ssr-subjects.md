@@ -1,3 +1,5 @@
+> Cut 8D implementation-stage record. The final graft/hosted exclusions below describe that cut, not current capability. Coordinated hosted flat/scoped subject SSR and continuation are implemented; see [continuation](../document-continuation.md) and [Parts](styled-part-composition.md). The internal opt-in APIs below remain internal.
+
 # Internal portable subject SSR
 
 Cut 8D is an opt-in, internal SSR realization mode. It connects Cut 8B's portable

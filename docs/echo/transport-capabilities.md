@@ -131,5 +131,7 @@ this boundary, but no HTTP/3 runtime or QUIC migration is implemented or
 tested. Echo does not add datagrams or unordered traffic.
 
 An application may separately serve streamed HTML or another open HTTP
-representation without JavaScript Echo or NDJSON. No-JavaScript continuation
-and Scout are separate work. Scout remains deferred.
+representation without JavaScript Echo or NDJSON. Canonical interactions do not infer no-JavaScript behavior.
+[Scout](../document-continuation.md#scout-optional-declarative-browser-ignition) is
+implemented as optional JavaScript ignition for the ordinary hosted continuation;
+without JavaScript its declaration remains inert.

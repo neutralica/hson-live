@@ -51,6 +51,10 @@ a present child must be exactly one of `_hson_obj`, `_hson_elem`, `_hson_arr`,
 validating Hson source, but public `fromHson().toNode()` returns the root's one
 semantic child. It removes no further structural node.
 
+Document Libraries have a separately owned `_hson_root` context with zero, one,
+or many ordered document items. That runtime owner is not the generic parser
+source carrier or a portable complete Transform value.
+
 The root remains significant to canonical equality and to generic graph
 validation. It is not equality-transparent and is not a semantic value. Every
 root, empty or populated, rejects at the Hson serializer boundary. Internal
@@ -65,8 +69,9 @@ property tags must be unique, must not carry attributes, and cannot be a direct
 `_hson_elem` child. Every ordinary property must remain recursively
 object-structured through its established scalar, nested-object, or array
 value relationship; an empty element-shaped property is not an empty object.
-Object property order has no JSON semantic meaning and the JSON serializer
-canonicalizes it.
+Canonical object-member order is semantic Hson identity. JSON text serialization
+preserves that order, including integer-like names; ordinary JavaScript
+materialization can reorder integer-index keys.
 
 ### `_hson_elem`
 
@@ -181,14 +186,14 @@ one source format are too strong.
 ## Identity
 
 A QUID is optional live identity used by LiveTree for DOM lookup, managed CSS,
-and handle continuity. Supplied identity is preserved; absent identity is
-assigned lazily where live behavior needs it.
+and handle continuity. Internally authenticated same-runtime ownership can preserve identity; absent
+identity is assigned where live behavior needs it. Public portable admission
+rejects all supplied generated-QUID claims before establishing a runtime.
 QUIDs are not a universal transform round-trip guarantee:
 
-- valid QUIDs already present on a local graph are preserved in cold canonical
-  graphs after syntax, eligibility, and placement validation;
-- duplicate valid values may remain cold, while active LiveTree admission
-  claims identity and enforces uniqueness atomically;
+- public Hson, JSON, Binary, HTML, and raw graph admission reject generated-QUID claims;
+- authenticated internal runtime handoffs and managed DOM graft use their own
+  identity admission and uniqueness rules;
 - detach, movement, and reattachment preserve QUID identity;
 - cloned LiveTree branches receive fresh QUIDs;
 - terminal destruction releases active QUID ownership;

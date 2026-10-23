@@ -59,22 +59,23 @@ transports retain their existing capacity limits.
 
 ## Hson authoring and semantic strings
 
-`Hson` is a frozen namespace with four member tags. Each tag admits the complete source in its semantic context and returns a primitive string, except Schema authoring, which returns an immutable Schema object.
+`Hson` is a frozen namespace with four member tags. Canonical and Data return canonical primitive strings; Document returns authored `HsonAuthored` source for governed admission, including authored QUAD declarations. Schema returns an immutable Schema object. Authored source is not itself canonical Document proof or runtime identity authority.
 
 ```ts
-import { Hson, type HsonCanonical, type HsonData, type HsonDocument } from "hson-live/hson";
+import { Hson, type HsonAuthored, type HsonCanonical, type HsonData, type HsonDocument } from "hson-live/hson";
 
 const canonical: HsonCanonical = Hson.canonical`<main/>`;
 const data: HsonData = Hson.data`<count -0>`;
-const document: HsonDocument = Hson.document`<main/><aside/>`;
+const authored: HsonAuthored = Hson.document`<main/><aside/>`;
+const document: HsonDocument = Hson.document.fromHson(Hson.canonical`<main/><aside/>`);
 const schema = Hson.schema`<type "data" content <count "number">>`;
 ```
 
-`Hson.canonical` leaves data/document classification open. `Hson.data` parses in data context; `Hson.document` parses nonempty source in document context and returns at least one content item. Their contextual qualification can accept or reject the same canonical value. All three values are primitive strings; ordinary string operations return plain `string` and lose their brands. Bare `Hson\`...\`` is not supported.
+`Hson.canonical` leaves data/document classification open. `Hson.data` parses in data context; `Hson.document` parses nonempty authored document source and retains declarations/connectors for later governed admission. `Hson.document.fromHson` and `.fromNode` qualify canonical `HsonDocument` values separately. All returned text values are primitive strings; ordinary string operations return plain `string` and lose their brands. Bare `Hson\`...\`` is not supported.
 
 Canonical, Data, and Document use one syntax-driven interpolation engine. Unquoted `${value}` independently admits Hson structure/value: a runtime string is complete Hson source, while finite numbers, booleans, and null supply typed primitive nodes. Canonical retains generic roots; Data and Document apply their contextual admission rules. A string's TypeScript brand does not change its meaning. Empty or trivia-only unquoted source rejects.
 
-A whole quoted slot `"${value}"` constructs string content directly. Strings preserve their exact contents; finite numbers, booleans, and null use their canonical Hson textual spelling, including `-0` → `"-0"`. Hson-looking quoted text stays text. Partial or multiple slots within one quoted string remain unsupported.
+A whole quoted slot `"${value}"` constructs string content directly. Strings preserve their exact contents; finite numbers, booleans, and null use their canonical Hson textual spelling, including `-0` → `"-0"`. Hson-looking quoted text stays text. Quoted strings and attribute values also support static prefixes/suffixes and multiple scalar slots, such as `href="/slides/${2}"`. Inserted values remain decoded string data and cannot escape into markup or Hson syntax. Quoted undefined and structural values reject.
 
 Interpolation boundaries are semantic boundaries and never fuse into surrounding lexical tokens. `${1}${2}`, `${1}e${2}`, and `${1}.${2}` reject rather than manufacturing numeric tokens; `«${1}, ${2}»` contains two values. Grammar-valid adjacent element/string nodes remain valid. Deliberate source synthesis is available through ordinary JavaScript first: `` const source = `${1}e${2}` `` produces one source candidate `"1e2"`, which `` Hson.canonical`${source}` `` parses as numeric `100`. Schema tags remain substitution-free so generated proof can be checked statically.
 
@@ -90,14 +91,21 @@ const view = Hson.data.materialize(authored); // detached ordinary JS
 const readBack = Hson.data.fromHson(authored);
 ```
 
-`Hson.data.from` safely reads own descriptors and rejects accessors, cycles, unsupported values, and sparse arrays. Materialization is a convenience view; JavaScript object enumeration can reorder integer-like names, while the canonical string retains their authored order. Data LiveMaps expose `map.data(path?)` and `map.at(path).data()` for exact reads.
+`Hson.data.from` safely reads own descriptors and rejects accessors, cycles, unsupported values, and sparse arrays. Materialization is a convenience view; JavaScript object enumeration can reorder integer-like names, while the canonical string retains their authored order. Selected data Libraries expose `map.data.must("state").data(path?)` and their `.at(path).data()` for exact reads. Library `data` ingress accepts JSON values/source text, so a canonical Hson data string must be explicitly materialized or converted to JSON before that ingress.
 
-### Document
+### Authored source and canonical Document
+
+`HsonAuthored` retains authored `@:name` declarations and `<hson-part>` invocations
+for Document Library admission. A Library realizes them into canonical state and
+separate namespace/occurrence evidence. `Hson.document.toNode` expects a canonical
+`HsonDocument`; it is not an authored-namespace reconstruction API. Canonical
+Transform parsing and standalone LiveTree construction do not establish QUAD
+namespaces. See the [Part contract](../contracts/styled-part-composition.md).
 
 `HsonDocument` is a normalized primitive string for an exact notation-closed document. Data/document `fromHson` admission accepts presentation-equivalent valid Hson and returns normalized output without a source-byte equality gate. It supports text-only, single-root, and multi-root documents, each containing at least one item. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing. Document admission also requires `<style/>` or one nonempty style string leaf, and permits `<script>` only with `src` and no content. LiveMap document imports and mutations enforce these special-element rules while retaining empty runtime owners.
 
 ```ts
-const document = Hson.document`<main/><aside/>`;
+const document = Hson.document.fromHson(Hson.canonical`<main/><aside/>`);
 const detachedRoot = Hson.document.toNode(document);
 const roundTrip = Hson.document.fromHson(document);
 console.log(roundTrip === document); // true
@@ -350,7 +358,7 @@ renderer.
 
 Selects JSON output.
 
-- `serialize()` returns a JSON string with key order canonicalized
+- `serialize()` returns JSON text preserving canonical graph member order and signed zero
 - `value()` returns an in-memory `JsonValue` directly
 
 The raw in-memory HsonNode type uses reserved `$_` keys for structure and may

@@ -1,3 +1,5 @@
+> Implementation-stage audit and runtime-scoping record. The pre-edit tables and deferred-phase decisions below are historical evidence. Current public construction supports `{ isolated: true }`; portable graph admission rejects generated QUID claims. Use the [LiveTree API](livetree/api-livetree.md) and [CSS reference](livetree/api-css-manager.md) for current boundaries.
+
 # LiveTree runtime scope
 
 This document records the verified pre-edit implementation map for the first

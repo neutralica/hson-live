@@ -117,12 +117,21 @@ exposes mutable records or source values.
 
 ## Example
 
+The following illustrates independently verified runtime behavior, but is not a
+successfully typechecked public TypeScript example. `Reflect.collection` (exposed
+as `hson.mirror.collection`) requires `CollectionMirrorOptions.source` to be a
+legacy `LiveMapPathHandle<readonly TItem[]>`, whose contract includes `linkTo`.
+Current selected Library handles, including `state.at(["items"])`, do not expose
+that method. The `source` and `replaceSource` arguments below therefore have a
+known public type incompatibility; the runtime behavior does not establish
+TypeScript compatibility.
+
 ```ts
-const schema = Hson.schema`<type "data" content <items <array <id "string" label "string">>>>`;
+const schema = Hson.schema`<type "data" content <items <array <content <id "string" label "string">>>>>`;
 const map = hson.liveMap.fromLibraries({
   state: { data: { items: [{ id: "a", label: "Alpha" }] }, schema },
 });
-const state = map.lib("state");
+const state = map.data.must("state");
 
 const host = hson.liveTree.queryDom("#items").graft();
 
@@ -144,11 +153,16 @@ const reflector = hson.mirror.collection({
 });
 
 // Later, including after a Locus snapshot installs a fresh mirror:
-reflector.replaceSource(nextMirror.lib("state").at(["items"]));
+reflector.replaceSource(nextMirror.data.must("state").at(["items"]));
 reflector.dispose();
 ```
 
 ## Known limitations
+
+The confirmed `Reflect.collection`/Library-handle type incompatibility described
+above remains a candidate for the subsequent bugfix sweep. This documentation
+correction does not repair the production declarations or runtime, and no
+cast-free, typechecked replacement spelling is established here.
 
 Collection Mirror supports keyed array collections only, requires a dedicated
 empty host, uses synchronous render/update hooks, and has no stable LiveMap value-node

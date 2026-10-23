@@ -1,3 +1,5 @@
+> Historical development changelog for the first composition cut. Its private configuration and flat-namespace limits are historical; current governed member grammar, deferred `write()`, occurrence namespaces, CSS, and support boundaries are in the [Part contract](../contracts/styled-part-composition.md).
+
 ## Hson — Templating, Parts, CSS, and QUADs v0.1
 **Development changelog | October 2026**
 

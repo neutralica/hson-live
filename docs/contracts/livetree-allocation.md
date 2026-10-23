@@ -1,3 +1,5 @@
+> Historical Patch 4 allocation measurements. Current lazy CSS identity and runtime ownership are described in the [CSS API](../livetree/api-css-manager.md); the benchmark results below describe their measured revision.
+
 # LiveTree allocation contract
 
 LiveTree 3.0 Patch 4 changes construction strategy without changing public or

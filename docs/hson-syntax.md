@@ -66,13 +66,13 @@ The `_hson_` prefix is reserved for structural nodes and cannot be authored as a
 
 ## Primitive content
 
-Double-quoted values are strings. Unquoted `true`, `false`, and `null` are typed primitives. Numeric forms accept a sign, integers or decimals, and an optional exponent:
+Double-quoted values are strings. Unquoted `true`, `false`, and `null` are typed primitives. Numeric forms follow JSON number syntax: an optional minus, an integer part, optional fraction, and optional exponent. Leading plus and leading-dot forms reject; exponent plus is supported:
 
 ```hson
 <title "On Trees"/>
 <count 42>
 <ratio -0.25>
-<distance +1.2e3>
+<distance 1.2e+3>
 <enabled true>
 <missing null>
 ```
@@ -135,9 +135,9 @@ Internally, strings become `_hson_str`; non-string primitives become `_hson_val`
 
 Authored ordinary quoted strings may span physical source lines; escapes such as `\n` also create semantic newline code units. A whole quoted interpolation such as `<style "${cssText}"/>` inserts one runtime primitive string directly, so multiline CSS does not need multiline Hson literal syntax. HsonDocument admits `<style/>` or exactly one nonempty string leaf, and `<script src="..."/>` with no content. These are document admission rules, not general parser grammar.
 
-Canonical, Data, and Document share syntax-driven interpolation. Unquoted `${value}` independently admits Hson structure/value at a legal grammatical position. A runtime string is complete Hson source: `<p/>` supplies an element, `'"hello"'` supplies a STR, and bare `hello`, empty source, or trivia-only source rejects. Finite numbers, booleans, and null supply typed primitives in canonical/data value positions; Document rejects those VAL candidates. Object-member values and array items require exactly one data value; document and generic ordered element content may contain adjacent strings/elements. Slots never spread object members or array items.
+`Hson.document` produces `HsonAuthored` source, retaining authored QUAD declarations and Part connectors for governed admission. Canonical `HsonDocument` is a separate qualified representation obtained through `Hson.document.fromHson` / `.fromNode` or Schema certification. Canonical, Data, and Document share syntax-driven interpolation. Unquoted `${value}` independently admits Hson structure/value at a legal grammatical position. A runtime string is complete Hson source: `<p/>` supplies an element, `'"hello"'` supplies a STR, and bare `hello`, empty source, or trivia-only source rejects. Finite numbers, booleans, and null supply typed primitives in canonical/data value positions; Document rejects those VAL candidates. Object-member values and array items require exactly one data value; document and generic ordered element content may contain adjacent strings/elements. Slots never spread object members or array items.
 
-Whole quoted `"${value}"` constructs one string directly: strings retain their contents, and finite numbers, booleans, and null use canonical Hson textual spelling (`1`, `-0`, `true`, `false`, `null`). Hson-looking text remains text. Dynamic attribute values require quotation, such as `class="${name}"`. Prefixes, suffixes, and multiple slots inside one quoted string remain unsupported.
+Whole quoted `"${value}"` constructs one string directly: strings retain their contents, and finite numbers, booleans, and null use canonical Hson textual spelling (`1`, `-0`, `true`, `false`, `null`). Hson-looking text remains text. Dynamic attribute values require quotation, such as `class="${name}"`. Static prefixes/suffixes and multiple scalar slots inside one quoted string or attribute are supported, for example `href="/slides/${2}"` and `"pre${true}${null}${-0}post"`. Interpolated strings stay decoded text; they never become markup or Hson tokens.
 
 Interpolation boundaries cannot combine into lexical tokens with neighboring slots or source characters. `${1}${2}`, `${1}e${2}`, `${1}.${2}`, and `«${1}${2}»` reject; `«${1}, ${2}»` contains two numbers. Adjacent elements remain valid where the grammar permits them. An author may deliberately construct source in JavaScript first: `` const source = `${1}e${2}` `` supplies the single candidate `"1e2"`, which unquoted canonical interpolation parses normally as `100`.
 

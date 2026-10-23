@@ -138,23 +138,21 @@ only the complete candidate is judged. Independently authored selectors/rules ar
 Cut 9C-3 removes only explicitly occurrence-owned entries when their root retires,
 before this final correspondence check.
 
-Full Library snapshots, selected Locus/Echo snapshots and semantic checkpoints
-carry the same associations. Checkpoint equivalence compares disposable references
-through their explicit subject paths, allowing fresh-runtime recapture without
-persisting a runtime ledger. Incremental hosted changes to a Library with subject
-CSS, subject-CSS topology messages, and subject identity CSS operations on portable
-incremental codecs reject before publication or durable recording. Portable client
-and durable tail replay enforce that same affected-Library boundary even without
-a live managed execution owner. An attribute edit may be semantically safe locally
-yet unsupported as a hosted incremental operation; its complete final snapshot or
-checkpoint remains supported. Unrelated identity-free Library tails remain supported.
-Loading rejects unsupported uncovered tails without returning a partially recovered
-map or discarding history; checkpoint writing also refuses to overwrite that history.
-Local initializer envelopes carry no subject correspondence: graph/CSS admission
-rejects their subject references before installation. Identity-free initializer CSS
-is installed with its graph and checked seed contract before the first notification.
-Asynchronous
-hosted CSS ordering/replay remains unsupported. Automatic Part admission uses
-the bounded [Cut 9C-3 occurrence contract](styled-part-composition.md).
+Selected Locus/Echo snapshots and semantic checkpoints carry subject correspondence;
+scoped documents carry their explicit occurrence topology and local namespaces.
+Checkpoint equivalence compares disposable references by explicit paths, never by
+persisting a runtime QUID ledger. Coordinated flat/scoped hosted effects now carry
+authenticated correspondence through incremental replay, topology, reconciliation,
+and durable recovery. This supersedes the original Cut 9B-0 affected-Library
+subject-CSS prohibition; it does not make arbitrary portable QUID operations valid.
+The sender/receiver owner and transport fences remain authoritative.
+
+Public local capture/cut and full-authority `locus.cut()` still reject scoped
+documents. Authorized `session.now()` supports their public transfer and SSR.
+Client-local initializer envelopes lack subject correspondence and reject subject
+references; identity-free CSS remains supported. Ordinary standalone LiveTree graft
+does not recover authored namespace evidence. See [Parts](styled-part-composition.md)
+and [document continuation](../document-continuation.md) for current lifetime,
+CSS handoff, ownership retirement, and receiving-admission rules.
 Shared Node/Worker transport tests do not establish browser first paint
 or flash-free grafting.

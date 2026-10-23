@@ -24,7 +24,7 @@ LiveTree is the mutable, identity-bearing view of an Hson node graph. It joins t
 - node-scoped services such as traversal, mutation, binding, styling, events,
   SVG, and canvas access.
 
-This document explains the model and its boundaries. The complete callable surface is in `api-livetree.md`; transform construction is in `api-transform.md`; stylesheet behavior is in `api-css-manager.md`.
+This document explains the model and its boundaries. The complete callable surface is in the [LiveTree API](livetree/api-livetree.md); transform construction is in the [Transform API](transform/api-transform.md); stylesheet behavior is in the [CSS API](livetree/api-css-manager.md).
 
 ---
 
@@ -79,7 +79,7 @@ LiveTree mutations update this graph first. When a corresponding DOM element is 
 ```ts
 const html = hson.liveTree.fromTrustedHtml("<section></section>");
 const safe = hson.liveTree.fromUntrustedHtml(userHtml);
-const json = hson.liveTree.fromJson({ title: "Hello" });
+const json = hson.liveTree.fromJson({ _hson_elem: [{ article: "Hello" }] });
 const hsonBranch = hson.liveTree.fromHson('<card "Text"/>');
 const existing = hson.liveTree.fromNode(node);
 ```
@@ -125,6 +125,9 @@ QUID writes may synchronously invoke custom-element reactions. Graft keeps runti
 Physical `_hson_*` transport/carrier Elements, non-HTML/SVG roots, and namespace realizations that current LiveTree mutation semantics cannot reproduce safely are rejected before normalization instead of being silently rebuilt. Graft establishes an initial managed snapshot; it does not observe or reconcile arbitrary later structural DOM mutations performed outside LiveTree.
 
 The public LiveTree facade spells the method `queryDom`, not `queryDOM`.
+Standalone construction and ordinary DOM graft do not reconstruct authored QUAD
+namespaces. Use governed document admission and the appropriate continuation path
+when namespace and occurrence evidence must survive.
 
 When an HTML source constructor receives an `Element`, it snapshots that element as the source root, including its attributes and descendants. It does not reinterpret the input as child-only `innerHTML`. Ordinary Transform HTML rejects generated `hson:quid`; local LiveTree realization and graft use their own exact runtime path. Untrusted input passes through its sanitizer, and unknown metadata rejects.
 
@@ -195,14 +198,14 @@ LiveTree `attrs` retains the complete canonical attr bag: `false`, `null`, zero,
 
 ## LiveMap bindings
 
-`tree.bind` connects LiveTree presentation state to LiveMap values. Bindings subscribe to a LiveMap path, apply the current value immediately, and continue to apply later feed events until disposed.
+`tree.bind` connects LiveTree presentation state to LiveMap values. Bindings subscribe to a LiveMap path, apply the current value immediately, and continue to apply later watch notifications, including explicit snapshot restoration until disposed.
 
 The binding groups are:
 
 - `bind.path` / `bind.paths` for custom callbacks;
 - `bind.text` / `bind.textPaths` for text projection;
 - `bind.attr` / `bind.attrs` / `bind.attrsPaths` for attributes; and
-- `bind.css` / `bind.cssPaths` for inline style projection.
+- `bind.css` / `bind.cssPaths` for QUID-scoped stylesheet projection.
 
 Every binding call returns a disposer function. Multi-path bindings subscribe to each listed path and the returned disposer removes all of those subscriptions. See `api-livetree.md` for signatures and path/value rules.
 

@@ -1,6 +1,10 @@
 # LiveMap capture, restore, and recovery
 
-The public portable capture is a complete registry snapshot. One-library registries use the same format as larger registries.
+The public portable capture is a complete registry snapshot for supported flat documents.
+Scoped Part documents currently reject local `capture()` and `cut()`;
+authorized `session.now()`, Echo, and durable checkpoint/recovery have coordinated
+scoped support. Rendering a scoped document directly does not create a local
+transfer artifact. One-library registries use the same format as larger registries.
 
 ```ts
 const snapshot = map.capture();
@@ -17,10 +21,10 @@ Local captures may contain zero application libraries, including a completely em
 
 Internal document capture installation qualifies supplied graph storage before cloning or classification. Invalid optional bags and structural relationships reject rather than being normalized away. Same-epoch admission still requires the exact private capture capability, its original owner and epoch, continuity, and graph/envelope correspondence; copied or forged captures gain no authority from canonical storage. Provenance comparison uses descriptor-captured graph values without executing semantic getters and verifies correspondence with the exact private candidate installed. Portable/new-epoch restoration retains its existing identity reset policy. These raw-graph checks do not change the tagged codec or its separate recovery behavior.
 
-On an unmanaged local map, `map.addLibraries(...)` produces a portable `library-add` commit, and `map.replay(commit)` can apply it to another local map at the recorded preceding revision. The operation carries names, modes, Schemas, and initial roots without generated QUIDs. Public topology addition and topology replay reject on an Echo client-composed map. Hosted Locus/Echo topology delivery uses the same registry model through its managed authority path.
+On an unmanaged local map, `map.addLibraries(...)` returns `{ commit, libraries }` with a portable `library-add` commit, and `map.replay(commit)` can apply it to another local map at the recorded preceding revision. The operation carries names, modes, Schemas, and initial roots without generated QUIDs. Public topology addition and topology replay reject on an Echo client-composed map. Hosted Locus/Echo topology delivery uses the same registry model through its managed authority path.
 
 Changed local mutations produce map-wide commits with named library operations and a single revision transition. Hosted replay and durable recovery operate through internal authority facilities and exact registry or projected cuts; application code does not replay a solo-map capture. Locus persists semantic, QUID-free state and reconstructs a fresh generated identity epoch after process restart.
 
-Local rendering uses `map.lib("page").render()`. `map.cut({ data?, documents?, html? })` transfers a self-contained selected registry in `libs`, optionally with coherent `html` and `document`. Omitted families include all application libraries of that family; empty arrays include none. HTML requires an already selected document. Interactions follow selected documents automatically. State-only, data-only, document-only, mixed, and empty selections reconstruct through the same local installer. Hosted SSR uses the authorized `session.now({ html: document })` projection and HTML.
+Local rendering uses `map.doc.must("page").render()`. `map.cut({ data?, documents?, html? })` transfers a self-contained selected registry in `libs`, optionally with coherent `html` and `document`. Omitted families include all application libraries of that family; empty arrays include none. HTML requires an already selected document. Interactions follow selected documents automatically. State-only, data-only, document-only, mixed, and empty selections reconstruct through the same local installer. Hosted SSR uses the authorized `session.now({ html: document })` projection and HTML.
 
 For the full registry shape and selection rules, see [LiveMap API](./api-livemap.md) and [registry details](./multi-library.md).

@@ -1,3 +1,5 @@
+> Historical initial authority design. Conceptual proposal/action/snapshot spellings below are not current public APIs. Current Locus has flat keyed definitions, family selectors, pessimistic document actions, authorized session projections, and HTTP/WebSocket adapters; see [Locus API](../locus/api-locus.md) and [Echo](../echo/api-echo.md).
+
 
 // livemap-locus-authority.md
 

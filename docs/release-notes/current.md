@@ -1,3 +1,18 @@
+# Development change chronology
+
+This file records successive development cuts; earlier bullets describe their
+stage, not compatibility guarantees. Current callable contracts are in the
+[public API map](../public-api.md) and subsystem references.
+
+Latest reconciled surfaces:
+
+- Locus uses flat keyed definitions with `access` metadata and separate configuration; dynamic admission is `await locus.admit(definitions)`.
+- LiveMap, Locus, Echo replicas, read contexts, and writers select `data`, `doc`, and `parts`; the former `.lib(...)` selector is removed.
+- Local `addLibraries()` returns `{ commit, libraries }`; shape commands use `.object` and `.array`.
+- Part members require `kind: "document"`, authored `document`, optional structured `css: CssMap`, and separate textual `stylesheet`; protected CSS fields require whole definitions.
+- `part.write(args?)` authors a deferred receiver-relative invocation; `Hson.document` returns `HsonAuthored`. Quoted interpolation supports prefixes, suffixes, and multiple scalar slots.
+- Authorized hosted scoped SSR, continuation, and recovery are supported. Public local capture/cut and full-authority `locus.cut()` still reject scoped documents.
+
 - Reworked Hson interpolation around grammar context: whole quoted "${value}" interpolation became string substitution, while unquoted ${value} became structural document content or exactly one HsonData value. The temporary #${...} syntax was removed.
 - Tightened HsonDocument special-tag rules: <style> is empty or exactly one nonempty string leaf; <script> requires src and does not permit an inline body.
 - Removed older transform transport markers such as _hson_str / _hson_elem from ordinary Hson-facing structure, keeping transport evidence reserved to the transform layer.

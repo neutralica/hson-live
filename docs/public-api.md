@@ -20,7 +20,7 @@ specialist capability from its owning public subpath.
 ## Roles, without a mandatory sequence
 
 - **Hson authoring and Transform** create and convert the canonical Hson graph.
-  `Hson.canonical`, `.data`, and `.document` author classified canonical strings; `Hson.schema` compiles an immutable Schema object; `hsonTransform` is the DOM-free converter.
+  `Hson.canonical` and `.data` author canonical strings; `.document` authors `HsonAuthored` source for governed admission; `Hson.schema` compiles an immutable Schema object; `hsonTransform` is the DOM-free converter.
   Choose `fromTrustedHtml` only for input already trusted by the application;
   `fromUntrustedHtml` is the explicit sanitizing ingress. There is no output
   sanitizer and no `sanitizeBEWARE`.
@@ -55,8 +55,8 @@ specialist capability from its owning public subpath.
 ## Nine normal paths
 
 All imports below are public package imports. Snippets marked *compile-only*
-show application-owned inputs as `declare`d values; the companion fixture
-type-checks their imports and calls. Existing acceptance tests named below are
+use application-owned inputs. The current entrypoint fixtures cover the public surfaces;
+the documentation examples are independently checked during reconciliation. Existing acceptance tests named below are
 runtime/browser evidence, not proof that every documentation line executed.
 
 ### 1. Transform only — deterministic local conversion
@@ -81,11 +81,11 @@ import { Hson } from "hson-live/hson";
 
 const StateSchema = Hson.schema`<type "data" content <count "number">>`;
 const map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: StateSchema } });
-map.lib("state").at(["count"]).set(1);
-const count = map.lib("state").at(["count"]).snap();
+map.data.must("state").at(["count"]).set(1);
+const count = map.data.must("state").at(["count"]).snap();
 ```
 
-For exact data rather than a materialized object, use `map.lib("state").data()`; action
+For exact data rather than a materialized object, use `map.data.must("state").data()`; action
 handlers receive `HsonData | undefined`, so inspect it or call
 `payload === undefined ? undefined : Hson.data.materialize(payload)` instead of assuming application properties are on the
 payload object. Runtime coverage: LiveMap mutation and HsonData acceptance
@@ -121,7 +121,7 @@ const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 const map = hsonLiveMap.fromLibraries({
   page: { document: hsonTransform.fromTrustedHtml("<main/>").toNode(), schema: PageSchema },
 });
-const binding = reflect_document(map.lib("page"));
+const binding = reflect_document(map.doc.must("page"));
 binding.dispose();
 ```
 
@@ -136,7 +136,8 @@ import { Hson } from "hson-live";
 
 const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 const authority = hsonLiveMap.locus.create({
-  shared: [{ name: "page", definition: { document: "<main/>", schema: PageSchema } }],
+  page: { document: "<main/>", schema: PageSchema, access: "shared" },
+}, {
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
 const session = await authority.session.create({ libraries: ["page"] });
@@ -151,21 +152,33 @@ operation and continuing synchronization request. WebSocket and HTTP share
 the semantic Locus authority; HTTP/1 and HTTP/2 use one HTTP adapter. HTTP/3
 is an architectural fit for ordered response streams, not a tested runtime.
 
-LiveMap owns bare and local state. Locus owns authoritative state, and Echo owns composed replica/client state. A hosted application supplies grouped `private`, `shared`, and `local` definitions. Private/shared definitions establish Locus authority; local initializers remain outside authority state. Document entries accept initial `css: string`. `locus.addLibraries({ private, shared })` admits runtime authority batches with optional document CSS text. `locus.lib("page").css.stylesheet(cssText)` replaces a complete governed document stylesheet; `.css(operation)` applies a granular canonical CSS mutation. `locus.cut(...)` captures full authority state; `session.now(...)` captures only an authorized client scope. `hsonLiveMap.locus.resume({ ...definition, persistence, logicalMapId })` restores or establishes durable authority, and `hsonLiveMap.locus.checkpoint(locus)` compacts its durable history when needed. `session.update(request, context?)` expands or contracts a retained grant through the ordinary authorizer. Echo reconciles shared state while preserving client-owned local roots, Schemas, CSS, handles, and Mirror continuity. `echo.rev` tracks composed client state; `echo.sync.appliedRev` tracks processed authority revisions.
+LiveMap owns local state, Locus owns authority state, and Echo owns composed replica/client state. Locus takes flat keyed definitions plus separate configuration: `locus.create({ page: { document, access: "shared", stylesheet } }, options)`. Access defaults to private. `options.local` holds client-local initializers outside authority state. `await locus.admit(definitions)` admits a later atomic authority batch. Local `map.addLibraries(definitions)` returns `{ commit, libraries }`. Definitions discriminate with exactly one of `data`, `document`, or `parts`. Select them through `.data`, `.doc`, or `.parts`; callable lookups are optional, `.must(name)` requires a match, and known safe names support property access. `locus.doc.must("page").css.stylesheet(cssText)` replaces a complete governed document stylesheet; `.css(operation)` applies a granular canonical CSS mutation. `locus.cut(...)` captures full authority state; `session.now(...)` captures only an authorized client scope. `hsonLiveMap.locus.resume(definitions, { ...options, persistence, logicalMapId })` restores or establishes durable authority, and `hsonLiveMap.locus.checkpoint(locus)` compacts its durable history when needed. `session.update(request, context?)` expands or contracts a retained grant through the ordinary authorizer. Echo reconciles shared state while preserving client-owned local roots, Schemas, CSS, handles, and Mirror continuity. `echo.rev` tracks composed client state; `echo.sync.appliedRev` tracks processed authority revisions.
+
+### 6. Parts — deferred authored invocation
+
+Admit `{ components: { parts: { heading: { kind: "document", document: '<h2 "%{content}"/>' } } } }`
+and select the member through `map.parts.must("components").at(["heading"])`.
+Its `.write({ content: "Hello" })` returns detached `HsonAuthored` connector source.
+Receiving document admission resolves the then-current definition and realizes an independent
+occurrence. See the [Part contract](contracts/styled-part-composition.md) for structured
+`css: CssMap`, textual `stylesheet`, namespaces, protected fields, and lifetime rules.
 
 ### 7. Local rendering, selective transfer, and continuation
 
 ```ts
 import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "hson-live/ssr";
 
-const html = documentMap.lib("page").render();
+const html = documentMap.doc.must("page").render();
 const stateOnly = documentMap.cut();
 const rendered = documentMap.cut({ data: ["state"], documents: ["page"], html: "page" });
 const encoded = encode_ssr_bootstrap(rendered.libs);
 const decoded = decode_ssr_bootstrap(encoded);
 ```
 
-A document library renders itself as `BrowserRealizationHtml`. A map cuts selected
+A document library renders itself as `BrowserRealizationHtml`, including scoped Part documents.
+Public local capture/cut currently rejects scoped documents; hosted scoped delivery uses
+`session.now()`. Local SSR text encoding also rejects selected Parts collections, so
+exclude source collections with an explicit `data` selection. A map cuts selected
 transferable state: omitted data/document axes include every application library
 of that family, and `[]` includes none. State-only cuts return `{ libs }`; HTML
 cuts return `{ libs, html, document }`. HTML must name an already selected document.
@@ -251,9 +264,9 @@ and document continuation.
   specialist subpaths; keep normal composition imports at the package root.
 - Treat action payload/result values as `HsonData`: check presence, use
   `Hson.data.entries(value)` for exact semantics or `Hson.data.materialize(value)` for a detached JS view.
-- Construct hosted Locus from grouped private/shared/local definitions; a one-library application uses the same path. Runtime authority admissions use `locus.addLibraries({ private, shared })`. Use `hsonLiveMap.locus.resume` for durable authority and keep the adapter server-side.
+- Construct Locus from flat keyed definitions with `access` metadata and a separate configuration argument; put local initializers in configuration. One-Library applications use the same path. Runtime authority admissions use `locus.admit(definitions)`. Use `hsonLiveMap.locus.resume` for durable authority and keep the adapter server-side.
 - Admit documents through `hsonLiveMap.fromLibraries({ page: { document, schema } })`;
-  use `map.lib("page").render()` for local HTML and path document requests for mutation.
+  use `map.doc.must("page").render()` for local HTML and path document requests for mutation.
 - Use `TransformOutput`, `SsrBootstrapCodecError`, `tree.style`/`tree.css` or
   `tree.css.global` and `tree.css.snapshot()`. Remove `sanitizeBEWARE`, `ensureQuid`, `syncNow`, and
   independent `ContentManager` construction assumptions.

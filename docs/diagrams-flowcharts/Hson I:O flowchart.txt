@@ -13,10 +13,10 @@ untrustedHtml["Untrusted HTML"]
     -->|"sanitize / normalize" | canonical
 
 existingNode["Existing HsonNode graph"]
-    -->|"admit / normalize" | canonical
+    -->|"exact admission" | canonical
 
 binaryInput["Binary Hson"]
-    -->|"decode / normalize" | canonical
+    -->|"decode / exact admission" | canonical
 
 canonical -->|"serialize"| hsonOutput["Hson text"]
 canonical -->|"data / serialize"| jsonOutput["JSON"]

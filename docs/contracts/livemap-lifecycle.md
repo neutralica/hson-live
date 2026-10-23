@@ -19,6 +19,7 @@ type Disposable = {
   dispose(): void;
   readonly disposed: boolean;
 };
+```
 
 Exact interfaces may vary by subsystem, but their semantics must remain compatible.
 

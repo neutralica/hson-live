@@ -1,3 +1,5 @@
+> Historical Cut 3F implementation record. The closed public-delivery guards and future Cut 3H statements below describe that intermediate cut. Public hosted scoped delivery, SSR, Echo replay/reconcile, checkpoint/restart, and continuation are now implemented; see [Locus API](../locus/api-locus.md), [continuation](../document-continuation.md), and [Parts](../contracts/styled-part-composition.md). Public local capture/cut remains restricted.
+
 # Scoped QUAD Cut 3F: private initial restoration
 
 Cut 3F connects the existing scoped document representation to selected Locus

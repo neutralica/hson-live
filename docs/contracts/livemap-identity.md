@@ -128,11 +128,13 @@ it. Standard public restoration also reconstructs fresh subjects but does not
 retain or expose disposable addresses. Same-runtime exact capture continues to
 use its existing private overlay provenance.
 
-This synchronous correspondence does not cover asynchronous hosted CSS
-messages. That boundary will need an explicitly scoped transport correspondence
-lifetime tied to the accepted projection/installation, with ordering and
-invalidation across recovery, replacement, contraction, retirement and new
-incarnations. No such transport lifetime or CSS consumer is introduced here.
+This synchronous translator is only one part of hosted correspondence. Current
+flat/scoped hosted effects and continuation add authenticated receiver evidence,
+ordering, and invalidation across replay, reconcile, topology changes, retirement,
+and new incarnations. They never use sender QUID bytes as receiver authority.
+See [CSS correspondence](css-identity-translation.md) and
+[continuation](../document-continuation.md). Public local capture/cut still reject
+scoped Part documents; the public hosted route is authorized `session.now()`.
 
 Legacy history and snapshots may contain `ensure-quid`, `$_meta.quid`, identity
 epochs, issued ledgers, and QUID witnesses. Replay validates those exact

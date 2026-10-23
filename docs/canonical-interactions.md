@@ -87,7 +87,7 @@ The descriptor ID identifies only the descriptor. The subject uses the fixed app
 
 An established subject that moves keeps its interaction: the owning map rewrites its path in the same transition as the document edit. Local edits rewrite only local descriptors; shared edits rewrite only shared descriptors. Deletion or identity-destroying replacement removes the descriptor in that transition, so a new subject at the old path cannot inherit it. A descriptor authored before its subject exists remains at its authored path and can activate if a subject appears there.
 
-Generated QUIDs are scoped to one runtime. A runtime can map local QUIDs to and from paths for live continuity; portable interaction state uses the document Library and path. Ordinary Hson, structural JSON, and Transform HTML now omit generated QUIDs on output and reject serialized QUID claims on input. Same-runtime exact capture is separate. Browser continuation and hosted graph identity remain later migration boundaries.
+Generated QUIDs are scoped to one runtime. A runtime can map local QUIDs to and from paths for live continuity; portable interaction state uses the document Library and path. Ordinary Hson, structural JSON, and Transform HTML now omit generated QUIDs on output and reject serialized QUID claims on input. Same-runtime exact capture is separate. Hosted continuation and graph effects use portable subject correspondence and receiving-owned identity; they never import server QUIDs.
 
 ## Exact interaction data
 

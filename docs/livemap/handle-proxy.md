@@ -1,8 +1,9 @@
 # LiveMap paths, handles, and proxies
 
-The primary LiveMap access path is `map.lib(name).at(path)`. Library selection
-establishes data or document semantics; path resolution then determines the
-handle capabilities. A one-library map uses the same `map.lib(name)` selection.
+Select the family first: `map.data.must(name).at(path)`,
+`map.doc.must(name).at(path)`, or `map.parts.must(name).at(path)`. Callable
+selectors without `.must` permit absence or a wrong family. A one-Library map
+uses the same selection; the registry has no default root.
 `proxy(path?)` remains optional
 property/index syntax for building a path. None of these surfaces owns a second
 copy of state.
@@ -13,7 +14,7 @@ A data path is a readonly array of string object keys and numeric array
 indexes:
 
 ```ts
-const users = map.lib("state");
+const users = map.data.must("state");
 users.at(["users", 0, "name"]).snap();
 users.at(["users", 0, "name"]).set("Alice");
 users.at(["users", 0, "name"]).delete();
@@ -25,7 +26,7 @@ state. Mutations use the normal admission, schema, revision, commit, feed, and
 authority rules.
 
 There is no map-level `get(path)` or `has(path)` API. Use `snap`, a path handle,
-or `handle.hasKey(key)` on an object-shaped handle as appropriate.
+or `handle.object.hasKey(key)` on an object-shaped handle as appropriate.
 
 ## Path handles
 
@@ -33,11 +34,11 @@ or `handle.hasKey(key)` on an object-shaped handle as appropriate.
 location:
 
 ```ts
-const settings = map.lib("state").at(["settings"]);
+const settings = map.data.must("state").at(["settings"]);
 
 settings.snap();
 settings.at(["theme"]).set("dark");
-settings.setKey("density", "compact");
+settings.object.setKey("density", "compact");
 const stop = settings.feed((event) => {
   console.log(event.value);
 });
@@ -48,12 +49,12 @@ const dispose = settings.watch((next) => {
 
 A path handle always exposes coordinate reads, relative `at(path)`, endpoint
 replacement, deletion, and runtime refinement. A Schema-proven object or array
-endpoint additionally exposes its shape operations directly:
+endpoint additionally exposes its shape namespace:
 
 - `rev`, `path()`, `snap()`, and relative `at(path)`;
 - `set`, `replace`, `delete`, and `update`;
-- object operations such as `setKey`, `setMany`, `renameKey`, and `deleteKey`;
-- array operations such as `push`, `insert`, `splice`, `move`, and `remove`;
+- `.object` operations such as `setKey`, `setMany`, `renameKey`, and `deleteKey`;
+- `.array` operations such as `push`, `insert`, `splice`, `move`, and `remove`;
 - `kind()`, `present()`, `asObject()`, `asArray()`, and `asScalar()` when
   presence or shape is not statically singular;
 - `feed(listener)` and `watch(listener)`; and
@@ -75,7 +76,7 @@ Data path handles and passive logical document locations expose
 comparison baseline but does not call the listener immediately:
 
 ```ts
-const location = map.lib("state").at(["profile", "name"]);
+const location = map.data.must("state").at(["profile", "name"]);
 const dispose = location.watch((next) => {
   // next is the current detached value at this fixed coordinate
   console.log(next);
@@ -105,11 +106,10 @@ moved element.
 
 ## Proxies
 
-The one-library compatibility facade and document Libraries may expose
-`proxy()` as path-building sugar:
+Selected data and document Libraries expose `proxy()` as path-building sugar:
 
 ```ts
-const state = map.proxy();
+const state = map.data.must("state").proxy();
 
 state.user.name.$_.snap();
 state.user.name.$_.set("Grace");

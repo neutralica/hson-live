@@ -1,6 +1,6 @@
 # LiveMap
 
-LiveMap owns one revisioned registry of named canonical Hson libraries. The registry is the state machine, whether it contains one library or many. Each library is either data or document state and has a governing Hson Schema.
+LiveMap owns one revisioned registry of named canonical Hson libraries. The registry is the state machine, whether it contains one library or many. Definitions select `data`, `document`, or intrinsically governed `parts`. Parts retain data-object storage but have their own public selector and validation contract.
 
 The public `hsonLiveMap` facade constructs bare local state with `create` or
 `fromLibraries`. Its `locus` member constructs an authoritative governor, and
@@ -17,10 +17,10 @@ const map = hsonLiveMap.fromLibraries({
   page: { document: "<main/>", schema: PageSchema },
 });
 
-const html = map.lib("page").render();
+const html = map.doc.must("page").render();
 ```
 
-The one-library example is an ordinary registry. `map.lib("page")` selects its document library for canonical reads and writes. The map retains the global revision, commit stream, capture, restore, and selective cut operations.
+The one-library example is an ordinary registry. `map.doc.must("page")` selects its document library for canonical reads and writes. The map retains the global revision, commit stream, capture, restore, and selective cut operations.
 
 ## Ownership
 
@@ -31,7 +31,8 @@ LiveMap registry
   ├── selective aggregate cuts
   └── named libraries
        ├── data: canonical values and typed paths
-       └── document: canonical content, attributes, identity, paths, and HTML rendering
+       ├── document: canonical content, attributes, identity, paths, and HTML rendering
+       └── parts: governed inert definitions for document construction
 ```
 
 All accepted writes pass through the registry's atomic validation and commit boundary. Each changed transition advances one global revision and names the affected library in its commit. A failure leaves the prior canonical state and revision intact. Schema validation applies at initial admission, mutation, replay, and reconstruction.
@@ -42,7 +43,7 @@ Paths are portable coordinates: data paths contain object keys and array indexes
 
 ## Construction
 
-`hsonLiveMap.fromLibraries({ name: { data, schema? } })` admits data from a JSON value or JSON source text. `hsonLiveMap.fromLibraries({ name: { document, schema? } })` admits document Hson source text or a canonical Hson node. `map.addLibraries(...)` accepts the same definition shape after construction. Omitting Schema uses `ANY_DATA` or `ANY_DOCUMENT`. The `data` or `document` field remains explicit.
+`hsonLiveMap.fromLibraries({ name: { data, schema? } })` admits data from a JSON value or JSON source text. `hsonLiveMap.fromLibraries({ name: { document, schema? } })` admits document Hson source text or a canonical Hson node. `map.addLibraries(...)` accepts the same definition shape after construction. Omitting Schema uses `ANY_DATA` or `ANY_DOCUMENT`. Exactly one `data`, `document`, or `parts` field is required. Parts forbid a supplemental Schema; document definitions may include textual `stylesheet`.
 
 Data roots may be objects, arrays, strings, numbers, booleans, or null. For a string root, pass JSON source text such as `data: '"hello"'`. `ANY_DATA` and `ANY_DOCUMENT` are reusable broad Schemas for the complete valid data and document families.
 
@@ -50,7 +51,7 @@ On an unmanaged local map, a library admitted with an implicit or explicit
 family-top Schema can later be tightened once:
 
 ```ts
-map.lib("page").schema.use(PageSchema);
+map.doc.must("page").schema.use(PageSchema);
 ```
 
 The current complete root validates before the contract changes. A successful
@@ -68,8 +69,8 @@ const map = hsonLiveMap.fromLibraries({
   page: { document: "<main/>", schema: PageSchema },
 });
 
-map.lib("state").at(["count"]).set(1);
-map.lib("page").document.attrs.set({ kind: "path", path: [0] }, "title", "Ready");
+map.data.must("state").at(["count"]).set(1);
+map.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "title", "Ready");
 ```
 
 The data boundary accepts finite numbers, strings, booleans, null, ordinary objects, and dense arrays. It rejects unsupported prototypes, accessors, symbol or nonenumerable properties, holes, explicit undefined, and cycles. Canonical state preserves object-entry order and SameValue number distinctions, including `-0`. Public composite reads are detached.
@@ -82,13 +83,13 @@ The selected data library exposes handles via `at(path)`. A handle can read, wat
 
 Document libraries expose `document.content`, `document.attrs`, `document.flags`, and logical document locations. Mutations use path request targets and are validated before publication. Mirror can bind a selected document library and follow its accepted commits into LiveTree and browser state.
 
-`map.commits.observe(listener)` observes map-wide accepted transitions. Each transition carries one global revision and named library operations. Reads, no-ops, and failed writes do not publish a changed commit. A selected document library also has a document commit observer for document consumers. Listener failures are isolated after acceptance, every listener still receives a fair attempt, and failures are sent to the platform uncaught-error reporter (`reportError`, with an asynchronous uncaught fallback on older runtimes).
+`map.commits.observe(listener)` observes map-wide accepted transitions. Each transition carries one global revision and named library operations. Reads, no-ops, and failed writes do not publish a changed commit. A selected document library also has a document commit observer for document consumers. Listener failures are isolated after acceptance, every listener still receives a fair attempt, and failures are sent to the platform uncaught-error reporter (`reportError`, with the existing isolated runtime reporting fallback on older runtimes).
 
 ## Capture and rendering
 
-`map.capture()` returns a detached complete `LiveMapSnapshot` of the registry, Schemas, and encoded roots at one revision. `map.restore(snapshot)` validates a compatible full registry before replacement. `install_libraries_snapshot(snapshot)` creates a fresh local runtime from a portable capture. The snapshot is QUID-free; a new runtime establishes its own identity epoch and issued ledger.
+`map.capture()` returns a detached complete `LiveMapSnapshot` of the registry, Schemas, and encoded roots at one revision for supported flat state. Scoped Part documents currently reject public local capture/cut; their authorized hosted transfer uses `session.now()`. `map.restore(snapshot)` validates a compatible full registry before replacement. `install_libraries_snapshot(snapshot)` creates a fresh local runtime from a portable capture. The snapshot is QUID-free; a new runtime establishes its own identity epoch and issued ledger.
 
-`map.lib("page").render()` returns browser-compatible HTML for that document and its managed CSS. It preserves authored structure and fragments without synthesizing a shell, and reads no unrelated libraries.
+`map.doc.must("page").render()` returns browser-compatible HTML for that document and its managed CSS. It preserves authored structure and fragments without synthesizing a shell, and reads no unrelated libraries.
 
 `map.cut({ data?, documents?, html? })` transfers coherent selected state in `libs`. Omitted families select all application libraries; `[]` selects none. No HTML selection returns `{ libs }`; naming a selected document returns `{ libs, html, document }` from the same detached state. The subset registry includes its Schemas, digests, roots, CSS and source revision. Internal interactions follow selected documents automatically. Local continuation reconstructs the subset with `install_libraries_snapshot(libs)`. Hosted projection belongs to Locus: `session.now({ html: document })` returns authorized projected state and HTML, and hosted continuation uses Echo's governed replica.
 

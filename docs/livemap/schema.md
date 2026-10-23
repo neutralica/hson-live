@@ -14,7 +14,7 @@ const same = UserSchema.certify(user);
 
 The Schema object's `certify` method validates one canonical candidate in its
 own mode and returns a Schema-proven primitive string. LiveMap's distinct
-operation is establishing a governing library contract: either at admission with `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` / `map.addLibraries({ state: { data, schema: UserSchema } })`, or afterward on an unmanaged local map with `map.lib("state").schema.use(UserSchema)`. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT` from the entry's explicit kind. A context-neutral
+operation is establishing a governing library contract: either at admission with `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` / `map.addLibraries({ state: { data, schema: UserSchema } })`, or afterward on an unmanaged local map with `map.data.must("state").schema.use(UserSchema)`. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT` from the entry's explicit kind. A context-neutral
 `Hson.canonical` string such as `"text"` can be admitted according to the
 Schema's mode; a known wrong-mode candidate rejects.
 
@@ -66,10 +66,9 @@ The expression lowers directly to the existing canonical `projected-any` node.
 Canonical Schema graphs have one unversioned current shape. Generated compiler
 projects use content-derived tooling identity and input observations for freshness.
 
-This local canonical-data support does not resolve generic Echo/Locus action
-payload fidelity. Negative zero, object-member-order/dedupe equivalence, and
-dangerous-key cloning behavior such as an own `__proto__` member require the
-separate hosted-action transport audit.
+Echo/Locus actions also retain exact `HsonData` payloads and results, including
+negative zero, ordered members, and valid own `__proto__` names. See the
+[Echo API](../echo/api-echo.md) for payload admission and retry identity.
 
 ## Finite string alphabets
 
@@ -186,19 +185,21 @@ budgets.
 
 ## Trusted editor diagnostics for natural map ownership
 
-The preferred authored layout can keep Hson separate from map construction:
+Static construction diagnostics cover supported literal JSON candidates and
+bounded immutable source facts without executing application code:
 
 ```ts
-const source = Hson.canonical`
-  <user <age "37">>
-`;
-const map = hsonLiveMap.fromLibraries({ state: { data: source, schema: UserSchema } });
+const map = hsonLiveMap.fromLibraries({
+  state: { data: { user: { age: 37 } }, schema: UserSchema },
+});
 ```
 
-D3 can project the current candidate's authoritative diagnostics into `source`
-without adding `schema.validate`. This requires enabled trusted diagnostics and
-source-bound D1 lifecycle evidence from the configured diagnostic provider.
-Static source shape alone is insufficient. Two maps can independently govern one template.
+A Library's `data` field parses strings as JSON source, not Hson source. To
+use canonical Hson data at runtime, explicitly materialize it with
+`Hson.data.materialize(value)` or convert it to JSON first. That convenience
+view has JavaScript's integer-key enumeration limits; the static analyzer does
+not execute materialization calls to prove their contents. Dynamic candidate
+validation remains owned by runtime admission.
 
 Static authored source uses `HsonFromSchema<typeof Schema>` annotations
 (or the lower-level `HsonData<S>` / `HsonDocument<S>`) and the headless Schema analyzer;

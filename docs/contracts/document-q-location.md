@@ -6,8 +6,10 @@ exposes `.q(name)`. It observes an existing authored Library-local QUAD and retu
 Names such as `constructor`, `__proto__`, and `_subject` are ordinary names.
 A non-string argument rejects with `TypeError`. Lookup issues no identity, changes
 no revision, and publishes nothing. Data Libraries and uninstantiated Parts have
-no `.q()` capability. Composition preserves shell names and explicit receiving
-promotions; Part-local landmarks remain absent unless explicitly promoted.
+no `.q()` capability. Composition preserves shell names and connector-to-root receiving bindings.
+Each realized Part occurrence retains its own separate flat namespace; its local
+names do not enter shell lookup. This public capability has no chained scoped
+`.q()` navigation. See [Parts](styled-part-composition.md).
 
 Each returned capability captures one existing subject identity and its runtime
 epoch. Before every read or edit it checks that identity against the current

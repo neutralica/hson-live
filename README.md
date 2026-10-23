@@ -8,7 +8,7 @@
 
 `Hson` is a "glue format": a notation capable of expressing both JSON and HTML fluently by modeling the tree graph structure shared by both.
 
-By parsing to `Hson` as an intermediary step, JSON can be rendered as HTML and vice-versa. This suggests new ways of building the web, and is the core insight that powers hson-live.
+By parsing to `Hson` as an intermediary step, JSON can be rendered as HTML and vice-versa. This suggests new ways of building the web, and is the core insight that powers `hson-live`.
 
 ## hson-live
 
@@ -487,5 +487,30 @@ See `LICENSE` for the full terms.
 
 ---
 
+## Statement of AI Usage
+
+Much of this codebase is generated.
+
+The ideas for Hson and its syntax - as well as the potential Hson represented, the macro architecture, and fine-grained API/DX decisions - are entirely my own. These ideas arose in the process of learning the foundations of vanilla web development. As I immersed myself in the fundamentals and the specs, I saw what I thought might be an untried solution to the problem of view-state separation.
+
+`hson-live` was begun in April of 2025 with the help of ChatGPT 4.1. Coding agents were not yet available in this first year of development. If this project was vibe-coded, it was not vibe-debugged: I spent a year scouring and hand-editing the codebase myself alongside applying patches suggested by models.
+
+At that time, frontier models could not even remember the original names of functions or variables when they suggested repairs, nor did they have today's agents' holistic overview of the entire codebase. The latter limitation was particularly challenging when designing a circuit of parsers and serializers that had to work in lockstep, and the feeling of playing whack-a-mole was persistent.
+
+Progress in this first year was hard-won. I estimate that, on average, I read each line of code 10 times in my attempts to debug the Transform and LiveTree subsystems in collaboration with these models.
+
+In June of 2026 I began the second half of `hson-live`: the LiveMap and LiveHost subsystems. By this point coding agents had arrived, and they were indispensable in realizing the full scale of what Hson could become. Changes that would once have affected a single file or two now affected dozens or hundreds and required increasingly precise coordination. This was only possible with the wide-angle lens that agents newly brought to the table.
+
+Hson arguably represents a somewhat novel approach to web development, and though many of its individual components (like parsers and serializers) are understood, the unique way it combined them was not present in any model's training data. Even the most capable frontier models were often incapable of seeing the full implications and opportunities that Hson unlocked. 18 months' of chat logs will show many instances where a problem was identified, or a technical solution suggested, by myself.
+
+ Much of the current architecture was driven by my own intuition, which often proved sound. API decisions, naming, namespace organization, and the overall developer experience were decided by my own aesthetics, values, and sense of ergonomics. HSON's syntax itself, and its structural encoding of each format, was similarly informed by my own vision and my certainty in the potential.
+
+That said, this project would not have been possible without LLMs. `hson-live` involves many highly technical domains and there was no way I, a beginning web developer with a weird idea, could have an informed opinion on e.g. network protocol design, let alone foreseen the myriad security issues or technical debt that certain solutions would eventually cause.
+
+`hson-live`'s internals are still very much in flux and docs describing them remain generated, to keep up with the changing state of the project. These generated documents currently serve as landmarks for agents as much as anything, and are not the final versions. When the library is stable my intention is to rewrite all public documentation in my own words. For now, anything I spend time documenting will likely be out of date within a week.
+
+My goal with `hson-live` is to create a bespoke web development platform with which I can write my own web apps by hand, and from which I can branch out and continue learning about computing and software development. As well as to be able to use JSON without being nagged about trailing commas.
+
+Models used: ChatGPT4x, Gemini 2.5, ChatGPT 5x, ChatGPT 6x
 
 © 2026 terminal_gothic. All rights reserved except as granted under the PolyForm Strict License 1.0.0.
