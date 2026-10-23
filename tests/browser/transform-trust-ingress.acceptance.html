@@ -481,8 +481,8 @@ try {
   assert(managed.firstElementChild === managedChild && grafted.dom.el() === managed, 'graft actual DOM objects changed');
   const selected = hsonLiveTree.create.select();
   for (const scalar of [2, false, null, 'color:red']) { selected.attrs.set('style', scalar); assert(Object.is(selected.node.$_attrs.style, scalar), 'scalar style lost'); }
-  selected.form.setSelected(['a', 'b']);
-  verifyFrozen(selected.node); assert(Object.isFrozen(selected.node.$_attrs.values), 'form array not frozen');
+  rejects(() => selected.form.setSelected(['a', 'b']), 'unrealized form setter');
+  verifyFrozen(selected.node); assert(selected.node.$_attrs.values === undefined, 'current selection entered canonical attrs');
   selected.remove(); detachedBranch.remove();
   rawTree.remove(); grafted.remove(); owner.remove();
 

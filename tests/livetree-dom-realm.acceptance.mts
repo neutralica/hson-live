@@ -71,6 +71,7 @@ class RealmElement {
   readonly listeners = new Map<string, Set<EventListener>>();
   parentNode: RealmElement | null = null;
   isConnected = true;
+  type = "text";
   value = "";
   checked = false;
   multiple = false;
@@ -165,6 +166,7 @@ check("form and text operations narrow locally without ambient constructors or N
     const input = new RealmElement("INPUT", document);
     const inputTree = mappedTree("input", input);
     inputTree.form.setValue("local");
+    input.type = "checkbox";
     inputTree.form.setChecked(true);
     assert.equal(input.value, "local");
     assert.equal(input.checked, true);

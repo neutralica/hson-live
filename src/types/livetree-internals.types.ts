@@ -288,8 +288,9 @@ export interface LiveTreeForm<TSelf> {
     /**
      * Form/input helper bound to this node.
      *
-     * Provides value, checked, and selected operations for form-like nodes,
-     * mirroring to DOM when mounted.
+     * Standalone writes require an existing native control, mounted or detached.
+     * Reads observe native properties. Document-bound scalar writes temporarily
+     * retain governed authored-attribute semantics.
      */
     readonly form: LiveFormApi<TSelf>;
 
@@ -307,12 +308,13 @@ export interface LiveTreeSvg<TSelf> {
 
 export interface LiveFormApi<TSelf> {
     /**
-     * Set the form value for this node and mirror to DOM when mounted.
+     * Set current native value on an existing standalone control.
+     * Document-bound scalars temporarily retain governed attribute authoring.
      */
-    setValue(value: string, opts?: { silent?: boolean; strict?: boolean }): TSelf;
+    setValue(value: string): TSelf;
 
     /**
-     * Read the form value for this node.
+     * Read the exact mapped native value, or "" when unavailable.
      */
     getValue(): string;
 
@@ -322,21 +324,22 @@ export interface LiveFormApi<TSelf> {
     getChecked(): boolean;
 
     /**
-     * Set the checked state for checkbox/radio inputs.
+     * Set current checkedness on an existing standalone checkbox/radio input.
+     * Document-bound scalars temporarily retain governed attribute authoring.
      */
-    setChecked(value: boolean, opts?: { silent?: boolean; strict?: boolean }): TSelf;
+    setChecked(value: boolean): TSelf;
 
     /**
-     * Read selected value(s) for select-like inputs.
+     * Read current native selection; multiple selects return detached arrays.
      */
     getSelected(): string | readonly string[];
 
     /**
-     * Set selected value(s) for select-like inputs.
+     * Set current selection on an existing standalone select. Arrays require multiple.
+     * Document-bound selection remains unsupported.
      */
     setSelected(
         value: string | readonly string[],
-        opts?: { silent?: boolean; strict?: boolean },
     ): TSelf;
 };
 

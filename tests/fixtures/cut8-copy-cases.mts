@@ -163,26 +163,20 @@ export function cut8_copy_cases(check: (name: string, run: () => void) => void):
       } finally { second.remove(); clone.remove(); source.remove(); }
       for (const quid of sourceQuids) assert.equal(runtime.quidToNode.has(quid), false);
     });
-    case_("public cloneBranch also owns lawful runtime form arrays and scalar styles", () => {
+    case_("public cloneBranch owns scalar styles without pending native form state", () => {
       const source = new LiveTree({ $_tag: "select", $_content: [] });
       source.attrs.set("style", -0);
-      source.form.setSelected(["10", "2"]);
+      assert.throws(() => source.form.setSelected(["10", "2"]), /missing native control/);
       const clone = source.cloneBranch(), second = clone.cloneBranch();
       try {
-        const values = subject_for_tree(source).$_attrs?.values;
-        assert.ok(Array.isArray(values));
-        assert.notEqual(subject_for_tree(clone).$_attrs?.values, values);
-        assert.notEqual(subject_for_tree(second).$_attrs?.values, subject_for_tree(clone).$_attrs?.values);
         for (const tree of [source, clone, second]) {
-          assert.deepEqual(tree.node.$_attrs?.values, ["10", "2"]);
+          assert.equal(tree.node.$_attrs?.values, undefined);
+          assert.equal(tree.form.getSelected(), "");
           assert.ok(Object.is(tree.node.$_attrs?.style, -0));
         }
-        clone.form.setSelected(["1"]);
-        assert.deepEqual(source.node.$_attrs?.values, ["10", "2"]);
-        assert.deepEqual(second.node.$_attrs?.values, ["10", "2"]);
-        source.form.setSelected(["2"]);
-        assert.deepEqual(clone.node.$_attrs?.values, ["1"]);
-        assert.deepEqual(second.node.$_attrs?.values, ["10", "2"]);
+        clone.attrs.set("title", "independent");
+        assert.equal(source.node.$_attrs?.title, undefined);
+        assert.equal(second.node.$_attrs?.title, undefined);
       } finally { second.remove(); clone.remove(); source.remove(); }
     });
     case_("attribute comparison and public writes honor both signed-zero directions", () => {

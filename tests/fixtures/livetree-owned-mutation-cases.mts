@@ -135,7 +135,9 @@ export function owned_mutation_cases(check: (name: string, run: () => void) => v
       tree.text.add(""); tree.text.insert(1, "x"); const root = subject_for_tree(tree), old = at(root, 0, 0), relation = at(root, 0);
       assert.equal(parent_for_node(old), relation); assert.equal(runtime_for_node(old), runtime_for_tree(tree)); assert.equal(runtime_for_node(relation), runtime_for_tree(tree));
       tree.text.set("next"); assert.equal(runtime_for_node(old), undefined); assert.equal(parent_for_node(old), undefined);
-      tree.attrs.set("style", 2); tree.form.setSelected(["a"]); tree.text.add("still valid");
+      tree.attrs.set("style", 2);
+      assert.throws(() => tree.form.setSelected(["a"]), /missing native control/);
+      tree.text.add("still valid");
     } finally { tree.remove(); }
     const data = new LiveTree(n("main", n("_hson_arr"))); const before = state(data);
     for (const run of [() => data.text.add("x"), () => data.text.insert(0, "x"), () => data.text.set("x"), () => data.text.overwrite("x")]) {

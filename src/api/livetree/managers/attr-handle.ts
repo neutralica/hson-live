@@ -427,6 +427,8 @@ function project_attrs_replacement(
 ): void {
   const element = get_el_for_node(node);
   if (element === undefined) return;
+  // Author defaults through native attribute reflection; do not force dirty
+  // current form properties after writing authored attributes.
   const namespace = element.namespaceURI === "http://www.w3.org/2000/svg" ? "svg" : "html";
   for (const [name, value] of Object.entries(current)) {
     if (!Object.prototype.hasOwnProperty.call(next, name)) {
@@ -437,34 +439,6 @@ function project_attrs_replacement(
     const lowered = lower_browser_attribute_value(name, value, namespace);
     if (lowered === undefined) element.removeAttribute(name);
     else element.setAttribute(lowered.name, lowered.value);
-  }
-  realize_changed_form_properties(element, current, next);
-}
-
-function realize_changed_form_properties(
-  element: Element,
-  current: CanonicalPublicAttrs,
-  next: CanonicalPublicAttrs,
-): void {
-  const tagName = (element as { tagName?: unknown }).tagName;
-  if (typeof tagName !== "string") return;
-  const tag = tagName.toLowerCase();
-  if ((tag === "input" || tag === "textarea" || tag === "select")
-    && current.value !== next.value) {
-    const value = next.value;
-    (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value = value == null
-      ? ""
-      : String(value);
-  }
-  if (tag === "input" && current.checked !== next.checked) {
-    const checked = next.checked;
-    (element as HTMLInputElement).checked = typeof checked === "boolean"
-      ? checked
-      : typeof checked === "string"
-        ? checked === "true"
-        : typeof checked === "number"
-          ? checked !== 0
-          : false;
   }
 }
 

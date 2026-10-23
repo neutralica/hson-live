@@ -285,6 +285,8 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
       }),
     });
 
+    // Cut A preserves these authored-attribute routes, including standalone
+    // async use. They do not promise an immediate current native property write.
     this.form = Object.freeze({
       setValue: (value) => attrSet("value", value, "form.setValue"),
       setChecked: (value) => attrSet("checked", value, "form.setChecked"),

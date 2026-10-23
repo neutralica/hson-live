@@ -10,15 +10,13 @@ import { get_dom_for_node, unlinkNode } from "../utils/node-map-helpers.js";
 import { HsonNode } from "../../../core/types.js";
 import { ELEM_OBJ_ARR, ELEM_TAG, STR_TAG, VAL_TAG } from "../../../core/constants.js";
 import { is_Node } from "../../../core/node-guards.js";
-import { make_string } from "../../../core/stringify.js";
-import { _throw_transform_err } from "../../transform/utils/sys-utils/throw-transform-err.utils.js";
-import { get_el_for_node } from "../utils/node-map-helpers.js";
+import { get_el_for_node, get_node_for_el } from "../utils/node-map-helpers.js";
+import { assert_livetree_node_active } from "../livetree-state.js";
 import { make_leaf } from "../../transform/parsers/parse-tokens.js";
 import { Primitive } from "../../../core/types.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { LiveTree } from "../livetree.js";
 import { LiveFormApi } from "../../../types/livetree-internals.types.js";
-import { ensure_node_attrs } from "../../../core/node-storage.js";
 import {
   delegate_document_text_mutation_if_bound,
   document_binding_for_node,
@@ -33,17 +31,6 @@ import {
   active_subject_for_tree,
 } from "../runtime/livetree-runtime.js";
 
-/**
- * Options for form state writers that mirror to the DOM when available.
- */
-export type SetNodeFormOpts = Readonly<{
-  // default should be "silent" (missing DOM is normal pre-mount)
-  silent?: boolean;
-
-  // for callers that want the old strict behavior
-  strict?: boolean;
-}>;
-
 export type LiveTextApi<TOwner> = Readonly<{
   set: (value: Primitive) => TOwner;
   add: (value: Primitive) => TOwner;
@@ -52,53 +39,111 @@ export type LiveTextApi<TOwner> = Readonly<{
   get: () => string;
 }>;
 
-// treat $_attrs as a simple dictionary
-type AttrDict = Record<string, unknown>;
-// central DOM form-control narrowing
-type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-
-/* ------------------------------------------------------------------------------------------------
- * Internal helpers
- * ---------------------------------------------------------------------------------------------- */
-// leaf tags
-
-// const isLeafNode = (tag: string): boolean => LEAF_NODES.includes(tag);
 const isElemObjArr = (tag: string): boolean => ELEM_OBJ_ARR.includes(tag);
-// function make_dom_leaf(_leaf: HsonNode, value: Primitive): Text {
-//   return document.createTextNode(value === null ? "" : String(value));
-// }
 
-function ensure_attrs(node: HsonNode): AttrDict {
-  return ensure_node_attrs(node) as unknown as AttrDict;
+// Namespace/tag checks use the mapped element's realm, including detached and
+// foreign-document controls. Never search descendants or realize a missing node.
+function is_input(el: Element): el is HTMLInputElement {
+  return el.namespaceURI === "http://www.w3.org/1999/xhtml" && el.tagName.toLowerCase() === "input";
 }
-function form_control_kind(el: Element): "input" | "textarea" | "select" | undefined {
-  const tag = el.tagName.toLowerCase();
-  return tag === "input" || tag === "textarea" || tag === "select" ? tag : undefined;
+function is_textarea(el: Element): el is HTMLTextAreaElement {
+  return el.namespaceURI === "http://www.w3.org/1999/xhtml" && el.tagName.toLowerCase() === "textarea";
 }
-function resolve_form_control(el: Element): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
-  if (form_control_kind(el) !== undefined) return el as FormEl;
-  // If mapping gives a wrapper element, look for the first real control inside.
-  const inner = el.querySelector("input,textarea,select");
-  if (!inner) return null;
-  return form_control_kind(inner) === undefined ? null : inner as FormEl;
+function is_select(el: Element): el is HTMLSelectElement {
+  return el.namespaceURI === "http://www.w3.org/1999/xhtml" && el.tagName.toLowerCase() === "select";
 }
-
-function form_el_for_node(node: HsonNode): FormEl | null {
+function require_form_element(node: HsonNode, operation: string): Element {
   const el = get_el_for_node(node);
-  if (!el) return null;
-
-  return form_control_kind(el) === undefined ? null : el as FormEl;
+  if (el === undefined) throw new Error(`LiveTree ${operation}: missing native control; realize it explicitly first.`);
+  return el;
+}
+function unsupported_form_control(operation: string): never {
+  throw new Error(`LiveTree ${operation}: unsupported native control.`);
 }
 
-// optional strictness helper 
-function throw_missing_el(node: HsonNode, source: string): never {
-  const quid = node.$_meta?.quid ?? "<no-quid>";
-  _throw_transform_err(
-    `missing element for node (tag=${node.$_tag}, quid=${quid})`,
-    source,
-    make_string(node),
-  );
+// HTML input value modes: hidden/submit/image/reset/button use default mode;
+// checkbox/radio use default/on mode. Their .value setters reflect the authored
+// value attribute, so they cannot provide this current-only write contract.
+// Native .type normalizes missing/unknown types to text.
+function supports_current_value(input: HTMLInputElement): boolean {
+  switch (input.type) {
+    case "text": case "search": case "tel": case "url": case "email": case "password":
+    case "date": case "month": case "week": case "time": case "datetime-local":
+    case "number": case "range": case "color": case "file": return true;
+    default: return false;
+  }
 }
+
+function write_form_property(
+  node: HsonNode,
+  operation: string,
+  prepare: (el: Element, assertCurrent: () => void) => () => void,
+): void {
+  assert_livetree_node_active(node, operation);
+  const el = require_form_element(node, operation);
+  const runtime = runtime_for_node(node);
+  const assertCurrent = (): void => {
+    assert_livetree_node_active(node, operation);
+    if (runtime_for_node(node) !== runtime || get_el_for_node(node) !== el
+      || get_node_for_el(el) !== node || get_dom_for_node(node) !== el) {
+      throw new Error(`LiveTree ${operation}: native control correspondence changed during operation.`);
+    }
+  };
+  // Keep one reservation across input capture, native qualification, planning
+  // and assignment. These reads may invoke application getters or Proxy traps.
+  const endPublication = begin_mutation_publication([node]);
+  try {
+    // Guard admission itself can read native placement. Revalidate its result,
+    // then the prepared operation, using only existing lifecycle/map state.
+    assertCurrent();
+    const write = prepare(el, assertCurrent);
+    assertCurrent();
+    try { write(); }
+    catch (cause) {
+      // Canonical state is never written here. Browser-managed side effects of
+      // an attempted property assignment are not a rollbackable transaction.
+      throw new Error(`LiveTree ${operation}: native property assignment failed.`, { cause });
+    }
+    assertCurrent();
+  } finally { endPublication(); }
+}
+
+// Own data descriptors capture primitives without invoking caller methods,
+// iteration, species or indexed accessors. Reflection can throw, before writes.
+function capture_selected(selected: unknown): string | string[] {
+  if (typeof selected === "string") return selected;
+  if (!Array.isArray(selected)) throw new TypeError("LiveTree form.setSelected: expected a primitive string or dense array of primitive strings.");
+  let descriptors: Record<string, PropertyDescriptor>;
+  try { descriptors = Object.getOwnPropertyDescriptors(selected); }
+  catch (cause) { throw new TypeError("LiveTree form.setSelected: cannot capture array data descriptors.", { cause }); }
+  const length: unknown = descriptors.length?.value;
+  if (typeof length !== "number" || !Number.isInteger(length) || length < 0 || length > 0xffffffff) {
+    throw new TypeError("LiveTree form.setSelected: invalid array length.");
+  }
+  // A Proxy can report a shorter length alongside additional indexed entries.
+  // Reject inconsistent/sparse captures rather than letting length hide invalid
+  // elements. Non-index properties (including custom methods) are never used.
+  let entries = 0;
+  for (const key of Object.keys(descriptors)) {
+    const index = Number(key);
+    if (Number.isInteger(index) && index >= 0 && index < 0xffffffff && String(index) === key) {
+      if (index >= length) throw new TypeError("LiveTree form.setSelected: array indices exceed captured length.");
+      entries++;
+    }
+  }
+  if (entries !== length) throw new TypeError("LiveTree form.setSelected: sparse arrays are unsupported.");
+  const owned: string[] = [];
+  for (let index = 0; index < length; index++) {
+    const descriptor = Object.hasOwn(descriptors, index) ? descriptors[index] : undefined;
+    const value: unknown = descriptor?.value;
+    if (descriptor === undefined || !("value" in descriptor) || typeof value !== "string") {
+      throw new TypeError("LiveTree form.setSelected: expected own string data entries; holes and accessors are unsupported.");
+    }
+    owned.push(value);
+  }
+  return owned;
+}
+
 export function get_node_text_content(node: HsonNode): string {
   let out = "";
 
@@ -123,241 +168,91 @@ export function get_node_text_content(node: HsonNode): string {
   return out;
 }
 
-/* ------------------------------------------------------------------------------------------------
- * Form state: value / checked / selected
- * ---------------------------------------------------------------------------------------------- */
-
-
-
 /**
- * Set a form value on the node and mirror it to the DOM when mounted.
- *
- * By default, missing DOM elements are ignored (attrs are canonical).
- *
- * @param node - The Hson node to update.
- * @param value - Form value string to store.
- * @param opts - Optional flags controlling missing DOM behavior.
- * @returns void.
+ * Standalone form writes belong exclusively to existing native controls.
+ * Temporary Cut A asymmetry: document-bound scalars retain their governed
+ * authored-attribute route, just like the async facade. Authority acceptance
+ * must never be followed by a local missing-control rejection.
  */
-export function set_form_value(node: HsonNode, value: string, opts?: SetNodeFormOpts): void {
+export function set_form_value(node: HsonNode, value: string): void {
   assert_mutation_publication_available(node);
+  if (typeof value !== "string") throw new TypeError("LiveTree form.setValue: expected a primitive string.");
   const binding = document_binding_for_node(node);
   if (binding !== undefined) {
     binding.delegateAttrs({ kind: "set", name: "value", value });
-    const el = form_el_for_node(node);
-    if (!el && (opts?.strict || opts?.silent === false)) {
-      throw_missing_el(node, "setNodeFormValue");
+    return;
+  }
+  write_form_property(node, "form.setValue", el => {
+    if (!(is_textarea(el) || is_select(el) || (is_input(el) && supports_current_value(el)))) {
+      unsupported_form_control("form.setValue");
     }
-    return;
-  }
-
-  const attrs = ensure_attrs(node);
-  attrs.value = value;
-
-  const el = form_el_for_node(node);
-  if (!el) {
-    if (opts?.strict) throw_missing_el(node, "setNodeFormValue");
-    if (opts?.silent === false) throw_missing_el(node, "setNodeFormValue");
-    return;
-  }
-
-  // always mirror when we can
-  const ctl = resolve_form_control(el as Element);
-  if (ctl) {
-    ctl.value = value;
-  }
+    if (is_input(el) && el.type === "file" && value !== "") {
+      throw new TypeError("LiveTree form.setValue: file inputs accept only the empty string for clearing.");
+    }
+    return () => { el.value = value; };
+  });
 }
 
-/**
- * Read a form value, preferring DOM when mounted.
- *
- * @param node - The Hson node to read from.
- * @returns The current form value (empty string if missing).
- */
 export function get_form_value(node: HsonNode): string {
   const el = get_el_for_node(node);
-  if (el) {
-    const ctl = resolve_form_control(el as Element);
-    if (ctl) return ctl.value ?? "";
-  }
-
-  const attrs = (node.$_attrs as unknown as AttrDict | undefined);
-  const raw = attrs?.value;
-  return raw == null ? "" : String(raw);
+  return el && (is_input(el) || is_textarea(el) || is_select(el)) ? el.value : "";
 }
 
-/**
- * Set the checked state for checkbox/radio inputs and mirror to the DOM.
- *
- * @param node - The Hson node to update.
- * @param checked - New checked state.
- * @param opts - Optional flags controlling missing DOM behavior.
- * @returns void.
- */
-export function set_input_checked(node: HsonNode, checked: boolean, opts?: SetNodeFormOpts): void {
+export function set_input_checked(node: HsonNode, checked: boolean): void {
   assert_mutation_publication_available(node);
+  if (typeof checked !== "boolean") throw new TypeError("LiveTree form.setChecked: expected a primitive boolean.");
   const binding = document_binding_for_node(node);
   if (binding !== undefined) {
     binding.delegateAttrs({ kind: "set", name: "checked", value: checked });
-    const el = form_el_for_node(node);
-    if (!el && (opts?.strict || opts?.silent === false)) {
-      throw_missing_el(node, "setNodeFormChecked");
-    }
     return;
   }
-
-  const attrs = ensure_attrs(node);
-  attrs.checked = checked;
-
-  const el = form_el_for_node(node);
-  if (!el) {
-    if (opts?.strict) throw_missing_el(node, "setNodeFormChecked");
-    if (opts?.silent === false) throw_missing_el(node, "setNodeFormChecked");
-    return;
-  }
-
-  if (el && form_control_kind(el) === "input") {
-    (el as HTMLInputElement).checked = checked;
-  }
+  write_form_property(node, "form.setChecked", el => {
+    if (!is_input(el) || (el.type !== "checkbox" && el.type !== "radio")) unsupported_form_control("form.setChecked");
+    return () => { el.checked = checked; };
+  });
 }
 
-/**
- * Read the checked state for checkbox/radio inputs, preferring DOM when mounted.
- *
- * @param node - The Hson node to read from.
- * @returns True when checked, otherwise false.
- */
 export function get_input_checked(node: HsonNode): boolean {
-  const el = form_el_for_node(node);
-  if (el && form_control_kind(el) === "input") return !!(el as HTMLInputElement).checked;
-
-  const attrs = (node.$_attrs as unknown as AttrDict | undefined);
-  const raw = attrs?.checked;
-  if (typeof raw === "boolean") return raw;
-  if (typeof raw === "string") return raw === "true";
-  if (typeof raw === "number") return raw !== 0;
-  return false;
+  const el = get_el_for_node(node);
+  return el && is_input(el) ? el.checked : false;
 }
 
-/**
- * Set selected state for a <select>, mirroring to DOM when mounted.
- *
- * Storage:
- * - attrs.value: string (single select)
- * - attrs.values: readonly string[] (multi select)
- *
- * @param node - The Hson node to update.
- * @param selected - Selected value(s) for single or multi-select.
- * @param opts - Optional flags controlling missing DOM behavior.
- * @returns void.
- */
-export function set_input_selected(
-  node: HsonNode,
-  selected: string | readonly string[],
-  opts?: SetNodeFormOpts,
-): void {
+export function set_input_selected(node: HsonNode, selected: string | readonly string[]): void {
   assert_mutation_publication_available(node);
   const binding = document_binding_for_node(node);
-  if (binding !== undefined) {
-    binding.rejectStructuralMutation("form.setSelected");
-  }
-
-  const attrs = ensure_attrs(node);
-
-  const isMany = Array.isArray(selected);
-  if (isMany) {
-    // multi-select storage
-    attrs.values = selected.slice();
-    // optional: also set value to first for convenience
-    attrs.value = selected[0] ?? "";
-  } else {
-    attrs.value = selected;
-    // keep values in sync if present
-    attrs.values = [selected];
-  }
-
-  const el = form_el_for_node(node);
-  if (!el) {
-    if (opts?.strict) throw_missing_el(node, "setNodeFormSelected");
-    if (opts?.silent === false) throw_missing_el(node, "setNodeFormSelected");
-    return;
-  }
-
-  if (el && form_control_kind(el) === "select") {
-    const select = el as HTMLSelectElement;
-    if (isMany) {
-      const set = new Set(selected);
-      for (const opt of Array.from(select.options)) {
-        opt.selected = set.has(opt.value);
+  if (binding !== undefined) binding.rejectStructuralMutation("form.setSelected");
+  write_form_property(node, "form.setSelected", (el, assertCurrent) => {
+    const owned = capture_selected(selected);
+    if (!is_select(el)) unsupported_form_control("form.setSelected");
+    if (typeof owned === "string") return () => { el.value = owned; };
+    if (!el.multiple) throw new TypeError("LiveTree form.setSelected: arrays require a multiple select.");
+    const values = new Set(owned);
+    // Finish native target reads and the entire assignment plan before writing.
+    const plan = Array.from(el.options, option => ({ option, selected: values.has(option.value) }));
+    return () => {
+      for (const item of plan) {
+        assertCurrent();
+        item.option.selected = item.selected;
       }
-    } else {
-      select.value = String(selected);
-    }
-  } else {
-    // If caller points this at a non-select, degrade to value semantics
-    const v = isMany ? (selected[0] ?? "") : selected;
-    if (el) el.value = v;
-  }
-}
-
-/**
- * Read selected state from a <select>, preferring DOM when mounted.
- *
- * @param node - The Hson node to read from.
- * @returns The selected value string or array of values for multi-select.
- */
-export function get_input_selected(node: HsonNode): string | readonly string[] {
-  const el = form_el_for_node(node);
-
-  if (el && form_control_kind(el) === "select") {
-    const select = el as HTMLSelectElement;
-    if (select.multiple) {
-      return Array.from(select.selectedOptions).map(o => o.value);
-    }
-    return select.value ?? "";
-  }
-
-  const attrs = (node.$_attrs as unknown as AttrDict | undefined);
-  const values = attrs?.values;
-  if (Array.isArray(values)) {
-    return values.map(v => String(v));
-  }
-
-  const raw = attrs?.value;
-  return raw == null ? "" : String(raw);
-}
-
-export function make_form_api<TTree extends LiveTree>(
-    tree: TTree,
-): LiveFormApi<TTree> {
-    return {
-        setValue: (value, opts) => {
-            set_form_value(active_subject_for_tree(tree), value, opts);
-            return tree;
-        },
-
-        getValue: () => {
-            return get_form_value(active_subject_for_tree(tree));
-        },
-
-        getChecked: () => {
-            return get_input_checked(active_subject_for_tree(tree));
-        },
-
-        setChecked: (value, opts) => {
-            set_input_checked(active_subject_for_tree(tree), value, opts);
-            return tree;
-        },
-
-        getSelected: () => {
-            return get_input_selected(active_subject_for_tree(tree));
-        },
-
-        setSelected: (value, opts) => {
-            set_input_selected(active_subject_for_tree(tree), value, opts);
-            return tree;
-        },
     };
+  });
+}
+
+export function get_input_selected(node: HsonNode): string | readonly string[] {
+  const el = get_el_for_node(node);
+  if (!el || !is_select(el)) return "";
+  return el.multiple ? Array.from(el.selectedOptions, option => option.value) : el.value;
+}
+
+export function make_form_api<TTree extends LiveTree>(tree: TTree): LiveFormApi<TTree> {
+  return {
+    setValue: value => { set_form_value(active_subject_for_tree(tree), value); return tree; },
+    getValue: () => get_form_value(active_subject_for_tree(tree)),
+    setChecked: value => { set_input_checked(active_subject_for_tree(tree), value); return tree; },
+    getChecked: () => get_input_checked(active_subject_for_tree(tree)),
+    setSelected: value => { set_input_selected(active_subject_for_tree(tree), value); return tree; },
+    getSelected: () => get_input_selected(active_subject_for_tree(tree)),
+  };
 }
 
 function primitive_to_text(value: Primitive): string {

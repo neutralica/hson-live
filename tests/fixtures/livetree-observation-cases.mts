@@ -71,22 +71,22 @@ export function observation_cases(check: (name: string, run: () => void) => void
       assert.equal(Object.isFrozen(owner), false);
     } finally { tree.remove(); }
   });
-  check("scalar styles and form selected arrays reflect lawful runtime values", () => {
+  check("scalar styles remain observable and unrealized forms preserve canonical storage", () => {
     const tree = new LiveTree(n("select"));
     try {
       for (const value of [2, -0, true, null, "color: red"]) {
         tree.attrs.set("style", value);
         assert.ok(Object.is(tree.node.$_attrs?.style, value));
       }
-      tree.form.setSelected(["a", "b"]);
-      const before = tree.node, values = before.$_attrs?.values;
-      assert.deepEqual(values, ["a", "b"]); assert.ok(Object.isFrozen(values));
-      assert.throws(() => Array.prototype.push.call(values, "c"), TypeError);
-      tree.form.setSelected(["c"]);
-      assert.deepEqual(before.$_attrs?.values, ["a", "b"]);
-      assert.deepEqual(tree.node.$_attrs?.values, ["c"]);
-      tree.form.setValue("new"); tree.form.setChecked(true);
-      assert.equal(tree.form.getValue(), "new"); assert.equal(tree.form.getChecked(), true);
+      const before = tree.node;
+      assert.throws(() => tree.form.setSelected(["a", "b"]), /missing native control/);
+      assert.throws(() => tree.form.setValue("new"), /missing native control/);
+      assert.throws(() => tree.form.setChecked(true), /missing native control/);
+      assert.deepEqual(tree.node, before);
+      assert.equal(tree.form.getValue(), ""); assert.equal(tree.form.getChecked(), false);
+      assert.equal(tree.form.getSelected(), "");
+      tree.attrs.set("title", "still canonical");
+      assert.equal(tree.node.$_attrs?.values, undefined);
       protectedCopy(subject_for_tree(tree), tree.node);
     } finally { tree.remove(); }
   });
