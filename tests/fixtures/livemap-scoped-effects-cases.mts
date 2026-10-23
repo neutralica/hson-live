@@ -28,11 +28,11 @@ const move = (p: readonly number[], from: number, to: number): LiveMapGraphOp =>
 const remove = (p: readonly number[], index: number): LiveMapGraphOp => ({ domain: "graph", op: "remove-content", target: target(p), index });
 function sender(text = '<main <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/>/>') {
   const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-    leaf: { kind: "document", document: '<b @:root <span @:label "click"/>/>', css: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
-    panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: '@media screen{:scope{color:red}}' },
-    green: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: ':scope{color:green}' },
+    leaf: { kind: "document", document: '<b @:root <span @:label "click"/>/>', stylesheet: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
+    panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: '@media screen{:scope{color:red}}' },
+    green: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: ':scope{color:green}' },
     plain: { kind: "document", document: '<i/>' },
-    globals: { kind: "document", document: '<em @:root/>', css: ':scope{animation:pulse 1s} @keyframes pulse{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
+    globals: { kind: "document", document: '<em @:root/>', stylesheet: ':scope{animation:pulse 1s} @keyframes pulse{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
   } }, page: { document: '<main/>' }, other: { data: { n: 0 } } });
   const a = authority(map), owner = a.libraries()[1]!;
   map.doc.must("page").css.stylesheet('main{padding:7px}');

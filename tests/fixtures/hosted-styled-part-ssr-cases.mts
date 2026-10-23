@@ -12,9 +12,9 @@ import { encode_hosted_root } from "../../src/api/livemap/livemap.hosted.ts";
 
 async function hosted_subject_fixture(page: string, css?: string) {
   const locus = hsonLiveMap.locus.create({ "PRIVATE_PARTS_SENTINEL": { ...{ parts: {
-      button: { kind: "document", document: '<button id="%{id}" "Styled"/>', css: 'button{color:rgb(12,34,56)}' },
-      unused: { kind: "document", document: '<i "PRIVATE_UNUSED_SENTINEL"/>', css: 'i{color:rgb(98,76,54)}' },
-    } }, access: "private" }, "page": { document: page, ...(css === undefined ? {} : { css }), access: "shared" }, "ungranted": { document: '<aside "UNGRANTED_DOCUMENT_SENTINEL"/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+      button: { kind: "document", document: '<button id="%{id}" "Styled"/>', css: { color: 'rgb(12,34,56)' } },
+      unused: { kind: "document", document: '<i "PRIVATE_UNUSED_SENTINEL"/>', stylesheet: 'i{color:rgb(98,76,54)}' },
+    } }, access: "private" }, "page": { document: page, ...(css === undefined ? {} : { stylesheet: css }), access: "shared" }, "ungranted": { document: '<aside "UNGRANTED_DOCUMENT_SENTINEL"/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
   try {
     const session = await locus.session.create({ libraries: ["page", "PRIVATE_PARTS_SENTINEL"] });
     return { locus, session };
@@ -200,7 +200,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
     }
   });
   await check("ordinary hosted unscoped CSS leaves authored QUAD rendering unchanged", async () => {
-    const locus = hsonLiveMap.locus.create({ "page": { document: '<html <head/> <body <button @:ordinary "Ordinary"/>/>/>', css: 'button{color:red}', access: "shared" } }, { authorizeProjection: () => ({ libraries: ["page"] }) });
+    const locus = hsonLiveMap.locus.create({ "page": { document: '<html <head/> <body <button @:ordinary "Ordinary"/>/>/>', stylesheet: 'button{color:red}', access: "shared" } }, { authorizeProjection: () => ({ libraries: ["page"] }) });
     try {
       const session = await locus.session.create({ libraries: ["page"] }), cut = session.now({ html: "page" });
       assert.doesNotMatch(cut.html, /hson:quad/); assert.match(cut.html, /button\{color:red;\}/);

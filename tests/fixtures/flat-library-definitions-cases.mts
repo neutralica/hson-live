@@ -8,7 +8,7 @@ import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-
 import { MemoryCheckpointAdapter, deferred } from "../helpers/memory-checkpoint-adapter.mts";
 
 const Count = Hson.schema`<type "data" content <count "number">>`;
-const components = { button: { kind: "document" as const, document: '<button @:label "Hello"/>', css: ':scope{color:red}' } };
+const components = { button: { kind: "document" as const, document: '<button @:label "Hello"/>', stylesheet: ':scope{color:red}' } };
 const document = '<html <head/> <body <hson-part lib="components" at="button"/>/>/>';
 function capture(locus: Locus) {
   const authority = internal_livemap_aggregate_authority(locus_map_internal(locus));
@@ -40,7 +40,7 @@ export async function flat_library_definition_cases() {
   minimal.dispose();
 
   for (const reverse of [false, true]) for (const dynamic of [false, true]) {
-    const entries = [["page", { document, css: "body{margin:0}", access: "shared" }], ["components", { parts: components }]] as const;
+    const entries = [["page", { document, stylesheet: "body{margin:0}", access: "shared" }], ["components", { parts: components }]] as const;
     const definitions: LocusDefinitions = Object.fromEntries(reverse ? [...entries].reverse() : entries);
     const locus = hsonLiveMap.locus.create(dynamic ? {} : definitions, {
       authorizeProjection: () => ({ libraries: ["page", "components", "private", "denied"] }),
@@ -82,7 +82,7 @@ export async function flat_library_definition_cases() {
     { parts: { bad: { kind: "data", document: "<p/>" } } }, { parts: {}, schema: Count },
     { data: { count: "bad" }, schema: Count }, { document: "<main/>", schema: Count }, { data: 1, schema: {} },
     { document: '<main <hson-part lib="missing" at="button"/>/>' }, { document: '<main <hson-part/>/>' },
-    { document: quid }, { document: "<main/>", css: "main{color:;}" }, { data: 1, css: "main{}" },
+    { document: quid }, { document: "<main/>", stylesheet: "main{color:;}" }, { data: 1, stylesheet: "main{}" },
     { data: 1, access: "local" }, { data: 1, access: undefined }, { data: 1, ownership: "shared" },
   ]) {
     assert.throws(() => hsonLiveMap.locus.create({ earlier: { data: 1 }, invalid } as never));
@@ -136,7 +136,7 @@ export async function flat_library_definition_cases() {
   assert.equal(restored.rev, 1); assert.match(restored.doc.must("page").render(), /Hello/); restored.dispose();
 
   const clientLocal = hsonLiveMap.locus.create({}, {
-    local: [{ name: "ui", initializer: { document: "<main/>", css: "main{color:blue}" } }],
+    local: [{ name: "ui", initializer: { document: "<main/>", stylesheet: "main{color:blue}" } }],
     authorizeProjection: () => ({ libraries: ["ui"] }),
   });
   try {
@@ -146,7 +146,7 @@ export async function flat_library_definition_cases() {
     await rejected(clientLocal, { ui: { data: 1 } });
   } finally { clientLocal.dispose(); }
 
-  const local = hsonLiveMap.fromLibraries({ page: { document: "<main/>", css: "main{color:red}" } });
+  const local = hsonLiveMap.fromLibraries({ page: { document: "<main/>", stylesheet: "main{color:red}" } });
   assert.match(local.doc.must("page").css.snapshot(), /color:red/);
   assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: "<main/>", access: "shared" } } as never), /metadata/);
 }

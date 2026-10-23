@@ -45,9 +45,9 @@ let chrome, socket, server, stderr = '';
 try {
   server = createServer(async (req, res) => {
     try {
-      if (req.url === "/harness") { res.writeHead(200, { "content-type": "text/html" }); res.end("<!doctype html><html><head></head><body></body></html>"); return; }
+      if (req.url === "/harness") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end("<!doctype html><html><head></head><body></body></html>"); return; }
       const page = pages.find(p => p.path === req.url.split('?')[0]);
-      if (page) { res.writeHead(200, { 'content-type': 'text/html' });
+      if (page) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         const selected = new URL(req.url, 'http://fixture').searchParams.get('document');
         res.end(selected ? page.owners[0].now({ html: selected }).html : page.cut.html); return; }
       const binding = pages.find(p => req.url.startsWith(p.endpoint))?.binding;

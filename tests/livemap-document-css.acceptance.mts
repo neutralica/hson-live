@@ -32,8 +32,8 @@ assert.deepEqual(map.capture().libraries.find((item) => item.name === "page")?.c
   { rules: [], properties: [], keyframes: [], order: [] });
 assert.equal("css" in (map.capture().libraries.find((item) => item.name === "data") ?? {}), false);
 assert.doesNotMatch(document_html(map.doc.must("page")), /data-hson-managed-document-css/);
-assert.throws(() => hsonLiveMap.fromLibraries({ data: { data: 1, css: {} } } as never), /Initial CSS requires a document/);
-assert.throws(() => hsonLiveMap.fromLibraries({ page: { document, css: {} } } as never), /Document CSS requires stylesheet text/);
+assert.throws(() => hsonLiveMap.fromLibraries({ data: { data: 1, stylesheet: {} } } as never), /Initial CSS requires a document/);
+assert.throws(() => hsonLiveMap.fromLibraries({ page: { document, stylesheet: {} } } as never), /Document CSS requires stylesheet text/);
 
 const empty = map.capture();
 const installedEmpty = install_libraries_snapshot(empty).map.doc.must("page");

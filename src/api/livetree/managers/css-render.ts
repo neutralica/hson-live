@@ -1,4 +1,4 @@
-import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
+import { canon_to_css_prop } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { is_persisted_quid } from "../../../core/hson-node-quid.js";
 import { HSON_QUID_MARKUP_NAME } from "../quid/data-quid.js";
 export { pseudo_to_suffix } from "../../../internal/css/pseudo-suffix.js";
@@ -13,9 +13,7 @@ export function selector_for_quid(quid: string): string {
 }
 
 function css_property(prop: string): string {
-  if (prop.startsWith("--")) return prop;
-  if (prop.includes("-")) return prop.toLowerCase();
-  return camel_to_kebab(prop);
+  return canon_to_css_prop(prop);
 }
 
 export function render_quid_rule(quid: string, props: ReadonlyMap<string, string>): string {

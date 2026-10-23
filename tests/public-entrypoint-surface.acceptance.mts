@@ -257,8 +257,8 @@ await check("LiveTree declarations expose styling capabilities without runtime m
 const ownerProofs = Object.freeze({
   "dist/index.d.ts": ["ReadonlyHsonNode"],
   "dist/hson-authoring.d.ts": ["HsonAuthored", "HsonDocument", "HsonNode", "ReadonlyHsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
-  "dist/api/livetree/index.d.ts": ["ReadonlyHsonNode", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
-  "dist/api/livemap/index.d.ts": ["LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
+  "dist/api/livetree/index.d.ts": ["CssMap", "ReadonlyHsonNode", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
+  "dist/api/livemap/index.d.ts": ["CssMap", "LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
   "dist/api/mirror/index.d.ts": ["reflect_collection", "CollectionMirror", "CollectionMirrorErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoSync", "EchoSyncStrategy"],
   "dist/api/locus/index.d.ts": ["LocusDefinitionOptions", "LocusResumeOptions", "LocusPersistenceAdapter"],

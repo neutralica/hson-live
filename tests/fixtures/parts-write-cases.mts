@@ -72,9 +72,10 @@ export async function parts_write_cases() {
   assert.equal(commits, 0); assert.equal(watches, 0); off(); unwatch();
 
   for (const location of [parts, parts.at([]), parts.heading.at(["document"]),
-    parts.at(["heading", "css"]), map.data.ordinary, map.data.ordinary.at(["heading"])]) {
+    map.data.ordinary, map.data.ordinary.at(["heading"])]) {
     assert.equal("write" in location, false);
   }
+  assert.throws(() => parts.at(["heading", "css"] as never), /field access/);
   map.batch(writer => {
     assert.equal("write" in writer.parts.components, false);
     assert.equal("write" in writer.parts.components.heading, false);
@@ -157,8 +158,8 @@ export async function parts_write_cases() {
 
   // Existing admission owns nested occurrence lifetimes, local QUADs, and CSS.
   const styled = hsonLiveMap.fromLibraries({ components: { parts: {
-    leaf: { kind: "document", document: '<b @:root "leaf"/>', css: ':scope{color:blue}' },
-    panel: { kind: "document", document: '<article @:root <hson-part @:child at="leaf"/>/>', css: ':scope{color:red}' },
+    leaf: { kind: "document", document: '<b @:root "leaf"/>', stylesheet: ':scope{color:blue}' },
+    panel: { kind: "document", document: '<article @:root <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{color:red}' },
   } } });
   const styledAuthority = internal_livemap_aggregate_authority(styled);
   const styledBefore = styledAuthority.captureSemanticCheckpoint();

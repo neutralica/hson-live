@@ -324,7 +324,7 @@ assert.equal(restartLocal.css.snapshot(), restartLocalCss);
 resumedEcho.dispose(); stopRestart(); restarted.dispose();
 
 // Construction and client-local initializers use the same occurrence-bearing record.
-const initialGroups = hsonLiveMap.locus.create({ "page": { document:'<html <head/> <body/>/>', css:fidelitySource, access: "shared" } }, { local: [{name:"local", initializer:{document:'<html <head/> <body/>/>'}, css:fidelitySource}], defaultProjection:{libraries:["page","local"]}, authorizeProjection:()=>({libraries:["page","local"]}) });
+const initialGroups = hsonLiveMap.locus.create({ "page": { document:'<html <head/> <body/>/>', stylesheet:fidelitySource, access: "shared" } }, { local: [{name:"local", initializer:{document:'<html <head/> <body/>/>'}, stylesheet:fidelitySource}], defaultProjection:{libraries:["page","local"]}, authorizeProjection:()=>({libraries:["page","local"]}) });
 const initialSession=await initialGroups.session.create({libraries:["page","local"]});
 const initialCut=initialSession.now({html:"page"});
 assert.deepEqual(initialCut.libs.libraries.find(entry=>entry.name==="page")?.css, fidelityRecord);

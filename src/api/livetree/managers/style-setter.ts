@@ -1,29 +1,19 @@
+import { assert_css_declaration_syntax } from "../../../internal/css/declaration-syntax.js";
+import { normalize_css_map, css_property, css_declaration, css_data_entries, CSS_PSEUDOS, type NormalizedCssMap } from "../../../core/css-map.js";
+import { relative_css_selector } from "../../../internal/css/relative-selector.js";
 // style-setter.ts
 
 import { CssKey, CssMap, CssMapBase, CssPseudoKey, CssValue, CssVarFacade, CssVarName, SetSurface } from "../../../types/css.types.js";
-import { is_css_declaration_value, is_typed_css_value, render_css_declaration_value } from "../../../core/inline-style.js";
-import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
-import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
+import type { CssMapInputCheck, CssRelativeMap } from "../../../core/style.types.js";
+import { is_css_declaration_value, render_css_declaration_value } from "../../../core/inline-style.js";
+import { normalize_css_key, canon_to_css_prop } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { normalize_css_var_name } from "./style-getter.js";
 
 
 // type guard for structured CssValue object
 const isCssValue = (v: unknown): v is CssValue => {
-  return is_css_declaration_value(v);
+  return typeof v !== "boolean" && is_css_declaration_value(v);
 };
-
-const _PSEUDO_KEYS: ReadonlySet<string> = new Set([
-  "_hover",
-  "_active",
-  "_focus",
-  "_focusWithin",
-  "_focusVisible",
-  "_visited",
-  "_checked",
-  "_disabled",
-  "__before",
-  "__after",
-]);
 
 export function css_supports_decl(propCanon: string, value: string): boolean {
   // Custom props: allow through
@@ -33,7 +23,7 @@ export function css_supports_decl(propCanon: string, value: string): boolean {
     return true;
   }
 
-  const cssProp = camel_to_kebab(propCanon);
+  const cssProp = canon_to_css_prop(propCanon);
 
   try {
     return CSS.supports(cssProp, value);
@@ -41,18 +31,6 @@ export function css_supports_decl(propCanon: string, value: string): boolean {
     return false;
   }
 }
-
-//  detects CssValue object shape `{ value, unit? }`
-const isCssValueObject = (v: unknown): v is Readonly<{ value: string | number; unit?: string }> => {
-  if (!v || typeof v !== "object") return false;
-  const o = v as Record<string, unknown>;
-  return is_typed_css_value(o);
-};
-
-// pseudo blocks must be “plain object maps” (and not the `{value,unit}` CssValue object)
-const isPseudoDecls = (v: unknown): v is CssMapBase => {
-  return !!v && typeof v === "object" && !Array.isArray(v) && !isCssValueObject(v);
-};
 
 // generic “proxy surface” builder 
 export function make_set_surface<TReturn>(
@@ -133,7 +111,7 @@ export type StyleSetter<TReturn> = {
   set: SetSurface<TReturn>;
 
   setProp: (prop: CssKey, v: CssValue) => TReturn;
-  setMany: (map: CssMap) => TReturn;
+  setMany: <const T extends CssRelativeMap>(map: T & CssMapInputCheck<NoInfer<T>, false, false>) => TReturn;
   remove: (prop: CssKey) => TReturn;
   clear: () => TReturn;
 };
@@ -171,12 +149,6 @@ export type StyleSetterAdapters = Readonly<{
 
   /** Clear all properties for this handle. */
   clear: () => void;
-
-  /**
-   * Optional: allowlist keys for the proxy builder (autocomplete/constraints).
-   * If omitted, the proxy allows any property string.
-   */
-  keys?: readonly string[];
 
   /**
    * Optional: handle pseudo-blocks passed via `setMany`.
@@ -221,14 +193,14 @@ export type StyleSetterAdapters = Readonly<{
  * - `clear()` must remove all properties for that handle/backend target.
  *
  * `make_style_setter()` guarantees:
- * - `null | undefined` values are treated as **remove semantics** (calls `adapters.remove()`).
+ * - `setProp` retains null/undefined deletion; `setMany` omits undefined and rejects null.
  * - keys passed via proxy or map entries are normalized via `normalize_css_prop_key()`.
  *
  * ## Pseudo blocks in `setMany`
  * If `setMany` receives keys that match `CssPseudoKey`, their values are
  * interpreted as nested declaration maps (not as `CssValue`s). Those maps
  * are forwarded to `adapters.applyPseudo` when available; otherwise they
- * are ignored. Pseudo maps do not recurse.
+ * rejected. Supported branches are recursively preflighted before publication.
  *
  * ## Proxy builder notes
  * The returned `setter.set` is a Proxy that converts property access into calls:
@@ -247,6 +219,11 @@ export function make_style_setter<TReturn>(
 ): StyleSetter<TReturn> {
 
   const setProp = (prop: CssKey, v: CssValue): TReturn => {
+    if (!isInvalidCssVarName(prop)) css_property(prop);
+    if (v !== null && v !== undefined) {
+      const text = css_declaration(v);
+      if (!adapters.applyMany && text !== "") assert_css_declaration_syntax(css_property(prop), text);
+    }
     const canon = adapters.normalizeKey?.(prop) ?? normalize_css_key(prop);
     adapters.validateValue?.(v);
     const rendered = renderCssValue(v);
@@ -269,64 +246,45 @@ export function make_style_setter<TReturn>(
 
     setProp,
     setMany(map: CssMap): TReturn {
-      for (const [k, v] of Object.entries(map)) {
-        if (_PSEUDO_KEYS.has(k) && isPseudoDecls(v)) {
-          if (!adapters.applyPseudo) throw new Error("Inline style does not support pseudo declarations.");
-          continue;
+      const normalized = normalize_css_map(map, false);
+      // Inline projection must inspect original lexical boundaries before shared trimming.
+      const validateOriginal = (value: unknown): void => {
+        for (const [, item] of css_data_entries(value)) {
+          if (item === undefined) continue;
+          if (isCssValue(item)) adapters.validateValue?.(item);
+          else validateOriginal(item);
         }
-        if (k.trim().startsWith("&") && isPseudoDecls(v)) {
-          if (!adapters.applySelector) throw new Error("Inline style does not support selector declarations.");
-          continue;
+      };
+      if (adapters.validateValue) validateOriginal(map);
+      const validate = (value: NormalizedCssMap): void => {
+        for (const [key, item] of Object.entries(value)) {
+          if (typeof item === "string") {
+            if (!adapters.applyMany && item !== "") assert_css_declaration_syntax(key, item);
+            adapters.validateValue?.(item);
+          } else {
+            if (Object.hasOwn(CSS_PSEUDOS, key)) {
+              if (!adapters.applyPseudo) throw new TypeError("Inline style does not support pseudo declarations.");
+            } else {
+              if (!adapters.applySelector) throw new TypeError("This CSS handle does not support relative selectors.");
+              relative_css_selector(key, ":scope");
+            }
+            validate(item);
+          }
         }
-
-        if (isPseudoDecls(v)) {
-          if (adapters.applyPseudo || adapters.applySelector) continue;
-          throw new Error("Inline style does not support nested declarations.");
-        }
-
-        if (!isCssValue(v)) throw new Error("CSS declaration value is invalid.");
-      }
+      };
+      validate(normalized);
       if (adapters.applyMany) {
         const values: Record<string, string> = {};
-        for (const [key, value] of Object.entries(map)) {
-          if (value === null || value === undefined) continue;
-          if (!isCssValue(value)) throw new Error("CSS declaration value is invalid.");
-          const property = adapters.normalizeKey?.(key) ?? normalize_css_key(key);
-          if (isInvalidCssVarName(property)) continue;
-          if (Object.hasOwn(values, property)) throw new Error("Inline CSS batch property names collide after normalization.");
-          adapters.validateValue?.(value);
-          const rendered = renderCssValue(value);
-          if (rendered !== null) Object.defineProperty(values, property, {
-            value: rendered, enumerable: true, configurable: true, writable: true,
-          });
+        for (const [key, value] of Object.entries(normalized)) {
+          if (typeof value !== "string") throw new TypeError("Inline CSS requires declarations.");
+          values[adapters.normalizeKey?.(key) ?? normalize_css_key(key)] = value;
         }
         adapters.applyMany(values);
-        return host;
-      }
-      for (const [k, v] of Object.entries(map)) {
-        // pseudo blocks routed to adapter hook (CssManager only)
-        if (_PSEUDO_KEYS.has(k) && isPseudoDecls(v)) {
-          const pseudo = k as CssPseudoKey;
-
-          if (adapters.applyPseudo) adapters.applyPseudo(pseudo, v);
-          continue;
-        }
-        const isNestedSelectorKey = (k: string): boolean => {
-          const s = k.trim();
-          return s.startsWith("&");
-        };
-        if (isNestedSelectorKey(k) && isPseudoDecls(v)) {
-          if (adapters.applySelector) adapters.applySelector(k, v);
-          continue;
-        }
-        if (!isCssValue(v)) continue;
-        if (v !== undefined && v !== null) {
-          const prop = k.startsWith("--")
-            ? normalize_css_var_name(k) ?? "--invalid-css-var-name"
-            : k;
-
-          setProp(prop as CssKey, v);
-        }
+      } else for (const [key, value] of Object.entries(normalized)) {
+        if (typeof value === "string") setProp(key, value);
+        // The shared normalizer has validated all declaration and branch keys.
+        else if (Object.hasOwn(CSS_PSEUDOS, key)) adapters.applyPseudo?.(key as CssPseudoKey, value as CssMapBase);
+        else adapters.applySelector?.(key, value as CssMapBase);
       }
       return host;
     },
@@ -353,7 +311,7 @@ export function make_style_setter<TReturn>(
  * Semantics:
  * - `null | undefined` → `null` (meaning: remove the property)
  * - `string` → trimmed string (empty string is allowed and preserved)
- * - `number | boolean` → stringified
+ * - finite numbers → stringified
  * - `{ value, unit? }` → `${value}${unit ?? ""}` (trimmed)
  *
  * This function is the *only* place where `CssValue` coercion rules should live, so that:

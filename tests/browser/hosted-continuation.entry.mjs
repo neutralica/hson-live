@@ -25,6 +25,16 @@ globalThis.hostedContinuationStart = async ({ sessions, endpoint, url, scoped })
   for (const session of sessions) {
     const host = await frame(url), doc = host.contentDocument, root = doc.documentElement;
     const nodes = [root, ...root.querySelectorAll('*')], styles = nodes.map(computed);
+    const originalManagedStyle = doc.querySelector('[data-hson-managed-document-css]');
+    const reviewTokenParity = () => {
+      if (!scoped) return;
+      const button = doc.querySelector('button'), label = button.querySelector('span');
+      const rootStyle = doc.defaultView.getComputedStyle(button);
+      for (const suffix of ['nbsp', 'space', 'hex']) assert(rootStyle.getPropertyValue(`--review-${suffix}`) === rootStyle.getPropertyValue(`--text-${suffix}`), `Structured/textual ${suffix} token parity`);
+      assert(rootStyle.fontFamily === doc.defaultView.getComputedStyle(label).fontFamily, 'Structured/textual Unicode font-family parity');
+    };
+    reviewTokenParity();
+    if (scoped) assert(doc.defaultView.getComputedStyle(doc.querySelector('button span')).getPropertyValue('--structured-media').trim() === 'present', 'Structured media/QUAD styling applies before JavaScript adoption');
     const text = [];
     const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) text.push(walker.currentNode);
@@ -73,8 +83,10 @@ globalThis.hostedContinuationStart = async ({ sessions, endpoint, url, scoped })
     assert(nodes.every((n, index) => [root, ...root.querySelectorAll('*')][index] === n), 'Every original Element retained');
     assert(text.every(n => n.isConnected), 'Original text nodes retained');
     assert(nodes.every((n, index) => computed(n) === styles[index]), 'First paint styles unchanged');
+    reviewTokenParity();
     assert(!nodes.some(n => n.hasAttribute('hson:quad')), 'Portable markers consumed');
     assert(doc.querySelectorAll('[data-hson-managed-document-css]').length === 1, 'One managed stylesheet');
+    assert(doc.querySelector('[data-hson-managed-document-css]') === originalManagedStyle, 'Original managed stylesheet retained');
     assert(doc.querySelector('[data-hson-managed-document-css]').textContent === c.map.css.snapshot(), 'Receiving stylesheet installed');
     for (const node of nodes) {
       const id = node.getAttribute('hson:quid');

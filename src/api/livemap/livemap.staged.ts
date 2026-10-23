@@ -1,9 +1,11 @@
+import { assert_part_public_path } from "../../core/part-css-access.js";
+import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { PART_COLLECTION_VALIDATION } from "./livemap.parts.js";
 import { normalize_document_request_target } from "./livemap.document.target.js";
 import { document_css_commands, capture_document_css_command } from "../../internal/document-css-commands.js";
-import { collection_commands } from "./livemap.collection-command.js";
+import { collection_commands, normalize_part_collection_command } from "./livemap.collection-command.js";
 import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapDocumentRequestTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
@@ -97,6 +99,9 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   };
   const data_path = (identity: LiveMapLibraryIdentity, path: LivePath, checks: readonly LiveMapAggregateWrite[] = []): StagedDataPath => {
     const stablePath = must_live_path(path);
+    const isParts = registry.libraries.some(entry => entry.validation === PART_COLLECTION_VALIDATION && byName.get(entry.name)?.identity === identity);
+    if (isParts) assert_part_public_path(stablePath);
+    const normalize = (value: unknown) => isParts ? normalize_part_css_authoring(value, stablePath) : value;
     const target = aggregate.target(identity, stablePath);
     const assert_current = () => { assert_open(); writes.push(...checks); };
     const require_shape = (collection: "array" | "object"): StagedDataPath => {
@@ -113,18 +118,18 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
       ...collection_commands(command => {
         assert_current();
         writes.push(Object.freeze({ target, kind: "collection", command }));
-      }),
+      }, undefined, command => isParts ? normalize_part_collection_command(command, stablePath) : command),
       at(child: LivePath) {
         assert_open();
         return data_path(identity, [...stablePath, ...must_live_path(child)], checks);
       },
       set(value: JsonValue) {
         assert_current();
-        writes.push(Object.freeze({ target, kind: "set", value: must_json_value(value, stablePath) }));
+        writes.push(Object.freeze({ target, kind: "set", value: must_json_value(normalize(value), stablePath) }));
       },
       replace(value: JsonValue) {
         assert_current();
-        writes.push(Object.freeze({ target, kind: "replace", value: must_json_value(value, stablePath) }));
+        writes.push(Object.freeze({ target, kind: "replace", value: must_json_value(normalize(value), stablePath) }));
       },
       delete() {
         assert_current();

@@ -300,7 +300,7 @@ function verified_schema_assignment_ranges(typescript: typeof ts, program: ts.Pr
 }
 
 function schema_assignment_errors(program: ts.Program, fileName: string): readonly ts.Diagnostic[] {
-  return ts.getPreEmitDiagnostics(program).filter((diagnostic) => diagnostic.code === 2322 && diagnostic.file?.fileName === fileName);
+  return ts.getPreEmitDiagnostics(program, program.getSourceFile(fileName)).filter((diagnostic) => diagnostic.code === 2322 && diagnostic.file?.fileName === fileName);
 }
 
 function filtered_schema_assignment_errors(program: ts.Program, fileName: string): readonly ts.Diagnostic[] {

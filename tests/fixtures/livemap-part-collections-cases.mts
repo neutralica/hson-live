@@ -39,8 +39,8 @@ import { validate_document_path } from "../../src/api/livemap/livemap.document.p
 
 const css = '@layer base{}@layer theme{}@property --tone{syntax:"<color>";inherits:false;initial-value:red}@layer base{article{color:var(--tone)}@media (min-width:1px){article>span{display:block}}}@keyframes pulse{from{opacity:0}to{opacity:1}}article{animation:pulse 1s}';
 const parts = () => ({
-  "first/β": { kind: "document" as const, document: '<article @:root <span @:label "First"/> <i/>/>', css },
-  "二": { kind: "document" as const, document: '<a @:label href="/" "Second"/>', css: "" },
+  "first/β": { kind: "document" as const, document: '<article @:root <span @:label "First"/> <i/>/>', stylesheet: css },
+  "二": { kind: "document" as const, document: '<a @:label href="/" "Second"/>', stylesheet: "" },
 });
 const definition = (parts: LiveMapPartCollection) => ({ parts });
 const fixture = () => hsonLiveMap.fromLibraries({ collection: definition(parts()) });
@@ -150,7 +150,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
         target.at(["p", "document"]).set('<p "discarded"/>');
         library.schema.use(schema);
       }));
-      library.at(["p"]).replace({ kind: "document", document: '<p "valid after rejection"/>', css: "p{color:red}" });
+      library.at(["p"]).replace({ kind: "document", document: '<p "valid after rejection"/>', stylesheet: "p{color:red}" });
       map.batch(writer => { const target = writer.parts.must(name);
         if (String(target.mode) === "document") throw Error("Expected data");
         target.at(["p", "document"]).set('<p "staged after rejection"/>'); });
@@ -244,7 +244,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("source content distinctions and absent versus empty CSS survive exact materialization", () => {
     const map = hsonLiveMap.fromLibraries({ collection: definition({
-      absent: { kind: "document", document: '<p/>' }, empty: { kind: "document", document: '<p ""/>', css: "" },
+      absent: { kind: "document", document: '<p/>' }, empty: { kind: "document", document: '<p ""/>', stylesheet: "" },
       text: { kind: "document", document: '<p "a" "b"/>' },
     }) });
     assert.notDeepEqual(read(map, "collection", "absent").root, read(map, "collection", "empty").root);
@@ -260,7 +260,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.deepEqual(part.css, parse_document_stylesheet(css, []));
     assert.equal(part.css!.properties.length, 1); assert.equal(part.css!.keyframes.length, 1);
     assert.ok(part.css!.order!.length > 0);
-    const ordering = '@layer reset{}@layer theme{}'; data(map).at(["二", "css"]).set(ordering);
+    const ordering = '@layer reset{}@layer theme{}'; data(map).at(["二"]).replace({ ...parts()["二"], stylesheet: ordering });
     assert.deepEqual(read(map, "collection", "二").css, parse_document_stylesheet(ordering, []));
     assert.match(render_portable_document_stylesheet(decode_portable_document_stylesheet(read(map, "collection", "二").css)), /@layer reset/);
     assert.equal(JSON.stringify(part.root).includes('style'), false);
@@ -275,9 +275,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       { kind: "document", document: '<p @:1bad/>' }, { kind: "document", document: '<p @:same @:other/>' },
       { kind: "document", document: '<p <i @:same/> <b @:same/>/>' },
       { kind: "document", document: '<p/>', quads: [{ name: "a", path: [99] }] },
-      { kind: "document", document: '<p/>', css: '@import "remote.css";' },
-      { kind: "document", document: '<p/>', css: 'p{color:' },
-      { kind: "document", document: '<p/>', css: undefined },
+      { kind: "document", document: '<p/>', stylesheet: '@import "remote.css";' },
+      { kind: "document", document: '<p/>', stylesheet: 'p{color:' },
+      { kind: "document", document: '<p/>', stylesheet: undefined },
       { kind: "document", document: '<p/>', schema: Hson.schema`<type "document" tag "p">` },
       { kind: "document", document: '<p/>', schema: '<type "document" tag "p">' },
       { kind: "document", document: { $_tag: "p", $_content: [], $_meta: { quid: "000009001" } } },
@@ -292,7 +292,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("descriptor-exact portable data admission rejects getters undefined hidden and nonportable fields", () => {
     let reads = 0;
-    const member = Object.defineProperty({ kind: "document", document: '<p/>' }, "css", { enumerable: true, get() { reads++; return ""; } });
+    const member = Object.defineProperty({ kind: "document", document: '<p/>' }, "stylesheet", { enumerable: true, get() { reads++; return ""; } });
     const collection = Object.defineProperty({}, "member", { enumerable: true, get() { reads++; return parts()["二"]; } });
     const hidden = Object.defineProperty({ kind: "document", document: '<p/>' }, "extra", { value: true });
     for (const input of [[], null, "text", { member }, collection, { hidden },
@@ -317,7 +317,11 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       () => member.object.deleteMany(["kind", "document"]), () => member.object.renameKey("document", "unsupported"),
       () => library.at([]).asObject()!.object.setKey("late", invalid), () => library.at([]).asObject()!.object.setMany({ good: parts()["二"], late: invalid })];
     for (const fail of failures) atomic(map, fail);
-    doc.set('<section @:label/>'); member.object.setKey("css", ""); member.object.deleteKey("css");
+    doc.set('<section @:label/>');
+    atomic(map, () => member.object.setKey("stylesheet", ""), /field access/);
+    atomic(map, () => member.object.deleteKey("stylesheet"), /field access/);
+    member.replace({ kind: "document", document: '<section @:label/>', stylesheet: "" });
+    member.replace({ kind: "document", document: '<section @:label/>' });
     library.at([]).asObject()!.object.setKey("extra", { kind: "document", document: '<div/>' });
     library.at([]).asObject()!.object.renameKey("extra", "new/葉"); library.at(["new/葉"]).delete();
     library.at([]).asObject()!.object.deleteMany(["二"]); assert.equal(owner(map).libraries().length, 1);
@@ -338,7 +342,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     });
     assert.equal(map.rev, rev + 1);
     atomic(map, () => map.batch(writer => { writer.parts.must("collection").at(["二", "document"]).set('<p/>');
-      writer.parts.must("collection").at(["first/β", "css"]).set('@import "x";'); }));
+      writer.parts.must("collection").at(["first/β"]).replace({ ...parts()["first/β"], stylesheet: '@import "x";' }); }));
     atomic(map, () => map.batch(() => collect(map, "extra", parts())));
   });
   await check("ordinary Library uniqueness and aggregate authority fences apply uniformly", () => {
@@ -353,9 +357,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   await check("completed reentrant inner transitions survive invalid outer data candidates", () => {
     const map = fixture(), library = data(map), rev = map.rev;
     assert.throws(() => library.at(["二", "document"]).update(() => {
-      library.at(["二", "css"]).set('@layer one{}@layer two{}'); return '<p';
+      library.at(["二"]).replace({ ...parts()["二"], stylesheet: '@layer one{}@layer two{}' }); return '<p';
     }));
-    assert.equal(map.rev, rev + 1); assert.equal(library.snap(["二", "css"]), '@layer one{}@layer two{}');
+    assert.equal(map.rev, rev + 1); assert.equal(map.parts.must("collection").at(["二"]).snap()?.stylesheet, '@layer one{}@layer two{}');
     const candidate = new Proxy(parts(), { ownKeys(target) {
       library.at(["二", "document"]).set('<b/>'); return Reflect.ownKeys(target);
     } });
@@ -531,7 +535,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.equal(adapter.chunks.size, 0); assert.equal(adapter.manifests.size, 0); assert.equal(adapter.checkpointCalls.length, 0);
     const fresh = make_livemap_mirror_from_semantic_checkpoint_internal(checkpoint);
     assert.deepEqual(read(fresh, "collection", "二"), read(map, "collection", "二"));
-    atomic(fresh, () => data(fresh).at(["二", "css"]).set('@import "x";'));
+    atomic(fresh, () => data(fresh).at(["二"]).replace({ ...parts()["二"], stylesheet: '@import "x";' }));
     assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "collection", family: "data", validation,
       schema: data(map).schema.get(), root: graph({ bad: {} }) }]));
   });
@@ -641,7 +645,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const adapter = new MemoryCheckpointAdapter();
     const options = [{ "collection": { parts: parts(), access: "shared" }, "hidden": { parts: { secret: { kind: "document", document: '<secret-only/>' } }, access: "private" } }, { logicalMapId: "part-collection-durable", persistence: adapter, authorizeProjection: () => ({ libraries: ["collection", "hidden"] }), actions: {
         valid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二", "document"]).set('<p @:label/>'); },
-        invalid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二", "css"]).set('@import "x";'); },
+        invalid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二"]).replace({ ...parts()["二"], stylesheet: '@import "x";' }); },
       } }] as const;
     const locus = await hsonLiveMap.locus.resume(options[0], options[1]), map = locus_map_internal(locus), pair = sockets();
     const session = await locus.session.create({ libraries: ["collection", "hidden"] });

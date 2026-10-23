@@ -7,10 +7,10 @@ import type { Echo, EchoReplicaTransport } from "hson-live/echo";
 import { test_echo_transport } from "../helpers/public-echo-websocket-transport.mts";
 
 export const parts = { parts: {
-  leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', css: ':scope{padding:3px}[hson\\:quad="label"]{border:0}' },
-  panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', css: ':scope{margin:7px}' },
+  leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', stylesheet: ':scope{padding:3px}[hson\\:quad="label"]{border:0}' },
+  panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{margin:7px}' },
   bare: { kind: "document", document: '<aside @:root "Bare"/>' },
-  secret: { kind: "document", document: '<p "PRIVATE_TEMPLATE"/>', css: 'p{--private:PRIVATE_CSS}' },
+  secret: { kind: "document", document: '<p "PRIVATE_TEMPLATE"/>', stylesheet: 'p{--private:PRIVATE_CSS}' },
 } } as const;
 export const page = { document: '<main @:page <hson-part @:left lib="parts" at="panel"/> <hson-part @:right lib="parts" at="panel"/> <footer @:footer/>/>' };
 const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection }) => ({

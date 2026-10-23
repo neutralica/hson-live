@@ -11,7 +11,7 @@ import type {
   LocusResult,
   LocusActionPayloads,
 } from "../../types/locus.types.js";
-import type { CssMap } from "../../core/style.types.js";
+type CssMap = NonNullable<import("../../core/types.js").HsonAttrs["style"]>;
 import type { JsonValue, Primitive } from "../../core/types.js";
 import {
   decode_document_attrs,

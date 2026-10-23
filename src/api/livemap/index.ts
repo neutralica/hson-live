@@ -115,3 +115,5 @@ export type {
 } from "../../core/projected-value-admission.js";
 
 export type { LibraryFamily, LibraryFamilySelector, LibraryFamilyNamespaces } from "../../types/library-selectors.types.js";
+
+export type { CssMap } from "../../core/style.types.js";

@@ -4,7 +4,6 @@ import {
   _TRANSIT_PREFIX,
 } from "./constants.js";
 import { canonical_inline_style } from "./inline-style.js";
-import type { CssMap } from "./style.types.js";
 import type {
   CanonicalPublicAttrs,
   CanonicalPublicAttrValue,

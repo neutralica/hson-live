@@ -36,9 +36,9 @@ const listener = { event: "click", target: "element" as const, capture: false, o
 
 async function fixture() {
   const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-    leaf: { kind: "document", document: '<b @:root <span @:label "visible"/>/>', css: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
-    panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: '@media screen{:scope{color:red}}' },
-    green: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: ':scope{color:green}' },
+    leaf: { kind: "document", document: '<b @:root <span @:label "visible"/>/>', stylesheet: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
+    panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: '@media screen{:scope{color:red}}' },
+    green: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: ':scope{color:green}' },
     plain: { kind: "document", document: '<i/>' },
     secret: { kind: "document", document: '<strong "PRIVATE_DEFINITION_SENTINEL"/>' },
   } }, page: { document: '<main @:page <footer @:_abcdefghj/>/>' }, other: { data: { n: 0 } }, hidden: { document: '<aside/>' } });

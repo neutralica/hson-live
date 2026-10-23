@@ -1,3 +1,4 @@
+import { part_object_arguments } from "../../core/part-css-authoring.js";
 import { must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import type { JsonValue } from "../../core/types.js";
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
@@ -18,12 +19,13 @@ export type CollectionCommand = Readonly<{
 }>;
 
 /** Capture commands only. No installed snapshot is consulted for mutation planning. */
-export function collection_commands<TResult>(send: (command: CollectionCommand) => TResult, reject?: (cause: unknown) => TResult): Readonly<{
+export function collection_commands<TResult>(send: (command: CollectionCommand) => TResult, reject?: (cause: unknown) => TResult, normalize?: (command: CollectionCommand) => CollectionCommand): Readonly<{
   array: LibraryArrayCommands<JsonValue, TResult>; object: LibraryObjectCommands<JsonValue, TResult>;
 }> {
   const capture = (command: Exclude<CollectionCommand, { method: "assert-shape" }>): TResult => {
     try {
-      const args = Object.freeze(command.args.map(value => value === undefined ? undefined : must_ordered_projected_value(value, [])));
+      const source = normalize?.(command) ?? command;
+      const args = Object.freeze(source.args.map(value => value === undefined ? undefined : must_ordered_projected_value(value, [])));
       return send(Object.freeze({ ...command, args }));
     } catch (cause) {
       if (reject !== undefined) return reject(cause);
@@ -60,4 +62,10 @@ export function plan_collection_command(value: OrderedProjectedValue, path: Live
     } else Reflect.apply(api[command.method], undefined, command.args);
   }
   return writes;
+}
+
+/** Capture omission only for authenticated Parts object authoring commands. */
+export function normalize_part_collection_command(command: CollectionCommand, path: LivePath): CollectionCommand {
+  if (command.collection !== "object" || command.method === "assert-shape") return command;
+  return { ...command, args: part_object_arguments(path, command.method, command.args) };
 }

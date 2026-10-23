@@ -1,3 +1,6 @@
+import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
+import { structured_part_stylesheet } from "../../internal/css/structured-css.js";
+import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { ANY_DATA, hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
@@ -5,7 +8,7 @@ import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
-import { parse_part_stylesheet } from "../../internal/css/part-stylesheet.js";
+import { parse_part_stylesheet, merge_part_stylesheets } from "../../internal/css/part-stylesheet.js";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { DocumentCssRecord } from "../../types/document-css.types.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
@@ -58,9 +61,9 @@ export function validate_part_collection(value: OrderedProjectedValue): readonly
   return Object.freeze(value.entries.map(([key, member]): ValidatedPart => {
     if (!is_ordered_projected_object(member)) throw new TypeError("Part requires a data record.");
     const fields = new Map(member.entries);
-    if (fields.size < 2 || fields.size > 3 || [...fields.keys()].some(name => name !== "kind" && name !== "document" && name !== "css")
+    if (fields.size < 2 || fields.size > 4 || [...fields.keys()].some(name => name !== "kind" && name !== "document" && name !== "css" && name !== "stylesheet")
       || fields.get("kind") !== "document" || typeof fields.get("document") !== "string") {
-      throw new TypeError("Part requires exactly kind, authored document, and optional raw CSS; member Schema is unsupported.");
+      throw new TypeError("Part requires exactly kind, authored document, and optional css/stylesheet; member Schema is unsupported.");
     }
     const source = fields.get("document");
     if (typeof source !== "string") throw new TypeError("Part document requires authored Hson text.");
@@ -72,10 +75,16 @@ export function validate_part_collection(value: OrderedProjectedValue): readonly
     }
     const quads = authored.declarations.length === 0 ? undefined : decode_document_quads(
       [...authored.declarations].sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0), root, "document");
-    const rawCss = fields.get("css");
-    if (fields.has("css") && typeof rawCss !== "string") throw new TypeError("Part CSS requires raw stylesheet text.");
-    const css = typeof rawCss === "string" ? encode_portable_document_stylesheet(
-      decode_portable_document_stylesheet(parse_part_stylesheet(rawCss))) : undefined;
+    const rawSheet = fields.get("stylesheet");
+    if (fields.has("stylesheet") && typeof rawSheet !== "string") throw new TypeError("Part stylesheet requires text.");
+    const names = new Set(authored.declarations.map(item => item.name));
+    const records: DocumentCssRecord[] = [];
+    if (typeof rawSheet === "string") records.push(parse_part_stylesheet(rawSheet));
+    if (fields.has("css")) records.push(structured_part_stylesheet(materialize_projected_value(fields.get("css")!), names));
+    const css = records.length ? encode_portable_document_stylesheet(merge_part_stylesheets(records)) : undefined;
+    if (css !== undefined) for (const name of document_css_subject_identities(css, "inbound")) {
+      if (!names.has(name)) throw new TypeError(`Part stylesheet references missing local QUAD ${name}.`);
+    }
     return Object.freeze({ key, root, ...(quads === undefined ? {} : { quads }), ...(css === undefined ? {} : { css }) });
   }));
 }
@@ -90,7 +99,7 @@ export function validate_data_library(root: HsonNode, mode: string, validation: 
 
 /** Explicit internal construction through the ordinary initial/later Library grammar. @internal */
 export function part_collection_definition_internal(input: unknown): Readonly<{ data: JsonValue; validation: DataLibraryValidation }> {
-  const value = admit_projected_value(input);
+  const value = admit_projected_value(normalize_part_css_authoring(input));
   validate_part_collection(value);
   const data: JsonValue = materialize_projected_value(value);
   return Object.freeze({ data, validation: PART_COLLECTION_VALIDATION });

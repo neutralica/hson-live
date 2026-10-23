@@ -1,3 +1,5 @@
+import { CSS_PROPERTY_NAMES } from "../../../../core/css-properties.js";
+import { trim_css_value_boundary } from "../../../../core/css-value-boundary.js";
 // normalize-css.ts
 
 import { kebab_to_camel } from "../primitive-utils/kebab-to-camel.util.js";
@@ -17,6 +19,10 @@ const VENDOR_PREFIX_ALIASES: Readonly<Record<string, string>> = {
   "-o-": "O",
 };
 
+// Some CSS segments (3dlight, x-max) lose separators in CSSOM camel spelling.
+// Resolve maintained names before the generic converter rather than guessing those boundaries.
+const CSS_CANONICAL_NAMES: ReadonlyMap<string, string> = new Map(CSS_PROPERTY_NAMES.map(name => [normalize_css_key(name), name]));
+
 /**
  * Convert a canonical internal style key into a CSS property name.
  *
@@ -26,7 +32,15 @@ const VENDOR_PREFIX_ALIASES: Readonly<Record<string, string>> = {
 export function canon_to_css_prop(propCanon: string): string {
   if (propCanon.startsWith("--")) return propCanon;
   if (propCanon === "cssFloat") return "float";
-  return camel_to_kebab(propCanon);
+  const known = CSS_CANONICAL_NAMES.get(propCanon);
+  if (known !== undefined) return known;
+  const vendor = /^(Webkit|webkit|Moz|moz|ms|Ms|O|o)([A-Z].*)$/.exec(propCanon);
+  if (vendor) {
+    const prefix = `-${vendor[1].toLowerCase()}-`;
+    const alias = CSS_CANONICAL_NAMES.get(`${VENDOR_PREFIX_ALIASES[prefix]}${vendor[2]}`);
+    return alias ?? `${prefix}${camel_to_kebab(vendor[2].replace(/([A-Z])([A-Z][a-z])/g, "$1-$2"))}`;
+  }
+  return camel_to_kebab(propCanon.replace(/([A-Z])([A-Z][a-z])/g, "$1-$2"));
 }
 
 /**
@@ -66,7 +80,7 @@ export function canon_to_css_prop(propCanon: string): string {
  *   Returns an empty string if the input trims to empty.
  */
 export function normalize_css_key(raw: string): string {
-  const p = raw.trim();
+  const p = trim_css_value_boundary(raw);
   if (p === "") return "";
 
   // custom properties stay as-is
@@ -95,7 +109,7 @@ export function normalize_css_key(raw: string): string {
 export function normalize_css_value(prop: string, value: string): string {
   if (prop !== "content") return value;
 
-  const v = value.trim();
+  const v = trim_css_value_boundary(value);
 
   // already quoted string
   if (

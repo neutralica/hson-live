@@ -1,8 +1,7 @@
 // serialize-style.ts
 
-import type { CssMap } from "../../../../core/style.types.js";
 import { render_css_declaration_value } from "../../../../core/inline-style.js";
-import { camel_to_kebab } from "./camel_to_kebab.js";
+import { canon_to_css_prop } from "./normalize-css.js";
 
 type StyleFormat = "inline" | "multiline";
 
@@ -14,11 +13,7 @@ interface StyleSerializeOptions {
 
 /** Inline storage/native projection, distinct from authored CSS identifiers. */
 export function inline_css_native_name(key: string): string {
-  if (key.startsWith("--")) return key;
-  if (key === "cssFloat") return "float";
-  const vendor = /^(Webkit|webkit|Moz|moz|ms|Ms|O|o)([A-Z].*)$/.exec(key);
-  if (vendor) return `-${vendor[1].toLowerCase()}-${camel_to_kebab(vendor[2])}`;
-  return camel_to_kebab(key);
+  return canon_to_css_prop(key);
 }
 
 
@@ -50,7 +45,7 @@ export function inline_css_native_name(key: string): string {
  * @param style - Style object mapping property names to values (or undefined).
  * @returns A CSS declaration list string, or `""` when there is nothing to emit.
  *******/
-export function serialize_style(style: CssMap | undefined): string {
+export function serialize_style(style: object | undefined): string {
   if (!style || !Object.keys(style).length) { return ""; }
 
   // CHANGE: normalize entries BEFORE sorting/serializing

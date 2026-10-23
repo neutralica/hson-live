@@ -304,7 +304,7 @@ export function set_portable_document_declaration(
   ruleKeyRaw: string,
   selectorRaw: string,
   propertyRaw: string,
-  rawValue: CssValue,
+  rawValue: CssValue | boolean,
   scopesRaw: readonly string[] = [],
 ): PortableDocumentStylesheet {
   const ruleKey = nonempty(ruleKeyRaw);

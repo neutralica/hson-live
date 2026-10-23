@@ -42,12 +42,12 @@ function construct_locus_definition<D extends LocusDefinitions, A extends LocusA
     if (!Array.isArray(options.local)) throw new TypeError("Locus local initializers must be an array.");
     for (const entry of options.local) {
       if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !entry.name || names.has(entry.name)
-        || entry.initializer === undefined || Reflect.ownKeys(entry).some(key => key !== "name" && key !== "initializer" && key !== "css")) {
+        || entry.initializer === undefined || Reflect.ownKeys(entry).some(key => key !== "name" && key !== "initializer" && key !== "stylesheet")) {
         throw new TypeError("Locus local initializer is invalid or duplicated.");
       }
       names.add(entry.name);
       catalog.push({ name: entry.name, ownership: "local", initializer: entry.initializer,
-        ...(entry.css === undefined ? {} : { css: parse_document_stylesheet(entry.css, []) }) });
+        ...(entry.stylesheet === undefined ? {} : { css: parse_document_stylesheet(entry.stylesheet, []) }) });
     }
   }
   const map = make_livemap_libraries(captured.definitions, [], undefined, captured.css);

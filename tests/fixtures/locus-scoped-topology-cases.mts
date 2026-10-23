@@ -26,9 +26,9 @@ import { parse_document_stylesheet } from "../../src/internal/css/parse-document
 
 const parts = { parts: {
   leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>',
-    css: 'button{color:red;span{opacity:.5}}[hson\\:quad="label"]{border:0}@media screen{@supports(display:grid){:scope{padding:2px}}}' },
-  global: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', css: ':scope{--tone:red}@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
-  panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', css: ':scope{margin:3px}' },
+    stylesheet: 'button{color:red;span{opacity:.5}}[hson\\:quad="label"]{border:0}@media screen{@supports(display:grid){:scope{padding:2px}}}' },
+  global: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', stylesheet: ':scope{--tone:red}@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
+  panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{margin:3px}' },
   secret: { kind: "document", document: '<p "PRIVATE_UNUSED_PART"/>' },
 } } as const;
 const page = { document: '<main @:root <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <hson-part lib="parts" at="global"/> <footer @:footer/>/>' };
@@ -143,7 +143,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       const libraries = batch ? [{ name: "initial", ownership: "shared" as const }] : [{ name: "parts", ownership }, { name: "initial", ownership: "shared" as const }];
       const { locus } = create_registry_locus_internal({ map, libraries, defaultProjection: { libraries: ["initial"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
       try {
-        const definitions = { page: { ...page, css: '[hson\\:quad="footer"]{color:purple}', access: "shared" as const },
+        const definitions = { page: { ...page, stylesheet: '[hson\\:quad="footer"]{color:purple}', access: "shared" as const },
           ...(batch ? { parts: { ...parts, access: ownership } } : {}) };
         await locus.admit(definitions);
         assert.equal(map.rev, 1); assert.equal(state(map).scopes.occurrences.length, 5);
@@ -158,7 +158,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       logicalMapId: f.state.checkpoint.logicalMapId, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) }, { scopedDocuments: true });
     try {
       assert.ok(checkpoint_libraries_equal(f.expected.libraries, authority(map).captureSemanticCheckpoint().libraries));
-      await locus.admit({ "later": { ...page, css: '[hson\\:quad="footer"]{color:purple}', access: "shared" } });
+      await locus.admit({ "later": { ...page, stylesheet: '[hson\\:quad="footer"]{color:purple}', access: "shared" } });
       const nextMap = initial(), restarted = await resume_registry_locus({ map: nextMap, libraries: initialCatalog,
         persistence: f.adapter, logicalMapId: f.state.checkpoint.logicalMapId }, { scopedDocuments: true });
       try { assert.ok(checkpoint_libraries_equal(authority(map).captureSemanticCheckpoint().libraries,

@@ -14,7 +14,7 @@ import { canonical_graph_equal } from "../../src/api/livemap/livemap.document.in
 import { is_Node } from "../../src/core/node-guards.ts";
 import type { LiveMapGraphOp } from "../../src/types/livemap.types.ts";
 
-const part = (document: string, css?: string) => ({ kind: "document" as const, document, ...(css === undefined ? {} : { css }) });
+const part = (document: string, css?: string) => ({ kind: "document" as const, document, ...(css === undefined ? {} : { stylesheet: css }) });
 const parts = {
   panel: part('<section @:root <div @:body <button @:next/> <hson-part @:child at="inner"/>/>/>'),
   inner: part('<article @:root <hson-part @:child at="leaf"/>/>'),

@@ -24,7 +24,7 @@ import { document_css_subject_identities } from "../../src/internal/css/css-iden
 import { encode_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.ts";
 
-export const part = (document: string, css?: string) => ({ kind: "document" as const, document, ...(css === undefined ? {} : { css }) });
+export const part = (document: string, css?: string) => ({ kind: "document" as const, document, ...(css === undefined ? {} : { stylesheet: css }) });
 export const doc = (map: LiveMap, name = "page"): LiveMapDocumentLibrary => {
   const selected = map.doc.must(name); if (selected.mode !== "document") throw Error("document"); return selected;
 };

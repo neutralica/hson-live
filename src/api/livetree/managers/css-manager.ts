@@ -1,3 +1,4 @@
+import { trim_css_value_boundary } from "../../../core/css-value-boundary.js";
 // css-manager.ts
 
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
@@ -53,7 +54,7 @@ export function isLiveTree(x: unknown): x is LiveTree {
 export function render_css_value(v: CssValue): string {
   // string → already a valid CSS literal
   if (typeof v === "string") {
-    return v.trim();
+    return trim_css_value_boundary(v);
   }
   if (
     typeof v === 'number' ||
@@ -620,7 +621,7 @@ export class CssRuntimeManager {
     }
 
     //  don't treat "0" as delete; only empty string deletes
-    const v = rendered.trim();
+    const v = trim_css_value_boundary(rendered);
     if (v.length === 0) {
       this.unsetForQuid(q, p);
       return;

@@ -1,3 +1,5 @@
+import { assert_part_public_path } from "../../core/part-css-access.js";
+import { normalize_part_css_authoring, part_object_boundary } from "../../core/part-css-authoring.js";
 import { document_markup, document_hson } from "../../internal/document-representation.js";
 import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
@@ -1197,6 +1199,7 @@ function make_data_library(
     public_commit(commit) as LiveMapCommit<string, LiveMapDataOp>;
   const handle = <TValue = JsonValue | undefined>(path: LivePath, check?: DataLocationCheck): LiveMapLibraryPathHandle<TValue> => {
     const stablePath = clone_live_path(must_live_path(path));
+    if (contract.validation === PART_COLLECTION_VALIDATION) assert_part_public_path(stablePath);
     type DataCommit = LiveMapCommit<string, LiveMapDataOp>;
     const read = () => check?.() === false ? undefined : snap(stablePath);
     const refine = (kind: "present" | "array" | "object" | "scalar") =>
@@ -1215,7 +1218,7 @@ function make_data_library(
     };
     const objectApi = make_livemap_object_api<TValue, DataCommit>({} as never, stablePath, projectedAuthority);
     const arrayApi = make_livemap_array_api<TValue, DataCommit>({} as never, stablePath, projectedAuthority);
-    const objectCapabilities = omit_object_discriminant(objectApi);
+    const objectCapabilities = omit_object_discriminant(contract.validation === PART_COLLECTION_VALIDATION ? part_object_boundary(objectApi, stablePath) : objectApi);
     const arrayCapabilities = omit_array_collisions(arrayApi);
     const currentKind = () => data_path_kind(read());
     const hson = () => check?.() === false ? undefined : canonical(stablePath);
@@ -1247,12 +1250,12 @@ function make_data_library(
       set: (value: LiveMapSetValue<TValue>) => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
         kind: "set",
-        value: must_json_value(value, stablePath),
+        value: must_json_value(contract.validation === PART_COLLECTION_VALIDATION ? normalize_part_css_authoring(value, stablePath) : value, stablePath),
       }])),
       replace: (value: LiveMapWriteValue<TValue>) => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
         kind: "replace",
-        value: must_json_value(value, stablePath),
+        value: must_json_value(contract.validation === PART_COLLECTION_VALIDATION ? normalize_part_css_authoring(value, stablePath) : value, stablePath),
       }])),
       delete: () => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
@@ -1263,7 +1266,7 @@ function make_data_library(
         return public_data_commit(aggregate.commit([{
           target: aggregate.target(library.identity, stablePath),
           kind: "set",
-          value: must_json_value(updater(read() as TValue), stablePath),
+          value: must_json_value(contract.validation === PART_COLLECTION_VALIDATION ? normalize_part_css_authoring(updater(read() as TValue), stablePath) : updater(read() as TValue), stablePath),
         }]));
       },
       kind: currentKind,
@@ -1295,6 +1298,7 @@ function make_data_library(
   function library_snap(): JsonValue | undefined;
   function library_snap<const TPath extends LivePath>(path: TPath): import("../../types/livemap.types.js").LiveMapPathValue<JsonValue | undefined, TPath>;
   function library_snap(path: LivePath = []): JsonValue | undefined {
+    if (contract?.validation === PART_COLLECTION_VALIDATION) assert_part_public_path(must_live_path(path));
     return snap(path);
   }
   function library_at<const TPath extends LivePath>(
@@ -1730,9 +1734,10 @@ function must_library_input(name: string, value: unknown, metadata?: {
   if (!is_record(value)) {
     throw new TypeError(`LiveMap Library ${JSON.stringify(name)} must be an input object.`);
   }
-  if (metadata === undefined && Object.hasOwn(value, "css")) {
+  if (metadata === undefined && Object.hasOwn(value, "stylesheet")) {
     throw new TypeError("Initial Library CSS input is not supported; author through the document Library css handle.");
   }
+  if (Object.hasOwn(value, "css")) throw new TypeError("Document definition text uses stylesheet, not css.");
   own_document_quads(value);
   const validation = own_data_library_validation(value);
   // Configuration getters are supported. Select their values once before
@@ -1747,7 +1752,7 @@ function must_library_input(name: string, value: unknown, metadata?: {
   }
   const selected: Record<string, unknown> = Object.create(null);
   for (const key of Reflect.ownKeys(value)) {
-    if (metadata !== undefined && (typeof key !== "string" || !["data", "document", "parts", "schema", "css", ...(metadata.hosted ? ["access"] : [])].includes(key))) {
+    if (metadata !== undefined && (typeof key !== "string" || !["data", "document", "parts", "schema", "stylesheet", ...(metadata.hosted ? ["access"] : [])].includes(key))) {
       throw new TypeError("Library definition contains unsupported metadata.");
     }
     Object.defineProperty(selected, key, { value: Reflect.get(value, key), enumerable: true, configurable: true, writable: true });
@@ -1758,13 +1763,13 @@ function must_library_input(name: string, value: unknown, metadata?: {
       if (Object.hasOwn(selected, "access") && access !== "private" && access !== "shared") throw new TypeError("Library access must be private or shared.");
       metadata.ownership[name] = access === "shared" ? "shared" : "private";
     }
-    if (Object.hasOwn(selected, "css") && !hasDocument) throw new TypeError("Initial CSS requires a document definition.");
-    if (selected.css !== undefined) {
-      if (typeof selected.css !== "string") throw new TypeError("Document CSS requires stylesheet text.");
-      metadata.css[name] = parse_document_stylesheet(selected.css, []);
+    if (Object.hasOwn(selected, "stylesheet") && !hasDocument) throw new TypeError("Initial CSS requires a document definition.");
+    if (selected.stylesheet !== undefined) {
+      if (typeof selected.stylesheet !== "string") throw new TypeError("Document CSS requires stylesheet text.");
+      metadata.css[name] = parse_document_stylesheet(selected.stylesheet, []);
     }
     delete selected.access;
-    delete selected.css;
+    delete selected.stylesheet;
   }
   if (hasParts && (Object.hasOwn(value, "schema") || "schema" in value || Object.hasOwn(selected, "schema"))) {
     throw new TypeError("Parts Library definitions do not support a supplemental Schema.");

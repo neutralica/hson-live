@@ -1,8 +1,8 @@
 import { hsonLiveMap, type HsonSchema, type LocusDefinitions } from "../src/index.js";
 import type { JsonValue } from "../src/core/types.js";
 declare const schema: HsonSchema<{ rows: readonly { title: string }[]; optional?: number }, "data">;
-const definitions = { deck: { data: { rows: [] }, schema }, page: { document: "<main/>", css: "main{color:red}", access: "shared" },
-  components: { parts: { button: { kind: "document", document: "<button/>", css: "button{color:red}" } } } } as const satisfies LocusDefinitions;
+const definitions = { deck: { data: { rows: [] }, schema }, page: { document: "<main/>", stylesheet: "main{color:red}", access: "shared" },
+  components: { parts: { button: { kind: "document", document: "<button/>", stylesheet: "button{color:red}" } } } } as const satisfies LocusDefinitions;
 const loc = hsonLiveMap.locus.create(definitions);
 loc.data.deck.schema.get() satisfies typeof schema;
 loc.data.deck.at(["rows", 0, "title"]).snap() satisfies string | undefined;
@@ -19,14 +19,14 @@ hsonLiveMap.locus.create({ broken: { access: "shared" } });
 // @ts-expect-error No arbitrary Parts Schema.
 hsonLiveMap.locus.create({ broken: { parts: {}, schema: undefined } });
 // @ts-expect-error Data cannot carry document CSS.
-loc.admit({ broken: { data: [], css: "p{}" } });
+loc.admit({ broken: { data: [], stylesheet: "p{}" } });
 // @ts-expect-error Parts cannot carry Library CSS.
-loc.admit({ broken: { parts: {}, css: "p{}" } });
+loc.admit({ broken: { parts: {}, stylesheet: "p{}" } });
 // @ts-expect-error Unknown metadata is unsupported.
 loc.admit({ broken: { document: "<p/>", ownership: "shared" } });
 // @ts-expect-error Local LiveMap has no hosted access semantics.
 hsonLiveMap.fromLibraries({ page: { document: "<p/>", access: "shared" } });
-hsonLiveMap.fromLibraries({ page: { document: "<p/>", css: "p{color:red}" } });
+hsonLiveMap.fromLibraries({ page: { document: "<p/>", stylesheet: "p{color:red}" } });
 // @ts-expect-error Configuration fields are separate from Library definitions.
 hsonLiveMap.locus.create({ shared: [{ name: "x", definition: { data: 1 } }] });
 // @ts-expect-error Construction configuration cannot claim an authority group.

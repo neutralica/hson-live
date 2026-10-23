@@ -373,7 +373,7 @@ export async function document_identity_authority_cases() {
 }
 
 export async function document_scoped_guard_cases() {
-  const parts = { parts: { button: { kind: "document" as const, document: '<button @:root "part"/>', css: ':scope{color:red}' } } };
+  const parts = { parts: { button: { kind: "document" as const, document: '<button @:root "part"/>', stylesheet: ':scope{color:red}' } } };
   const definition = { document: '<html <head/> <body <hson-part lib="parts" at="button"/>/>/>' };
   const local = hsonLiveMap.fromLibraries({ parts, page: definition });
   const locus = hsonLiveMap.locus.create({ "parts": { ...parts, access: "private" }, "page": { ...definition, access: "shared" } });

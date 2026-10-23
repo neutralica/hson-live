@@ -44,10 +44,10 @@ await pathAuthority.doc.must("page").at([0]).replace({ $_tag: "p", $_attrs: { ti
 assert.equal(pathAuthority.doc.must("page").at([0]).asElement()!.attrs.get("title"), "replaced");
 pathAuthority.dispose();
 
-const styled = hsonLiveMap.locus.create({ "page": { document: "<main/>", css, access: "shared" } }, { logicalMapId: "styled-authority" });
+const styled = hsonLiveMap.locus.create({ "page": { document: "<main/>", stylesheet: css, access: "shared" } }, { logicalMapId: "styled-authority" });
 assert.match(styled.doc.must("page").css.snapshot(), /color:red/);
 styled.dispose();
-const combinedDefinition = [{ "page": { document: "<main <button/>/>", css, access: "shared" } }, { interactions: [descriptor], logicalMapId: "combined-interactions-css" }] as const;
+const combinedDefinition = [{ "page": { document: "<main <button/>/>", stylesheet: css, access: "shared" } }, { interactions: [descriptor], logicalMapId: "combined-interactions-css" }] as const;
 const combined = hsonLiveMap.locus.create(combinedDefinition[0], combinedDefinition[1]);
 assert.equal(combined.rev, 1); // Initial CSS is admitted at revision zero; the descriptor creates one transition.
 assert.match(combined.doc.must("page").css.snapshot(), /color:red/);
@@ -74,10 +74,10 @@ if (typeof restoredValue !== "object" || restoredValue === null || Array.isArray
 assert.equal(restoredValue.descriptors.length, 1);
 combinedRestored.dispose();
 const storage = new MemoryCheckpointAdapter();
-const durable = await hsonLiveMap.locus.resume({ "page": { document: "<main/>", css, access: "shared" } }, { logicalMapId: "styled-durable", persistence: storage });
+const durable = await hsonLiveMap.locus.resume({ "page": { document: "<main/>", stylesheet: css, access: "shared" } }, { logicalMapId: "styled-durable", persistence: storage });
 const revision = durable.rev;
 durable.dispose();
-const restored = await hsonLiveMap.locus.resume({ "page": { document: "<main/>", css, access: "shared" } }, { logicalMapId: "styled-durable", persistence: storage });
+const restored = await hsonLiveMap.locus.resume({ "page": { document: "<main/>", stylesheet: css, access: "shared" } }, { logicalMapId: "styled-durable", persistence: storage });
 assert.equal(restored.rev, revision);
 assert.match(restored.doc.must("page").css.snapshot(), /color:red/);
 restored.dispose();
@@ -92,7 +92,7 @@ const sheet: string = "main { display: block; } @keyframes pulse { from { opacit
     main { color: blue; --tone: blue; }
     main { display: grid; }`;
   const bare = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
-  const governed = hsonLiveMap.locus.create({ "page": { document: "<main/>", css: first, access: "shared" } });
+  const governed = hsonLiveMap.locus.create({ "page": { document: "<main/>", stylesheet: first, access: "shared" } });
   bare.doc.must("page").css.stylesheet(first);
   assert.deepEqual(bare.capture().libraries[0]?.css, locus_map_internal(governed).capture().libraries[0]?.css);
   bare.doc.must("page").css.stylesheet(second);
@@ -102,7 +102,7 @@ const sheet: string = "main { display: block; } @keyframes pulse { from { opacit
     ["keyframes", "property", "rule", "rule"]);
   governed.dispose();
 }
-const authored = hsonLiveMap.locus.create({ "home": { document: '<html <head/> <body <main "Home"/>/>/>', schema: Hson.schema`<type "document">`, css: sheet, access: "shared" }, "slide01": { document: '<html <head/> <body <main "Slide"/>/>/>', schema: Hson.schema`<type "document">`, css: sheet, access: "shared" } });
+const authored = hsonLiveMap.locus.create({ "home": { document: '<html <head/> <body <main "Home"/>/>/>', schema: Hson.schema`<type "document">`, stylesheet: sheet, access: "shared" }, "slide01": { document: '<html <head/> <body <main "Slide"/>/>/>', schema: Hson.schema`<type "document">`, stylesheet: sheet, access: "shared" } });
 assert.equal(authored.rev, 0);
 assert.match(authored.doc.must("home").render(), /display:block/);
 const initialSheet = locus_map_internal(authored).capture().libraries.find((entry) => entry.name === "home")?.css;
@@ -120,20 +120,20 @@ assert.equal(authored.rev, 3);
 const beforeInvalid = authored.rev;
 await assert.rejects(authored.doc.must("home").css.stylesheet("main { color: ; }"), /CSS|declaration|syntax/i);
 assert.equal(authored.rev, beforeInvalid);
-await authored.admit({ "staged": { document: "<main/>", css: sheet, access: "shared" } });
+await authored.admit({ "staged": { document: "<main/>", stylesheet: sheet, access: "shared" } });
 assert.equal(authored.rev, 4);
 assert.deepEqual(locus_map_internal(authored).capture().libraries.find((entry) => entry.name === "staged")?.css, initialSheet);
-await assert.rejects(authored.admit({ "bad": { document: "<main/>", css: "main { color: ; }", access: "shared" } }), /CSS|declaration|syntax/i);
+await assert.rejects(authored.admit({ "bad": { document: "<main/>", stylesheet: "main { color: ; }", access: "shared" } }), /CSS|declaration|syntax/i);
 assert.equal(authored.rev, 4);
-assert.throws(() => hsonLiveMap.locus.create({ "bad": { document: "<main/>", css: "main { color: ; }", access: "shared" } }), /CSS|declaration|syntax/i);
+assert.throws(() => hsonLiveMap.locus.create({ "bad": { document: "<main/>", stylesheet: "main { color: ; }", access: "shared" } }), /CSS|declaration|syntax/i);
 // @ts-expect-error Data CSS remains invalid at runtime.
-assert.throws(() => hsonLiveMap.locus.create({ "data": { data: 1, css: sheet, access: "shared" } }), /document/i);
+assert.throws(() => hsonLiveMap.locus.create({ "data": { data: 1, stylesheet: sheet, access: "shared" } }), /document/i);
 authored.dispose();
 const cssDurableStore = new MemoryCheckpointAdapter();
-const cssDurableDefinition = [{ "page": { document: "<main/>", css: sheet, access: "shared" } }, { logicalMapId: "css-text-durable", persistence: cssDurableStore }] as const;
+const cssDurableDefinition = [{ "page": { document: "<main/>", stylesheet: sheet, access: "shared" } }, { logicalMapId: "css-text-durable", persistence: cssDurableStore }] as const;
 const cssDurable = await hsonLiveMap.locus.resume(cssDurableDefinition[0], cssDurableDefinition[1]);
 assert.equal(cssDurable.rev, 0);
-await cssDurable.admit({ "later": { document: "<main/>", css: sheet, access: "shared" } });
+await cssDurable.admit({ "later": { document: "<main/>", stylesheet: sheet, access: "shared" } });
 await cssDurable.doc.must("page").css.stylesheet("main { color: blue; }");
 assert.equal(cssDurable.rev, 2);
 cssDurable.dispose();
@@ -142,7 +142,7 @@ assert.equal(cssResumed.rev, 2);
 assert.match(cssResumed.doc.must("page").css.snapshot(), /color:blue/);
 assert.deepEqual(locus_map_internal(cssResumed).capture().libraries.find((entry) => entry.name === "later")?.css, initialSheet);
 cssResumed.dispose();
-const localStyled = hsonLiveMap.locus.create({  }, { local: [{ name: "localPage", initializer: { document: "<html <head/> <body/>/>" }, css: sheet }], defaultProjection: { libraries: ["localPage"] }, authorizeProjection: () => ({ libraries: ["localPage"] }) });
+const localStyled = hsonLiveMap.locus.create({  }, { local: [{ name: "localPage", initializer: { document: "<html <head/> <body/>/>" }, stylesheet: sheet }], defaultProjection: { libraries: ["localPage"] }, authorizeProjection: () => ({ libraries: ["localPage"] }) });
 const localSession = await localStyled.session.create({ libraries: ["localPage"] });
 assert.ok(localSession.now().local.some((entry) => entry.name === "localPage" && entry.css?.rules.length === 1));
 localStyled.dispose();

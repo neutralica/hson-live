@@ -271,9 +271,7 @@ type LiveMapMutationCandidateTuple<TValue extends readonly unknown[]> =
     : [];
 
 /** Remove `undefined` from write positions, accepting detached reads as proposals. */
-// Keep the Part contract when optional never fields fail JSON assignability
-// under consumers without exactOptionalPropertyTypes.
-export type LiveMapWriteValue<TValue> = [Exclude<LiveMapMutationCandidateValue<TValue>, undefined>] extends [JsonValue | LiveMapDocumentPart | LiveMapPartCollection]
+export type LiveMapWriteValue<TValue> = [Exclude<LiveMapMutationCandidateValue<TValue>, undefined>] extends [JsonValue]
   ? Exclude<LiveMapMutationCandidateValue<TValue> | TValue, undefined>
   : JsonValue;
 
@@ -1141,7 +1139,7 @@ export type LiveMapDataLibraryInput<
   schema: TSchema;
   document?: never;
   parts?: never;
-  css?: never;
+  stylesheet?: never;
 }>;
 
 /** One explicit initial document library input for a public multi-library LiveMap. */
@@ -1153,14 +1151,14 @@ export type LiveMapDocumentLibraryInput<
   schema: TSchema;
   data?: never;
   parts?: never;
-  css?: string;
+  stylesheet?: string;
 }>;
 
 /** Established data, document, or intrinsically governed Parts input. */
 export type LiveMapLibraryInput = LiveMapDataLibraryInput | LiveMapDocumentLibraryInput | LiveMapPartsLibraryInput;
 
 /** One governed Part definition. Authored Hson strings, including HsonAuthored, are accepted. */
-export type LiveMapDocumentPart = Readonly<{ kind: "document"; document: string; css?: string; schema?: never }>;
+export type LiveMapDocumentPart = Readonly<{ kind: "document"; document: string; css?: import("../core/style.types.js").CssMap | undefined; stylesheet?: string; schema?: never }>;
 
 /** Ordinary string-keyed data whose complete value is validated on every governed mutation. */
 export type LiveMapPartCollection = Readonly<Record<string, LiveMapDocumentPart>>;
@@ -1171,7 +1169,7 @@ export type LiveMapPartsLibraryInput = Readonly<{
   schema?: never;
   data?: never;
   document?: never;
-  css?: never;
+  stylesheet?: never;
 }>;
 
 /** Runtime and construction input; omitted Schema selects the family top. */
@@ -1185,8 +1183,10 @@ export type LiveMapDefinitions = Readonly<Record<string, LiveMapLibraryDefinitio
 /** Inferred required keys distinguish presence from optional-never annotations in either compiler mode. */
 type LiveMapPartSchemaCheck<TInput> = [Extract<TInput, { readonly schema: unknown }>] extends [never] ? unknown : never;
 
-type LiveMapPartMembersCheck<TParts> = {
-  readonly [TKey in keyof TParts]: LiveMapPartSchemaCheck<TParts[TKey]>;
+export type LiveMapPartInputCheck<TInput> = LiveMapPartSchemaCheck<TInput> & (TInput extends { readonly css: infer TStyle }
+  ? { readonly css: import("../core/style.types.js").CssMapInputCheck<TStyle> } : unknown);
+export type LiveMapPartMembersCheck<TParts> = {
+  readonly [TKey in keyof TParts]: LiveMapPartInputCheck<TParts[TKey]>;
 };
 
 export type LiveMapPartsDefinitionCheck<TInput> = TInput extends { readonly parts: infer TParts }
@@ -1200,11 +1200,11 @@ export type LiveMapPartsDefinitionsCheck<TDefinitions> = {
 /** Reject required contradictory family fields even without exact optional properties. */
 type RequiredDefinitionKeys<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T];
 type LiveMapDefinitionValidity<T, Metadata extends string> = T extends unknown
-  ? (Exclude<keyof T, "data" | "document" | "parts" | "schema" | "css" | Metadata> extends never ? unknown : never)
+  ? (Exclude<keyof T, "data" | "document" | "parts" | "schema" | "stylesheet" | Metadata> extends never ? unknown : never)
     & ("access" extends Metadata ? T extends { access: infer A } ? [A] extends ["private" | "shared"] ? unknown : never : unknown : unknown)
     & LiveMapPartsDefinitionCheck<T> & (
-    T extends { parts: unknown } ? Extract<RequiredDefinitionKeys<T>, "data" | "document" | "schema" | "css"> extends never ? unknown : never
-    : T extends { data: unknown } ? Extract<RequiredDefinitionKeys<T>, "document" | "parts" | "css"> extends never ? unknown : never
+    T extends { parts: unknown } ? Extract<RequiredDefinitionKeys<T>, "data" | "document" | "schema" | "stylesheet"> extends never ? unknown : never
+    : T extends { data: unknown } ? Extract<RequiredDefinitionKeys<T>, "document" | "parts" | "stylesheet"> extends never ? unknown : never
     : T extends { document: unknown } ? Extract<RequiredDefinitionKeys<T>, "data" | "parts"> extends never ? unknown : never
     : never)
   : never;
@@ -1214,14 +1214,6 @@ type InvalidLiveMapDefinition<T, Metadata extends string> = T extends unknown
 export type LiveMapDefinitionCheck<T, Metadata extends string = never> = 0 extends (1 & T) ? unknown
   : [InvalidLiveMapDefinition<NonNullable<T>, Metadata>] extends [never] ? unknown : never;
 export type LiveMapDefinitionsCheck<T, Metadata extends string = never> = { readonly [K in keyof T]: LiveMapDefinitionCheck<T[K], Metadata> };
-
-/** Only Part-shaped write positions infer additional key evidence; ordinary proposals keep their signatures. */
-export type LiveMapPartWrite<TValue, TProposal, TResult> =
-  [NonNullable<TValue>] extends [LiveMapDocumentPart]
-    ? <const TInput extends TProposal>(value: TInput & LiveMapPartSchemaCheck<NoInfer<TInput>>) => TResult
-    : [NonNullable<TValue>, TProposal] extends [LiveMapPartCollection, LiveMapPartCollection]
-      ? <const TInput extends TProposal>(value: TInput & LiveMapPartMembersCheck<NoInfer<TInput>>) => TResult
-      : (value: TProposal) => TResult;
 
 /** Only keys named by the type itself establish static topology. */
 export type LiveMapKnownDefinitions<TLibraries extends LiveMapDefinitions> = LibraryLiteralDefinitions<TLibraries>;
@@ -1334,14 +1326,10 @@ type LiveMapLibraryPathHandleBase<
   hson: () => EndpointRepresentation<TRead, HsonData>;
   readonly must: RequiredReads<TRead, HsonData>;
   at: DataLocationAt<"local", TValue, TRead, TLibrary>;
-  set: LiveMapPartWrite<TValue, LiveMapSetValue<TValue>, LiveMapCommit<TLibrary, LiveMapDataOp>>;
-  replace: LiveMapPartWrite<TValue, LiveMapWriteValue<TValue>, LiveMapCommit<TLibrary, LiveMapDataOp>>;
+  set: (value: LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  replace: (value: LiveMapWriteValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
   delete: () => LiveMapCommit<TLibrary, LiveMapDataOp>;
-  update: [NonNullable<TValue>] extends [LiveMapDocumentPart]
-    ? <const TInput extends LiveMapSetValue<TValue>>(
-        updater: (value: TRead) => TInput & LiveMapPartSchemaCheck<NoInfer<TInput>>,
-      ) => LiveMapCommit<TLibrary, LiveMapDataOp>
-    : (updater: (value: TRead) => LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  update: (updater: (value: TRead) => LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
   feed: (listener: (event: LiveMapLibraryFeedEvent<TLibrary>) => void) => LiveMapDisposer;
   watch: (listener: (next: TRead) => void) => LiveMapDisposer;
   /** Observe the current runtime endpoint category. This is not permanent proof. */
@@ -1731,8 +1719,8 @@ export type LiveMapStagedDataPath<TValue, TResult> = Readonly<{
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapStagedDataPath<LiveMapPathValue<TValue, TPath>, TResult>;
-  set: LiveMapPartWrite<TValue, LiveMapSetValue<TValue>, TResult>;
-  replace: LiveMapPartWrite<TValue, LiveMapWriteValue<TValue>, TResult>;
+  set: (value: LiveMapSetValue<TValue>) => TResult;
+  replace: (value: LiveMapWriteValue<TValue>) => TResult;
   delete: () => TResult;
   /** Enqueue a required array assertion at this point in candidate order, not a conditional read. Failure rejects the stage. */
   asArray: () => LiveMapStagedDataPath<LiveMapArrayBranch<TValue>, TResult>;
@@ -2392,13 +2380,9 @@ export type LiveMapPathObjectApi<
   values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
   entries: () => readonly LiveMapObjectEntry<TValue>[];
   /** Set one child key under this object path, creating that key if needed. */
-  setKey: [NonNullable<TValue>] extends [LiveMapPartCollection]
-    ? <const TKey extends LiveMapObjectKey<TValue>, const TInput extends LiveMapObjectSetValue<TValue, NoInfer<TKey>>>(
-        key: TKey, value: TInput & LiveMapPartSchemaCheck<NoInfer<TInput>>,
-      ) => TCommit
-    : <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => TCommit;
+  setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => TCommit;
   /** Shallow child-key writes under this object path, preserving unspecified siblings. */
-  setMany: LiveMapPartWrite<TValue, NoInfer<LiveMapObjectSetManyValues<TValue>>, TCommit>;
+  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => TCommit;
   clear: () => TCommit;
   deleteKey: (key: string) => TCommit;
   deleteMany: (keys: readonly string[]) => TCommit;

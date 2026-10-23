@@ -91,7 +91,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     const original = structuredClone(tree.node);
     assert.throws(() => tree.style.setMany({ backgroundColor: 'black', width: 'bogus' }), InlineCssError);
     assert.ok(canonical_hson_graph_equal(original, structuredClone(tree.node)));
-    assert.throws(() => tree.style.setMany({ fooBar: 'a', 'foo-bar': 'b' }), /collide/);
+    assert.throws(() => tree.style.setMany({ backgroundColor: 'a', 'background-color': 'b' }), /colli/);
     assert.throws(() => tree.style.set.content('"unfinished'), InlineCssError);
     assert.throws(() => tree.style.set.color('red;display:grid'), InlineCssError);
     tree.style.set.color('green');
@@ -147,7 +147,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     assert.deepEqual(parse_style_string('--x:"\u00a0red\u2003";content:var(--x)'), { '--x': '"\u00a0red\u2003"', content: 'var(--x)' });
     assert.deepEqual(parse_style_string('--x:\\ red;--escaped:\\a0 red'), { '--x': '\\ red', '--escaped': '\\a0 red' });
     const accessorControl=hsonLiveTree.fromHson('<p/>');let reads=0;
-    assert.throws(()=>accessorControl.style.set.color({get value(){reads++;return '\u00a0red';}}),/invalid/);assert.equal(reads,0);
+    assert.throws(()=>accessorControl.style.set.color({get value(){reads++;return '\u00a0red';}}),/own string data/);assert.equal(reads,0);
     const aggregate = hsonLiveMap.fromLibraries({page:{document:'<p/>'}});
     const library = aggregate.doc.must('page') as unknown as LiveMapDocumentLibrary;const mirror = hsonMirror(library);
     const tree = mirror.tree.find.must.byTag('p');let commits = 0;const stop = library.commits.observe(() => commits++);
@@ -170,8 +170,8 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
       let commits=0;const stop=library.commits.observe(()=>commits++);
       try {
         const original=structuredClone(tree.node), rev=library.rev, issued=runtime_for_tree(tree).issuedQuids.size;
-        assert.equal(get(), initial);tree.style.setMany({[api]:initial});assert.equal(library.rev,rev);assert.equal(commits,0);assert.ok(canonical_hson_graph_equal(original,structuredClone(tree.node)));
-        tree.style.setMany({[api]:changed});assert.equal(get(),changed);assert.equal(library.rev,rev+1);assert.equal(commits,1);
+        assert.equal(get(), initial);tree.style.setMany({[api]:initial} as never);assert.equal(library.rev,rev);assert.equal(commits,0);assert.ok(canonical_hson_graph_equal(original,structuredClone(tree.node)));
+        tree.style.setMany({[api]:changed} as never);assert.equal(get(),changed);assert.equal(library.rev,rev+1);assert.equal(commits,1);
         const style=tree.node.$_attrs?.style;assert.ok(style && typeof style==='object');assert.equal(style[key],changed);assert.equal(Object.keys(style).length,2);
         const keep=style['--keep'];assert.ok(keep && typeof keep==='object');assert.ok(Object.is(keep.value,-0));assert.ok(Object.hasOwn(keep,'unit'));
         tree.style.remove(api);assert.equal(get(),undefined);assert.equal(library.rev,rev+2);assert.equal(commits,2);assert.equal(runtime_for_tree(tree).issuedQuids.size,issued);assert.equal(mirror.status,'active');
@@ -188,11 +188,11 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
       assert.throws(()=>hsonTransform.fromHson(`<p style=${JSON.stringify(css)}/>`).toNode(),InlineCssError,css);
       assert.throws(()=>hsonTransform.fromTrustedHtml(`<p style="${css}"></p>`).toNode(),InlineCssError,css);
       const tree=hsonLiveTree.fromHson('<p/>');tree.style.set.color('red');const original=structuredClone(tree.node);const colon=css.indexOf(':');
-      assert.throws(()=>tree.style.setMany({[css.slice(0,colon)]:css.slice(colon+1)}),InlineCssError,css);assert.ok(canonical_hson_graph_equal(original,structuredClone(tree.node)));
+      assert.throws(()=>tree.style.setMany({[css.slice(0,colon)]:css.slice(colon+1)} as never), css.startsWith("mystery:") ? TypeError : InlineCssError,css);assert.ok(canonical_hson_graph_equal(original,structuredClone(tree.node)));
     }
     for (const css of ['width:calc(1px + 2px)','padding:calc(1px * 2)','opacity:calc(.2 + .3)','width:calc((1px + 2px) / 3)','width:calc(1px + 2px * 3)','width:calc(100% - 2px)','opacity:var(--opacity)','mystery:plain']) {
       const property=css.slice(0,css.indexOf(':')), value=css.slice(css.indexOf(':')+1);
-      assert.equal(Object.values(parse_style_string(css))[0],value);const tree=hsonLiveTree.fromHson('<p/>');tree.style.setMany({[property]:value});assert.equal(Object.values(tree.style.getMany())[0],value);
+      assert.equal(Object.values(parse_style_string(css))[0],value);const tree=hsonLiveTree.fromHson('<p/>');if (property === "mystery") assert.throws(() => tree.style.setMany({[property]:value} as never), /Unsupported CSS property/); else { tree.style.setMany({[property]:value} as never);assert.equal(Object.values(tree.style.getMany())[0],value); }
     }
   });
   check("P3 final unproven variable arithmetic rejects through every receiving route", () => {
@@ -219,9 +219,9 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
           assert.throws(()=>hsonTransform.fromTrustedHtml(`<p style="${list}"></p>`).toNode(), InlineCssError, list);
         }
         const colon=css.indexOf(':'), input={[css.slice(0,colon)]:css.slice(colon+1)};
-        assert.throws(()=>tree.style.setMany(input), InlineCssError, css);
+        assert.throws(()=>tree.style.setMany(input as never), InlineCssError, css);
         const standalone=hsonLiveTree.fromHson('<p style="width:37px"/>',{isolated:true}), before=structuredClone(standalone.node);
-        assert.throws(()=>standalone.style.setMany(input),InlineCssError,css);
+        assert.throws(()=>standalone.style.setMany(input as never),InlineCssError,css);
         assert.ok(canonical_hson_graph_equal(before,structuredClone(standalone.node)));
         assert.ok(canonical_hson_graph_equal(oracle,structuredClone(tree.node)));
         assert.equal(library.rev,rev);assert.equal(notifications,0);assert.equal(runtime_for_tree(tree).issuedQuids.size,issued);
@@ -332,7 +332,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     const vendorNames: readonly (readonly [native: `${string}-${string}`, js: string])[] = [['-webkit-user-select','WebkitUserSelect'],['-moz-user-select','MozUserSelect'],['-ms-user-select','msUserSelect'],['-o-user-select','OUserSelect']];
     for (const [native, js] of vendorNames) {
       assert.deepEqual(parse_style_string(`${native}:none`), {[native]:'none'});
-      for (const key of [native,js]) {const tree=hsonLiveTree.fromHson('<p/>');tree.style.setMany({[key]:'none'});assert.equal(serialize_style(tree.node.$_attrs?.style && typeof tree.node.$_attrs.style==='object' ? tree.node.$_attrs.style : undefined),`${native}: none`);assert.equal(tree.style.get[native](),'none');tree.style.remove(key);assert.equal(tree.style.get[native](),undefined);}
+      for (const key of [native,js]) {const tree=hsonLiveTree.fromHson('<p/>');tree.style.setMany({[key]:'none'} as never);assert.equal(serialize_style(tree.node.$_attrs?.style && typeof tree.node.$_attrs.style==='object' ? tree.node.$_attrs.style : undefined),`${native}: none`);assert.equal(tree.style.get[native](),'none');tree.style.remove(key);assert.equal(tree.style.get[native](),undefined);}
     }
     const tree=hsonLiveTree.fromHson('<p/>');tree.style.setMany({'--Tone':'red','--tone':'blue',backgroundColor:'black'});
     assert.equal(tree.style.get['--Tone'](),'red');assert.equal(tree.style.get['--tone'](),'blue');assert.equal(tree.style.get.backgroundColor(),'black');
@@ -343,7 +343,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     try {
       const original=structuredClone(tree.node), rev=library.rev, issued=runtime_for_tree(tree).issuedQuids.size;
       for(const values of [{COLOR:'red',color:'blue'},{backgroundColor:'red','background-color':'blue'},{cssFloat:'left',float:'right'},{WebkitUserSelect:'none','-webkit-user-select':'text'}]) {
-        assert.throws(()=>tree.style.setMany(values),error=>error instanceof InlineCssError && error.code==='INLINE_CSS_UNSUPPORTED' && /collid/.test(error.message));
+        assert.throws(()=>Reflect.apply(tree.style.setMany,undefined,[values]),error=>error instanceof TypeError && /colli/.test(error.message));
         assert.ok(canonical_hson_graph_equal(original,structuredClone(tree.node)));assert.equal(library.rev,rev);assert.equal(commits,0);assert.equal(runtime_for_tree(tree).issuedQuids.size,issued);
       }
       tree.style.set.color('red');assert.equal(library.rev,rev+1);assert.equal(commits,1);assert.equal(tree.style.get.color(),'red');assert.equal(mirror.status,'active');

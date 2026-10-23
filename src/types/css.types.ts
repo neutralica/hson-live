@@ -18,6 +18,7 @@ export type {
   AllowedStyleKey,
   CssKey,
   CssMap,
+  CssDeclarationValue,
   CssMapBase,
   CssProp,
   CssPseudoKey,

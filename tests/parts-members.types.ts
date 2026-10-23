@@ -15,11 +15,12 @@ const map = hsonLiveMap.fromLibraries(definitions);
 const parts = map.parts.components;
 parts.heading.snap() satisfies LiveMapDocumentPart | undefined;
 parts.heading.at(["document"]).snap() satisfies string | undefined;
-parts.heading.at(["css"]).snap() satisfies string | undefined;
+// @ts-expect-error CSS-field navigation is forbidden on authenticated Parts.
+parts.heading.at(["stylesheet"]).snap() satisfies string | undefined;
 parts.heading.at(["kind"]).snap() satisfies "document" | undefined;
 parts.heading.watch(value => value?.document satisfies string | undefined);
 parts.heading.asObject()?.object.keys();
-parts.heading.set({ css: "h1{color:red}" });
+parts.heading.set({ kind: "document", document: "<h1/>", stylesheet: "h1{color:red}" });
 parts.heading.replace({ kind: "document", document: "<h2/>" });
 parts.heading.delete();
 parts.call.snap(); // Parts facades are objects, not functions.
@@ -48,7 +49,7 @@ parts.heading.replace({ kind: "data", document: "<p/>" });
 // @ts-expect-error Invalid document source type.
 parts.heading.at(["document"]).set(7);
 // @ts-expect-error Invalid CSS type.
-parts.heading.set({ css: {} });
+parts.heading.set({ stylesheet: {} });
 // @ts-expect-error Inferred forbidden member Schema remains forbidden.
 parts.heading.set({ schema: undefined });
 // @ts-expect-error Governed definitions do not invent arbitrary fields.
@@ -84,14 +85,14 @@ uncertain.parts.components?.heading;
 
 const locus = hsonLiveMap.locus.create(definitions);
 locus.parts.components.heading.snap() satisfies LiveMapDocumentPart | undefined;
-void locus.parts.components.heading.set({ css: "" });
+void locus.parts.components.heading.set({ kind: "document", document: "<h1/>", stylesheet: "" });
 void locus.stage(writer => {
   writer.parts.components.heading.replace({ kind: "document", document: "<h3/>" });
   // @ts-expect-error Stages have no observation API.
   writer.parts.components.heading.snap();
 });
 map.batch(writer => {
-  writer.parts.components.heading.set({ css: "" });
+  writer.parts.components.heading.set({ kind: "document", document: "<h1/>", stylesheet: "" });
   writer.parts.components.heading.asObject().object.setMany({ document: "<h3/>" });
   // @ts-expect-error Stage expiration is not bypassed by standalone document realization.
   writer.parts.components.heading.render();
@@ -178,7 +179,8 @@ for (const member of [p, parts.at([dynamicName]), receipt.libraries.components.h
   member.present()?.asObject()?.at([]).present()?.write();
   member.asObject()?.present()?.at([]).asObject()?.write();
   member.present()?.at(["document"] as const).snap() satisfies string | undefined;
-  member.asObject()?.at(["css"] as const).snap() satisfies string | undefined;
+// @ts-expect-error CSS-field navigation is forbidden on authenticated Parts.
+  member.asObject()?.at(["stylesheet"] as const).snap() satisfies string | undefined;
   member.asObject()?.object.keys();
   // @ts-expect-error Incompatible array refinement cannot grant Part authoring.
   member.asArray()?.write();
@@ -189,7 +191,7 @@ for (const member of [p, parts.at([dynamicName]), receipt.libraries.components.h
   // @ts-expect-error Refinement does not turn a nested field into a whole Part.
   member.present()?.at(["document"]).present()?.write();
   // @ts-expect-error Empty navigation cannot turn a nested field into a whole Part.
-  member.asObject()?.at(["css"]).at([]).write();
+  member.asObject()?.at(["stylesheet"]).at([]).write();
   // @ts-expect-error Refinement preserves permitted relative field names.
   member.present()?.at(["unrelated"]);
 }
@@ -206,7 +208,8 @@ for (const collection of [parts, locus.parts.components, read.parts.components, 
 }
 optionalMap.parts.components.maybe?.present()?.asObject()?.at([]).write();
 p.present()?.at(["document"]).snap() satisfies string | undefined;
-locus.parts.components.heading.asObject()?.at(["css"]).snap() satisfies string | undefined;
+// @ts-expect-error CSS-field navigation is forbidden on authenticated Parts.
+locus.parts.components.heading.asObject()?.at(["stylesheet"]).snap() satisfies string | undefined;
 read.parts.components.heading.present()?.at(["document"]).snap() satisfies string | undefined;
 echoParts.heading.present()?.at(["document"]).snap() satisfies string | undefined;
 echoParts.at([]).asObject()?.at([dynamicName]).at(["document"]).snap() satisfies string | undefined;
@@ -257,46 +260,21 @@ void locus.stage(writer => {
   writer.parts.components.heading.asObject().at([]).write();
 });
 
-// Part authoring refines existing public location contracts without replacing them.
+// Part provenance intentionally prevents widening to unrestricted Data locations.
+// @ts-expect-error Generic Data promises unrestricted paths.
 const localBase: LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined, "components"> = p;
+// @ts-expect-error Generic Data promises unrestricted paths.
 const locusBase: LocusDataLocation<LiveMapDocumentPart | undefined> = locus.parts.components.heading;
+// @ts-expect-error Generic Data promises unrestricted paths.
 const actionBase: ReadDataLocation<LiveMapDocumentPart | undefined> = read.parts.components.heading;
-uncertain.parts.components?.at([]).at([dynamicName]) satisfies LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined> | undefined;
-// @ts-expect-error Structural compatibility does not strengthen uncertain inventory.
-uncertain.parts.components.at([]).at([dynamicName]);
-const longPart = p.at([]).at([]).at([]).present()?.asObject()?.at([]).at([]).present()?.asObject()?.at([]);
-longPart satisfies typeof localBase | undefined;
+const longPart = p.at([]).at([]).present()?.asObject()?.at([]);
 longPart?.write();
-for (const selected of [p, parts.at([dynamicName]), parts.at([]).at([dynamicName]),
-  broad.parts.components.at([]).at([dynamicName]), optionalMap.parts.components.at(["maybe"])]) {
-  selected satisfies LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined>;
-  selected.present() satisfies ReturnType<typeof localBase.present>;
-  selected.asObject() satisfies ReturnType<typeof localBase.asObject>;
-  selected.present()?.asObject()?.at([]).present()?.asObject()?.at([]) satisfies typeof localBase | undefined;
-}
-optionalMap.parts.components.maybe satisfies typeof localBase | undefined;
-for (const selected of [locus.parts.components.heading, locus.parts.components.at([dynamicName]),
-  locus.parts.components.at([]).asObject()!.at([dynamicName]), locus.parts.must(dynamicName).at([dynamicName])]) {
-  selected satisfies typeof locusBase;
-  selected.present() satisfies ReturnType<typeof locusBase.present>;
-  selected.asObject() satisfies ReturnType<typeof locusBase.asObject>;
-  selected.present()?.asObject()?.at([]).present()?.asObject()?.at([]) satisfies typeof locusBase | undefined;
-}
-for (const selected of [read.parts.components.heading, read.parts.components.at([dynamicName]),
-  read.parts.components.at([]).asObject()!.at([dynamicName]), read.parts.must(dynamicName).at([dynamicName])]) {
-  selected satisfies typeof actionBase;
-  selected.present() satisfies ReturnType<typeof actionBase.present>;
-  selected.asObject() satisfies ReturnType<typeof actionBase.asObject>;
-  selected.present()?.asObject()?.at([]).present()?.asObject()?.at([]) satisfies typeof actionBase | undefined;
-}
-if (echoParts.source === "authority-projected") {
-  echoParts.heading satisfies typeof actionBase;
-  echoParts.at([]).at([dynamicName]).present()?.asObject()?.at([]) satisfies typeof actionBase | undefined;
-} else {
-  echoParts.heading satisfies LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined>;
-  echoParts.at([]).at([dynamicName]).present()?.asObject()?.at([]) satisfies LiveMapLibraryPathHandle<LiveMapDocumentPart | undefined> | undefined;
-}
-// Forgetting Part provenance through an ordinary public contract does not introduce authoring there.
+// @ts-expect-error Long refinement chains cannot restore CSS paths.
+longPart?.at(["css"]);
+// @ts-expect-error Read-only contexts retain the same field boundary.
+read.parts.components.heading.at(["stylesheet"]);
+// @ts-expect-error Both Echo ownership contexts retain the field boundary.
+echoParts.heading.at(["css"]);
 // @ts-expect-error General-purpose local handles do not promise Part authoring.
 localBase.write();
 // @ts-expect-error General-purpose Locus handles do not promise Part authoring.

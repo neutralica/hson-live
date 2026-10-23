@@ -29,11 +29,11 @@ function unchanged(f: { map: Pick<LiveMap, "capture" | "rev" | "commits">; aggre
 function fixture() {
   const map = hsonLiveMap.fromLibraries({ parts: { parts: {
     leaf: { kind: "document", document: '<button @:root <span @:label "Click"/>/>',
-      css: ':scope{color:blue} @supports(display:grid){[hson\\:quad="label"]{display:grid}}' },
+      stylesheet: ':scope{color:blue} @supports(display:grid){[hson\\:quad="label"]{display:grid}}' },
     panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>',
-      css: '@media screen{:scope{padding:3px}}' },
+      stylesheet: '@media screen{:scope{padding:3px}}' },
     global: { kind: "document", document: '<i/>',
-      css: ':scope{animation:glow 1s} @keyframes glow{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
+      stylesheet: ':scope{animation:glow 1s} @keyframes glow{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
     empty: { kind: "document", document: '<em/>' },
   } }, page: { document: '<main/>' } });
   map.doc.must("page").css.stylesheet('main{margin:7px}');

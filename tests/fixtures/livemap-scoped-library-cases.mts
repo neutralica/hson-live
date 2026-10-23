@@ -20,7 +20,7 @@ import type { LiveMapGraphOp } from "../../src/types/livemap.types.ts";
 const source = (text: string) => {
   const parsed = parse_authored_document_library(text); return { root: parsed.root, quads: parsed.declarations };
 };
-const part = (document: string, css?: string) => ({ kind: "document" as const, document, ...(css === undefined ? {} : { css }) });
+const part = (document: string, css?: string) => ({ kind: "document" as const, document, ...(css === undefined ? {} : { stylesheet: css }) });
 const definitions = {
   leaf: part('<b @:root/>', ':scope{color:blue}'),
   panel: part('<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', ':scope{color:red}'),
@@ -227,7 +227,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
   });
   check("CSS retirement follows lifetime even when an internally proven root QUID survives", () => {
     const f = fixture();
-    f.map.parts.must("parts").at(["leaf", "css"]).set(':scope{color:blue;animation:oldPulse 1s} @keyframes oldPulse{to{opacity:1}} @property --old-tone{syntax:"<color>";inherits:false;initial-value:blue}');
+    f.map.parts.must("parts").at(["leaf"]).replace({ ...f.map.parts.must("parts").at(["leaf"]).snap()!, stylesheet: ':scope{color:blue;animation:oldPulse 1s} @keyframes oldPulse{to{opacity:1}} @property --old-tone{syntax:"<color>";inherits:false;initial-value:blue}' });
     const old = f.initial('<hson-part lib="parts" at="leaf"/>');
     unpublished(f, () => {
       // An operation-local unit seam, not caller-authored replacement lineage.

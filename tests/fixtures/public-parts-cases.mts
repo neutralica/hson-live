@@ -6,10 +6,10 @@ import type { LocusLibraryDefinition } from "hson-live/locus";
 
 // Deck-shaped authored definitions: no internal factory or validation marker.
 export const deckParts = {
-  header: { kind: "document", document: Hson.document`<header <h1 "%{title}"/>/>`, css: "h1{color:purple}" },
+  header: { kind: "document", document: Hson.document`<header <h1 "%{title}"/>/>`, stylesheet: "h1{color:purple}" },
   para: { kind: "document", document: Hson.document`<p "%{text}"/>` },
-  code: { kind: "document", document: Hson.document`<pre <code "%{source}"/>/>`, css: "pre{white-space:pre-wrap}" },
-  nav: { kind: "document", document: Hson.document`<nav <a href="%{href}" "%{label}"/>/>`, css: "" },
+  code: { kind: "document", document: Hson.document`<pre <code "%{source}"/>/>`, stylesheet: "pre{white-space:pre-wrap}" },
+  nav: { kind: "document", document: Hson.document`<nav <a href="%{href}" "%{label}"/>/>`, stylesheet: "" },
   list: { kind: "document", document: Hson.document`<ul <li "%{item}"/>/>` },
 } satisfies LiveMapPartCollection;
 const deck = Hson.document`<main
@@ -132,8 +132,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     map.commits.observe(() => mapEvents++); locus.commits.observe(() => locusEvents++);
     const bad: unknown[] = [null, [], 1, "{}", { x: null }, { x: { kind: "data", document: "<p/>" } },
       { x: { kind: "document", document: 1 } }, { x: { kind: "document", document: "<p" } },
-      { x: { kind: "document", document: "<p/><p/>" } }, { x: { kind: "document", document: "<p/>", css: 1 } },
-      { x: { kind: "document", document: "<p/>", css: undefined } },
+      { x: { kind: "document", document: "<p/><p/>" } }, { x: { kind: "document", document: "<p/>", stylesheet: 1 } },
+      { x: { kind: "document", document: "<p/>", stylesheet: undefined } },
       { x: { kind: "document", document: "<p/>", schema: {} } },
       { good: deckParts.para, late: { kind: "document", document: "<p" } }];
     try {
@@ -418,7 +418,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       const invalidMembers = [
         { ...deckParts.para, schema: {} }, { ...deckParts.para, schema: undefined },
         { ...deckParts.para, kind: "data" }, { ...deckParts.para, document: 1 },
-        { ...deckParts.para, css: 1 }, { ...deckParts.para, css: undefined },
+        { ...deckParts.para, css: 1 }, { ...deckParts.para, css: null },
         { ...deckParts.para, extra: "unsupported" }, { ...deckParts.para, document: "<p" },
         { ...deckParts.para, document: "<p/><p/>" },
       ];
@@ -434,8 +434,9 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         }
         await member("replace", { kind: "document", document: '<p "replaced"/>' });
         assert.deepEqual(selected.at(["para"]).snap(), { kind: "document", document: '<p "replaced"/>' });
-        await member("set", { css: "p{color:blue}" });
-        assert.deepEqual(selected.at(["para"]).snap(), { kind: "document", document: '<p "replaced"/>', css: "p{color:blue}" });
+        await unchanged(() => member("set", { stylesheet: "p{color:blue}" }));
+        await member("set", { kind: "document", document: '<p "replaced"/>', stylesheet: "p{color:blue}" });
+        assert.deepEqual(selected.at(["para"]).snap(), { kind: "document", document: '<p "replaced"/>', stylesheet: "p{color:blue}" });
         await member("set", deckParts.para);
         assert.equal(selected.at(["para", "document"]).snap(), deckParts.para.document);
         assert.ok(changes > 0);
@@ -506,7 +507,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
   });
 
   await check("public dynamic Locus delivers scoped subject CSS while CSS fragments still require a document shell", async () => {
-    const parts = { styled: { kind: "document" as const, document: '<p @:label/>', css: '[hson\\:quad="label"]{color:red}' } };
+    const parts = { styled: { kind: "document" as const, document: '<p @:label/>', stylesheet: '[hson\\:quad="label"]{color:red}' } };
     const locus = hsonLiveMap.locus.create({ "parts": { parts, access: "private" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
       const revision = locus.rev;

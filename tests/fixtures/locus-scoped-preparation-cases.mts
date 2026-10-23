@@ -23,8 +23,8 @@ const replace = (writer: LocusHostedAggregateStageWriter, index = 0, member = "p
 function fixture() {
   const map = hsonLiveMap.fromLibraries({
     parts: { parts: {
-      leaf: { kind: "document", document: '<b @:root <span @:label "visible"/>/>', css: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
-      panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: ':scope{color:red}' },
+      leaf: { kind: "document", document: '<b @:root <span @:label "visible"/>/>', stylesheet: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
+      panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: ':scope{color:red}' },
       plain: { kind: "document", document: '<i/>' },
       named: { kind: "document", document: '<i @:label/>' },
       secret: { kind: "document", document: '<strong "PRIVATE_DEFINITION_SENTINEL"/>' },
@@ -62,7 +62,7 @@ function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
 export async function locus_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   await check("mixed preparation keeps flat effects ordinary and rejection preserves every identity and topology owner", async () => {
     for (const cssOnly of [false, true]) {
-      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<b @:root/>', css: ':scope{padding:3px}' } } },
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<b @:root/>', stylesheet: ':scope{padding:3px}' } } },
         page: { document: '<main <hson-part @:part lib="parts" at="x"/>/>' }, flat: { document: '<html <head/> <body/>/>' } });
       const a = authority(map), ids = ["page", "flat"].map(name => a.libraries()[a.hostedRegistry().libraries.findIndex(e => e.name === name)]!);
       const ledger = a.identityEpoch().issued();

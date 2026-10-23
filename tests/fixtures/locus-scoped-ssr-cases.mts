@@ -14,13 +14,15 @@ const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection 
   libraries: connection?.principalId === "denied" ? ["data"] : requested.libraries,
 });
 export const definition = [{ "parts": { parts: {
-    panel: { kind: "document", document: '<section @:root id="%{id}" <hson-part @:child at="leaf"/>/>', css: ':scope{border:3px solid black}' },
+    panel: { kind: "document", document: '<section @:root id="%{id}" <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{border:3px solid black}' },
     leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>',
-      css: ':scope{--tone:rgb(10,20,30);padding:7px}[hson\\:quad="label"]{color:var(--tone)}' },
-    global: { kind: "document", document: '<aside "Bare"/>', css: '@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
+      // Equivalent textual controls exercise CSS-significant values before and after adoption.
+      stylesheet: ':scope{--text-nbsp:\u00a0red\u00a0;--text-space:\\ ;--text-hex:\\31 } :scope span{font-family:\u00a0review\u00a0}',
+      css: { '--review-nbsp': '\u00a0red\u00a0', '--review-space': '\\ ', '--review-hex': '\\31 ', fontFamily: '\u00a0review\u00a0', '--tone': 'rgb(10,20,30)', padding: '7px', '@:label': { color: 'var(--tone)' }, $media: { '(min-width: 0px)': { '@:label': { '--structured-media': 'present' } } } } },
+    global: { kind: "document", document: '<aside "Bare"/>', stylesheet: '@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
     bare: { kind: "document", document: '<aside "Bare"/>' },
-    unused: { kind: "document", document: '<i "PRIVATE_TEMPLATE"/>', css: 'i{--private:PRIVATE_CSS}' },
-  }, access: "private" }, "secret": { document: '<html <head/> <body "PRIVATE_DOCUMENT"/>/>', css: 'body{--private:PRIVATE_LIBRARY_CSS}', access: "private" }, "page": { ...page, css: 'p{color:red}p{CoLoR:rgb(40,50,60)}#left{--own:11px}#right{--own:13px}section{margin-left:var(--own)}', access: "shared" }, "flat": { document: '<html <head/> <body <p "Flat"/>/>/>', css: 'p{color:navy}', access: "shared" }, "bare": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" }, "data": { data: { n: 0 }, access: "shared" } }, { authorizeProjection }] as const;
+    unused: { kind: "document", document: '<i "PRIVATE_TEMPLATE"/>', stylesheet: 'i{--private:PRIVATE_CSS}' },
+  }, access: "private" }, "secret": { document: '<html <head/> <body "PRIVATE_DOCUMENT"/>/>', stylesheet: 'body{--private:PRIVATE_LIBRARY_CSS}', access: "private" }, "page": { ...page, stylesheet: 'p{color:red}p{CoLoR:rgb(40,50,60)}#left{--own:11px}#right{--own:13px}section{margin-left:var(--own)}', access: "shared" }, "flat": { document: '<html <head/> <body <p "Flat"/>/>/>', stylesheet: 'p{color:navy}', access: "shared" }, "bare": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" }, "data": { data: { n: 0 }, access: "shared" } }, { authorizeProjection }] as const;
 export function node(source: string) {
   const value = hsonTransform.fromHson(source).toNode().$_content[0];
   if (typeof value !== "object" || value === null) throw Error("Expected element");

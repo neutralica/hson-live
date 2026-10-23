@@ -81,8 +81,8 @@ async function projection(map: LiveMap, names: readonly string[], privateNames: 
 export async function portable_quad_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
   await document_css_subject_cases(check);
   await check("automatic private Parts project only realized markup and owned CSS; clients never need definitions", async () => {
-    const map = hsonLiveMap.fromLibraries({ hidden: { parts: { used: { kind: "document", document: '<section @:PRIVATE_LOCAL <button "Shared"/>/>', css: 'button{color:rgb(12,34,56)}' },
-      secret: { kind: "document", document: '<p "UNUSED_PRIVATE_SOURCE"/>', css: 'p{--private:UNUSED_PRIVATE_CSS}' } } },
+    const map = hsonLiveMap.fromLibraries({ hidden: { parts: { used: { kind: "document", document: '<section @:PRIVATE_LOCAL <button "Shared"/>/>', stylesheet: 'button{color:rgb(12,34,56)}' },
+      secret: { kind: "document", document: '<p "UNUSED_PRIVATE_SOURCE"/>', stylesheet: 'p{--private:UNUSED_PRIVATE_CSS}' } } },
       page: { document: '<html <head/> <body <hson-part @:slot lib="hidden" at="used"/>/>/>' } });
     const effective = await projection(map, ["page"], ["hidden"]);
     assert.throws(() => capture_selected_authority_projection_snapshot(map, effective));
@@ -98,8 +98,8 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<hson-part lib="hidden" at="used"/>' } }), /collection/);
   });
   await check("initial Locus construction delivers coherent scoped HTML and owned CSS", async () => {
-    const locus = hsonLiveMap.locus.create({ "parts": { ...{ parts: { x: { kind: "document", document: '<section <button "Shared"/>/>', css: 'button{color:red}' },
-      unused: { kind: "document", document: '<p "PRIVATE_UNVISITED"/>' } } }, access: "private" }, "page": { document: '<html <head/> <body <hson-part lib="parts" at="x"/>/>/>', css: 'body{margin:0}', access: "shared" } }, { defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    const locus = hsonLiveMap.locus.create({ "parts": { ...{ parts: { x: { kind: "document", document: '<section <button "Shared"/>/>', stylesheet: 'button{color:red}' },
+      unused: { kind: "document", document: '<p "PRIVATE_UNVISITED"/>' } } }, access: "private" }, "page": { document: '<html <head/> <body <hson-part lib="parts" at="x"/>/>/>', stylesheet: 'body{margin:0}', access: "shared" } }, { defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
       const selected = locus.doc.must("page"); if (selected.mode !== "document") throw Error("document");
       assert.match(selected.css.snapshot(), /body\{margin:0/); assert.match(selected.css.snapshot(), /button:where\(:scope,:scope \*\)\{color:red/);
@@ -121,7 +121,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   });
   await check("managed authored topology retains complete scopes and occurrence CSS before publication", async () => {
     const map = hsonLiveMap.fromLibraries({ hidden: { parts: { plain: { kind: "document", document: '<nav @:private "Shared"/>' },
-      styled: { kind: "document", document: '<button/>', css: 'button{color:red}' } } } });
+      styled: { kind: "document", document: '<button/>', stylesheet: 'button{color:red}' } } } });
     const aggregate = owner(map), manager = {}; aggregate.claimManagement(manager);
     try {
       const prepared = hostedAdd(map, manager, { page: { document: '<main <hson-part @:slot lib="hidden" at="plain"/>/>' } });
@@ -140,7 +140,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   });
   await check("legacy flat owned CSS survives semantic checkpoints and fresh durable restoration, then retires without stale rules", async () => {
     // Explicit historical flat fixture; dynamic admission itself now preserves scopes.
-    const full = legacy_flat_styled_map({ parts: { parts: { x: { kind: "document", document: '<section <button/>/>', css: 'button{color:red}' } } },
+    const full = legacy_flat_styled_map({ parts: { parts: { x: { kind: "document", document: '<section <button/>/>', stylesheet: 'button{color:red}' } } },
       page: { document: '<html <head/> <body <hson-part @:slot lib="parts" at="x"/>/>/>' } });
     const map = install_libraries_snapshot(full.cut({ data: [], documents: ["page"] }).libs).map, aggregate = owner(map);
     aggregate.setInitialHostedAuthority({ logicalMapId: "owned-part-checkpoint", incarnationId: "run" });

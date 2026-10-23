@@ -231,7 +231,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const thirdCut=again.map.cut({data:[],documents:['page'],html:'page'}),third=await page(thirdCut.html,thirdCut.libs),thirdGraft=third.run();
     assert(third.doc.querySelectorAll('section').length===2&&third.correspondence.associations.length===2,'no stale generated rules or identities after re-graft');
     const priorElements=[third.root,...third.root.querySelectorAll('*')],parent=third.correspondence.associations.find(entry=>entry.name==='slot1').path.slice(0,-1);
-    addParts(third.map,'runtimeParts',{x:{kind:'document',document:'<section id="runtime-part" <button id="runtime-button" "Runtime"/>/>',css:'button{color:rgb(90,91,92)}'}});
+    addParts(third.map,'runtimeParts',{x:{kind:'document',document:'<section id="runtime-part" <button id="runtime-button" "Runtime"/>/>',stylesheet:'button{color:rgb(90,91,92)}'}});
     const runtimeConnector=hsonTransform.fromHson('<hson-part lib="runtimeParts" at="x"/>').toNode().$_content[0];
     const namespace=runtime_for_tree(thirdGraft.tree),foreignRuntimeId='23456789a';
     namespace.issuedQuids.add(foreignRuntimeId);
@@ -268,7 +268,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const read = (doc, element) => { const css = doc.defaultView.getComputedStyle(element); return [css.color, css.paddingLeft]; };
     for (const staged of [false, true]) {
       const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-        x: { kind:'document', document:'<button id="live"/>', css:'button{color:rgb(10,20,30);padding-left:13px}' },
+        x: { kind:'document', document:'<button id="live"/>', stylesheet:'button{color:rgb(10,20,30);padding-left:13px}' },
       } }, page: { document:'<html <head/> <body <button id="live"/> <button id="outside"/>/>/>' } });
       const selected = map.doc.must('page'), frame = document.createElement('iframe');
       frame.srcdoc = selected.render(); const loaded = new Promise(resolve => frame.onload = resolve);

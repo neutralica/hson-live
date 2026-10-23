@@ -6,8 +6,8 @@ import { make_livemap_client_composition_from_portable_aggregate_internal } from
 import { make_portable_aggregate_snapshot, make_portable_aggregate_commit } from "../../src/api/livemap/livemap.hosted.js";
 import { PARTS_FACADE_RESERVED } from "../../src/internal/parts-facade.js";
 
-const heading = { kind: "document", document: Hson.document`<h1 "Initial"/>`, css: "h1{color:red}" } as const;
-const replacement = { kind: "document", document: '<h2 "Replacement"/>', css: "h2{color:blue}" } as const;
+const heading = { kind: "document", document: Hson.document`<h1 "Initial"/>`, stylesheet: "h1{color:red}" } as const;
+const replacement = { kind: "document", document: '<h2 "Replacement"/>', stylesheet: "h2{color:blue}" } as const;
 const definitions = { components: { parts: { heading, submit: { kind: "document" as const, document: "<button/>" } } } };
 
 export async function parts_member_cases() {
@@ -74,8 +74,8 @@ export async function parts_member_cases() {
   for (const invalid of [
     { kind: "data", document: "<p/>" }, { kind: "document", document: 3 },
     { kind: "document", document: "<p/><p/>" }, { kind: "document", document: "<p" },
-    { kind: "document", document: "<p/>", css: 1 },
-    { kind: "document", document: "<p/>", css: "p {" },
+    { kind: "document", document: "<p/>", stylesheet: 1 },
+    { kind: "document", document: "<p/>", stylesheet: "p {" },
     { kind: "document", document: "<p/>", schema: undefined },
   ]) {
     const capture = map.capture();
@@ -93,7 +93,7 @@ export async function parts_member_cases() {
     const library = writer.parts.components, location = library.heading;
     assert.equal("snap" in location, false);
     assert.throws(() => Reflect.get(library, "missing"), /Unknown Part member/);
-    location.set({ css: "h2{color:green}" });
+    location.set({ ...replacement, stylesheet: "h2{color:green}" });
     writer.parts.components.submit.set({ document: '<button "Changed"/>' });
     expired = [() => library.heading, () => location.delete(), () => location.at(["document"])];
   });
@@ -176,6 +176,11 @@ export async function parts_member_echo_cases() {
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport });
   try {
     const parts = echo.parts.must("components"), widgets = echo.parts.must("widgets");
+    for (const library of [parts, widgets]) {
+      assert.equal(library.snap(["heading", "document"]), heading.document);
+      assert.deepEqual(library.at([]).snap(), library.snap());
+      assert.deepEqual(Reflect.apply(library.at([]).snap, undefined, [["heading", "document"]]), library.snap());
+    }
     const document = echo.doc.must("page"), documentMust = document.must, fragmentMust = document.at([0]).must;
     assert.equal(documentMust.snap(), "<main><b>text</b></main>"); assert.equal(fragmentMust.snap(), "<b>text</b>");
     assert.equal(fragmentMust.hson(), Hson.document`<b "text"/>`);
@@ -190,6 +195,12 @@ export async function parts_member_echo_cases() {
     assert.equal(element.snap(), undefined); assert.throws(elementMust.snap);
 
     const projected = Reflect.get(parts, "heading"), local = Reflect.get(widgets, "heading");
+    for (const library of [parts, widgets]) {
+      const member = library.at(["heading"]);
+      assert.throws(() => library.snap(["heading", "stylesheet"] as never), /field access/);
+      assert.throws(() => member.at([]).asObject()!.at(["css"] as never), /field access/);
+      assert.throws(() => member.asObject()!.object.getKey("stylesheet" as never), /field access/);
+    }
     const projectedWrite = projected.write, localWrite = local.write;
     const revision = parts.rev;
     assert.equal(projectedWrite(), Reflect.get(parts.at(["heading"]), "write")());

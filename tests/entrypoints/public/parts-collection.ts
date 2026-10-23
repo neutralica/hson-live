@@ -4,14 +4,16 @@ import { hsonLiveMap, type LiveMapPartCollection, type LiveMapDocumentPart,
 import type { LocusLibraryDefinition } from "hson-live/locus";
 
 const document: HsonAuthored = Hson.document`<h1 "%{title}"/>`;
-const parts = { header: { kind: "document", document, css: "h1{color:red}" } } satisfies LiveMapPartCollection;
+const parts = { header: { kind: "document", document, stylesheet: "h1{color:red}" } } satisfies LiveMapPartCollection;
 const definition = { parts } satisfies LiveMapLibraryDefinition;
 const catalog = { ...definition } as const satisfies LocusLibraryDefinition;
 const map = hsonLiveMap.fromLibraries({ parts: definition });
 const part: LiveMapDocumentPart | undefined = map.parts.must("parts").at(["header"]).snap();
 const text: string | undefined = map.parts.must("parts").at(["header", "document"]).snap();
 const kind: "document" | undefined = map.parts.must("parts").at(["header", "kind"]).snap();
-const css: string | undefined = map.parts.must("parts").at(["header", "css"]).snap();
+// @ts-expect-error CSS fields cannot be selected as public paths.
+map.parts.must("parts").at(["header", "stylesheet"]);
+const css: string | undefined = map.parts.must("parts").at(["header"]).snap()?.stylesheet;
 map.parts.must("parts").at(["new"]).set({ kind: "document", document: "<p/>" });
 map.batch(writer => { writer.parts.must("parts").at(["header", "document"]).set("<h2/>"); });
 map.cut({ data: ["parts"] });
@@ -48,7 +50,7 @@ const mixedDocument: LiveMapLibraryDefinition = { parts, document: "<p/>" };
 // @ts-expect-error Unsupported Part kind.
 const invalidKind: LiveMapPartCollection = { bad: { kind: "data", document: "<p/>" } };
 // @ts-expect-error Part CSS is raw text.
-const invalidCss: LiveMapDocumentPart = { kind: "document", document, css: {} };
+const invalidCss: LiveMapDocumentPart = { kind: "document", document, stylesheet: {} };
 // @ts-expect-error A Part member does not admit Schema.
 const memberSchema: LiveMapDocumentPart = { kind: "document", document, schema };
 // @ts-expect-error The internal validation marker is not public admission syntax.
@@ -63,7 +65,7 @@ hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: "document", document: "
 // @ts-expect-error Initial Locus inference must reject the same member-level field.
 hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: "<p/>", schema: {} } }, access: "private" } });
 
-const validPart = { kind: "document", document, css: "" } as const;
+const validPart = { kind: "document", document, stylesheet: "" } as const;
 const invalidPart = { ...validPart, schema: {} };
 const invalidParts = { header: invalidPart };
 const copiedInvalidParts = { ...invalidParts };
@@ -230,7 +232,7 @@ declare const partialIndexSchema: HsonSchema<Readonly<Partial<Record<string, { d
 hsonLiveMap.fromLibraries({ parts: { parts, schema: partialIndexSchema } });
 declare const mixedIndexSchema: HsonSchema<{
   readonly [name: string]: { document: string };
-  readonly header: { document: string; css: "h1{color:red}" };
+  readonly header: { document: string; stylesheet: "h1{color:red}" };
 }, "data">;
 // @ts-expect-error Supplemental Parts Schema is unsupported regardless of its evidence shape.
 hsonLiveMap.fromLibraries({ parts: { parts, schema: mixedIndexSchema } });
@@ -247,7 +249,7 @@ const emptyLocus = hsonLiveMap.locus.create({ "parts": { parts: {}, access: "pri
 const complete = { header: validPart, plain: schemaPart };
 const badKind = { ...validPart, kind: "data" } as const;
 const badDocument = { ...validPart, document: 1 };
-const badCss = { ...validPart, css: 1 };
+const badCss = { ...validPart, stylesheet: 1 };
 const additionalInvalidMember = { ...complete, extra: badDocument };
 const arrayRoot = [validPart];
 
@@ -282,7 +284,7 @@ emptyMap.parts.must("parts").at(["header"]).set(badKind);
 emptyMap.parts.must("parts").at(["header"]).set(badDocument);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
 emptyMap.parts.must("parts").at(["header"]).set(badCss);
-emptyMap.parts.must("parts").at(["header"]).set({ css: "p{color:blue}" });
+emptyMap.parts.must("parts").at(["header"]).set({ kind: "document", document: "<p/>", stylesheet: "p{color:blue}" });
 
 // emptyMap.batch writes preserve the intrinsic contract.
 emptyMap.batch(writer => { writer.parts.must("parts").at([]).replace({}); });
@@ -315,7 +317,7 @@ emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set(badKind
 emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set(badDocument); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
 emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set(badCss); });
-emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set({ css: "p{color:blue}" }); });
+emptyMap.batch(writer => { writer.parts.must("parts").at(["header"]).set({ kind: "document", document: "<p/>", stylesheet: "p{color:blue}" }); });
 
 // directLocus writes preserve the intrinsic contract.
 void emptyLocus.parts.must("parts").at([]).replace({});
@@ -348,7 +350,7 @@ void emptyLocus.parts.must("parts").at(["header"]).set(badKind);
 void emptyLocus.parts.must("parts").at(["header"]).set(badDocument);
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
 void emptyLocus.parts.must("parts").at(["header"]).set(badCss);
-void emptyLocus.parts.must("parts").at(["header"]).set({ css: "p{color:blue}" });
+void emptyLocus.parts.must("parts").at(["header"]).set({ kind: "document", document: "<p/>", stylesheet: "p{color:blue}" });
 
 // emptyLocus.stage writes preserve the intrinsic contract.
 void emptyLocus.stage(writer => { writer.parts.must("parts").at([]).replace({}); });
@@ -381,7 +383,7 @@ void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(
 void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(badDocument); });
 // @ts-expect-error Member writes retain forbidden Schema and intrinsic field constraints.
 void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(badCss); });
-void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set({ css: "p{color:blue}" }); });
+void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set({ kind: "document", document: "<p/>", stylesheet: "p{color:blue}" }); });
 
 // Ordinary data Libraries retain custom Schema projections, including staged Locus writes.
 const ordinaryGoverned = hsonLiveMap.fromLibraries({ data: { data: invalidParts, schema } });
@@ -461,10 +463,14 @@ void locus.parts.must("parts").at([]).replace(undefinedMembers);
 void locus.stage(writer => { writer.parts.must("parts").at(["header"]).set(undefinedMemberSchema); });
 // @ts-expect-error Staged governor replacements check every inferred member.
 void locus.stage(writer => { writer.parts.must("parts").at([]).replace(undefinedMembers); });
-// The acknowledged generic collection-root patch proposal boundary stays unchanged.
+// Authenticated collection patches check every complete proposed member.
+// @ts-expect-error Authenticated collection writes reject invalid Part definitions.
 map.parts.must("parts").at([]).set(invalidParts);
+// @ts-expect-error Authenticated collection writes reject invalid Part definitions.
 map.batch(writer => { writer.parts.must("parts").at([]).set(invalidParts); });
+// @ts-expect-error Authenticated collection writes reject invalid Part definitions.
 void locus.parts.must("parts").at([]).set(invalidParts);
+// @ts-expect-error Authenticated collection writes reject invalid Part definitions.
 void locus.stage(writer => { writer.parts.must("parts").at([]).set(invalidParts); });
 const ordinaryUndefined = hsonLiveMap.fromLibraries({ data: { data: 1 } });
 ordinaryUndefined.data.must("data").schema.use(ANY_DATA);
@@ -483,7 +489,7 @@ hsonLiveMap.fromLibraries({ parts: { parts: { header: maybeUndefinedMember } } }
 
 // @ts-expect-error Member updater inference retains required forbidden keys.
 map.parts.must("parts").at(["header"]).update(() => undefinedMemberSchema);
-map.parts.must("parts").at(["header"]).update(() => ({ css: "p{color:blue}" }));
+map.parts.must("parts").at(["header"]).update(() => ({ kind: "document", document: "<p/>", stylesheet: "p{color:blue}" }));
 declare const persistence: import("hson-live/locus").LocusPersistenceAdapter;
 // @ts-expect-error Durable construction uses the same Library key checks.
 void hsonLiveMap.locus.resume({ "parts": { ...undefinedLibrarySchema, access: "private" } }, { logicalMapId: "parts-types", persistence });

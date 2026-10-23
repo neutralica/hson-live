@@ -32,7 +32,7 @@ export function legacy_flat_styled_map(input: LiveMapInput): LiveMap {
   });
   return make_livemap_mirror_from_semantic_checkpoint_internal({ ...snapshot, libraries });
 }
-const part = (document: string, css: string) => ({ kind: "document" as const, document, css });
+const part = (document: string, css: string) => ({ kind: "document" as const, document, stylesheet: css });
 function page(map: LiveMap): LiveMapDocumentLibrary { const value = map.doc.must("page"); if (value.mode !== "document") throw Error("document"); return value; }
 function identity(map: LiveMap) { return owner(map).libraries()[owner(map).hostedRegistry().libraries.findIndex(entry => entry.name === "page")]!; }
 function atomic(map: LiveMap, run: () => unknown, reason?: RegExp) {
@@ -217,8 +217,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     assert.equal(owner(map).documentOverlay(identity(map)).size, 4);
     assert.equal(page(map).q("root"), undefined); assert.equal(page(map).q("child"), undefined);
     assert.equal(install_libraries_snapshot(map.cut({ documents: ["page"], data: [] }).libs).map.doc.must("page").mode, "document");
-    const invalid = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>', '[hson\\:quad="absent"]{color:red}') } } });
-    atomic(invalid, () => invalid.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /subject/);
+    assert.throws(() => hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>', '[hson\\:quad="absent"]{color:red}') } } }), /missing local QUAD/);
   });
   check("replacing an occurrence retires its old globals before admitting the new contribution", () => {
     const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section <button/>/>', 'button{color:red}@keyframes owned{from{opacity:0}}') } },

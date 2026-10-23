@@ -6,7 +6,7 @@ import type { JsonValue, HsonNode } from "../core/types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
   LiveMapPathValue, LiveMapSetValue,
-  LiveMapWriteValue, LiveMapPartWrite, LivePath, LiveMapRootMode, LiveMapCssOp,
+  LiveMapWriteValue, LivePath, LiveMapRootMode, LiveMapCssOp,
   LiveMapDocumentContent, LiveMapDocumentAttrs, LiveMapDocumentAttributeValue,
   LiveMapDocumentRequestTarget, LiveMapCut, LiveMapHtmlCut, LiveMapCutOptions,
   LiveMapRegistryCommitObserverApi, LiveMapDocumentLibrary, LiveMapDataLibrary,
@@ -26,8 +26,8 @@ export type LocusDataLocation<TValue = JsonValue | undefined, TRead = TValue> = 
   asArray: () => LocusDataLocation<LiveMapArrayBranch<TValue>, LibraryRefinedValue<TRead, LiveMapArrayBranch<TValue>>> | undefined;
   asObject: () => LocusDataLocation<LiveMapObjectBranch<TValue>, LibraryRefinedValue<TRead, LiveMapObjectBranch<TValue>>> | undefined;
   asScalar: () => LocusDataLocation<LiveMapScalarBranch<TValue>, LibraryRefinedValue<TRead, LiveMapScalarBranch<TValue>>> | undefined;
-  set: LiveMapPartWrite<TValue, LiveMapSetValue<TValue>, Promise<void>>;
-  replace: LiveMapPartWrite<TValue, LiveMapWriteValue<TValue>, Promise<void>>;
+  set: (value: LiveMapSetValue<TValue>) => Promise<void>;
+  replace: (value: LiveMapWriteValue<TValue>) => Promise<void>;
   delete: () => Promise<void>;
 }> & LibraryShapeCapabilities<TValue,
   LibraryArrayRead<TValue> & LibraryArrayCommands<TValue, Promise<void>>,

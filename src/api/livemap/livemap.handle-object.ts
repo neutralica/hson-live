@@ -13,8 +13,6 @@ import type {
   LiveMapCoreCommit,
   LiveMapObjectEntry,
   LiveMapObjectKey,
-  LiveMapObjectSetManyValues,
-  LiveMapObjectSetValue,
   LiveMapObjectShape,
   LiveMapObjectValue,
   LiveMapPathObjectApi,
@@ -69,7 +67,7 @@ export function make_livemap_object_api<
     size: () => read().entries.length,
     values: () => read().entries.map(([, value]) => materialize_projected_value(value)) as unknown as readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][],
     entries: () => read().entries.map(([key, value]) => [key, materialize_projected_value(value)]) as unknown as readonly LiveMapObjectEntry<TValue>[],
-    setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: LiveMapObjectSetValue<TValue, TKey>) => {
+    setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: unknown) => {
       const objectKey = must_object_key(key, handlePath);
       read();
       return projected.commit([{
@@ -79,7 +77,7 @@ export function make_livemap_object_api<
         value: must_ordered_projected_value(value, [...handlePath, objectKey]),
       }]);
     },
-    setMany: (values: LiveMapObjectSetManyValues<TValue>) => {
+    setMany: (values: unknown) => {
       read();
       const admitted = must_ordered_projected_object(values, handlePath);
       return projected.commit(admitted.entries.map(([key, value]) => ({

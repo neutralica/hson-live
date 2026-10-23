@@ -32,8 +32,8 @@ const listener = { event: "click", target: "element" as const, capture: false, o
 
 async function fixture(flat = false) {
   const map = make_livemap_libraries({ parts: collection({
-    leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', css: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
-    panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', css: '@media screen{:scope{padding:3px}}' },
+    leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', stylesheet: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
+    panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', stylesheet: '@media screen{:scope{padding:3px}}' },
     secret: { kind: "document", document: '<strong "PRIVATE_PART_SENTINEL"/>' },
   }), page: { document: flat ? '<main @:page <footer @:footer/>/>' : '<main @:page <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <footer @:footer/>/>' },
   data: { data: { n: 0 } }, zpage: { document: flat ? '<aside/>' : '<aside <hson-part lib="parts" at="leaf"/>/>' },

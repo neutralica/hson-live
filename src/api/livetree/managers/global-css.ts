@@ -1,3 +1,4 @@
+import { relative_css_selector } from "../../../internal/css/relative-selector.js";
 // global-css.ts
 
 import { CssGlobalsApi, CssMapBase, CssPseudoKey, CssRuleFacade, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
@@ -205,6 +206,10 @@ export class GlobalCss {
     };
 
     const setter = make_style_setter<void>(undefined, {
+      applySelector: (pattern, declarations) => {
+        const relative = relative_css_selector(pattern, selector);
+        this.rule(`${ruleKey}:${relative}`, relative, scopes).setMany(declarations);
+      },
       /**
        * Apply or remove one declaration from the rule.
        *

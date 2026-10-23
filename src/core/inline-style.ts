@@ -1,4 +1,6 @@
-import type { CssMap, CssValue } from "./style.types.js";
+import { trim_css_value_boundary } from "./css-value-boundary.js";
+import type { HsonAttrs } from "./types.js";
+import type { CssValue } from "./style.types.js";
 import {
   has_inherited_property,
   own_enumerable_data_property,
@@ -42,7 +44,7 @@ export function is_typed_css_value(value: unknown): value is TypedCssValue {
   return inspect_typed_css_value(value) !== undefined;
 }
 
-export function is_css_declaration_value(value: unknown): value is CssValue {
+export function is_css_declaration_value(value: unknown): value is CssValue | boolean {
   return value === null || value === undefined || typeof value === "string"
     || typeof value === "boolean"
     || (typeof value === "number" && Number.isFinite(value))
@@ -50,9 +52,9 @@ export function is_css_declaration_value(value: unknown): value is CssValue {
 }
 
 /** Validate and detach the flat canonical inline-style domain. */
-export function canonical_inline_style(value: unknown): CssMap | undefined {
+export function canonical_inline_style(value: unknown): HsonAttrs["style"] {
   if (!is_plain_record(value)) return undefined;
-  const style: Record<string, CssValue> = {};
+  const style: NonNullable<HsonAttrs["style"]> = {};
   for (const key of Object.keys(value).sort()) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (descriptor === undefined || !Object.hasOwn(descriptor, "value")) return undefined;
@@ -81,12 +83,12 @@ export function is_valid_inline_style(value: unknown): boolean {
 /** Render one valid CSS declaration leaf; null means omit/remove, undefined means invalid. */
 export function render_css_declaration_value(value: unknown): string | null | undefined {
   if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value.trim();
+  if (typeof value === "string") return trim_css_value_boundary(value);
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
   if (typeof value === "boolean") return String(value);
   const typed = inspect_typed_css_value(value);
   if (typed === undefined) return undefined;
-  const renderedValue = typeof typed.value === "string" ? typed.value.trim() : String(typed.value);
+  const renderedValue = typeof typed.value === "string" ? trim_css_value_boundary(typed.value) : String(typed.value);
   const unit = !typed.hasUnit || typed.unit === "_" || typed.unit === undefined ? "" : typed.unit;
-  return `${renderedValue}${unit}`.trim();
+  return trim_css_value_boundary(`${renderedValue}${unit}`);
 }

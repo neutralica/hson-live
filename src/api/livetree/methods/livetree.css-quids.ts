@@ -1,3 +1,4 @@
+import { relative_css_selector } from "../../../internal/css/relative-selector.js";
 import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 // css-for-quids.ts
 
@@ -131,7 +132,7 @@ function resolveSelector(
     // CHANGED: explicit `&` performs placeholder replacement. Without `&`,
     // css.selector(pattern) preserves the older appended-pattern behavior.
     .map((selfSel) => pattern.includes("&")
-      ? pattern.replaceAll("&", selfSel)
+      ? relative_css_selector(pattern, selfSel)
       : `${selfSel}${pattern}`)
     .join(", ");
 }

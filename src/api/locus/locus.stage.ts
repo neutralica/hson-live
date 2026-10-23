@@ -4,7 +4,7 @@ import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { admit_public_livemap_definitions, require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { document_css_commands, document_css_reads, dispatch_document_css_command } from "../../internal/document-css-commands.js";
-import { collection_commands } from "../livemap/livemap.collection-command.js";
+import { collection_commands, normalize_part_collection_command } from "../livemap/livemap.collection-command.js";
 import { collection_observations, read_document_location } from "../../internal/library-observation.js";
 import type { JsonValue } from "../../core/types.js";
 import type {
@@ -21,7 +21,6 @@ import { register_governed_document, write_document_quad } from "../../internal/
 type Writer = LiveMapStagedWriter<LiveMap, void>;
 type Selected = ReturnType<Writer["doc"]["must"]> | ReturnType<Writer["data"]["must"]>;
 type Document = Extract<Selected, Readonly<{ mode: "document" }>>;
-type Data = Exclude<Selected, Document>;
 /** Governed selection shares one authority submission without exposing the subordinate map. */
 export function make_locus_stage<TMap extends LiveMap>(
   map: TMap,
@@ -36,7 +35,7 @@ export function make_locus_stage<TMap extends LiveMap>(
     if (selected.mode !== "document") throw new Error(`Staged Library ${JSON.stringify(name)} is not a document.`);
     return selected;
   };
-  const selected_data = (writer: Writer, name: string): Data => {
+  const selected_data = (writer: Writer, name: string) => {
     const selected = resolve_livemap_library_internal(map, name)?.family === "parts" ? writer.parts.must(name) : writer.data.must(name);
     return selected;
   };
@@ -52,7 +51,7 @@ export function make_locus_stage<TMap extends LiveMap>(
       }
       const location = selected_data(writer, name).at(stable);
       Reflect.apply(Reflect.get(Reflect.get(location, command.collection), command.method), undefined, command.args);
-    }), cause => Promise.reject(cause));
+    }), cause => Promise.reject(cause), command => resolve_livemap_library_internal(map, name)?.family === "parts" ? normalize_part_collection_command(command, stable) : command);
     const snap = () => { assertReadable(); return raw.snap(); };
     const hson = () => { assertReadable(); return raw.hson(); };
     return Object.freeze(forward_part_write({

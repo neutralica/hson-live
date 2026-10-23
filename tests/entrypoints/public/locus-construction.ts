@@ -12,7 +12,7 @@ const definitions = {
   page: { document: "<main/>", schema: Page },
 } as const;
 const direct = hsonLiveMap.fromLibraries(definitions);
-const locus = hsonLiveMap.locus.create({ "count": { ...definitions.count, access: "shared" }, "page": { ...definitions.page, css: sheet, access: "private" } }, { local: [{ name: "ui", initializer: { data: { selected: false } } }] });
+const locus = hsonLiveMap.locus.create({ "count": { ...definitions.count, access: "shared" }, "page": { ...definitions.page, stylesheet: sheet, access: "private" } }, { local: [{ name: "ui", initializer: { data: { selected: false } } }] });
 const knownName = locus.data.must("count");
 const documentName = locus.doc.must("page");
 const noPublicMap: "map" extends keyof typeof locus ? true : false = false;
@@ -49,13 +49,13 @@ void refinedSchema;
 void locus.data.must("count").at(["value"]).set(2);
 void locus.doc.must("page").css.stylesheet(sheet);
 void locus.doc.must("page").css({ domain: "css", kind: "clear-all" });
-void locus.admit({ "laterPage": { ...definitions.page, css: sheet, access: "shared" } });
+void locus.admit({ "laterPage": { ...definitions.page, stylesheet: sheet, access: "shared" } });
 // @ts-expect-error Data Libraries have no CSS handle.
 void locus.data.must("count").css;
 // @ts-expect-error Data Library construction cannot carry CSS.
-void hsonLiveMap.locus.create({ "bad": { ...definitions.count, css: sheet, access: "shared" } });
+void hsonLiveMap.locus.create({ "bad": { ...definitions.count, stylesheet: sheet, access: "shared" } });
 // @ts-expect-error Data Library stage admission cannot carry CSS.
-void locus.admit({ "bad": { ...definitions.count, css: sheet, access: "shared" } });
+void locus.admit({ "bad": { ...definitions.count, stylesheet: sheet, access: "shared" } });
 void locus.stage((loc) => { loc.data.must("count").at(["value"]).set(3); });
 const noStageLib: "lib" extends keyof typeof locus.stage ? true : false = false;
 const noStageAdmission: "admit" extends keyof typeof locus.stage ? true : false = false;
@@ -74,7 +74,7 @@ void hsonLiveMap.locus.create({ "count": { ...definitions.count, access: "shared
 declare const provider: LocusPersistenceAdapter;
 // @ts-expect-error Durable resume requires a stable logicalMapId.
 void hsonLiveMap.locus.resume({ "count": { ...definitions.count, access: "shared" } }, { persistence: provider });
-const resumed = await hsonLiveMap.locus.resume({ "count": { ...definitions.count, access: "shared" }, "page": { ...definitions.page, css: sheet, access: "private" } }, { logicalMapId: "locus-construction-entrypoint", persistence: provider });
+const resumed = await hsonLiveMap.locus.resume({ "count": { ...definitions.count, access: "shared" }, "page": { ...definitions.page, stylesheet: sheet, access: "private" } }, { logicalMapId: "locus-construction-entrypoint", persistence: provider });
 const resumedName = resumed.doc.must("page");
 void [resumedName, hsonLiveMap.locus.checkpoint(resumed)];
 // @ts-expect-error Checkpointing is a Locus namespace operation.

@@ -117,12 +117,12 @@ export type LocusDefinitions = Readonly<Record<string, LocusLibraryDefinition>>;
 
 /** Client-local seeds remain separate from the authority inventory. */
 export type LocusLocalLibraryDefinition = Readonly<{ name: string } & (
-  | { initializer: LiveMapLibraryDefinition; css?: never }
-  | { initializer: Extract<LiveMapLibraryDefinition, { document: unknown }>; css: string }
+  | { initializer: LiveMapLibraryDefinition; stylesheet?: never }
+  | { initializer: Extract<LiveMapLibraryDefinition, { document: unknown }>; stylesheet: string }
 )>;
 
 type InvalidLocalEntry<T> = T extends { initializer: infer D }
-  ? Exclude<keyof T, "name" | "initializer" | "css"> extends never
+  ? Exclude<keyof T, "name" | "initializer" | "stylesheet"> extends never
     ? D extends LiveMapDefinitionCheck<D> ? never : T
     : T
   : never;

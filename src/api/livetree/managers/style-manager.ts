@@ -1,3 +1,4 @@
+type CanonicalStyleMap = NonNullable<HsonAttrs["style"]>;
 import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 import {
   active_subject_for_tree,
@@ -5,7 +6,7 @@ import {
 // style-manager.ts
 
 import { HsonAttrs, HsonNode, type CanonicalPublicAttrs } from "../../../core/types.js";
-import { AllowedStyleKey, CssMap, CssVarFacade } from "../../../types/css.types.js";
+import { CssVarFacade } from "../../../types/css.types.js";
 import { kebab_to_camel } from "../../transform/utils/primitive-utils/kebab-to-camel.util.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
@@ -19,46 +20,6 @@ import { serialize_style, inline_css_native_name } from "../../transform/utils/a
 import { assert_inline_css_order, assert_inline_css_value, assert_inline_css_trim_safe, InlineCssError } from "../../../internal/css/inline-css.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../../core/public-attrs.js";
 import { render_css_declaration_value, is_typed_css_value } from "../../../core/inline-style.js";
-
-/* ------------------------------ RUNTIME KEYS -------------------------------- */
-
-/**
- * Minimal fallback list of allowed style keys used when no DOM is present
- * (e.g. tests, server-side/Node environments).
- *
- * This list is intentionally small and generic but covers common layout,
- * typography, and transform properties so that style APIs remain usable
- * even without runtime probing.
- */
-// TODO/BUG -- I am not sure I like this pattern 
-const FALLBACK_KEYS: ReadonlyArray<AllowedStyleKey> = Object.freeze([
-    "color",
-    "backgroundColor",
-    "borderColor",
-    "fontSize",
-    "fontWeight",
-    "lineHeight",
-    "opacity",
-    "display",
-    "position",
-    "top",
-    "left",
-    "right",
-    "bottom",
-    "width",
-    "height",
-    "margin",
-    "marginTop",
-    "marginRight",
-    "marginBottom",
-    "marginLeft",
-    "padding",
-    "paddingTop",
-    "paddingRight",
-    "paddingBottom",
-    "paddingLeft",
-    "transform",
-]);
 
 export const parse_style_attr = (raw: string | undefined): Map<string, string> =>
     new Map(Object.entries(parse_style_string(raw ?? "")).map(([key, value]) =>
@@ -82,9 +43,9 @@ function readStyleFromNode(node: HsonNode, propCanon: string): string | undefine
     const kebabKey = inline_css_native_name(propCanon);
 
     if (raw && typeof raw === "object") {
-        const styleObj = raw as CssMap;
+        const styleObj = raw as CanonicalStyleMap;
 
-        const direct = styleObj[propCanon as keyof CssMap];
+        const direct = styleObj[propCanon as keyof CanonicalStyleMap];
         if (typeof direct === "string") return direct;
         const alias = Object.keys(styleObj).find(key => inline_css_native_name(key) === kebabKey);
         const value = alias === undefined ? undefined : styleObj[alias];
@@ -111,12 +72,12 @@ function readAllStyleFromNode(node: HsonNode): StyleGetMany {
 }
 
 /** Read the complete canonical declaration bag without normalizing its values. */
-function readCanonicalStyleFromNode(node: HsonNode): CssMap {
+function readCanonicalStyleFromNode(node: HsonNode): CanonicalStyleMap {
     const attrs = node.$_attrs as HsonAttrs | undefined;
     const raw = attrs?.style;
 
     if (raw && typeof raw === "object") {
-        return { ...(raw as CssMap) };
+        return { ...(raw as CanonicalStyleMap) };
     }
 
     if (typeof raw === "string") {
@@ -133,35 +94,6 @@ function readCanonicalStyleFromNode(node: HsonNode): CssMap {
     return {};
 }
 
-/**
- * Probe the runtime to discover supported style property keys.
- *
- * Behavior:
- * - If `document` or `document.documentElement` is unavailable, returns
- *   `FALLBACK_KEYS` (Node/tests).
- * - Otherwise:
- *   - Reads keys from `document.documentElement.style`.
- *   - Filters out `"cssText"` and any keys containing `"-"` (i.e. only
- *     keeps canonical camelCase properties).
- *   - Deduplicates and freezes the resulting array.
- *
- * The returned array is used to:
- * - Drive autocomplete and typing for `style.set` via `AllowedStyleKey`.
- * - Build the `StyleSetterFacade` proxy in a runtime-aware way.
- *
- * @returns A readonly array of allowed style keys for this runtime.
- */
-function computeRuntimeKeys(): ReadonlyArray<AllowedStyleKey> {
-    if (typeof document === "undefined" || !document.documentElement) {
-        return FALLBACK_KEYS;
-    }
-    const style = document.documentElement.style;
-    const raw = Object.keys(style as unknown as Record<string, unknown>);
-    const filtered = raw.filter((k) => k !== "cssText" && !k.includes("-"));
-    const typed = filtered.filter((k): k is AllowedStyleKey => true);
-    return Object.freeze(Array.from(new Set(typed)));
-}
-
 /* --------------------------------- MANAGER ---------------------------------- */
 /**
  * Inline style manager bound to a single `LiveTree` node.
@@ -171,15 +103,12 @@ function computeRuntimeKeys(): ReadonlyArray<AllowedStyleKey> {
  *   and `setProperty`.
  * - Keeps Hson `$_attrs.style` and the DOM element's `style` attribute
  *   in sync by preflighting and publishing one complete retained state.
- * - Exposes runtime-derived style keys (via `keys()`) that represent
- *   the actual properties supported in the current environment.
  *
  * This manager is per-node: each `StyleManager` instance operates on
  * the `LiveTree` it was constructed with, not on selections.
  */
 export class StyleManager<TTree extends LiveTree> {
     private readonly tree: TTree;
-    private readonly runtimeKeys: ReadonlyArray<AllowedStyleKey>;
     public readonly setter: StyleSetter<TTree>;
 
     // read surface mirrors setter pattern
@@ -195,21 +124,16 @@ export class StyleManager<TTree extends LiveTree> {
      *
      * Implementation details:
      * - Stores the `LiveTree` instance for all subsequent style operations.
-     * - Computes `runtimeKeys` once via `computeRuntimeKeys()`, probing the
-     *   runtime for supported style properties.
      * - Builds `setter` via `make_style_setter`, producing a fluent style API.
      *
      * @param tree - The `LiveTree` whose node (and mapped DOM element) will
      *               be styled by this manager.
-     * @see computeRuntimeKeys
      * @see make_style_setter
      */
     constructor(tree: TTree) {
         this.tree = tree;
-        this.runtimeKeys = computeRuntimeKeys();
 
         this.setter = make_style_setter<TTree>(tree, {
-            keys: this.runtimeKeys,
             normalizeKey: key => key,
             validateValue: assertInlineProjectionSafe,
 
@@ -293,7 +217,7 @@ export class StyleManager<TTree extends LiveTree> {
             const key = property.startsWith("-") ? property : kebab_to_camel(property);
             changes.set(property, value === "" ? "" : parse_style_string(`${property}:${value}`)[key]);
         }
-        const plan = (current: CssMap): CssMap => {
+        const plan = (current: CanonicalStyleMap): CanonicalStyleMap => {
             const remaining = { ...current };
             let changed = false;
             const additions: string[] = [];
@@ -335,7 +259,7 @@ export class StyleManager<TTree extends LiveTree> {
         return this.tree;
     }
 
-    private publishStyle(style: CssMap): void {
+    private publishStyle(style: CanonicalStyleMap): void {
         const subject = active_subject_for_tree(this.tree);
         const current = decode_public_attrs(subject.$_attrs ?? {});
         const next = decode_public_attrs(Object.keys(style).length ? { ...subject.$_attrs, style }

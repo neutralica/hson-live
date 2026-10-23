@@ -51,7 +51,7 @@ export function authority_definitions_from_map_fixture<TMap extends LiveMap>(map
   for (const entry of catalog) {
     if (entry.ownership === "local") {
       local.push({ name: entry.name, initializer: entry.initializer,
-        ...(entry.css === undefined ? {} : { css: css_text(entry.css) }) } as LocusLocalLibraryDefinition);
+        ...(entry.css === undefined ? {} : { stylesheet: css_text(entry.css) }) } as LocusLocalLibraryDefinition);
       continue;
     }
     const index = checkpoint.registry.libraries.findIndex(candidate => candidate.name === entry.name);
@@ -59,7 +59,7 @@ export function authority_definitions_from_map_fixture<TMap extends LiveMap>(map
     if (registry === undefined || state === undefined) throw new Error(`Test fixture Library ${entry.name} is missing.`);
     const schema = HsonSchema.fromHson(registry.schema);
     const definition: LiveMapLibraryDefinition = registry.mode === "document"
-      ? { document: state.root, schema, ...(state.css === undefined ? {} : { css: css_text(state.css) }) }
+      ? { document: state.root, schema, ...(state.css === undefined ? {} : { stylesheet: css_text(state.css) }) }
       : (() => { const value = node_to_json_value(state.root); return { data: typeof value === "string" ? JSON.stringify(value) : value, schema }; })();
     definitions[entry.name] = { ...definition, access: entry.ownership };
   }
@@ -80,9 +80,9 @@ export function authority_definitions_from_catalog_fixture<const T extends reado
   const local: LocusLocalLibraryDefinition[] = [];
   for (const entry of catalog) {
     if (entry.ownership === "local") local.push({ name: entry.name, initializer: entry.initializer,
-      ...(entry.css === undefined ? {} : { css: css_text(entry.css) }) } as LocusLocalLibraryDefinition);
+      ...(entry.css === undefined ? {} : { stylesheet: css_text(entry.css) }) } as LocusLocalLibraryDefinition);
     else if (entry.definition !== undefined) definitions[entry.name] = { ...entry.definition, access: entry.ownership,
-      ...(entry.css === undefined ? {} : { css: css_text(entry.css) }) } as LocusLibraryDefinition;
+      ...(entry.css === undefined ? {} : { stylesheet: css_text(entry.css) }) } as LocusLibraryDefinition;
     else throw new Error(`Test catalog ${entry.name} needs a definition.`);
   }
   return { definitions, local } as unknown as FixtureDefinition<CatalogMap<T>>;

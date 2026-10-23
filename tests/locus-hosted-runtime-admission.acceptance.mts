@@ -70,7 +70,7 @@ assert.deepEqual(observedCommits, []);
 assert.equal(wire.sent.length, beforeSent);
 for (const name of ["preferences", "localPage", "replayed"]) assert.throws(() => clientMap.data.must(name), /unknown/i);
 const beforeAdmissionWire = wire.received.length;
-await locus.admit({ "privateState": { data: { secret: "PRIVATE_ROOT_SENTINEL" }, access: "private" }, "newPublic": { data: { count: 2 }, access: "shared" }, "page": { document: Hson.document`<html <head/> <body <main <p "RUNTIME_PAGE_SENTINEL"/>/>/>/>`, css: "main { display: block; }", access: "shared" } });
+await locus.admit({ "privateState": { data: { secret: "PRIVATE_ROOT_SENTINEL" }, access: "private" }, "newPublic": { data: { count: 2 }, access: "shared" }, "page": { document: Hson.document`<html <head/> <body <main <p "RUNTIME_PAGE_SENTINEL"/>/>/>/>`, stylesheet: "main { display: block; }", access: "shared" } });
 assert.equal(locus.rev, beforeAuthorityRev + 1);
 assert.equal(echo.lastAppliedRev, locus.rev);
 assert.equal(clientMap.rev, beforeClientRev);
