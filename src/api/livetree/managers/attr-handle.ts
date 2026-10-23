@@ -1,4 +1,4 @@
-import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
+import { assert_mutation_publication_available, begin_mutation_publication } from "../lifecycle/mutation-publication.js";
 import { SVG_TAGS } from "../../../core/all-html-tags.js";
 import { HSON_META_MARKUP_PREFIX } from "../../../core/constants.js";
 import { clone_node } from "../../../core/clone-node.js";
@@ -37,14 +37,18 @@ import {
   LiveTreeAttributeError,
 } from "../livetree.error.js";
 import type { LiveTree } from "../livetree.js";
-import { get_el_for_node } from "../utils/node-map-helpers.js";
+import { get_dom_for_node, get_el_for_node, get_node_for_el } from "../utils/node-map-helpers.js";
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
 import { get_quid, HSON_QUID_MARKUP_NAME } from "../quid/data-quid.js";
 import {
+  runtime_for_node,
   runtime_for_tree,
   active_subject_for_tree,
 } from "../runtime/livetree-runtime.js";
 import { lower_browser_attribute_value } from "../../../internal/browser-realization/browser-realization-plan.js";
+import { restore_dom_attrs } from "../lifecycle/mutation-dom.js";
+import { receiver_role } from "../lifecycle/mutation-qualification.js";
+import { qualify_exact_hson_graph } from "../../../internal/exact-node-qualification.js";
 
 const UNASSIGNED_QUID_DIAGNOSTIC = "<unassigned>";
 
@@ -87,76 +91,76 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
       return has_attr(active_subject_for_tree(tree), key);
     },
     keys: () => Object.freeze(read_attr_keys(active_subject_for_tree(tree))),
-    set: (name, value) => {
+    set: (name, value) => mutate_attrs(tree, (node, assertCurrent) => {
       const key = normalize_livetree_attr_name(tree, name, "set");
       const decoded = normalize_livetree_attr_value(tree, key, value, "set");
-      assert_mutation_publication_available(active_subject_for_tree(tree));
-      const binding = document_binding_for_node(active_subject_for_tree(tree));
+      assertCurrent();
+      const binding = document_binding_for_node(node);
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "set", name: key, value: decoded });
         return tree;
       }
       const current = read_attrs(tree, "set");
-      return apply_attrs_replacement(tree, current, plan_public_attr_set(current, key, decoded));
-    },
-    setMany: (values) => {
+      return apply_attrs_replacement(tree, node, assertCurrent, current, plan_public_attr_set(current, key, decoded));
+    }),
+    setMany: (values) => mutate_attrs(tree, (node, assertCurrent) => {
       const additions = normalize_livetree_attrs_input(tree, values, "setMany");
-      assert_mutation_publication_available(active_subject_for_tree(tree));
-      const binding = document_binding_for_node(active_subject_for_tree(tree));
+      assertCurrent();
+      const binding = document_binding_for_node(node);
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "setMany", values: additions });
         return tree;
       }
       const current = read_attrs(tree, "setMany");
       return apply_attrs_replacement(
-        tree,
+        tree, node, assertCurrent,
         current,
         plan_public_attrs_set_many(current, additions),
       );
-    },
-    drop: (name) => {
+    }),
+    drop: (name) => mutate_attrs(tree, (node, assertCurrent) => {
       const key = normalize_livetree_attr_name(tree, name, "drop");
-      assert_mutation_publication_available(active_subject_for_tree(tree));
-      const binding = document_binding_for_node(active_subject_for_tree(tree));
+      assertCurrent();
+      const binding = document_binding_for_node(node);
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "drop", name: key });
         return tree;
       }
       const current = read_attrs(tree, "drop");
-      return apply_attrs_replacement(tree, current, plan_public_attr_drop(current, key));
-    },
-    dropMany: (names) => {
+      return apply_attrs_replacement(tree, node, assertCurrent, current, plan_public_attr_drop(current, key));
+    }),
+    dropMany: (names) => mutate_attrs(tree, (node, assertCurrent) => {
       const normalized = normalize_livetree_drop_names(tree, names, "dropMany");
-      assert_mutation_publication_available(active_subject_for_tree(tree));
-      const binding = document_binding_for_node(active_subject_for_tree(tree));
+      assertCurrent();
+      const binding = document_binding_for_node(node);
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "dropMany", names: normalized });
         return tree;
       }
       const current = read_attrs(tree, "dropMany");
-      return apply_attrs_replacement(tree, current, plan_public_attrs_drop_many(current, normalized));
-    },
-    clear: () => {
-      assert_mutation_publication_available(active_subject_for_tree(tree));
-      const binding = document_binding_for_node(active_subject_for_tree(tree));
+      return apply_attrs_replacement(tree, node, assertCurrent, current, plan_public_attrs_drop_many(current, normalized));
+    }),
+    clear: () => mutate_attrs(tree, (node, assertCurrent) => {
+      assertCurrent();
+      const binding = document_binding_for_node(node);
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "clear" });
         return tree;
       }
       const current = read_attrs(tree, "clear");
-      return apply_attrs_replacement(tree, current, plan_public_attrs_clear());
-    },
-    replace: (values) => {
+      return apply_attrs_replacement(tree, node, assertCurrent, current, plan_public_attrs_clear());
+    }),
+    replace: (values) => mutate_attrs(tree, (node, assertCurrent) => {
       const next = normalize_livetree_attrs_input(tree, values, "replace");
-      assert_mutation_publication_available(active_subject_for_tree(tree));
-      const binding = document_binding_for_node(active_subject_for_tree(tree));
+      assertCurrent();
+      const binding = document_binding_for_node(node);
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "replace", values: next });
         return tree;
       }
       const current = read_attrs(tree, "replace");
-      return apply_attrs_replacement(tree, current, plan_public_attrs_replace(next));
-    },
+      return apply_attrs_replacement(tree, node, assertCurrent, current, plan_public_attrs_replace(next));
+    }),
   });
 }
 
@@ -194,21 +198,21 @@ export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTr
       const current = read_attrs(tree, "flags.has");
       return canonical_attr_is_flag(current, key);
     },
-    set: (...names): TTree => {
+    set: (...names): TTree => mutate_attrs(tree, (node, assertCurrent) => {
       const normalized = normalize_livetree_flag_names(tree, names, "flags.set", true);
-      assert_mutation_publication_available(active_subject_for_tree(tree));
-      const binding = document_binding_for_node(active_subject_for_tree(tree));
+      assertCurrent();
+      const binding = document_binding_for_node(node);
       if (binding !== undefined) {
         binding.delegateAttrs({ kind: "setMany", values: livetree_flag_values(normalized) });
         return tree;
       }
       const current = read_attrs(tree, "flags.set");
-      return apply_attrs_replacement(tree, current, plan_public_flags_set(current, normalized));
-    },
-    clear: (...names): TTree => {
+      return apply_attrs_replacement(tree, node, assertCurrent, current, plan_public_flags_set(current, normalized));
+    }),
+    clear: (...names): TTree => mutate_attrs(tree, (node, assertCurrent) => {
       const normalized = normalize_livetree_flag_names(tree, names, "flags.clear", true);
-      assert_mutation_publication_available(active_subject_for_tree(tree));
-      const binding = document_binding_for_node(active_subject_for_tree(tree));
+      assertCurrent();
+      const binding = document_binding_for_node(node);
       if (binding !== undefined) {
         binding.delegateAttrs({
           kind: "transform",
@@ -221,8 +225,8 @@ export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTr
       }
       const current = read_attrs(tree, "flags.clear");
       const next = plan_public_flags_clear(current, normalized);
-      return apply_attrs_replacement(tree, current, next);
-    },
+      return apply_attrs_replacement(tree, node, assertCurrent, current, next);
+    }),
   });
 }
 
@@ -239,21 +243,22 @@ export function patchAttrsImpl<TTree extends LiveTree>(
     }
     return plan_public_attrs_replace(next);
   };
-  const node = active_subject_for_tree(tree);
-  assert_mutation_publication_available(node);
-  const binding = document_binding_for_node(node);
-  if (binding !== undefined) {
-    binding.delegateAttrs({
-      kind: "transform",
-      apply: (current) => ({ kind: "replace", values: plan(current) }),
-    });
-    return tree;
-  }
-  const current = decode_public_attrs(node.$_attrs ?? {});
-  if (current === undefined) {
-    throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, "data.setMany", undefined, "stored attrs are not canonical");
-  }
-  return apply_attrs_replacement(tree, current, plan(current));
+  return mutate_attrs(tree, (node, assertCurrent) => {
+    assertCurrent();
+    const binding = document_binding_for_node(node);
+    if (binding !== undefined) {
+      binding.delegateAttrs({
+        kind: "transform",
+        apply: (current) => ({ kind: "replace", values: plan(current) }),
+      });
+      return tree;
+    }
+    const current = decode_public_attrs(node.$_attrs ?? {});
+    if (current === undefined) {
+      throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, "data.setMany", undefined, "stored attrs are not canonical");
+    }
+    return apply_attrs_replacement(tree, node, assertCurrent, current, plan(current));
+  });
 }
 
 /** Canonical single-value writer retained for existing internal managers. */
@@ -406,17 +411,78 @@ export function normalize_livetree_drop_names(tree: LiveTree, input: unknown, op
   }));
 }
 
+/** Pin standalone authority across input capture, native staging and recovery.
+ * Bound mutations keep LiveMap's acceptance and Mirror's failure lifecycle. */
+function mutate_attrs<TTree extends LiveTree>(
+  tree: TTree,
+  apply: (node: HsonNode, assertCurrent: () => void) => TTree,
+): TTree {
+  const node = active_subject_for_tree(tree);
+  const runtime = runtime_for_node(node), element = get_el_for_node(node);
+  const binding = document_binding_for_node(node);
+  const assertCurrent = (): void => {
+    if (active_subject_for_tree(tree) !== node || runtime_for_node(node) !== runtime
+      || document_binding_for_node(node) !== binding || get_el_for_node(node) !== element
+      || (element !== undefined && (get_node_for_el(element) !== node || get_dom_for_node(node) !== element))) {
+      throw new Error("LiveTree attrs: subject or native correspondence changed during operation.");
+    }
+  };
+  assert_mutation_publication_available(node);
+  assertCurrent();
+  if (binding !== undefined) return apply(node, assertCurrent);
+  const endPublication = begin_mutation_publication([node]);
+  try {
+    assertCurrent();
+    return apply(node, assertCurrent);
+  } finally { endPublication(); }
+}
+
 function apply_attrs_replacement<TTree extends LiveTree>(
   tree: TTree,
+  node: HsonNode,
+  assertCurrent: () => void,
   current: CanonicalPublicAttrs,
   next: CanonicalPublicAttrs,
 ): TTree {
+  assertCurrent();
   if (canonical_public_attrs_equal(current, next)) return tree;
 
-  const node = active_subject_for_tree(tree);
-  if (Object.keys(next).length === 0) delete node.$_attrs;
-  else node.$_attrs = clone_node(next);
-  project_attrs_replacement(node, current, next);
+  // Own and qualify the complete candidate using the existing contextual
+  // admission policy. Neither preparation nor native staging installs it.
+  const candidate = clone_node(node);
+  if (Object.keys(next).length === 0) delete candidate.$_attrs;
+  else candidate.$_attrs = clone_node(next);
+  qualify_exact_hson_graph(candidate, "attrs replacement", receiver_role(node), true);
+  const element = get_el_for_node(node);
+  if (element !== undefined) {
+    const attrs: [string, string][] = [];
+    for (const name of element.getAttributeNames()) {
+      assertCurrent();
+      const value = element.getAttribute(name);
+      assertCurrent();
+      if (value !== null) attrs.push([name, value]);
+    }
+    assertCurrent();
+    try {
+      realize_attrs_replacement(element, current, next, assertCurrent);
+      assertCurrent();
+    } catch (cause) {
+      try {
+        // Restore this exact native element through its owning realm, keeping
+        // listeners and identity. Browser/application side effects are not a
+        // transaction and are not represented as canonical acceptance.
+        restore_dom_attrs(element, attrs);
+        assertCurrent();
+      } catch (restorationFailure) {
+        throw new AggregateError([cause, restorationFailure],
+          "LiveTree attrs: native realization failed and native restoration failed.", { cause });
+      }
+      throw cause;
+    }
+  }
+  assertCurrent();
+  if (candidate.$_attrs === undefined) delete node.$_attrs;
+  else node.$_attrs = candidate.$_attrs;
   return tree;
 }
 
@@ -426,19 +492,30 @@ function project_attrs_replacement(
   next: CanonicalPublicAttrs,
 ): void {
   const element = get_el_for_node(node);
-  if (element === undefined) return;
+  if (element !== undefined) realize_attrs_replacement(element, current, next);
+}
+
+function realize_attrs_replacement(
+  element: Element,
+  current: CanonicalPublicAttrs,
+  next: CanonicalPublicAttrs,
+  assertCurrent: () => void = () => {},
+): void {
   // Author defaults through native attribute reflection; do not force dirty
   // current form properties after writing authored attributes.
   const namespace = element.namespaceURI === "http://www.w3.org/2000/svg" ? "svg" : "html";
   for (const [name, value] of Object.entries(current)) {
+    assertCurrent();
     if (!Object.prototype.hasOwnProperty.call(next, name)) {
       element.removeAttribute(lower_browser_attribute_value(name, value, namespace)?.name ?? name);
     }
   }
   for (const [name, value] of Object.entries(next)) {
+    assertCurrent();
     const lowered = lower_browser_attribute_value(name, value, namespace);
     if (lowered === undefined) element.removeAttribute(name);
     else element.setAttribute(lowered.name, lowered.value);
+    assertCurrent();
   }
 }
 

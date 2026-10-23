@@ -1,3 +1,4 @@
+import { attribute_atomicity_browser_cases } from "../fixtures/livetree-attribute-atomicity-browser-cases.mjs";
 import { Hson, hson } from "../../src/index.ts";
 import { hsonMirror } from "../../src/api/mirror/mirror.facade.ts";
 import { project_livetree } from "../../src/api/livetree/creation/project-live-tree.ts";
@@ -31,6 +32,7 @@ const selected = el => Array.from(el.selectedOptions, option => option.value);
 const canonical = tree => JSON.stringify(tree.node);
 
 try {
+  assertions += await attribute_atomicity_browser_cases(check);
   await check("dirty input current value, defaults, authored attrs and reset", () => {
     const f = fixture('<form <input value="authored"/>/>');
     const input = f.tree.find.must.byTag("input"), el = input.dom.el(), before = canonical(f.tree);
