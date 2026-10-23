@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { admit_projected_value } from "../src/core/projected-value-admission.ts";
+import { assert_ordered_projected_value, is_ordered_projected_value, ordered_projected_array, ordered_projected_object, ordered_projected_value_equal } from "../src/core/ordered-projected-value.ts";
+import { materialize_projected_value } from "../src/core/projected-value-materialization.ts";
+import { projected_value_from_hson_node, projected_value_to_hson_node } from "../src/core/projected-value-graph.ts";
 import { CANONICAL_SCHEMA_FORMAT } from "../src/internal/canonical-schema/graph.ts";
+import { decode_canonical_schema_graph_hson, encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
 import { verify_canonical_schema_graph } from "../src/internal/canonical-schema/verify.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -55,6 +59,64 @@ check("exact state must be explicit boolean", () => rejected(graph({ projectedRo
 check("wrapper ref must exist", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-optional", base: 9 }]), /out of range/));
 check("literal carrier admission rejects raw objects", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-literal", values: [{ a: 1 }] }]), /canonical projected value/));
 check("canonical ordered literal verifies", () => accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-literal", values: [admit_projected_value({ b: 2, a: 1 })] }])));
+for (const [name, input] of [
+  ["empty array", []],
+  ["numbers and negative zero", [1, -0]],
+  ["object containing an array", { child: [] }],
+  ["nested arrays", [[1]]],
+  ["number control", 1],
+  ["negative-zero scalar control", -0],
+  ["string control", "literal"],
+  ["boolean control", true],
+  ["null control", null],
+  ["array-free object control", { child: 1 }],
+] as const) {
+  check(`canonical literal HSON round trip owns ${name}`, () => {
+    const original = admit_projected_value(input);
+    const verified = verify_canonical_schema_graph(graph({ projectedRoot: 0 }, [{ kind: "projected-literal", values: [original] }]));
+    assert.ok(verified.ok);
+    const encoded = encode_canonical_schema_graph_hson(verified.graph);
+    const decoded = decode_canonical_schema_graph_hson(encoded);
+    assert.ok(decoded.ok, JSON.stringify(decoded));
+    const node = decoded.graph.nodes[0];
+    assert.ok(node?.kind === "projected-literal");
+    const literal = node.values[0];
+    assert_ordered_projected_value(literal);
+    assert.equal(is_ordered_projected_value(literal), true);
+    assert.equal(ordered_projected_value_equal(literal, original), true);
+    assert.deepEqual(materialize_projected_value(literal), input);
+    if (name === "numbers and negative zero") {
+      assert.ok(Array.isArray(literal));
+      assert.equal(Object.is(literal[1], -0), true);
+    }
+    assert.equal(encode_canonical_schema_graph_hson(decoded.graph), encoded);
+    assert.equal(verify_canonical_schema_graph(decoded.graph).ok, true);
+    assert.equal(ordered_projected_value_equal(projected_value_from_hson_node(projected_value_to_hson_node(literal)), original), true);
+    assert.deepEqual(materialize_projected_value(ordered_projected_array([literal])), [input]);
+    assert.deepEqual(materialize_projected_value(ordered_projected_object([["decoded", literal]])), { decoded: input });
+  });
+}
+check("canonical literal wire numbers remain finite at every array depth", () => {
+  for (const value of [NaN, Infinity, -Infinity]) {
+    rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-literal", values: [value] }]), /canonical projected value|finite/);
+    for (const input of [[value], { child: [value] }, [[value]]]) {
+      assert.throws(() => admit_projected_value(input));
+    }
+  }
+  const verified = verify_canonical_schema_graph(graph({ projectedRoot: 0 }, [{ kind: "projected-literal", values: [admit_projected_value([[17]])] }]));
+  assert.ok(verified.ok);
+  const encoded = encode_canonical_schema_graph_hson(verified.graph);
+  for (const token of ["NaN", "Infinity", "-Infinity", "1e999", "-1e999"]) {
+    const malformed = encoded.replace("value 17", `value ${token}`);
+    assert.notEqual(malformed, encoded);
+    assert.equal(decode_canonical_schema_graph_hson(malformed).ok, false);
+  }
+});
+check("canonical literal verification never recognizes a caller-owned frozen array", () => {
+  const external = Object.freeze([1, -0]);
+  rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-literal", values: [external] }]), /canonical projected value/);
+  assert.equal(is_ordered_projected_value(external), false);
+});
 check("unreachable nodes reject", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-string" }, { kind: "projected-number" }]), /unreachable/));
 check("first-discovery node order is canonical", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-object", exact: false, properties: [["x", 2], ["y", 1]] }, { kind: "projected-string" }, { kind: "projected-number" }]), /first-discovery/));
 check("non-consuming self ref rejects", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-ref", target: 0 }]), /no consuming/));

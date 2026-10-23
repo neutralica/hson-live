@@ -3,7 +3,7 @@ import { serialize_hson } from "../../api/transform/serializers/serialize-hson.j
 import { detach_hson_root_value } from "../../api/transform/utils/node-utils/detach-hson-root-value.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
-import { is_ordered_projected_object, ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { is_ordered_projected_object, ordered_projected_array, ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { is_projected_value_hson_node, projected_value_from_hson_node, projected_value_to_hson_node } from "../../core/projected-value-graph.js";
 import type { CanonicalSchemaGraph, VerifiedCanonicalSchemaGraph } from "./graph.js";
 import type { CanonicalGraphVerification } from "./issues.js";
@@ -76,7 +76,7 @@ function wire_to_literal(value: unknown): OrderedProjectedValue {
   if (value.type === "string" && fields.length === 2 && typeof value.value === "string") return value.value;
   if (value.type === "number" && fields.length === 2 && typeof value.value === "number" && Number.isFinite(value.value)) return value.value;
   if (value.type === "boolean" && fields.length === 2 && typeof value.value === "boolean") return value.value;
-  if (value.type === "array" && fields.length === 2 && Array.isArray(value.items)) return Object.freeze(value.items.map(wire_to_literal));
+  if (value.type === "array" && fields.length === 2 && Array.isArray(value.items)) return ordered_projected_array(value.items.map(wire_to_literal));
   if (value.type === "object" && fields.length === 2 && Array.isArray(value.entries)) {
     const names = new Set<string>();
     return ordered_projected_object(value.entries.map((entry) => {

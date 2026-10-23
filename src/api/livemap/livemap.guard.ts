@@ -41,6 +41,8 @@ export function must_json_value(value: unknown, path: LivePath): JsonValue {
 /** Admit one public JavaScript value into LiveMap's immutable semantic carrier. */
 export function must_ordered_projected_value(value: unknown, path: LivePath): OrderedProjectedValue {
   try {
+    // Only factory-owned immutable carriers may bypass public descriptor capture.
+    // Planning, operation materialization and graph admission share this stable value.
     if (is_ordered_projected_value(value)) return value;
     return admit_projected_value(value, path);
   } catch (error) {

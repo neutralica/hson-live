@@ -11,11 +11,15 @@ import {
 } from "../src/core/projected-value-admission.ts";
 import { materialize_projected_value } from "../src/core/projected-value-materialization.ts";
 import {
+  assert_ordered_projected_value,
   is_ordered_projected_object,
+  is_ordered_projected_value,
   ordered_projected_array,
   ordered_projected_object,
   type OrderedProjectedValue,
 } from "../src/core/ordered-projected-value.ts";
+import { must_ordered_projected_value } from "../src/api/livemap/livemap.guard.ts";
+import { ordered_projected_value_set } from "../src/core/ordered-projected-value-mutation.ts";
 import type { JsonValue } from "../src/core/types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -122,6 +126,81 @@ check("frozen objects and sealed arrays admit by detached value", () => {
   const array = Object.seal([1, 2]);
   assert.deepEqual(materialize_projected_value(admit_projected_value(object)), { nested: { value: 1 } });
   assert.deepEqual(materialize_projected_value(admit_projected_value(array)), [1, 2]);
+});
+
+check("carrier recognition requires factory ownership without inspecting external behavior", () => {
+  let calls = 0;
+  const accessor = Object.freeze(Object.defineProperty([], "0", {
+    enumerable: true,
+    get() { calls += 1; return calls; },
+  }));
+  const { proxy, revoke } = Proxy.revocable(Object.freeze([1]), {
+    get() { calls += 1; throw new Error("get trap"); },
+    getOwnPropertyDescriptor() { calls += 1; throw new Error("descriptor trap"); },
+    getPrototypeOf() { calls += 1; throw new Error("prototype trap"); },
+  });
+  for (const input of [Object.freeze([1]), accessor, proxy]) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      assert.equal(is_ordered_projected_value(input), false);
+      assert.equal(is_ordered_projected_object(input), false);
+      assert.throws(() => assert_ordered_projected_value(input));
+    }
+  }
+  revoke();
+  assert.equal(is_ordered_projected_value(proxy), false);
+  assert.equal(is_ordered_projected_object(proxy), false);
+  assert.equal(calls, 0);
+  admission_error(accessor, "ACCESSOR_PROPERTY");
+  assert.equal(calls, 0);
+});
+
+check("frozen external containers detach and never become trusted through recognition or admission", () => {
+  const child = { value: -0 };
+  const input = Object.freeze([child]);
+  const accepted = must_ordered_projected_value(input, []);
+  assert.notEqual(accepted, input);
+  assert.equal(is_ordered_projected_value(input), false);
+  assert.equal(is_ordered_projected_value(accepted), true);
+  child.value = 7;
+  assert.deepEqual(materialize_projected_value(accepted), [{ value: -0 }]);
+  assert.notEqual(must_ordered_projected_value(input, []), input);
+});
+
+check("only owned children can be retained and object brands cannot be copied or proxied", () => {
+  const child = ordered_projected_array([-0]);
+  const object = ordered_projected_object([["child", child]]);
+  assert.equal(must_ordered_projected_value(object, []), object);
+  assert.equal(must_ordered_projected_value(child, []), child);
+  assert.throws(() => ordered_projected_array([Object.freeze([1])]));
+  assert.throws(() => ordered_projected_object([["child", Object.freeze([1])]]));
+  assert.throws(() => ordered_projected_array([NaN]));
+  assert.throws(() => ordered_projected_array(new Array(1)));
+  for (const imitation of [Object.freeze({ ...object }), new Proxy(object, {}), new Proxy(child, {})]) {
+    assert.equal(is_ordered_projected_value(imitation), false);
+    assert.equal(is_ordered_projected_object(imitation), false);
+  }
+  const next = carrier_object(ordered_projected_value_set(object, ["other"], 1));
+  assert.equal(next.entries[0]?.[1], child);
+  assert.deepEqual(materialize_projected_value(next), { child: [-0], other: 1 });
+});
+
+check("carrier factories own their containers while sharing established immutable children", () => {
+  const child = ordered_projected_object([["value", -0]]);
+  const values: OrderedProjectedValue[] = [child];
+  const array = ordered_projected_array(values);
+  const pair: [string, OrderedProjectedValue] = ["child", child];
+  const entries = [pair];
+  Object.defineProperty(entries, "map", { value() { throw new Error("caller map"); } });
+  const object = ordered_projected_object(entries);
+  values[0] = 4;
+  pair[0] = "changed";
+  pair[1] = 5;
+  assert.equal(array[0], child);
+  assert.equal(object.entries[0]?.[1], child);
+  assert.deepEqual(materialize_projected_value(object), { child: { value: -0 } });
+  assert.ok(Object.isFrozen(array));
+  assert.ok(Object.isFrozen(object.entries));
+  assert.ok(Object.isFrozen(object.entries[0]));
 });
 
 check("dense empty and populated ordinary arrays admit with exact indexes", () => {
