@@ -1,10 +1,13 @@
 // data-manager.ts
 
-import { Primitive } from "../../../core/types.js";
-import { AttrValue } from "../../../core/types.js";
+import type { Primitive, AttrValue, CanonicalPublicAttrValue } from "../../../core/types.js";
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { LiveTree } from "../livetree.js";
-import { removeAttrImpl, setAttrsImpl, getAttrImpl } from "./attr-handle.js";
+import {
+    removeAttrImpl, setAttrsImpl, getAttrImpl,
+    normalize_livetree_attr_name, normalize_livetree_attr_value,
+    patchAttrsImpl,
+} from "./attr-handle.js";
 
 
 export type DatasetValue = AttrValue;
@@ -130,11 +133,17 @@ export function make_data_api<TTree extends LiveTree>(tree: TTree): DataApi<TTre
         },
 
         setMany: (map) => {
+            // Capture and qualify the entire batch before touching authoritative attrs.
+            const changes = new Map<string, CanonicalPublicAttrValue | undefined>();
             for (const [key, value] of Object.entries(map)) {
-                setOne(key, value);
+                const name = normalize_livetree_attr_name(tree, formatData(key), "setMany");
+                changes.set(name, value === null || value === undefined
+                    ? undefined
+                    : normalize_livetree_attr_value(tree, name, String(value), "setMany"));
             }
+            if (changes.size === 0) return tree;
 
-            return tree;
+            return patchAttrsImpl(tree, changes);
         },
 
         get: (key) => {

@@ -226,6 +226,36 @@ export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTr
   });
 }
 
+/** Apply an owned, qualified patch without renormalizing existing names. @internal */
+export function patchAttrsImpl<TTree extends LiveTree>(
+  tree: TTree,
+  changes: ReadonlyMap<string, CanonicalPublicAttrValue | undefined>,
+): TTree {
+  const plan = (current: CanonicalPublicAttrs): CanonicalPublicAttrs => {
+    const next: Record<string, CanonicalPublicAttrValue> = { ...current };
+    for (const [name, value] of changes) {
+      if (value === undefined) delete next[name];
+      else next[name] = value;
+    }
+    return plan_public_attrs_replace(next);
+  };
+  const node = active_subject_for_tree(tree);
+  assert_mutation_publication_available(node);
+  const binding = document_binding_for_node(node);
+  if (binding !== undefined) {
+    binding.delegateAttrs({
+      kind: "transform",
+      apply: (current) => ({ kind: "replace", values: plan(current) }),
+    });
+    return tree;
+  }
+  const current = decode_public_attrs(node.$_attrs ?? {});
+  if (current === undefined) {
+    throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, "data.setMany", undefined, "stored attrs are not canonical");
+  }
+  return apply_attrs_replacement(tree, current, plan(current));
+}
+
 /** Canonical single-value writer retained for existing internal managers. */
 export function setAttrsImpl<TTree extends LiveTree>(
   tree: TTree,
