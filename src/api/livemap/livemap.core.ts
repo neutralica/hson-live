@@ -1,4 +1,5 @@
 import { canonical_flat_correspondence, flat_document_fingerprint, type DocumentFlatEffect } from "./livemap.document.flat-effects.js";
+import { own_commit_description } from "./livemap.commit-description.js";
 import { encode_scoped_effect_graph_operation } from "./livemap.hosted.js";
 import { read_livemap_document_logical_location } from "./livemap.document.location.js";
 import { lower_document_css_command } from "../../internal/document-css-commands.js";
@@ -1796,13 +1797,25 @@ function make_livemap_registry_engine(
     assertPreparationCurrent();
     const changed = operations.length > 0;
     const rev = changed ? prevRev + 1 : prevRev;
+    // Capture final semantic descriptions once, after planning. These copies
+    // belong to publication, never to a mutable candidate or installed graph.
+    const documentDescriptions = new Map<object, LiveMapGraphOp>();
+    for (const candidate of candidates.values()) {
+      if (!is_aggregate_document_candidate(candidate)) continue;
+      for (const operation of candidate.operations) documentDescriptions.set(operation, own_commit_description(operation));
+    }
+    const descriptions = new Map(operations.map(entry => [entry.operation,
+      documentDescriptions.get(entry.operation) ?? own_commit_description(entry.operation)]));
+    const publishedOperations = Object.freeze(operations.map(entry => Object.freeze({
+      ...entry, operation: descriptions.get(entry.operation)!,
+    })));
     const commit: LiveMapAggregateCommit = Object.freeze({
       kind: "aggregate",
       changed,
       prevRev,
       rev,
-      operations: Object.freeze(operations),
-      ...hosted_commit_fields(changed, prevRev, rev, operations),
+      operations: publishedOperations,
+      ...hosted_commit_fields(changed, prevRev, rev, publishedOperations),
     });
     const documentCommits = new Map<LiveMapLibraryIdentity, LiveMapGraphCommit<LiveMapGraphOp>>();
     for (const candidate of candidates.values()) {
@@ -1811,7 +1824,7 @@ function make_livemap_registry_engine(
         changed,
         prevRev,
         rev: commit.rev,
-        ops: Object.freeze([...candidate.operations]),
+        ops: Object.freeze(candidate.operations.map(operation => documentDescriptions.get(operation)!)),
       });
       if (candidate.sourceCandidate !== undefined) {
         register_livemap_document_identity_candidate_commit(candidate.sourceCandidate, documentCommit);
@@ -2362,7 +2375,7 @@ function make_livemap_registry_engine(
     const nextLedger = stage_livemap_identity_epoch(mapIdentityEpoch.issued(), beforeActive.keys(), afterActive.keys());
     const first = prepared[0];
     if (first === undefined) throw new Error("LiveMap topology batch is empty.");
-    const topology = Object.freeze({
+    const topology = own_commit_description({
       library: first.name,
       operation: Object.freeze({ kind: "library-add" as const,
         libraries: Object.freeze(prepared.map(({ name, state, hsonSchema, css }) => Object.freeze({

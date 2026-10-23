@@ -64,7 +64,9 @@ check("move intent reaches a selected array feed", () => {
 check("feed mutation cannot alter canonical rename state", () => {
   const map = registry({ source: { value: 1 } });
   state(map).at([]).feed((event) => {
-    if (event.op.kind === "rename") (event.op.next as { destination: { value: number } }).destination.value = 9;
+    if (event.op.kind === "rename") assert.throws(() => {
+      (event.op.next as { destination: { value: number } }).destination.value = 9;
+    }, TypeError);
   });
   state(map).at([]).asObject()!.object.renameKey("source", "destination");
   assert.deepEqual(state(map).snap(), { destination: { value: 1 } });

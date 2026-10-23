@@ -3,6 +3,7 @@ import { decode_document_scoped_library, own_document_scopes, own_topology_docum
 import { decode_document_scoped_operation, scoped_effect_matches_operation, portable_document_scoped_effect, encode_document_scoped_effects, validate_document_scoped_effects, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { clone_node } from "../../core/clone-node.js";
+import { own_commit_description } from "./livemap.commit-description.js";
 import { own_data_library_validation, assert_data_library_validation, validate_data_library } from "./livemap.parts.js";
 import { assert_portable_document_css_correspondence, decode_document_quads, own_document_quads } from "./livemap.document.quad.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
@@ -334,7 +335,9 @@ export function make_hosted_commit(
       if (entry.library === library && entry.scoped !== undefined) replay[index] = Object.freeze({ ...entry, scoped: captured[ordinal++]! });
     }
   }
-  const commit: HostedAggregateCommit = Object.freeze({
+  // Hosted codecs normalize a separate semantic/replay representation. Own that
+  // complete description before gates, authority listeners or returns share it.
+  const commit = own_commit_description<HostedAggregateCommit>({
     format: HOSTED_COMMIT_FORMAT,
     authority: fence,
     registryDigest: registry.digest,
@@ -345,16 +348,6 @@ export function make_hosted_commit(
     replay: Object.freeze({ operations: Object.freeze(replay) }),
   });
   assert_encoded_bound(commit, HOSTED_MAX_COMMIT_BYTES, "Hosted commit");
-  if (scopedByLibrary.size > 0 || replay.some(entry => entry.flat !== undefined)) {
-    // Semantic operations were decoded into owned data above. The durable gate
-    // must not be able to change them independently of the complete effects.
-    const pending: unknown[] = [commit], seen = new Set<object>();
-    while (pending.length) {
-      const value = pending.pop();
-      if (value === null || typeof value !== "object" || seen.has(value)) continue;
-      seen.add(value); pending.push(...Object.values(value)); Object.freeze(value);
-    }
-  }
   return commit;
 }
 
