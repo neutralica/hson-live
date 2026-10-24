@@ -1,3 +1,4 @@
+import { Hson } from "../../src/hson-authoring.ts";
 import assert from "node:assert/strict";
 import { hsonLiveMap } from "../../src/api/livemap/index.ts";
 import { hsonTransform } from "../../src/api/transform/index.ts";
@@ -52,6 +53,29 @@ export async function fixture() {
 }
 
 export async function scoped_ssr_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  await check("structured Part SSR and bootstrap expose only realized output at the captured revision", async () => {
+    const slide = Hson.data`<title "Visible" no -0 private "PRIVATE_ARGUMENT">`;
+    const locus = hsonLiveMap.locus.create({ parts: {access:'private', parts: {
+      panel: {kind:'document', document:'<section slide:data="%{slide}" @:root <hson-part @:child at="leaf" data:slide="%{slide}"/>/>', stylesheet:':scope{color:red}'},
+      leaf: {kind:'document', document:'<b slide:data="%{slide}" @:root title="%{slide.title}" "%{slide.no}"/>'},
+    }}, page: {access:'shared', document:Hson.document`<html <head/> <body <hson-part @:one lib="parts" at="panel" data:slide="${slide}"/> <hson-part @:two lib="parts" at="panel" data:slide="${slide}"/>/>/>`} }, { authorizeProjection: ({requested}) => ({libraries:requested.libraries}) });
+    try {
+      const session = await locus.session.create({libraries:['page','parts']});
+      const cut = session.now({html:'page'}); assert_cut(cut, 4);
+      assert.match(cut.html, /title="Visible">0<\/b>/);
+      assert.doesNotMatch(JSON.stringify(cut), /PRIVATE_ARGUMENT|data:slide|%\{slide/);
+      await assert.rejects(locus.stage(w => {
+        w.doc.must('page').at([1]).asElement().insert(0, node(Hson.document`<hson-part lib="parts" at="panel" data:slide="${slide}"/>`));
+        w.doc.must('page').at([1]).asElement().insert(1, node('<hson-part lib="parts" at="panel" data:slide="null"/>'));
+      }));
+      assert.deepEqual(session.now({html:'page'}), cut);
+      await locus.stage(w => w.doc.must('page').at([1,0]).replace(node(Hson.document`<hson-part lib="parts" at="panel" data:slide="${Hson.data`<title "Next" no 3>`}"/>`)));
+      const next = session.now({html:'page'}); assert_cut(next, 4);
+      assert.equal(next.libs.revision, cut.libs.revision + 1); assert.match(next.html, /title="Next">3<\/b>/);
+      assert.match(cut.html, /title="Visible">0<\/b>/);
+    } finally { locus.dispose(); }
+  });
+
   await check("Library rendering is observational before any hosted session exists", async () => {
     const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
     const map = locus_map_internal(locus), aggregate = internal_livemap_aggregate_authority(map);

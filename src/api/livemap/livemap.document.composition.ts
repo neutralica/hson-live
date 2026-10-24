@@ -1,4 +1,4 @@
-import { is_part_argument_attribute, is_part_parameter_name, part_placeholder_matches, part_placeholder_pattern, transform_part_parameter_strings } from "../../internal/part-placeholder.js";
+import { is_part_argument_attribute, part_argument_name, part_placeholder_matches, whole_part_reference, type PartReference, transform_part_parameter_strings } from "../../internal/part-placeholder.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { decode_public_attrs, is_public_attr_name } from "../../core/public-attrs.js";
@@ -11,6 +11,9 @@ import { is_document_quad_name, type DocumentQuadAdmission } from "./livemap.doc
 import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
+import { admit_canonical_hson_data_value } from "../data/hson-data-hson.js";
+import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { admit_hson_data_input } from "../data/hson-data.js";
 import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { scope_part_stylesheet } from "../../internal/css/part-stylesheet.js";
@@ -172,7 +175,10 @@ export type DocumentCompositionStyle = Readonly<{
   subjects: readonly Readonly<{ name: string; path: readonly number[] }>[];
 }>;
 type Landmark = Readonly<{ node: HsonNode; path: readonly number[] }>;
+type PartBinding = Readonly<{ kind: "scalar"; value: Primitive }> | Readonly<{ kind: "data"; value: OrderedProjectedValue }>;
+type PartEnvironment = Readonly<{ bindings: Map<string, PartBinding>; used: Set<string>; context: string }>;
 type Occurrence = Readonly<{
+  parameters?: PartEnvironment;
   evidence: { root: readonly number[] | null; bindings: ScopedQuadBindingRecord[]; byName: Map<string, ScopedQuadBindingRecord> };
   localNames: ReadonlyMap<HsonNode, readonly string[]>;
   landmarks: ReadonlyMap<string, Landmark>;
@@ -382,6 +388,10 @@ export function expand_document_composition(
       }
       frames.pop();
       if (frame.selection !== undefined) {
+        const environment = frame.occurrence.parameters;
+        for (const name of environment?.bindings.keys() ?? []) if (!environment?.used.has(name)) {
+          throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)} in ${environment?.context}.`);
+        }
         const selections = active.get(frame.selection.collection)!;
         selections.delete(frame.selection.member);
         if (selections.size === 0) active.delete(frame.selection.collection);
@@ -422,20 +432,38 @@ export function expand_document_composition(
       if (typeof lib !== "string" || lib.length === 0) throw new TypeError("hson-part requires an unambiguous nonempty collection lib.");
       let member: unknown = Object.getOwnPropertyDescriptor(attrs, "at")?.value;
       if (typeof member !== "string") throw new TypeError("hson-part requires an exact Part member at.");
-      const parameters = new Map<string, Primitive>();
-      for (const name of parameterNames) {
-        const value: unknown = Object.getOwnPropertyDescriptor(attrs, name)?.value;
-        if (!is_part_parameter_name(name) || !parameter_scalar(value)) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(name)}: expected a scalar.`);
-        parameters.set(name, value);
+      const parameters = new Map<string, PartBinding>();
+      const context = `${JSON.stringify([configuration?.use?.lib ?? lib, configuration?.use?.at ?? member])} at ${JSON.stringify([...frame.outputPath, frame.output.length])}`;
+      for (const raw of parameterNames) {
+        const argument = part_argument_name(raw);
+        const value: unknown = Object.getOwnPropertyDescriptor(attrs, raw)?.value;
+        if (argument === undefined) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)} in ${context}.`);
+        if (parameters.has(argument.name)) throw new TypeError(`Conflicting Part parameter ${JSON.stringify(argument.name)} in ${context}.`);
+        if (argument.kind === "scalar") {
+          if (!parameter_scalar(value)) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)}: expected a scalar.`);
+          parameters.set(argument.name, { kind: "scalar", value });
+        } else {
+          if (typeof value !== "string") throw new TypeError(`Part data parameter ${JSON.stringify(raw)} requires serialized HsonData in ${context}.`);
+          // Charge literal input or selector text; forwarded carriers are never walked or serialized.
+          charge(value);
+          const reference = whole_part_reference(value);
+          if (reference !== undefined) {
+            parameters.set(argument.name, { kind: "data", value: resolve_part_reference(reference, frame.occurrence.parameters).value });
+          } else {
+            try { parameters.set(argument.name, { kind: "data", value: admit_canonical_hson_data_value(value) }); }
+            catch (cause) { throw new TypeError(`Invalid Part data parameter ${JSON.stringify(argument.name)} in ${context}.`, { cause }); }
+          }
+        }
       }
-      if (item.$_content.length !== 0) throw new TypeError("hson-part connectors must be empty; inputs are named scalar attributes.");
+      if (item.$_content.length !== 0) throw new TypeError("hson-part connectors must be empty; inputs are named argument attributes.");
       if (configuration?.use !== undefined) {
         lib = configuration.use.lib ?? lib;
         member = configuration.use.at;
       }
       if (typeof lib !== "string" || typeof member !== "string") throw new TypeError("Composition Part coordinates must be strings.");
       const definition = part(lib, member);
-      const selected = { ...definition, root: substitute_part_parameters(definition.root, parameters) };
+      const environment: PartEnvironment = { bindings: parameters, used: new Set(), context };
+      const selected = { ...definition, root: substitute_part_parameters(definition.root, environment, limits.maxCharacters - characters) };
       const content = selected.root.$_content;
       const selection: Selection = { collection: lib, member };
       if (active.get(lib)?.has(member)) {
@@ -455,7 +483,7 @@ export function expand_document_composition(
         ...(style === undefined || styledName === undefined ? {} : { styledConnector: { name: styledName, style, start: frame.output.length } }),
         ...(receiving.length === 0 ? {} : { receiving: { names: receiving, start: frame.output.length } }),
         customization: childCustomization, scope: childScope,
-        occurrence: { ...childOccurrence, scopes: [childScope] },
+        occurrence: { ...childOccurrence, parameters: environment, scopes: [childScope] },
       });
       const selections = active.get(lib) ?? new Set<string>();
       selections.add(member);
@@ -543,22 +571,62 @@ function parameter_scalar(value: unknown): value is Primitive {
   return value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value);
 }
 
+function resolve_part_reference(reference: PartReference, environment: PartEnvironment | undefined): PartBinding {
+  const binding = environment?.bindings.get(reference.name);
+  const context = environment?.context ?? "top-level invocation (no enclosing Part)";
+  if (binding === undefined) throw new TypeError(`Missing Part parameter ${JSON.stringify(reference.name)} for %{${reference.reference}} in ${context}.`);
+  if (reference.path.length && binding.kind !== "data") throw new TypeError(`Part reference %{${reference.reference}} requires a data binding in ${context}.`);
+  const value = ordered_projected_value_at(binding.value, reference.path);
+  if (value === undefined) throw new TypeError(`Missing or invalid Part path %{${reference.reference}} in ${context}.`);
+  environment!.used.add(reference.name);
+  return binding.kind === "scalar" ? binding : { kind: "data", value };
+}
+
 /** Only decoded text payloads and whole public attribute values participate. No source concatenation. */
-function substitute_part_parameters(root: HsonNode, parameters: ReadonlyMap<string, Primitive>): HsonNode {
-  const copy = clone_hson_graph_without_quids(root), used = new Set<string>();
-  const substitute = (value: string): Primitive => {
-    const pattern = part_placeholder_pattern();
-    const matches = part_placeholder_matches(value);
-    if (matches === undefined) throw new TypeError("Invalid Part placeholder; expected %{name}.");
-    const read = (name: string): Primitive => {
-      if (!parameters.has(name)) throw new TypeError(`Missing Part parameter ${JSON.stringify(name)}.`);
-      used.add(name); return parameters.get(name)!;
-    };
-    if (matches.length === 1 && matches[0]![0] === value) return read(matches[0]![1]!);
-    return value.replace(pattern, (_, name: string) => String(read(name)));
+function substitute_part_parameters(root: HsonNode, environment: PartEnvironment, remainingCharacters: number): HsonNode {
+  const copy = clone_hson_graph_without_quids(root);
+  // Preflight each replacement before allocating an amplified string. Emission still
+  // charges the complete output through the composer's existing aggregate budget.
+  const bounded = (length: number): void => {
+    if (length > remainingCharacters) throw new Error("Document composition character limit exceeded.");
   };
-  transform_part_parameter_strings(copy, substitute);
-  for (const name of parameters.keys()) if (!used.has(name)) throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)}.`);
+  const substitute = (value: string): Primitive => {
+    bounded(value.length);
+    const matches = part_placeholder_matches(value);
+    if (matches === undefined) throw new TypeError(`Invalid Part placeholder in ${environment.context}.`);
+    const read = (reference: PartReference): Primitive => {
+      const binding = resolve_part_reference(reference, environment);
+      if (!parameter_scalar(binding.value)) throw new TypeError(`Part reference %{${reference.reference}} requires a primitive output in ${environment.context}.`);
+      const output = binding.kind === "data" ? String(binding.value) : binding.value;
+      if (typeof output === "string") bounded(output.length);
+      return output;
+    };
+    if (matches.length === 1 && matches[0]!.start === 0 && matches[0]!.end === value.length) return read(matches[0]!);
+    let at = 0, result = "";
+    for (const match of matches) {
+      const replacement = String(read(match));
+      bounded(result.length + match.start - at + replacement.length);
+      result += value.slice(at, match.start) + replacement; at = match.end;
+    }
+    bounded(result.length + value.length - at);
+    return result + value.slice(at);
+  };
+  transform_part_parameter_strings(copy, substitute, undefined, declarations => {
+    // Replace the incoming interface with the occurrence's local bindings once,
+    // before substituting any root attribute or descendant. Values remain immutable.
+    const incoming: PartEnvironment = { ...environment, bindings: new Map(environment.bindings), used: new Set() };
+    environment.bindings.clear();
+    for (const [name, binding] of incoming.bindings) if (binding.kind === "scalar") environment.bindings.set(name, binding);
+    for (const declaration of declarations) {
+      const binding = resolve_part_reference(declaration.reference, incoming);
+      if (binding.kind !== "data") throw new TypeError(`Part data declaration ${JSON.stringify(declaration.name)} requires a structured input in ${environment.context}.`);
+      if (environment.bindings.has(declaration.name)) throw new TypeError(`Conflicting Part local binding ${JSON.stringify(declaration.name)} in ${environment.context}.`);
+      environment.bindings.set(declaration.name, binding);
+    }
+    for (const [name, binding] of incoming.bindings) if (binding.kind === "data" && !incoming.used.has(name)) {
+      throw new TypeError(`Undeclared structured Part input ${JSON.stringify(name)} in ${environment.context}.`);
+    }
+  });
   return copy;
 }
 

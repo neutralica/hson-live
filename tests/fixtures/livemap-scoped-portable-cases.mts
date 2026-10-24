@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { hsonLiveMap, type LiveMap } from "../../src/index.ts";
+import { Hson, hsonLiveMap, type LiveMap } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
 import { document_scoped_libraries_semantically_equal as equal,
@@ -62,6 +62,27 @@ export function scoped_portable_roundtrip(input: unknown): PortableDocumentScope
 }
 
 export function scoped_portable_cases(check: (name: string, run: () => void) => void) {
+  check("structured Part portable capture restores in a fresh runtime without source or argument environments", () => {
+    const map = hsonLiveMap.fromLibraries({ parts: {parts: {
+      panel: {kind:'document', document:'<section slide:data="%{slide}" @:root <hson-part @:child at="leaf" data:x="%{slide.details}"/>/>'},
+      leaf: {kind:'document', document:'<b x:data="%{x}" @:root title="%{x.title}" "%{x.no}"/>', stylesheet:':scope{color:red}'},
+    }}, page:{document:'<main/>'} });
+    const a = authority(map), owner = a.libraries()[a.hostedRegistry().libraries.findIndex(entry => entry.name === 'page')]!;
+    const data = Hson.data`<details <title "%{literal}" no -0> private "PRIVATE_ARGUMENT">`;
+    const parsed = parse_authored_document_library(Hson.document`<main <hson-part lib="parts" at="panel" data:slide="${data}"/> <hson-part lib="parts" at="panel" data:slide="${data}"/>/>`);
+    const candidate = a.prepareScopedDocument(owner, {root:parsed.root, quads:parsed.declarations});
+    const portable = a.captureScopedDocument(candidate);
+    assert.doesNotMatch(JSON.stringify(portable), /PRIVATE_ARGUMENT|data:slide|hson-part|parameters|bindings.*slide/);
+    assert.ok(JSON.stringify(portable.root).includes('%{literal}'));
+    assert.equal(portable.scopes.occurrences.length, 4);
+    const receiving = receiver(), next = receiving.restore(copy(portable));
+    assert.ok(equal(portable, receiving.aggregate.captureScopedDocument(next)));
+    assert.notEqual(next.owner, candidate.owner);
+    assert.equal(next.scopes.occurrences.length, 4);
+    assert.ok(next.scopes.occurrences.every(scope => !candidate.issued.has(scope.rootQuid)));
+    assert.throws(() => receiving.map.parts.must('parts'));
+  });
+
   check("scoped Library capture is observational, stable, detached and candidate-authenticated", () => {
     const f = fixture(); let allocations = 0;
     allocator(f.aggregate.identityEpoch().owner, () => { allocations++; throw Error("capture allocated"); });

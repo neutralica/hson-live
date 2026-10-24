@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { hsonLiveMap, hsonTransform } from "../../src/index.ts";
+import { hsonLiveMap, hsonTransform, Hson } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
 import { read_livemap_part_internal as readPart } from "../../src/api/livemap/livemap.libraries.ts";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
@@ -84,6 +84,35 @@ function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
 }
 
 export function scoped_composition_cases(check: (name: string, run: () => void) => void) {
+
+  check("structured Part scoped insertion, replacement, removal and late rejection retain independent lifetimes", () => {
+    const f = fixture('<main <i/>/>');
+    f.definitions.at([]).object.setKey('typed', part('<section slide:data="%{slide}" @:root title="%{slide.title}" <hson-part @:child at="typedLeaf" data:payload="%{slide}"/>/>', ':scope{color:red}'));
+    f.definitions.at([]).object.setKey('typedLeaf', part('<b payload:data="%{payload}" @:root "%{payload.title}"/>', ':scope{color:blue}'));
+    const input = (title: string) => {
+      const root = source(Hson.document`<hson-part lib="parts" at="typed" data:slide="${Hson.data.from({ title })}"/>`).root;
+      const node = root.$_content[0]; assert.ok(is_Node(node)); return node;
+    };
+    const insertTyped = (title: string, index: number): LiveMapGraphOp => ({ domain: 'graph', op: 'insert-content', target: target([0, 0]), index, content: input(title) });
+    unchanged(f, () => {
+      const two = f.next(f.candidate, [insertTyped('left', 1), insertTyped('right', 2)]);
+      assert.equal(two.scopes.occurrences.length, 4);
+      assert.ok(two.steps.every(step => step.styles.length === 2));
+      const left = at(two, [0, 0, 1]), right = at(two, [0, 0, 2]);
+      assert.notEqual(left.rootQuid, right.rootQuid); assert.notEqual(left.lifetime, right.lifetime);
+      const replaced = f.next(two, [{domain:'graph', op:'replace-content', target:target([0, 0]), index:1, replacement:input('changed')}]);
+      assert.equal(replaced.overlay.pathForQuid(left.rootQuid), undefined);
+      assert.deepEqual(at(replaced, [0, 0, 2]), right);
+      const removed = f.next(replaced, [remove([0, 0], 1)]);
+      assert.equal(removed.scopes.occurrences.length, 2);
+      assert.equal(at(removed, [0, 0, 1]).lifetime, right.lifetime);
+      const malformed = source('<hson-part lib="parts" at="typed" data:slide="null"/>').root.$_content[0]; assert.ok(is_Node(malformed));
+      assert.throws(() => f.next(two, [insertTyped('early', 0), {domain:'graph',op:'insert-content',target:target([0,0]),index:1,content:malformed}]), /path/);
+      const rootReplacement = f.next(two, [{domain:'graph',op:'replace-root',mode:'document',root:{$_tag:'_hson_root',$_content:[input('root')]}}]);
+      assert.equal(rootReplacement.scopes.occurrences.length, 2);
+      assert.ok(JSON.stringify(rootReplacement.root).includes('root'));
+    });
+  });
 
   for (const nested of [false, true]) check(`${nested ? "occurrence" : "document"} destructive replacement retires the ordinary slot binding`, () => {
     const f = fixture(nested

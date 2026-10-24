@@ -580,4 +580,21 @@ check("awaited resume aliases retain context while unsupported receiving transfo
     assert.ok(!test.facts.batches.some(batch => ts.isVariableDeclaration(batch.call.parent) && batch.call.parent.name.getText() === name), name);
   }
 });
+check("structured arguments expose root names, selector spellings and whole forwarding without scanning data", () => {
+  const template = '<section slide:data="%{payload}" title="%{slide.title}" <hson-part at="child" data:payload="%{slide.details}" data:literal="\\\"%{phantom}\\\""/> <b ' + JSON.stringify('%{slide["odd}key"]}') + '/>/>';
+  const text = 'import { Hson, hsonLiveMap as maps } from "hson-live";\nconst definition = ' + JSON.stringify(template)
+    + ';\nconst map = maps.fromLibraries({ components: { parts: { x: {kind:"document", document:definition} } } });';
+  const test = evidenceProject("structured-arguments", { "index.ts": text });
+  const definition = test.document("definition");
+  assert.equal(definition.parameterCompleteness, "complete");
+  assert.deepEqual(definition.parameters.map(parameter => parameter.name), ["payload"]);
+  assert.deepEqual(definition.receivingDeclarations.map(({name, incoming}) => ({name, incoming})), [{name:"slide", incoming:"payload"}]);
+  assert.equal(test.slice(definition.receivingDeclarations[0]!.location), JSON.stringify('"%{payload}"').slice(1, -1));
+  assert.deepEqual(definition.referenceIssues, []);
+  const uses = definition.parameters[0]!.uses;
+  assert.deepEqual(uses.map(use => use.reference).sort(), ['slide.details', 'slide.title', 'slide["odd}key"]']);
+  assert.ok(uses.every(use => use.structured && use.location.precision === "exact"));
+  assert.ok(uses.every(use => test.slice(use.location).includes("%{")));
+  assert.equal(definition.parameterSpellings.some(parameter => parameter.name === "phantom"), false);
+});
 events.terminal("pass");

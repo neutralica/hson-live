@@ -87,11 +87,11 @@ check("runtime parameter validation remains the authority, including coordinates
   assert.throws(() => hsonLiveMap.fromLibraries({ components, page: { document: valid.replace('/>', ' extra="x"/>') } }), /Unknown Part parameter "extra"/);
   for (const body of ['<h1 onclick="%{bad}"/>', '<style "%{bad}"/>', '<script "%{bad}"/>', '<h1 style="color:%{bad}"/>', '<h1 "%{bad!}"/>']) {
     const result = inspect(application('<hson-part lib="components" at="heading" extra="x"/>', '{ heading: { kind: "document", document: Hson.document`' + body + '` } }'));
-    assert.deepEqual(result.codes, [], body);
+    assert.deepEqual(result.codes, body.includes("%{bad!}") ? ["HSON_PART_REFERENCE_INVALID"] : [], body);
     assert.equal(result.facts.batches[0]!.libraries[1]!.members[0]!.documents[0]!.parameterCompleteness, "unknown");
   }
   for (const body of ['<hson-part lib="components" at="heading" style="color:red"/>', '<hson-part lib="components" at="heading" bad.name="x"/>']) {
-    assert.deepEqual(inspect(application(body)).codes, [], body);
+    assert.deepEqual(inspect(application(body)).codes, body.includes("bad.name") ? ["HSON_PART_ARGUMENT_INVALID"] : [], body);
   }
   const reserved = inspect(application('<hson-part lib="components" at="heading"/>', '{ heading: { kind: "document", document: Hson.document`<h1 "%{lib} %{at}"/>` } }'));
   assert.deepEqual(reserved.codes, ['HSON_PART_ARGUMENT_MISSING', 'HSON_PART_ARGUMENT_MISSING']);
@@ -157,7 +157,7 @@ check("malformed producers and provenance withdraw without suppressing independe
     assert.deepEqual(result.codes, [], producer);
   }
   for (const body of ['<hson-part lib="absent" at="heading"', '<hson-part lib="absent" at="hea', missingLibrary + '<bad attr="', missingLibrary + '<p']) {
-    const result = inspect(application(body)); assert.deepEqual(result.codes, [], body);
+    const result = inspect(application(body)); assert.deepEqual(result.codes, body.includes("%{bad!}") ? ["HSON_PART_REFERENCE_INVALID"] : [], body);
     assert.ok(produce_document_diagnostics({ fileName: file('app.ts'), text: result.text, languageId: 'typescript' }).length > 0, body);
   }
   assert.deepEqual(inspect(application(missingLibrary).replace('"hson-live";', '"hson-live;')).codes, []);
@@ -181,7 +181,7 @@ check("literal coordinates and original ranges respect JS escapes, CRLF and nest
   assert.deepEqual(nested.codes, ['HSON_PART_MEMBER_UNKNOWN']); assert.deepEqual(nested.slices, ['"absent"']);
   assert.equal(nested.diagnostics[0]!.start, nested.text.indexOf('at="absent"') + 3);
   for (const body of ['<hson-part lib="${key}" at="heading"/>', '<hson-part lib="components" at="${key}"/>', '<hson-part lib="com${key}ponents" at="heading"/>', '<hson-part lib="%{library}" at="heading"/>', '<main ${Hson.document`' + missingLibrary + '`}/>']) {
-    assert.deepEqual(inspect(application(body)).codes, [], body);
+    assert.deepEqual(inspect(application(body)).codes, body.includes("bad.name") ? ["HSON_PART_ARGUMENT_INVALID"] : [], body);
   }
 });
 check("Schema and composition diagnostics remain independently provable and unduplicated", () => {
@@ -208,6 +208,42 @@ check("existing editor candidate publication refreshes on unsaved upstream edits
     edit('definition.ts', 'import { Hson } from "hson-live/hson"; export const heading = Hson.document`<h1 "%{next}"/>`;');
     assert.equal(published().length, 1); assert.match(String(published()[0]!.messageText), /Missing Part parameter "next"/);
   } finally { editor.dispose(); }
+});
+check("structured arguments normalize bindings, diagnose conflicts and keep literal placeholders opaque", () => {
+  const definition = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{slide}" "%{slide.title}"/>`} }';
+  const invoke = (attrs: string) => application('<hson-part lib="components" at="x" ' + attrs + '/>', definition);
+  assert.deepEqual(inspect(invoke('data:slide="<title \\\"%{literal}\\\">"')).codes, []);
+  assert.deepEqual(inspect(invoke('')).codes, ['HSON_PART_ARGUMENT_MISSING']);
+  for (const attrs of ['slide="x" data:slide="null"', 'data:slide="null" slide="x"']) {
+    assert.ok(inspect(invoke(attrs)).codes.includes('HSON_PART_ARGUMENT_CONFLICT'));
+  }
+  for (const name of ['data:', 'data:lib', 'data:at', 'Data:slide']) assert.ok(inspect(invoke(name + '="null"')).codes.includes('HSON_PART_ARGUMENT_INVALID'));
+  assert.ok(inspect(invoke('data:slide="malformed"')).codes.includes('HSON_PART_DATA_INVALID'));
+  assert.deepEqual(inspect(invoke('data:slide="${dynamic}"')).codes, []);
+  const bad = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{slide}" "%{slide[-1]}"/>`} }';
+  assert.ok(inspect(application('<hson-part lib="components" at="x" data:slide="null"/>', bad)).codes.includes('HSON_PART_REFERENCE_INVALID'));
+  const forwarding = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{slide}" <hson-part at="child" data:payload="%{slide.details}"/>/>`}, child:{kind:"document",document:Hson.document`<b payload:data="%{payload}" "%{payload.title}"/>`} }';
+  assert.deepEqual(inspect(application('<hson-part lib="components" at="x" data:slide="<details <title \\\"ok\\\">>"/>', forwarding)).codes, []);
+});
+check("structured receiving interfaces diagnose local errors and retain dynamic uncertainty", () => {
+  const collection = (body: string) => '{x:{kind:"document",document:Hson.document`' + body + '`}}';
+  const valid = '<p slide:data="%{payload}" "%{slide.title}"/>';
+  const invocation = (attrs: string) => '<hson-part lib="components" at="x" ' + attrs + '/>';
+  assert.deepEqual(inspect(application(invocation('data:payload="<title 0>"'), collection(valid))).codes, []);
+  assert.ok(inspect(application(invocation('payload="scalar"'), collection(valid))).codes.includes('HSON_PART_ARGUMENT_INVALID'));
+  assert.ok(inspect(application(invocation('data:payload="null" slide="conflict"'), collection(valid))).codes.includes('HSON_PART_ARGUMENT_UNKNOWN'));
+  assert.ok(inspect(application(invocation('data:payload="null"'), collection('<p "%{payload}"/>'))).codes.includes('HSON_PART_ARGUMENT_INVALID'));
+  for (const body of ['<p slide:data="%{payload.title}" "%{slide}"/>', '<p slide:data="before%{payload}" "%{slide}"/>',
+    '<p <b slide:data="%{payload}" "%{slide}"/>/>', '<p slide:data="%{payload}" "%{payload}"/>', '<p slide:data="%{payload}"/>']) {
+    const result = inspect(application(invocation('data:payload="null"'), collection(body)));
+    assert.ok(result.codes.includes('HSON_PART_REFERENCE_INVALID'), body);
+    assert.ok(result.slices.some(slice => slice.includes('%{')), body);
+  }
+  const dynamic = inspect(application(invocation('data:payload="${dynamic}"'), collection(valid)));
+  assert.deepEqual(dynamic.codes, []);
+  assert.deepEqual(inspect(application(invocation('data:payload="null"'), collection('<p slide:data="${dynamic}" "%{slide.title}"/>'))).codes, []);
+  const nested = '{x:{kind:"document",document:Hson.document`<p local:data="%{payload}" <hson-part at="y" data:data="%{local}"/>/>`},y:{kind:"document",document:Hson.document`<b data:data="%{data}" "%{data.title}"/>`}}';
+  assert.deepEqual(inspect(application(invocation('data:payload="<title 0>"'), nested)).codes, []);
 });
 service.dispose();
 events.terminal("pass");

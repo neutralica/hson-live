@@ -1,3 +1,4 @@
+import { part_reference_checkpoint } from "../../../internal/part-placeholder.js";
 import { admit_hson_number } from "../../../core/hson-number.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../../core/hson-content-string.js";
@@ -1267,28 +1268,23 @@ class HsonScanner {
     const decodedCursor = observation.boundaries.indexOf(cursor);
     if (decodedCursor < 0) return; // An editor cursor inside an escape is not an exact decoded boundary.
     if (!complete && (cursor !== this.index || /[\r\n<>«»]/.test(this.source.slice(start, this.index)))) return;
-    const prefix = observation.value.slice(0, decodedCursor);
-    const parameter = /%\{([A-Za-z_][A-Za-z0-9_-]*|)$/.exec(prefix);
+    const parameter = part_reference_checkpoint(observation.value, decodedCursor);
     let range = { start, end: this.index };
     let parameterComplete = false;
     let rawAttribute: RawAttr | undefined;
-    if (parameter !== null) {
-      const nameStart = decodedCursor - parameter[1]!.length;
-      let end = decodedCursor;
-      while (end < observation.value.length && /[A-Za-z0-9_-]/.test(observation.value[end]!)) end++;
-      if (end < observation.value.length && observation.value[end] !== "}") return;
-      parameterComplete = observation.value[end] === "}";
-      const mappedStart = observation.boundaries[nameStart], mappedEnd = observation.boundaries[end];
+    if (parameter !== undefined) {
+      parameterComplete = parameter.complete;
+      const mappedStart = observation.boundaries[parameter.start], mappedEnd = observation.boundaries[parameter.end];
       if (mappedStart === undefined || mappedEnd === undefined) return;
       range = { start: mappedStart, end: mappedEnd };
       const name = this.editorAttribute;
       if (name !== undefined) rawAttribute = { name, value: { text: this.source.slice(start, this.index), quoted },
         start: this.positionAt(start), end: this.position() };
     } else if (kind !== "attribute-value") return;
-    this.editorCheckpoint?.({ kind: parameter === null ? kind : "parameter", path: [...this.editorPath], existing: [], range,
+    this.editorCheckpoint?.({ kind: parameter === undefined ? kind : "parameter", path: [...this.editorPath], existing: [], range,
       openContainers: [...this.editorContainers], ...(this.editorElement === undefined ? {} : { element: this.editorElement }),
       ...(this.editorAttribute === undefined ? {} : { attribute: this.editorAttribute }),
-      ...(parameter === null ? {} : { parameter: { complete: parameterComplete, prefix: parameter[1]!,
+      ...(parameter === undefined ? {} : { parameter: { complete: parameterComplete, prefix: parameter.prefix,
         ...(rawAttribute === undefined ? {} : { rawAttribute }) } }),
       ...(quoted ? { quoted: { complete, closingDelimiters: [...this.editorClosingDelimiters].reverse() } } : {}) });
   }

@@ -281,3 +281,6 @@ localBase.write();
 locusBase.at([]).write();
 // @ts-expect-error General-purpose read handles do not promise Part authoring.
 actionBase.present()?.write();
+
+// HsonData uses the existing string branch of Part.write; no new wrapper or overload.
+parts.heading.write({ "data:slide": Hson.data`<title "Visible">`, "data:index": Hson.data`0` }) satisfies HsonAuthored;

@@ -1,7 +1,7 @@
 import type { HsonGrammarCheckpoint } from "../../api/transform/parsers/tokenize-hson.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
-import { part_placeholder_placement_issue } from "../part-placeholder.js";
+import { is_part_data_declaration_attribute, part_argument_name, part_placeholder_placement_issue } from "../part-placeholder.js";
 import type { PartSourceFacts, PartDocumentSource } from "../hson-schema/part-source.js";
 import type { HsonEditorCandidate } from "./query.js";
 
@@ -29,12 +29,23 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         : { name: rawAttribute.name, value: split_attrs_meta([rawAttribute]).attrs[rawAttribute.name] };
       const tags = decoded === undefined ? element.contentTags : element.contentTags.slice(0, -1);
       if (part_placeholder_placement_issue(tags, decoded) !== undefined) return [];
+      if (element.tag.toLowerCase() === "hson-part" && decoded?.name.startsWith("data:")
+        && (typeof decoded.value !== "string" || !decoded.value.startsWith("%{"))) return [];
     } catch { return []; }
     // Only actual member-source relationships establish a Part definition.
     const memberSource = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"
       && library.members.some(member => member.documents.includes(document))));
     if (!memberSource) return [];
-    for (const parameter of document.parameterSpellings) add(parameter.name, 0, document.parameterCompleteness === "complete");
+    const receiving = attribute !== undefined && is_part_data_declaration_attribute(element.tag, attribute);
+    if (receiving) {
+      if (element.contentTags.length !== 1) return [];
+      for (const declaration of document.receivingDeclarations) add(declaration.incoming, 0, document.parameterCompleteness === "complete");
+    } else {
+      for (const declaration of document.receivingDeclarations) add(declaration.name, 0, document.parameterCompleteness === "complete");
+      for (const parameter of document.parameterSpellings) for (const use of parameter.uses) {
+        add(use.reference, 0, document.parameterCompleteness === "complete");
+      }
+    }
     contextCount = 1;
     detail = "Part parameter spelling (new names are allowed)";
   } else {
@@ -50,7 +61,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     const selectingMember = checkpoint.kind === "attribute-value" && attribute === "at";
     if (!selectingLibrary && !selectingMember && checkpoint.kind !== "header") return [];
     if (!selectingLibrary && libraryName === undefined || checkpoint.kind === "header" && memberName === undefined) return [];
-    const existing = new Set(element.attributes.filter(attr => attr.start.index < checkpoint.range.start || attr.start.index >= checkpoint.range.end).map(attr => attr.name));
+    const existing = new Set(element.attributes.filter(attr => attr.start.index < checkpoint.range.start || attr.start.index >= checkpoint.range.end).map(attr => part_argument_name(attr.name)?.name ?? attr.name));
     document.receivers.forEach((receiver, index) => {
       const batch = facts.batches.find(batch => batch.call === receiver.batch);
       if (batch === undefined || !batch.eligible) return;
@@ -69,7 +80,9 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
           if (member.name !== memberName) continue;
           for (const definition of documents) for (const parameter of definition.parameters) {
             if (parameter.name !== "lib" && parameter.name !== "at" && !existing.has(parameter.name)) {
-              add(parameter.name, index, memberCertain && definition.parameterCompleteness === "complete");
+              const structured = definition.receivingDeclarations.some(declaration => declaration.incoming === parameter.name);
+              add(structured ? `data:${parameter.name}` : parameter.name,
+                index, memberCertain && definition.parameterCompleteness === "complete");
             }
           }
         }
@@ -84,7 +97,12 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
       if (checkpoint.kind === "attribute-value") {
         const quoted = JSON.stringify(label).replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
         insertText = checkpoint.quoted === undefined ? quoted : quoted.slice(1, -1) + (checkpoint.quoted.complete ? "" : '"');
-      } else if (checkpoint.kind === "parameter" && !checkpoint.parameter?.complete) insertText += "}";
+      } else if (checkpoint.kind === "parameter") {
+        // Selectors may contain quoted keys; insert decoded references through the enclosing Hson string.
+        if (checkpoint.quoted !== undefined) insertText = JSON.stringify(label).slice(1, -1)
+          .replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
+        if (!checkpoint.parameter?.complete) insertText += "}";
+      }
       return { label, kind: checkpoint.kind === "header" ? "member" : "reference", insertText,
         detail: `${detail}${certainty === "possible" ? " (possible source context)" : ""}`, certainty, sortText: String(index).padStart(4, "0") };
     });

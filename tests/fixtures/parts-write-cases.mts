@@ -9,6 +9,23 @@ const blank = { kind: "document", document: "<hr/>" } as const;
 const definitions = { components: { parts: { heading, blank } }, ordinary: { data: { heading } } };
 
 export async function parts_write_cases() {
+  const structured = hsonLiveMap.fromLibraries({ components: { parts: { nav: { kind: "document", document: '<nav slide:data="%{payload}" title="%{slide.title}" "%{slide.no}"/>' } } } });
+  const structuredAuthority = internal_livemap_aggregate_authority(structured);
+  const structuredBefore = structuredAuthority.captureSemanticCheckpoint(), structuredIssued = structuredAuthority.identityEpoch().issued();
+  const slide = Hson.data`<title "Navigation" no -0>`;
+  const written: HsonAuthored = structured.parts.components.nav.write({ "data:payload": slide });
+  assert.equal(written, Hson.document`<hson-part lib="components" at="nav" data:payload="${slide}"/>`);
+  const malformed = structured.parts.components.nav.write({ "data:payload": "<broken" });
+  assert.deepEqual(structuredAuthority.captureSemanticCheckpoint(), structuredBefore);
+  assert.equal(structuredAuthority.identityEpoch().issued(), structuredIssued);
+  for (const args of [{ "data:payload": false }, { "data:payload": 1 }, { "data:payload": null },
+    { payload: "ordinary", "data:payload": slide }, { "data:payload": slide, payload: "ordinary" }, { "data:lib": "null" }, { "Data:x": "null" }]) {
+    assert.throws(() => Reflect.apply(structured.parts.components.nav.write, undefined, [args]));
+  }
+  assert.throws(() => structured.addLibraries({ bad: { document: malformed } }));
+  assert.deepEqual(structuredAuthority.captureSemanticCheckpoint(), structuredBefore);
+  structured.addLibraries({ page: { document: Hson.document`<main ${written}/>` } });
+  assert.match(structured.doc.must("page").render(), /title="Navigation">0<\/nav>/);
   const map = hsonLiveMap.fromLibraries(definitions), parts = map.parts.components;
   const authority = internal_livemap_aggregate_authority(map);
   const before = authority.captureSemanticCheckpoint();

@@ -1,6 +1,6 @@
 import { OBJ_TAG } from "../../../src/core/constants.js";
 import { decode_hson_content_string } from "../../../src/core/hson-content-string.js";
-import { part_placeholder_matches, part_placeholder_pattern } from "../../../src/internal/part-placeholder.js";
+import { part_placeholder_matches, part_reference_checkpoint } from "../../../src/internal/part-placeholder.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import { serialize_hson } from "../../../src/api/transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../../../src/api/transform/utils/node-utils/detach-hson-root-value.js";
@@ -332,15 +332,16 @@ export function structural_typing_snippet(
       }
     } catch { return undefined; }
     if (payload === undefined) return undefined;
-    const suffix = body.slice(local, payload.end);
-    const existingClose = suffix[0] === "}" || part_placeholder_pattern().exec("%{" + suffix)?.index === 0;
-    const probe = existingClose ? suffix[0] === "}" ? "{hson_editor_probe" : "{" : "{hson_editor_probe}";
     try {
+      const suffix = body.slice(local, payload.end);
+      const reference = payload.quoted ? decode_hson_content_string("%{" + suffix) : "%{" + suffix;
+      const existingClose = part_reference_checkpoint(reference, 2)?.complete === true;
+      const probe = existingClose ? suffix[0] === "}" ? "{hson_editor_probe" : "{" : "{hson_editor_probe}";
       const raw = body.slice(payload.start, local) + probe + suffix;
       const value = payload.quoted ? decode_hson_content_string(raw) : raw;
       if (part_placeholder_matches(value) === undefined) return undefined;
+      return existingClose ? "{$0" : "{$0}";
     } catch { return undefined; }
-    return existingClose ? "{$0" : "{$0}";
   }
   // Let the host compiler identify an already-authored expression and closer.
   // This covers arbitrary JavaScript (including nested braces), not just names.

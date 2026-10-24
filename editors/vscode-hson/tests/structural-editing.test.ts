@@ -286,6 +286,24 @@ check("Part placeholders pair in quoted document text and ordinary attribute val
     assert.equal(typingSnippet(authored(body), '{'), body.includes('%|}') || body.includes('%|name}') ? '{$0' : '{$0}', body);
   }
 });
+check("Part placeholder typing reuses decoded selector closers and preserves incomplete suffixes", () => {
+  for (const reference of ['slide.title', 'slide.items[0].label', 'slide["odd.key"]', 'slide["brace}key"]',
+    String.raw`slide["quote\"key"]`, String.raw`slide["slash\\key"]`]) {
+    const value = JSON.stringify('%|' + reference + '}');
+    for (const body of ['<span ' + value + '/>', '<span title=' + value + '/>']) {
+      assertTypingResult(authored(body), '{', '{$0');
+    }
+  }
+  assertTypingResult(authored('<span "%{first} %|slide.items[0].label} %{last}"/>'), '{', '{$0');
+  assertTypingResult(authored('<span title=%|slide.title}/>'), '{', '{$0');
+  assert.equal(typingSnippet(authored('<span title=%|slide.items[0].label}/>'), '{'), undefined);
+  for (const suffix of ['slide.title', 'slide.items[0].', 'slide[0]', 'slide[-1]}']) {
+    assertTypingResult(authored('<span ' + JSON.stringify('%|' + suffix) + '/>'), '{', '{$0}');
+  }
+  for (const body of ['<span "%{slide.%|title}"/>', '<span "%{slide.items[%|0]}"/>']) {
+    assert.equal(typingSnippet(authored(body), '{'), undefined, body);
+  }
+});
 check("Part placeholders exclude unsupported Part payloads and other template modes", () => {
   for (const body of ['<span %|/>', '<sp%|an/>', '<span style="color:%|"/>', '<span onClick="%|"/>',
     '<script "%|"/>', '<style <span "%|"/>/>', '<span ${fn("%|")}/>', '<span // %|\n/>',

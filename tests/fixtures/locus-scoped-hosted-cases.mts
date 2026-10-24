@@ -1,3 +1,4 @@
+import { Hson } from "hson-live/hson";
 import assert from "node:assert/strict";
 import { hsonLiveMap, type LiveMap } from "hson-live/livemap";
 import { hsonTransform } from "hson-live/transform";
@@ -114,6 +115,29 @@ function privateAbsent(raw: string) {
 function subjectIds(css: string) { return [...css.matchAll(/hson\\:quid="([^"]+)"/g)].map(match => match[1]!); }
 
 export async function hosted_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  for (const kind of ["http", "websocket"] as const) await check(`structured Part ${kind}: source-free hosted capture and updates`, async () => {
+    const data = Hson.data`<title "Visible" extra "PRIVATE_ARGUMENT">`;
+    const locus = hsonLiveMap.locus.create({ parts: {access:'private',parts:{
+      x:{kind:'document',document:'<section slide:data="%{slide}" @:root <hson-part @:child at="y" data:payload="%{slide}"/>/>'},
+      y:{kind:'document',document:'<b payload:data="%{payload}" @:root "%{payload.title}"/>'},
+    }}, page:{access:'shared',document:Hson.document`<main <hson-part @:left lib="parts" at="x" data:slide="${data}"/>/>`} }, { authorizeProjection: ({requested}) => ({libraries:requested.libraries}) });
+    const client = await receiver(locus, kind, ['page']);
+    try {
+      const now = client.session.now();
+      assert.doesNotMatch(JSON.stringify(now), /PRIVATE_ARGUMENT|data:slide|hson-part|%\{slide/);
+      assert.throws(() => client.echo.parts.must('parts'));
+      assert.deepEqual(document(client.echo).root(), locus.doc.must('page').root());
+      await locus.stage(w => w.doc.must('page').at([0]).replace(node(Hson.document`<hson-part lib="parts" at="x" data:slide="${Hson.data`<title "Updated">`}"/>`)));
+      await caught(client.echo, locus);
+      assert.deepEqual(document(client.echo).root(), locus.doc.must('page').root());
+      assert.match(JSON.stringify(document(client.echo).root()), /Updated/);
+      for (const raw of client.frames) assert.doesNotMatch(raw, /PRIVATE_ARGUMENT|data:slide|hson-part/);
+      const fresh = await receiver(locus, kind, ['page']);
+      try { assert.deepEqual(document(fresh.echo).root(), document(client.echo).root()); }
+      finally { fresh.dispose(); }
+    } finally { client.dispose(); locus.dispose(); }
+  });
+
   for (const kind of ["http", "websocket"] as const) {
     await check(`${kind}: public scoped state, ordered updates, grants, retirement and disposal`, async () => {
       const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
