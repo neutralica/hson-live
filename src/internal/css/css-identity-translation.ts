@@ -5,7 +5,7 @@ import { HSON_META_QUID } from "../../core/constants.js";
 import { HSON_METADATA_REGISTRY } from "../../core/hson-metadata.js";
 import { is_persisted_quid } from "../../core/hson-node-quid.js";
 import { is_document_quad_name, PORTABLE_DOCUMENT_QUAD_ATTRIBUTE } from "../document-quad-name.js";
-import { managed_css_group_header } from "./managed-css-lexical.js";
+import { managed_css_group_header, mentions_identity_attribute } from "./managed-css-lexical.js";
 import {
   css_array_items,
   decode_portable_document_stylesheet,
@@ -24,33 +24,6 @@ export type CssIdentityCorrespondence = Readonly<{
 /** The SSR carrier and translator share the exact portable attribute spelling. */
 const PORTABLE_ATTRIBUTE = PORTABLE_DOCUMENT_QUAD_ATTRIBUTE;
 const RUNTIME_ATTRIBUTE = HSON_METADATA_REGISTRY[HSON_META_QUID].markupName;
-
-/** A potential attribute reference, including one hidden in an opaque selector.
- * Tokens keep strings, comments and escaped literal pipes out of the name grammar.
- * This gate grants no ownership and never rewrites CSS.
- */
-function mentions_identity_attribute(source: string): boolean {
-  const tokens: { type: number; text: string }[] = [];
-  tokenize(source, (type, start, end) => { tokens.push({ type, text: source.slice(start, end) }); });
-  const next = (index: number): number => {
-    while (tokens[index]?.type === tokenTypes.WhiteSpace || tokens[index]?.type === tokenTypes.Comment) index++;
-    return index;
-  };
-  const pipe = (index: number): boolean => tokens[index]?.type === tokenTypes.Delim && tokens[index]?.text === "|";
-  for (let index = 0; index < tokens.length; index++) {
-    if (tokens[index]?.type !== tokenTypes.LeftSquareBracket) continue;
-    let name = next(index + 1);
-    if (pipe(name)) name = next(name + 1);
-    else if ((tokens[name]?.type === tokenTypes.Ident || tokens[name]?.text === "*") && pipe(next(name + 1))) {
-      name = next(next(name + 1) + 1);
-    }
-    const token = tokens[name];
-    if (token?.type !== tokenTypes.Ident) continue;
-    const local = ident.decode(token.text).toLowerCase();
-    if (local === RUNTIME_ATTRIBUTE || local === PORTABLE_ATTRIBUTE) return true;
-  }
-  return false;
-}
 
 /** Preserve identity-free future syntax; only attribute names enter exact admission. @internal */
 export function document_css_mentions_subject_identity(input: PortableDocumentStylesheetRecord): boolean {

@@ -1,11 +1,11 @@
-import { relative_css_selector } from "../../../internal/css/relative-selector.js";
+import { parse_style_selector } from "../../../internal/css/relative-selector.js";
 // global-css.ts
 
 import { CssGlobalsApi, CssMapBase, CssPseudoKey, CssRuleFacade, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
 import { pseudo_to_suffix, type ManagedCssRule } from "./css-render.js";
 import { mediaToAtRule, convertSupportsToAt } from "../../../internal/css/global-css-scopes.js";
 export { mediaToAtRule, convertSupportsToAt } from "../../../internal/css/global-css-scopes.js";
-import { make_style_setter } from "./style-setter.js";
+import { compose_style_branch, make_style_setter } from "./style-setter.js";
 import { normalize_css_var_name } from "./style-getter.js";
 import { render_global_css_rule, render_global_css_value, render_scoped_global_css_rule } from "../../../internal/css/global-css-text.js";
 import { render_stylesheet_order, stylesheet_order_leaves, type PortableDocumentCssEntry } from "../../../internal/css/portable-document-stylesheet.js";
@@ -178,6 +178,7 @@ export class GlobalCss {
     if (!ruleKey) throw new Error("GlobalCss.rule: empty source");
     if (ruleKey.startsWith("stylesheet:")) throw new TypeError("The stylesheet: rule key prefix is reserved for parsed CSS rules.");
     if (!selector) throw new Error("GlobalCss.rule: empty selector");
+    parse_style_selector(selector);
 
     // The scope stack is part of rule identity; a selector may coexist at base,
     // media, supports, layer, and nested scopes. No DOM state participates.
@@ -205,9 +206,11 @@ export class GlobalCss {
       this.notifyChanged();
     };
 
+    const resolveBranch = (key: string): string => compose_style_branch(selector, key);
     const setter = make_style_setter<void>(undefined, {
+      resolveBranch,
       applySelector: (pattern, declarations) => {
-        const relative = relative_css_selector(pattern, selector);
+        const relative = resolveBranch(pattern);
         this.rule(`${ruleKey}:${relative}`, relative, scopes).setMany(declarations);
       },
       /**
@@ -250,7 +253,7 @@ export class GlobalCss {
       applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
         const suf = pseudo_to_suffix(pseudo);
         const pseudoKey = `${ruleKey}${suf}`;
-        const pseudoSelector = `${selector}${suf}`;
+        const pseudoSelector = resolveBranch(pseudo);
 
         const h = this.rule(pseudoKey, pseudoSelector, scopes);
         h.setMany(pseudoDecls);

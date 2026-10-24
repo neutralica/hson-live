@@ -85,7 +85,8 @@ export function second_repair_fixture() {
 }
 export function styled_composition_cases(check: (name: string, run: () => void) => void) {
   check("colon-bearing implicit nesting equals explicit nesting in either list order and preserves declaration serialization", () => {
-    for(const selector of ['button:is(.b)','button:not(.x)','button:first-child','button::before','button:is(.b),&>.b','&>.b,button:is(.b)']) {
+    for(const selector of ['button:is(.b)','button:not(.x)','button:first-child','button::before','button:is(.b),&>.b','&>.b,button:is(.b)',
+      'button:future(.b)','button:future(.b),&>.b','&>.b,button:future(.b)']) {
       const explicit=selector.split(',').map(item=>item.startsWith('&')?item:`& ${item}`).join(',');
       const declarations=selector.includes('::before')?'content:"hello"':'color:rgb(10,20,30)';
       assert.deepEqual(parse_part_stylesheet(`section{${selector}{${declarations}}}`),parse_part_stylesheet(`section{${explicit}{${declarations}}}`),selector);
@@ -101,10 +102,13 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     ])assert.deepEqual(parse_part_stylesheet(implicit),parse_part_stylesheet(explicit),implicit);
     const declarations=String.raw`section{content:"hello:world;{}";background-image:url("data:image/svg+xml;a:b");--payload:{x:y};--nested:is(.b){color:red};--escaped:"\\\"x:y";color:var(--tone,red)}`;
     assert.deepEqual(parse_part_stylesheet(declarations),parse_document_stylesheet(declarations,[]));
+    assert.equal(parse_part_stylesheet('section{button:future(.b){color:red}}').rules[0]!.selector,':is(section) button:future(.b)');
     const invalid:readonly (readonly [string,RegExp])[]=[
       ['section{button:is(.b){color red}}',/Colon is expected/],
       ['section{button:is(.b{color:red}}',/Unmatched Part CSS delimiter/],
-      ['section{button:future(.b){color:red}}',/Opaque Part CSS selectors cannot be scoped/],
+      ['section{button:future(&){color:red}}',/Opaque CSS argument hides nesting or scope syntax/],
+      ['section{button:future(:scope){color:red}}',/Opaque CSS argument hides nesting or scope syntax/],
+      [String.raw`section{button:future([hson\:quad="label"]){color:red}}`,/Opaque CSS argument hides a subject identity reference/],
       ['section{button:is(.b){@scope(.x){button{color:red}}}}',/Nested @scope inside a Part style rule is unsupported/],
       ['section{color:rgb(1,2,{bad})}',/expected|Unexpected input/],
     ];
@@ -113,6 +117,47 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
       assert.throws(()=>parse_part_stylesheet(css),reason,css);
       atomic(rejected,()=>rejected.addLibraries({parts:{ parts: {x:part('<section <button class="b"/>/>',css)} },page:{document:'<hson-part lib="parts" at="x"/>'}}).commit,reason);
     }
+  });
+  check("unfamiliar textual pseudo arguments retain occurrence scoping, ownership and rendered correspondence", () => {
+    const map=hsonLiveMap.fromLibraries({parts:{parts:{
+      implicit:part('<section <button class="b"/>/>','section{button:future(.b){color:red}}'),
+      explicit:part('<section <button class="b"/>/>','section{& button:future(.b){color:red}}'),
+    }}});
+    let commits=0;
+    const verify=() => {
+      const aggregate=owner(map),id=identity(map),scopes=aggregate.documentScopes(id);
+      assert.ok(scopes);assert.equal(scopes.occurrences.length,3);
+      const roots=scopes.occurrences.map(scope=>scope.rootQuid);
+      assert.equal(new Set(roots).size,3);assert.equal(aggregate.documentOverlay(id).size,3);
+      const record=encode_portable_document_stylesheet(aggregate.stylesheet(id));
+      assert.deepEqual(document_css_subject_identities(record,"outbound"),roots);
+      assert.equal(record.rules.length,3);
+      for(const [index,rule] of record.rules.entries()) {
+        assert.equal(rule.selector,':is(section):where(:scope,:scope *) button:future(.b)');
+        assert.deepEqual(rule.declarations,[['color','red']]);
+        assert.deepEqual(rule.scopes,[`@scope ([hson\\:quid="${roots[index]}"])`]);
+        assert.equal(record.order[index]!.owner,`[hson\\:quid="${roots[index]}"]`);
+      }
+      const state=aggregate.scopedDocumentState(id),html=page(map).render();
+      assert.ok(state.css);assert.equal(state.scopes.subjects.length,3);
+      for(const [index,subject] of state.scopes.subjects.entries()) {
+        assert.deepEqual(subject.path,state.scopes.occurrences[index]!.root);
+        assert.equal(aggregate.documentOverlay(id).quidAtPath(subject.path),roots[index]);
+        assert.deepEqual(state.css.rules[index]!.scopes,[`@scope ([hson\\:quad="${subject.name}"])`]);
+        assert.equal(state.css.order[index]!.owner,`[hson\\:quad="${subject.name}"]`);
+        assert.ok(html.includes(`@scope ([hson\\:quad="${subject.name}"])`));
+        assert.ok(html.includes(`<section hson:quad="${subject.name}">`));
+      }
+      assert.ok(html.includes('<section><button class="b"></button></section>'));
+      assert.doesNotMatch(html,/hson:quid|hson-part/);
+    };
+    const off=map.commits.observe(()=>{commits++;verify();});
+    try {
+      map.addLibraries({page:{document:'<html <head/> <body <main <hson-part lib="parts" at="implicit"/> <hson-part lib="parts" at="implicit"/> <hson-part lib="parts" at="explicit"/> <section <button class="b"/>/>/>/>/>'}});
+    } finally {off();}
+    assert.equal(commits,1);
+    const ledger=owner(map).identityEpoch().issued();
+    verify();assert.equal(owner(map).identityEpoch().issued(),ledger);
   });
   check("equivalent replacement and colon-bearing nested selectors share source-free scoped ownership", () => {
     const map=second_repair_fixture(),aggregate=owner(map),record=encode_portable_document_stylesheet(aggregate.stylesheet(identity(map)));

@@ -12,7 +12,7 @@ import type { CssMap } from '../../src/core/style.types.ts';
 
 const nav = '<nav <a @:previous/> <span @:current/> <a @:next/>/>';
 const style: CssMap = { color: 'red', borderRadius: { value: 50, unit: '%' },
-  '& a, & span': { textDecoration: 'none', _hover: { opacity: .5 } },
+  '& :is(a,span)': { textDecoration: 'none', _hover: { opacity: .5 } },
   __before: { color: 'blue' }, '@:current': { fontWeight: 'bold', '& > i': { color: 'green' }, _focus: { outline: '0' } },
   $media: { '(max-width: 480px)': { gap: '0.5rem', '& a': { fontSize: '.85rem' }, '@:current': { fontWeight: 900 } },
     '(prefers-reduced-motion: reduce)': { transition: 'none' } } };
@@ -27,16 +27,17 @@ function realized() {
     page: { document: '<html <head/> <body <hson-part lib="parts" at="outer"/> <hson-part lib="parts" at="nav"/>/>/>' } });
 }
 export async function structured_css_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
-  await check('structured roots, lists, pseudos, local targets and media preserve source order', () => {
+  await check('structured roots, functions, pseudos, local targets and media preserve source order', () => {
     const css = sheet(style);
     assert.equal(css.rules[0]!.selector, ':scope');
     assert.deepEqual(css.rules[0]!.declarations, [['color','red']]);
-    assert.ok(css.rules.some(r => r.selector === ':scope a,:scope span'));
+    assert.ok(css.rules.some(r => r.selector === ':scope :is(a,span)'));
     assert.ok(css.rules.some(r => r.selector.includes('quad="current"')));
     assert.ok(css.rules.some(r => r.declarations.some(([k,v]) => k === 'content' && v === '""')));
     assert.ok(css.rules.some(r => r.scopes.includes('@media (max-width:480px)')));
     assert.ok(css.rules.some(r => r.scopes.includes('@media (prefers-reduced-motion:reduce)')));
-    assert.equal(relative_css_selector('& a, & b', '[data-owner="x"]'), '[data-owner="x"] a,[data-owner="x"] b');
+    assert.equal(relative_css_selector('& :is(a,b)', '[data-owner="x"]'), '[data-owner="x"] :is(a,b)');
+    assert.throws(() => relative_css_selector('& a, & b', ':scope'));
     assert.throws(() => relative_css_selector('& a, body', ':scope'));
     assert.throws(() => relative_css_selector(':is(&,body)', ':scope'));
     const m = realized(), cssText = m.doc.must('page').css.snapshot();
@@ -133,7 +134,7 @@ export async function structured_css_cases(check: (name: string, run: () => void
   });
   await check('LiveTree setMany shares declaration validation and preserves imperative null deletion', () => {
     const t=hsonLiveTree.fromHson('<nav/>',{isolated:true});
-    t.css.setMany({color:'red','& a, & b':{fontSize:2},_hover:{color:'blue'}});
+    t.css.setMany({color:'red','& :is(a,b)':{fontSize:2},_hover:{color:'blue'}});
     for(const css of [{$media:{screen:{color:'red'}}},{'@:label':{color:'red'}},
       {color:null},{color:true},{colour:'red'},{a:{color:'red'}},{'& a, body':{color:'red'}}]) {
       const before=t.css.snapshot();assert.throws(()=>t.css.setMany(css as never));assert.equal(t.css.snapshot(),before);

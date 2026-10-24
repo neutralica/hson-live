@@ -50,6 +50,7 @@ const entry = `
   import { reflect_document_in_runtime } from "./src/api/mirror/mirror.document.ts";
   import { project_livetree } from "./src/api/livetree/creation/project-live-tree.ts";
   import { MANAGED_STYLESHEET_BROWSER_ORACLES } from "./tests/fixtures/managed-stylesheet-browser-oracles.mts";
+  import { css_selector_browser_cases } from "./tests/fixtures/css-selector-browser-cases.mts";
   void (async () => {
   globalThis.addEventListener("error",event=>document.body.dataset.error=encodeURIComponent(String(event.error?.stack??event.message)));
   const source = ${JSON.stringify(source)};
@@ -126,6 +127,7 @@ const entry = `
     ownedTree.remove();
   }
   const continuation = [];
+  const selectorChecks = await css_selector_browser_cases();
   const lazyFrame = document.createElement("iframe"); document.body.append(lazyFrame);
   const lazyDoc = lazyFrame.contentDocument, lazyRuntime = create_livetree_runtime();
   const lazyMap = hsonLiveMap.fromLibraries({page:{document:'<main <button class=lazy "go"/>/>'}});
@@ -184,7 +186,7 @@ const entry = `
   adopted.dispose();framed.remove();
   requestAnimationFrame(() => {
     const result = {
-      semantics, continuation, operations,
+      semantics, continuation, operations, selectorChecks,
       record: map.capture().libraries[0].css,
       mapCss: map.doc.must("page").css.snapshot(),
       treeCss: tree.css.snapshot(),
@@ -222,6 +224,8 @@ try {
   for (const check of actual.operations) assert.deepEqual(check.actual, check.expected, check.name);
   console.log(JSON.stringify({managedOperations:actual.operations}));
   assert.ok(actual.continuation.every(check => check.pass), JSON.stringify(actual.continuation));
+  assert.ok(actual.selectorChecks.every(check => check.pass), JSON.stringify(actual.selectorChecks));
+  console.log(JSON.stringify({selectorComposition:actual.selectorChecks}));
   console.log(JSON.stringify({managedContinuation:actual.continuation}));
   assert.deepEqual(actual.record, expected.record);
   assert.equal(actual.mapCss, expected.mapCss);

@@ -7,7 +7,6 @@ import { AnimAdapters, CssAnimScope, CssAnimHandle } from "../../../types/animat
 import { PropertyManager, PropertyRegistry } from "../../../types/at-property.types.js";
 import { KeyframesManager, KeyframesInput, KeyframesRegistry, type KeyframeSelector, type CssDeclMap } from "../../../types/keyframes.types.js";
 import { CssGlobalHandle } from "../../../types/css.types.js";
-import { LiveTree } from "../livetree.js";
 import { apply_animation, bind_anim_api } from "../methods/anim.js";
 import { canonical_property_registration, manage_property } from "./at-property-builder.js";
 import { GlobalCss, GlobalCssRuntimeApi } from "./global-css.js";
@@ -31,13 +30,6 @@ const CSS_HOST_ID = "css-manager";
 const CSS_STYLE_ID = "_hson";
 
 
-/**
- * Runtime type guard for `LiveTree` instances.
- */
-/** @internal */
-export function isLiveTree(x: unknown): x is LiveTree {
-  return x instanceof LiveTree;
-}
 /**
  * Render a `CssValue` into a CSS literal string.
  *
@@ -84,7 +76,7 @@ export function render_css_value(v: CssValue): string {
  *   [hson\:quid="…"] { opacity: 0.5; transform: translate(…); }
  *
  * Integration points:
- * - `css_for_quids()` creates a `CssHandle` by wiring a `StyleSetter` to this manager.
+ * - `css_for_quid()` creates a `CssHandle` by wiring a `StyleSetter` to this manager.
  *   The handle exposes a fluent surface (`setProp`, `setMany`, `remove`, `clear`, `set.*`)
  *   whose adapter methods call into `CssManager` (e.g. `setForQuid`, `unsetForQuid`).
  * - `PropertyManager` and `KeyframesManager` are owned sub-managers. Their `onChange`

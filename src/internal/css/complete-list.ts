@@ -1,5 +1,5 @@
 /// <reference path="../../types/css-tree-browser.d.ts" />
-import { parse, tokenize, tokenTypes, walk } from 'css-tree/dist/csstree.esm';
+import { parse, tokenize, tokenTypes } from 'css-tree/dist/csstree.esm';
 
 /** CSSTree accepts a final comma at EOF. Check token-level list boundaries before its AST
  * lowering can erase empty arms. Functions, strings, brackets and escaped commas stay tokens.
@@ -27,6 +27,5 @@ export function parse_complete_css_list(source: string, context: 'selectorList' 
   if (!arm || closing.length) throw new SyntaxError('Incomplete CSS list.');
   const ast = parse(source, { context, onParseError(error) { throw error; } });
   if ((ast.type !== 'SelectorList' && ast.type !== 'MediaQueryList') || ast.children.size !== arms) throw new SyntaxError('Incomplete CSS list AST.');
-  walk(ast, node => { if (node.type === 'Raw') throw new SyntaxError('Opaque CSS list is unsupported.'); });
   return ast;
 }

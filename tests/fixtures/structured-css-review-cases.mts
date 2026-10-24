@@ -75,12 +75,12 @@ export async function structured_css_review_cases(check: (name: string, run: () 
     assert.equal('write' in data,false);
   });
   await check('structured flat output retains textual selector, declaration, media and order behavior', () => {
-    const css={color:'red','&:hover, & > a':{WebkitTransform:'none',__before:{color:'blue'}},
+    const css={color:'red','&:is(:hover,a)':{WebkitTransform:'none',__before:{color:'blue'}},
       '@:label':{'& [data-x="a,b"]':{'--x':'\\31 '}},$media:{'screen, print':{opacity:1,'@:label':{color:'green'}}}};
     assert.deepEqual(record(css),parse_part_stylesheet(`:scope{color:red}
-      :scope:hover,:scope > a{-webkit-transform:none}
-      :is(:scope:hover,:scope > a)::before{color:blue}
-      :is(:scope:hover,:scope > a)::before{content:""}
+       :scope:is(:hover,a){-webkit-transform:none}
+      :scope:is(:hover,a)::before{color:blue}
+      :scope:is(:hover,a)::before{content:""}
       [hson\\:quad="label"] [data-x="a,b"]{--x:\\31 }
       @media screen,print{:scope{opacity:1}[hson\\:quad="label"]{color:green}}`));
   });
@@ -130,7 +130,7 @@ export async function structured_css_review_cases(check: (name: string, run: () 
       assert.throws(()=>record({'@:label':{[selector]:{color:'red'}}}),selector);
     }
     for(const condition of ['screen,','screen, /*tail*/',',screen','screen,,print','screen, ,print',' , ']) assert.throws(()=>record({$media:{[condition]:{color:'red'}}}),condition);
-    for(const selector of ['& :is(a,b), & :not(.a,.b)','& [data-x="a,b"], & .a\\,b','&:has(> a, > b), /*split*/ & b']) assert.doesNotThrow(()=>record({'@:label':{[selector]:{color:'red'}}}));
+    for(const selector of ['& :is(a,b):not(.a,.b)','& [data-x="a,b"].a\\,b','&:has(> a, > b)']) assert.doesNotThrow(()=>record({'@:label':{[selector]:{color:'red'}}}));
     for(const condition of ['screen and (width > 10px), print','(width > 10px) and (orientation: landscape)','(color), (monochrome)']) assert.doesNotThrow(()=>record({$media:{[condition]:{color:'red'}}}));
   });
   await check('review 6: vendor aliases normalize equally and collide before mutation', () => {

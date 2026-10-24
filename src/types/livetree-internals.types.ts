@@ -36,7 +36,7 @@ export interface LiveTreeNodeHost {
      *
      * QUIDs are used to:
      * - Track node identity across transforms.
-     * - Key CSS and other managers (`css`, `css_for_quids`, etc.).
+     * - Key CSS and other managers (`css`, `css_for_quid`, etc.).
      *
      * @returns The QUID string for this tree's node.
      * @see makeRef

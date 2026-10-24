@@ -7,6 +7,7 @@ import type { KeyframesInput, KeyframesDef } from "../../types/keyframes.types.j
 import { is_css_declaration_value } from "../../core/inline-style.js";
 import { normalize_css_var_name } from "../../internal/css/css-var-name.js";
 import { pseudo_to_suffix } from "../../internal/css/pseudo-suffix.js";
+import { append_css_pseudo, parse_style_selector } from "../../internal/css/relative-selector.js";
 import { mediaToAtRule, convertSupportsToAt as convertSupportsToAtRule } from "../../internal/css/global-css-scopes.js";
 import { canonical_property_registration } from "../../internal/css/property-registration.js";
 import { canonical_keyframes_definition } from "../../internal/css/keyframes-definition.js";
@@ -54,6 +55,7 @@ export function make_livemap_document_css(
     const ruleKey = managed_css_rule_key(rawKey);
     const selector = trim_managed_css(rawSelector);
     if (!ruleKey || !selector) throw new TypeError("Document CSS rule key and selector must be nonempty.");
+    parse_style_selector(selector);
     if (ruleKey.startsWith("stylesheet:")) throw new TypeError("The stylesheet: rule key prefix is reserved for parsed CSS rules.");
     const write = (property: string, value: DocumentCssValue): void => {
       const before = read();
@@ -80,12 +82,13 @@ export function make_livemap_document_css(
         for (const [key, value] of Object.entries(map)) {
           if (PSEUDOS.has(key) && value !== null && typeof value === "object" && !Array.isArray(value)) {
             const suffix = pseudo_to_suffix(key as CssPseudoKey);
+            const pseudoSelector = append_css_pseudo(selector, suffix);
             for (const [property, nested] of Object.entries(value)) {
               if (!is_css_declaration_value(nested)) throw new TypeError("Invalid pseudo declaration value.");
-              after = set_portable_document_declaration(after, `${ruleKey}${suffix}`, `${selector}${suffix}`, property, nested, scopes);
+              after = set_portable_document_declaration(after, `${ruleKey}${suffix}`, pseudoSelector, property, nested, scopes);
             }
             if ((key === "__before" || key === "__after") && !("content" in value)) {
-              after = set_portable_document_declaration(after, `${ruleKey}${suffix}`, `${selector}${suffix}`, "content", '""', scopes);
+              after = set_portable_document_declaration(after, `${ruleKey}${suffix}`, pseudoSelector, "content", '""', scopes);
             }
             continue;
           }

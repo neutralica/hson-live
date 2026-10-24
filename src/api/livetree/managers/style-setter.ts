@@ -1,6 +1,6 @@
 import { assert_css_declaration_syntax } from "../../../internal/css/declaration-syntax.js";
 import { normalize_css_map, css_property, css_declaration, css_data_entries, CSS_PSEUDOS, type NormalizedCssMap } from "../../../core/css-map.js";
-import { relative_css_selector } from "../../../internal/css/relative-selector.js";
+import { append_css_pseudo, relative_css_selector } from "../../../internal/css/relative-selector.js";
 // style-setter.ts
 
 import { CssKey, CssMap, CssMapBase, CssPseudoKey, CssValue, CssVarFacade, CssVarName, SetSurface } from "../../../types/css.types.js";
@@ -161,7 +161,58 @@ export type StyleSetterAdapters = Readonly<{
 
   applySelector?: (pattern: string, decls: CssMapBase) => void;
 
+  /** Pure branch composition in this receiver's actual publication context. */
+  resolveBranch?: (key: string) => string;
+
 }>;
+
+/** Use the same branch spelling and composition for preflight and publication. */
+export function style_branch_pattern(key: string): string {
+  return Object.hasOwn(CSS_PSEUDOS, key) ? `&${CSS_PSEUDOS[key]}` : key;
+}
+
+export function compose_style_branch(selector: string, key: string): string {
+  return Object.hasOwn(CSS_PSEUDOS, key)
+    ? append_css_pseudo(selector, CSS_PSEUDOS[key])
+    : relative_css_selector(key, selector);
+}
+
+/** Pure complete preparation; publication adapters are never invoked here. */
+export function prepare_style_map(map: CssMap, adapters: StyleSetterAdapters): NormalizedCssMap {
+  const normalized = normalize_css_map(map, false);
+  // Inline projection must inspect original lexical boundaries before shared trimming.
+  const validateOriginal = (value: unknown): void => {
+    for (const [, item] of css_data_entries(value)) {
+      if (item === undefined) continue;
+      if (isCssValue(item)) adapters.validateValue?.(item);
+      else validateOriginal(item);
+    }
+  };
+  if (adapters.validateValue) validateOriginal(map);
+  const validate = (
+    value: NormalizedCssMap,
+    resolveBranch = adapters.resolveBranch,
+  ): void => {
+    for (const [key, item] of Object.entries(value)) {
+      if (typeof item === "string") {
+        if (!adapters.applyMany && item !== "") assert_css_declaration_syntax(key, item);
+        adapters.validateValue?.(item);
+      } else {
+        if (Object.hasOwn(CSS_PSEUDOS, key)) {
+          if (!adapters.applyPseudo) throw new TypeError("Inline style does not support pseudo declarations.");
+        } else {
+          if (!adapters.applySelector) throw new TypeError("This CSS handle does not support relative selectors.");
+        }
+        if (!resolveBranch) throw new TypeError("This CSS handle has no selector context.");
+        const selector = resolveBranch(key);
+        // Branch adapters publish through a global rule handle thereafter.
+        validate(item, child => compose_style_branch(selector, child));
+      }
+    }
+  };
+  validate(normalized);
+  return normalized;
+}
 
 /**
  * Create a `StyleSetter`: a small, fluent, backend-agnostic “write surface” for CSS style.
@@ -246,33 +297,7 @@ export function make_style_setter<TReturn>(
 
     setProp,
     setMany(map: CssMap): TReturn {
-      const normalized = normalize_css_map(map, false);
-      // Inline projection must inspect original lexical boundaries before shared trimming.
-      const validateOriginal = (value: unknown): void => {
-        for (const [, item] of css_data_entries(value)) {
-          if (item === undefined) continue;
-          if (isCssValue(item)) adapters.validateValue?.(item);
-          else validateOriginal(item);
-        }
-      };
-      if (adapters.validateValue) validateOriginal(map);
-      const validate = (value: NormalizedCssMap): void => {
-        for (const [key, item] of Object.entries(value)) {
-          if (typeof item === "string") {
-            if (!adapters.applyMany && item !== "") assert_css_declaration_syntax(key, item);
-            adapters.validateValue?.(item);
-          } else {
-            if (Object.hasOwn(CSS_PSEUDOS, key)) {
-              if (!adapters.applyPseudo) throw new TypeError("Inline style does not support pseudo declarations.");
-            } else {
-              if (!adapters.applySelector) throw new TypeError("This CSS handle does not support relative selectors.");
-              relative_css_selector(key, ":scope");
-            }
-            validate(item);
-          }
-        }
-      };
-      validate(normalized);
+      const normalized = prepare_style_map(map, adapters);
       if (adapters.applyMany) {
         const values: Record<string, string> = {};
         for (const [key, value] of Object.entries(normalized)) {

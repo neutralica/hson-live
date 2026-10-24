@@ -1,5 +1,8 @@
 /// <reference path="../../types/css-tree-browser.d.ts" />
 import { ident, parse, tokenize, tokenTypes } from "css-tree/dist/csstree.esm";
+import { HSON_META_QUID } from "../../core/constants.js";
+import { HSON_METADATA_REGISTRY } from "../../core/hson-metadata.js";
+import { PORTABLE_DOCUMENT_QUAD_ATTRIBUTE } from "../document-quad-name.js";
 import { canon_to_css_prop, normalize_css_key } from "../../api/transform/utils/attrs-utils/normalize-css.js";
 
 /** Remove only boundary CSS whitespace tokens, never whitespace within an escape or identifier. */
@@ -54,4 +57,31 @@ export function managed_css_group_header(header: string): string {
       || (!["layer", "starting-style"].includes(node.name) && !node.prelude)) throw new Error("Unsupported wrapper.");
   } catch { throw new TypeError("Invalid stylesheet group header."); }
   return text;
+}
+
+/** A potential attribute reference, including one hidden in an opaque selector.
+ * Tokens keep strings, comments and escaped literal pipes out of the name grammar.
+ * This gate grants no ownership and never rewrites CSS.
+ */
+export function mentions_identity_attribute(source: string): boolean {
+  const tokens: { type: number; text: string }[] = [];
+  tokenize(source, (type, start, end) => { tokens.push({ type, text: source.slice(start, end) }); });
+  const next = (index: number): number => {
+    while (tokens[index]?.type === tokenTypes.WhiteSpace || tokens[index]?.type === tokenTypes.Comment) index++;
+    return index;
+  };
+  const pipe = (index: number): boolean => tokens[index]?.type === tokenTypes.Delim && tokens[index]?.text === "|";
+  for (let index = 0; index < tokens.length; index++) {
+    if (tokens[index]?.type !== tokenTypes.LeftSquareBracket) continue;
+    let name = next(index + 1);
+    if (pipe(name)) name = next(name + 1);
+    else if ((tokens[name]?.type === tokenTypes.Ident || tokens[name]?.text === "*") && pipe(next(name + 1))) {
+      name = next(next(name + 1) + 1);
+    }
+    const token = tokens[name];
+    if (token?.type !== tokenTypes.Ident) continue;
+    const local = ident.decode(token.text).toLowerCase();
+    if (local === HSON_METADATA_REGISTRY[HSON_META_QUID].markupName || local === PORTABLE_DOCUMENT_QUAD_ATTRIBUTE) return true;
+  }
+  return false;
 }

@@ -2,6 +2,7 @@
 import { generate, ident, parse, walk, tokenize, tokenTypes } from "css-tree/dist/csstree.esm";
 import type { Block, CssNode } from "css-tree";
 import type { DocumentCssOrderEntry, DocumentCssRecord } from "../../types/document-css.types.js";
+import { parse_style_selector } from "./relative-selector.js";
 import { parse_document_stylesheet } from "./parse-document-stylesheet.js";
 import { css_entry_identity, decode_portable_document_stylesheet, encode_portable_document_stylesheet,
   stylesheet_order_leaves, type PortableDocumentStylesheet } from "./portable-document-stylesheet.js";
@@ -65,19 +66,17 @@ export function parse_part_stylesheet(source: string): DocumentCssRecord {
     return result;
   };
   const selector = (node: CssNode, parent?: string): string => {
-    const selected = parse(generate(node), { context: "selectorList", onParseError(error) { throw error; } });
+    const selected = parse_style_selector(generate(node), parent !== undefined);
     let nesting = false, nestingCount = 0;
     walk(selected, part => { if (part.type === "NestingSelector") nestingCount++; });
     if ((parent?.length ?? 6) * nestingCount + generate(selected).length > 4_000_000) throw new SyntaxError("Part CSS selector expansion limit exceeded.");
     walk(selected, (part, item, list) => {
-      if (part.type === "Raw") throw new SyntaxError("Opaque Part CSS selectors cannot be scoped.");
       if (part.type !== "NestingSelector") return;
       nesting = true;
       const replacement = parse(parent === undefined ? ":scope" : `:is(${parent})`, { context: "selector" });
       if (replacement.type !== "Selector" || replacement.children.first === null || !item || !list) throw new SyntaxError("Invalid CSS nesting selector.");
       list.replace(item, list.createItem(replacement.children.first));
     });
-    if (selected.type !== "SelectorList") throw new SyntaxError("Invalid Part CSS selector list.");
     // Each selector without & receives the nesting parent's implicit descendant combinator.
     if (parent !== undefined && !nesting) return selected.children.toArray().map(child => `:is(${parent}) ${generate(child)}`).join(",");
     if (parent !== undefined && selected.children.size > 1) {
@@ -137,13 +136,11 @@ export function parse_part_stylesheet(source: string): DocumentCssRecord {
 export function scope_part_stylesheet(css: DocumentCssRecord, rootName: string): DocumentCssRecord {
   const owner = `[hson\\:quad="${rootName}"]`, header = `@scope (${owner})`;
   const inclusive = (source: string): string => {
-    const selectors = parse(source, { context: "selectorList", onParseError(error) { throw error; } });
-    if (selectors.type !== "SelectorList") throw new SyntaxError("Invalid Part selector list.");
+    const selectors = parse_style_selector(source);
     selectors.children.forEach(selector => {
       if (selector.type !== "Selector") throw new SyntaxError("Invalid Part selector.");
       let scoped = false;
       walk(selector, node => {
-        if (node.type === "Raw") throw new SyntaxError("Opaque Part CSS selectors cannot be scoped.");
         if (node.type === "PseudoClassSelector" && ident.decode(node.name).toLowerCase() === "scope") scoped = true;
       });
       if (scoped) return; // Explicit &/:scope already determines its root relationship.

@@ -4,8 +4,10 @@ import { runtime_for_tree, subject_for_tree, create_livetree_runtime } from "../
 import { create_staged_livetree_in_runtime } from "../../src/api/livetree/creation/create-livetree.ts";
 import type { LiveMap } from "../../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
+import { css_selector_cases } from "./css-selector-cases.mts";
 
 export function lazy_css_cases(check: (name: string, run: () => void) => void): void {
+  css_selector_cases(check);
   check("QUID-free standalone factory candidate global/snapshot access stays sparse", () => {
     // Existing private candidate construction provides a lawful eligible subject
     // before allocation; do not delete identity from a public constructed tree.
