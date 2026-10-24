@@ -1,4 +1,5 @@
 import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
+import { validate_part_optional_flags } from "../../internal/part-placeholder.js";
 import { structured_part_stylesheet } from "../../internal/css/structured-css.js";
 import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { ANY_DATA, hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
@@ -69,6 +70,7 @@ export function validate_part_collection(value: OrderedProjectedValue): readonly
     if (typeof source !== "string") throw new TypeError("Part document requires authored Hson text.");
     const authored = parse_authored_document_library(source);
     const root = admit_public_livemap_root(authored.root, "document", "Part document");
+    validate_part_optional_flags(root);
     const element = root.$_content[0];
     if (root.$_content.length !== 1 || !is_ordinary_element_node(element) || element.$_tag.toLowerCase() === "hson-part") {
       throw new TypeError("Part requires exactly one ordinary element root.");

@@ -1,6 +1,6 @@
 /// <reference path="../../types/css-tree-browser.d.ts" />
 import { generate, ident, parse, tokenize, tokenTypes, walk } from "css-tree/dist/csstree.esm";
-import type { CssNode } from "css-tree";
+import type { CssNode, ListItem, List } from "css-tree";
 import { HSON_META_QUID } from "../../core/constants.js";
 import { HSON_METADATA_REGISTRY } from "../../core/hson-metadata.js";
 import { is_persisted_quid } from "../../core/hson-node-quid.js";
@@ -59,11 +59,11 @@ function own_field(input: unknown, key: string): unknown {
 
 /** Walk the exact Cut 8C selector coordinates once; declarations are never references. */
 function visit_document_css_identities(input: PortableDocumentStylesheetRecord,
-  visit: (node: Extract<CssNode, { type: "AttributeSelector" }>) => void,
+  visit: (node: Extract<CssNode, { type: "AttributeSelector" }>) => CssNode | void,
   subjectsOnly: boolean): PortableDocumentStylesheetRecord {
   const rewrite = (ast: CssNode): boolean => {
     let changed = false, featureTests = 0;
-    walk(ast, { enter(node: CssNode) {
+    walk(ast, { enter(node: CssNode, item: ListItem<CssNode> | null, list: List<CssNode> | null) {
       if (node.type === "Declaration") return walk.skip;
       // @supports selector() asks about syntax, not membership of a subject.
       // Cut 8C's explicit translator retains its original all-reference mode.
@@ -79,7 +79,11 @@ function visit_document_css_identities(input: PortableDocumentStylesheetRecord,
         identity_value(node, localName);
         return;
       }
-      visit(node);
+      const replacement = visit(node);
+      if (replacement !== undefined) {
+        if (!item || !list) throw new Error("CSS subject replacement requires a selector item.");
+        list.replace(item, list.createItem(replacement));
+      }
       changed = true;
     }, leave(node: CssNode) { const kind: string = node.type; if (kind === "FeatureFunction") featureTests--; } });
     return changed;
@@ -132,6 +136,18 @@ export function document_css_subject_identities(input: PortableDocumentStyleshee
     values.add(value);
   }, true);
   return Object.freeze([...values]);
+}
+
+/** Replace an omitted identity attribute with a false atom of equal (0,1,0)
+ * specificity. Functional selector wrappers retain their matching/cascade rules. */
+export function omit_part_css_subjects(input: PortableDocumentStylesheetRecord, absent: ReadonlySet<string>): PortableDocumentStylesheetRecord {
+  if (absent.size === 0) return input;
+  return visit_document_css_identities(input, node => {
+    if (!absent.has(identity_value(node, PORTABLE_ATTRIBUTE))) return;
+    const selector = parse(":nth-child(0)", { context: "selector" });
+    if (selector.type !== "Selector" || selector.children.first === null) throw new Error("Invalid empty CSS subject selector.");
+    return selector.children.first;
+  }, true);
 }
 
 /** Compare portable checkpoint semantics across disposable payload renaming; no runtime identity is created. @internal */

@@ -115,6 +115,60 @@ function privateAbsent(raw: string) {
 function subjectIds(css: string) { return [...css.matchAll(/hson\\:quid="([^"]+)"/g)].map(match => match[1]!); }
 
 export async function hosted_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  for (const kind of ["http", "websocket"] as const) await check(`optional Part ${kind}: SSR, atomic omission, source-free replay and restoration`, async () => {
+    const input = (value: object) => node(Hson.document`<hson-part lib="parts" at="optional" data:payload="${Hson.data.from(value)}"/>`);
+    const locus = hsonLiveMap.locus.create({ parts: { access: 'private', parts: {
+      optional: { kind: 'document', document: '<article @:root part:optional d:data="%{payload}" <h1 "%{d.title}"/> <p @:note part:optional "%{d.note}"/>/>', stylesheet: ':scope{color:navy}[hson\\:quad="note"]{color:pink}' },
+    } }, count: { access: 'shared', data: { n: 0 } }, flat: { access: 'shared', document: '<main/>' }, page: { access: 'shared', document: '<html <head/> <body <hson-part @:gone lib="parts" at="optional" data:payload="<>"/> <hson-part @:left lib="parts" at="optional" data:payload="<title \\"Left\\">"/> <hson-part @:right lib="parts" at="optional" data:payload="<title \\"Right\\">"/>/>/>' } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    const client = await receiver(locus, kind, ['page']);
+    try {
+      const audit = await locus.session.create({ libraries: ['flat', 'count'] });
+      const flatBefore = audit.now().libs.libraries.find(entry => entry.name === 'flat')!;
+      await locus.stage(w => {
+        w.doc.must('flat').at([]).asElement().insert(0, input({}));
+        w.data.must('count').at(['n']).set(1);
+      });
+      const flatAfter = audit.now().libs.libraries.find(entry => entry.name === 'flat')!;
+      assert.deepEqual(flatAfter.root, flatBefore.root);
+      assert.equal(flatAfter.scopes, undefined); assert.deepEqual(flatAfter.css, flatBefore.css);
+      await caught(client.echo, locus);
+      const before = client.session.now({ html: 'page' });
+      assert.match(before.html, /Left/); assert.match(before.html, /Right/);
+      assert.doesNotMatch(JSON.stringify(before), /part:optional|data:payload|hson-part|%\{|"gone"|"note"/);
+      assert.equal(before.libs.libraries[0]!.scopes!.occurrences.length, 2);
+      assert.equal(document(client.echo).q('gone'), undefined);
+      const left = document(client.echo).q('left')!, right = document(client.echo).q('right')!;
+      await locus.stage(w => w.doc.must('page').at([1, 0]).replace(input({})));
+      await caught(client.echo, locus);
+      assert.equal(left.active, false); assert.equal(right.active, true);
+      assert.equal(client.session.now().libs.libraries[0]!.scopes!.occurrences.length, 1);
+      assert.equal((document(client.echo).css.snapshot().match(/color:navy/g) ?? []).length, 1);
+      const stable = client.session.now();
+      await assert.rejects(locus.stage(w => {
+        w.doc.must('page').at([1]).asElement().insert(0, input({ title: 'Early' }));
+        w.doc.must('page').at([1]).asElement().insert(1, input({ title: {} }));
+      }));
+      assert.deepEqual(client.session.now(), stable);
+      await locus.stage(w => w.doc.must('page').at([1]).asElement().insert(0, input({ title: 'Recovered', note: 'Note' })));
+      await caught(client.echo, locus);
+      assert.equal(right.active, true);
+      const restored = await receiver(locus, kind, ['page']);
+      try {
+        assert.deepEqual(document(restored.echo).root(), document(client.echo).root());
+        assert.throws(() => restored.echo.parts.must('parts'));
+        const painted = restored.session.now({ html: 'page' });
+        assert.match(painted.html, /Recovered/); assert.match(painted.html, /Note/);
+        assert.equal(painted.libs.libraries[0]!.scopes!.occurrences.length, 2);
+      } finally { restored.dispose(); }
+      for (const frame of client.frames) assert.doesNotMatch(frame, /part:optional|data:payload|hson-part|%\{/);
+      await locus.stage(w => w.doc.must('page').at([1, 0]).replace(input({})));
+      await locus.stage(w => w.doc.must('page').at([1, 0]).replace(input({})));
+      await caught(client.echo, locus);
+      assert.equal(client.session.now().libs.libraries[0]!.scopes!.occurrences.length, 0);
+      assert.doesNotMatch(document(client.echo).css.snapshot(), /color:navy|color:pink/);
+    } finally { client.dispose(); locus.dispose(); }
+  });
+
   for (const kind of ["http", "websocket"] as const) await check(`structured Part ${kind}: source-free hosted capture and updates`, async () => {
     const data = Hson.data`<title "Visible" extra "PRIVATE_ARGUMENT">`;
     const locus = hsonLiveMap.locus.create({ parts: {access:'private',parts:{

@@ -47,6 +47,21 @@ export function styled_fixture(count = 3) {
     'section{border:3px solid rgb(1,2,3);--tone:rgb(10,20,30)} span{color:var(--tone);@media screen{padding-left:7px}} @layer buttons{@supports(display:grid){section{button{color:rgb(60,70,80);&.active{padding-left:11px}}}}}'), child: part('<button id="%{label}-button" class="active" "Nested"/>', '') } },
     page: { document: `<html <head/> <body <main ${connectors}/> <aside id="unrelated" <span class="label" "Unrelated"/> <button class="active" id="outside-button" "Outside"/>/>/>/>` } });
 }
+/** Absent subject atoms must keep their attribute specificity in every wrapper. */
+export function optional_subject_fixture() {
+  const gone = '[hson\\:quad="gone"]';
+  return legacy_flat_styled_map({ parts: { parts: { optional: part(
+    '<section d:data="%{payload}" <b @:gone part:optional "%{d.missing}"/> <p id="optional-not" class="target"/> <p id="optional-is" class="is-target"/> <p id="optional-where" class="where-target"/> <div id="optional-has" class="has-target" <i/>/> <div id="optional-positive" class="positive-target" <i/>/> <p id="optional-list" class="list-target"/> <p id="optional-multi" class="multi-target"/> <p id="optional-nth" class="nth-target"/>/>',
+    `.target:not(${gone}){color:red}.target{color:blue}` +
+    `.is-target:not(.never){color:blue}.is-target:is(${gone},p){color:red}` +
+    `p.where-target{color:blue}.where-target:where(:not(${gone})){color:red}` +
+    `.has-target:not(:has(>${gone})){color:red}.has-target{color:blue}` +
+    `.positive-target{color:blue}${gone},.positive-target:has(>${gone}),.positive-target${gone}{color:red;--omitted-hit:yes}` +
+    `${gone},.list-target:not(${gone}){color:red}.list-target{color:blue}` +
+    `.multi-target:not(${gone}${gone}){color:red}.multi-target:not(.never){color:blue}` +
+    `.nth-target:not(.never):nth-child(n){color:blue}.nth-target:nth-child(n of ${gone},p){color:red}`,
+  ) } }, page: { document: '<html <head/> <body <hson-part lib="parts" at="optional" data:payload="<>"/> <p id="optional-outside" class="target"/>/>/>' } });
+}
 /** Shared by Node/Worker admission and JavaScript-disabled real Chrome assertions. */
 export function selector_fixture() {
   return legacy_flat_styled_map({ parts: { parts: {
@@ -84,6 +99,35 @@ export function second_repair_fixture() {
   return map;
 }
 export function styled_composition_cases(check: (name: string, run: () => void) => void) {
+  check("styled replacement returns graph and CSS operations for ordinary replacement and optional retirement", () => {
+    const map = hsonLiveMap.fromLibraries({parts:{parts:{
+      ordinary:part('<b/>', 'b{color:blue}'),
+      optional:part('<p part:optional d:data="%{payload}" "%{d.title}"/>', 'p{color:red}'),
+    }},page:{document:'<main <i/>/>'}});
+    const p=page(map), initial=p.root(), target={kind:'path' as const,path:path([0,0])};
+    const connector=(name:string,payload='<>')=>{
+      const node=hsonTransform.fromHson(`<hson-part lib="parts" at="${name}" data:payload="${payload}"/>`).toNode().$_content[0];
+      if(!is_Node(node))throw Error('connector'); return node;
+    };
+    p.document.content.insert(target,1,connector('optional','<title 0>'));
+    const events: unknown[]=[]; const off=map.commits.observe(commit=>events.push(commit));
+    try {
+      const ordinary=p.document.content.replace(target,1,{$_tag:'hson-part',$_attrs:{lib:'parts',at:'ordinary'},$_content:[]});
+      const sequence=(commit:typeof ordinary)=>commit.operations.map(({operation})=>
+        'domain' in operation ? `${operation.domain}/${operation.domain==='css'?operation.kind:operation.op}` : operation.kind);
+      assert.deepEqual(sequence(ordinary),['graph/replace-content','css/replace']);
+      assert.deepEqual(events.at(-1),ordinary);
+      p.document.content.replace(target,1,connector('optional','<title 0>'));
+      const a=owner(map),id=identity(map),issued=a.identityEpoch().issued();
+      const retired=p.document.content.replace(target,1,connector('optional'));
+      assert.deepEqual(sequence(retired),['graph/remove-content','css/replace']);
+      assert.deepEqual(events.at(-1),retired); assert.equal(events.length,3);
+      assert.equal(retired.rev,ordinary.rev+2); assert.equal(a.identityEpoch().issued().size,issued.size);
+      assert.deepEqual(p.root(),initial);
+      assert.equal(p.css.snapshot(),''); assert.equal(a.documentOverlay(id).size,0);
+      assert.deepEqual(encode_portable_document_stylesheet(a.stylesheet(id)).order,[]);
+    } finally { off(); }
+  });
   check("colon-bearing implicit nesting equals explicit nesting in either list order and preserves declaration serialization", () => {
     for(const selector of ['button:is(.b)','button:not(.x)','button:first-child','button::before','button:is(.b),&>.b','&>.b,button:is(.b)',
       'button:future(.b)','button:future(.b),&>.b','&>.b,button:future(.b)']) {

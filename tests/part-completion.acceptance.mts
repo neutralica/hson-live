@@ -315,5 +315,17 @@ check("structured receiving declarations keep incoming and local completion name
   const app = imports + 'const loc = maps.fromLibraries({components:{parts:' + whole + '},page:{document:Hson.document`<hson-part lib="components" at="x" |/>`}});';
   assert.deepEqual(complete(app).labels, ['data:incoming']);
 });
+check("optional flags complete only in governed Part headers and preserve argument suggestions", () => {
+  for (const body of ['<p part:op|/>', '<p <b part:op|/>/>', '<p <hson-part at="leaf" part:op|/>/>']) {
+    const result = complete(authored(body, memberApplication));
+    assert.deepEqual(result.labels, ['part:optional']);
+    assert.equal(applied(result, 'part:optional'), authored(body.replace('part:op|', 'part:optional'), memberApplication));
+  }
+  assert.deepEqual(complete(authored('<p part:op|/>')).labels, []);
+  assert.deepEqual(complete(authored('<p part:optional part:op|/>', memberApplication)).labels, []);
+  assert.deepEqual(complete(authored('<p part:optional="%{|}"/>', memberApplication)).labels, []);
+  const result = complete(authored('<p <hson-part lib="components" at="heading" |/>/>', memberApplication));
+  assert.ok(result.labels.includes('part:optional'));
+});
 service.dispose();
 events.terminal("pass");

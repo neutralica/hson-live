@@ -9,6 +9,18 @@ const blank = { kind: "document", document: "<hr/>" } as const;
 const definitions = { components: { parts: { heading, blank } }, ordinary: { data: { heading } } };
 
 export async function parts_write_cases() {
+  const optional = hsonLiveMap.fromLibraries({ parts: { parts: {
+    x: { kind: "document", document: '<p part:optional d:data="%{payload}" "%{d.title}"/>' },
+  } } });
+  for (const [name, value] of [['empty', {}], ['present', { title: 'Visible' }]] as const) {
+    const written = optional.parts.parts.x.write({ 'data:payload': Hson.data.from(value) });
+    assert.equal(written, Hson.document`<hson-part lib="parts" at="x" data:payload="${Hson.data.from(value)}"/>`);
+    optional.addLibraries({ [name]: { document: Hson.document`<main ${written}/>` } });
+    const result = optional.doc.must(name).render();
+    assert.equal(result.includes('<p'), name === 'present');
+    assert.doesNotMatch(result, /part:optional|hson-part|data:payload/);
+  }
+
   const structured = hsonLiveMap.fromLibraries({ components: { parts: { nav: { kind: "document", document: '<nav slide:data="%{payload}" title="%{slide.title}" "%{slide.no}"/>' } } } });
   const structuredAuthority = internal_livemap_aggregate_authority(structured);
   const structuredBefore = structuredAuthority.captureSemanticCheckpoint(), structuredIssued = structuredAuthority.identityEpoch().issued();

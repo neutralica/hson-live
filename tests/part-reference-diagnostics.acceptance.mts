@@ -245,5 +245,23 @@ check("structured receiving interfaces diagnose local errors and retain dynamic 
   const nested = '{x:{kind:"document",document:Hson.document`<p local:data="%{payload}" <hson-part at="y" data:data="%{local}"/>/>`},y:{kind:"document",document:Hson.document`<b data:data="%{data}" "%{data.title}"/>`}}';
   assert.deepEqual(inspect(application(invocation('data:payload="<title 0>"'), nested)).codes, []);
 });
+check("optional diagnostics validate flags and preserve omitted forwarding uncertainty", () => {
+  const definition = '{x:{kind:"document",document:Hson.document`<section part:optional d:data="%{payload}" <p part:optional "%{d.title}"/> <hson-part part:optional at="leaf" data:payload="%{d.child}"/>/>`},leaf:{kind:"document",document:Hson.document`<b part:optional d:data="%{payload}" "%{d.value}"/>`}}';
+  const invocation = '<hson-part lib="components" at="x" data:payload="<>"/>';
+  assert.deepEqual(inspect(application(invocation, definition)).codes, []);
+  assert.deepEqual(inspect(application(invocation.replace('data:payload="<>"', 'data:payload="${dynamic}"'), definition)).codes, []);
+  for (const body of ['<p part:optional="false"/>', '<p <b part:optional=""/>/>']) {
+    const result = inspect(application('', '{x:{kind:"document",document:Hson.document`' + body + '`}}'));
+    assert.ok(result.codes.includes('HSON_PART_OPTIONAL_INVALID'));
+    assert.ok(result.slices.includes('part:optional'));
+  }
+  assert.ok(inspect(application('<p part:optional/>')).codes.includes('HSON_PART_OPTIONAL_INVALID'));
+  const unknown = definition.replace('%{d.title}', '%{unknown.title}');
+  assert.ok(inspect(application(invocation, unknown)).codes.includes('HSON_PART_REFERENCE_INVALID'));
+  assert.ok(inspect(application(invocation.replace('data:payload="<>"', ''), definition)).codes.includes('HSON_PART_ARGUMENT_MISSING'));
+  const empty = '{x:{kind:"document",document:Hson.document`<p part:optional d:data="%{payload}"/>`}}';
+  assert.deepEqual(inspect(application(invocation, empty)).codes, []);
+  assert.deepEqual(inspect(application(invocation.replace('data:payload="<>"', ''), empty)).codes, []);
+});
 service.dispose();
 events.terminal("pass");

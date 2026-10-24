@@ -10,7 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
 import { ssr_subject_fixture } from "../tests/fixtures/document-ssr-subjects-cases.mts";
 import { cut_document_ssr_internal } from "../src/api/livemap/livemap.libraries.ts";
-import { second_repair_fixture, selector_fixture, styled_fixture } from "../tests/fixtures/livemap-styled-composition-cases.mts";
+import { optional_subject_fixture, second_repair_fixture, selector_fixture, styled_fixture } from "../tests/fixtures/livemap-styled-composition-cases.mts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { document_css_subject_identities } from "../src/internal/css/css-identity-translation.ts";
 import { encode_portable_document_stylesheet } from "../src/internal/css/portable-document-stylesheet.ts";
@@ -28,6 +28,9 @@ const componentCut = components.cut({html:"page", documents:["page"], data:[]});
 const selectors = selector_fixture(), selectorPage = selectors.doc.must("page");
 const selectorCut = selectors.cut({html:"page", documents:["page"], data:[]});
 const selectorPages = new Map([["/selectors", selectorCut]]);
+const optionalCut = optional_subject_fixture().cut({html:"page",documents:["page"],data:[]});
+const optionalPages = new Map([["/optional", optionalCut], ["/optional-restored",
+  install_libraries_snapshot(install_libraries_snapshot(optionalCut.libs).map.cut({documents:["page"],data:[]}).libs).map.cut({html:"page",documents:["page"],data:[]})]]);
 selectorPage.document.content.move({kind:"path",path:[0,0,1,0,0,0]},2,0);
 selectorPages.set("/selectors-moved", selectors.cut({html:"page", documents:["page"], data:[]}));
 const restoredSelectors = install_libraries_snapshot(install_libraries_snapshot(selectorCut.libs).map.cut({data:[],documents:["page"]}).libs).map;
@@ -78,7 +81,7 @@ try {
     if (request.url === "/hosted-flat") { response.end(hosted.cut.html + '<script>document.documentElement.dataset.executed="yes"</script>'); return; }
     if (request.url === "/composed") { response.end(componentCut.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
     if (request.url === "/second-repair") { response.end(secondRepair.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
-    const selectorPage = selectorPages.get(request.url);
+    const selectorPage = selectorPages.get(request.url) ?? optionalPages.get(request.url);
     if (selectorPage) { response.end(selectorPage.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
     // A negative probe: this script must never execute in the client.
     response.end(cut.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>'));
@@ -122,6 +125,26 @@ try {
     assert.equal(result.exceptionDetails,undefined,JSON.stringify(result.exceptionDetails));
     return result.result.value;
   };
+  for (const path of optionalPages.keys()) {
+    await command("Page.navigate", {url:new URL(path,url).href});
+    let loaded = false;
+    for (let attempt=0;attempt<100;attempt++) {
+      loaded=await evaluate(`document.readyState==="complete" && location.pathname===${JSON.stringify(path)} && !!document.getElementById("optional-outside")`);
+      if (loaded) break; await delay(50);
+    }
+    assert.equal(loaded,true);
+    const optionalEvidence=await evaluate(`(() => {
+      const elements=[...document.querySelectorAll('*')];
+      return {colors:Object.fromEntries(['not','is','where','has','positive','list','multi','nth','outside'].map(name=>[name,getComputedStyle(document.getElementById('optional-'+name)).color])),
+        matches:document.querySelectorAll(':nth-child(0)').length,
+        positiveHits:elements.filter(e=>getComputedStyle(e).getPropertyValue('--omitted-hit')).length,
+        omitted:document.querySelectorAll('b,hson-part,[part\\\\:optional]').length,
+        foreign:elements.some(e=>e.hasAttribute('hson:quid')),executed:document.documentElement.dataset.executed??null};
+    })()`);
+    console.log(`Chrome omitted subject specificity ${path}: ${JSON.stringify(optionalEvidence)}`);
+    assert.deepEqual(optionalEvidence,{colors:{not:'rgb(255, 0, 0)',is:'rgb(255, 0, 0)',where:'rgb(0, 0, 255)',has:'rgb(255, 0, 0)',positive:'rgb(0, 0, 255)',list:'rgb(255, 0, 0)',multi:'rgb(255, 0, 0)',nth:'rgb(255, 0, 0)',outside:'rgb(0, 0, 0)'},matches:0,positiveHits:0,omitted:0,foreign:false,executed:null});
+  }
+  await command("Page.navigate",{url});
   let ready = false;
   for (let attempt = 0; attempt < 100; attempt++) {
     ready = await evaluate('document.readyState === "complete" && !!document.getElementById("ordinary")');

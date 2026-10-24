@@ -1,4 +1,4 @@
-import { is_part_argument_attribute, part_argument_name, part_placeholder_matches, whole_part_reference, type PartReference, transform_part_parameter_strings } from "../../internal/part-placeholder.js";
+import { PART_OPTIONAL, is_part_argument_attribute, part_argument_name, part_placeholder_matches, whole_part_reference, type PartReference, transform_part_parameter_strings } from "../../internal/part-placeholder.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { decode_public_attrs, is_public_attr_name } from "../../core/public-attrs.js";
@@ -8,14 +8,15 @@ import { ANY_DOCUMENT, HsonSchema } from "../schema/hson-schema.js";
 import { materialize_owned_occurrences } from "../livetree/runtime/materialize-occurrences.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { is_document_quad_name, type DocumentQuadAdmission } from "./livemap.document.quad.js";
+import { lower_internal_document_content_remove } from "./livemap.document.logical.js";
 import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
-import type { PortableDocumentQuads } from "../../types/livemap.types.js";
+import type { PortableDocumentQuads, LiveMapGraphOp } from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
 import { admit_canonical_hson_data_value } from "../data/hson-data-hson.js";
-import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { admit_hson_data_input } from "../data/hson-data.js";
-import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
+import { document_css_subject_identities, omit_part_css_subjects } from "../../internal/css/css-identity-translation.js";
 import { scope_part_stylesheet } from "../../internal/css/part-stylesheet.js";
 import type { DocumentScopedQuadRecord, ScopedQuadBindingRecord, ScopedQuadOccurrenceRecord } from "./livemap.document.scoped-quad-codec.js";
 import type { DocumentCssRecord } from "../../types/document-css.types.js";
@@ -175,8 +176,8 @@ export type DocumentCompositionStyle = Readonly<{
   subjects: readonly Readonly<{ name: string; path: readonly number[] }>[];
 }>;
 type Landmark = Readonly<{ node: HsonNode; path: readonly number[] }>;
-type PartBinding = Readonly<{ kind: "scalar"; value: Primitive }> | Readonly<{ kind: "data"; value: OrderedProjectedValue }>;
-type PartEnvironment = Readonly<{ bindings: Map<string, PartBinding>; used: Set<string>; context: string }>;
+type PartBinding = Readonly<{ kind: "scalar"; value: Primitive }> | Readonly<{ kind: "data"; value: OrderedProjectedValue | undefined }>;
+type PartEnvironment = { readonly bindings: Map<string, PartBinding>; readonly used: Set<string>; readonly context: string; omitted?: (node: HsonNode) => boolean; authoredArguments?: ReadonlyMap<HsonNode, readonly string[]> };
 type Occurrence = Readonly<{
   parameters?: PartEnvironment;
   evidence: { root: readonly number[] | null; bindings: ScopedQuadBindingRecord[]; byName: Map<string, ScopedQuadBindingRecord> };
@@ -185,7 +186,7 @@ type Occurrence = Readonly<{
   shellNames: ReadonlyMap<HsonNode, string>;
   collection?: string;
   scopes: readonly ConfigurationScope[];
-  style?: { css: DocumentCssRecord; demanded: ReadonlyMap<HsonNode, string>; subjects: Map<string, readonly number[]> };
+  style?: { css: DocumentCssRecord; demanded: ReadonlyMap<HsonNode, string>; subjects: Map<string, readonly number[]>; absent: Set<string> };
 }>;
 type Selection = Readonly<{ collection: string; member: string }>;
 type RootCustomization = Readonly<{ attrs: readonly (readonly [string, string])[]; text?: string }>;
@@ -242,6 +243,69 @@ export function expand_document_composition(
       sources.set(collection, members);
     }
     return selected;
+  };
+  const interfaces = new Map<HsonNode, ReadonlyMap<string, "data" | "scalar">>();
+  const validateArguments = (definition: DocumentCompositionSource, supplied: readonly string[]): void => {
+    let parameters = interfaces.get(definition.root);
+    if (parameters === undefined) {
+      const names = new Map<string, "data" | "scalar">(), locals = new Set<string>();
+      const observe = (reference: PartReference): void => { if (!locals.has(reference.name) && !names.has(reference.name)) names.set(reference.name, "scalar"); };
+      transform_part_parameter_strings(clone_hson_graph_without_quids(definition.root), value => {
+        const refs = part_placeholder_matches(value);
+        if (refs === undefined) throw new TypeError("Invalid Part placeholder.");
+        refs.forEach(observe); return value;
+      }, observe, declarations => {
+        for (const declaration of declarations) {
+          if (locals.has(declaration.name)) throw new TypeError("Conflicting Part local binding.");
+          locals.add(declaration.name); names.set(declaration.reference.name, "data");
+        }
+      });
+      parameters = names; interfaces.set(definition.root, parameters);
+    }
+    for (const raw of supplied) {
+      const argument = part_argument_name(raw);
+      if (argument === undefined) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)}.`);
+      const { name, kind } = argument;
+      if (!parameters.has(name)) throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)}.`);
+      if (parameters.get(name) !== kind) throw new TypeError(`Part parameter ${JSON.stringify(name)} does not match the receiving data interface.`);
+    }
+  };
+  const validateConnector = (node: HsonNode, collection: unknown, environment: PartEnvironment, inspectInterface: boolean): void => {
+    if (node.$_content.length) throw new TypeError("hson-part connectors must be empty; inputs are named argument attributes.");
+    const attrs = node.$_attrs ?? {};
+    const supplied = new Map<string, "data" | "scalar">();
+    for (const [raw, value] of Object.entries(attrs)) {
+      if (!is_part_argument_attribute(raw)) continue;
+      const argument = part_argument_name(raw);
+      if (argument === undefined) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)}.`);
+      if (supplied.has(argument.name)) throw new TypeError(`Conflicting Part parameter ${JSON.stringify(argument.name)}.`);
+      supplied.set(argument.name, argument.kind);
+      if (argument.kind === "data") {
+        if (typeof value !== "string") throw new TypeError("Part data parameters require serialized HsonData.");
+        if (whole_part_reference(value) === undefined) {
+          try { admit_canonical_hson_data_value(value); }
+          catch (cause) { throw new TypeError(`Invalid Part data parameter ${JSON.stringify(argument.name)}.`, { cause }); }
+        }
+      } else if (!parameter_scalar(value)) throw new TypeError("Part parameters require scalar values.");
+    }
+    if (!inspectInterface) return;
+    // Coordinates are normally literal; their established scalar substitution remains available.
+    const coordinate = (value: unknown): unknown => {
+      if (typeof value !== "string") return value;
+      const refs = part_placeholder_matches(value);
+      if (refs === undefined) throw new TypeError("Invalid Part placeholder.");
+      let output = "", at = 0;
+      for (const reference of refs) {
+        const binding = resolve_part_reference(reference, environment);
+        if (!parameter_scalar(binding.value)) throw new TypeError("Part coordinates require scalar values.");
+        output += value.slice(at, reference.start) + String(binding.value); at = reference.end;
+      }
+      return output + value.slice(at);
+    };
+    const lib = coordinate(attrs.lib ?? collection), member = coordinate(attrs.at);
+    if (typeof lib !== "string" || !lib || typeof member !== "string") throw new TypeError("hson-part requires exact collection and member coordinates.");
+    const definition = part(lib, member);
+    validateArguments(definition, Object.keys(attrs).filter(is_part_argument_attribute));
   };
   let nodes = 1; // Receiving ROOT; visited connectors also consume work, even when they insert nothing.
   let characters = 0;
@@ -316,7 +380,7 @@ export function expand_document_composition(
         if (landmark === undefined) throw new Error(`Part CSS subject ${JSON.stringify(name)} requires an exact Part-local authored QUAD; anonymous source identity is unsupported.`);
         demanded.set(landmark.node, name);
       }
-      style = { css, demanded, subjects: new Map() };
+      style = { css, demanded, subjects: new Map(), absent: new Set() };
       styles.push(style);
     }
     return { evidence, localNames, landmarks, shellNames, ...(collection === undefined ? {} : { collection }), scopes: [], ...(style === undefined ? {} : { style }) };
@@ -372,6 +436,19 @@ export function expand_document_composition(
     if (frames.length >= limits.maxDepth) throw new Error("Document composition depth limit exceeded.");
     frames.push(frame);
   };
+  const chargeOmitted = (root: HsonNode, alreadyCounted = false): void => {
+    const pending = [{ node: root, depth: frames.length }];
+    while (pending.length) {
+      const { node, depth } = pending.pop()!;
+      if (depth > limits.maxDepth) throw new Error("Document composition depth limit exceeded.");
+      if (node !== root || !alreadyCounted) if (++nodes > limits.maxNodes) throw new Error("Document composition node limit exceeded.");
+      chargeHeader(node);
+      for (const child of node.$_content) {
+        if (is_Node(child)) pending.push({ node: child, depth: depth + 1 });
+        else if (typeof child === "string") charge(child);
+      }
+    }
+  };
   while (frames.length) {
     const frame = frames[frames.length - 1]!;
     if (frame.index === frame.source.length) {
@@ -388,10 +465,6 @@ export function expand_document_composition(
       }
       frames.pop();
       if (frame.selection !== undefined) {
-        const environment = frame.occurrence.parameters;
-        for (const name of environment?.bindings.keys() ?? []) if (!environment?.used.has(name)) {
-          throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)} in ${environment?.context}.`);
-        }
         const selections = active.get(frame.selection.collection)!;
         selections.delete(frame.selection.member);
         if (selections.size === 0) active.delete(frame.selection.collection);
@@ -407,6 +480,8 @@ export function expand_document_composition(
       continue;
     }
     if (++nodes > limits.maxNodes) throw new Error("Document composition node limit exceeded.");
+    if (frame.occurrence.parameters?.omitted?.(item)) { chargeOmitted(item, true); continue; }
+    if (Object.hasOwn(item.$_attrs ?? {}, PART_OPTIONAL)) throw new TypeError("part:optional is only allowed within a governed Part definition.");
     let configuration: Configuration | undefined;
     let configuredPath: readonly number[] | undefined;
     for (const current of frame.occurrence.scopes) {
@@ -448,7 +523,7 @@ export function expand_document_composition(
           charge(value);
           const reference = whole_part_reference(value);
           if (reference !== undefined) {
-            parameters.set(argument.name, { kind: "data", value: resolve_part_reference(reference, frame.occurrence.parameters).value });
+            parameters.set(argument.name, { kind: "data", value: resolve_part_reference(reference, frame.occurrence.parameters, true).value });
           } else {
             try { parameters.set(argument.name, { kind: "data", value: admit_canonical_hson_data_value(value) }); }
             catch (cause) { throw new TypeError(`Invalid Part data parameter ${JSON.stringify(argument.name)} in ${context}.`, { cause }); }
@@ -462,9 +537,17 @@ export function expand_document_composition(
       }
       if (typeof lib !== "string" || typeof member !== "string") throw new TypeError("Composition Part coordinates must be strings.");
       const definition = part(lib, member);
+      const authoredArguments = frame.occurrence.parameters?.authoredArguments?.get(item);
+      if (authoredArguments !== undefined) validateArguments(definition, authoredArguments);
       const environment: PartEnvironment = { bindings: parameters, used: new Set(), context };
-      const selected = { ...definition, root: substitute_part_parameters(definition.root, environment, limits.maxCharacters - characters) };
+      const selected = { ...definition, root: substitute_part_parameters(definition.root, environment, limits.maxCharacters - characters, (connector, inspectInterface) => validateConnector(connector, lib, environment, inspectInterface)) };
       const content = selected.root.$_content;
+      if (is_Node(content[0]) && environment.omitted?.(content[0])) {
+        chargeOmitted(content[0]);
+        if (style !== undefined && styledName !== undefined) style.absent.add(styledName);
+        if (configuration?.q !== undefined) throw new TypeError("Composition receiving QUAD requires exactly one ordinary resulting element.");
+        continue;
+      }
       const selection: Selection = { collection: lib, member };
       if (active.get(lib)?.has(member)) {
         const chain = frames.flatMap(current => current.selection === undefined ? [] : [label(current.selection)]);
@@ -472,6 +555,9 @@ export function expand_document_composition(
       }
       const coordinate = [...frame.outputPath, frame.output.length];
       const childOccurrence = occurrence(selected, lib, coordinate, frame.occurrence.evidence.root);
+      if (childOccurrence.style !== undefined) for (const [node, name] of childOccurrence.style.demanded) {
+        if (environment.omitted?.(node)) childOccurrence.style.absent.add(name);
+      }
       const localNames = frame.occurrence.localNames.get(item) ?? [];
       for (const name of [...localNames, configuration?.q]) if (name !== undefined) bind(frame.occurrence, name, "part", coordinate);
       // A connector's at belongs to the newly selected component, never its source siblings.
@@ -542,9 +628,9 @@ export function expand_document_composition(
   // validates the complete qualified graph and the registry bijection before
   // ordinary sparse reconstruction allocates any receiving identities.
   associations.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
-  const occurrenceStyles = styles.map(({ css, demanded, subjects }): DocumentCompositionStyle => {
-    if (subjects.size !== demanded.size) throw new Error("Part CSS subject was lost during composition.");
-    return Object.freeze({ css, subjects: Object.freeze([...subjects].map(([name, path]) => Object.freeze({ name, path }))) });
+  const occurrenceStyles = styles.map(({ css, demanded, subjects, absent }): DocumentCompositionStyle => {
+    if (subjects.size + absent.size !== demanded.size) throw new Error("Part CSS subject was lost during composition.");
+    return Object.freeze({ css: omit_part_css_subjects(css, absent), subjects: Object.freeze([...subjects].map(([name, path]) => Object.freeze({ name, path }))) });
   });
   if (limits.configuration?.q !== undefined) bind(initial, limits.configuration.q,
     occurrences.some(occurrence => JSON.stringify(occurrence.root) === "[0]") ? "part" : "element", [0]);
@@ -571,72 +657,157 @@ function parameter_scalar(value: unknown): value is Primitive {
   return value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value);
 }
 
-function resolve_part_reference(reference: PartReference, environment: PartEnvironment | undefined): PartBinding {
+/** Only a proven missing property/index (or forwarded absence) can be optional. */
+function resolve_part_reference(reference: PartReference, environment: PartEnvironment | undefined, allowAbsent = false): PartBinding {
   const binding = environment?.bindings.get(reference.name);
   const context = environment?.context ?? "top-level invocation (no enclosing Part)";
   if (binding === undefined) throw new TypeError(`Missing Part parameter ${JSON.stringify(reference.name)} for %{${reference.reference}} in ${context}.`);
   if (reference.path.length && binding.kind !== "data") throw new TypeError(`Part reference %{${reference.reference}} requires a data binding in ${context}.`);
-  const value = ordered_projected_value_at(binding.value, reference.path);
-  if (value === undefined) throw new TypeError(`Missing or invalid Part path %{${reference.reference}} in ${context}.`);
   environment!.used.add(reference.name);
+  let value = binding.value;
+  for (const key of reference.path) {
+    if (value === undefined) break;
+    if (typeof key === "number" ? !Array.isArray(value) : !is_ordered_projected_object(value)) {
+      throw new TypeError(`Invalid Part path %{${reference.reference}} in ${context}.`);
+    }
+    value = ordered_projected_value_at(value, [key]);
+  }
+  if (value === undefined && !allowAbsent) throw new TypeError(`Missing Part path %{${reference.reference}} in ${context}.`);
   return binding.kind === "scalar" ? binding : { kind: "data", value };
 }
 
-/** Only decoded text payloads and whole public attribute values participate. No source concatenation. */
-function substitute_part_parameters(root: HsonNode, environment: PartEnvironment, remainingCharacters: number): HsonNode {
+/** Validate the authored tree before deciding presence, then substitute included values.
+ * Keeping source topology until composition preserves QUAD coordinates. The second
+ * traversal is necessary: an ancestor's OR decision can depend on its last descendant.
+ * Neither phase inspects replacement output or enters a separately defined Part. */
+function substitute_part_parameters(root: HsonNode, environment: PartEnvironment, remainingCharacters: number,
+  validateConnector: (node: HsonNode, inspectInterface: boolean) => void): HsonNode {
   const copy = clone_hson_graph_without_quids(root);
-  // Preflight each replacement before allocating an amplified string. Emission still
-  // charges the complete output through the composer's existing aggregate budget.
+  const optional = new Set<HsonNode>(), absent = new Set<HsonNode>(), present = new Set<HsonNode>();
+  const parents = new Map<HsonNode, HsonNode>(), locals = new Set<string>();
+  const connectors: HsonNode[] = [];
+  const missingDeclarations = new Set<string>();
   const bounded = (length: number): void => {
     if (length > remainingCharacters) throw new Error("Document composition character limit exceeded.");
   };
-  const substitute = (value: string): Primitive => {
+  const matches = (value: string) => {
     bounded(value.length);
-    const matches = part_placeholder_matches(value);
-    if (matches === undefined) throw new TypeError(`Invalid Part placeholder in ${environment.context}.`);
-    const read = (reference: PartReference): Primitive => {
-      const binding = resolve_part_reference(reference, environment);
+    const found = part_placeholder_matches(value);
+    if (found === undefined) throw new TypeError(`Invalid Part placeholder in ${environment.context}.`);
+    return found;
+  };
+  const observe = (reference: PartReference, node: HsonNode): void => {
+    if (resolve_part_reference(reference, environment, true).value !== undefined) present.add(node);
+  };
+  transform_part_parameter_strings(copy, (value, node) => {
+    for (const reference of matches(value)) observe(reference, node);
+    return value;
+  }, observe, declarations => {
+    const incoming: PartEnvironment = { ...environment, bindings: new Map(environment.bindings), used: new Set() };
+    environment.bindings.clear();
+    for (const [name, binding] of incoming.bindings) if (binding.kind === "scalar") environment.bindings.set(name, binding);
+    for (const declaration of declarations) {
+      if (locals.has(declaration.name) || environment.bindings.has(declaration.name)) throw new TypeError(`Conflicting Part local binding ${JSON.stringify(declaration.name)} in ${environment.context}.`);
+      locals.add(declaration.name);
+      // An unprovided argument is never an absent Data value. Leave it unbound:
+      // any authored use fails, while a no-reference optional root can disappear.
+      if (!incoming.bindings.has(declaration.reference.name)) { missingDeclarations.add(declaration.name); continue; }
+      const binding = resolve_part_reference(declaration.reference, incoming, true);
+      if (binding.kind !== "data") throw new TypeError(`Part data declaration ${JSON.stringify(declaration.name)} requires a structured input in ${environment.context}.`);
+      environment.bindings.set(declaration.name, binding);
+    }
+    for (const [name, binding] of incoming.bindings) if (binding.kind === "data" && !incoming.used.has(name)) {
+      throw new TypeError(`Undeclared structured Part input ${JSON.stringify(name)} in ${environment.context}.`);
+    }
+  }, {
+    enter(node, parent) {
+      if (parent !== undefined) parents.set(node, parent);
+      if (Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)) optional.add(node);
+      if (node.$_tag.toLowerCase() === "hson-part") { connectors.push(node); validateConnector(node, false); }
+    },
+    leave(node, parent) {
+      if (optional.has(node) && !present.has(node)) absent.add(node);
+      if (parent !== undefined && present.has(node)) present.add(parent);
+    },
+  });
+  const omitted = (node: HsonNode): boolean => {
+    let current: HsonNode | undefined = node;
+    while (current !== undefined) {
+      if (absent.has(current)) return true;
+      current = parents.get(current);
+    }
+    return false;
+  };
+  environment.omitted = omitted;
+  // The normal composer checks included connectors against the selected Part.
+  // Hidden or optional inputs must also prove their names before being discarded.
+  environment.authoredArguments = new Map(connectors.filter(connector => optional.has(connector))
+    .map(connector => [connector, Object.keys(connector.$_attrs ?? {}).filter(is_part_argument_attribute)]));
+  for (const connector of connectors) if (omitted(connector)) validateConnector(connector, true);
+  // Usage is authored, including absent optional branches; it is not a persistent dependency.
+  const rootElement = copy.$_content[0];
+  const rootAbsent = is_Node(rootElement) && omitted(rootElement);
+  for (const name of environment.bindings.keys()) if (!environment.used.has(name) && !(rootAbsent && locals.has(name))) {
+    throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)} in ${environment.context}.`);
+  }
+  if (rootAbsent) return copy;
+  if (missingDeclarations.size) throw new TypeError(`Missing required Part data input in ${environment.context}.`);
+  for (const binding of environment.bindings.values()) if (binding.value === undefined) {
+    throw new TypeError(`Missing required Part data input in ${environment.context}.`);
+  }
+  transform_part_parameter_strings(copy, (value, node, owner) => {
+    const found = matches(value);
+    const whole = found.length === 1 && found[0]!.start === 0 && found[0]!.end === value.length;
+    const read = (reference: PartReference): Primitive | undefined => {
+      const binding = resolve_part_reference(reference, environment, whole && optional.has(owner));
+      if (binding.value === undefined) {
+        if (node.$_tag === STR_TAG) absent.add(node);
+        return undefined;
+      }
       if (!parameter_scalar(binding.value)) throw new TypeError(`Part reference %{${reference.reference}} requires a primitive output in ${environment.context}.`);
       const output = binding.kind === "data" ? String(binding.value) : binding.value;
       if (typeof output === "string") bounded(output.length);
       return output;
     };
-    if (matches.length === 1 && matches[0]!.start === 0 && matches[0]!.end === value.length) return read(matches[0]!);
+    if (whole) return read(found[0]!);
     let at = 0, result = "";
-    for (const match of matches) {
+    for (const match of found) {
       const replacement = String(read(match));
       bounded(result.length + match.start - at + replacement.length);
       result += value.slice(at, match.start) + replacement; at = match.end;
     }
     bounded(result.length + value.length - at);
     return result + value.slice(at);
-  };
-  transform_part_parameter_strings(copy, substitute, undefined, declarations => {
-    // Replace the incoming interface with the occurrence's local bindings once,
-    // before substituting any root attribute or descendant. Values remain immutable.
-    const incoming: PartEnvironment = { ...environment, bindings: new Map(environment.bindings), used: new Set() };
-    environment.bindings.clear();
-    for (const [name, binding] of incoming.bindings) if (binding.kind === "scalar") environment.bindings.set(name, binding);
-    for (const declaration of declarations) {
-      const binding = resolve_part_reference(declaration.reference, incoming);
-      if (binding.kind !== "data") throw new TypeError(`Part data declaration ${JSON.stringify(declaration.name)} requires a structured input in ${environment.context}.`);
-      if (environment.bindings.has(declaration.name)) throw new TypeError(`Conflicting Part local binding ${JSON.stringify(declaration.name)} in ${environment.context}.`);
-      environment.bindings.set(declaration.name, binding);
-    }
-    for (const [name, binding] of incoming.bindings) if (binding.kind === "data" && !incoming.used.has(name)) {
-      throw new TypeError(`Undeclared structured Part input ${JSON.stringify(name)} in ${environment.context}.`);
-    }
-  });
+  }, undefined, undefined, { enter: node => !omitted(node) });
   return copy;
 }
 
-/** Presence check only, with no source lookup or identity issuance. @internal */
+/** Construction marker check (connectors and optional flags), without source reads or identity issuance. @internal */
 export function has_part_connector(root: HsonNode): boolean {
   const stack = [root];
   while (stack.length) {
     const node = stack.pop()!;
-    if (node.$_tag.toLowerCase() === "hson-part") return true;
+    if (node.$_tag.toLowerCase() === "hson-part" || Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)) return true;
     for (const child of node.$_content) if (is_Node(child)) stack.push(child);
   }
   return false;
+}
+
+/** Lower zero-or-one Part content through existing graph operations. Undefined is
+ * an insertion no-op; its caller still validates the original target and index. */
+export function lower_part_content_operation(operation: LiveMapGraphOp, root: HsonNode, receivingRoot: HsonNode): LiveMapGraphOp | undefined {
+  if (operation.op !== "insert-content" && operation.op !== "replace-content") throw new Error("Unsupported Part content operation.");
+  if (root.$_content.length === 0) {
+    if (operation.op === "insert-content") return undefined;
+    const endpoint = resolve_document_path(receivingRoot, "document", operation.target.path);
+    if (!is_Node(endpoint)) throw new Error("Part replacement requires a content target.");
+    const removal = lower_internal_document_content_remove({ kind: "content",
+      scope: endpoint.$_tag === ELEM_TAG ? "element" : "document", length: endpoint.$_content.length,
+      physical: { kind: "direct", path: operation.target.path } }, operation.index);
+    if (removal.kind !== "content-remove") throw new Error("Part omission requires a removable content slot.");
+    return { domain: "graph", op: "remove-content", target: { kind: "path", path: validate_document_path(removal.target.path) }, index: removal.index };
+  }
+  const output = root.$_content[0];
+  if (!is_Node(output) || root.$_content.length !== 1) throw new Error("Part content must realize zero or one content slot.");
+  return operation.op === "insert-content" ? { ...operation, content: output } : { ...operation, replacement: output };
 }

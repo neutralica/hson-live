@@ -32,6 +32,12 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
     // Grammar and declared-name conflicts are local facts; they require no receiver shape.
     const isDefinition = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"
       && library.members.some(member => member.documents.includes(document))));
+    for (const flag of document.optionalStructures) {
+      if (flag.issue !== undefined) report(flag.location, "HSON_PART_OPTIONAL_INVALID", flag.issue);
+      else if (!isDefinition && document.receivers.some(receiver => receiver.certainty === "certain" && receiver.library?.family === "document")) {
+        report(flag.location, "HSON_PART_OPTIONAL_INVALID", "part:optional is only allowed within a governed Part definition.");
+      }
+    }
     if (isDefinition) for (const issue of document.referenceIssues) report(issue.location, "HSON_PART_REFERENCE_INVALID", issue.message);
     if (document.admission === "qualified") for (const connector of document.connectors) {
       const supplied = new Set<string>();
@@ -90,7 +96,9 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       if (definition.admission !== "qualified" || definition.parameterCompleteness !== "complete") continue;
       const supplied = new Set(arguments_.map(attribute => part_argument_name(attribute.name)!.name));
       const vocabulary = new Set(definition.parameters.map(parameter => parameter.name));
-      for (const name of vocabulary) if (!supplied.has(name)) {
+      const optionalRoot = definition.optionalStructures.some(flag => flag.root);
+      for (const name of vocabulary) if (!supplied.has(name)
+        && !(optionalRoot && definition.parameters.find(parameter => parameter.name === name)?.uses.length === 0)) {
         report(connector.location, "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)}.`);
       }
       for (const attribute of arguments_) {

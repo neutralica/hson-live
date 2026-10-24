@@ -14,7 +14,7 @@ import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
 import { prepare_document_scoped_library_styles, type PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
 import { normalize_document_scoped_library_subjects, capture_document_scoped_library, decode_document_scoped_library, own_document_scopes, restore_document_scoped_library_styles } from "./livemap.document.scoped-portable.js";
-import { expand_document_composition, document_composition_options, has_part_connector, type DocumentCompositionStyle } from "./livemap.document.composition.js";
+import { expand_document_composition, document_composition_options, has_part_connector, lower_part_content_operation, type DocumentCompositionStyle } from "./livemap.document.composition.js";
 import { merge_part_stylesheets, retire_part_styles } from "../../internal/css/part-stylesheet.js";
 import { registry_from_entries } from "./livemap.hosted.js";
 import {
@@ -1104,18 +1104,16 @@ function make_livemap_registry_engine(
       if (selected === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return selected;
     };
-    const realizeOperation = (operation: LiveMapGraphOp) => {
+    const realizeOperation = (operation: LiveMapGraphOp, receivingRoot: HsonNode) => {
       const input = operation.op === "insert-content" ? operation.content : operation.op === "replace-content" ? operation.replacement : undefined;
       if (!is_Node(input) || !has_part_connector(input)) return { operation, styles: Object.freeze<DocumentCompositionStyle[]>([]) };
       const composed = expand_document_composition("ingress", () => ({ root: { $_tag: ROOT_TAG, $_content: [input] } }),
         document_composition_options(undefined), readPartCandidate);
-      const output = composed.root.$_content[0];
-      if (!is_Node(output) || composed.root.$_content.length !== 1) throw new Error("Part content must realize exactly one content slot.");
+      const realized = lower_part_content_operation(operation, composed.root, receivingRoot);
+      if (realized === undefined || realized.op === "remove-content") return { operation: realized, styles: [] };
       if (operation.op !== "insert-content" && operation.op !== "replace-content") throw new Error("Unsupported Part construction operation.");
       const prefix = [...operation.target.path, operation.index];
       const styles = composed.styles.map(style => ({ ...style, subjects: style.subjects.map(subject => ({ ...subject, path: [...prefix, ...subject.path.slice(1)] })) }));
-      const realized: LiveMapGraphOp = operation.op === "insert-content" ? { ...operation, content: output }
-        : { ...operation, replacement: output };
       return { operation: realized, styles };
     };
     const system_candidate = (): AggregateSystemCandidate | undefined => {
@@ -1386,7 +1384,9 @@ function make_livemap_registry_engine(
           : replay_document_scoped_effects(before, encode_document_scoped_effects([receiving]), scopedAuthority,
             () => {}, ordinal); // Schema validates the complete transaction below.
         if (!next.changed && receiving === undefined) {
-          scopedCandidates.set(library.identity, before);
+          // An omitted insertion must not promote a flat document merely because
+          // another Library changes in the same aggregate operation.
+          if (next.steps.length !== 0 || previous !== undefined || library.documentScopes !== undefined) scopedCandidates.set(library.identity, before);
           continue;
         }
         const step = next.steps[0], effect = next.effects?.[0];
@@ -1447,9 +1447,13 @@ function make_livemap_registry_engine(
           : admittedOperation.op === "replace-content" ? admittedOperation.replacement : undefined;
         if (is_Node(incoming) && has_part_connector(incoming)) {
           if (transitionController.managedExecutionOwner() !== undefined) throw new Error("Scoped Part operations require complete scoped evidence and Echo support.");
-          unscopedConstructions.add(library.identity);
         }
-        const construction = write.publicStaged === true ? realizeOperation(admittedOperation) : { operation: admittedOperation, styles: [] };
+        const construction = write.publicStaged === true ? realizeOperation(admittedOperation, candidate.root) : { operation: admittedOperation, styles: [] };
+        if (construction.operation === undefined) {
+          prepare_document_graph_operation(candidate.root, "document", admittedOperation, candidate.overlay);
+          continue;
+        }
+        if (is_Node(incoming) && has_part_connector(incoming) && construction.operation.op !== "remove-content") unscopedConstructions.add(library.identity);
         const priorRoot = candidate.root;
         const priorOverlay = candidate.overlay;
         const planned = prepare_document_graph_operation(

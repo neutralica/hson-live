@@ -1,5 +1,5 @@
 import { Hson, ANY_DATA, type HsonSchema, type HsonAuthored } from "hson-live/hson";
-import { hsonLiveMap, type LiveMapDocumentPart, type LiveMapPartCollection, type LiveMapLibraryPathHandle } from "hson-live/livemap";
+import { hsonLiveMap, type LiveMapCommit, type LiveMapDocumentPart, type LiveMapPartCollection, type LiveMapLibraryPathHandle } from "hson-live/livemap";
 import type { LocusActionContext, LocusDataLocation, ReadDataLocation } from "hson-live/locus";
 import type { Echo } from "hson-live/echo";
 
@@ -284,3 +284,42 @@ actionBase.present()?.write();
 
 // HsonData uses the existing string branch of Part.write; no new wrapper or overload.
 parts.heading.write({ "data:slide": Hson.data`<title "Visible">`, "data:index": Hson.data`0` }) satisfies HsonAuthored;
+
+// Document edits return the aggregate stream, including CSS installation/retirement.
+const optionalParts = hsonLiveMap.fromLibraries({ parts: { parts: {
+  optional: { kind: 'document', document: Hson.document`<p part:optional d:data="%{payload}" "%{d.title}"/>`, stylesheet: 'p{color:red}' },
+  ordinary: { kind: 'document', document: Hson.document`<b/>`, stylesheet: 'b{color:blue}' },
+} }, page: { document: Hson.document`<main <i/>/>` } });
+const replacementCommit = optionalParts.doc.must('page').document.content.replace({ kind: 'path', path: [0, 0] }, 0,
+  { $_tag: 'hson-part', $_attrs: { lib: 'parts', at: 'optional', 'data:payload': '<>' }, $_content: [] });
+const ordinaryCommit = optionalParts.doc.must('page').document.content.replace({ kind: 'path', path: [0, 0] }, 0,
+  { $_tag: 'hson-part', $_attrs: { lib: 'parts', at: 'ordinary' }, $_content: [] });
+declare const aggregateCommit: LiveMapCommit<'page'>;
+aggregateCommit satisfies typeof replacementCommit;
+aggregateCommit satisfies typeof ordinaryCommit;
+declare const cssOperation: Extract<LiveMapCommit['operations'][number]['operation'], { domain: 'css' }>;
+cssOperation satisfies typeof replacementCommit.operations[number]['operation'];
+cssOperation satisfies typeof ordinaryCommit.operations[number]['operation'];
+for (const commit of [ordinaryCommit, replacementCommit]) for (const { operation } of commit.operations) {
+  // @ts-expect-error Aggregate operations are not all graph replacements.
+  operation.replacement;
+  // @ts-expect-error CSS and topology operations do not have graph op discriminants.
+  operation.op;
+  if ('domain' in operation && operation.domain === 'css') {
+    if (operation.kind === 'replace') operation.stylesheet.rules;
+    // @ts-expect-error A CSS operation cannot masquerade as a graph replacement.
+    operation.replacement;
+  } else if ('domain' in operation && operation.domain === 'graph') {
+    switch (operation.op) {
+      case 'replace-content': operation.replacement; break;
+      case 'remove-content':
+        operation.index satisfies number;
+        // @ts-expect-error Removal has no replacement payload.
+        operation.replacement;
+        break;
+      case 'replace-root': case 'set-attr': case 'remove-attr': case 'replace-attrs':
+      case 'insert-content': case 'move-content': case 'ensure-quid': break;
+      default: operation satisfies never;
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import { document_hson_value } from "./helpers/document-hson-value.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { document_graph_operation } from "./helpers/document-library.mts";
 import { Hson, hsonLiveMap } from "../src/index.ts";
 import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_test } from "../src/_tests/diagnostics-internal.ts";
 import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
@@ -51,7 +52,7 @@ check("element insert owns ordered authored content", () => {
 check("first insert materializes an empty element's content", () => {
   const map = registry("<main/>");
   const commit = map.doc.must("page").at([]).asElement()!.insert(0, item("a"));
-  assert.equal(commit.operations[0]?.operation.op, "insert-content");
+  assert.equal(document_graph_operation(commit).op, "insert-content");
   assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([]).hson()) as HsonNode), ["a"]);
 });
 check("nested insert owns only selected section content", () => {
@@ -97,7 +98,7 @@ check("proxy escape uses the selected library content capability", () => {
   const page = registry('<main <item id="a"/> <item id="b"/>/>').doc.must("page");
   assert.equal(page.proxy().$_, page.at([]));
   const commit = page.proxy().$_.asElement()!.move(0, 1);
-  assert.equal(commit.operations[0]?.operation.op, "move-content");
+  assert.equal(document_graph_operation(commit).op, "move-content");
 });
 check("location insert matches document API and registry commit", () => {
   const left = registry('<main <item id="a"/>/>');

@@ -126,7 +126,7 @@ export function make_livemap_document_mutation_api(
     target: LiveMapDocumentRequestTarget,
     index: number,
     replacement: LiveMapDocumentContent,
-  ) => LiveMapGraphCommit<DocumentGraphReplaceContentOp>;
+  ) => LiveMapGraphCommit<DocumentGraphReplaceContentOp | LiveMapGraphRemoveContentOp>;
   insertContent: (
     target: LiveMapDocumentRequestTarget,
     index: number,
@@ -421,7 +421,7 @@ function replace_document_content(
   targetInput: unknown,
   indexInput: unknown,
   replacementInput: unknown,
-): LiveMapGraphCommit<DocumentGraphReplaceContentOp> {
+): LiveMapGraphCommit<DocumentGraphReplaceContentOp | LiveMapGraphRemoveContentOp> {
   const assertCurrent = controller.captureFence();
   const candidate = prepare_replace_document_content(controller.root(), controller.mode, controller.overlay(), targetInput, indexInput, replacementInput, "request");
   assertCurrent();

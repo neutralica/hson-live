@@ -7,7 +7,7 @@ import { document_quad_disposition } from "../../src/api/livemap/livemap.documen
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import { set_livemap_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.quid-allocation.ts";
 import { selector_for_quid } from "../../src/api/livetree/managers/css-render.ts";
-import { document_css_subject_identities, document_css_mentions_subject_identity, translate_document_css_identities as translate, type CssIdentityCorrespondence } from "../../src/internal/css/css-identity-translation.ts";
+import { document_css_subject_identities, document_css_mentions_subject_identity, omit_part_css_subjects, translate_document_css_identities as translate, type CssIdentityCorrespondence } from "../../src/internal/css/css-identity-translation.ts";
 import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, render_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
 
@@ -38,6 +38,32 @@ function identities(source: string): string[] {
 }
 
 export function css_identity_translation_cases(check: (name: string, run: () => void) => void): void {
+  check("omitted identity attributes retain false matching atoms through selector serialization and portable round trips", () => {
+    const absent = new Set(['gone']);
+    for (const attribute of [String.raw`[hson\:quad="gone"]`, String.raw`[hson\3a quad=gone]`, String.raw`[hson\:quad="\67 one"]`]) {
+      for (const selector of [attribute, `.target:not(${attribute})`, `:is(${attribute},p)`, `:where(:not(${attribute}))`,
+        `:has(>${attribute})`, `${attribute},.target:not(${attribute})`, `:not(${attribute}${attribute})`,
+        `:nth-child(n of ${attribute},p)`, `:nth-last-child(2n of ${attribute},p)`, `:host(${attribute})`, `::slotted(${attribute})`]) {
+        const source = `${selector}{color:red}`, input = sheet(source), before = JSON.stringify(input);
+        const result = omit_part_css_subjects(input, absent);
+        assert.deepEqual(result, sheet(source.replaceAll(attribute, ':nth-child(0)')));
+        assert.equal(JSON.stringify(input), before);
+        assert.deepEqual(document_css_subject_identities(result, 'inbound'), []);
+        assert.deepEqual(sheet(css(result)), result);
+        assert.deepEqual(encode_portable_document_stylesheet(decode_portable_document_stylesheet(result)), result);
+      }
+    }
+    const gone = String.raw`[hson\:quad="gone"]`, kept = String.raw`[hson\:quad="kept"]`;
+    const scoped = sheet(`@scope (${gone}) to (${kept}){${gone}{color:red}}`);
+    assert.deepEqual(omit_part_css_subjects(scoped, absent), sheet(`@scope (:nth-child(0)) to (${kept}){:nth-child(0){color:red}}`));
+    // selector() is a feature test, not a subject demand; leave its syntax intact.
+    const feature = sheet(`@supports selector(${gone}){${gone}{color:red}}`);
+    assert.deepEqual(omit_part_css_subjects(feature, absent), sheet(`@supports selector(${gone}){:nth-child(0){color:red}}`));
+    assert.equal(omit_part_css_subjects(scoped, new Set()), scoped);
+    for (const attribute of [String.raw`[hson\:quad]`, String.raw`[hson\:quad~="gone"]`, String.raw`[hson\:quad="gone" i]`, String.raw`[x|hson\:quad="gone"]`]) {
+      assert.throws(() => omit_part_css_subjects(sheet(`${attribute}{color:red}`), absent));
+    }
+  });
   check("CSS correspondence projects disposable names and restores fresh issued subjects without side effects", () => {
     const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } });
     const aggregate = owner(map), library = aggregate.libraries()[0]!;

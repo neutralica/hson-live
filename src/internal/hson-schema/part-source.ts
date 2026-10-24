@@ -1,4 +1,5 @@
 import type ts from "typescript";
+import type { HsonNode } from "../../core/types.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { hson_tagged_source, admit_hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../trusted-schema-diagnostics/interpolation-source.js";
@@ -10,7 +11,7 @@ import { qualify_authored_document_source } from "../../api/document/hson-author
 import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { is_part_data_declaration_attribute, part_data_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, transform_part_parameter_strings } from "../part-placeholder.js";
+import { PART_OPTIONAL, part_optional_issue, is_part_data_declaration_attribute, part_data_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, transform_part_parameter_strings } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 
@@ -36,6 +37,7 @@ export type PartDocumentSource = Readonly<{
   parameterSpellings: readonly PartParameterSource[];
   parameterCompleteness: "complete" | "unknown";
   receivingDeclarations: readonly Readonly<{ name: string; incoming: string; location: PartSourceLocation }>[];
+  optionalStructures: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string; references?: number }>[];
   referenceIssues: readonly Readonly<{ location: PartSourceLocation; message: string }>[];
   /** Payload ranges, never guessed decoded-substring offsets. No type or optionality is implied. */
   receivers: readonly Readonly<{ batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible" }>[];
@@ -170,6 +172,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const attributeRanges = new WeakMap<object, Parameters<HsonSourceLexicalCollector["recordAttribute"]>[1]>();
     const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute"; reference: string; structured: boolean }[] = [];
     const receivingDeclarations: { name: string; incoming: string; location: PartSourceLocation }[] = [];
+    const optionalStructures: { location: PartSourceLocation; root: boolean; issue?: string; references?: number }[] = [];
     const referenceIssues: { location: PartSourceLocation; message: string }[] = [];
     const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute", typed = false): void => {
       const mapped = range === undefined ? undefined : map(range);
@@ -200,6 +203,13 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             if (observedAttributes.has(attr)) continue;
             observedAttributes.add(attr);
             const value = split_attrs_meta([attr]).attrs[attr.name];
+            if (attr.name === PART_OPTIONAL) {
+              const range = attributeRanges.get(attr)?.name;
+              const where = range === undefined ? undefined : map(range);
+              if (where !== undefined) optionalStructures.push({ location: where, root: tags.length === 0,
+                ...(attr.value?.direct === true ? {} : { issue: part_optional_issue(value) }) });
+              continue;
+            }
             if (is_part_data_declaration_attribute(tag, attr.name)) {
               const ranges = attributeRanges.get(attr);
               const range = ranges?.value ?? ranges?.name;
@@ -240,16 +250,33 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         const root = qualify_authored_document_source(text, new Map());
         const locals = new Set<string>();
         const observe = (name: string): void => { if (!locals.has(name)) names.add(name); };
-        transform_part_parameter_strings(root, value => {
+        const counts = new Map<HsonNode, number>();
+        const optionalNodes = new Map<HsonNode, typeof optionalStructures[number]>();
+        let optionalIndex = 0;
+        const count = (node: HsonNode, amount: number) => counts.set(node, (counts.get(node) ?? 0) + amount);
+        transform_part_parameter_strings(root, (value, node) => {
           const matches = part_placeholder_matches(value);
           if (matches === undefined) throw new Error("Invalid Part placeholder");
           for (const match of matches) observe(match.name);
+          count(node, matches.length);
           return value;
-        }, reference => { observe(reference.name); }, declarations => {
+        }, (reference, node) => { observe(reference.name); count(node, 1); }, declarations => {
           for (const declaration of declarations) {
             locals.add(declaration.name);
             names.add(declaration.reference.name);
           }
+        }, {
+          enter(node) {
+            if (Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)) {
+              const fact = optionalStructures[optionalIndex++];
+              if (fact !== undefined) optionalNodes.set(node, fact);
+            }
+          },
+          leave(node, parent) {
+            const references = counts.get(node) ?? 0, fact = optionalNodes.get(node);
+            if (fact !== undefined) fact.references = references;
+            if (parent !== undefined) count(parent, references);
+          },
         });
         for (const use of uses) {
           if (use.structured && !locals.has(use.name)
@@ -257,7 +284,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             referenceIssues.push({ location: use.location, message: `Part reference %{${use.reference}} requires a declared local data binding.` });
           }
         }
-        for (const declaration of receivingDeclarations) if (!uses.some(use => use.name === declaration.name)) {
+        for (const declaration of receivingDeclarations) if (!uses.some(use => use.name === declaration.name) && !optionalStructures.some(fact => fact.root)) {
           referenceIssues.push({ location: declaration.location, message: `Unused Part data binding ${JSON.stringify(declaration.name)}.` });
         }
         parameterCompleteness = referenceIssues.length === 0 ? "complete" : "unknown";
@@ -274,7 +301,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         receivingDeclarations.some(declaration => declaration.incoming === name && declaration.name === use.name)
         || !receivingDeclarations.some(declaration => declaration.name === use.name) && use.name === name) })),
       parameterSpellings: spellingEligible ? [...new Set(uses.map(use => use.name))].map(name => ({ name, uses: uses.filter(use => use.name === name) })) : [],
-      parameterCompleteness, receivingDeclarations: spellingEligible ? receivingDeclarations : [], referenceIssues, receivers };
+      parameterCompleteness, optionalStructures, receivingDeclarations: spellingEligible ? receivingDeclarations : [], referenceIssues, receivers };
     documents.set(producer, result);
     relationships.set(result, receivers);
     return result;

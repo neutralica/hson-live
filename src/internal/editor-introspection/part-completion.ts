@@ -1,7 +1,7 @@
 import type { HsonGrammarCheckpoint } from "../../api/transform/parsers/tokenize-hson.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
-import { is_part_data_declaration_attribute, part_argument_name, part_placeholder_placement_issue } from "../part-placeholder.js";
+import { PART_OPTIONAL, is_part_data_declaration_attribute, part_argument_name, part_placeholder_placement_issue } from "../part-placeholder.js";
 import type { PartSourceFacts, PartDocumentSource } from "../hson-schema/part-source.js";
 import type { HsonEditorCandidate } from "./query.js";
 
@@ -13,6 +13,14 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
   let prefix = checkpoint.parameter?.prefix ?? source.slice(checkpoint.range.start, cursor);
   try { if (checkpoint.quoted !== undefined && checkpoint.parameter === undefined) prefix = decode_hson_content_string(prefix); }
   catch { return []; }
+  const memberSource = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"
+    && library.members.some(member => member.documents.includes(document))));
+  const optionalCandidate: HsonEditorCandidate[] = [];
+  if (checkpoint.kind === "header" && memberSource && PART_OPTIONAL.startsWith(prefix)
+    && !element.attributes.some(attr => attr.name === PART_OPTIONAL && (attr.start.index < checkpoint.range.start || attr.start.index >= checkpoint.range.end))) {
+    optionalCandidate.push({ label: PART_OPTIONAL, kind: "member", insertText: PART_OPTIONAL,
+      detail: "Include this structure when any authored value placeholder is present", certainty: "certain", sortText: "0000" });
+  }
   const suggestions = new Map<string, { contexts: Set<number>; certain: boolean }>();
   const add = (name: string, context: number, certain: boolean): void => {
     const previous = suggestions.get(name);
@@ -22,6 +30,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
   let contextCount = document.receivers.length;
   let detail: string;
   if (checkpoint.kind === "parameter") {
+    if (attribute === PART_OPTIONAL) return [];
     const rawAttribute = checkpoint.parameter?.rawAttribute;
     if (checkpoint.parameter === undefined || attribute !== rawAttribute?.name) return [];
     try {
@@ -33,8 +42,6 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         && (typeof decoded.value !== "string" || !decoded.value.startsWith("%{"))) return [];
     } catch { return []; }
     // Only actual member-source relationships establish a Part definition.
-    const memberSource = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"
-      && library.members.some(member => member.documents.includes(document))));
     if (!memberSource) return [];
     const receiving = attribute !== undefined && is_part_data_declaration_attribute(element.tag, attribute);
     if (receiving) {
@@ -49,7 +56,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     contextCount = 1;
     detail = "Part parameter spelling (new names are allowed)";
   } else {
-    if (element.tag.toLowerCase() !== "hson-part" || checkpoint.kind !== "header" && checkpoint.kind !== "attribute-value") return [];
+    if (element.tag.toLowerCase() !== "hson-part" || checkpoint.kind !== "header" && checkpoint.kind !== "attribute-value") return optionalCandidate;
     const coordinate = (name: string): string | undefined => {
       const attrs = element.attributes.filter(attr => attr.name === name);
       if (attrs.length !== 1 || attrs[0]?.value === undefined || attrs[0].value.direct) return undefined;
@@ -60,7 +67,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     const selectingLibrary = checkpoint.kind === "attribute-value" && attribute === "lib";
     const selectingMember = checkpoint.kind === "attribute-value" && attribute === "at";
     if (!selectingLibrary && !selectingMember && checkpoint.kind !== "header") return [];
-    if (!selectingLibrary && libraryName === undefined || checkpoint.kind === "header" && memberName === undefined) return [];
+    if (!selectingLibrary && libraryName === undefined || checkpoint.kind === "header" && memberName === undefined) return optionalCandidate;
     const existing = new Set(element.attributes.filter(attr => attr.start.index < checkpoint.range.start || attr.start.index >= checkpoint.range.end).map(attr => part_argument_name(attr.name)?.name ?? attr.name));
     document.receivers.forEach((receiver, index) => {
       const batch = facts.batches.find(batch => batch.call === receiver.batch);
@@ -90,8 +97,8 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     });
     detail = selectingLibrary ? "Parts Library" : selectingMember ? "Part member" : "Part argument";
   }
-  return [...suggestions].filter(([name]) => name.startsWith(prefix)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-    .map(([label, evidence], index) => {
+  return [...optionalCandidate, ...[...suggestions].filter(([name]) => name.startsWith(prefix)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+    .map(([label, evidence], index): HsonEditorCandidate => {
       const certainty = evidence.certain && evidence.contexts.size === contextCount ? "certain" : "possible";
       let insertText = label;
       if (checkpoint.kind === "attribute-value") {
@@ -105,5 +112,5 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
       }
       return { label, kind: checkpoint.kind === "header" ? "member" : "reference", insertText,
         detail: `${detail}${certainty === "possible" ? " (possible source context)" : ""}`, certainty, sortText: String(index).padStart(4, "0") };
-    });
+    })];
 }

@@ -84,6 +84,39 @@ function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
 }
 
 export function scoped_composition_cases(check: (name: string, run: () => void) => void) {
+  check("optional root scoped no-ops, replacement removal, root replacement and CSS lifetime", () => {
+    const f = fixture('<main <i/>/>');
+    f.definitions.at([]).object.setKey('optional', part('<aside @:root part:optional d:data="%{payload}" "%{d.title}"/>', ':scope{color:orange}'));
+    const input = (data: object) => {
+      const value = source(Hson.document`<hson-part lib="parts" at="optional" data:payload="${Hson.data.from(data)}"/>`).root.$_content[0];
+      assert.ok(is_Node(value)); return value;
+    };
+    const insertOptional = (data: object, index = 1): LiveMapGraphOp => ({ domain: 'graph', op: 'insert-content', target: target([0, 0]), index, content: input(data) });
+    unchanged(f, () => {
+      const allocations = f.allocations();
+      const omitted = f.next(f.candidate, [insertOptional({})]);
+      assert.equal(f.allocations(), allocations); assert.equal(omitted.changed, false);
+      assert.equal(omitted.root, f.candidate.root); assert.equal(omitted.scopes, f.candidate.scopes);
+      assert.deepEqual(omitted.steps, []);
+      assert.throws(() => f.next(f.candidate, [insertOptional({}, 99)]));
+      const two = f.next(f.candidate, [insertOptional({ title: 'left' }), insertOptional({ title: 'right' }, 2)]);
+      const left = at(two, [0, 0, 1]), right = at(two, [0, 0, 2]);
+      assert.equal(two.steps.flatMap(step => step.styles).length, 2);
+      const removed = f.next(two, [{ domain: 'graph', op: 'replace-content', target: target([0, 0]), index: 1, replacement: input({}) }]);
+      assert.equal(removed.scopes.occurrences.length, 1);
+      assert.equal(removed.overlay.pathForQuid(left.rootQuid), undefined);
+      assert.equal(at(removed, [0, 0, 1]).lifetime, right.lifetime);
+      assert.equal(removed.steps[0]!.operation.op, 'remove-content');
+      assert.deepEqual(removed.steps[0]!.styles, []);
+      assert.throws(() => f.next(two, [insertOptional({}), insertOptional({ title: {} })]), /primitive/);
+      const empty = f.next(two, [{ domain: 'graph', op: 'replace-root', mode: 'document', root: { $_tag: '_hson_root', $_content: [input({})] } }]);
+      assert.deepEqual(empty.root.$_content, []); assert.equal(empty.scopes.occurrences.length, 0);
+      assert.equal(empty.overlay.pathForQuid(right.rootQuid), undefined);
+      const recovered = f.next(removed, [insertOptional({ title: 'recovered' }, 1)]);
+      assert.equal(recovered.scopes.occurrences.length, 2);
+    });
+  });
+
 
   check("structured Part scoped insertion, replacement, removal and late rejection retain independent lifetimes", () => {
     const f = fixture('<main <i/>/>');

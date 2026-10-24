@@ -1,5 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { document_graph_operation } from "./helpers/document-library.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
@@ -41,9 +42,8 @@ check("selected library requests publish named map-global operations", () => {
 check("canonical operation targets contain paths rather than QUID addresses", () => {
   const library = fixture();
   const commit = library.document.attrs.set(target(0), "title", "ready");
-  const operation = commit.operations[0]?.operation;
-  assert.equal(operation?.op, "set-attr");
-  if (operation === undefined) throw new Error("Missing path operation");
+  const operation = document_graph_operation(commit);
+  assert.equal(operation.op, "set-attr");
   assert.equal(operation.target.kind, "path");
   assert.deepEqual(operation.target.path, [0]);
   assert.equal(Reflect.get(operation.target, "quid"), undefined);
@@ -53,8 +53,8 @@ check("canonical operation targets contain paths rather than QUID addresses", ()
 check("nested path requests preserve their exact canonical coordinate", () => {
   const library = fixture();
   const commit = library.document.attrs.set(target(0, 0, 0, 0, 0), "nested", true);
-  const operation = commit.operations[0]?.operation;
-  if (operation === undefined) throw new Error("Missing path operation");
+  const operation = document_graph_operation(commit);
+  assert.equal(operation.op, "set-attr");
   assert.deepEqual(operation.target.path, [0, 0, 0, 0, 0]);
 });
 
@@ -63,8 +63,8 @@ check("accepted target paths are frozen and detached from caller arrays", () => 
   const input = [0];
   const commit = library.document.attrs.set({ kind: "path", path: input }, "x", 1);
   input[0] = 9;
-  const operation = commit.operations[0]?.operation;
-  if (operation === undefined) throw new Error("Missing path operation");
+  const operation = document_graph_operation(commit);
+  assert.equal(operation.op, "set-attr");
   assert.deepEqual(operation.target.path, [0]);
   assert.equal(Object.isFrozen(operation.target.path), true);
 });

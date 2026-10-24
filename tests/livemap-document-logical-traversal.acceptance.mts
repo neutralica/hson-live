@@ -1,6 +1,7 @@
 import { document_hson_value } from "./helpers/document-hson-value.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { document_graph_operation } from "./helpers/document-library.mts";
 import { Hson, hsonLiveMap } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, projected_element } from "./helpers/mirror-unit6.mts";
@@ -91,7 +92,7 @@ check("insertion before a fixed location changes the current occupant", () => {
 check("empty element content materializes on the first valid insertion", () => {
   const page = registry('<main/>').doc.must("page");
   const commit = page.at([]).asElement()!.insert(0, projected_element('<item/>'));
-  assert.equal(commit.operations[0]?.operation.op, "insert-content");
+  assert.equal(document_graph_operation(commit).op, "insert-content");
   assert.equal((document_hson_value(page.at([0]).hson()) as { $_tag: string }).$_tag, "item");
 });
 

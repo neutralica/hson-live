@@ -597,4 +597,15 @@ check("structured arguments expose root names, selector spellings and whole forw
   assert.ok(uses.every(use => test.slice(use.location).includes("%{")));
   assert.equal(definition.parameterSpellings.some(parameter => parameter.name === "phantom"), false);
 });
+check("optional source facts count authored values, excluding declarations and serialized data", () => {
+  const template = '<section part:optional d:data="%{payload}" <p part:optional "%{d.title}"/> <aside part:optional "Static"/> <hson-part part:optional at="leaf" data:payload="%{d.child}"/> <hson-part part:optional at="leaf" data:payload="\\\"%{literal}\\\""/>/>';
+  const text = 'import { Hson, hsonLiveMap as maps } from "hson-live";\nconst definition = ' + JSON.stringify(template)
+    + ';\nconst map = maps.fromLibraries({ components: { parts: { x: {kind:"document", document:definition}, leaf:{kind:"document",document:"<p/>"} } } });';
+  const test = evidenceProject("optional-facts", { "index.ts": text });
+  const definition = test.document("definition");
+  assert.equal(definition.parameterCompleteness, "complete");
+  assert.deepEqual(definition.optionalStructures.map(flag => [flag.root, flag.references]), [[true, 2], [false, 1], [false, 0], [false, 1], [false, 0]]);
+  for (const flag of definition.optionalStructures) assert.equal(test.slice(flag.location), 'part:optional');
+  assert.deepEqual(definition.parameterSpellings.map(parameter => parameter.name), ['d']);
+});
 events.terminal("pass");

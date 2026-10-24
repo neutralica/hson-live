@@ -3,7 +3,7 @@ import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { LiveMapDocumentPath, LiveMapGraphOp } from "../../types/livemap.types.js";
-import { expand_document_composition, document_composition_options, has_part_connector,
+import { expand_document_composition, document_composition_options, has_part_connector, lower_part_content_operation,
   type DocumentCompositionSource, type DocumentCompositionStyle } from "./livemap.document.composition.js";
 import { decode_document_scoped_quads, type DocumentScopedQuadRecord, type ScopedQuadBindingRecord } from "./livemap.document.scoped-quad-codec.js";
 import { make_document_scoped_quads, encode_document_scoped_quads, new_document_quad_occurrence,
@@ -219,11 +219,12 @@ export function prepare_document_scoped_operations(before: DocumentScopedQuadCon
       composition = expand_document_composition("ingress", () => ({ root: { $_tag: ROOT_TAG, $_content: [content] } }),
         document_composition_options(undefined), authority.readPart);
       authority.assertCurrent();
-      const output = composition.root.$_content[0];
-      if (!is_Node(output)) throw new Error("Part construction lost its incoming graph.");
-      if (operation.op === "replace-content") {
-        operation = { ...operation, replacement: output };
-      } else if (operation.op === "insert-content") operation = { ...operation, content: output };
+      const lowered = lower_part_content_operation(operation, composition.root, context.root);
+      if (lowered === undefined) {
+        prepare_document_graph_operation(context.root, "document", operation, context.overlay);
+        continue;
+      }
+      operation = lowered;
     }
     const parent = operation.op === "replace-root" ? null : insertion_owner(context, state, operation.target.path);
     const planned = prepare_scoped_graph_operation(context, operation);
