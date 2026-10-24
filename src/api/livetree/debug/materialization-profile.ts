@@ -18,10 +18,6 @@ export type LiveTreeMaterializationProfile = Readonly<{
   quidEnsureCalls: number;
   quidRegistryWrites: number;
   quidLookups: number;
-  reflectSourceReadMs: number;
-  reflectRendererCreateMs: number;
-  reflectSurvivorUpdateMs: number;
-  reflectAttachmentMs: number;
 }>;
 
 export type LiveTreeMaterializationProfileKey = keyof LiveTreeMaterializationProfile;
@@ -76,9 +72,5 @@ function empty_profile(): MutableProfile {
     quidEnsureCalls: 0,
     quidRegistryWrites: 0,
     quidLookups: 0,
-    reflectSourceReadMs: 0,
-    reflectRendererCreateMs: 0,
-    reflectSurvivorUpdateMs: 0,
-    reflectAttachmentMs: 0,
   };
 }

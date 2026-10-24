@@ -16,6 +16,9 @@ if (eventFile) {
     .replace(/\/(?:private\/)?(?:var\/folders|tmp)\/[^\s"']+/g, "<temporary-path>");
   const emit = data => appendFileSync(eventFile, JSON.stringify({ time: new Date().toISOString(), pid: process.pid,
     threadId, stage: process.env.HSON_VALIDATION_STAGE, ...data }) + "\n");
+  // Internal bridge for the existing suite emitter; each Worker has its own
+  // preload and process object, while all descendants share the event file.
+  process[Symbol.for("hson.validation.observe")] = emit;
   const args = process.argv.slice(2);
   const prefix = args.indexOf("--prefix");
   const rootBuild = isMainThread && /^(?:npm|npm-cli\.js)$/.test(basename(process.argv[1] ?? ""))

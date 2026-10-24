@@ -1,6 +1,7 @@
 export const HSON_TEST_EVENT_PREFIX = "<HSON_TEST_EVENT>";
 
 const CASE_STATUSES = new Set(["pass", "fail", "skip", "unsupported", "cancelled", "error"]);
+let emitterSequence = 0;
 
 function emit(record) {
   process.stdout.write(`${HSON_TEST_EVENT_PREFIX}${JSON.stringify(record)}\n`);
@@ -25,6 +26,14 @@ function derive_terminal_status(statuses) {
 /** Creates the child-side event writer for one executable suite. */
 export function create_test_event_emitter(suiteId) {
   require_string(suiteId, "suiteId");
+  // Reuse the runner's synchronous observation transport, including when a
+  // nested process captures stdout or a Worker has a separate output stream.
+  const observer = process.env.HSON_VALIDATION_EVENTS ? process[Symbol.for("hson.validation.observe")] : undefined;
+  const id = ++emitterSequence;
+  const observe = (type, status) => {
+    observer?.({ type, id, suiteId, status });
+  };
+  observe("suite-start");
   const seenCaseIds = new Set();
   const activeCaseIds = new Set();
   const completedStatuses = [];
@@ -64,7 +73,8 @@ export function create_test_event_emitter(suiteId) {
     if (status !== derived) throw new Error(`Test event terminal ${status} contradicts completed cases (${derived}).`);
     terminalEmitted = true;
     emit({ t: "terminal", suiteId, status });
-    if (status === "fail") process.exitCode = 1;
+    observe("suite-end", status);
+    if (["fail", "error", "cancelled"].includes(status)) process.exitCode = 1;
   }
 
   return Object.freeze({ case_begin, diagnostic, case_end, terminal });

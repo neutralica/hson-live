@@ -16,6 +16,10 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 
 const root = repositoryRoot;
 const inventory = assertInventory(createInventory());
+assert.equal(inventory.commands["test:hson-array-index"].caseReporting, true);
+for (const name of ["build", "check:tests", "check:tooling", "hson-schema:check", "test:validation-accounting"]) {
+  assert.equal(inventory.commands[name].caseReporting, false, name);
+}
 for (const stem of ["html-source-producer", "livemap-root-mutation", "transform-prototype-boundaries", "transform-snapshot"]) {
   assert(inventory.gates.full.includes(`test:${stem}`));
   assert(!inventory.gates.check.includes(`test:${stem}`));
@@ -86,6 +90,11 @@ function probe(change = () => {}, selected = config) {
   return createInventory(fixture, selected);
 }
 assertInventory(probe());
+put("tests/test-events.mjs", "export const create_test_event_emitter = () => {}; ");
+put(target, 'import {create_test_event_emitter} from "./test-events.mjs"; create_test_event_emitter("fixture");');
+assert.equal(assertInventory(probe()).commands["test:html-source-producer"].caseReporting, true);
+put(target, 'export const value = 1;');
+assert.equal(assertInventory(probe()).commands["test:html-source-producer"].caseReporting, false);
 const omit = scripts => { delete scripts["test:html-source-producer"]; };
 assert.throws(() => assertInventory(probe(omit)), /no execution destination: tests\/html-source-producer/);
 assert.throws(() => assertInventory(probe(scripts => { scripts["test:missing"] = "node tests/missing.acceptance.mts"; })), /missing entrypoint/);
@@ -295,6 +304,88 @@ const partialObservation = await runStages({ root: executionRoot, mode: "partial
 assert.notEqual(partialObservation.exitStatus, 0);
 assert.equal(partialObservation.report.observationIncomplete, true);
 assert(partialObservation.report.endedAt);
+
+// Exercise actual child processes and the runner's saved stage/aggregate
+// decisions, including a zero process status that contradicts suite evidence.
+const emitterUrl = pathToFileURL(resolve(root, "tests/test-events.mjs")).href;
+const beginCase = `import {create_test_event_emitter} from ${JSON.stringify(emitterUrl)};
+const events=create_test_event_emitter('fixture.completion'); events.case_begin('same','Same case');\n`;
+const finishCase = status => `events.case_end('same',${JSON.stringify(status)}); events.terminal(${JSON.stringify(status)});\n`;
+async function completionProbe(name, source, expected, { reporting = true, continued = false, started, completed } = {}) {
+  const entry = resolve(executionRoot, `${name}.mjs`);
+  writeFileSync(entry, source);
+  // Use real inventory evidence for the contract rather than a test-only flag.
+  const stageName = reporting ? "test:hson-array-index" : "build";
+  const result = await runStages({ root: executionRoot, mode: name, identity, configuration: {},
+    preflight: () => ({ commands: inventory.commands }), stages: [
+      { name: stageName, executable: process.execPath, args: [entry], timeout: 5000, continueOnFailure: continued },
+      { name: "after-completion", executable: process.execPath, args: ["-e", "process.exit(0)"] },
+    ] });
+  const row = result.report.stages[1];
+  assert.equal(row.exitStatus, 0, `${name}: preserve the observed process result`);
+  assert.equal(row.caseCompletion.status, expected, name);
+  const passed = ["passed", "not-required"].includes(expected);
+  assert.equal(row.status, passed ? "passed" : "failed", name);
+  assert.equal(result.report.status, passed ? "passed" : "failed", name);
+  assert.equal(result.exitStatus, passed ? 0 : 1, name);
+  assert.equal(result.report.stages[2].status, passed || continued ? "passed" : "skipped", name);
+  assert.deepEqual(JSON.parse(readFileSync(result.reportPath, "utf8")).stages[1], JSON.parse(JSON.stringify(row)));
+  if (started !== undefined) assert.equal(row.caseCompletion.suitesStarted, started, name);
+  if (completed !== undefined) assert.equal(row.caseCompletion.suitesCompleted, completed, name);
+  return readFileSync(result.eventFile, "utf8").trim().split("\n").map(line => JSON.parse(line));
+}
+for (const status of ["error", "cancelled", "fail"]) {
+  await completionProbe(`terminal-${status}`, beginCase + finishCase(status) + "process.exit(0);", "failed", { continued: true });
+}
+await completionProbe("unfinished-case", beginCase + "process.exit(0);", "incomplete");
+await completionProbe("missing-terminal", beginCase + "events.case_end('same','pass');", "incomplete");
+await completionProbe("empty-emitter", beginCase.split(" events.case_begin")[0], "incomplete");
+await completionProbe("missing-reporting", "process.exit(0);", "incomplete");
+await completionProbe("ordinary-command", "process.exit(0);", "not-required", { reporting: false });
+for (const status of ["pass", "skip", "unsupported"]) {
+  await completionProbe(`completed-${status}`, beginCase + finishCase(status), "passed", { started: 1, completed: 1 });
+}
+// Nested stdout may be captured instead of inherited. The suite evidence must
+// still reach the existing observation file. Equal suite/case IDs are legal in
+// separate processes and threads and must not complete one another's emitters.
+for (const kind of ["subprocess", "worker"]) {
+  for (const variant of ["pass", "error", "cancelled", "incomplete", "parent-incomplete"]) {
+    const leaf = resolve(executionRoot, `leaf-${kind}-${variant}.mjs`);
+    const leafStatus = variant === "parent-incomplete" ? "pass" : variant;
+    writeFileSync(leaf, beginCase + (leafStatus === "incomplete" ? "" : finishCase(leafStatus)) + "process.exit(0);");
+    const launch = kind === "subprocess"
+      ? `import {spawnSync} from 'node:child_process';
+const child=spawnSync(process.execPath,[${JSON.stringify(leaf)}],{encoding:'utf8'});
+if(child.status!==0 || !child.stdout.includes('<HSON_TEST_EVENT>')) throw new Error('nested output/status changed');\n`
+      : `import {Worker} from 'node:worker_threads';
+const worker=new Worker(new URL(${JSON.stringify(pathToFileURL(leaf).href)}),{stdout:true}); worker.stdout.resume();
+await new Promise((done,reject)=>{worker.once('error',reject);worker.once('exit',code=>code===0?done():reject(new Error('worker exit')));});\n`;
+    const expected = variant.includes("incomplete") ? "incomplete" : variant === "pass" ? "passed" : "failed";
+    const observed = await completionProbe(`nested-${kind}-${variant}`, beginCase + launch
+      + (variant === "parent-incomplete" ? "" : finishCase("pass")), expected,
+    { started: 2, completed: variant.includes("incomplete") ? 1 : 2 });
+    const reporters = observed.filter(event => event.type === "suite-start");
+    assert.equal(new Set(reporters.map(event => `${event.pid}:${event.threadId}:${event.id}`)).size, 2);
+    if (kind === "worker") assert.equal(new Set(reporters.map(event => event.pid)).size, 1);
+    else assert(observed.some(event => event.type === "command-end" && event.exitStatus === 0));
+  }
+}
+
+// Descendant evidence arriving during a later stage must still affect the
+// aggregate. Inject it through the existing transport without owning new work.
+const lateCompletion = await runStages({ root: executionRoot, mode: "late-completion", identity, configuration: {}, preflight() {},
+  stages: [{ name: "early" }, { name: "later" }], execute(_command, _args, options) {
+    const early = options.env.HSON_VALIDATION_STAGE === "early";
+    const records = ["suite-start", "suite-end"].map(type => ({ type, stage: "early", pid: 1, threadId: 0,
+      id: early ? 1 : 2, suiteId: "fixture.late", ...(type === "suite-end" ? { status: early ? "pass" : "error" } : {}) }));
+    writeFileSync(options.env.HSON_VALIDATION_EVENTS, records.map(record => JSON.stringify(record) + "\n").join(""), { flag: "a" });
+    return { status: 0 };
+  } });
+assert.equal(lateCompletion.report.stages[1].exitStatus, 0);
+assert.equal(lateCompletion.report.stages[1].caseCompletion.status, "failed");
+assert.equal(lateCompletion.report.stages[1].status, "failed");
+assert.equal(lateCompletion.report.status, "failed");
+assert.equal(lateCompletion.exitStatus, 1);
 
 const pause = () => new Promise(done => setTimeout(done, 20));
 async function waitFor(predicate, label) {

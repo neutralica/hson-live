@@ -73,6 +73,34 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
   const runStart = performance.now();
   let stoppedBy = null;
   let exitStatus = 0;
+  let inventory;
+  const events = [];
+  let eventOffset = 0;
+  const collectEvents = () => {
+    const contents = readFileSync(eventFile, "utf8");
+    const current = [];
+    for (const line of contents.slice(eventOffset).split("\n").filter(Boolean)) {
+      try { current.push(JSON.parse(line)); }
+      catch { report.observationIncomplete = true; exitStatus ||= 1; }
+    }
+    eventOffset = contents.length;
+    events.push(...current);
+    return current;
+  };
+  const caseCompletionFor = (name, observed) => {
+    const stageEvents = observed.filter(event => event.stage === name);
+    const starts = stageEvents.filter(event => event.type === "suite-start");
+    const ends = stageEvents.filter(event => event.type === "suite-end");
+    // terminal() requires completed cases, no active cases, and a consistent
+    // status. Another suite/process/thread cannot complete this emitter.
+    const sameEmitter = (start, end) => start.id === end.id && start.pid === end.pid && start.threadId === end.threadId;
+    const incomplete = starts.some(start => ends.filter(end => sameEmitter(start, end)).length !== 1)
+      || ends.some(end => !starts.some(start => sameEmitter(start, end)))
+      || Boolean(inventory?.commands?.[name]?.caseReporting && starts.length === 0);
+    const failed = ends.some(end => !["pass", "skip", "unsupported"].includes(end.status));
+    return { status: incomplete ? "incomplete" : failed ? "failed" : starts.length ? "passed" : "not-required",
+      suitesStarted: starts.length, suitesCompleted: ends.length };
+  };
   let rootBuild = null;
   const reuseEnabled = stages.some(stage => Object.hasOwn(rootBuildPrerequisites, stage.name));
   const identityHash = value => {
@@ -178,7 +206,8 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
       row.exitStatus = result.status; row.signal = result.signal ?? null;
       if (result.error) row.error = result.error.message;
       if (result.cleanup) row.cleanup = result.cleanup;
-      row.status = cancellation ? "cancelled" : result.status === 0 && !result.signal && !result.error ? "passed" : "failed";
+      row.status = cancellation ? "cancelled" : result.status === 0 && !result.signal && !result.error
+        && !["failed", "incomplete"].includes(row.caseCompletion?.status) ? "passed" : "failed";
     } catch (error) { row.status = "failed"; row.exitStatus = 1; row.error = error.message; }
     row.endedAt = new Date().toISOString(); row.wallMs = performance.now() - begin;
     save();
@@ -186,7 +215,7 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
   }
   try {
     if (!await timed(report.stages[0], () => {
-      const inventory = preflight();
+      inventory = preflight();
       if (inventory) {
         const contents = JSON.stringify(inventory, null, 2) + "\n";
         const inventoryPath = resolve(folder, "inventory.json");
@@ -231,6 +260,7 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
             HSON_VALIDATION_BUILD_PUBLICATION: building ? publicationFile : "",
             NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${observe}${building ? ` --import=${observePublication}` : ""}`.trim() },
         });
+        row.caseCompletion = caseCompletionFor(stage.name, collectEvents());
         if (result.status === 0 && !result.signal && !result.error && !cancellation) {
           if (building) {
             const artifacts = rootBuildArtifacts(root);
@@ -253,10 +283,14 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
         if (!stage.continueOnFailure || row.cleanup?.status === "incomplete") stoppedBy = stage.name;
       }
     }
-    const events = [];
-    for (const line of readFileSync(eventFile, "utf8").split("\n").filter(Boolean)) {
-      try { events.push(JSON.parse(line)); }
-      catch { report.observationIncomplete = true; exitStatus ||= 1; }
+    collectEvents();
+    // Include late observable evidence from descendants without extending their
+    // lifetime or changing process ownership. Earlier failures stay failures.
+    for (const row of report.stages.slice(1).filter(row => row.status === "passed" && row.caseCompletion)) {
+      row.caseCompletion = caseCompletionFor(row.name, events);
+      if (["failed", "incomplete"].includes(row.caseCompletion.status)) {
+        row.status = "failed"; exitStatus ||= 1;
+      }
     }
     report.rootBuildInvocations = events.filter(event => event.type === "process-start" && event.rootBuild).length;
     if (cancellation) exitStatus = cancellation === "SIGINT" ? 130 : 143;

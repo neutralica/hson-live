@@ -1,14 +1,6 @@
-import type { JsonValue } from "../../core/types.js";
 import type { LiveMapDocumentLibrary } from "../../types/livemap.types.js";
 import type { LocusDocumentLibrary, EchoProjectedDocumentLibrary, EchoLocalDocumentLibrary } from "../../types/governor.types.js";
 import { selected_governed_document } from "../../internal/governed-document.js";
-import type {
-  CollectionMirror,
-  CollectionMirrorOptions,
-} from "../../types/mirror.types.js";
-import {
-  reflect_collection,
-} from "./mirror.collection.js";
 import {
   reflect_document,
   type DocumentMirror,
@@ -18,9 +10,6 @@ import {
 export interface Mirror {
   (map: LiveMapDocumentLibrary): DocumentMirror;
   (map: LocusDocumentLibrary | EchoProjectedDocumentLibrary | EchoLocalDocumentLibrary): DocumentMirror;
-  collection: <TItem extends JsonValue>(
-    options: CollectionMirrorOptions<TItem>,
-  ) => CollectionMirror<TItem>;
 }
 
 const reflectDocument = (map: LiveMapDocumentLibrary | LocusDocumentLibrary | EchoProjectedDocumentLibrary | EchoLocalDocumentLibrary): DocumentMirror => {
@@ -30,7 +19,4 @@ const reflectDocument = (map: LiveMapDocumentLibrary | LocusDocumentLibrary | Ec
   return reflect_document(map as LiveMapDocumentLibrary);
 };
 
-export const hsonMirror: Mirror = Object.freeze(Object.assign(
-  reflectDocument,
-  { collection: reflect_collection },
-));
+export const hsonMirror: Mirror = Object.freeze(reflectDocument);

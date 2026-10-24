@@ -1,6 +1,6 @@
 # Mirror API reference
 
-Mirror projects LiveMap-owned state into LiveTree while keeping LiveMap as the
+Mirror projects LiveMap-owned documents into LiveTree while keeping LiveMap as the
 only canonical authority. It does not make the DOM authoritative and does not
 observe arbitrary DOM mutation.
 
@@ -10,30 +10,22 @@ observe arbitrary DOM mutation.
 import {
   hsonMirror,
   reflect_document,
-  reflect_collection,
 } from "hson-live/mirror";
 import type {
   DocumentMirror,
-  CollectionMirror,
-  CollectionMirrorOptions,
 } from "hson-live/mirror";
 ```
 
 The root package exports the normal `hsonMirror` and `reflect_document`
-composition surface. Direct keyed collection reflection and its detailed
-diagnostics remain owned by `hson-live/mirror`. The browser umbrella exposes
+composition surface. The browser umbrella exposes
 `hson.mirror` as the same callable object.
 
 ```ts
 const documentBinding = hsonMirror(elementMap);
 const sameDocumentBinding = reflect_document(elementMap);
-
-const collectionBinding = hsonMirror.collection(options);
-const sameCollectionBinding = reflect_collection(options);
 ```
 
 The callable facade accepts a selected document library.
-The `.collection(...)` member accepts a keyed array projection configuration.
 
 ## Document reflection
 
@@ -186,47 +178,6 @@ roll it back.
 ownership, marks the binding `disposed`, and allows a later new binding for the
 same map. It does not dispose the returned LiveTree; the caller may retain or
 remove that projection separately. `diagnostics()` throws after disposal.
-
-## Collection reflection
-
-Collection Mirror maintains one dedicated empty LiveTree host from an
-array-valued LiveMap path handle:
-
-```ts
-const reflected = hsonMirror.collection({
-  source: state.at(["items"]),
-  host,
-  key: (item) => item.id,
-  render(item, context) {
-    const tree = hson.liveTree.create.li();
-    tree.text.set(item.at(["label"]).snap());
-    return {
-      tree,
-      update(next) {
-        tree.text.set(next.at(["label"]).snap());
-      },
-    };
-  },
-});
-```
-
-The key must be a unique string or number. The renderer must return one active
-detached LiveTree branch, optionally with synchronous `update` and `dispose`
-hooks. Surviving keys retain their LiveTree, DOM element, listeners, CSS,
-bindings, and browser state through reorder and source replacement. Removed
-keys are terminally disposed; new keys are rendered once.
-
-`replaceSource(nextHandle)` validates and switches to a new mirror while
-preserving surviving application keys. `synchronize()` explicitly rereads the
-current source and is the recovery surface after a failed renderer update.
-`subscribe(listener)` observes immutable reflector snapshots; listener errors
-are isolated and counted. `dispose()` unsubscribes, removes all reflector-owned
-branches, clears listeners/mappings, and leaves the application-owned host in
-place.
-
-For the complete renderer, key, source-replacement, cleanup, diagnostics, and
-known-limitations contract, see
-[Experimental Collection Mirror](../contracts/mirror-collection-experimental.md).
 
 ## What Mirror does not do
 

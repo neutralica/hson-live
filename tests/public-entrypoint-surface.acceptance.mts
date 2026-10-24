@@ -259,7 +259,7 @@ const ownerProofs = Object.freeze({
   "dist/hson-authoring.d.ts": ["HsonAuthored", "HsonDocument", "HsonNode", "ReadonlyHsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
   "dist/api/livetree/index.d.ts": ["CssMap", "ReadonlyHsonNode", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
   "dist/api/livemap/index.d.ts": ["CssMap", "LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
-  "dist/api/mirror/index.d.ts": ["reflect_collection", "CollectionMirror", "CollectionMirrorErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
+  "dist/api/mirror/index.d.ts": ["DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoSync", "EchoSyncStrategy"],
   "dist/api/locus/index.d.ts": ["LocusDefinitionOptions", "LocusResumeOptions", "LocusPersistenceAdapter"],
   "dist/api/locus/node/index.d.ts": ["bind_node_locus_websocket", "NodeLocusWebSocketOptions"],
@@ -280,6 +280,32 @@ await check("specialist contracts remain available from owning entrypoints", () 
       }
     }
   }
+});
+
+await check("Collection Mirror is absent from public declarations while Document Mirror remains callable", () => {
+  for (const file of declarationFiles) {
+    const exports = declaration_exports(file);
+    assert.deepEqual(exports.filter((name) => /CollectionMirror|COLLECTION_MIRROR_|^reflect_collection$/.test(name)), [], file);
+  }
+  const mirrorExports = declaration_exports("dist/api/mirror/index.d.ts");
+  for (const name of ["hsonMirror", "Mirror", "reflect_document", "DocumentMirror", "DocumentMirrorStatus", "DocumentMirrorError", "DocumentMirrorErrorCode"]) {
+    assert.ok(mirrorExports.includes(name), `${name} must remain exported`);
+  }
+  const facadePath = resolve(repositoryRoot, "dist/api/mirror/mirror.facade.d.ts");
+  const facade = program.getSourceFile(facadePath);
+  assert.ok(facade !== undefined);
+  const module = checker.getSymbolAtLocation(facade);
+  assert.ok(module !== undefined);
+  const mirror = checker.getExportsOfModule(module).find((symbol) => symbol.getName() === "Mirror");
+  assert.ok(mirror !== undefined);
+  const mirrorType = checker.getDeclaredTypeOfSymbol(mirror);
+  assert.ok(mirrorType.getCallSignatures().length > 0);
+  assert.equal(mirrorType.getProperty("collection"), undefined);
+  for (const path of ["dist/api/mirror/mirror.collection.d.ts", "dist/api/mirror/mirror.collection.error.d.ts", "dist/types/mirror.types.d.ts"]) {
+    assert.equal(existsSync(resolve(repositoryRoot, path)), false, path);
+  }
+  const profile = readFileSync(resolve(repositoryRoot, "dist/api/livetree/debug/materialization-profile.d.ts"), "utf8");
+  assert.doesNotMatch(profile, /reflectSourceReadMs|reflectRendererCreateMs|reflectSurvivorUpdateMs|reflectAttachmentMs/);
 });
 
 await check("retired entrypoints fail package resolution", () => {

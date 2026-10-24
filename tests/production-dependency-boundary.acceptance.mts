@@ -83,6 +83,15 @@ check("production runtime modules do not import test-only modules", () => {
   );
 });
 
+check("Collection Mirror production facilities remain absent", () => {
+  for (const path of ["api/mirror/mirror.collection.ts", "api/mirror/mirror.collection.error.ts", "types/mirror.types.ts"]) {
+    assert.equal(existsSync(resolve(sourceRoot, path)), false, path);
+  }
+  for (const file of files) {
+    assert.doesNotMatch(readFileSync(file, "utf8"), /CollectionMirror|COLLECTION_MIRROR_|reflect_collection|mirror\.collection|mirror\.types|reflectSourceReadMs|reflectRendererCreateMs|reflectSurvivorUpdateMs|reflectAttachmentMs/, relative(repositoryRoot, file));
+  }
+});
+
 check("side-effect metadata retains Scout registration and Schema tooling startup", () => {
   const manifest = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8")) as { sideEffects?: unknown };
   assert.deepEqual(manifest.sideEffects, [

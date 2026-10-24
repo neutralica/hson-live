@@ -6,7 +6,6 @@ import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { is_Node } from "../src/core/node-guards.ts";
-import { hson, Hson, hsonLiveMap } from "../src/index.ts";
 import {
   _reflect_document_for_runtime_test,
   _append_livetree_branches_atomic,
@@ -715,7 +714,7 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   assert.equal(rootElement.getAttribute("hson:quid"), null);
 });
 
-check("Mirror document and collection synchronization preserve clean projection markup", () => {
+check("Mirror document synchronization preserves clean projection markup", () => {
   const document = new StyleDocument();
   const runtime = _create_livetree_runtime_test_handle();
   const map = elementMap("<main <span/>/>");
@@ -735,26 +734,6 @@ check("Mirror document and collection synchronization preserve clean projection 
   );
   binding.dispose();
   binding.tree.remove();
-
-  const host = runtimeTree(runtime, node("ul"));
-  const hostElement = projectInto(runtime, host, document);
-  const source = hsonLiveMap.fromLibraries({ state: {
-    data: { items: [{ id: "a" }, { id: "b" }] },
-    schema: Hson.schema`<type "data" content <items "any">>`,
-  } }).data.must("state");
-  const projection = hson.mirror.collection<{ id: string }>({
-    source: source.at(["items"]) as never,
-    host,
-    key: (item) => item.id,
-    render: () => runtimeTree(runtime, node("li")),
-  });
-  assertCleanProjection(hostElement);
-  assert.deepEqual(
-    hostElement.walk().filter((item) => !item.tagName.startsWith("#")).map((item) => item.tagName),
-    ["li", "li"],
-  );
-  projection.dispose();
-  host.remove();
 });
 
 check("Mirror projects equal persisted QUIDs in separate runtimes", () => {

@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { HSON_TEST_EVENT_PREFIX, create_test_event_emitter } from "./test-events.mjs";
 
+// These probes deliberately violate completion and status contracts. Keep them
+// out of an enclosing validation run; report this regression suite below.
+const validationEvents = process.env.HSON_VALIDATION_EVENTS;
+delete process.env.HSON_VALIDATION_EVENTS;
 const writes = [];
 const originalWrite = process.stdout.write;
 const originalExitCode = process.exitCode;
@@ -49,6 +53,7 @@ try {
   events.terminal("error");
 } finally {
   process.stdout.write = originalWrite;
+  process.exitCode = originalExitCode ?? 0;
 }
 const errorRecords = errorWrites.map((line) => JSON.parse(line.slice(HSON_TEST_EVENT_PREFIX.length)));
 assert.deepEqual(
@@ -95,4 +100,15 @@ assert.deepEqual(
   [["case_begin"], ["diagnostic"], ["case_end", "fail"], ["terminal", "fail"]],
 );
 assert.equal(failingRecords.every((record) => !("count" in record)), true);
+for (const status of ["error", "cancelled", "pass", "skip", "unsupported"]) {
+  const child = spawnSync(process.execPath, ["--input-type=module", "--eval",
+    reportedFailureSource.replaceAll('"fail"', JSON.stringify(status))],
+  { encoding: "utf8" });
+  assert.equal(child.status, ["error", "cancelled"].includes(status) ? 1 : 0, status);
+}
+if (validationEvents !== undefined) process.env.HSON_VALIDATION_EVENTS = validationEvents;
+const completed = create_test_event_emitter("test.events");
+completed.case_begin("emitter regressions", "Emitter status and protocol regressions");
+completed.case_end("emitter regressions", "pass");
+completed.terminal("pass");
 console.log("test event emitter acceptance passed");

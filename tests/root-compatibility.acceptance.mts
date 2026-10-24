@@ -56,6 +56,14 @@ try {
   assert.equal(root.hson.liveMap, root.hsonLiveMap);
   assert.equal(root.hson.liveTree, root.hsonLiveTree);
   assert.equal(root.hson.liveHost, root.hsonLiveHost);
+  assert.equal(root.hson.mirror, reflect.hsonMirror);
+  assert.equal(root.hsonMirror, reflect.hsonMirror);
+  assert.equal(typeof reflect.hsonMirror, "function");
+  assert.equal(Object.isFrozen(reflect.hsonMirror), true);
+  assert.equal("collection" in root.hson.mirror, false);
+  for (const entrypoint of [root, reflect]) {
+    assert.deepEqual(Object.keys(entrypoint).filter((name) => /CollectionMirror|COLLECTION_MIRROR_|^reflect_collection$/.test(name)), []);
+  }
   assert.equal(root.hsonLiveMap.locus, livemap.hsonLiveMap.locus);
   assert.equal(root.hsonLiveMap.echo, livemap.hsonLiveMap.echo);
   assert.equal(root.hsonLiveMap.create, livemap.create);

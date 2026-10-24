@@ -8,6 +8,7 @@ import { create_echo } from "../src/api/echo/echo.ts";
 import { create_echo_websocket_transport } from "../src/api/echo/echo.websocket.ts";
 import { create_echo_http_transport } from "../src/api/echo/echo.http.ts";
 import { hson, hsonLiveHost, hsonLiveMap, hsonMirror, hsonLiveTree, hsonTransform } from "../src/hson.ts";
+import * as mirror from "../src/api/mirror/index.ts";
 import { read_transform_error_details } from "../src/core/errors.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
 
@@ -62,7 +63,13 @@ check("canonical facade runtime identities remain stable", () => {
   assert.equal(Object.isFrozen(hson.liveTree), true);
   assert.equal(hson.mirror, hsonMirror);
   assert.equal(typeof hsonMirror, "function");
-  assert.equal(hsonMirror.collection, hson.mirror.collection);
+  assert.equal(hsonMirror, mirror.hsonMirror);
+  assert.equal(Object.isFrozen(hsonMirror), true);
+  assert.equal("collection" in hsonMirror, false);
+  assert.equal("collection" in hson.mirror, false);
+  assert.deepEqual(Object.keys(mirror).filter((name) => /CollectionMirror|COLLECTION_MIRROR_|^reflect_collection$/.test(name)), []);
+  assert.equal(typeof mirror.reflect_document, "function");
+  assert.equal(typeof mirror.DocumentMirrorError, "function");
   const removedReflectAlias = ["live", "Project"].join("");
   assert.equal(removedReflectAlias in hson, false);
 

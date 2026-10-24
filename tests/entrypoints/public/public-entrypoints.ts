@@ -482,12 +482,25 @@ import type {
 import {
   DocumentMirrorError,
   hsonMirror as mirrorSubpath,
-  type CollectionMirror,
   type DocumentMirror,
   type DocumentMirrorErrorCode,
   type DocumentMirrorStatus,
   type Mirror as MirrorFacade,
 } from "hson-live/mirror";
+// @ts-expect-error Collection Mirror has been removed.
+import { reflect_collection as RemovedCollectionFactory } from "hson-live/mirror";
+// @ts-expect-error Collection Mirror errors have been removed.
+import { CollectionMirrorError as RemovedCollectionError } from "hson-live/mirror";
+// @ts-expect-error Collection Mirror error codes have been removed.
+import { COLLECTION_MIRROR_DISPOSED_ERROR_CODE as RemovedCollectionErrorCode } from "hson-live/mirror";
+// @ts-expect-error Collection Mirror types have been removed.
+import type { CollectionMirror as RemovedCollectionMirror } from "hson-live/mirror";
+// @ts-expect-error Collection Mirror configuration has been removed.
+import type { CollectionMirrorOptions as RemovedCollectionOptions } from "hson-live/mirror";
+// @ts-expect-error The callable Document Mirror facade has no collection factory.
+mirrorSubpath.collection;
+// @ts-expect-error The umbrella Mirror facade has no collection factory.
+hson.mirror.collection;
 // @ts-expect-error Pre-epoch Mirror rename removed the old error class.
 import { DocumentReflectError as RemovedDocumentReflectError } from "hson-live/mirror";
 // @ts-expect-error Pre-epoch Mirror rename removed the old status type.
@@ -616,13 +629,16 @@ const umbrellaMirror: MirrorFacade = hson.mirror;
 declare const documentMirror: DocumentMirror;
 declare const documentMirrorStatus: DocumentMirrorStatus;
 declare const documentMirrorErrorCode: DocumentMirrorErrorCode;
-declare const collectionMirror: CollectionMirror;
 void mirrorFacade;
 void umbrellaMirror;
 void documentMirror;
 void documentMirrorStatus;
 void documentMirrorErrorCode;
-void collectionMirror;
+void RemovedCollectionFactory;
+void RemovedCollectionError;
+void RemovedCollectionErrorCode;
+void (0 as unknown as RemovedCollectionMirror);
+void (0 as unknown as RemovedCollectionOptions);
 void RemovedDocumentReflectError;
 void (0 as unknown as RemovedDocumentReflectStatus);
 void (0 as unknown as RemovedReflectFacade);

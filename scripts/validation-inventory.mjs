@@ -339,6 +339,7 @@ export function createInventory(root = repositoryRoot, config = configuration) {
     const projectSet = commandProjects.get(prefix ? `${prefix}:${name}` : name) ?? new Set();
     if (name.startsWith("test:") && reach.size === 0) errors.push(`No executable entrypoint resolved for ${name}`);
     commands[prefix ? `${prefix}:${name}` : name] = { command: packages[prefix][name], suites: suites.filter(suite => reach.has(suite.entrypoint) || suite.destinations.some(route => projectSet.has(route.project))).map(suite => suite.identity),
+      caseReporting: reach.has("tests/test-events.mjs"),
       nestedCommands: nestedCommands.get(prefix ? `${prefix}:${name}` : name) ?? [],
       projects: [...commandProjects.get(prefix ? `${prefix}:${name}` : name) ?? []],
       requirements: [...new Set([...reach].flatMap(path => [...files.get(path).requirements]))].sort(),
