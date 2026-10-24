@@ -1,7 +1,7 @@
 import { assertInventory, createInventory, repositoryRoot } from "./validation-inventory.mjs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ordinary, gateCommands } from "./validation-config.mjs";
+import { ordinary, gateCommands, rootBuildPrerequisites } from "./validation-config.mjs";
 import { runStages } from "./validation-execution.mjs";
 
 const mode = process.argv[2];
@@ -24,7 +24,8 @@ if (mode === "--preflight") {
     continueOnFailure: mode === "extended" || mode === "full" && index >= ordinary.length,
     timeout: mode === "extended" || mode === "full" && index >= ordinary.length ? 180_000 : 0 }));
   const result = await runStages({ root: repositoryRoot, mode, stages,
-    preflight: () => assertInventory(createInventory()), configuration: { gates, commands: Object.fromEntries(names.map(name => [name, scripts[name]])) } });
+    preflight: () => assertInventory(createInventory()), rootBuildPrerequisites,
+    configuration: { gates, rootBuildPrerequisites, commands: Object.fromEntries(names.map(name => [name, scripts[name]])) } });
   process.exitCode = result.exitStatus;
 } else {
   console.error("Usage: run-current-acceptance.mjs check|full|extended|--preflight [--gate=full|extended|check] [--json]");

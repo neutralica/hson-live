@@ -420,6 +420,7 @@
     "test:transform-prototype-boundaries": "node --import=tsx tests/transform-prototype-boundaries.acceptance.mts",
     "test:transform-snapshot": "node --import=tsx tests/transform-snapshot.acceptance.mts",
     "test:validation-accounting": "node tests/validation-accounting.acceptance.mjs",
+    "test:validation-root-build-reuse": "node tests/validation-root-build-reuse.acceptance.mjs",
     "check:inventory": "node scripts/run-current-acceptance.mjs --preflight",
     "check:full": "node scripts/run-current-acceptance.mjs full",
     "check:extended": "node scripts/run-current-acceptance.mjs extended",

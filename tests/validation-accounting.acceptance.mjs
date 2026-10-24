@@ -72,7 +72,7 @@ put("editors/vscode-hson/package.json", '{"scripts":{}}');
 put("editors/vscode-hson/scripts/build-tests.mjs", "");
 const target = "tests/html-source-producer.acceptance.mts";
 put(target, 'export const value = 1;');
-const config = { ...configuration, ordinary: [], extended: [], maintenance: [], requiredCapabilities: {},
+const config = { ...configuration, ordinary: [], extended: [], maintenance: [], requiredCapabilities: {}, rootBuildPrerequisites: {},
   existingRepeatedBodies: {}, declaredExecution: {},
   gateCommands: (scripts, mode) => mode === "full" ? Object.keys(scripts).filter(name => name.startsWith("test:")) : [] };
 const pkg = { scripts: { check: "node scripts/run-current-acceptance.mjs check",

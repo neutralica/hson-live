@@ -1,8 +1,9 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { pathToFileURL } from "node:url";
+import { assertRootBuildPublication } from "./validation-build-publication.mjs";
 
 const hash = input => createHash("sha256").update(input).digest("hex");
 export function sourceIdentity(root) {
@@ -25,13 +26,39 @@ export function sourceIdentity(root) {
     npm: spawnSync("npm", ["--version"], { cwd: root, encoding: "utf8" }).stdout?.trim() };
 }
 
+// Capture both complete output trees, including file membership and replacement
+// metadata. Equal bytes rewritten by another writer are still a conflict. This
+// digest is an invocation-local guard, never a saved success/reuse permission.
+function rootBuildArtifacts(root) {
+  for (const path of ["dist/index.js", "dist/index.d.ts", "dist/hson-schema.mjs",
+    ".hson/compiler-input/tsconfig.json/tsconfig.json", ".hson/compiler-input/tsconfig.json/manifest.json"]) {
+    if (!existsSync(resolve(root, path))) throw new Error(`Missing root build prerequisite artifact: ${path}`);
+  }
+  const digest = createHash("sha256");
+  const metadata = stat => [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+  function visit(path) {
+    const file = resolve(root, path);
+    const before = lstatSync(file, { bigint: true });
+    if (before.isSymbolicLink() || !before.isDirectory() && !before.isFile()) throw new Error(`Unsafe root build artifact: ${path}`);
+    if (path.endsWith("/.publishing.json")) throw new Error("Root build publication is incomplete");
+    digest.update(path + "\0" + metadata(before) + "\0");
+    if (before.isDirectory()) for (const name of readdirSync(file).sort()) visit(`${path}/${name}`);
+    else digest.update(readFileSync(file));
+    if (metadata(before) !== metadata(lstatSync(file, { bigint: true }))) throw new Error(`Root build artifact changed during capture: ${path}`);
+  }
+  visit("dist"); visit(".hson/compiler-input/tsconfig.json");
+  return digest.digest("hex");
+}
+
 // Process-level wall durations only. No per-test or CPU-time claims are made.
 // Existing command output is inherited and exit semantics stay with the caller.
-export async function runStages({ root, mode, stages, preflight, configuration, identity = sourceIdentity(root), execute }) {
+export async function runStages({ root, mode, stages, preflight, configuration, identify = () => sourceIdentity(root), identity = identify(), execute,
+  rootBuildPrerequisites = {} }) {
   const parent = resolve(root, "tmp/validation-timing");
   mkdirSync(parent, { recursive: true });
   const folder = mkdtempSync(resolve(parent, `${new Date().toISOString().replaceAll(":", "-")}-${process.pid}-`));
   const eventFile = resolve(folder, "events.jsonl");
+  const publicationFile = resolve(folder, "root-build-publication.jsonl");
   writeFileSync(eventFile, "");
   const reportPath = resolve(folder, "report.json");
   const report = { schemaVersion: 1, mode, clock: "wall (monotonic durations; UTC timestamps)", identity,
@@ -40,13 +67,29 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
     nestedObservation: "Node preload observes child_process calls and Node process lifetimes. Non-Node descendants and explicitly replaced environments may be unobservable; missing end events remain incomplete.",
     cancellationPolicy: process.platform === "win32" ? "Terminate and reap the direct child; descendant cleanup is incomplete on Windows."
       : "Each stage owns a new process group. On cancellation, timeout or abnormal exit send SIGTERM, then SIGKILL after 1000 ms, only to that group; reap the direct child.",
-    rootBuildInvocations: 0 };
+    rootBuildInvocations: 0, rootBuildReuses: 0 };
   const save = () => writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
   save();
   const runStart = performance.now();
   let stoppedBy = null;
   let exitStatus = 0;
+  let rootBuild = null;
+  const reuseEnabled = stages.some(stage => Object.hasOwn(rootBuildPrerequisites, stage.name));
+  const identityHash = value => {
+    const { recordedAt, ...current } = value;
+    return hash(JSON.stringify(current));
+  };
+  const inputIdentity = () => identityHash(identify());
+  function assertRootBuild() {
+    if (!rootBuild) throw new Error("Missing successful root build prerequisite in this validation invocation");
+    if (inputIdentity() !== rootBuild.inputs) throw new Error("Root build prerequisite is stale: source, configuration or tooling changed");
+    if (rootBuildArtifacts(root) !== rootBuild.artifacts) throw new Error("Root build prerequisite artifacts changed: conflicting writer");
+    // The existing verifier also replays compiler dependency reads, failed
+    // lookups and glob membership, including inputs ignored by Git.
+    rootBuild.verify(resolve(root, "tsconfig.json"));
+  }
   const observe = pathToFileURL(resolve(import.meta.dirname, "validation-observer.mjs")).href;
+  const observePublication = pathToFileURL(resolve(import.meta.dirname, "validation-build-publication.mjs")).href;
   let cancellation = null;
   let active = null;
   const handlers = new Map();
@@ -162,12 +205,50 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
       if (cancellation) { stoppedBy = `cancelled: ${cancellation}`; exitStatus = cancellation === "SIGINT" ? 130 : 143; }
       if (stoppedBy) { row.status = "skipped"; row.skippedBecause = stoppedBy; save(); continue; }
       console.log(`[${index + 1}/${stages.length}] ${stage.name}`);
-      const passed = await timed(row, () => (execute ?? launch)(stage.executable ?? "npm", stage.args ?? ["run", stage.name], {
-        cwd: root, stdio: "inherit", ...(stage.timeout ? { timeout: stage.timeout } : {}),
-        env: { ...process.env, HSON_VALIDATION_EVENTS: eventFile, HSON_VALIDATION_ROOT: root, HSON_VALIDATION_STAGE: stage.name,
-          NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${observe}`.trim() },
-      }));
+      const passed = await timed(row, async () => {
+        let executable = stage.executable ?? "npm", args = stage.args ?? ["run", stage.name];
+        const body = Object.hasOwn(rootBuildPrerequisites, stage.name) ? rootBuildPrerequisites[stage.name] : undefined;
+        const building = reuseEnabled && stage.name === "build";
+        let inputs;
+        if (building) {
+          rootBuild = null;
+          if (stage.executable || stage.args) throw new Error("Root build prerequisite requires the registered npm build");
+          inputs = inputIdentity();
+          if (inputs !== identityHash(identity)) throw new Error("Root build prerequisite inputs changed since validation started");
+          writeFileSync(publicationFile, "");
+        }
+        if (body) {
+          if (stage.command !== `npm run build && ${body}` || stage.executable || stage.args
+            || !/^node --import=tsx tests\/[\w-]+\.acceptance\.mts$/.test(body)) throw new Error(`Root build prerequisite wrapper changed: ${stage.name}`);
+          assertRootBuild();
+          executable = process.execPath; args = body.split(" ").slice(1);
+          row.executedCommand = body;
+          row.rootBuildPrerequisite = { stage: "build", inputsSha256: rootBuild.inputs, artifactsSha256: rootBuild.artifacts };
+        }
+        const result = await (execute ?? launch)(executable, args, {
+          cwd: root, stdio: "inherit", ...(stage.timeout ? { timeout: stage.timeout } : {}),
+          env: { ...process.env, HSON_VALIDATION_EVENTS: eventFile, HSON_VALIDATION_ROOT: root, HSON_VALIDATION_STAGE: stage.name,
+            HSON_VALIDATION_BUILD_PUBLICATION: building ? publicationFile : "",
+            NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${observe}${building ? ` --import=${observePublication}` : ""}`.trim() },
+        });
+        if (result.status === 0 && !result.signal && !result.error && !cancellation) {
+          if (building) {
+            const artifacts = rootBuildArtifacts(root);
+            // Independent producer evidence must agree with disk before this
+            // snapshot can authorize reuse. assertRootBuild below then fences
+            // changes between the snapshot, evidence check and admission.
+            assertRootBuildPublication(root, publicationFile);
+            if (inputIdentity() !== inputs) throw new Error("Root build prerequisite inputs changed during build");
+            const { verify_schema_compiler_project: verify } = await import(pathToFileURL(resolve(root, "dist/internal/hson-schema/compiler-project-watch.js")).href);
+            rootBuild = { inputs, artifacts, verify };
+            assertRootBuild();
+          }
+          if (body) { assertRootBuild(); report.rootBuildReuses++; }
+        }
+        return result;
+      });
       if (!passed) {
+        rootBuild = null;
         exitStatus = row.exitStatus || 1;
         if (!stage.continueOnFailure || row.cleanup?.status === "incomplete") stoppedBy = stage.name;
       }

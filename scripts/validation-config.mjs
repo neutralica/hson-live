@@ -1,5 +1,5 @@
 // Gate order is explicit here; package scripts remain the executable command authority.
-// This is the accepted Cut B ordinary sequence. Pass 1 adds only its read-only preflight.
+// Preserve the accepted ordinary sequence; tooling regressions follow its stages.
 export const ordinary = Object.freeze([
   "build",
   "check:tests",
@@ -124,8 +124,17 @@ export const ordinary = Object.freeze([
   "test:hosted-document-continuation",
   "test:hosted-document-css-phase-c",
   "test:suite-metadata-static",
-  "test:test-events"
+  "test:test-events",
+  "test:validation-root-build-reuse"
 ]);
+
+// Only these wrappers' root-build prerequisites may be reused. Their original
+// package commands remain authoritative for standalone execution and inventory.
+export const rootBuildPrerequisites = Object.freeze({
+  "test:hson-schema-compiler-project": "node --import=tsx tests/hson-schema-compiler-project.acceptance.mts",
+  "test:hson-schema-compiler-watch": "node --import=tsx tests/hson-schema-compiler-watch.acceptance.mts",
+  "test:hson-schema-cutover": "node --import=tsx tests/hson-schema-cutover.acceptance.mts",
+});
 
 // Environment requirements do not determine ordinary membership. Its nested Chrome,
 // TLS and Worker coverage stays mandatory. This list selects optional extended work.

@@ -247,6 +247,16 @@ export function createInventory(root = repositoryRoot, config = configuration) {
     return result;
   }
   const gates = Object.fromEntries(["check", "full", "extended"].map(mode => [mode, gateCommands(scripts, mode)]));
+  for (const [name, body] of Object.entries(config.rootBuildPrerequisites ?? {})) {
+    if (!/^node --import=tsx tests\/[\w-]+\.acceptance\.mts$/.test(body)
+      || scripts[name] !== `npm run build && ${body}` || scripts[`pre${name}`] || scripts[`post${name}`]) {
+      errors.push(`Root build prerequisite wrapper changed: ${name}`);
+    }
+    for (const [gate, names] of Object.entries(gates)) if (names.includes(name)
+      && (names.indexOf("build") < 0 || names.indexOf("build") >= names.indexOf(name))) {
+      errors.push(`Root build prerequisite must precede ${name} in ${gate}`);
+    }
+  }
   for (const [gate, names] of Object.entries(gates)) {
     if (new Set(names).size !== names.length) errors.push(`Duplicate command in ${gate}`);
     for (const name of names) if (!scripts[name]) errors.push(`Unknown ${gate} selection: ${name}`);
