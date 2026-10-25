@@ -210,7 +210,7 @@ check("existing editor candidate publication refreshes on unsaved upstream edits
   } finally { editor.dispose(); }
 });
 check("structured arguments normalize bindings, diagnose conflicts and keep literal placeholders opaque", () => {
-  const definition = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{slide}" "%{slide.title}"/>`} }';
+  const definition = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{slide}" "#{slide.title}"/>`} }';
   const invoke = (attrs: string) => application('<hson-part lib="components" at="x" ' + attrs + '/>', definition);
   assert.deepEqual(inspect(invoke('data:slide="<title \\\"%{literal}\\\">"')).codes, []);
   assert.deepEqual(inspect(invoke('')).codes, ['HSON_PART_ARGUMENT_MISSING']);
@@ -220,21 +220,21 @@ check("structured arguments normalize bindings, diagnose conflicts and keep lite
   for (const name of ['data:', 'data:lib', 'data:at', 'Data:slide']) assert.ok(inspect(invoke(name + '="null"')).codes.includes('HSON_PART_ARGUMENT_INVALID'));
   assert.ok(inspect(invoke('data:slide="malformed"')).codes.includes('HSON_PART_DATA_INVALID'));
   assert.deepEqual(inspect(invoke('data:slide="${dynamic}"')).codes, []);
-  const bad = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{slide}" "%{slide[-1]}"/>`} }';
+  const bad = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{slide}" "#{slide[-1]}"/>`} }';
   assert.ok(inspect(application('<hson-part lib="components" at="x" data:slide="null"/>', bad)).codes.includes('HSON_PART_REFERENCE_INVALID'));
-  const forwarding = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{slide}" <hson-part at="child" data:payload="%{slide.details}"/>/>`}, child:{kind:"document",document:Hson.document`<b payload:data="%{payload}" "%{payload.title}"/>`} }';
+  const forwarding = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{slide}" <hson-part at="child" data:payload="#{slide.details}"/>/>`}, child:{kind:"document",document:Hson.document`<b payload:data="%{payload}" "#{payload.title}"/>`} }';
   assert.deepEqual(inspect(application('<hson-part lib="components" at="x" data:slide="<details <title \\\"ok\\\">>"/>', forwarding)).codes, []);
 });
 check("structured receiving interfaces diagnose local errors and retain dynamic uncertainty", () => {
   const collection = (body: string) => '{x:{kind:"document",document:Hson.document`' + body + '`}}';
-  const valid = '<p slide:data="%{payload}" "%{slide.title}"/>';
+  const valid = '<p slide:data="%{payload}" "#{slide.title}"/>';
   const invocation = (attrs: string) => '<hson-part lib="components" at="x" ' + attrs + '/>';
   assert.deepEqual(inspect(application(invocation('data:payload="<title 0>"'), collection(valid))).codes, []);
   assert.ok(inspect(application(invocation('payload="scalar"'), collection(valid))).codes.includes('HSON_PART_ARGUMENT_INVALID'));
   assert.ok(inspect(application(invocation('data:payload="null" slide="conflict"'), collection(valid))).codes.includes('HSON_PART_ARGUMENT_UNKNOWN'));
   assert.ok(inspect(application(invocation('data:payload="null"'), collection('<p "%{payload}"/>'))).codes.includes('HSON_PART_ARGUMENT_INVALID'));
   for (const body of ['<p slide:data="%{payload.title}" "%{slide}"/>', '<p slide:data="before%{payload}" "%{slide}"/>',
-    '<p <b slide:data="%{payload}" "%{slide}"/>/>', '<p slide:data="%{payload}" "%{payload}"/>', '<p slide:data="%{payload}"/>']) {
+    '<p <b slide:data="%{payload}" "#{slide}"/>/>', '<p slide:data="%{payload}" "%{payload}"/>', '<p slide:data="%{payload}"/>']) {
     const result = inspect(application(invocation('data:payload="null"'), collection(body)));
     assert.ok(result.codes.includes('HSON_PART_REFERENCE_INVALID'), body);
     assert.ok(result.slices.some(slice => slice.includes('%{')), body);
@@ -242,11 +242,11 @@ check("structured receiving interfaces diagnose local errors and retain dynamic 
   const dynamic = inspect(application(invocation('data:payload="${dynamic}"'), collection(valid)));
   assert.deepEqual(dynamic.codes, []);
   assert.deepEqual(inspect(application(invocation('data:payload="null"'), collection('<p slide:data="${dynamic}" "%{slide.title}"/>'))).codes, []);
-  const nested = '{x:{kind:"document",document:Hson.document`<p local:data="%{payload}" <hson-part at="y" data:data="%{local}"/>/>`},y:{kind:"document",document:Hson.document`<b data:data="%{data}" "%{data.title}"/>`}}';
+  const nested = '{x:{kind:"document",document:Hson.document`<p local:data="%{payload}" <hson-part at="y" data:data="#{local}"/>/>`},y:{kind:"document",document:Hson.document`<b data:data="%{data}" "#{data.title}"/>`}}';
   assert.deepEqual(inspect(application(invocation('data:payload="<title 0>"'), nested)).codes, []);
 });
 check("optional diagnostics validate flags and preserve omitted forwarding uncertainty", () => {
-  const definition = '{x:{kind:"document",document:Hson.document`<section part:optional d:data="%{payload}" <p part:optional "%{d.title}"/> <hson-part part:optional at="leaf" data:payload="%{d.child}"/>/>`},leaf:{kind:"document",document:Hson.document`<b part:optional d:data="%{payload}" "%{d.value}"/>`}}';
+  const definition = '{x:{kind:"document",document:Hson.document`<section part:optional d:data="%{payload}" <p part:optional "#{d.title}"/> <hson-part part:optional at="leaf" data:payload="#{d.child}"/>/>`},leaf:{kind:"document",document:Hson.document`<b part:optional d:data="%{payload}" "#{d.value}"/>`}}';
   const invocation = '<hson-part lib="components" at="x" data:payload="<>"/>';
   assert.deepEqual(inspect(application(invocation, definition)).codes, []);
   assert.deepEqual(inspect(application(invocation.replace('data:payload="<>"', 'data:payload="${dynamic}"'), definition)).codes, []);
@@ -256,12 +256,28 @@ check("optional diagnostics validate flags and preserve omitted forwarding uncer
     assert.ok(result.slices.includes('part:optional'));
   }
   assert.ok(inspect(application('<p part:optional/>')).codes.includes('HSON_PART_OPTIONAL_INVALID'));
-  const unknown = definition.replace('%{d.title}', '%{unknown.title}');
+  const unknown = definition.replace('#{d.title}', '%{unknown.title}');
   assert.ok(inspect(application(invocation, unknown)).codes.includes('HSON_PART_REFERENCE_INVALID'));
   assert.ok(inspect(application(invocation.replace('data:payload="<>"', ''), definition)).codes.includes('HSON_PART_ARGUMENT_MISSING'));
   const empty = '{x:{kind:"document",document:Hson.document`<p part:optional d:data="%{payload}"/>`}}';
   assert.deepEqual(inspect(application(invocation, empty)).codes, []);
   assert.deepEqual(inspect(application(invocation.replace('data:payload="<>"', ''), empty)).codes, []);
+});
+check("Document bindings diagnose representation, namespace and required optional inputs", () => {
+  const definition = (body: string) => '{x:{kind:"document",document:Hson.document`' + body + '`}}';
+  const body = '<main c:doc="%{control}" d:data="%{payload}" "#{d.label}" <hson-part #{c}/>/>';
+  const invocation = '<hson-part lib="components" at="x" doc:control="<b/>" data:payload="<label 0>"/>';
+  assert.deepEqual(inspect(application(invocation, definition(body))).codes, []);
+  assert.ok(inspect(application(invocation.replace('doc:control', 'data:control'), definition(body))).codes.includes('HSON_PART_ARGUMENT_INVALID'));
+  assert.ok(inspect(application(invocation.replace('<b/>', 'broken'), definition(body))).codes.includes('HSON_PART_DOCUMENT_INVALID'));
+  for (const invalid of [body.replace('#{d.label}', '%{d.label}'), body.replace('#{c}', '#{d}'),
+    body.replace('d:data="%{payload}"', 'c:data="%{payload}"'), body.replace('#{d.label}', '#{unknown.label}'),
+    body.replace('<hson-part #{c}/>', '<hson-part at="child" data:control="#{c}"/>')]) {
+    assert.ok(inspect(application(invocation, definition(invalid))).codes.includes('HSON_PART_REFERENCE_INVALID'), invalid);
+  }
+  const optional = '<main part:optional c:doc="%{control}"/>';
+  assert.ok(inspect(application('<hson-part lib="components" at="x"/>', definition(optional))).codes.includes('HSON_PART_ARGUMENT_MISSING'));
+  assert.deepEqual(inspect(application(invocation.replace('doc:control="<b/>"', 'doc:control="${dynamic}"'), definition(body))).codes, []);
 });
 service.dispose();
 events.terminal("pass");

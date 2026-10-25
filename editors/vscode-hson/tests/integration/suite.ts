@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import ts from "typescript";
 
 import * as vscode from "vscode";
 
@@ -181,6 +182,8 @@ async function runTypingConveniences(workspace: string): Promise<void> {
     { label: 'attribute', body: 'document`<span title|/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
     { label: 'interpolation', body: 'document`<span $|/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'placeholder', body: 'document`<span title="%|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'local placeholder', body: 'document`<span title="#|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'structural Document reference', body: 'document`<main c:doc="%{control}" <hson-part #|/>/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'attribute after partial quote', body: 'document`<span title="${first} partial" next|/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
     { label: 'partial quoted content', body: 'document`<span "before $|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'partial quoted attribute', body: 'document`<span title="$|after"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
@@ -428,6 +431,8 @@ async function runPartCompletions(workspace: string): Promise<void> {
   }
   for (const [body, label, expected] of [
     ['<h1 "%{Title-Case}" "%{Ti|}"/>', 'Title-Case', '<h1 "%{Title-Case}" "%{Title-Case}"/>'],
+    ['<main control:doc="%{control}" <hson-part #{co|}/>/>' , 'control', '<main control:doc="%{control}" <hson-part #{control}/>/>' ],
+    ['<main d:data="%{payload}" "#{d.title}" "#{d.ti|}"/>' , 'd.title', '<main d:data="%{payload}" "#{d.title}" "#{d.title}"/>' ],
     ['<h1 title="%{content}" id=%{co|}/>', 'content', '<h1 title="%{content}" id=%{content}/>'],
     [String.raw`<h1 title="%{content}" id="%{\u0063o|}"/>`, 'content', '<h1 title="%{content}" id="%{content}"/>'],
     ['<script src="/app.js" title="%{content}" id="%{co|}"/>', 'content', '<script src="/app.js" title="%{content}" id="%{content}"/>'],
@@ -443,6 +448,50 @@ async function runPartCompletions(workspace: string): Promise<void> {
     const edit = new vscode.WorkspaceEdit(); edit.replace(uri, range, String(spelling.textEdit?.newText ?? spelling.insertText));
     assert.equal(await vscode.workspace.applyEdit(edit), true); assert.equal(document.getText(), before + expected + after);
   }
+  const writePrefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { parts } from "./parts.js";\r\nconst loc=hsonLiveMap.fromLibraries({components:{parts}});const components=loc.parts.components;components.heading.write({ ';
+  for (const [input, label, expected, finish] of [
+    ['Tit|', 'Title-Case', '"Title-Case": "|"'],
+    ['Tit|leOld: "kept"', 'Title-Case', '"Title-Case"|: "kept"'],
+    ['"Tit|leOld": "kept"', 'Title-Case', '"Title-Case|": "kept"'],
+    [String.raw`'\u0054it|': "kept"`, 'Title-Case', "'Title-Case|': \"kept\""],
+    ['con|', 'content', 'content|'],
+    ['before() {}, Tit|leOld: "kept", get after() { return 1; }', 'Title-Case', 'before() {}, "Title-Case"|: "kept", get after() { return 1; }'],
+    ['before() {}, "Tit|leOld": "kept", set after(value: string) {}', 'Title-Case', 'before() {}, "Title-Case|": "kept", set after(value: string) {}'],
+    ['Tit|: /* keep */', 'Title-Case', '"Title-Case"|: /* keep */', ' 1'],
+    ['"Tit|"', 'Title-Case', '"Title-Case|"', ': 1'],
+    ['Tit|leOld: true ? "one" : "two", tail: value!', 'Title-Case', '"Title-Case"|: true ? "one" : "two", tail: value!'],
+  ]) {
+    const marked = writePrefix + input + ' });';
+    await replace(document, marked.replace('|', ''));
+    const editor = await vscode.window.showTextDocument(document);
+    const cursor = document.positionAt(marked.indexOf('|'));
+    editor.selection = new vscode.Selection(cursor, cursor);
+    const item = await completions(marked.indexOf('|'), label);
+    const range = item.textEdit?.range ?? (item.range instanceof vscode.Range ? item.range : item.range?.replacing);
+    const insertion = item.insertText ?? item.textEdit?.newText;
+    assert.ok(range); assert.ok(insertion);
+    const snippet = insertion instanceof vscode.SnippetString ? insertion : new vscode.SnippetString().appendText(insertion);
+    assert.equal(await editor.insertSnippet(snippet, range), true);
+    assert.equal(document.getText(), writePrefix + expected.replace('|', '') + ' });');
+    assert.equal(document.offsetAt(editor.selection.active), writePrefix.length + expected.indexOf('|'));
+    assert.equal(editor.selection.isEmpty, true);
+    if (finish) assert.ok(await editor.edit(edit => edit.insert(document.positionAt(document.getText().length - 4), finish)));
+    assert.deepEqual(ts.transpileModule(document.getText(), { compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext }, reportDiagnostics: true }).diagnostics, []);
+  }
+  process.stdout.write('ok - real VS Code write key completions preserve names, values, syntax and native snippet cursors\n');
+  for (const input of ['Tit|() {}', 'get Tit|() { return "kept"; }', 'set Tit|(value: string) {}', '"Tit|"() {}', 'get "Tit|"() { return 1; }', 'Tit|(',
+    'Tit|?', 'Tit|!', 'Tit| = "kept"', 'Tit| =', 'Tit|?: 1', 'Tit|!: 1', '"Tit|"?', "'Tit|'!: 1",
+    'readonly Tit|', 'public Tit|: 1', 'async Tit|', 'Tit|.', 'Tit|=>', 'Tit| as string', 'Tit| satisfies string']) {
+    const marked = writePrefix + input + ' });';
+    await replace(document, marked.replace('|', ''));
+    const editor = await vscode.window.showTextDocument(document), cursor = document.positionAt(marked.indexOf('|'));
+    editor.selection = new vscode.Selection(cursor, cursor);
+    const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', uri, cursor, undefined, 100);
+    assert.ok(!result?.items.some(item => /Part argument from the authored definition/.test(item.detail ?? '')), input);
+    assert.equal(document.getText(), marked.replace('|', ''));
+    assert.equal(document.offsetAt(editor.selection.active), marked.indexOf('|')); assert.ok(editor.selection.isEmpty);
+  }
+  process.stdout.write('ok - real VS Code write key completions exclude method and accessor contexts\n');
   const body = '<hson-part lib="components" at="he|"/>';
   await replace(document, prefix + body.replace("|", "") + suffix);
   await completions(prefix.length + body.indexOf("|"), "heading");
@@ -784,6 +833,7 @@ const loc = hsonLiveMap.locus.create({
     await typeArray("unrelated template stays literal", 'const value = `|`;', false);
     await typeArray("lookalike Hson stays literal", 'const Hson=String.raw; const x=Hson.canonical`|`;', false);
     await typeArray("non-array Hson position stays literal", hostPrefix + 'const x=Hson.canonical`<tag |/>`;', false);
+    await typeArray("Part selector bracket stays ASCII", hostPrefix + 'const x=Hson.document`<p d:data="%{payload}" "#{d.items|}"/>`;', false);
     await ordinaryEnter("incomplete Hson", hostPrefix + 'const x=Hson.canonical`<data 1|`;');
     await ordinaryEnter("parser-invalid Hson", hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
     await ordinaryEnter("tokenizer-invalid Hson", hostPrefix + 'const x=Hson.canonical`<a "bad\\q"|>`;');

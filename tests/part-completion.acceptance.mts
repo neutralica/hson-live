@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
+import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
 import { HsonEditorCompletionCache, type HostCompletion } from "../editors/vscode-hson/src/editor-completion.ts";
 import { collect_part_source_facts } from "../src/internal/hson-schema/part-source.ts";
 import { query_hson_editor_context } from "../src/internal/editor-introspection/query.ts";
@@ -272,27 +273,27 @@ check("Program revisions, upstream-only edits, forget and clear invalidate facts
   edit("parts.ts", parts);
 });
 check("structured arguments complete normalized names and proven selectors without inventing shape", () => {
-  const definition = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{payload}" title="%{slide.title}" "%{slide.items[0].label}"/>`} }';
+  const definition = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{payload}" title="#{slide.title}" "#{slide.items[0].label}"/>`} }';
   const app = (body: string) => imports + 'const loc = maps.fromLibraries({ components:{parts:' + definition + '}, page:{document:Hson.document`' + body + '`} });';
   assert.ok(complete(app('<hson-part lib="components" at="x" |/>')).labels.includes('data:payload'));
   assert.deepEqual(complete(app('<hson-part lib="components" at="x" payload="old" |/>')).labels, []);
   assert.deepEqual(complete(app('<hson-part lib="components" at="x" data:payload="null" |/>')).labels, []);
   const prefix = imports + 'const loc = maps.fromLibraries({components:{parts:{ x:{kind:"document", document:Hson.document`';
   const suffix = '`} }}});';
-  const result = complete(prefix + '<p slide:data="%{payload}" title="%{slide.items[0].label}" "%{slide.it|}"/>' + suffix);
+  const result = complete(prefix + '<p slide:data="%{payload}" title="#{slide.items[0].label}" "#{slide.it|}"/>' + suffix);
   assert.deepEqual(result.labels, ['slide.it', 'slide.items[0].label']);
-  assert.ok(applied(result, 'slide.items[0].label').includes('"%{slide.items[0].label}"/>'));
-  assert.deepEqual(complete(prefix + '<p slide:data="%{payload}" title="%{slide.title}" "%{slide.unknown|}"/>' + suffix).labels, ['slide.unknown']);
-  assert.deepEqual(complete(prefix + '<p slide:data="%{payload}" title="%{slide.title}" <hson-part at="x" data:x="<text \\\"%{sl|}\\\" >"/>/>' + suffix).labels, []);
-  const forwarded = complete(prefix + '<p slide:data="%{payload}" title="%{slide.items[0].label}" <hson-part at="child" data:payload="%{slide.it|}"/>/>' + suffix);
+  assert.ok(applied(result, 'slide.items[0].label').includes('"#{slide.items[0].label}"/>'));
+  assert.deepEqual(complete(prefix + '<p slide:data="%{payload}" title="#{slide.title}" "#{slide.unknown|}"/>' + suffix).labels, ['slide.unknown']);
+  assert.deepEqual(complete(prefix + '<p slide:data="%{payload}" title="#{slide.title}" <hson-part at="x" data:x="<text \\\"%{sl|}\\\" >"/>/>' + suffix).labels, []);
+  const forwarded = complete(prefix + '<p slide:data="%{payload}" title="#{slide.items[0].label}" <hson-part at="child" data:payload="#{slide.it|}"/>/>' + suffix);
   assert.ok(forwarded.labels.includes('slide.items[0].label'));
-  const bracket = complete(prefix + '<p slide:data="%{payload}" title=' + JSON.stringify('%{slide["odd}key"]}') + ' "%{slide[|}"/>' + suffix);
+  const bracket = complete(prefix + '<p slide:data="%{payload}" title=' + JSON.stringify('#{slide["odd}key"]}') + ' "#{slide[|}"/>' + suffix);
   assert.ok(bracket.labels.includes('slide["odd}key"]'));
   const repaired = applied(bracket, 'slide["odd}key"]');
   const markup = repaired.slice(repaired.indexOf('<p'), repaired.lastIndexOf('/>') + 2);
   assert.doesNotThrow(() => hson_grammar_checkpoint(markup, markup.length, "document"));
-  assert.ok(repaired.includes(JSON.stringify('%{slide["odd}key"]}') + '/>'));
-  const reference = '%{slide["odd}key"]}', body = '<p ' + JSON.stringify(reference) + '/>';
+  assert.ok(repaired.includes(JSON.stringify('#{slide["odd}key"]}') + '/>'));
+  const reference = '#{slide["odd}key"]}', body = '<p ' + JSON.stringify(reference) + '/>';
   const cursor = body.indexOf('key') + 3;
   const checkpoint = hson_grammar_checkpoint(body, cursor, "document");
   assert.equal(checkpoint?.kind, "parameter");
@@ -301,17 +302,17 @@ check("structured arguments complete normalized names and proven selectors witho
 check("structured receiving declarations keep incoming and local completion namespaces separate", () => {
   const prefix = imports + 'const loc = maps.fromLibraries({components:{parts:{ x:{kind:"document", document:Hson.document`';
   const suffix = '`} }}});';
-  const body = complete(prefix + '<p slide:data="%{payload}" title="%{slide.title}" "%{|}"/>' + suffix);
+  const body = complete(prefix + '<p slide:data="%{payload}" title="#{slide.title}" "#{|}"/>' + suffix);
   assert.ok(body.labels.includes('slide'));
   assert.ok(body.labels.includes('slide.title'));
   assert.ok(!body.labels.includes('payload'));
-  const declaration = complete(prefix + '<p slide:data="%{payload}" another:data="%{pay|}" "%{slide.title}"/>' + suffix);
+  const declaration = complete(prefix + '<p slide:data="%{payload}" another:data="%{pay|}" "#{slide.title}"/>' + suffix);
   assert.ok(declaration.labels.includes('payload'));
   assert.ok(!declaration.labels.some(label => label.startsWith('slide')));
   assert.deepEqual(complete(prefix + '<p slide:data="%{payload}" <b nested:data="%{pay|}"/>/>' + suffix).labels, []);
-  const forwarded = complete(prefix + '<p slide:data="%{payload}" <hson-part at="child" data:data="%{sl|}"/>/>' + suffix);
+  const forwarded = complete(prefix + '<p slide:data="%{payload}" <hson-part at="child" data:data="#{sl|}"/>/>' + suffix);
   assert.ok(forwarded.labels.includes('slide'));
-  const whole = '{ x: {kind:"document", document:Hson.document`<p local:data="%{incoming}" "%{local}"/>`} }';
+  const whole = '{ x: {kind:"document", document:Hson.document`<p local:data="%{incoming}" "#{local}"/>`} }';
   const app = imports + 'const loc = maps.fromLibraries({components:{parts:' + whole + '},page:{document:Hson.document`<hson-part lib="components" at="x" |/>`}});';
   assert.deepEqual(complete(app).labels, ['data:incoming']);
 });
@@ -326,6 +327,175 @@ check("optional flags complete only in governed Part headers and preserve argume
   assert.deepEqual(complete(authored('<p part:optional="%{|}"/>', memberApplication)).labels, []);
   const result = complete(authored('<p <hson-part lib="components" at="heading" |/>/>', memberApplication));
   assert.ok(result.labels.includes('part:optional'));
+});
+check("local Document references complete in structural frames and prefix-free write records", () => {
+  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`';
+  const suffix = '`}}}});';
+  const structural = complete(prefix + '<main c:doc="%{control}" d:data="%{payload}" <hson-part #{|}/>/>' + suffix);
+  assert.deepEqual(structural.labels, ['c']);
+  assert.ok(applied(structural, 'c').includes('<hson-part #{c}/>'));
+  const unfinished = complete(prefix + '<main c:doc="%{control}" <hson-part #{c|' + suffix);
+  assert.deepEqual(unfinished.labels, ['c']);
+  assert.ok(applied(unfinished, 'c').includes('#{c}'));
+  const locals = complete(prefix + '<main c:doc="%{control}" title="#{|}" <hson-part #{c}/>/>' + suffix);
+  assert.ok(locals.labels.includes('c')); assert.ok(!locals.labels.includes('control'));
+  const incoming = complete(prefix + '<main c:doc="%{control}" class="%{title}" title="%{|}" <hson-part #{c}/>/>' + suffix);
+  assert.ok(incoming.labels.includes('title')); assert.ok(!incoming.labels.includes('c')); assert.ok(!incoming.labels.includes('control'));
+  assert.deepEqual(complete(prefix + '<main c:doc="%{control}" <hson-part lib="components" at="x" #{c|}/>/>' + suffix).labels, []);
+  assert.deepEqual(complete(prefix + '<main c:doc="%{control}" <hson-part#{c|}/>/>' + suffix).labels, []);
+  assert.deepEqual(complete(prefix + '<main c:doc="%{control}" <hson-part at="y" data:value="#{c|}"/>/>' + suffix).labels, []);
+  assert.deepEqual(complete(prefix + '<main d:data="%{payload}" <hson-part at="y" doc:value="#{d|}"/>/>' + suffix).labels, []);
+  const app = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p d:data="%{payload}" c:doc="%{control}" title="%{title}" "#{d.label}" <hson-part #{c}/>/ >`}}}});';
+  const record = complete(app.replace('/ >', '/>') + 'const components=loc.parts.components;components.x.write({ tit| });');
+  assert.deepEqual(record.labels, ['title']);
+  assert.equal(record.entries[0]!.candidate.certainty, 'possible');
+});
+check("Data paths use observed authored input shapes and withhold unknown properties", () => {
+  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`';
+  const suffix = '`}}},page:{document:Hson.document`<hson-part lib="components" at="x" data:payload="<title 0 items «<label false>» odd true>"/>`}});';
+  const shape = complete(prefix + '<p d:data="%{payload}" "#{d.|}"/>' + suffix);
+  assert.ok(shape.labels.includes('d.title'));
+  assert.ok(shape.labels.includes('d.items[0].label'));
+  const dynamic = complete(prefix + '<p d:data="%{payload}" "#{d.|}"/>' + suffix.replace('<title 0 items «<label false>» odd true>', '${dynamic}'));
+  assert.deepEqual(dynamic.labels, []);
+  const bare = complete(prefix + '<main c:doc="%{control}" <hson-part |/>/>' + '`}}}});');
+  assert.ok(bare.labels.includes('#{c}'));
+});
+check("write key edits preserve JavaScript names, values, quotes, ranges and cursors", () => {
+  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{page:{kind:"document",document:Hson.document`<p "%{Title-Case}:%{title}:%{default}:%{await}"/>`}}}});loc.parts.components.page.write({ ';
+  for (const [input, label, expected, replaced] of [
+    ['Tit|', 'Title-Case', '"Title-Case": "|"', 'Tit'],
+    ['|', 'Title-Case', '"Title-Case": "|"', ''],
+    ['Tit|leOld: "kept"', 'Title-Case', '"Title-Case"|: "kept"', 'TitleOld'],
+    ['"Tit|leOld": "kept"', 'Title-Case', '"Title-Case|": "kept"', 'TitleOld'],
+    ["'Tit|leOld': \"kept\"", 'Title-Case', "'Title-Case|': \"kept\"", 'TitleOld'],
+    [String.raw`"\u0054it|": "kept"`, 'Title-Case', '"Title-Case|": "kept"', String.raw`\u0054it`],
+    [String.raw`'Title\x2dC|': "kept"`, 'Title-Case', "'Title-Case|': \"kept\"", String.raw`Title\x2dC`],
+    [String.raw`\u0054it|: "kept"`, 'Title-Case', '"Title-Case"|: "kept"', String.raw`\u0054it`],
+    ['tit|', 'title', 'title|', 'tit'],
+    ['"tit|": "kept"', 'title', '"title|": "kept"', 'tit'],
+    ['def|', 'default', '"default": "|"', 'def'],
+    ['aw|', 'await', '"await": "|"', 'aw'],
+  ]) {
+    const result = complete(prefix + input + ' });');
+    const entry = result.entries.find(entry => entry.candidate.label === label); assert.ok(entry, input);
+    assert.equal(result.text.slice(entry.range.start, entry.range.end), replaced, input);
+    const marker = entry.candidate.insertText.indexOf('$0');
+    const insertion = entry.isSnippet ? entry.candidate.insertText.replace('$0', '') : entry.candidate.insertText;
+    const output = result.text.slice(0, entry.range.start) + insertion + result.text.slice(entry.range.end);
+    const expectedText = prefix + expected.replace('|', '') + ' });';
+    assert.equal(output, expectedText, input);
+    assert.equal(entry.range.start + (entry.isSnippet ? marker : insertion.length), prefix.length + expected.indexOf('|'), input);
+    edit('app.ts', output);
+    assert.deepEqual(service.getSyntacticDiagnostics(file('app.ts')), [], input);
+  }
+  for (const input of [String.raw`"\u00|54it": "kept"`, 'title: "va|lue"', '[dynamic]: "kept", |']) {
+    assert.deepEqual(complete(prefix + input + ' });').labels, [], input);
+  }
+  // An already quoted key without a colon remains an intentionally unfinished
+  // property: complete only its interior, then let ordinary value entry finish it.
+  const unfinished = complete(prefix + '"Tit|" });');
+  const completed = applied(unfinished, 'Title-Case');
+  assert.equal(completed, prefix + '"Title-Case" });');
+  edit('app.ts', completed.replace('"Title-Case" });', '"Title-Case": "" });'));
+  assert.deepEqual(service.getSyntacticDiagnostics(file('app.ts')), []);
+});
+check("write keys exclude methods and accessors without editing neighboring members", () => {
+  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{page:{kind:"document",document:Hson.document`<p "%{Title-Case} %{title}"/>`}}}});loc.parts.components.page.write({ ';
+  for (const input of [
+    'Tit|() { return "kept"; }', 'get Tit|() { return "kept"; }', 'set Tit|(value: string) { void value; }',
+    '"Tit|"() { return "kept"; }', 'get "Tit|"() { return "kept"; }', "set 'Tit|'(value: string) { void value; }",
+    'async Tit|<T>(value: T) { return value; }', '*Tit|() { yield "kept"; }', 'tit|() {}',
+    'title: "kept", Tit|() {}, tail: 1', 'before() {}, get Tit|() { return "kept"; }, tail: 1',
+  ]) {
+    const result = complete(prefix + input + ' });');
+    assert.deepEqual(result.labels, [], input);
+    assert.equal(result.text, prefix + input.replace('|', '') + ' });');
+    assert.deepEqual(service.getSyntacticDiagnostics(file('app.ts')), [], input);
+  }
+  for (const input of ['Tit|(', 'get Tit|(', 'set "Tit|"(', 'async Tit|<', 'title: |', 'before() {} |', '/* Tit| */', '// Tit|\n', 'Tit|:']) {
+    const result = complete(prefix + input + ' });');
+    if (input === 'Tit|:') {
+      const entry = result.entries.find(entry => entry.candidate.label === 'Title-Case'); assert.ok(entry);
+      assert.equal(entry.candidate.insertText, '"Title-Case"'); assert.equal(entry.isSnippet, undefined);
+      assert.equal(applied(result, 'Title-Case'), prefix + '"Title-Case": });');
+      edit('app.ts', applied(result, 'Title-Case').replace(': });', ': "finished" });'));
+      assert.deepEqual(service.getSyntacticDiagnostics(file('app.ts')), []);
+    } else assert.deepEqual(result.labels, [], input);
+  }
+  for (const [input, label, expected] of [
+    ['before() { return 1; }, Tit|leOld: (1 satisfies number), get after() { return "kept"; }', 'Title-Case', 'before() { return 1; }, "Title-Case"|: (1 satisfies number), get after() { return "kept"; }'],
+    ['before() {}, "Tit|leOld": "kept", set after(value: string) { void value; }', 'Title-Case', 'before() {}, "Title-Case|": "kept", set after(value: string) { void value; }'],
+    [String.raw`get before() { return 1; }, '\u0054it|': "kept", tail: 1`, 'Title-Case', 'get before() { return 1; }, \'Title-Case|\': "kept", tail: 1'],
+    ['before() {}, Tit|, tail: 1', 'Title-Case', 'before() {}, "Title-Case": "|", tail: 1'],
+    ['before() {}, tit|, tail: 1', 'title', 'before() {}, title|, tail: 1'],
+    ['before() {}, /* keep */ |, tail: 1', 'Title-Case', 'before() {}, /* keep */ "Title-Case": "|", tail: 1'],
+  ]) {
+    const result = complete(prefix + input + ' });');
+    const entry = result.entries.find(entry => entry.candidate.label === label); assert.ok(entry, input);
+    const insertion = entry.isSnippet ? entry.candidate.insertText.replace('$0', '') : entry.candidate.insertText;
+    const output = result.text.slice(0, entry.range.start) + insertion + result.text.slice(entry.range.end);
+    assert.equal(output, prefix + expected.replace('|', '') + ' });', input);
+    assert.equal(entry.range.start + (entry.isSnippet ? entry.candidate.insertText.indexOf('$0') : insertion.length), prefix.length + expected.indexOf('|'), input);
+    edit('app.ts', output); assert.deepEqual(service.getSyntacticDiagnostics(file('app.ts')), [], input);
+  }
+});
+check("write key contexts reject recovered punctuation and modifiers", () => {
+  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{page:{kind:"document",document:Hson.document`<p "%{Title-Case} %{title}"/>`}}}});loc.parts.components.page.write({ ';
+  for (const input of [
+    'Tit|?', 'Tit|!', 'Tit| = "kept"', 'Tit| =', 'Tit|?: "kept"', 'Tit|!: "kept"',
+    '"Tit|"?', "'Tit|'!: 1", 'readonly Tit|', 'public Tit|: 1', 'async Tit|',
+    'Tit|.', 'Tit|=>', 'Tit| as string', 'Tit| satisfies string',
+  ]) {
+    const result = complete(prefix + input + ' });');
+    assert.deepEqual(result.labels, [], input);
+    assert.equal(result.text, prefix + input.replace('|', '') + ' });');
+  }
+  for (const [input, expected, finish] of [
+    ['Tit|: /* keep */', '"Title-Case"|: /* keep */', ' 1'],
+    ['"Tit|"', '"Title-Case|"', ': 1'],
+    ['/** keep */ Tit|, tail: 1', '/** keep */ "Title-Case": "|", tail: 1', ''],
+    ['Tit|leOld: condition ? "one" : "two", tail: dynamic!', '"Title-Case"|: condition ? "one" : "two", tail: dynamic!', ''],
+    ['tit|: dynamic!, tail: "kept"', 'title|: dynamic!, tail: "kept"', ''],
+  ]) {
+    const result = complete(prefix + input + ' });');
+    const label = input.startsWith('tit') ? 'title' : 'Title-Case';
+    const entry = result.entries.find(entry => entry.candidate.label === label); assert.ok(entry, input);
+    const insertion = entry.isSnippet ? entry.candidate.insertText.replace('$0', '') : entry.candidate.insertText;
+    const output = result.text.slice(0, entry.range.start) + insertion + result.text.slice(entry.range.end);
+    assert.equal(output, prefix + expected.replace('|', '') + ' });', input);
+    assert.equal(entry.range.start + (entry.isSnippet ? entry.candidate.insertText.indexOf('$0') : insertion.length), prefix.length + expected.indexOf('|'), input);
+    edit('app.ts', output.slice(0, -4) + finish + ' });');
+    assert.deepEqual(service.getSyntacticDiagnostics(file('app.ts')), [], input);
+  }
+});
+check("TypeScript language service publishes prefix-free write key evidence", () => {
+  const marked = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p "%{label}"/>`}}}});loc.parts.components.x.write({ lab| });';
+  const offset = marked.indexOf('|'); edit('app.ts', marked.replace('|',''));
+  const integrated = create_schema_language_service(ts, ts.createLanguageService(host), host, join(directory, 'tsconfig.json'));
+  try {
+    const result = integrated.getCompletionsAtPosition(file('app.ts'), offset, {});
+    const label = result?.entries.find(entry => entry.name === 'label');
+    assert.ok(label); assert.equal(label.insertText, 'label');
+  } finally { integrated.dispose(); }
+});
+check("TypeScript write completion applies quoted assignments with and without snippet support", () => {
+  const marked = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p "%{Title-Case}"/>`}}}});loc.parts.components.x.write({ Tit| });';
+  const offset = marked.indexOf('|'); edit('app.ts', marked.replace('|', ''));
+  const integrated = create_schema_language_service(ts, ts.createLanguageService(host), host, join(directory, 'tsconfig.json'));
+  try {
+    for (const snippets of [true, false]) {
+      const entry = integrated.getCompletionsAtPosition(file('app.ts'), offset, { includeCompletionsWithSnippetText: snippets })?.entries.find(entry => entry.name === 'Title-Case');
+      assert.ok(entry?.replacementSpan); assert.ok(entry.insertText);
+      assert.equal(entry.isSnippet === true, snippets);
+      const insertion = snippets ? entry.insertText.replace('$0', '') : entry.insertText;
+      const output = marked.replace('|', '').slice(0, entry.replacementSpan.start) + insertion
+        + marked.replace('|', '').slice(entry.replacementSpan.start + entry.replacementSpan.length);
+      assert.ok(output.endsWith('write({ "Title-Case": "" });'));
+      edit('applied.ts', output);
+      assert.deepEqual(service.getSyntacticDiagnostics(file('applied.ts')), []);
+    }
+  } finally { integrated.dispose(); }
 });
 service.dispose();
 events.terminal("pass");

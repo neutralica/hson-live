@@ -283,11 +283,11 @@ locusBase.at([]).write();
 actionBase.present()?.write();
 
 // HsonData uses the existing string branch of Part.write; no new wrapper or overload.
-parts.heading.write({ "data:slide": Hson.data`<title "Visible">`, "data:index": Hson.data`0` }) satisfies HsonAuthored;
+parts.heading.write({ slide: Hson.data`<title "Visible">`, index: Hson.data`0` }) satisfies HsonAuthored;
 
 // Document edits return the aggregate stream, including CSS installation/retirement.
 const optionalParts = hsonLiveMap.fromLibraries({ parts: { parts: {
-  optional: { kind: 'document', document: Hson.document`<p part:optional d:data="%{payload}" "%{d.title}"/>`, stylesheet: 'p{color:red}' },
+  optional: { kind: 'document', document: Hson.document`<p part:optional d:data="%{payload}" "#{d.title}"/>`, stylesheet: 'p{color:red}' },
   ordinary: { kind: 'document', document: Hson.document`<b/>`, stylesheet: 'b{color:blue}' },
 } }, page: { document: Hson.document`<main <i/>/>` } });
 const replacementCommit = optionalParts.doc.must('page').document.content.replace({ kind: 'path', path: [0, 0] }, 0,
@@ -323,3 +323,9 @@ for (const commit of [ordinaryCommit, replacementCommit]) for (const { operation
     }
   }
 }
+
+// The JavaScript convention is prefix-free; explicit prefixes belong to authored connectors.
+// @ts-expect-error deprecated JavaScript sending prefix
+parts.heading.write({ "data:slide": Hson.data`null` });
+// @ts-expect-error Document sending prefix is also authored-only
+parts.heading.write({ "doc:control": Hson.document`<b/>` });

@@ -68,6 +68,25 @@ function replacePart(adapter: MemoryCheckpointAdapter, manifest: LocusHostedAggr
 }
 
 export async function scoped_checkpoint_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  await check("structural Document input restores and checkpoints through existing source-free scoped records", async () => {
+    const f = await fixture(false, true), adapter = new MemoryCheckpointAdapter();
+    try {
+      const snapshot = f.state();
+      assert.doesNotMatch(JSON.stringify(snapshot), /hson-part|:doc|#\{/);
+      const receiver = f.fresh(snapshot);
+      const receivingMap = receiver.map;
+      assert.ok(receivingMap);
+      assert.deepEqual(receivingMap.doc.must("page").root(), f.map.doc.must("page").root());
+      assert.throws(() => receivingMap.parts.must("parts"));
+      const checkpoint = f.a.captureSemanticCheckpoint();
+      await write(checkpoint, adapter, ownership);
+      const received = await read(active(adapter, checkpoint), adapter);
+      const loaded = authority(received).captureSemanticCheckpoint();
+      assert.equal(equal(document(loaded), document(checkpoint)), true);
+      const restored = restore(loaded);
+      assert.equal(equal(document(authority(restored).captureSemanticCheckpoint()), document(checkpoint)), true);
+    } finally { f.l.dispose(); }
+  });
   await scoped_tail_cases(check);
   await h0a_cases(check);
   await check("B1 complete authority capture is coherent, detached, observational and QUID-free", async () => {

@@ -127,8 +127,9 @@ export function create_schema_language_service(typescript: typeof ts, service: t
     const hson = hsonCompletions(file, offset);
     const result = service.getCompletionsAtPosition(file, position(file, offset), options, formatting);
     if (result === undefined && hson.length === 0) return undefined;
-    const entries: ts.CompletionEntry[] = hson.map(({ candidate, range }) => ({
-      name: candidate.label, insertText: candidate.insertText, sortText: candidate.sortText,
+    const entries = hson.map(({ candidate, range, isSnippet }): ts.CompletionEntry => ({
+      name: candidate.label, insertText: isSnippet && !options?.includeCompletionsWithSnippetText ? candidate.insertText.replace('$0', '') : candidate.insertText,
+      ...(isSnippet && options?.includeCompletionsWithSnippetText ? { isSnippet: true } : {}), sortText: candidate.sortText,
       kind: candidate.kind === "member" ? typescript.ScriptElementKind.memberVariableElement
         : candidate.kind === "reference" ? typescript.ScriptElementKind.alias : typescript.ScriptElementKind.string,
       replacementSpan: { start: range.start, length: range.end - range.start },

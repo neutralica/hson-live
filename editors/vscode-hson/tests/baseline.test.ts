@@ -25,12 +25,65 @@ async function run(): Promise<void> {
     const text = 'import { Hson } from "hson-live/hson"; Hson.document`<main @:main ${fragment} <hson-part @:content lib="parts" at="content"/>/>`;';
     const highlights = tokens(text);
     for (const declaration of ['@:main', '@:content']) {
-      const token = highlights.find(item => text.slice(item.range.start, item.range.end) === declaration);
-      assert.equal(token?.type, 'hsonQuad');
-      assert.ok(token?.scopes.includes('constant.other.quad.hson'));
+      const start = text.indexOf(declaration), end = start + declaration.length;
+      const pieces = highlights.filter(item => item.range.start >= start && item.range.end <= end);
+      assert.deepEqual(pieces.map(token => text.slice(token.range.start, token.range.end)), ['@', ':', declaration.slice(2)]);
+      assert.deepEqual(pieces.map(token => token.range), [{ start, end: start + 1 }, { start: start + 1, end: start + 2 }, { start: start + 2, end }]);
+      assert.deepEqual(pieces.map(token => token.type), ['hsonDelimiter', 'hsonDelimiter', 'hsonQuad']);
+      assert.ok(pieces.every(token => token.scopes.includes('constant.other.quad.hson')));
     }
-    assert.ok(!highlights.some(item => item.range.start < text.indexOf('${fragment}') + '${fragment}'.length
-      && item.range.end > text.indexOf('${fragment}')));
+    // Delimiters now receive lexical scopes; JavaScript expression content stays protected.
+    assert.ok(!highlights.some(item => item.range.start < text.indexOf('${fragment}') + '${fragment'.length
+      && item.range.end > text.indexOf('${fragment}') + 2));
+  });
+
+  check("tagged identity declarations split punctuation without claiming strings or JavaScript values", () => {
+    const body = '<p @:actual @012345678 title="@:literal @000000001" "#{d[\\"@:key\\"]} ${"@:inside @000000001"}"/>\n// @:comment @000000001\n<b/>';
+    const text = 'import { Hson } from "hson-live/hson"; Hson.document`' + body + '`;';
+    const emitted = tokens(text);
+    assert.deepEqual(emitted.filter(token => token.scopes.includes('constant.other.identity.hson')).map(token => text.slice(token.range.start, token.range.end)), ['actual', '012345678']);
+    assert.equal(emitted.filter(token => token.scopes.includes('punctuation.definition.identity.hson')).length, 2);
+    assert.equal(emitted.filter(token => token.scopes.includes('punctuation.separator.identity.hson')).length, 1);
+    assert.ok(emitted.some(token => text.slice(token.range.start, token.range.end) === 'title' && token.type === 'hsonProperty'));
+    assert.ok(emitted.some(token => text.slice(token.range.start, token.range.end) === 'b' && token.type === 'hsonType'));
+  });
+
+  check("tagged element names, valued keys and flags use distinct existing theme categories", () => {
+    const text = 'import { Hson } from "hson-live/hson"; Hson.document`<button data:model="value" model:data="value" part:optional="value" disabled/>\n<main part:optional <hson-part #{control}/>/>`;';
+    const emitted = tokens(text);
+    for (const [slice, type, scope] of [['button', 'hsonType', 'entity.name.type.hson'], ['data:model', 'hsonProperty', 'entity.other.attribute-name.hson'], ['model:data', 'hsonProperty', 'entity.other.attribute-name.hson'], ['disabled', 'hsonKeyword', 'constant.language.flag.hson']]) {
+      const token = emitted.find(token => text.slice(token.range.start, token.range.end) === slice);
+      assert.equal(token?.type, type); assert.ok(token?.scopes.includes(scope));
+    }
+    assert.deepEqual(emitted.filter(token => text.slice(token.range.start, token.range.end) === 'part:optional').map(token => token.type), ['hsonProperty', 'hsonKeyword']);
+    assert.ok(!emitted.some(token => text.slice(token.range.start, token.range.end) === 'control' && token.type === 'hsonKeyword'));
+  });
+
+  check("tagged Hson values distinguish interpolation sigils, punctuation and following syntax", () => {
+    const body = '<p title="before ${value} %{incoming} #{d[\\"odd}key\\"][0]} after" next="done" "tail"/>\n<b/>';
+    const text = 'import { Hson } from "hson-live/hson"; const value="safe"; Hson.document`' + body + '`;';
+    const emitted = tokens(text);
+    const at = (offset: number) => emitted.find(token => token.range.start === offset);
+    for (const [sigil, operation, type] of [['$', 'dollar', 'hsonOperator'], ['%', 'percent', 'hsonKeyword'], ['#', 'hash', 'hsonProperty']]) {
+      const start = text.indexOf(sigil + '{');
+      assert.equal(at(start)?.range.end, start + 1);
+      assert.equal(at(start)?.type, type);
+      assert.ok(at(start)?.scopes.includes(`keyword.operator.interpolation.${operation}.hson`));
+      assert.ok(at(start + 1)?.scopes.includes('punctuation.definition.template-expression.begin.hson'));
+    }
+    for (const literal of ['value}', 'incoming}', '[0]}']) {
+      const close = text.indexOf(literal) + literal.length - 1;
+      assert.ok(at(close)?.scopes.includes('punctuation.definition.template-expression.end.hson'));
+    }
+    assert.ok(at(text.indexOf('=' , text.indexOf('<p')))?.scopes.includes('keyword.operator.assignment.hson'));
+    assert.ok(at(text.indexOf('"before'))?.scopes.includes('punctuation.definition.string.begin.hson'));
+    assert.ok(at(text.indexOf('" next='))?.scopes.includes('punctuation.definition.string.end.hson'));
+    for (const [slice, type] of [[' after', 'hsonString'], ['next', 'hsonProperty'], ['tail', 'hsonString'], ['b', 'hsonType']]) {
+      assert.ok(emitted.some(token => text.slice(token.range.start, token.range.end) === slice && token.type === type), slice);
+    }
+    const expression = text.indexOf('${value}') + 2;
+    assert.ok(!emitted.some(token => token.range.start < expression + 'value'.length && token.range.end > expression));
+    assert.deepEqual(tokens('const ordinary = `"${value} %{incoming} #{local}"`;'), []);
   });
 
   for (const eol of ["\n", "\r", "\r\n"]) {
@@ -353,7 +406,7 @@ async function run(): Promise<void> {
     assert.ok(has('12', 'hsonNumber'));
     assert.ok(has('true', 'hsonKeyword'));
     assert.ok(has('null', 'hsonKeyword'));
-    assert.ok(has('@012345678', 'hsonQuid'));
+    assert.ok(has('012345678', 'hsonQuid'));
     assert.ok(has('_hson_bad', 'hsonInvalid'));
     assert.ok(has(' note', 'hsonComment'));
     assert.ok(has('<', 'hsonDelimiter'));
@@ -389,14 +442,16 @@ async function run(): Promise<void> {
   check("Hson tag interpolation preserves literal highlighting and excludes expressions", () => {
     const text = source('<thing ${dangerous()} other 1>'), start = text.indexOf('${'), end = text.indexOf('}', start)+1;
     assert.ok(nameToken(text));
-    assert.ok(tokens(text).every(token => token.range.end <= start || token.range.start >= end));
+    assert.ok(tokens(text).every(token => token.range.end <= start + 2 || token.range.start >= end - 1));
+    assert.deepEqual(tokens(text).filter(token => token.range.start >= start && token.range.end <= end).map(token => text.slice(token.range.start, token.range.end)), ['$', '{', '}']);
   });
   check("quoted interpolation retains Hson string highlighting outside the expression", () => {
     const text = 'import { Hson } from "hson-live"; Hson.document`<body "${fragment}"/>`;';
     const hole = text.indexOf('${');
     const emitted = tokens(text);
     assert.ok(emitted.some(token => token.range.start <= hole - 1 && token.range.end > hole - 1));
-    assert.ok(emitted.every(token => token.range.end <= hole || token.range.start >= text.indexOf('}', hole) + 1));
+    assert.ok(emitted.every(token => token.range.end <= hole + 2 || token.range.start >= text.indexOf('}', hole)));
+    assert.deepEqual(emitted.filter(token => token.range.start >= hole && token.range.end <= text.indexOf('}', hole) + 1).map(token => text.slice(token.range.start, token.range.end)), ['$', '{', '}']);
   });
   check("secure mode never executes interpolation or invents values", () => {
     const text = source('<thing ${(()=>{throw new Error("must not execute")})()}>');

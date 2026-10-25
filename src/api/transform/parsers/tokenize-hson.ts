@@ -1,4 +1,4 @@
-import { part_reference_checkpoint } from "../../../internal/part-placeholder.js";
+import { part_reference_checkpoint, scan_part_reference, part_structural_reference } from "../../../internal/part-placeholder.js";
 import { admit_hson_number } from "../../../core/hson-number.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../../core/hson-content-string.js";
@@ -51,7 +51,7 @@ export type HsonGrammarCheckpoint = Readonly<{
   element?: Readonly<{ tag: string; start: number; attributes: readonly RawAttr[]; contentTags: readonly string[] }>;
   attribute?: string;
   /** Lexical observation only; consumers establish semantic Part placement. */
-  parameter?: Readonly<{ complete: boolean; prefix: string; rawAttribute?: RawAttr }>;
+  parameter?: Readonly<{ complete: boolean; prefix: string; namespace: "incoming" | "local"; structural?: boolean; rawAttribute?: RawAttr }>;
   /** Grammar slot only: an occupied value has not yet established an edit range. */
   pendingValue?: boolean;
 }>;
@@ -697,6 +697,8 @@ class HsonScanner {
 
     const emitOpen = (): void => {
       if (openEmitted) return;
+      if (attrs.some(attr => attr.name.startsWith("#{"))) part_structural_reference({ $_tag: tag,
+        $_attrs: Object.fromEntries(attrs.map(attr => [attr.name, attr.value?.text ?? attr.name])), $_content: [] });
       observeHeader(true);
       const token = this.emit(CREATE_OPEN_TOKEN(tag, attrs, openPos, quid));
       if (quad !== undefined) token.quad = quad;
@@ -740,6 +742,35 @@ class HsonScanner {
       }
 
       const ch = this.peek();
+
+      if (ch === "#" && this.source[this.index + 1] === "{") {
+        const start = this.position();
+        const reference = scan_part_reference(this.source, this.index);
+        const cursor = this.editorCursor;
+        if (this.editorMode === "document" && cursor !== undefined && cursor >= start.index + 2) {
+          const editable = reference ?? scan_part_reference(this.source, start.index, true);
+          const end = editable?.end ?? cursor;
+          const safeSuffix = editable !== undefined || /^[ \t\r\n]*(?:\/>|$)/.test(this.source.slice(cursor));
+          const checkpoint = safeSuffix ? part_reference_checkpoint(this.source.slice(start.index, end), cursor - start.index) : undefined;
+          if (checkpoint !== undefined && tag.toLowerCase() === "hson-part" && !contentStarted && separatedBeforeSlot) {
+            this.editorCheckpoint?.({ kind: "parameter", path: [], existing: [],
+              range: { start: start.index + checkpoint.start, end: start.index + checkpoint.end },
+              openContainers: [...this.editorContainers], element: this.editorElement,
+              parameter: { namespace: "local", structural: true, prefix: checkpoint.prefix, complete: checkpoint.complete } });
+          }
+        }
+        if (tag.toLowerCase() !== "hson-part" || contentStarted || !separatedBeforeSlot || reference === undefined || reference.path.length) {
+          this.fail("standalone local Document references require an empty hson-part connector", start, "HSON_PART_STRUCTURE_INVALID");
+        }
+        while (this.index < reference.end) this.consume();
+        const name = this.source.slice(start.index, this.index);
+        const attr: RawAttr = { name, start, end: this.previousPosition() };
+        this.assertUniqueAttribute(attrDeclarations, attr);
+        this.collector?.recordAttribute(attr, { coverage: { start: start.index, end: this.index },
+          name: { start: start.index, end: this.index }, value: { start: start.index, end: this.index } });
+        attrs.push(attr); observeHeader(); separatedBeforeSlot = false;
+        continue;
+      }
 
       if (ch === "@") {
         const quidPos = this.position();
@@ -1284,7 +1315,7 @@ class HsonScanner {
     this.editorCheckpoint?.({ kind: parameter === undefined ? kind : "parameter", path: [...this.editorPath], existing: [], range,
       openContainers: [...this.editorContainers], ...(this.editorElement === undefined ? {} : { element: this.editorElement }),
       ...(this.editorAttribute === undefined ? {} : { attribute: this.editorAttribute }),
-      ...(parameter === undefined ? {} : { parameter: { complete: parameterComplete, prefix: parameter.prefix,
+      ...(parameter === undefined ? {} : { parameter: { complete: parameterComplete, prefix: parameter.prefix, namespace: parameter.namespace,
         ...(rawAttribute === undefined ? {} : { rawAttribute }) } }),
       ...(quoted ? { quoted: { complete, closingDelimiters: [...this.editorClosingDelimiters].reverse() } } : {}) });
   }

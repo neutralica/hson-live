@@ -11,6 +11,9 @@ import { library_source_definitions, library_source_fields } from "./library-sou
 import { static_source_candidates } from "./source-candidates.js";
 import { static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
 import { is_part_argument_attribute, part_argument_name, whole_part_reference } from "../part-placeholder.js";
+import { qualify_hson_document_root } from "../../api/document/hson-document.js";
+import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
+import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
 
 type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
@@ -49,9 +52,15 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         }
         if (supplied.has(argument.name)) report(attribute.nameLocation, "HSON_PART_ARGUMENT_CONFLICT", `Conflicting Part argument ${JSON.stringify(argument.name)}.`);
         supplied.add(argument.name);
-        if (argument.kind === "data" && attribute.value !== undefined && whole_part_reference(attribute.value) === undefined) {
-          try { admit_canonical_hson_data_value(attribute.value); }
-          catch (cause) { report(attribute.valueLocation, "HSON_PART_DATA_INVALID", `Invalid serialized HsonData for ${JSON.stringify(argument.name)}: ${String(cause)}`); }
+        if (argument.kind !== "scalar" && attribute.value !== undefined && whole_part_reference(attribute.value) === undefined) {
+          try {
+            if (argument.kind === "data") admit_canonical_hson_data_value(attribute.value);
+            else {
+              const root = qualify_hson_document_root(parse_authored_document_library(attribute.value).root);
+              if (root.$_content.length !== 1 || !is_ordinary_element_node(root.$_content[0])) throw new TypeError("Document input requires one authored element.");
+            }
+          }
+          catch (cause) { report(attribute.valueLocation, argument.kind === "data" ? "HSON_PART_DATA_INVALID" : "HSON_PART_DOCUMENT_INVALID", `Invalid serialized ${argument.kind} for ${JSON.stringify(argument.name)}: ${String(cause)}`); }
         }
       }
     }
@@ -98,14 +107,14 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       const vocabulary = new Set(definition.parameters.map(parameter => parameter.name));
       const optionalRoot = definition.optionalStructures.some(flag => flag.root);
       for (const name of vocabulary) if (!supplied.has(name)
-        && !(optionalRoot && definition.parameters.find(parameter => parameter.name === name)?.uses.length === 0)) {
+        && !(optionalRoot && !definition.receivingDeclarations.some(declaration => declaration.incoming === name && declaration.kind === "doc") && definition.parameters.find(parameter => parameter.name === name)?.uses.length === 0)) {
         report(connector.location, "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)}.`);
       }
       for (const attribute of arguments_) {
         const argument = part_argument_name(attribute.name)!;
         if (!vocabulary.has(argument.name)) {
           report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)}.`);
-        } else if ((argument.kind === "data") !== definition.receivingDeclarations.some(declaration => declaration.incoming === argument.name)) {
+        } else if (argument.kind !== (definition.receivingDeclarations.find(declaration => declaration.incoming === argument.name)?.kind ?? "scalar")) {
           report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} does not match the receiving data interface.`);
         }
       }

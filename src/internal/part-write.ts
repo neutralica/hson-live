@@ -1,6 +1,6 @@
 import type { HsonAuthored } from "../api/transform/transform.types.js";
 import { qualify_authored_document_source, serialize_authored_document } from "../api/document/hson-authored.js";
-import { part_argument_name } from "./part-placeholder.js";
+import { part_argument_name, part_receiving_interface } from "./part-placeholder.js";
 import { is_public_attr_name } from "../core/public-attrs.js";
 import type { HsonNode } from "../core/types.js";
 
@@ -26,8 +26,9 @@ export function forward_part_write<T extends object>(target: T, raw: object, ass
 }
 
 /** @internal Pure connector authoring. The owner encloses caller capture in its fence. */
-export function write_part_invocation(library: string, member: string, input: readonly unknown[]): HsonAuthored {
+export function write_part_invocation(library: string, member: string, input: readonly unknown[], definition: HsonNode): HsonAuthored {
   if (input.length > 1) throw new TypeError("Part.write requires at most one argument record.");
+  const receiving = part_receiving_interface(definition);
   const attrs: Record<string, string> = Object.create(null);
   attrs.lib = library;
   attrs.at = member;
@@ -37,17 +38,16 @@ export function write_part_invocation(library: string, member: string, input: re
       || ![Object.prototype, null].includes(Object.getPrototypeOf(record))) {
       throw new TypeError("Part.write requires a plain argument record.");
     }
-    const supplied = new Set<string>();
     for (const name of Reflect.ownKeys(record)) {
       const argument = typeof name === "string" ? part_argument_name(name) : undefined;
+      const kind = typeof name === "string" ? receiving.get(name) : undefined;
       // style is decoded as structured CSS; __proto__ cannot round-trip through
       // the established attribute decoder. Neither can be a scalar parameter.
-      if (typeof name !== "string" || argument === undefined || !is_public_attr_name(name)
-        || name === "lib" || name === "at" || name === "style" || name === "__proto__") {
+      if (typeof name !== "string" || argument === undefined || argument.kind !== "scalar" || !is_public_attr_name(name)
+        || name === "lib" || name === "at" || (kind === undefined || kind === "scalar") && (name === "style" || name === "__proto__")) {
         throw new TypeError("Invalid or reserved Part.write argument name.");
       }
-      if (supplied.has(argument.name)) throw new TypeError("Conflicting Part.write argument name.");
-      supplied.add(argument.name);
+      if (kind === undefined) throw new TypeError(`Unknown Part.write argument ${JSON.stringify(name)}.`);
       const field = Object.getOwnPropertyDescriptor(record, name);
       if (field === undefined || !field.enumerable || !Object.hasOwn(field, "value")) {
         throw new TypeError("Part.write arguments require own enumerable data fields.");
@@ -57,8 +57,8 @@ export function write_part_invocation(library: string, member: string, input: re
         && !(typeof value === "number" && Number.isFinite(value))) {
         throw new TypeError("Part.write arguments require finite scalar values.");
       }
-      if (argument.kind === "data" && typeof value !== "string") throw new TypeError("Part.write data arguments require serialized HsonData strings.");
-      attrs[name] = String(value);
+      if (kind !== "scalar" && typeof value !== "string") throw new TypeError(`Part.write ${kind} arguments require serialized strings.`);
+      attrs[kind === "scalar" ? name : `${kind}:${name}`] = String(value);
     }
   }
   const quads = new Map<HsonNode, string>();

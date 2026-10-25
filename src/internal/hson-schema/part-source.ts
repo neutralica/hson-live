@@ -11,13 +11,13 @@ import { qualify_authored_document_source } from "../../api/document/hson-author
 import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { PART_OPTIONAL, part_optional_issue, is_part_data_declaration_attribute, part_data_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, transform_part_parameter_strings } from "../part-placeholder.js";
+import { PART_OPTIONAL, has_part_reference, part_receiving_interface, part_optional_issue, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, transform_part_parameter_strings } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 
 type Completeness = "complete" | "partial" | "unknown";
 export type PartSourceLocation = HsonSourceRange & Readonly<{ file: string; precision: "exact" | "anchor" }>;
-export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute"; reference: string; structured: boolean }>[] }>;
+export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; structured: boolean; supply?: "data" | "doc" }>[] }>;
 export type PartConnectorSource = Readonly<{
   location: PartSourceLocation;
   headerComplete: boolean;
@@ -36,7 +36,7 @@ export type PartDocumentSource = Readonly<{
   /** Lexical reuse suggestions only, never a qualified parameter inventory. */
   parameterSpellings: readonly PartParameterSource[];
   parameterCompleteness: "complete" | "unknown";
-  receivingDeclarations: readonly Readonly<{ name: string; incoming: string; location: PartSourceLocation }>[];
+  receivingDeclarations: readonly Readonly<{ name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }>[];
   optionalStructures: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string; references?: number }>[];
   referenceIssues: readonly Readonly<{ location: PartSourceLocation; message: string }>[];
   /** Payload ranges, never guessed decoded-substring offsets. No type or optionality is implied. */
@@ -170,19 +170,19 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     } else return undefined;
     const headers = new Map<number, PartConnectorSource>();
     const attributeRanges = new WeakMap<object, Parameters<HsonSourceLexicalCollector["recordAttribute"]>[1]>();
-    const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute"; reference: string; structured: boolean }[] = [];
-    const receivingDeclarations: { name: string; incoming: string; location: PartSourceLocation }[] = [];
+    const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; structured: boolean; supply?: "data" | "doc" }[] = [];
+    const receivingDeclarations: { name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }[] = [];
     const optionalStructures: { location: PartSourceLocation; root: boolean; issue?: string; references?: number }[] = [];
     const referenceIssues: { location: PartSourceLocation; message: string }[] = [];
-    const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute", typed = false): void => {
+    const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute" | "structure", typed?: "data" | "doc"): void => {
       const mapped = range === undefined ? undefined : map(range);
       if (mapped === undefined) return;
       const whole = typed ? whole_part_reference(value) : undefined;
-      if (typed && whole === undefined && !value.startsWith("%{")) return; // Serialized data is opaque.
+      if (typed && whole === undefined && !value.startsWith("%{") && !value.startsWith("#{")) return; // Serialized data is opaque.
       const matches = typed ? whole === undefined ? undefined : [whole] : part_placeholder_matches(value);
       if (matches === undefined) referenceIssues.push({ location: mapped, message: "Invalid Part property reference." });
-      for (const match of matches ?? []) uses.push({ name: match.name, reference: match.reference, structured: match.path.length > 0,
-        location: mapped, context });
+      for (const match of matches ?? []) uses.push({ name: match.name, namespace: match.namespace, reference: match.reference, structured: match.path.length > 0,
+        location: mapped, context, ...(typed === undefined ? {} : { supply: typed }) });
     };
     const observedAttributes = new WeakSet<object>();
     const tags: string[] = [];
@@ -203,6 +203,10 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             if (observedAttributes.has(attr)) continue;
             observedAttributes.add(attr);
             const value = split_attrs_meta([attr]).attrs[attr.name];
+            if (attr.name.startsWith("#{")) {
+              observeUses(attr.name, attributeRanges.get(attr)?.value, "structure");
+              continue;
+            }
             if (attr.name === PART_OPTIONAL) {
               const range = attributeRanges.get(attr)?.name;
               const where = range === undefined ? undefined : map(range);
@@ -210,23 +214,23 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
                 ...(attr.value?.direct === true ? {} : { issue: part_optional_issue(value) }) });
               continue;
             }
-            if (is_part_data_declaration_attribute(tag, attr.name)) {
+            if (is_part_receiving_attribute(tag, attr.name)) {
               const ranges = attributeRanges.get(attr);
               const range = ranges?.value ?? ranges?.name;
               const where = range === undefined ? undefined : map(range);
               if (where !== undefined) {
                 try {
-                  if (tags.length !== 0) throw new TypeError("Part data declarations are only allowed on the single definition root.");
+                  if (tags.length !== 0) throw new TypeError("Part receiving declarations are only allowed on the single definition root.");
                   if (attr.value?.direct !== true) {
-                    const declaration = part_data_declaration(attr.name, value);
-                    receivingDeclarations.push({ name: declaration.name, incoming: declaration.reference.name, location: where });
+                    const declaration = part_receiving_declaration(attr.name, value);
+                    receivingDeclarations.push({ name: declaration.name, incoming: declaration.reference.name, kind: declaration.kind, location: where });
                   }
                 } catch (error) { referenceIssues.push({ location: where, message: String(error) }); }
               }
               continue;
             }
             if (attr.value?.direct !== true && typeof value === "string" && part_placeholder_placement_issue(tags, { name: attr.name, value }) === undefined) {
-              observeUses(value, attributeRanges.get(attr)?.value, "attribute", connector && attr.name.startsWith("data:"));
+              observeUses(value, attributeRanges.get(attr)?.value, "attribute", connector && attr.name.startsWith("data:") ? "data" : connector && attr.name.startsWith("doc:") ? "doc" : undefined);
             }
           }
           if (!connector) return;
@@ -238,7 +242,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const valueRange = ranges?.value === undefined ? undefined : map(ranges.value);
             const value = split_attrs_meta([attr]).attrs[attr.name];
             return [{ name: attr.name, nameLocation: name, ...(valueRange === undefined ? {} : { valueLocation: valueRange }),
-              ...(attr.value?.direct === true || typeof value !== "string" || value.includes("%{") && !attr.name.startsWith("data:") ? {} : { value }) }];
+              ...(attr.value?.direct === true || typeof value !== "string" || has_part_reference(value) && !attr.name.startsWith("data:") && !attr.name.startsWith("doc:") ? {} : { value }) }];
           }) });
         },
       }, { slots, substitutions: slots.map(() => "") });
@@ -248,8 +252,6 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     if (qualified && scanned && slots.length === 0) {
       try {
         const root = qualify_authored_document_source(text, new Map());
-        const locals = new Set<string>();
-        const observe = (name: string): void => { if (!locals.has(name)) names.add(name); };
         const counts = new Map<HsonNode, number>();
         const optionalNodes = new Map<HsonNode, typeof optionalStructures[number]>();
         let optionalIndex = 0;
@@ -257,15 +259,11 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         transform_part_parameter_strings(root, (value, node) => {
           const matches = part_placeholder_matches(value);
           if (matches === undefined) throw new Error("Invalid Part placeholder");
-          for (const match of matches) observe(match.name);
           count(node, matches.length);
           return value;
-        }, (reference, node) => { observe(reference.name); count(node, 1); }, declarations => {
-          for (const declaration of declarations) {
-            locals.add(declaration.name);
-            names.add(declaration.reference.name);
-          }
-        }, {
+        }, (_reference, node) => { count(node, 1); }, undefined, {
+          inspect: true,
+          structure(_reference, node) { count(node, 1); },
           enter(node) {
             if (Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)) {
               const fact = optionalStructures[optionalIndex++];
@@ -278,15 +276,23 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             if (parent !== undefined) count(parent, references);
           },
         });
+        const declared = new Map<string, typeof receivingDeclarations[number]>();
+        for (const declaration of receivingDeclarations) {
+          if (declared.has(declaration.name)) referenceIssues.push({ location: declaration.location, message: `Conflicting Part local binding ${JSON.stringify(declaration.name)}.` });
+          declared.set(declaration.name, declaration);
+        }
         for (const use of uses) {
-          if (use.structured && !locals.has(use.name)
-            || !locals.has(use.name) && receivingDeclarations.some(declaration => declaration.incoming === use.name)) {
-            referenceIssues.push({ location: use.location, message: `Part reference %{${use.reference}} requires a declared local data binding.` });
-          }
+          const declaration = declared.get(use.name);
+          const invalid = use.namespace === "incoming" ? use.structured || use.context === "structure" || use.supply !== undefined
+            || receivingDeclarations.some(declaration => declaration.incoming === use.name)
+            : declaration === undefined || (use.supply !== undefined && declaration.kind !== use.supply) || (use.structured && declaration.kind !== "data") || (use.context === "structure" && declaration.kind !== "doc");
+          if (invalid) referenceIssues.push({ location: use.location, message: `Part ${use.namespace} reference ${JSON.stringify(use.reference)} requires the matching declared representation and namespace.` });
         }
-        for (const declaration of receivingDeclarations) if (!uses.some(use => use.name === declaration.name) && !optionalStructures.some(fact => fact.root)) {
-          referenceIssues.push({ location: declaration.location, message: `Unused Part data binding ${JSON.stringify(declaration.name)}.` });
+        for (const declaration of receivingDeclarations) if (!uses.some(use => use.namespace === "local" && use.name === declaration.name) && !optionalStructures.some(fact => fact.root)) {
+          referenceIssues.push({ location: declaration.location, message: `Unused Part ${declaration.kind} binding ${JSON.stringify(declaration.name)}.` });
         }
+        try { for (const name of part_receiving_interface(root).keys()) names.add(name); }
+        catch (error) { if (!referenceIssues.length) referenceIssues.push({ location: location(producer), message: String(error) }); }
         parameterCompleteness = referenceIssues.length === 0 ? "complete" : "unknown";
       } catch { names.clear(); }
     }
@@ -298,8 +304,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const receivers: { batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible" }[] = [];
     const result: PartDocumentSource = { producer, location: location(producer), authoredRanges, admission: qualified ? "qualified" : "unknown",
       librarySourceAdmission, connectors: [...headers.values()], parameters: [...names].map(name => ({ name, uses: uses.filter(use =>
-        receivingDeclarations.some(declaration => declaration.incoming === name && declaration.name === use.name)
-        || !receivingDeclarations.some(declaration => declaration.name === use.name) && use.name === name) })),
+        receivingDeclarations.some(declaration => use.namespace === "local" && declaration.incoming === name && declaration.name === use.name)
+        || use.namespace === "incoming" && use.name === name) })),
       parameterSpellings: spellingEligible ? [...new Set(uses.map(use => use.name))].map(name => ({ name, uses: uses.filter(use => use.name === name) })) : [],
       parameterCompleteness, optionalStructures, receivingDeclarations: spellingEligible ? receivingDeclarations : [], referenceIssues, receivers };
     documents.set(producer, result);
@@ -390,4 +396,110 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     for (const batch of batches) receivers.push({ batch: batch.call, certainty: "possible" });
   }
   return { batches, documents: [...documents.values()] };
+}
+
+/** Advisory write-key evidence from an immutable coordinate expression. A later governed
+ * replacement may change its interface; this is completion evidence, never a TS type. */
+export function part_write_context(typescript: typeof ts, program: ts.Program, facts: PartSourceFacts,
+  fileName: string, offset: number): Readonly<{ names: readonly string[]; start: number; end: number; quote?: "'" | '"'; assignment: boolean }> | undefined {
+  const file = program.getSourceFile(fileName);
+  if (file === undefined) return undefined;
+  const sources = static_source_candidates(typescript, program.getTypeChecker(), program);
+  let call: ts.CallExpression | undefined;
+  const visit = (node: ts.Node): void => {
+    if (node.getStart(file) > offset || node.end < offset) return;
+    if (typescript.isCallExpression(node) && typescript.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === "write" && node.arguments.length === 1
+      && typescript.isObjectLiteralExpression(node.arguments[0]!) && node.arguments[0]!.getStart(file) < offset && offset < node.arguments[0]!.end) call = node;
+    typescript.forEachChild(node, visit);
+  };
+  visit(file);
+  if (call === undefined || !typescript.isPropertyAccessExpression(call.expression)) return undefined;
+  const coordinate = (node: ts.Expression, depth = 0): { batch: ts.CallExpression; path: string[] } | undefined => {
+    if (depth > 16) return undefined;
+    node = sources.unwrap(node);
+    if (typescript.isPropertyAccessExpression(node)) {
+      const parent = coordinate(node.expression, depth + 1);
+      return parent === undefined ? undefined : { batch: parent.batch, path: [...parent.path, node.name.text] };
+    }
+    if (typescript.isIdentifier(node)) {
+      const declaration = sources.declaration(node);
+      return declaration?.initializer === undefined ? undefined : coordinate(declaration.initializer, depth + 1);
+    }
+    return typescript.isCallExpression(node) && facts.batches.some(batch => batch.call === node && batch.eligible)
+      ? { batch: node, path: [] } : undefined;
+  };
+  const owner = coordinate(call.expression.expression);
+  if (owner === undefined || owner.path.length !== 3 || owner.path[0] !== "parts") return undefined;
+  const batch = facts.batches.find(batch => batch.call === owner.batch);
+  const libraries = batch?.libraries.filter(library => library.name === owner.path[1] && library.family === "parts");
+  const members = libraries?.length === 1 ? libraries[0]!.members.filter(member => member.name === owner.path[2]) : undefined;
+  const documents = members?.length === 1 ? members[0]!.documents : undefined;
+  const definition = documents?.length === 1 ? documents[0] : undefined;
+  if (definition?.parameterCompleteness !== "complete") return undefined;
+  const argument = call.arguments[0]!;
+  if (!typescript.isObjectLiteralExpression(argument)) return undefined;
+  let start = offset, end = offset, assignment = false, namedProperty = false;
+  let quote: "'" | '"' | undefined;
+  let previous: ts.ObjectLiteralElementLike | undefined;
+  const existing = new Set<string>();
+  for (const property of argument.properties) {
+    if (typescript.isSpreadAssignment(property) || property.name === undefined || typescript.isComputedPropertyName(property.name)) return undefined;
+    if (property.getStart(file) <= offset && offset <= property.end) {
+      // A named method/accessor is not a key/value slot, even without a colon.
+      if (!typescript.isPropertyAssignment(property) && !typescript.isShorthandPropertyAssignment(property)) return undefined;
+      const children = property.getChildren(file);
+      // Recovery can retain modifiers, ?/!, or defaults on ordinary member kinds.
+      if (property.getStart(file) !== property.name.getStart(file)
+        || typescript.isShorthandPropertyAssignment(property) && property.end !== property.name.end
+        || children.some(child => child.kind === typescript.SyntaxKind.QuestionToken || child.kind === typescript.SyntaxKind.ExclamationToken)) return undefined;
+      // Other recovered punctuation can sit just outside the member's AST span.
+      const scanner = typescript.createScanner(typescript.ScriptTarget.Latest, true, file.languageVariant, file.text);
+      scanner.setTextPos(property.end);
+      const boundary = scanner.scan();
+      if (boundary !== typescript.SyntaxKind.CommaToken && boundary !== typescript.SyntaxKind.CloseBraceToken) return undefined;
+      namedProperty = true;
+      if (!typescript.isIdentifier(property.name) && !typescript.isStringLiteral(property.name)) return undefined;
+      start = property.name.getStart(file); end = property.name.end;
+      if (typescript.isStringLiteral(property.name)) {
+        const delimiter = file.text[start];
+        if (delimiter !== '"' && delimiter !== "'") return undefined;
+        quote = delimiter; start++; if (!property.name.isUnterminated) end--;
+      }
+      if (offset < start || offset > end) return undefined;
+      assignment = children.some(child => child.kind === typescript.SyntaxKind.ColonToken && child.getWidth(file) > 0);
+    } else if (typescript.isIdentifier(property.name) || typescript.isStringLiteral(property.name)) existing.add(property.name.text);
+    if (property.end < offset) previous = property;
+  }
+  if (!namedProperty) {
+    // A missing initializer can end before the cursor. Only trivia after an
+    // opening brace or a member separator establishes a new property slot.
+    const scanner = typescript.createScanner(typescript.ScriptTarget.Latest, false, file.languageVariant, file.text);
+    scanner.setTextPos(previous?.end ?? argument.getStart(file) + 1);
+    let separated = previous === undefined;
+    while (scanner.getTextPos() < offset) {
+      const token = scanner.scan();
+      if (scanner.getTokenEnd() > offset) {
+        if (token !== typescript.SyntaxKind.WhitespaceTrivia && token !== typescript.SyntaxKind.NewLineTrivia) return undefined;
+        break;
+      }
+      if (token === typescript.SyntaxKind.WhitespaceTrivia || token === typescript.SyntaxKind.NewLineTrivia
+        || token === typescript.SyntaxKind.MultiLineCommentTrivia && !scanner.isUnterminated()) continue;
+      if (token === typescript.SyntaxKind.SingleLineCommentTrivia && scanner.getTokenEnd() < offset) continue;
+      if (token !== typescript.SyntaxKind.CommaToken || separated) return undefined;
+      separated = true;
+    }
+    if (!separated) return undefined;
+  }
+  let prefix = file.text.slice(start, offset), invalid = false;
+  if (prefix.length || quote !== undefined) {
+    const raw = quote === undefined ? prefix : quote + prefix + quote;
+    const scanner = typescript.createScanner(typescript.ScriptTarget.Latest, false, file.languageVariant, raw, () => { invalid = true; });
+    const token = scanner.scan();
+    if (invalid || scanner.isUnterminated() || scanner.getTokenEnd() !== raw.length
+      || (quote === undefined ? !scanner.isIdentifier() && !scanner.isReservedWord() : token !== typescript.SyntaxKind.StringLiteral)) return undefined;
+    prefix = scanner.getTokenValue();
+  }
+  return { names: definition.parameters.map(parameter => parameter.name).filter(name => !existing.has(name) && name.startsWith(prefix)), start, end,
+    assignment, ...(quote === undefined ? {} : { quote }) };
 }

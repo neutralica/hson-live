@@ -581,7 +581,7 @@ check("awaited resume aliases retain context while unsupported receiving transfo
   }
 });
 check("structured arguments expose root names, selector spellings and whole forwarding without scanning data", () => {
-  const template = '<section slide:data="%{payload}" title="%{slide.title}" <hson-part at="child" data:payload="%{slide.details}" data:literal="\\\"%{phantom}\\\""/> <b ' + JSON.stringify('%{slide["odd}key"]}') + '/>/>';
+  const template = '<section slide:data="%{payload}" title="#{slide.title}" <hson-part at="child" data:payload="#{slide.details}" data:literal="\\\"%{phantom}\\\""/> <b ' + JSON.stringify('#{slide["odd}key"]}') + '/>/>';
   const text = 'import { Hson, hsonLiveMap as maps } from "hson-live";\nconst definition = ' + JSON.stringify(template)
     + ';\nconst map = maps.fromLibraries({ components: { parts: { x: {kind:"document", document:definition} } } });';
   const test = evidenceProject("structured-arguments", { "index.ts": text });
@@ -594,11 +594,11 @@ check("structured arguments expose root names, selector spellings and whole forw
   const uses = definition.parameters[0]!.uses;
   assert.deepEqual(uses.map(use => use.reference).sort(), ['slide.details', 'slide.title', 'slide["odd}key"]']);
   assert.ok(uses.every(use => use.structured && use.location.precision === "exact"));
-  assert.ok(uses.every(use => test.slice(use.location).includes("%{")));
+  assert.ok(uses.every(use => test.slice(use.location).includes("#{")));
   assert.equal(definition.parameterSpellings.some(parameter => parameter.name === "phantom"), false);
 });
 check("optional source facts count authored values, excluding declarations and serialized data", () => {
-  const template = '<section part:optional d:data="%{payload}" <p part:optional "%{d.title}"/> <aside part:optional "Static"/> <hson-part part:optional at="leaf" data:payload="%{d.child}"/> <hson-part part:optional at="leaf" data:payload="\\\"%{literal}\\\""/>/>';
+  const template = '<section part:optional d:data="%{payload}" <p part:optional "#{d.title}"/> <aside part:optional "Static"/> <hson-part part:optional at="leaf" data:payload="#{d.child}"/> <hson-part part:optional at="leaf" data:payload="\\\"%{literal}\\\""/>/>';
   const text = 'import { Hson, hsonLiveMap as maps } from "hson-live";\nconst definition = ' + JSON.stringify(template)
     + ';\nconst map = maps.fromLibraries({ components: { parts: { x: {kind:"document", document:definition}, leaf:{kind:"document",document:"<p/>"} } } });';
   const test = evidenceProject("optional-facts", { "index.ts": text });

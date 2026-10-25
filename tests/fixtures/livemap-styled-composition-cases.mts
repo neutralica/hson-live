@@ -51,7 +51,7 @@ export function styled_fixture(count = 3) {
 export function optional_subject_fixture() {
   const gone = '[hson\\:quad="gone"]';
   return legacy_flat_styled_map({ parts: { parts: { optional: part(
-    '<section d:data="%{payload}" <b @:gone part:optional "%{d.missing}"/> <p id="optional-not" class="target"/> <p id="optional-is" class="is-target"/> <p id="optional-where" class="where-target"/> <div id="optional-has" class="has-target" <i/>/> <div id="optional-positive" class="positive-target" <i/>/> <p id="optional-list" class="list-target"/> <p id="optional-multi" class="multi-target"/> <p id="optional-nth" class="nth-target"/>/>',
+    '<section d:data="%{payload}" <b @:gone part:optional "#{d.missing}"/> <p id="optional-not" class="target"/> <p id="optional-is" class="is-target"/> <p id="optional-where" class="where-target"/> <div id="optional-has" class="has-target" <i/>/> <div id="optional-positive" class="positive-target" <i/>/> <p id="optional-list" class="list-target"/> <p id="optional-multi" class="multi-target"/> <p id="optional-nth" class="nth-target"/>/>',
     `.target:not(${gone}){color:red}.target{color:blue}` +
     `.is-target:not(.never){color:blue}.is-target:is(${gone},p){color:red}` +
     `p.where-target{color:blue}.where-target:where(:not(${gone})){color:red}` +
@@ -102,7 +102,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
   check("styled replacement returns graph and CSS operations for ordinary replacement and optional retirement", () => {
     const map = hsonLiveMap.fromLibraries({parts:{parts:{
       ordinary:part('<b/>', 'b{color:blue}'),
-      optional:part('<p part:optional d:data="%{payload}" "%{d.title}"/>', 'p{color:red}'),
+      optional:part('<p part:optional d:data="%{payload}" "#{d.title}"/>', 'p{color:red}'),
     }},page:{document:'<main <i/>/>'}});
     const p=page(map), initial=p.root(), target={kind:'path' as const,path:path([0,0])};
     const connector=(name:string,payload='<>')=>{

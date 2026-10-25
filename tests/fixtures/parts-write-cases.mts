@@ -9,11 +9,28 @@ const blank = { kind: "document", document: "<hr/>" } as const;
 const definitions = { components: { parts: { heading, blank } }, ordinary: { data: { heading } } };
 
 export async function parts_write_cases() {
+  const renamed = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document",
+    document: '<p model:data="%{style}" other:data="%{__proto__}" "#{model.title}:#{other}"/>' } } } });
+  const protectedNames = Object.fromEntries([['style', Hson.data.from({ title: 'Own' })], ['__proto__', Hson.data.from(false)]]);
+  const encoded = renamed.parts.parts.x.write(protectedNames);
+  assert.match(encoded, /data:style=/); assert.match(encoded, /data:__proto__=/);
+  renamed.addLibraries({ page: { document: encoded } });
+  assert.equal(renamed.doc.must('page').render(), '<p>Own:false</p>');
+
+  const changed = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<p "%{value}"/>' } } } });
+  const scalarCapture = changed.parts.parts.x.write({ value: '<b/>' });
+  changed.parts.parts.x.replace({ kind: "document", document: '<main c:doc="%{value}" <hson-part #{c}/>/>' });
+  assert.throws(() => changed.addLibraries({ bad: { document: scalarCapture } }), /receiving interface/);
+  const documentCapture = changed.parts.parts.x.write({ value: '<b/>' });
+  changed.parts.parts.x.replace({ kind: "document", document: '<p "%{value}"/>' });
+  assert.throws(() => changed.addLibraries({ bad: { document: documentCapture } }), /receiving interface/);
+  assert.equal(changed.doc('bad'), undefined);
+
   const optional = hsonLiveMap.fromLibraries({ parts: { parts: {
-    x: { kind: "document", document: '<p part:optional d:data="%{payload}" "%{d.title}"/>' },
+    x: { kind: "document", document: '<p part:optional d:data="%{payload}" "#{d.title}"/>' },
   } } });
   for (const [name, value] of [['empty', {}], ['present', { title: 'Visible' }]] as const) {
-    const written = optional.parts.parts.x.write({ 'data:payload': Hson.data.from(value) });
+    const written = optional.parts.parts.x.write({ payload: Hson.data.from(value) });
     assert.equal(written, Hson.document`<hson-part lib="parts" at="x" data:payload="${Hson.data.from(value)}"/>`);
     optional.addLibraries({ [name]: { document: Hson.document`<main ${written}/>` } });
     const result = optional.doc.must(name).render();
@@ -21,13 +38,13 @@ export async function parts_write_cases() {
     assert.doesNotMatch(result, /part:optional|hson-part|data:payload/);
   }
 
-  const structured = hsonLiveMap.fromLibraries({ components: { parts: { nav: { kind: "document", document: '<nav slide:data="%{payload}" title="%{slide.title}" "%{slide.no}"/>' } } } });
+  const structured = hsonLiveMap.fromLibraries({ components: { parts: { nav: { kind: "document", document: '<nav slide:data="%{payload}" title="#{slide.title}" "#{slide.no}"/>' } } } });
   const structuredAuthority = internal_livemap_aggregate_authority(structured);
   const structuredBefore = structuredAuthority.captureSemanticCheckpoint(), structuredIssued = structuredAuthority.identityEpoch().issued();
   const slide = Hson.data`<title "Navigation" no -0>`;
-  const written: HsonAuthored = structured.parts.components.nav.write({ "data:payload": slide });
+  const written: HsonAuthored = structured.parts.components.nav.write({ payload: slide });
   assert.equal(written, Hson.document`<hson-part lib="components" at="nav" data:payload="${slide}"/>`);
-  const malformed = structured.parts.components.nav.write({ "data:payload": "<broken" });
+  const malformed = structured.parts.components.nav.write({ payload: "<broken" });
   assert.deepEqual(structuredAuthority.captureSemanticCheckpoint(), structuredBefore);
   assert.equal(structuredAuthority.identityEpoch().issued(), structuredIssued);
   for (const args of [{ "data:payload": false }, { "data:payload": 1 }, { "data:payload": null },
@@ -142,8 +159,7 @@ export async function parts_write_cases() {
   assert.ok(pageText.includes("h2")); assert.ok(pageText.includes("evil"));
   assert.ok(!pageText.includes('"$_tag":"script"')); assert.ok(!pageText.includes("later"));
   for (const parameters of [undefined, { content: "ok", extra: "bad" }]) {
-    const source = parameters === undefined ? retained.write() : retained.write(parameters);
-    assert.throws(() => receiving.addLibraries({ invalid: { document: source } }), /Missing Part parameter|Unknown Part parameter|Unused Part parameter/);
+    assert.throws(() => receiving.addLibraries({ invalid: { document: parameters === undefined ? retained.write() : retained.write(parameters) } }), /Missing Part parameter|Unknown Part parameter|Unused Part parameter|Unknown Part.write argument/);
     assert.equal(receiving.doc("invalid"), undefined);
   }
   const scalarSource = receiving.parts.components.scalars.write({ ExactCase: "Mixed", count: 3, enabled: true, empty: null });
@@ -151,7 +167,7 @@ export async function parts_write_cases() {
   assert.match(JSON.stringify(receiving.doc.must("scalarPage").root()), /Mixed:3:true:null/);
   assert.throws(() => receiving.addLibraries({ wrongCase: { document: receiving.parts.components.scalars.write({
     exactcase: "wrong", count: 3, enabled: true, empty: null,
-  }) } }), /Missing Part parameter/);
+  }) } }), /Unknown Part.write argument/);
   const incompatible = hsonLiveMap.create();
   assert.throws(() => incompatible.addLibraries({ page: { document: invocation } }));
   assert.equal(incompatible.doc("page"), undefined);

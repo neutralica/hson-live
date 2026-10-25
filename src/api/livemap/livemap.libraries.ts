@@ -1286,7 +1286,9 @@ function make_data_library(
           if (read() === undefined) throw new Error(`Unknown Part member ${JSON.stringify(member)}.`);
         };
         assertMember();
-        const source = write_part_invocation(library.name, member, input);
+        const definition = validate_data_library(aggregate.root(library.identity), contract.mode, contract.validation)?.find(part => part.key === member);
+        if (definition === undefined) throw new Error(`Unknown Part member ${JSON.stringify(member)}.`);
+        const source = write_part_invocation(library.name, member, input, definition.root);
         assertCurrent();
         assertMember();
         return source;

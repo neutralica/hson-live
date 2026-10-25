@@ -11,11 +11,13 @@ type Members<D> = D extends { parts: infer P } ? LibraryLiteralDefinitions<P> : 
 type Reserved = typeof PARTS_FACADE_RESERVED[number] | keyof Object;
 
 type Authoring = Readonly<{
-  /** Author a detached, receiver-relative invocation. data:name fields carry serialized HsonData strings;
-   * receiving root local:data="%{name}" declarations bind them. Admission validates selectors and usage. Ordinary fields retain scalar transport. */
+  /** Author a detached, receiver-relative invocation. Plain keys use the current receiving root declarations to encode Data/Document strings;
+   * local:data="%{name}" and local:doc="%{name}" establish local #{} bindings. Admission validates selectors and usage. Ordinary fields retain scalar transport. */
   write: {
     (): HsonAuthored;
-    (args: Readonly<Record<string, Primitive>>): HsonAuthored;
+    <const Args extends Readonly<Record<string, Primitive>>>(
+      args: Args & (Extract<keyof Args, `${string}:${string}`> extends never ? unknown : never)
+    ): HsonAuthored;
   };
 }>;
 

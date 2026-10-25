@@ -1,6 +1,6 @@
 import { OBJ_TAG } from "../../../src/core/constants.js";
 import { decode_hson_content_string } from "../../../src/core/hson-content-string.js";
-import { part_placeholder_matches, part_reference_checkpoint } from "../../../src/internal/part-placeholder.js";
+import { part_placeholder_matches, part_reference_checkpoint, part_placeholder_placement_issue } from "../../../src/internal/part-placeholder.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import { serialize_hson } from "../../../src/api/transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../../../src/api/transform/utils/node-utils/detach-hson-root-value.js";
@@ -269,7 +269,7 @@ export function structural_typing_snippet(
   if (region?.kind !== "template" || region.authoringKind === undefined || region.authoringKind === "schema"
     || region.protectedRanges.some(range => cursor > range.start && cursor < range.end)) return undefined;
   const text = evidence.text;
-  if ((typed === "=" || text[cursor - 1] === "%")
+  if ((typed === "=" || (text[cursor - 1] === "%" || text[cursor - 1] === "#"))
     && templateInterpolationRoles(text, region).some(role => role === undefined)) return undefined;
   if (typed === "=") {
     if (!region.authoredDocument) return undefined;
@@ -287,15 +287,25 @@ export function structural_typing_snippet(
     return '="$0"';
   }
   const sigil = text[cursor - 1];
-  if (sigil !== "$" && sigil !== "%") return undefined;
+  if (sigil !== "$" && sigil !== "%" && sigil !== "#") return undefined;
   let escapeStart = cursor - 2;
   while (escapeStart >= region.bodyRange.start && text[escapeStart] === "\\") escapeStart--;
   if ((cursor - 2 - escapeStart) % 2 !== 0) return undefined;
-  if (sigil === "%") {
+  if (sigil === "%" || sigil === "#") {
     if (!region.authoredDocument) return undefined;
     const body = maskProtectedSource(text, region);
-    if (body === undefined || !parses(body, true)) return undefined;
+    if (body === undefined) return undefined;
     const local = cursor - region.bodyRange.start;
+    if (sigil === "#") {
+      const probe = body.slice(0, local) + "{" + body.slice(local);
+      const checkpoint = hson_grammar_checkpoint(probe, local + 1, "document");
+      if (checkpoint?.parameter?.structural && checkpoint.element !== undefined
+        && part_placeholder_placement_issue(checkpoint.element.contentTags) === undefined
+        && checkpoint.element.attributes.every(attr => attr.name === "part:optional" || attr.name.startsWith("#{"))) {
+        return checkpoint.parameter.complete ? "{$0" : "{$0}";
+      }
+    }
+    if (!parses(body, true)) return undefined;
     // Production ranges and attribute lowering own the payload. Part semantics
     // exclude structured attributes, event handlers and script/style content.
     type Payload = StructuralRange & Readonly<{ quoted: boolean }>;
@@ -334,7 +344,7 @@ export function structural_typing_snippet(
     if (payload === undefined) return undefined;
     try {
       const suffix = body.slice(local, payload.end);
-      const reference = payload.quoted ? decode_hson_content_string("%{" + suffix) : "%{" + suffix;
+      const reference = payload.quoted ? decode_hson_content_string(sigil + "{" + suffix) : sigil + "{" + suffix;
       const existingClose = part_reference_checkpoint(reference, 2)?.complete === true;
       const probe = existingClose ? suffix[0] === "}" ? "{hson_editor_probe" : "{" : "{hson_editor_probe}";
       const raw = body.slice(payload.start, local) + probe + suffix;
@@ -487,10 +497,10 @@ function lexicalRanges(source: string, authoredDocument = false): Readonly<{
           literals.push(evidence.roles.name);
         }
       },
-      recordAttribute(_attribute, roles) {
+      recordAttribute(attribute, roles) {
         if (roles.value === undefined) return;
         attributeValues.push(roles.value);
-        if (source[roles.value.start] === '"') literals.push(roles.value);
+        if (attribute.name.startsWith("#{") || source[roles.value.start] === '"') literals.push(roles.value);
       },
     };
     if (authoredDocument) tokenize_authored_document_library(source, collector);

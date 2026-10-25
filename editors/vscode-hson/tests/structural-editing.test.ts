@@ -868,3 +868,23 @@ check("bare member/value opener adjacency normalizes to one space through all fo
   const edits = structural_formatting_edits('/workspace/a.hson', 'hson', input, { tabSize: 2, insertSpaces: true }, { start: 6, end: 8 });
   assert.equal(applyEdits(input, edits), '<first <> second«1»>');
 });
+
+check("local Part references pair through the production checkpoint and preserve structural formatting", () => {
+  for (const body of ['<span "#|"/>', '<span title="#|"/>', '<hson-part #|/>', '<main c:doc="%{control}" <hson-part #|/>' , '<main <hson-part #|']) {
+    assertTypingResult(authored(body), '{', '{$0}');
+  }
+  assertTypingResult(authored('<hson-part #|control}/>'), '{', '{$0');
+  for (const body of ['<span #|/>', '<hson-part#|/>', '<hson-part lib="parts" at="x" #|/>', '<script "#|"/>', '<span // #|\n/>']) {
+    assert.equal(typingSnippet(authored(body), '{'), undefined, body);
+  }
+  for (const sigil of ['%', '#']) for (const reference of ['model.items[0].label', 'model["odd}key"]']) {
+    assertTypingResult(authored('<p ' + JSON.stringify(sigil + '|' + reference + '}') + '/>'), '{', '{$0');
+  }
+  const body = '<main c:doc="%{control}" d:data="%{payload}"\n<hson-part #{c}/>\n<p ' + JSON.stringify('#{d["odd}key"][0].label}') + '/>\n/>';
+  const source = authored(body), formatted = format(source);
+  assert.ok(formatted.includes('<hson-part #{c}/>'));
+  assert.ok(formatted.includes(JSON.stringify('#{d["odd}key"][0].label}')));
+  assert.deepEqual(parse_authored_document_library(formatted.slice(formatted.indexOf('<main'), formatted.lastIndexOf('`'))).root,
+    parse_authored_document_library(body).root);
+  assert.equal(format(formatted), formatted);
+});
