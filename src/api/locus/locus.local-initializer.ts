@@ -25,13 +25,13 @@ import { internal_livemap_aggregate_authority } from "../livemap/livemap.interna
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { admit_authority_projection_snapshot } from "./locus.authority-projection-snapshot.js";
+import { assert_css_declaration_syntax } from "../../internal/css/declaration-syntax.js";
+import { canonical_css_selector } from "../../internal/css/relative-selector.js";
 import {
   decode_portable_document_stylesheet,
   encode_portable_document_stylesheet,
   empty_portable_document_stylesheet,
-  render_portable_document_stylesheet,
 } from "../../internal/css/portable-document-stylesheet.js";
-import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 
 export type LocusApplicationCatalog = Readonly<{
   ownership: Map<string, "private" | "shared">;
@@ -50,8 +50,19 @@ function freeze_portable_value<T extends object>(value: T): Readonly<T> {
 
 function canonical_local_css(input: unknown): import("../../types/document-css.types.js").DocumentCssRecord {
   const stylesheet = decode_portable_document_stylesheet(input);
-  // A structured record must meet the same parser and RAWTEXT rules as authored CSS.
-  parse_document_stylesheet(render_portable_document_stylesheet(stylesheet), []);
+  // Local initializer admission validates structured records without parsing
+  // or rewriting opaque text contributions.
+  const validateDeclarations = (declarations: Readonly<Record<string, string>>): void => {
+    for (const [property, value] of Object.entries(declarations)) assert_css_declaration_syntax(property, value);
+  };
+  for (const rule of stylesheet.rules) {
+    canonical_css_selector(rule.selector);
+    validateDeclarations(rule.declarations);
+  }
+  for (const definition of stylesheet.keyframes) for (const step of definition.steps) validateDeclarations(step.decls);
+  for (const property of stylesheet.properties) if (property.init !== undefined) {
+    assert_css_declaration_syntax("initial-value", property.init);
+  }
   return freeze_portable_value(encode_portable_document_stylesheet(stylesheet));
 }
 

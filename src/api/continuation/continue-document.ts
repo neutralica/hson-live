@@ -1,3 +1,5 @@
+import { render_portable_document_stylesheet_carriers } from "../../internal/css/portable-document-stylesheet.js";
+import { document_css_state_internal } from "../livemap/livemap.libraries.js";
 import type { PortableDocumentHandoff } from "../livemap/livemap.internal.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { prepare_portable_native_handoff } from "./continuation.portable.js";
@@ -13,9 +15,9 @@ import type {
 import { activate_document_interactions_internal } from "../interactions/interactions.js";
 import { reflect_existing_document_in_runtime } from "../mirror/mirror.document.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
-import { bind_document_css_tree } from "../livetree/managers/bound-document-css.js";
+import { bind_document_css_tree, type DocumentCssReusePreparation } from "../livetree/managers/bound-document-css.js";
 import { echo_document_authority_for } from "../echo/echo.document-authority.js";
-import { adopt_exact_existing_document, type ExactDocumentAdoption } from "./continuation.adopt.js";
+import { adopt_exact_existing_document, prepare_retained_document_css, type ExactDocumentAdoption } from "./continuation.adopt.js";
 import {
   reserve_continuation_root,
   activate_continuation_root,
@@ -80,14 +82,16 @@ function continue_document_impl(options: Readonly<{
   let disposeInteractions: (() => void) | undefined;
   let disposeCssBinding: (() => void) | undefined;
   let nativeHandoff: ReturnType<typeof prepare_portable_native_handoff> | undefined;
+  let retainedCss: DocumentCssReusePreparation | undefined;
   try {
     const resolved = resolve_continuation_document(options.map, options.document);
     let revision = resolved.selected.rev;
     handoff?.assertCurrent();
     const canonicalRoot = capture_continuation_document_root(resolved.selected);
     try {
-      adoption = adopt_exact_existing_document(canonicalRoot, options.root,
-        handoff?.portableCss ?? resolved.selected.css.snapshot(),
+      const css = handoff?.portableCss ?? render_portable_document_stylesheet_carriers(document_css_state_internal(resolved.selected));
+      if (handoff === undefined) retainedCss = prepare_retained_document_css(canonicalRoot, options.root, resolved.selected, css);
+      adoption = adopt_exact_existing_document(canonicalRoot, options.root, css,
         handoff === undefined ? undefined : { quads: handoff.quads });
       handoff?.assertCurrent();
       if (resolved.selected.rev !== revision) {
@@ -135,11 +139,12 @@ function continue_document_impl(options: Readonly<{
     }
     try {
       disposeCssBinding = bind_document_css_tree(reflect.tree, resolved.selected,
-        adoption.managedStyle, echo_document_authority_for(resolved.selected) !== undefined, () => reflect!.tree);
+        adoption.managedStyles, echo_document_authority_for(resolved.selected) !== undefined, () => reflect!.tree);
     } catch (cause) {
       throw new DocumentContinuationError("adopt", cause);
     }
     adoption.commit(() => reflect!.tree);
+    retainedCss?.commit();
     nativeHandoff?.finish();
     let disposed = false;
     const result: DocumentContinuation = Object.freeze({
@@ -167,6 +172,7 @@ function continue_document_impl(options: Readonly<{
     let rollbackFailure: unknown;
     try { nativeHandoff?.rollback(); } catch (failure) { rollbackFailure = failure; }
     try { adoption?.abort(reflect?.tree); } catch (failure) { rollbackFailure ??= failure; }
+    try { retainedCss?.rollback(); } catch (failure) { rollbackFailure ??= failure; }
     nativeHandoff?.finish();
     releaseRoot();
     if (rollbackFailure !== undefined) throw new AggregateError([cause, rollbackFailure], "Document continuation rollback failed.");

@@ -1,0 +1,17 @@
+import { hosted_css_subject_revocation_race_cases, hosted_css_subject_durability_cases, hosted_css_dispatched_subject_cases, hosted_css_subject_rejection_cases, hosted_css_subject_ordering_cases, hosted_css_scoped_subject_cases } from "./hosted-css-subject-correspondence-cases.mts";
+import { parentPort } from "node:worker_threads";
+import { hosted_css_queue_revocation_cases } from "./hosted-css-queue-revocation-cases.mts";
+import { hosted_css_subject_boundary_cases } from "./hosted-css-subject-boundary-cases.mts";
+import { hosted_css_missing_correspondence_cases, hosted_css_execution_authorization_cases, hosted_css_subject_count_cases } from "./hosted-css-admission-gaps-cases.mts";
+await hosted_css_subject_boundary_cases();
+await hosted_css_missing_correspondence_cases();
+await hosted_css_execution_authorization_cases();
+await hosted_css_subject_count_cases();
+await hosted_css_subject_rejection_cases();
+await hosted_css_dispatched_subject_cases();
+await hosted_css_subject_ordering_cases();
+await hosted_css_subject_revocation_race_cases();
+await hosted_css_scoped_subject_cases();
+await hosted_css_subject_durability_cases();
+await hosted_css_queue_revocation_cases();
+parentPort!.postMessage("pass");

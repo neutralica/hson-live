@@ -1,3 +1,4 @@
+import { css_declaration, css_property } from "../../../core/css-map.js";
 import { trim_css_value_boundary } from "../../../core/css-value-boundary.js";
 // css-manager.ts
 
@@ -5,21 +6,20 @@ import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-c
 import { CssValue, CssProp } from "../../../core/style.types.js";
 import { AnimAdapters, CssAnimScope, CssAnimHandle } from "../../../types/animate.types.js";
 import { PropertyManager, PropertyRegistry } from "../../../types/at-property.types.js";
-import { KeyframesManager, KeyframesInput, KeyframesRegistry, type KeyframeSelector, type CssDeclMap } from "../../../types/keyframes.types.js";
+import { KeyframesManager, KeyframesInput, KeyframesRegistry } from "../../../types/keyframes.types.js";
 import { CssGlobalHandle } from "../../../types/css.types.js";
 import { apply_animation, bind_anim_api } from "../methods/anim.js";
 import { canonical_property_registration, manage_property } from "./at-property-builder.js";
 import { GlobalCss, GlobalCssRuntimeApi } from "./global-css.js";
 import { canonical_keyframes_definition, manage_keyframes } from "./keyframes-manager.js";
-import { css_supports_decl } from "./style-setter.js";
 import {
   default_livetree_runtime,
   register_runtime_document,
   type LiveTreeRuntime,
 } from "../runtime/livetree-runtime.js";
 import { mark_runtime_infrastructure } from "../../../internal/browser-realization/browser-realization-dom.js";
-import { render_complete_css, render_quid_rule, selector_for_quid } from "./css-render.js";
-import { DocumentStylesheetError, parse_document_stylesheet } from "../../../internal/css/parse-document-stylesheet.js";
+import { render_quid_rule, selector_for_quid } from "./css-render.js";
+import { opaque_document_stylesheet } from "../../../internal/css/opaque-stylesheet.js";
 import { render_property_registration } from "../../../internal/css/property-registration.js";
 import { render_keyframes_definition } from "../../../internal/css/keyframes-definition.js";
 import { runtime_has_document_css_binding } from "./bound-document-css.js";
@@ -69,7 +69,7 @@ export function render_css_value(v: CssValue): string {
  *
  *   QUID → (canonicalCssProp → renderedValue)
  *
- * and renders that model into one runtime-owned `<style>` element per
+ * and renders that model into ordered runtime-owned `<style>` carriers per
  * registered projection document.
  * Each QUID maps to one selector (via `selectorForQuid`), producing blocks like:
  *
@@ -109,7 +109,8 @@ export class CssRuntimeManager {
   private readonly rulesByQuid: Map<string, Map<string, string>> = new Map();
   private readonly quidRuleOrder = new Map<string, number>();
   private nextRuleOrder = 0;
-  private readonly styleEls = new Map<Document, HTMLStyleElement>();
+  private readonly styleEls = new Map<Document, HTMLStyleElement[]>();
+  private readonly opaqueStyles: { order: number; text: string }[] = [];
   private atPropManager: PropertyRegistry;
   private keyframeManager: KeyframesRegistry;
   private atPropertyApi: PropertyManager | undefined;
@@ -117,9 +118,7 @@ export class CssRuntimeManager {
   private changed: boolean = false;
   private readonly globalCss = new GlobalCss(() => this.nextRuleOrder++);
   private readonly orderedGlobalDefinitions = new Map<string, number>();
-  private readonly parsedKeyframes = new Set<string>();
   private hasStylesheetIngress = false;
-  private admittingStylesheet = false;
   private globalsApi: GlobalCssRuntimeApi | undefined;
   private readonly documentListener = (): void => {
     this.changed = true;
@@ -157,7 +156,6 @@ export class CssRuntimeManager {
   private markChanged(): void {
     // mark dirty, but DO NOT write immediately
     this.changed = true;
-    if (this.admittingStylesheet) return;
 
     // schedule a single flush
     this.scheduleSync();
@@ -192,39 +190,29 @@ export class CssRuntimeManager {
     });
   }
 
-  /** Ensure this runtime's isolated style element exists in one projection document. */
-  private ensureStyleElement(doc: Document): HTMLStyleElement {
-    const cached = this.styleEls.get(doc);
-    if (cached?.isConnected && cached.ownerDocument === doc) return cached;
-    if (cached) this.styleEls.delete(doc);
-
-    const mount =
-      (doc.head && doc.head.isConnected ? doc.head : null) ??
-      (doc.body && doc.body.isConnected ? doc.body : null) ??
-      doc.documentElement;
-
-    if (!mount) {
-      throw new Error("CssManager.ensureStyleElement: document has no mount point");
-    }
-
-    let host = doc.querySelector<HTMLElement>(`${CSS_HOST_TAG}#${CSS_HOST_ID}`);
-    if (!host) {
+  /** Runtime styles share an infrastructure host, never a CSS parser context. */
+  private ensureStyleElements(doc: Document, count: number): HTMLStyleElement[] {
+    let styles = this.styleEls.get(doc) ?? [];
+    const mount = doc.head ?? doc.body ?? doc.documentElement;
+    if (!mount) throw new Error("CssManager requires a style mount.");
+    let host = styles[0]?.parentElement;
+    if (!host?.isConnected) {
       host = doc.createElement(CSS_HOST_TAG);
       host.id = CSS_HOST_ID;
       mount.appendChild(host);
+      mark_runtime_infrastructure(host);
+      styles = [];
     }
-    mark_runtime_infrastructure(host);
-
-    let styleEl = host.querySelector<HTMLStyleElement>(`style#${CSS_STYLE_ID}`);
-    if (!styleEl) {
-      styleEl = doc.createElement("style");
-      styleEl.id = CSS_STYLE_ID;
-      host.appendChild(styleEl);
+    while (styles.length > count) styles.pop()!.remove();
+    while (styles.length < count) {
+      const style = doc.createElement("style");
+      if (styles.length === 0) style.id = CSS_STYLE_ID;
+      host.appendChild(style);
+      mark_runtime_infrastructure(style);
+      styles.push(style);
     }
-    mark_runtime_infrastructure(styleEl);
-
-    this.styleEls.set(doc, styleEl);
-    return styleEl;
+    this.styleEls.set(doc, styles);
+    return styles;
   }
 
   private runtimeDocuments(): readonly Document[] {
@@ -241,6 +229,10 @@ export class CssRuntimeManager {
   // --- INTERNAL: BUILD + SYNC -------------------------------------------
   /** Complete DOM-free stylesheet read, shared with browser synchronization. */
   public renderCss(): string {
+    return this.renderCarriers().join("\n\n");
+  }
+
+  private renderCarriers(): readonly string[] {
     for (const [quid, props] of this.rulesByQuid) {
       for (const [prop, value] of props) {
         if (typeof value !== "string") {
@@ -257,7 +249,7 @@ export class CssRuntimeManager {
     for (const name of this.keyframeManager.list()) {
       const order = this.orderedGlobalDefinitions.get(`keyframes:${name}`);
       const definition = this.keyframeManager.get(name);
-      if (order !== undefined && definition) rules.push({ order, text: render_keyframes_definition(definition, definition.name, this.parsedKeyframes.has(name)) });
+      if (order !== undefined && definition) rules.push({ order, text: render_keyframes_definition(definition, definition.name, false) });
     }
     for (const [quid, props] of this.rulesByQuid) {
       if (props.size === 0) continue;
@@ -265,62 +257,39 @@ export class CssRuntimeManager {
       if (order === undefined) throw new Error(`Missing CSS order for QUID ${quid}.`);
       rules.push({ order, text: render_quid_rule(quid, props) });
     }
-    return render_complete_css(
-      this.atPropManager.list().filter((name) => !this.orderedGlobalDefinitions.has(`property:${name}`))
-        .map((name) => render_property_registration(this.atPropManager.get(name)!)).join("\n\n"),
-      this.keyframeManager.list().filter((name) => !this.orderedGlobalDefinitions.has(`keyframes:${name}`))
-        .map((name) => render_keyframes_definition(this.keyframeManager.get(name)!)).join("\n\n"),
-      rules,
-    );
+    const prelude = [
+      ...this.atPropManager.list().filter(name => !this.orderedGlobalDefinitions.has(`property:${name}`))
+        .map(name => render_property_registration(this.atPropManager.get(name)!)),
+      ...this.keyframeManager.list().filter(name => !this.orderedGlobalDefinitions.has(`keyframes:${name}`))
+        .map(name => render_keyframes_definition(this.keyframeManager.get(name)!, name)),
+    ];
+    const opaque = new Set(this.opaqueStyles);
+    const carriers: string[] = prelude.length ? [prelude.join("\n\n")] : [];
+    let structured = prelude.length > 0;
+    for (const entry of [...rules, ...this.opaqueStyles].sort((a, b) => a.order - b.order)) {
+      const raw = opaque.has(entry);
+      if (!raw && structured) carriers[carriers.length - 1] += `\n\n${entry.text}`;
+      else carriers.push(entry.text);
+      structured = !raw;
+    }
+    return carriers;
   }
 
-  /** Shared portable grammar, admitted into this runtime's global CSS owner. */
+  /** Each append owns one opaque contribution, including empty authored text. */
   private appendStylesheet(cssText: string): void {
-    const parsed = parse_document_stylesheet(cssText, this.globalCss.ruleKeys());
-    if (parsed.order.length === 0) return;
-    for (const property of parsed.properties) if (this.atPropManager.has(property.name)) {
-      throw new DocumentStylesheetError("CSS_ADMISSION", `Duplicate @property ${property.name}.`, 1, 1, cssText, "@property");
-    }
-    for (const keyframes of parsed.keyframes) if (this.keyframeManager.has(keyframes.name)) {
-      throw new DocumentStylesheetError("CSS_ADMISSION", `Duplicate @keyframes ${keyframes.name}.`, 1, 1, cssText, "@keyframes");
-    }
-    const byRuleKey = new Map(parsed.rules.map((rule) => [rule.ruleKey, rule]));
-    const byKeyframes = new Map(parsed.keyframes.map((definition) => [definition.name, definition]));
-    this.admittingStylesheet = true;
-    try {
-      for (const entry of parsed.order) {
-        const order = this.nextRuleOrder++;
-        if (entry.kind === "group") {
-          this.globalCss.appendParsedGroup(entry, parsed.rules, order);
-        } else if (entry.kind === "rule") {
-          const rule = byRuleKey.get(entry.ruleKey)!;
-          this.globalCss.appendParsedRule(rule, order);
-        } else if (entry.kind === "property") {
-          const property = parsed.properties.find((item) => item.name === entry.name)!;
-          this.atPropManager.register(property);
-          this.orderedGlobalDefinitions.set(`property:${entry.name}`, order);
-        } else {
-          const definition = byKeyframes.get(entry.name)!;
-          this.keyframeManager.set({ name: definition.name, steps: definition.steps.map((step): readonly [KeyframeSelector, CssDeclMap] =>
-            [step.at, Object.fromEntries(step.declarations)]) });
-          this.orderedGlobalDefinitions.set(`keyframes:${entry.name}`, order);
-          this.parsedKeyframes.add(entry.name);
-        }
-      }
-      this.hasStylesheetIngress = true;
-      this.changed = true;
-    } finally {
-      this.admittingStylesheet = false;
-    }
-    this.scheduleSync();
+    opaque_document_stylesheet(cssText); // Exact string admission; no CSS inspection.
+    this.opaqueStyles.push({ order: this.nextRuleOrder++, text: cssText });
+    this.hasStylesheetIngress = true;
+    this.markChanged();
   }
 
   private syncToDom(): void {
-    const cssText = this.renderCss();
+    const carriers = this.renderCarriers();
     for (const document of this.runtimeDocuments()) {
-      if (cssText === "" && !this.styleEls.has(document)
+      if (carriers.length === 0 && !this.styleEls.has(document)
         && runtime_has_document_css_binding(this.runtime)) continue;
-      this.ensureStyleElement(document).textContent = cssText;
+      const styles = this.ensureStyleElements(document, Math.max(1, carriers.length));
+      styles.forEach((style, index) => { style.textContent = carriers[index] ?? ""; });
     }
     this.changed = false;
   }
@@ -341,6 +310,10 @@ export class CssRuntimeManager {
    */
   private makeAnimAdapters(): AnimAdapters<CssAnimScope> {
     return {
+      removeStyleProp: (scope, prop) => {
+        for (const quid of scope.quids) this.unsetForQuid(quid, normalize_css_key(prop));
+        return scope;
+      },
       setStyleProp: (scope, prop, value) => {
         const propCanon = normalize_css_key(prop);
 
@@ -507,7 +480,6 @@ export class CssRuntimeManager {
             if (!existed) this.orderedGlobalDefinitions.delete(`keyframes:${definition.name}`);
             throw error;
           }
-          this.parsedKeyframes.delete(definition.name);
         },
         setMany: (inputs: Parameters<KeyframesManager["setMany"]>[0]) => {
           if (!this.hasStylesheetIngress) { this.keyframeManager.setMany(inputs); return; }
@@ -517,12 +489,10 @@ export class CssRuntimeManager {
             this.orderedGlobalDefinitions.set(`keyframes:${definition.name}`, this.nextRuleOrder++);
           }
           this.keyframeManager.setMany(inputs);
-          for (const definition of definitions) this.parsedKeyframes.delete(definition.name);
         },
         delete: (name: Parameters<KeyframesManager["delete"]>[0]) => {
           this.keyframeManager.delete(name);
           this.orderedGlobalDefinitions.delete(`keyframes:${name}`);
-          this.parsedKeyframes.delete(name);
         },
         has: (name: Parameters<KeyframesManager["has"]>[0]) => this.keyframeManager.has(name),
         get: (name: Parameters<KeyframesManager["get"]>[0]) => this.keyframeManager.get(name),
@@ -567,6 +537,13 @@ export class CssRuntimeManager {
   }
 
   // --- WRITE API (QUID-based) -------------------------------------------
+  /** Prepare before touching declarations, rule order, or publication state. */
+  private prepareDeclaration(property: string, value: CssValue | boolean): string | undefined {
+    if (!property) return undefined;
+    css_property(property);
+    return value === undefined ? undefined : css_declaration(value);
+  }
+
   /**
    * Sets (or unsets) a single CSS declaration for a specific QUID selector.
    *
@@ -575,10 +552,7 @@ export class CssRuntimeManager {
    * - Values are normalized to a string:
    *   - primitives are stringified
    *   - `CssValue` objects are rendered by `renderCssValue`
-   * - Delete semantics:
-   *   - if rendering yields `null`, the property is removed
-   *   - if the rendered string trims to `""`, the property is removed
-   *   - `"0"` and other non-empty strings are preserved (not treated as delete)
+   * - Explicit undefined removes the property; defined strings, including empty, are stored.
    *
    * Side effects:
    * - Mutates the in-memory rules map for the QUID.
@@ -600,27 +574,11 @@ export class CssRuntimeManager {
     const p = propCanon.trim();
     if (!p) return;
 
-    //  treat null-delete semantics only if renderCssValue returns null
-    const rendered =
-      typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-        ? String(value)
-        : render_css_value(value); // <-- must return string or null
-
-    //  explicit delete if null
-    if (rendered === null) {
+    // Only explicit undefined deletes; defined empty strings retain the rule.
+    const v = this.prepareDeclaration(p, value);
+    if (v === undefined) {
       this.unsetForQuid(q, p);
       return;
-    }
-
-    //  don't treat "0" as delete; only empty string deletes
-    const v = trim_css_value_boundary(rendered);
-    if (v.length === 0) {
-      this.unsetForQuid(q, p);
-      return;
-    }
-    if (!css_supports_decl(p, v)) {
-      console.warn(`CssManager.setForQuid: unsupported CSS decl skipped (quid=${q}, prop=${p}, value=${JSON.stringify(v)})`);
-      return; // do not store invalid decl
     }
 
     let props = this.rulesByQuid.get(q);
@@ -630,6 +588,7 @@ export class CssRuntimeManager {
       this.quidRuleOrder.set(q, this.nextRuleOrder++);
     }
 
+    if (props.get(p) === v) return;
     props.set(p, v);
     this.markChanged();
   }
@@ -680,7 +639,9 @@ export class CssRuntimeManager {
     if (!trimmedQuid) {
       throw new Error("CssManager.setManyForQuid: quid must be non-empty");
     }
-    for (const [propCanon, value] of Object.entries(decls)) {
+    const entries: [string, string | undefined][] = Object.entries(decls).map(([property, value]) =>
+      [property, this.prepareDeclaration(property.trim(), value)]);
+    for (const [propCanon, value] of entries) {
       this.setForQuid(trimmedQuid, propCanon, value);
     }
   }
@@ -724,7 +685,7 @@ export class CssRuntimeManager {
     this.rulesByQuid.clear();
     this.quidRuleOrder.clear();
     this.orderedGlobalDefinitions.clear();
-    this.parsedKeyframes.clear();
+    this.opaqueStyles.length = 0;
     this.hasStylesheetIngress = false;
     this.changed = false;
     this.scheduled = false;
@@ -741,7 +702,11 @@ export class CssRuntimeManager {
     });
 
     // clear style element if it exists
-    for (const styleEl of this.styleEls.values()) styleEl.textContent = "";
+    for (const styles of this.styleEls.values()) {
+      const host = styles[0]?.parentElement;
+      for (const style of styles) style.remove();
+      if (host?.childNodes.length === 0) host.remove();
+    }
     this.styleEls.clear();
     this.globals_invoke().clearAll();
   }
@@ -754,7 +719,7 @@ export class CssRuntimeManager {
     this.scheduled = false;
     this.changed = false;
     this.runtime.styleDocumentListeners.delete(this.documentListener);
-    for (const styleEl of this.styleEls.values()) {
+    for (const styles of this.styleEls.values()) for (const styleEl of styles) {
       const host = styleEl.parentElement;
       styleEl.remove();
       if (host?.childNodes.length === 0) host.remove();
@@ -763,7 +728,7 @@ export class CssRuntimeManager {
     this.rulesByQuid.clear();
     this.quidRuleOrder.clear();
     this.orderedGlobalDefinitions.clear();
-    this.parsedKeyframes.clear();
+    this.opaqueStyles.length = 0;
     this.hasStylesheetIngress = false;
     this.globals_invoke().clearAll();
     this.globalsApi?.dispose();
@@ -844,7 +809,7 @@ export class CssRuntimeManager {
       sel: globalApi.sel,
       var: globalApi.var,
       drop: globalApi.drop,
-      clearAll: globalApi.clearAll,
+      clearAll: () => { mgr.opaqueStyles.length = 0; globalApi.clearAll(); mgr.markChanged(); },
       scope: globalApi.scope,
       media: globalApi.media,
       supports: globalApi.supports,

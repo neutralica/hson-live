@@ -1,21 +1,21 @@
-import { parse_style_selector } from "../../../internal/css/relative-selector.js";
+import { css_declaration } from "../../../core/css-map.js";
+import { canonical_css_selector, parse_style_selector } from "../../../internal/css/relative-selector.js";
 // global-css.ts
 
-import { CssGlobalsApi, CssMapBase, CssPseudoKey, CssRuleFacade, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
-import { pseudo_to_suffix, type ManagedCssRule } from "./css-render.js";
+import { CssGlobalsApi, CssRuleFacade, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
+import { type ManagedCssRule } from "./css-render.js";
 import { mediaToAtRule, convertSupportsToAt } from "../../../internal/css/global-css-scopes.js";
 export { mediaToAtRule, convertSupportsToAt } from "../../../internal/css/global-css-scopes.js";
-import { compose_style_branch, make_style_setter } from "./style-setter.js";
+import { visit_structured_css } from "../../../internal/css/structured-css.js";
+import { make_style_setter } from "./style-setter.js";
 import { normalize_css_var_name } from "./style-getter.js";
 import { render_global_css_rule, render_global_css_value, render_scoped_global_css_rule } from "../../../internal/css/global-css-text.js";
-import { render_stylesheet_order, stylesheet_order_leaves, type PortableDocumentCssEntry } from "../../../internal/css/portable-document-stylesheet.js";
 import { managed_css_rule_key, trim_managed_css } from "../../../internal/css/managed-css-lexical.js";
-import type { PortableDocumentStylesheetRecord } from "../../../internal/css/portable-document-stylesheet.js";
 
 const GLOBAL_VARS_RULE_KEY = "global-vars::root";
 const GLOBAL_VARS_SELECTOR = ":root";
 
-type StoredGlobalRule = GlobalRule & { ruleKey: string; order: number; scopes: string[]; sourceOrder?: boolean };
+type StoredGlobalRule = GlobalRule & { ruleKey: string; order: number; scopes: string[] };
 
 /**
  * Render a StyleSetter value into CSS declaration text.
@@ -29,14 +29,14 @@ function renderCssValue(v: CssValue): string | null { return render_global_css_v
  * Render a selector and canonical declaration map into CSS text.
  *
  * Declaration keys are normalized to CSS property names, values are normalized
- * through the shared CSS value path, and empty declarations are skipped.
+ * through the shared CSS value path, including explicitly empty values.
  *
  * @param selector CSS selector for the rule.
  * @param decls Canonical property map for the rule body.
  * @returns A compact CSS rule, or `""` when no declarations remain.
  */
 export function render_rule(selector: string, decls: Record<string, string>): string {
-  return render_global_css_rule(selector, decls);
+  return render_global_css_rule(selector, decls, true);
 }
 
 /**
@@ -64,7 +64,6 @@ export class GlobalCss {
 
   private readonly rules = new Map<string, StoredGlobalRule>();
   private fallbackOrder = 0;
-  private readonly parsedGroups: { entry: Extract<PortableDocumentCssEntry, { kind: "group" }>; order: number }[] = [];
   private readonly allocateOrder: () => number;
   private readonly rendered = new Map<string, string>();
   private readonly listeners = new Set<() => void>();
@@ -185,11 +184,12 @@ export class GlobalCss {
     const identity = this.identity(ruleKey, scopes);
     const currentDecls = (): Record<string, string> => {
       const current = this.rules.get(identity);
-      return current?.selector === selector ? { ...current.decls } : {};
+      return current !== undefined && canonical_css_selector(current.selector) === canonical_css_selector(selector) ? { ...current.decls } : {};
     };
     const commit = (decls: Record<string, string>): void => {
-      const cssText = trim_managed_css(render_rule(selector, decls));
       const prior = this.rules.get(identity);
+      const storedSelector = prior !== undefined && canonical_css_selector(prior.selector) === canonical_css_selector(selector) ? prior.selector : selector;
+      const cssText = trim_managed_css(render_rule(storedSelector, decls));
       if (!cssText) {
         if (this.rules.delete(identity)) {
           this.rendered.delete(identity);
@@ -197,21 +197,24 @@ export class GlobalCss {
         }
         return;
       }
-      if (prior?.selector === selector && this.rendered.get(identity) === cssText) return;
+      if (prior?.selector === storedSelector && this.rendered.get(identity) === cssText) return;
       this.rules.set(identity, {
-        ruleKey, selector, decls: { ...decls }, scopes: [...scopes],
+        ruleKey, selector: storedSelector, decls: { ...decls }, scopes: [...scopes],
         order: prior?.order ?? this.allocateOrder(),
       });
       this.rendered.set(identity, cssText);
       this.notifyChanged();
     };
 
-    const resolveBranch = (key: string): string => compose_style_branch(selector, key);
     const setter = make_style_setter<void>(undefined, {
-      resolveBranch,
-      applySelector: (pattern, declarations) => {
-        const relative = resolveBranch(pattern);
-        this.rule(`${ruleKey}:${relative}`, relative, scopes).setMany(declarations);
+      prepareStructured: map => {
+        const writes: (() => void)[] = [];
+        visit_structured_css(map, selector, scopes, (target, context, property, value) => {
+          const key = canonical_css_selector(target) === canonical_css_selector(selector) ? ruleKey : `sel:${canonical_css_selector(target)}`;
+          const handle = this.rule(key, target, context);
+          writes.push(() => handle.setProp(property, value));
+        });
+        return () => { for (const write of writes) write(); };
       },
       /**
        * Apply or remove one declaration from the rule.
@@ -222,7 +225,7 @@ export class GlobalCss {
       apply: (propCanon, value) => {
         const rendered = renderCssValue(value);
         const decls = currentDecls();
-        if (rendered == null || rendered.length === 0) {
+        if (rendered == null) {
           if (propCanon in decls) {
             delete decls[propCanon];
             commit(decls);
@@ -241,27 +244,6 @@ export class GlobalCss {
       },
       clear: () => commit({}),
 
-      /**
-       * Apply a pseudo-class or pseudo-element declaration block.
-       *
-       * Pseudo declarations are stored as sibling global rules. `::before` and
-       * `::after` receive an empty `content` declaration when none is provided.
-       *
-       * @param pseudo Pseudo selector key.
-       * @param pseudoDecls Declaration map for the pseudo rule.
-       */
-      applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
-        const suf = pseudo_to_suffix(pseudo);
-        const pseudoKey = `${ruleKey}${suf}`;
-        const pseudoSelector = resolveBranch(pseudo);
-
-        const h = this.rule(pseudoKey, pseudoSelector, scopes);
-        h.setMany(pseudoDecls);
-
-        if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
-          h.setProp("content", `""`);
-        }
-      },
     });
 
 
@@ -342,10 +324,13 @@ export class GlobalCss {
         const canon = canonical(name);
         if (!canon) return;
 
+        if (value !== undefined) {
+          css_declaration(value);
+        }
         const rendered = renderCssValue(value);
         const decls = getRootDecls();
 
-        if (rendered == null || rendered.length === 0) {
+        if (rendered == null) {
           delete decls[canon];
           commitRootDecls(decls);
           return;
@@ -396,42 +381,11 @@ export class GlobalCss {
    * @returns Stable `sel:<selector>` key.
    */
   private static id_for_selector(selStr: string): string {
-    return `sel:${trim_managed_css(selStr)}`;
+    return `sel:${canonical_css_selector(selStr)}`;
   }
 
   private identity(ruleKey: string, scopes: readonly string[]): string {
     return JSON.stringify([scopes, ruleKey]);
-  }
-
-  /** Admit one already validated parser rule at the runtime's shared order slot. */
-  public appendParsedRule(rule: PortableDocumentStylesheetRecord["rules"][number], order: number): void {
-    const identity = this.identity(rule.ruleKey, rule.scopes);
-    if (this.rules.has(identity)) throw new TypeError("Duplicate parsed CSS rule key.");
-    const decls = Object.fromEntries(rule.declarations);
-    this.rules.set(identity, { ruleKey: rule.ruleKey, selector: rule.selector, scopes: [...rule.scopes], decls, order, sourceOrder: true });
-    this.rendered.set(identity, render_global_css_rule(rule.selector, decls, true));
-    this.notifyChanged();
-  }
-
-  /** One source wrapper occurrence owns an ordered block of existing runtime rules. */
-  public appendParsedGroup(entry: Extract<PortableDocumentCssEntry, { kind: "group" }>, rules: PortableDocumentStylesheetRecord["rules"], order: number): void {
-    for (const leaf of stylesheet_order_leaves([entry])) {
-      if (leaf.kind !== "rule") throw new TypeError("Scoped runtime registries are unsupported.");
-      const rule = rules.find(rule => rule.ruleKey === leaf.ruleKey && JSON.stringify(rule.scopes) === JSON.stringify(leaf.scopes));
-      if (!rule) throw new TypeError("Missing grouped runtime rule.");
-      this.appendParsedRule(rule, order);
-    }
-    this.parsedGroups.push({ entry, order });
-    this.notifyChanged();
-  }
-
-  /** Drop membership now: a later source admission may legitimately reuse a removed rule key. */
-  private pruneParsedGroups(): void {
-    const prune = (entries: readonly PortableDocumentCssEntry[]): PortableDocumentCssEntry[] => entries.flatMap((entry): PortableDocumentCssEntry[] => {
-      if (entry.kind === "group") return [{ ...entry, entries: prune(entry.entries) }];
-      return entry.kind === "rule" && this.rules.has(this.identity(entry.ruleKey, entry.scopes)) ? [entry] : [];
-    });
-    for (const group of this.parsedGroups) group.entry = { ...group.entry, entries: prune(group.entry.entries) };
   }
 
   /** Public drop addresses every scope bearing the supplied explicit key. */
@@ -445,7 +399,7 @@ export class GlobalCss {
       this.rendered.delete(identity);
       changed = true;
     }
-    if (changed) { this.pruneParsedGroups(); this.notifyChanged(); }
+    if (changed) { this.notifyChanged(); }
   }
 
   private removeByPrefix(prefixRaw: string): void {
@@ -458,7 +412,7 @@ export class GlobalCss {
       this.rendered.delete(identity);
       changed = true;
     }
-    if (changed) { this.pruneParsedGroups(); this.notifyChanged(); }
+    if (changed) { this.notifyChanged(); }
   }
 
   private removeBySelectorFragment(fragmentRaw: string): void {
@@ -471,15 +425,14 @@ export class GlobalCss {
       this.rendered.delete(identity);
       changed = true;
     }
-    if (changed) { this.pruneParsedGroups(); this.notifyChanged(); }
+    if (changed) { this.notifyChanged(); }
   }
 
   /**
    * Remove all global rules.
    */
   private clear(): void {
-    if (this.rules.size === 0 && this.rendered.size === 0 && this.parsedGroups.length === 0) return;
-    this.parsedGroups.length = 0;
+    if (this.rules.size === 0 && this.rendered.size === 0) return;
     this.rules.clear();
     this.rendered.clear();
     this.notifyChanged();
@@ -510,18 +463,10 @@ export class GlobalCss {
 
   /** DOM-free authored-order entries for the complete stylesheet renderer. */
   public renderEntries(): readonly ManagedCssRule[] {
-    const grouped = new Set(this.parsedGroups.flatMap(group => stylesheet_order_leaves([group.entry]).filter(leaf => leaf.kind === "rule").map(leaf => this.identity(leaf.ruleKey, leaf.scopes))));
-    const entries = [...this.rules.values()].filter(rule => !grouped.has(this.identity(rule.ruleKey, rule.scopes)))
-      .sort((a, b) => a.order - b.order)
-      .map((rule) => ({
-        order: rule.order,
-        text: render_scoped_global_css_rule(rule.selector, rule.decls, rule.scopes, rule.sourceOrder),
-      }));
-    return [...entries, ...this.parsedGroups.map(group => ({ order: group.order, text: render_stylesheet_order([group.entry], (leaf, parents) => {
-      if (leaf.kind !== "rule") return "";
-      const rule = this.rules.get(this.identity(leaf.ruleKey, leaf.scopes));
-      return rule === undefined ? "" : render_scoped_global_css_rule(rule.selector, rule.decls, rule.scopes.slice(parents.length), true);
-    }) }))].sort((a, b) => a.order - b.order);
+    return [...this.rules.values()].sort((a, b) => a.order - b.order).map(rule => ({
+      order: rule.order,
+      text: render_scoped_global_css_rule(rule.selector, rule.decls, rule.scopes, true),
+    }));
   }
 
   private renderAll(): string {

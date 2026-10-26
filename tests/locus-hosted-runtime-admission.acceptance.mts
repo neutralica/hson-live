@@ -99,7 +99,7 @@ assert.equal(client_library_source_internal(clientMap.data.must("newPublic")), "
 assert.equal(clientMap.doc.must("page").mode, "document");
 const projectedPage = clientMap.doc.must("page");
 if (projectedPage.mode !== "document") throw new Error("Expected projected document Library.");
-assert.match(projectedPage.css.snapshot(), /display:block/);
+assert.equal(projectedPage.css.snapshot(), "main { display: block; }");
 assert.equal(wire.received.at(-1)?.includes("privateState"), false);
 const cut = locus.session.get(sessionId)!.now({ html: "page" });
 assert.match(cut.html, /RUNTIME_PAGE_SENTINEL/);

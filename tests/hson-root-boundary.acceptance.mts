@@ -63,6 +63,7 @@ function assertBare(
   tag: "_hson_str" | "_hson_val",
   payload: Primitive,
   canonical: string,
+  readable = canonical,
 ): void {
   const internal = parse_hson(source);
   assert.equal(internal.$_tag, "_hson_root");
@@ -76,7 +77,8 @@ function assertBare(
   assert.equal(Object.is(value.$_content[0], payload), true);
   assert.notEqual(value.$_tag, "_hson_root");
   assert.equal(hson.fromHson(source).toHson().noBreak().serialize(), canonical);
-  assert.equal(canonicalize(source), canonical);
+  assert.equal(canonicalize(source), readable);
+  assert.equal(canonical_hson_graph_equal(publicNode(readable), value), true);
   assert.equal(canonical_hson_graph_equal(publicNode(canonical), value), true);
 }
 
@@ -169,7 +171,7 @@ check("bare nonempty string attaches as one _hson_str semantic value", () => {
 });
 
 check("bare escaped string preserves its decoded payload and canonical spelling", () => {
-  assertBare(`"a\\n\\\"b"`, "_hson_str", `a\n"b`, `"a\\n\\\"b"`);
+  assertBare(`"a\\n\\\"b"`, "_hson_str", `a\n"b`, `"a\\n\\\"b"`, `"\n  a\n  \\\"b\n"`);
 });
 
 check("bare zero attaches as one _hson_val semantic value", () => {

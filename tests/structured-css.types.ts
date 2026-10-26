@@ -168,25 +168,94 @@ dataParts.replace({p:{kind:'document',document:'<p/>',css:{color:undefined}}});
 single.parts.parts.p.replace({kind:'document',document:'<p/>',css:{width:{value:2,unit:undefined},color:undefined}});
 single.parts.parts.at([]).object.setMany({newPart:{kind:'document',document:'<p/>',css:{color:undefined}}});
 
-// LiveTree reuses declarations and relative selectors without Part subjects/media.
+// All stylesheet receivers share the portable vocabulary; resolution is contextual.
 const tree = hsonLiveTree.fromHson('<p/>');
 const supported = {backgroundColor:'red',WebkitTransform:'none',width:{value:2,unit:'rem'},'& > a':{_hover:{color:'blue'}}};
 tree.css.setMany(supported);
 tree.css.global.sel('.x').setMany({color:'red',_hover:{opacity:1}});
 tree.style.setMany({color:'red','--tone':'blue'});
 tree.css.media('screen').setMany({color:'red'});
+// @ts-expect-error Null is not a declaration value.
 tree.css.set.color(null);
-// @ts-expect-error LiveTree does not implement structured media entries.
+tree.css.set.color(undefined);
 tree.css.setMany({$media:{screen:{color:'red'}}});
-// @ts-expect-error LiveTree does not implement local QUAD entries.
 tree.css.setMany({'@:label':{color:'red'}});
-// @ts-expect-error A named CssMap can contain unsupported Part branches.
 tree.css.setMany(css);
 const namedQuad: CssMap = {'@:label':{color:'red'}};
-// @ts-expect-error Named values must not bypass host capabilities.
 tree.css.setMany(namedQuad);
 const nestedMedia = {'& a':{$media:{screen:{color:'red'}}}};
 // @ts-expect-error Named nested values retain recursive grammar checks.
 tree.css.setMany(nestedMedia);
 // @ts-expect-error Existing declaration typo checking remains strict.
 tree.css.setMany({colour:'red'});
+
+
+// Inline maps retain the declaration vocabulary and reject branches after inference.
+const inlineDeclarations = { backgroundColor: 'navy', 'border-radius': '50%', WebkitTransform: 'none',
+  '--tone': 'gold', width: { value: 2, unit: 'rem' }, color: undefined };
+tree.style.setMany(inlineDeclarations);
+tree.style.setMany({ width: { value: 2, unit: undefined }, opacity: undefined });
+// @ts-expect-error Null is not a declaration value.
+tree.style.set.color(null);
+tree.style.setProp('--tone', undefined);
+tree.style.remove('width');
+tree.style.clear();
+const inlinePseudo = { color: 'red', _hover: { color: 'blue' } };
+const inlineRelative = { color: 'red', '& > a': { color: 'blue' } };
+const inlineTypo = { color: 'red', colour: 'blue' };
+// @ts-expect-error Inline styles do not contain pseudo rules.
+tree.style.setMany({ color: 'red', _hover: { color: 'blue' } });
+// @ts-expect-error Inference must not hide inline pseudo rules.
+tree.style.setMany(inlinePseudo);
+// @ts-expect-error Inline styles do not contain relative selector rules.
+tree.style.setMany({ '& > a': { color: 'blue' } });
+// @ts-expect-error Inference must not hide inline relative rules.
+tree.style.setMany(inlineRelative);
+// @ts-expect-error Inferred inline declaration names remain checked.
+tree.style.setMany(inlineTypo);
+// @ts-expect-error Inline omission does not permit stylesheet branch keys.
+tree.style.setMany({ color: 'red', _hover: undefined });
+const inlineSelection = tree.findAll.byTag('p');
+inlineSelection.style.setMany(inlineDeclarations);
+// @ts-expect-error Broadcast inline access retains declaration-only typing.
+inlineSelection.style.setMany(inlinePseudo);
+tree.create.svg().style.setMany(inlineDeclarations);
+// @ts-expect-error SVG inline access also rejects recursive branches.
+tree.create.svg().style.setMany(inlineRelative);
+tree.css.selector('& > a').setMany({ _hover: { '& > b': { color: 'blue' } }, '& > i': { __before: { color: 'red' } } });
+
+// Portable named CssMap values pass directly through every stylesheet surface.
+declare const portable: CssMap;
+declare const row: typeof tree;
+row.create.span().css.setMany(portable);
+tree.findAll.byTag('p').css.setMany(portable);
+for (const handle of [tree.css, tree.css.selector('& > a'), tree.css.media('screen'),
+  tree.css.supports('(display:grid)').layer('theme'), tree.css.global.sel('.card'),
+  tree.css.global.rule('card', '.card')]) handle.setMany(portable);
+const imperativeMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
+const imperativeCss = imperativeMap.doc.must('page').css;
+imperativeCss.sel('.card').setMany(portable);
+imperativeCss.layer('theme').supports('(display:grid)').media('screen').rule('card', '.card').setMany(portable);
+imperativeMap.batch(writer => writer.doc.must('page').css.sel('.card').setMany(portable));
+const imperativeLocus = hsonLiveMap.locus.create({ page: { document: '<html <head/> <body/>/>' } });
+void imperativeLocus.doc.must('page').css.sel('.card').setMany(portable);
+void tree.async.css.global.sel('.card').setMany(portable);
+void tree.async.css.global.rule('card', '.card').setMany(portable);
+const recursive: CssMap = { _hover: { '& > a': { _focus: { color: undefined } } },
+  $media: { screen: { '@:label': { __before: { content: '"authored"' } } } } };
+imperativeCss.sel('.card').setMany(recursive);
+// @ts-expect-error Inline authoring remains declaration-only for named maps.
+tree.style.setMany(portable);
+// @ts-expect-error Unqualified nested records are outside CssMap.
+imperativeCss.sel('.card').setMany({ child: { color: 'red' } });
+// @ts-expect-error Unsupported declaration properties remain rejected.
+imperativeCss.sel('.card').setMany({ colour: 'red' });
+// @ts-expect-error Null rejects on Document CSS.
+imperativeCss.sel('.card').setMany({ color: null });
+// @ts-expect-error Booleans reject on async Document CSS.
+void tree.async.css.global.sel('.card').setMany({ color: false });
+// @ts-expect-error Arrays are not stylesheet maps.
+imperativeCss.sel('.card').setMany(['red']);
+const indexedNested: Readonly<Record<string, { color: string }>> = { child: { color: 'red' } };
+// @ts-expect-error Indexed nesting cannot prove qualified branch keys.
+imperativeCss.sel('.card').setMany(indexedNested);

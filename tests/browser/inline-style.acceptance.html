@@ -45,6 +45,16 @@ try {
   tree.style.set.cssFloat('left');
   check('public cssFloat alias realizes native float',el.style.cssFloat==='left' && tree.node.$_attrs.style.float==='left' && tree.style.get.cssFloat()==='left');
   check('public important setter realizes priority',d.defaultView.getComputedStyle(el).color==='rgb(255, 0, 0)' && el.style.getPropertyPriority('color')==='important');
+  const escapedNative=String.raw`--T\6f ne`;
+  tree.style.setProp(escapedNative,'red');
+  check('standalone escaped inline property has defined graph and native values',tree.style.get['--Tone']()==='red'
+    &&el.style.getPropertyValue('--Tone')==='red'&&Object.values(tree.node.$_attrs.style).every(value=>value!==undefined));
+  tree.style.setProp('--Tone','blue');
+  check('standalone decoded alias updates the same native declaration',tree.style.get[escapedNative]()==='blue'
+    &&el.style.getPropertyValue('--Tone')==='blue');
+  tree.style.setProp(escapedNative,undefined);
+  check('standalone escaped deletion preserves neighboring priority',el.style.getPropertyValue('--Tone')===''
+    &&tree.style.get['--Tone']()===undefined&&el.style.getPropertyPriority('color')==='important');
   const before=JSON.stringify(tree.node), attr=el.getAttribute('style');
   check('invalid native value rejects batch',rejects(()=>tree.style.setMany({backgroundColor:'black',width:'bogus'})));
   check('failed batch leaves graph/native intact',JSON.stringify(tree.node)===before && el.getAttribute('style')===attr);
@@ -97,6 +107,37 @@ try {
     reviewDoc.body.append(project_livetree(subject_for_tree(mirror.tree),'html',runtime,reviewDoc));
     return {map,library,mirror,tree,runtime,el:tree.dom.el()};
   };
+  group('Cut 1 escaped inline identity',()=>{
+    const escaped=String.raw`--T\6f ne`, m=mountedMirror(undefined);
+    let notifications=0;const stop=m.library.commits.observe(()=>notifications++);
+    const state=()=>JSON.stringify({node:m.tree.node,native:m.el.getAttribute('style'),rev:m.library.rev,notifications,ids:[...m.runtime.issuedQuids]});
+    try{
+      m.tree.style.setMany({[escaped]:'red',color:'var(--Tone)'});
+      check('escaped setter publishes the decoded declaration',m.tree.style.get['--Tone']()==='red'&&m.tree.style.get[escaped]()==='red'
+        &&m.el.style.getPropertyValue('--Tone')==='red'&&reviewDoc.defaultView.getComputedStyle(m.el).color==='rgb(255, 0, 0)'
+        &&Object.values(m.tree.node.$_attrs.style).every(value=>value!==undefined));
+      const before=state();m.tree.style.setProp('--Tone','red');
+      check('decoded inline alias is an exact no-op',state()===before);
+      for(const values of [{[escaped]:'blue','--Tone':undefined},{opacity:'.2','--bad}:x':'red'},
+        {opacity:'.2','--bad\\;':'red'},{opacity:'.2','--Tone':'trailing\\'},
+        ...[null,true,false].map(value=>({opacity:'.2','--Tone':value}))]) {
+        check('inline alias collision or invalid property/value rejects atomically',rejects(()=>m.tree.style.setMany(values))&&state()===before);
+      }
+      m.tree.style.setMany({'--Tone':'blue','--tone':'gold'});
+      check('custom-property case and escaped reads retain native meaning',m.tree.style.get[escaped]()==='blue'
+        &&m.el.style.getPropertyValue('--tone')==='gold'&&reviewDoc.defaultView.getComputedStyle(m.el).color==='rgb(0, 0, 255)');
+      m.tree.style.setProp(escaped,undefined);
+      check('escaped undefined deletes only the addressed declaration',m.tree.style.get['--Tone']()===undefined
+        &&m.el.style.getPropertyValue('--Tone')===''&&m.el.style.getPropertyValue('--tone')==='gold');
+      m.tree.attrs.set('style',{[escaped]:'red',color:'var(--Tone)'});
+      m.tree.style.setProp('--Tone','blue');
+      check('decoded write updates retained escaped storage',m.tree.node.$_attrs.style[escaped]==='blue'
+        &&m.el.style.getPropertyValue('--Tone')==='blue'&&reviewDoc.defaultView.getComputedStyle(m.el).color==='rgb(0, 0, 255)');
+      m.tree.style.remove('--Tone');
+      check('decoded removal deletes retained escaped alias',m.el.style.getPropertyValue('--Tone')===''
+        &&!Object.hasOwn(m.tree.node.$_attrs.style,escaped));
+    }finally{stop();m.mirror.dispose();}
+  });
   group('P1 unrelated mutation',()=>{
     const m=mountedMirror(undefined);let notifications=0;const stop=m.library.commits.observe(()=>notifications++);
     try{
@@ -272,7 +313,7 @@ try {
       const graph=JSON.stringify(m.tree.node),native=m.el.getAttribute('style'),rev=m.library.rev,issued=m.runtime.issuedQuids.size;
       for(const values of [{COLOR:'red',color:'blue'},{backgroundColor:'red','background-color':'blue'},{cssFloat:'left',float:'right'},{WebkitUserSelect:'none','-webkit-user-select':'text'}]) {
         let error;try{m.tree.style.setMany(values);}catch(caught){error=caught;}
-        check(`P5 attributable collision ${Object.keys(values)}`,error?.name==='InlineCssError'&&error.code==='INLINE_CSS_UNSUPPORTED'&&/collid/.test(error.message));
+        check(`P5 attributable collision ${Object.keys(values)}`,error instanceof TypeError&&/colli/.test(error.message));
         check(`P5 no publication ${Object.keys(values)}`,JSON.stringify(m.tree.node)===graph&&m.el.getAttribute('style')===native&&m.library.rev===rev&&notifications===0&&m.runtime.issuedQuids.size===issued);
       }
       m.tree.style.set.color('red');check('P5 valid retry succeeds',m.library.rev===rev+1&&notifications===1&&reviewDoc.defaultView.getComputedStyle(m.el).color==='rgb(255, 0, 0)');

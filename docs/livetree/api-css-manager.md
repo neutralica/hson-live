@@ -72,22 +72,23 @@ write to the backend.
 `CssValue` is:
 
 ```ts
-string | number | null | undefined | { value: string | number; unit?: string }
+string | number | undefined | { value: string | number; unit?: string }
 ```
 
 Rules for an individual setter call:
 
-- `null` and `undefined` mean remove.
+- `undefined` means remove; `null` rejects.
 - CSS boundary whitespace is trimmed without discarding significant escapes, strings, comments, or Unicode separators.
 - Finite numbers are stringified; booleans and non-finite numbers reject.
 - `{ value, unit }` renders as `${value}${unit ?? ""}`.
-- Empty strings remove properties in `CssManager` QUID rules and global rules.
+- Empty strings are retained as authored declaration values; use `undefined` or
+  `remove(prop)` to delete a property.
 
-`setMany()` is declarative: authored `undefined` entries are omitted, while `null`
+`setMany()` retains explicit `undefined` as deletion; absent keys do not mutate. `null`
 and booleans reject before publication. Keys use the maintained CSS property
 inventory, supported camelCase/vendor aliases, or custom-property names;
 normalization collisions reject. Use `remove(prop)` or an individual
-`setProp(prop, null)` / `setProp(prop, undefined)` for imperative deletion.
+`setProp(prop, undefined)` for deletion.
 Structured map preflight validates supported branches before writes; backend
 CSS/DOM failures retain their own transaction boundaries.
 
@@ -246,8 +247,9 @@ __after
 ```
 
 They render as relative selectors such as `:hover`, `:focus-visible`,
-`::before`, and `::after`. For `__before` and `__after`, stylesheet-backed
-paths add `content: ""` when omitted.
+`::before`, and `::after`. Content is authored explicitly: absent content leaves
+existing content intact, and `content: undefined` removes it. Empty or deletion-only
+pseudo branches do not manufacture declarations.
 
 Pseudo blocks reject on `tree.style`.
 
@@ -418,18 +420,20 @@ Rules render with deterministic property ordering. Empty rules are dropped.
 The same key may identify rules in distinct at-rule scopes; `css.drop(key)`
 removes that key across all scopes, and `css.list()` reports it once.
 Global and QUID rules preserve first-write cascade order; updates keep their place.
-`stylesheet(cssText): void` uses the same parser grammar as document-library
-`page.css.stylesheet(cssText)`. On a continued LiveMap document, the bound
-facade delegates to `page.css` and replaces the complete managed document
-stylesheet; empty or comment-only text clears it. A standalone LiveTree runtime
-still appends parsed selector rules, supported scopes, `@property`, and
-keyframes to its runtime-global CSS state. Duplicate selectors remain separate,
-addressable rules with stable `stylesheet:1`, `stylesheet:2`, and later keys
-there. Unsupported constructs such as `@import` fail before runtime mutation.
+On a continued LiveMap document, the bound `stylesheet(cssText)` facade
+delegates to `page.css` and replaces the complete managed document stylesheet.
+Document stylesheet text is retained as an opaque contribution without CSS
+syntax parsing, preserving every authored character, including empty and
+comment-only text. Opaque text has no structured rule keys or extracted
+declarations. A standalone LiveTree runtime appends each `stylesheet(cssText)`
+call as a separate ordered opaque contribution; structured selector rules,
+scopes, `@property`, and keyframes are authored through their corresponding
+CSS APIs. `CssMap` and those structured APIs validate and store declarations
+separately from raw stylesheet text.
 `tree.css` itself has no `stylesheet()`.
-Managed text uses native CSS property names, including case folding and CSS escapes; structured setters keep their JS camelCase convenience. Significant escape whitespace and token boundaries are preserved. Keyframe offsets sort numerically with stable authored order at equivalent positions (`from`/`0%`, `to`/`100%`). Raw repeated exact offsets and comma-separated offsets remain unsupported; structured tuple duplicate-selector behavior is unchanged.
+Structured setters use native CSS property names, including case folding and CSS escapes, while retaining their JS camelCase convenience. Significant escape whitespace and token boundaries are preserved. Structured keyframe offsets sort numerically with stable authored order at equivalent positions (`from`/`0%`, `to`/`100%`).
 
-Wrapper rendering leaves child token contents unchanged, including escaped-newline strings. Selector-generated keys preserve significant CSS characters through creation, lookup and deletion. Each parsed wrapper occurrence has ordered structural membership. One anonymous layer containing several rules renders once; distinct anonymous occurrences remain separate, including nested media/supports wrappers. Dropping a member keeps its wrapper occurrence, even when empty, until clear or replacement. No QUID identifies these groups. Standalone stylesheet calls append occurrences; document-bound calls replace the document owner's state. These are semantic records and native CSS projections, not archives of source formatting or exact typed inline graph storage.
+Wrapper rendering leaves child token contents unchanged, including escaped-newline strings. Selector-generated keys preserve significant CSS characters through creation, lookup and deletion. Each structured wrapper occurrence has ordered structural membership. One anonymous layer containing several structured rules renders once; distinct anonymous occurrences remain separate, including nested media/supports wrappers. Dropping a member keeps its wrapper occurrence, even when empty, until clear or replacement. No QUID identifies these groups. Raw stylesheet calls retain separate ordered text contributions in standalone runtimes and replace the document owner's stylesheet on a continued document. These are semantic records and native CSS projections, not archives of source formatting or exact typed inline graph storage.
 
 The existing LiveTree `clearAll()` clears global selector rules; use
 `atProperty.unregister()` and `keyframes.delete()` for those registries.

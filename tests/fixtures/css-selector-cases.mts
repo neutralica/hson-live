@@ -1,14 +1,17 @@
+import { encode_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
+import { css_value_semantics_cases } from './css-value-semantics-cases.mts';
 import assert from "node:assert/strict";
 import { hsonLiveTree, hsonLiveMap } from "../../src/index.ts";
+import type { LiveMap } from "../../src/types/livemap.types.ts";
 import { parse_style_selector, relative_css_selector } from "../../src/internal/css/relative-selector.ts";
 import { create_livetree_runtime, runtime_for_tree } from "../../src/api/livetree/runtime/livetree-runtime.ts";
 import { create_staged_livetree_in_runtime } from "../../src/api/livetree/creation/create-livetree.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
-import { parse_part_stylesheet } from "../../src/internal/css/part-stylesheet.ts";
+import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
 import { structured_part_stylesheet } from "../../src/internal/css/structured-css.ts";
+import { bound_document_css_api } from "../../src/api/livetree/managers/bound-document-css.ts";
 
-const rules = (text: string) => parse_document_stylesheet(text, []).rules;
+const rules = (text: string) => structured_css_fixture(text).rules;
 const selectors = (text: string) => rules(text).map(rule => rule.selector);
 const subject = (quid: string) => `[hson\\:quid="${quid}"]`;
 const invalid = ["", " ", ",.a", ".a,", ".a,,.b", '[data-x="broken]', '.a >', '.a > + .b', ':is(.a,)', ':future(mark'];
@@ -21,6 +24,7 @@ const safe = [':has(> .a, > .b)', ':is(.a,#b)', ':where(.a,.b)', ':not(.a,.b)', 
   String.raw`::part(a\,b a\&b)`, String.raw`:future("[hson\:quad='x'] :scope &",/* & :scope */.a\&b)`, ':future(a,,b)', ':future(initial default *)'];
 
 export function css_selector_cases(check: (name: string, run: () => void) => void): void {
+  css_value_semantics_cases(check);
   check("structured selectors preserve balanced functions without a pseudo grammar policy", () => {
     for (const suffix of safe) {
       const result = structured_part_stylesheet({ [`&${suffix}`]: { color: 'red', _hover: { color: 'blue' } } }, new Set());
@@ -48,28 +52,23 @@ export function css_selector_cases(check: (name: string, run: () => void) => voi
   });
 
   check("textual lists and nested Parts retain ownership, opaque arguments and correspondence", () => {
-    const textual = parse_part_stylesheet('.a,#b { & > .child {color:red} }');
-    assert.equal(textual.rules.length, 1);
-    assert.equal(textual.rules[0]!.selector, ':is(.a,#b)>.child');
-    assert.equal(parse_part_stylesheet('.a,#b { > .child {color:red} }').rules[0]!.selector, textual.rules[0]!.selector);
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
       child: { kind: 'document', document: '<button @:label/>',
         css: { '@:label': { '&:future("a&b",inner(a,b))': { color: 'red' } } } },
       outer: { kind: 'document', document: '<main <hson-part at="child"/>/>', stylesheet: '.a,#b { & > .child {opacity:.5} }' },
     } }, page: { document: '<html <head/> <body <hson-part lib="parts" at="outer"/> <hson-part lib="parts" at="outer"/>/>/>' } });
     const page = map.doc.must('page'), snapshot = page.css.snapshot();
-    assert.equal(rules(snapshot).filter(rule => rule.selector.includes(':future(')).length, 2);
-    assert.ok(rules(snapshot).every(rule => rule.scopes.some(scope => scope.startsWith('@scope '))));
+    assert.equal(encode_portable_document_stylesheet(authority(map).stylesheet(authority(map).libraries().at(-1)!)).rules.filter(rule => rule.selector.includes(':future(')).length, 2);
+    assert.ok(snapshot.includes('.a,#b { & > .child {opacity:.5} }'));
     assert.doesNotMatch(page.render(), /hson:quid/);
     const runtime = authority(map), ledger = runtime.identityEpoch().issued(), before = map.parts.must('parts').snap(), rev = map.rev;
-    assert.throws(() => map.parts.must('parts').at(['child']).replace({ kind: 'document', document: '<button/>',
+    assert.doesNotThrow(() => map.parts.must('parts').at(['child']).replace({ kind: 'document', document: '<button/>',
       stylesheet: String.raw`.x:future([hson\:quad="label"]){color:red}` }));
-    assert.deepEqual(map.parts.must('parts').snap(), before); assert.equal(page.css.snapshot(), snapshot);
-    assert.equal(map.rev, rev); assert.equal(runtime.identityEpoch().issued(), ledger);
+    assert.notDeepEqual(map.parts.must('parts').snap(), before); assert.equal(page.css.snapshot(), snapshot);
+    assert.equal(map.rev, rev + 1); assert.equal(runtime.identityEpoch().issued().size, ledger.size);
     const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } }).doc.must('page');
     plain.css.stylesheet('.a,.b{color:green}.x:future(&,:scope){color:red}');
-    assert.equal(rules(plain.css.snapshot()).length, 2);
-    assert.equal(rules(plain.css.snapshot())[0]!.selector, '.a,.b');
+    assert.equal(plain.css.snapshot(), '.a,.b{color:green}.x:future(&,:scope){color:red}');
   });
 
   check("runtime structured keys reject lists and hidden transforms before any earlier writes", () => {
@@ -96,13 +95,13 @@ export function css_selector_cases(check: (name: string, run: () => void) => voi
         __before: { color: 'blue' }, '& > .child': { color: 'green' } });
       assert.deepEqual(selectors(tree.css.snapshot()), ['.a,#b', '.a:hover,#b:hover',
         '.a:hover:focus,#b:hover:focus', '.a::before,#b::before', ':is(.a,#b)>.child']);
-      assert.deepEqual(rules(tree.css.snapshot())[3]!.declarations, [['color', 'blue'], ['content', '""']]);
+      assert.deepEqual(rules(tree.css.snapshot())[3]!.declarations, [['color', 'blue']]);
       handle.clear(); handle.set.color('black');
       assert.equal(selectors(tree.css.snapshot()).at(-1), '.a,#b');
       const scoped = tree.css.global.media('screen').supports('(display:grid)').layer('components');
       scoped.rule('scoped', '.a,.b').setMany({ _hover: { color: 'purple' } });
       assert.deepEqual(rules(tree.css.snapshot()).at(-1)!.scopes, ['@media screen', '@supports (display:grid)', '@layer components']);
-      tree.css.global.drop('scoped:hover');
+      scoped.sel('.a:hover,.b:hover').drop();
       assert.equal(selectors(tree.css.snapshot()).at(-1), '.a,#b');
     } finally { tree.remove(); }
   });
@@ -124,6 +123,149 @@ export function css_selector_cases(check: (name: string, run: () => void) => voi
         const branch: Record<`&${string}`, { color: string }> = { [`&${suffix}`]: { color: 'blue' } };
         tree.css.media('screen').setMany(branch);
       }
+    } finally { tree.remove(); }
+  });
+
+  check("explicit selector handles compose mixed relative and pseudo branches from their receiver", () => {
+    const tree = hsonLiveTree.fromHson('<main/>', { isolated: true });
+    try {
+      const q = subject(tree.quid), parent = `${q}>.card`;
+      const handle = tree.css.selector('& > .card');
+      assert.equal(handle.setMany({ color: 'black',
+        _hover: { opacity: .5, '& > .label': { __before: { color: 'gold' } } },
+        '& > .item': { color: 'blue', _focus: { '& + .badge': { color: 'green' } }, __after: { color: 'purple' } },
+      }), tree);
+      assert.deepEqual(selectors(tree.css.snapshot()), [parent, `${parent}:hover`,
+        `${parent}:hover>.label::before`, `${parent}>.item`, `${parent}>.item:focus+.badge`, `${parent}>.item::after`]);
+      const pseudoRules = rules(tree.css.snapshot()).filter(rule => /::(?:before|after)$/.test(rule.selector));
+      assert.equal(pseudoRules.length, 2);
+      assert.ok(pseudoRules.every(rule => rule.declarations.every(([key]) => key !== 'content')));
+      const item = tree.css.selector('& > .card > .item');
+      assert.equal(item.get.color(), 'blue');
+      const keys = tree.css.global.list();
+      item.set.color('red');
+      assert.deepEqual(tree.css.global.list(), keys);
+      assert.equal(rules(tree.css.snapshot()).find(rule => rule.selector === `${parent}>.item`)!.declarations[0]![1], 'red');
+      tree.css.clear();
+      assert.equal(tree.css.snapshot(), '');
+    } finally { tree.remove(); }
+  });
+
+  check("recursive and explicit handles share canonical keys at every depth and scope", () => {
+    const tree = hsonLiveTree.fromHson('<main/>', { isolated: true });
+    try {
+      const q = subject(tree.quid), leaf = `${q}>.a>.b>.c`;
+      const contexts = [
+        { css: tree.css, scopes: [] },
+        { css: tree.css.media('screen'), scopes: ['@media screen'] },
+        { css: tree.css.supports('(display:grid)'), scopes: ['@supports (display:grid)'] },
+        { css: tree.css.layer('components'), scopes: ['@layer components'] },
+        { css: tree.css.media('screen').supports('(display:grid)').layer('components'),
+          scopes: ['@media screen', '@supports (display:grid)', '@layer components'] },
+      ];
+      tree.css.global.sel('.before').set.color('black');
+      for (const { css, scopes } of contexts) {
+        const recursive = css.selector('& > .a'), explicit = css.selector('& > .a > .b > .c');
+        recursive.setMany({ '& > .b': { '& > .c': { color: 'red',
+          _hover: { '& > .d': { __before: { color: 'gold' } } } } } });
+        assert.equal(explicit.get.color(), 'red');
+        const pseudo = css.selector('& > .a > .b > .c:hover > .d::before');
+        assert.equal(pseudo.get.color(), 'gold'); assert.equal(pseudo.get.content(), undefined);
+        tree.css.global.sel('.after').set.color('black');
+        const keys = tree.css.global.list(), order = rules(tree.css.snapshot()).map(rule => [rule.selector, rule.scopes]);
+        explicit.set.color('blue');
+        recursive.setMany({ '& > .b': { '& > .c': { color: 'green' } } });
+        assert.deepEqual(Object.entries(explicit.getMany()), [['color', 'green']]);
+        css.setMany({ '& > .a': { '& > .b': { '& > .c': { color: 'purple' } } } });
+        assert.equal(explicit.get.color(), 'purple');
+        explicit.set.color('orange');
+        assert.equal(explicit.get.color(), 'orange');
+        assert.deepEqual(tree.css.global.list(), keys);
+        assert.deepEqual(rules(tree.css.snapshot()).map(rule => [rule.selector, rule.scopes]), order);
+        const matches = rules(tree.css.snapshot()).filter(rule => rule.selector === leaf && JSON.stringify(rule.scopes) === JSON.stringify(scopes));
+        assert.equal(matches.length, 1); assert.deepEqual(matches[0]!.declarations, [['color', 'orange']]);
+        const before = tree.css.snapshot();
+        assert.throws(() => recursive.setMany({ color: 'blue', '& > .b': { color: 'red',
+          '& > .c': { color: 'green', _hover: { '& + &': { color: 'gold' } } } } }));
+        assert.equal(tree.css.snapshot(), before); assert.deepEqual(tree.css.global.list(), keys);
+      }
+      tree.css.clear(); assert.deepEqual(tree.css.global.list(), ['sel:.after', 'sel:.before']);
+    } finally { tree.remove(); }
+  });
+
+  check("deep and shallow relative writes on direct lists keep one rule and specificity", () => {
+    const tree = hsonLiveTree.fromHson('<main/>', { isolated: true });
+    try {
+      const q = subject(tree.quid), handle = tree.css.selector('.a,#b');
+      handle.setMany({ '& > .item': { '& > .leaf': { color: 'red' } } });
+      const keys = tree.css.global.list();
+      handle.setMany({ '& > .item > .leaf': { color: 'blue' } });
+      assert.deepEqual(tree.css.global.list(), keys);
+      handle.setMany({ '& > .item': { '& > .leaf': { color: 'green' } } });
+      assert.deepEqual(tree.css.global.list(), keys);
+      const rendered = rules(tree.css.snapshot());
+      assert.equal(rendered.length, 1); assert.equal(rendered[0]!.selector, `:is(${q}.a,${q}#b)>.item>.leaf`);
+      assert.deepEqual(rendered[0]!.declarations, [['color', 'green']]);
+    } finally { tree.remove(); }
+  });
+
+  check("explicit selector recursion keeps direct lists and parent specificity", () => {
+    const tree = hsonLiveTree.fromHson('<main/>', { isolated: true });
+    try {
+      const q = subject(tree.quid), parent = `${q}.a,${q}#b`;
+      tree.css.selector('.a,#b').setMany({ color: 'black', _hover: { '& > .label': { color: 'red' } },
+        '& > .item': { color: 'green', _focus: { __before: { color: 'blue' } } } });
+      assert.deepEqual(selectors(tree.css.snapshot()), [parent,
+        `:is(${q}.a:hover,${q}#b:hover)>.label`, `:is(${parent})>.item`, `:is(${parent})>.item:focus::before`]);
+    } finally { tree.remove(); }
+  });
+
+  check("scoped explicit recursion retains keys, wrappers and owner cleanup", () => {
+    const tree = hsonLiveTree.fromHson('<main <span/>/>', { isolated: true });
+    try {
+      const child = tree.find.must.byTag('span');
+      tree.css.global.sel('.sentinel').set.color('gold');
+      tree.css.selector('& > .card').set.color('black');
+      child.css.media('screen').selector('& > .child').setMany({ '& > .leaf': { color: 'purple' } });
+      const scoped = tree.css.media('screen').supports('(display:grid)').layer('components');
+      scoped.selector('& > .card').setMany({ color: 'blue', '& > .item': { color: 'red', _hover: { __before: { color: 'green' } } } });
+      const owned = rules(tree.css.snapshot()).filter(rule => rule.scopes.length === 3);
+      assert.equal(owned.length, 3);
+      assert.ok(owned.every(rule => JSON.stringify(rule.scopes) === JSON.stringify(['@media screen', '@supports (display:grid)', '@layer components'])));
+      assert.equal(scoped.selector('& > .card > .item').get.color(), 'red');
+      assert.equal(tree.css.selector('& > .card').get.color(), 'black');
+      const keep = rules(tree.css.snapshot()).filter(rule => rule.scopes.length !== 3);
+      scoped.clear();
+      assert.deepEqual(rules(tree.css.snapshot()), keep);
+      assert.equal(child.css.media('screen').selector('& > .child > .leaf').get.color(), 'purple');
+      tree.css.clear();
+      assert.equal(rules(tree.css.snapshot()).length, 2);
+      child.css.clear();
+      assert.deepEqual(tree.css.global.list(), ['sel:.sentinel']);
+    } finally { tree.remove(); }
+  });
+
+  check("explicit recursion preflights invalid and oversized later branches without publication", () => {
+    const runtime = create_livetree_runtime();
+    const tree = create_staged_livetree_in_runtime({ $_tag: 'main', $_content: [] }, runtime);
+    try {
+      const handle = tree.css.selector('.card');
+      assert.equal(runtime.issuedQuids.size, 1);
+      handle.set.color('navy');
+      const before = tree.css.snapshot(), keys = tree.css.global.list(), node = tree.node;
+      for (const branch of unsupported) {
+        assert.throws(() => handle.setMany({ color: 'red', '& > .valid': { color: 'green' },
+          _focus: { [branch]: { color: 'blue' } } } as never));
+        assert.equal(tree.css.snapshot(), before); assert.deepEqual(tree.css.global.list(), keys);
+        assert.deepEqual(tree.node, node); assert.equal(runtime.issuedQuids.size, 1);
+      }
+      const deep = ':is('.repeat(128) + '.a' + ')'.repeat(128);
+      const large = tree.css.media('screen').selector(`${deep},.b`);
+      assert.throws(() => large.setMany({ color: 'red', _hover: { color: 'green' }, '& > .late': { color: 'blue' } }), /resource limit/);
+      assert.equal(tree.css.snapshot(), before); assert.deepEqual(tree.css.global.list(), keys);
+      assert.deepEqual(tree.node, node); assert.equal(runtime.issuedQuids.size, 1);
+      handle.setMany({ '& > .valid': { color: 'green' } });
+      assert.equal(tree.css.selector('.card > .valid').get.color(), 'green');
     } finally { tree.remove(); }
   });
 
@@ -205,6 +347,53 @@ export function css_selector_cases(check: (name: string, run: () => void) => voi
     } finally { tree.remove(); }
   });
 
+  check("bound global forwarding uses recursive CssMap and one governed transition", () => {
+    const map: LiveMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
+    const page = map.doc.must('page'), binding = { document: page, hosted: false, active: true };
+    const bound = bound_document_css_api(binding).media('screen').sel('.card');
+    let commits = 0; const stop = map.commits.observe(() => commits++);
+    try {
+      const rev = map.rev;
+      bound.setMany({ color: 'red', width: { value: 2, unit: 'rem' }, '--tone': 'gold',
+        _hover: { color: 'blue' }, __before: { color: 'purple' } });
+      assert.equal(map.rev, rev + 1); assert.equal(commits, 1);
+      assert.deepEqual(selectors(page.css.snapshot()), ['.card', '.card:hover', '.card::before']);
+      assert.ok(rules(page.css.snapshot()).every(rule => JSON.stringify(rule.scopes) === JSON.stringify(['@media screen'])));
+      bound.setMany({ color: undefined, _hover: { color: undefined } });
+      assert.deepEqual(rules(page.css.snapshot())[0]!.declarations, [['width', '2rem'], ['--tone', 'gold']]);
+      assert.deepEqual(selectors(page.css.snapshot()), ['.card', '.card::before']);
+      const before = page.css.snapshot(), count = commits, currentRev = map.rev;
+      bound.setMany({ '& > .child': { _hover: { _focus: { color: 'blue' } } } });
+      assert.equal(map.rev, currentRev + 1); assert.equal(commits, count + 1);
+      assert.match(page.css.snapshot(), /\.card>\.child:hover:focus\{color:blue/);
+      const recursive = page.css.snapshot();
+      assert.throws(() => Reflect.apply(bound.setMany, bound, [{ color: 'green', _hover: { _focus: { color: null } } }]));
+      assert.equal(page.css.snapshot(), recursive); assert.equal(map.rev, currentRev + 1); assert.equal(commits, count + 1);
+      binding.active = false;
+      assert.throws(() => bound.setMany({ color: 'green' }), /disposed/);
+      assert.equal(page.css.snapshot(), recursive);
+    } finally { stop(); }
+  });
+
+  check("Document maps share declaration qualification and explicit undefined deletion", () => {
+    const map = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
+    const css = map.doc.must('page').css, handle = css.sel('.card');
+    handle.setMany({ color: 'navy', '--tone': 'gold', width: { value: 2, unit: 'rem' },
+      _hover: { color: 'red', '--tone': 'green' }, __before: { color: 'blue', content: '"custom"' } });
+    assert.deepEqual(rules(css.snapshot())[0]!.declarations, [['color', 'navy'], ['--tone', 'gold'], ['width', '2rem']]);
+    const before = map.capture();
+    for (const value of [null, true, false]) {
+      assert.throws(() => Reflect.apply(handle.setMany, handle, [{ color: 'red', _hover: { color: value } }]));
+      assert.throws(() => Reflect.apply(handle.setProp, handle, ['color', value]));
+      assert.deepEqual(map.capture(), before);
+    }
+    handle.setMany({ color: undefined, '--tone': undefined, _hover: { color: undefined, '--tone': undefined },
+      __before: { color: undefined, content: undefined } });
+    assert.deepEqual(selectors(css.snapshot()), ['.card']);
+    assert.deepEqual(rules(css.snapshot())[0]!.declarations, [['width', '2rem']]);
+    handle.remove('width'); assert.equal(css.snapshot(), '');
+  });
+
   check("Document direct lists retain pseudo placement, atomic revisions, values and deletion", () => {
     const map = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
     const css = map.doc.must('page').css, handle = css.media('screen').sel('.a,.b');
@@ -214,7 +403,7 @@ export function css_selector_cases(check: (name: string, run: () => void) => voi
       handle.setMany({ color: 'black', _hover: { color: 'red' }, __before: { color: 'blue' } });
       assert.equal(map.rev, rev + 1); assert.equal(commits, 1);
       assert.deepEqual(selectors(css.snapshot()), ['.a,.b', '.a:hover,.b:hover', '.a::before,.b::before']);
-      handle.setMany({ color: undefined, _hover: { color: null } });
+      handle.setMany({ color: undefined, _hover: { color: undefined } });
       assert.deepEqual(selectors(css.snapshot()), ['.a::before,.b::before']);
       const before = map.capture(), count = commits;
       for (const pattern of invalid) {

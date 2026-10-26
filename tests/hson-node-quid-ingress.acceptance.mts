@@ -727,10 +727,11 @@ check("unpublished generated collisions retry and exhaustion is atomic", () => {
     assert.deepEqual(exhausted, exhaustedBefore);
     assert.equal(get_node_by_quid(Q1), owner);
     assert.equal(get_node_by_quid(Q7), undefined);
-    assert.equal(
-      Object.values(exhaustedMetrics).every((value) => value === 0),
-      true,
-    );
+    // Validation traverses the candidate before minting fails; nothing is published.
+    const { subtreeTraversalPasses, subtreeNodesTraversed, ...publicationMetrics } = exhaustedMetrics;
+    assert.equal(subtreeTraversalPasses, 1);
+    assert.equal(subtreeNodesTraversed, 3);
+    assert.equal(Object.values(publicationMetrics).every(value => value === 0), true);
   } finally {
     exhaustedProfile.stop();
     destroy_subtree_quids(owner);

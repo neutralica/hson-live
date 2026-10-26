@@ -71,7 +71,7 @@ check("published global facade retains rules, selectors, variables, property con
   assert.match(owner.css.snapshot(), /@media \(max-width: 700px\)/);
 });
 
-check("global stylesheet ingress shares the portable parser and source order with document CSS", () => {
+check("global stylesheet ingress retains exact opaque text beside structured registries", () => {
   const source = `
     .same { color: red; }
     .same { color: blue; }
@@ -88,8 +88,12 @@ check("global stylesheet ingress shares the portable parser and source order wit
   assert.equal(map.rev, before + 1);
   assert.equal(tree.css.snapshot(), map.doc.must("page").css.snapshot());
   assert.deepEqual(tree.css.global.list(), map.doc.must("page").css.list());
-  assert.equal(tree.css.global.atProperty.get("--phase")?.init, "0");
-  assert.equal(tree.css.global.keyframes.get("fade")?.steps.length, 2);
+  assert.equal(tree.css.snapshot(), source);
+  assert.deepEqual(tree.css.global.list(), []);
+  assert.equal(tree.css.global.atProperty.get("--phase"), undefined);
+  assert.equal(tree.css.global.keyframes.get("fade"), undefined);
+  assert.equal(map.doc.must("page").css.atProperty.get("--phase"), undefined);
+  assert.equal(map.doc.must("page").css.keyframes.get("fade"), undefined);
   assert.equal(other.css.snapshot(), "");
   tree.css.global.atProperty.register(["--later", "<number>", "1"]);
   map.doc.must("page").css.atProperty.register(["--later", "<number>", "1"]);
@@ -107,12 +111,14 @@ check("global stylesheet ingress shares the portable parser and source order wit
   assert.equal(tree.css.snapshot(), map.doc.must("page").css.snapshot());
   tree.css.global.stylesheet(".late { color: green; }");
   tree.css.global.sel(".structured").set.color("black");
-  assert.ok(tree.css.snapshot().indexOf(".late{") < tree.css.snapshot().indexOf(".structured{"));
-  const unchanged = tree.css.snapshot();
-  for (const empty of ["", "/* only comment */"]) tree.css.global.stylesheet(empty);
-  assert.equal(tree.css.snapshot(), unchanged);
-  assert.throws(() => tree.css.global.stylesheet(".valid { color: red; } @import url(a.css);"), /@import/);
-  assert.equal(tree.css.snapshot(), unchanged);
+  assert.ok(tree.css.snapshot().indexOf(".late { color: green; }") < tree.css.snapshot().indexOf(".structured{"));
+  for (const text of ["", "/* only comment */", ".valid { color: red; } @import url(a.css);"]) {
+    const unchanged = tree.css.snapshot();
+    tree.css.global.stylesheet(text);
+    assert.equal(tree.css.snapshot(), unchanged + "\n\n" + text);
+  }
+  assert.equal(tree.css.global.atProperty.get("--later")?.init, "1");
+  assert.equal(tree.css.global.keyframes.get("later")?.steps.length, 2);
   assert.equal("stylesheet" in tree.css, false);
   tree.remove();
   other.remove();

@@ -144,8 +144,9 @@ export type CssGlobalHandle = CssGlobalsApi & Readonly<{
   keyframes: KeyframesManager;
 }>;
 
-export type StyleHandle<TOwner> = Readonly<
-  StyleSetter<TOwner> & {
+/** Inline access selects declaration-only maps; selector handles retain recursive maps. */
+export type StyleHandle<TOwner, TDeclarationsOnly extends boolean = false> = Readonly<
+  StyleSetter<TOwner, TDeclarationsOnly> & {
     get: StyleGetter;
     getMany: () => StyleGetMany;
     var: CssVarFacade<TOwner>;

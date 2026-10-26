@@ -751,7 +751,7 @@ function assert_parser_transportable_string(
     const unit = value.charCodeAt(index);
     if (unit >= 0xd800 && unit <= 0xdbff) {
       const next = value.charCodeAt(index + 1);
-      if (next < 0xdc00 || next > 0xdfff) {
+      if (!(next >= 0xdc00 && next <= 0xdfff)) {
         const reason = subject === "text"
           ? "a lone surrogate cannot be preserved by UTF-8 HTML transport"
           : "attribute value containing a lone surrogate cannot be preserved by UTF-8 HTML transport";

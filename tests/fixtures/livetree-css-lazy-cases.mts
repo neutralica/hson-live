@@ -17,7 +17,7 @@ export function lazy_css_cases(check: (name: string, run: () => void) => void): 
     const css = tree.css, global = css.global;
     assert.equal(tree.css, css); assert.equal(css.global, global);
     assert.equal(css.snapshot(), '');
-    assert.throws(() => global.stylesheet('@import url(forbidden.css);'), /@import/);
+    assert.throws(() => Reflect.apply(global.stylesheet,global,[42]), /text/i);
     global.sel('.x').set.color('red');
     global.var.set('tone', 'green');
     global.atProperty.register(['--phase', '<number>', '0']);
@@ -46,8 +46,8 @@ export function lazy_css_cases(check: (name: string, run: () => void) => void): 
     assert.equal(css.snapshot(), "");
     global.stylesheet('.a{color:red}');
     global.stylesheet('.b{color:blue}');
-    assert.equal(css.snapshot(), '.a{color:red;}\n\n.b{color:blue;}');
-    assert.throws(() => global.stylesheet('@import url(forbidden.css);'), /@import/);
+    assert.equal(css.snapshot(), '.a{color:red}\n\n.b{color:blue}');
+    assert.throws(() => Reflect.apply(global.stylesheet,global,[42]), /text/i);
     global.sel('.c').set.color('green');
     global.drop('sel:.c');
     global.clearAll();
@@ -97,14 +97,14 @@ export function lazy_css_cases(check: (name: string, run: () => void) => void): 
     assert.equal(css.global, global);
     assert.equal(css.snapshot(), '');
     assertSparse();
-    assert.throws(() => global.stylesheet('@import url(forbidden.css);'), /@import/);
+    assert.throws(() => Reflect.apply(global.stylesheet,global,[42]), /text/i);
     assertSparse();
     global.stylesheet('.x{color:red}');
     global.stylesheet('.y{color:blue}');
     global.sel('.z').set.opacity('.5');
     const snapshot = css.snapshot();
-    assert.match(snapshot, /\.x\{color:red;\}/);
-    assert.match(snapshot, /\.y\{color:blue;\}/);
+    assert.match(snapshot, /\.x\{color:red\}/);
+    assert.match(snapshot, /\.y\{color:blue\}/);
     assert.equal(page.css.snapshot(), '');
     global.sel('.z').set.opacity('.5');
     assert.equal(css.snapshot(), snapshot);

@@ -445,17 +445,17 @@ try {
   cssMap.doc.must("page").css.stylesheet("body { color: blue; }");
   check("page CSS updates adopted style and bound reads", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssStyle.textContent === cssMap.doc.must("page").css.snapshot()
-    && cssContinuation.tree.css.global.list().includes("stylesheet:1"));
+    && cssContinuation.tree.css.global.list().length === 0);
   const ingressRev = cssMap.rev;
   cssContinuation.tree.css.global.stylesheet("body { background: yellow; }");
-  check("bound stylesheet ingress replaces document semantic state", cssMap.doc.must("page").css.list().includes("stylesheet:1")
-    && !cssMap.doc.must("page").css.snapshot().includes("color:blue")
+  check("bound stylesheet ingress replaces document semantic state", cssMap.doc.must("page").css.list().length === 0
+    && cssMap.doc.must("page").css.snapshot() === "body { background: yellow; }"
     && cssStyle.textContent === cssMap.doc.must("page").css.snapshot() && cssMap.rev === ingressRev + 1);
   const cssCapture = cssMap.capture();
   cssMap.doc.must("page").css.atProperty.register(["--phase", "<number>", "0"]);
   cssMap.doc.must("page").css.keyframes.set({ name: "phase", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
   cssContinuation.tree.css.global.media({ minWidth: 1 }).sel("body").set.margin("3px");
-  check("bound registries and scoped rules follow document state", cssStyle.textContent === cssMap.doc.must("page").css.snapshot()
+  check("bound registries and scoped rules follow document state", [...cssRoot.querySelectorAll('style[data-hson-managed-document-css]')].map(style=>style.textContent).join("\n\n") === cssMap.doc.must("page").css.snapshot()
     && cssContinuation.tree.css.global.atProperty.has("--phase")
     && cssContinuation.tree.css.global.keyframes.has("phase"));
   cssMap.restore(cssCapture);
@@ -468,8 +468,10 @@ try {
   cssMap.doc.must("page").css.sel("body").set.margin("1px");
   check("CSS added after an empty state creates one managed realization", cssRoot.querySelectorAll('style[data-hson-managed-document-css="managed"]').length === 1
     && cssRoot.querySelector('style[data-hson-managed-document-css]').textContent === cssMap.doc.must("page").css.snapshot());
-  cssContinuation.dispose();
   const reboundLocalStyle = cssRoot.querySelector('style[data-hson-managed-document-css]');
+  cssContinuation.dispose();
+  check("bound CSS disposal releases the managed sheet before reuse", reboundLocalStyle.parentNode === null
+    && reboundLocalStyle.sheet === null && cssRoot.querySelector('style[data-hson-managed-document-css]') === null);
   const reboundLocal = continue_document({ map: cssMap, root: cssRoot });
   check("bound CSS recontinuation reuses the tree and managed element", reboundLocal.tree === cssContinuation.tree
     && cssRoot.querySelector('style[data-hson-managed-document-css]') === reboundLocalStyle);
@@ -544,8 +546,13 @@ try {
   const staleAlphaCss = alphaContinued.tree.css.global;
   alphaContinued.dispose();
   betaContinued.dispose();
-  check("disposal retains semantic CSS and caller DOM", alphaManaged.isConnected && betaManaged.isConnected
-    && styledLibraries.doc.must("alpha").css.has("sel:body"));
+  check("disposal releases managed sheets and retains semantic CSS and caller DOM", alphaManaged.parentNode === null && betaManaged.parentNode === null
+    && alphaManaged.sheet === null && betaManaged.sheet === null
+    && alphaRoot.querySelector('style[data-hson-managed-document-css]') === null
+    && betaRoot.querySelector('style[data-hson-managed-document-css]') === null
+    && authoredStyle === alphaRoot.querySelector("head style:not([data-hson-managed-document-css])")
+    && alphaContinued.tree.dom.el() === alphaRoot && betaContinued.tree.dom.el() === betaRoot
+    && styledLibraries.doc.must("alpha").css.has("sel:body") && styledLibraries.doc.must("beta").css.has("sel:body"));
   const detachedCssText = alphaManaged.textContent;
   styledLibraries.doc.must("alpha").css.sel("body").set.padding("8px");
   let staleBoundWriteFailed = false;
@@ -718,7 +725,7 @@ try {
   const hostedLayer=hostedCssRoot.querySelector("#hosted-layer-target");
   check("hosted anonymous-group source first paint", cssFrame.contentWindow.getComputedStyle(hostedLayer).color === "rgb(0, 0, 255)");
   const groupRecord=state.cssCut.libs.libraries.find(entry => entry.name === "page").css.order[0];
-  check("hosted cut contains one explicit anonymous occurrence with two members", groupRecord.kind === "group" && groupRecord.header === "@layer" && groupRecord.entries.length === 2);
+  check("hosted cut contains one explicit anonymous occurrence with two members", groupRecord.kind === "text" && groupRecord.text.includes("@layer"));
   const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut));
   const cssTransport = hsonLiveMap.echo.transport.websocket({ url: state.cssSocketUrl });
   const cssContinued = await continue_hosted_document({ now: { ...state.cssCut, ...cssBootstrap.bootstrap },
@@ -728,7 +735,7 @@ try {
   check("hosted CSS replay updates adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]')
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(4, 5, 6)");
   check("hosted grouping survives stale-cut Echo reconciliation", cssFrame.contentWindow.getComputedStyle(hostedLayer).color === "rgb(0, 0, 255)"
-    && hostedStyle.textContent === cssEcho.doc.must("page").css.snapshot());
+    && [...hostedCssRoot.querySelectorAll('style[data-hson-managed-document-css]')].map(style=>style.textContent).join("\n\n") === cssEcho.doc.must("page").css.snapshot());
   const authoredCssRev = cssClientMap.rev;
   await cssContinued.tree.async.css.global.sel("#hosted-css-target").setProp("color", "rgb(10, 11, 12)");
   check("hosted async CSS authoring converges through Echo", cssClientMap.rev === authoredCssRev + 1
@@ -751,9 +758,9 @@ try {
     && cssEcho.doc.must("page").css.snapshot() === "");
   await cssContinued.tree.async.css.global.stylesheet("/* RAW_SOURCE_SENTINEL */ #hosted-css-target { color: rgb(13, 14, 15) !important; }");
   const recreatedStyle = hostedCssRoot.querySelector('style[data-hson-managed-document-css="managed"]');
-  check("hosted stylesheet ingress realizes one parsed semantic style", recreatedStyle !== null
+  check("hosted stylesheet ingress realizes exact opaque text", recreatedStyle !== null
     && hostedCssRoot.querySelectorAll('style[data-hson-managed-document-css]').length === 1
-    && !cssEcho.doc.must("page").css.snapshot().includes("RAW_SOURCE_SENTINEL")
+    && cssEcho.doc.must("page").css.snapshot().includes("RAW_SOURCE_SENTINEL")
     && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(13, 14, 15)");
   await fetch("/__css-revoke");
   for (let attempt = 0; attempt < 50 && recreatedStyle.isConnected; attempt += 1) {
@@ -769,7 +776,7 @@ try {
     try { if (cssEcho.doc.must("page").mode === "document") break; } catch { /* Wait for Echo projection update. */ }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  check("regrant installs current CSS without reviving stale realization", cssEcho.doc.must("page").css.snapshot().includes("rgb(13,14,15)")
+  check("regrant installs current CSS without reviving stale realization", cssEcho.doc.must("page").css.snapshot().includes("rgb(13, 14, 15)")
     && hostedCssRoot.querySelector('style[data-hson-managed-document-css]') === null
     && !recreatedStyle.isConnected);
   cssContinued.dispose();

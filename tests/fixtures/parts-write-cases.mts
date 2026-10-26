@@ -158,8 +158,8 @@ export async function parts_write_cases() {
 
   // Existing admission owns nested occurrence lifetimes, local QUADs, and CSS.
   const styled = hsonLiveMap.fromLibraries({ components: { parts: {
-    leaf: { kind: "document", document: '<b @:root "leaf"/>', stylesheet: ':scope{color:blue}' },
-    panel: { kind: "document", document: '<article @:root <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{color:red}' },
+    leaf: { kind: "document", document: '<b @:root "leaf"/>', css: { color: "blue" } },
+    panel: { kind: "document", document: '<article @:root <hson-part @:child at="leaf"/>/>', css: { color: "red" } },
   } } });
   const styledAuthority = internal_livemap_aggregate_authority(styled);
   const styledBefore = styledAuthority.captureSemanticCheckpoint();

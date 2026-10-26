@@ -1,3 +1,4 @@
+import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
@@ -6,14 +7,14 @@ import { compose_client_portable_aggregate_internal as compose } from "../../src
 import { admit_locus_local_initializers, install_client_local_initializers_internal as install,
   make_locus_application_catalog } from "../../src/api/locus/locus.local-initializer.ts";
 import { sha256_sync } from "../../src/core/sha256-sync.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { opaque_document_stylesheet } from "../../src/internal/css/opaque-stylesheet.ts";
 import { local_initializers } from "../helpers/client-projection.mts";
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import type { LocusLocalInitializer } from "../../src/types/locus.projection.types.ts";
 import type { LiveMap } from "../../src/types/livemap.types.ts";
 
-function with_css(seed: LocusLocalInitializer, source: string): LocusLocalInitializer {
-  const { fingerprint: _fingerprint, ...base } = { ...seed, css: parse_document_stylesheet(source, []) };
+function with_css(seed: LocusLocalInitializer, source: string, structured = false): LocusLocalInitializer {
+  const { fingerprint: _fingerprint, ...base } = { ...seed, css: structured ? structured_css_fixture(source) : opaque_document_stylesheet(source) };
   const { schema: _schema, ...contract } = base;
   return { ...base, fingerprint: sha256_sync(JSON.stringify({ format: "hson-local-initializer", ...contract })) };
 }
@@ -76,13 +77,20 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
       const stop = client.commits.observe(() => commits++), stopPosition = aggregate.observeAuthorityPosition(() => positions++);
       try {
         const valid = local_initializers({ panel: { document: "<aside/>" } })[0]!;
-        const invalid = with_css(valid, `${selector}{color:red}`);
+        const invalid = with_css(valid, `${selector}{color:red}`, true);
         assert.throws(() => admit_locus_local_initializers([invalid]), reason);
         assert.throws(() => compose(snapshot, [invalid]), reason);
         assert.throws(() => make_locus_application_catalog(hsonLiveMap.create(), [{ name: "panel", ownership: "local",
           initializer: { document: "<aside/>" }, css: invalid.css }]), reason);
         const sibling = local_initializers({ alpha: { document: "<main/>" } })[0]!;
         assert.throws(() => install(client, [sibling, invalid]), reason);
+        const declarationInjection = structuredClone(with_css(valid, "aside{color:red}", true));
+        (declarationInjection.css!.rules[0]!.declarations[0] as unknown as [string, string])[1] = "red; color: blue";
+        assert.throws(() => admit_locus_local_initializers([declarationInjection]), /declaration|CSS|syntax/i);
+        assert.throws(() => compose(snapshot, [declarationInjection]), /declaration|CSS|syntax/i);
+        assert.throws(() => make_locus_application_catalog(hsonLiveMap.create(), [{ name: "panel", ownership: "local",
+          initializer: { document: "<aside/>" }, css: declarationInjection.css }]), /declaration|CSS|syntax/i);
+        assert.throws(() => install(client, [sibling, declarationInjection]), /declaration|CSS|syntax/i);
         assert.equal(commits, 0); assert.equal(positions, 0);
         assert.deepEqual(client.capture(), before); assert.equal(client.rev, before.revision);
         assert.equal(aggregate.hostedRegistry(), registry); assert.deepEqual(aggregate.libraries(), ids);

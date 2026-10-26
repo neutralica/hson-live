@@ -102,7 +102,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       unused: { kind: "document", document: '<p "PRIVATE_UNVISITED"/>' } } }, access: "private" }, "page": { document: '<html <head/> <body <hson-part lib="parts" at="x"/>/>/>', stylesheet: 'body{margin:0}', access: "shared" } }, { defaultProjection: { libraries: ["page"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
       const selected = locus.doc.must("page"); if (selected.mode !== "document") throw Error("document");
-      assert.match(selected.css.snapshot(), /body\{margin:0/); assert.match(selected.css.snapshot(), /button:where\(:scope,:scope \*\)\{color:red/);
+      assert.match(selected.css.snapshot(), /body\{margin:0/); assert.match(selected.css.snapshot(), /button\{color:red/);
       const session = await locus.session.create({ libraries: ["page"] });
       const snapshot = session.now().libs;
       assert.deepEqual(snapshot.libraries.map(entry => entry.name), ["page"]);
@@ -147,7 +147,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const adapter = new MemoryCheckpointAdapter(); await write_semantic_checkpoint(aggregate.captureSemanticCheckpoint(), adapter);
     const restored = await load("owned-part-checkpoint", { persistence: adapter }); assert.ok(restored);
     try {
-      assert.match(doc(restored.map).css.snapshot(), /button:where\(:scope,:scope \*\)\{color:red/);
+      assert.match(doc(restored.map).css.snapshot(), /button\{color:red/);
       assert.notEqual(subject(restored.map, "slot").quid, subject(map, "slot").quid);
       await restored.checkpoint();
       const local = install_libraries_snapshot(restored.map.cut({ documents: ["page"], data: [] }).libs).map;

@@ -8,13 +8,58 @@ import { encode_exact_hson_value, decode_exact_hson_value } from "../../src/api/
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import { runtime_for_tree } from "../../src/api/livetree/runtime/livetree-runtime.ts";
 import type { HsonNode } from "../../src/core/types.ts";
-import type { LiveMapDocumentLibrary } from "../../src/types/livemap.types.ts";
+import type { LiveMap, LiveMapDocumentLibrary } from "../../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
 import { make_portable_aggregate_commit, type HostedAggregateCommit } from "../../src/api/livemap/livemap.hosted.ts";
 import { ProjectedValueAdmissionError } from "../../src/core/projected-value-admission.ts";
 import { subject_for_tree } from "../../src/api/livetree/runtime/livetree-runtime.ts";
 
 export function inline_style_cases(check: (name: string, run: () => void) => void): void {
+  check("escaped custom-property setter identity survives parsing aliases and publication", () => {
+    const escaped = '--T\\6f ne';
+    for (const linked of [false, true]) {
+      const map: LiveMap = hsonLiveMap.fromLibraries({ page: { document: '<p/>' } });
+      const mirror = linked ? hsonMirror(map.doc.must('page')) : undefined;
+      const tree = mirror?.tree.find.must.byTag('p') ?? hsonLiveTree.fromHson('<p/>', { isolated: true });
+      const runtime = runtime_for_tree(tree);
+      let commits = 0;
+      const off = map.commits.observe(() => commits++);
+      const state = () => ({ node: tree.node, rev: map.rev, commits, quids: [...runtime.issuedQuids] });
+      const style = () => {
+        const value = tree.node.$_attrs?.style;
+        assert.ok(value && typeof value === 'object');
+        return { ...value };
+      };
+      try {
+        tree.style.setProp(escaped, 'red');
+        assert.equal(tree.style.get['--Tone'](), 'red');
+        assert.equal(tree.style.get[escaped](), 'red');
+        assert.deepEqual(style(), { '--Tone': 'red' });
+        const before = state();
+        tree.style.setProp('--Tone', 'red'); assert.deepEqual(state(), before);
+        for (const values of [{ [escaped]: 'green', '--Tone': undefined },
+          { opacity: '.2', '--bad}:x': 'red' }, { opacity: '.2', '--bad\\;': 'red' },
+          { opacity: '.2', '--Tone': 'trailing\\' },
+          ...[null, true, false].map(value => ({ opacity: '.2', '--Tone': value }))]) {
+          assert.throws(() => Reflect.apply(tree.style.setMany, tree.style, [values]));
+          assert.deepEqual(state(), before);
+        }
+        tree.style.setMany({ '--Tone': 'blue', opacity: .5, '--tone': 'gold' });
+        assert.equal(tree.style.get[escaped](), 'blue');
+        tree.style.setProp(escaped, undefined);
+        assert.equal(tree.style.get['--Tone'](), undefined);
+        assert.equal(tree.style.get['--tone'](), 'gold');
+        assert.equal(tree.style.get.opacity(), '0.5');
+        // Rich preexisting storage may retain the escaped authored spelling.
+        tree.attrs.set('style', { [escaped]: 'red', '--keep': 'kept' });
+        tree.style.setProp('--Tone', 'blue');
+        assert.deepEqual(style(), { [escaped]: 'blue', '--keep': 'kept' });
+        assert.equal(tree.style.get['--Tone'](), 'blue');
+        tree.style.remove('--Tone');
+        assert.deepEqual(style(), { '--keep': 'kept' });
+      } finally { off(); mirror?.dispose(); (mirror?.tree ?? tree).remove(); }
+    }
+  });
   check("data receiving context rejects attributes while document CSS remains strict", () => {
     const text = (source: string) => source as Parameters<typeof Hson.data.fromHson>[0];
     const data = Hson.data.fromHson(text('<z -0 a ["", null, true, <nested []>]>'));

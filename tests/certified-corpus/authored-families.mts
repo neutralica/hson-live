@@ -1,7 +1,7 @@
 import type { AcceptedCorpusCase, AcceptedFamilyDefinition, RejectedCorpusCase, RejectedFamilyDefinition } from "./corpus-types.mts";
 import { elem, element, obj, property, str, val } from "./graph-expectations.mts";
 
-function acceptedStringCase(id: string, spelling: string, decoded: string, expectedHson: string): AcceptedCorpusCase {
+function acceptedStringCase(id: string, spelling: string, decoded: string, expectedHson: string, compactHson?: string): AcceptedCorpusCase {
   const source = "\"" + spelling + "\"";
   return {
     id: "hson.accept.family.quoted-string." + id,
@@ -10,7 +10,7 @@ function acceptedStringCase(id: string, spelling: string, decoded: string, expec
     taxonomy: { shape: "scalar", slot: "quoted-string", variation: id },
     tags: ["string", "escape", "transparent-family"], origin: "family.accept.quoted-string-json-escapes",
     rationale: "One lexical slot varies only the accepted escape spelling.", disposition: "accept", source,
-    expectedGraph: str(decoded), expectedOutputs: { hson: expectedHson },
+    expectedGraph: str(decoded), expectedOutputs: { hson: expectedHson, ...(compactHson === undefined ? {} : { compactHson }) },
   };
 }
 
@@ -20,9 +20,12 @@ const quotedStringAcceptedCases: readonly AcceptedCorpusCase[] = [
   acceptedStringCase("slash", "\\/", "/", "\"/\""),
   acceptedStringCase("backspace", "\\b", "\b", "\"\\b\""),
   acceptedStringCase("form-feed", "\\f", "\f", "\"\\f\""),
-  acceptedStringCase("line-feed", "\\n", "\n", "\"\\n\""),
+  acceptedStringCase("line-feed", "\\n", "\n", "\"\n\n\n\"", "\"\\n\""),
   acceptedStringCase("carriage-return", "\\r", "\r", "\"\\r\""),
   acceptedStringCase("tab", "\\t", "\t", "\"\\t\""),
+  acceptedStringCase("raw-tab", "\t", "\t", "\"\\t\""),
+  acceptedStringCase("raw-line-feed", "a\nb", "a\nb", "\"\n  a\n  b\n\"", "\"a\\nb\""),
+  acceptedStringCase("raw-carriage-return", "a\rb", "a\nb", "\"\n  a\n  b\n\"", "\"a\\nb\""),
   acceptedStringCase("unicode-lowercase", "\\u0061", "a", "\"a\""),
   acceptedStringCase("unicode-uppercase", "\\u006A", "j", "\"j\""),
   acceptedStringCase("unicode-mixed-case", "\\u00aF", "¯", "\"¯\""),
@@ -164,25 +167,30 @@ export const malformedQuotedNameFamily: RejectedFamilyDefinition = {
 function rawControlCases(family: "quoted-string" | "quoted-name"): readonly RejectedCorpusCase[] {
   return Array.from({ length: 32 }, (_, codePoint) => {
     const hex = codePoint.toString(16).padStart(4, "0");
-    const source = family === "quoted-string" ? "\"a" + String.fromCharCode(codePoint) + "b\"" : "<'a" + String.fromCharCode(codePoint) + "b' 1>";
+    // Tabs and line endings are legal in content, but remain illegal in attributes.
+    const attribute = family === "quoted-string" && [9, 10, 13].includes(codePoint);
+    const source = family === "quoted-name" ? "<'a" + String.fromCharCode(codePoint) + "b' 1>"
+      : attribute ? "<e title=\"a" + String.fromCharCode(codePoint) + "b\"/>" : "\"a" + String.fromCharCode(codePoint) + "b\"";
     return {
       id: "hson.reject.family." + family + ".raw-u" + hex,
-      claim: "Raw U+" + hex.toUpperCase() + " rejects in a " + family + ".",
+      claim: "Raw U+" + hex.toUpperCase() + " rejects in a " + (attribute ? "quoted attribute value" : family) + ".",
       classification: "materialized-rejected-family-case", ingress: "hson",
-      escapedInput: family === "quoted-string" ? "\"a\\u" + hex + "b\"" : "<'a\\u" + hex + "b' 1>",
+      escapedInput: family === "quoted-name" ? "<'a\\u" + hex + "b' 1>"
+        : attribute ? "<e title=\"a\\u" + hex + "b\"/>" : "\"a\\u" + hex + "b\"",
       verbatimInput: source,
-      taxonomy: { shape: family === "quoted-string" ? "scalar" : "object", slot: family, defect: "raw-u" + hex },
+      taxonomy: { shape: family === "quoted-name" ? "object" : attribute ? "element" : "scalar", slot: attribute ? "attribute-value" : family, defect: "raw-u" + hex },
       tags: [family, "raw-c0", "transparent-family", "rejection"], origin: "family.reject." + family + "-raw-c0",
-      rationale: "The finite 32-case family visibly materializes every raw C0 code point.",
+      rationale: attribute ? "Content permits this whitespace; quoted attributes retain the raw C0 restriction."
+        : "The finite 32-case family visibly materializes every raw C0 code point.",
       disposition: "reject", source,
-      expectedRejection: tokenError(family === "quoted-string" ? "HSON_STRING_CONTROL_UNESCAPED" : "HSON_NAME_CONTROL_UNESCAPED", family === "quoted-string" ? 2 : 3),
+      expectedRejection: tokenError(family === "quoted-string" ? "HSON_STRING_CONTROL_UNESCAPED" : "HSON_NAME_CONTROL_UNESCAPED", family === "quoted-name" ? 3 : attribute ? 11 : 2),
     };
   });
 }
 const rawQuotedControlCases = rawControlCases("quoted-string");
 const rawQuotedNameControlCases = rawControlCases("quoted-name");
 export const rawQuotedControlFamily: RejectedFamilyDefinition = {
-  id: "family.reject.quoted-string-raw-c0", claim: "Every raw U+0000–U+001F control rejects inside a quoted string.",
+  id: "family.reject.quoted-string-raw-c0", claim: "Raw C0 controls reject in content except tabs and line endings, which reject in quoted attributes.",
   classification: "transparent-rejected-family", variedDimension: "raw C0 code point", cases: rawQuotedControlCases,
 };
 export const rawQuotedNameControlFamily: RejectedFamilyDefinition = {

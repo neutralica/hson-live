@@ -16,7 +16,7 @@ import { DOCUMENT_SCOPED_QUAD_LIMITS } from "../../src/api/livemap/livemap.docum
 import { validate_document_path as path } from "../../src/api/livemap/livemap.document.path.ts";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.ts";
 import { set_livemap_quid_candidate_source_for_tests as allocator } from "../../src/api/livemap/livemap.quid-allocation.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 import { encode_hosted_root, decode_hosted_root, type PrivateScopedAggregateCommit } from "../../src/api/livemap/livemap.hosted.ts";
 import { assign_hson_node_quid } from "../../src/core/hson-node-quid.ts";
 import { local_initializers } from "../helpers/client-projection.mts";
@@ -38,7 +38,7 @@ async function fixture(flat = false) {
   }), page: { document: flat ? '<main @:page <footer @:footer/>/>' : '<main @:page <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <footer @:footer/>/>' },
   data: { data: { n: 0 } }, zpage: { document: flat ? '<aside/>' : '<aside <hson-part lib="parts" at="leaf"/>/>' },
   hidden: { document: '<p "PRIVATE_LIBRARY_SENTINEL"/>' } }, [], undefined,
-  { page: parse_document_stylesheet(flat ? 'main{margin:7px}' : 'main{margin:7px} [hson\\:quad="footer"]{border:0}', []) });
+  { page: structured_css_fixture(flat ? 'main{margin:7px}' : 'main{margin:7px} [hson\\:quad="footer"]{border:0}') });
   const a = authority(map);
   enable_interactions(map);
   const pageId = a.libraries()[1]!;

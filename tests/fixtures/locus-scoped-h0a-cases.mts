@@ -7,7 +7,7 @@ import { document_scoped_libraries_semantically_equal as equal } from "../../src
 import { enumerate_livemap_issued_quids as issued } from "../../src/api/livemap/livemap.identity-epoch.ts";
 import { validate_document_path as path } from "../../src/api/livemap/livemap.document.path.ts";
 import { hsonTransform } from "../../src/index.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { opaque_document_stylesheet } from "../../src/internal/css/opaque-stylesheet.ts";
 import type { LiveMapCssOp } from "../../src/types/livemap.types.ts";
 const replacement = () => hsonTransform.fromHson('<article title="H0a" <hson-part lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <footer/>/>').toNode();
 const root = { kind: "path" as const, path: path([0]) };
@@ -84,7 +84,7 @@ export async function h0a_cases(check: (name: string, run: () => Promise<void>) 
         { domain: "css" as const, kind: "rule" as const, ruleKey: "independent", scopes: [] },
         { domain: "css" as const, kind: "append" as const, stylesheet: { rules: [{ ruleKey: "appended", selector: "aside", scopes: [], declarations: [["display", "block"]] }],
           properties: [], keyframes: [], order: [{ kind: "rule", ruleKey: "appended", scopes: [] }] } },
-        { domain: "css" as const, kind: "replace" as const, stylesheet: parse_document_stylesheet('main{color:red}', []) },
+        { domain: "css" as const, kind: "replace" as const, stylesheet: opaque_document_stylesheet('main{color:red}') },
         { domain: "css" as const, kind: "clear-all" as const },
       ];
       for (const operation of operations) {

@@ -4,7 +4,7 @@ SUMMARY
 {
   "counts": {
     "literalAcceptedAuthoredHson": 50,
-    "transparentAcceptedAuthoredHson": 50,
+    "transparentAcceptedAuthoredHson": 53,
     "literalRejectedAuthoredHson": 56,
     "transparentRejectedAuthoredHson": 117,
     "graphOnlyAcceptedTransport": 9,
@@ -13,8 +13,8 @@ SUMMARY
     "structuralHtmlTransport": 47,
     "diagnosticCircuitRegressions": 4,
     "specializedTestReferences": 10,
-    "totalConcreteDescriptors": 377,
-    "uniqueAuthoredSources": 273,
+    "totalConcreteDescriptors": 380,
+    "uniqueAuthoredSources": 276,
     "declaredSourceReuse": 0
   }
 }
@@ -3406,7 +3406,8 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact Hson output: "\"\\n\""
+exact Hson output: "\"\n\n\n\""
+exact compact Hson output: "\"\\n\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3442,6 +3443,113 @@ hand-authored expected graph:
   "$_tag": "_hson_str"
 }
 exact Hson output: "\"\\\"\""
+exact JSON output: —
+exact HTML output: —
+exact diagnostic output: —
+expected key sequences: —
+expected string leaves: —
+negative-zero paths: —
+structured rejection: —
+origin: family.accept.quoted-string-json-escapes
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: string, escape, transparent-family
+rationale: One lexical slot varies only the accepted escape spelling.
+
+=== hson.accept.family.quoted-string.raw-carriage-return ===
+claim: Quoted-string escape variation raw-carriage-return decodes and canonicalizes exactly.
+classification: materialized-accepted-family-case
+ingress format: hson
+escaped input: "\"\\\"a\\rb\\\"\""
+verbatim input: —
+semantic shape: scalar
+slot: quoted-string
+variation: raw-carriage-return
+defect: —
+disposition: accept
+hand-authored expected graph:
+{
+  "$_content": [
+    "a\nb"
+  ],
+  "$_tag": "_hson_str"
+}
+exact Hson output: "\"\n  a\n  b\n\""
+exact compact Hson output: "\"a\\nb\""
+exact JSON output: —
+exact HTML output: —
+exact diagnostic output: —
+expected key sequences: —
+expected string leaves: —
+negative-zero paths: —
+structured rejection: —
+origin: family.accept.quoted-string-json-escapes
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: string, escape, transparent-family
+rationale: One lexical slot varies only the accepted escape spelling.
+
+=== hson.accept.family.quoted-string.raw-line-feed ===
+claim: Quoted-string escape variation raw-line-feed decodes and canonicalizes exactly.
+classification: materialized-accepted-family-case
+ingress format: hson
+escaped input: "\"\\\"a\\nb\\\"\""
+verbatim input: —
+semantic shape: scalar
+slot: quoted-string
+variation: raw-line-feed
+defect: —
+disposition: accept
+hand-authored expected graph:
+{
+  "$_content": [
+    "a\nb"
+  ],
+  "$_tag": "_hson_str"
+}
+exact Hson output: "\"\n  a\n  b\n\""
+exact compact Hson output: "\"a\\nb\""
+exact JSON output: —
+exact HTML output: —
+exact diagnostic output: —
+expected key sequences: —
+expected string leaves: —
+negative-zero paths: —
+structured rejection: —
+origin: family.accept.quoted-string-json-escapes
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: string, escape, transparent-family
+rationale: One lexical slot varies only the accepted escape spelling.
+
+=== hson.accept.family.quoted-string.raw-tab ===
+claim: Quoted-string escape variation raw-tab decodes and canonicalizes exactly.
+classification: materialized-accepted-family-case
+ingress format: hson
+escaped input: "\"\\\"\\t\\\"\""
+verbatim input: —
+semantic shape: scalar
+slot: quoted-string
+variation: raw-tab
+defect: —
+disposition: accept
+hand-authored expected graph:
+{
+  "$_content": [
+    "\t"
+  ],
+  "$_tag": "_hson_str"
+}
+exact Hson output: "\"\\t\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -9440,13 +9548,13 @@ tags: quoted-string, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
 === hson.reject.family.quoted-string.raw-u0009 ===
-claim: Raw U+0009 rejects in a quoted-string.
+claim: Raw U+0009 rejects in a quoted attribute value.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"a\\u0009b\""
-verbatim input: "\"a\tb\""
-semantic shape: scalar
-slot: quoted-string
+escaped input: "<e title=\"a\\u0009b\"/>"
+verbatim input: "<e title=\"a\tb\"/>"
+semantic shape: element
+slot: attribute-value
 variation: —
 defect: raw-u0009
 disposition: reject
@@ -9459,16 +9567,16 @@ structured rejection:
   "code": "HSON_STRING_CONTROL_UNESCAPED",
   "operation": "tokenize-hson",
   "source": {
-    "column": 3,
-    "index": 2,
+    "column": 12,
+    "index": 11,
     "line": 1
   },
   "stage": "tokenization"
 }
 source evidence:
 {
-  "column": 3,
-  "index": 2,
+  "column": 12,
+  "index": 11,
   "line": 1
 }
 path evidence: —
@@ -9480,16 +9588,16 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: quoted-string, raw-c0, transparent-family, rejection
-rationale: The finite 32-case family visibly materializes every raw C0 code point.
+rationale: Content permits this whitespace; quoted attributes retain the raw C0 restriction.
 
 === hson.reject.family.quoted-string.raw-u000a ===
-claim: Raw U+000A rejects in a quoted-string.
+claim: Raw U+000A rejects in a quoted attribute value.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"a\\u000ab\""
-verbatim input: "\"a\nb\""
-semantic shape: scalar
-slot: quoted-string
+escaped input: "<e title=\"a\\u000ab\"/>"
+verbatim input: "<e title=\"a\nb\"/>"
+semantic shape: element
+slot: attribute-value
 variation: —
 defect: raw-u000a
 disposition: reject
@@ -9502,16 +9610,16 @@ structured rejection:
   "code": "HSON_STRING_CONTROL_UNESCAPED",
   "operation": "tokenize-hson",
   "source": {
-    "column": 3,
-    "index": 2,
+    "column": 12,
+    "index": 11,
     "line": 1
   },
   "stage": "tokenization"
 }
 source evidence:
 {
-  "column": 3,
-  "index": 2,
+  "column": 12,
+  "index": 11,
   "line": 1
 }
 path evidence: —
@@ -9523,7 +9631,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: quoted-string, raw-c0, transparent-family, rejection
-rationale: The finite 32-case family visibly materializes every raw C0 code point.
+rationale: Content permits this whitespace; quoted attributes retain the raw C0 restriction.
 
 === hson.reject.family.quoted-string.raw-u000b ===
 claim: Raw U+000B rejects in a quoted-string.
@@ -9612,13 +9720,13 @@ tags: quoted-string, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
 === hson.reject.family.quoted-string.raw-u000d ===
-claim: Raw U+000D rejects in a quoted-string.
+claim: Raw U+000D rejects in a quoted attribute value.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"a\\u000db\""
-verbatim input: "\"a\rb\""
-semantic shape: scalar
-slot: quoted-string
+escaped input: "<e title=\"a\\u000db\"/>"
+verbatim input: "<e title=\"a\rb\"/>"
+semantic shape: element
+slot: attribute-value
 variation: —
 defect: raw-u000d
 disposition: reject
@@ -9631,16 +9739,16 @@ structured rejection:
   "code": "HSON_STRING_CONTROL_UNESCAPED",
   "operation": "tokenize-hson",
   "source": {
-    "column": 3,
-    "index": 2,
+    "column": 12,
+    "index": 11,
     "line": 1
   },
   "stage": "tokenization"
 }
 source evidence:
 {
-  "column": 3,
-  "index": 2,
+  "column": 12,
+  "index": 11,
   "line": 1
 }
 path evidence: —
@@ -9652,7 +9760,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: quoted-string, raw-c0, transparent-family, rejection
-rationale: The finite 32-case family visibly materializes every raw C0 code point.
+rationale: Content permits this whitespace; quoted attributes retain the raw C0 restriction.
 
 === hson.reject.family.quoted-string.raw-u000e ===
 claim: Raw U+000E rejects in a quoted-string.

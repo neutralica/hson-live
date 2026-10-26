@@ -246,7 +246,7 @@ check("inline style manager shares typed leaf rendering and rejects nested rules
     ]) {
       assert.throws(
         () => Reflect.apply(value.style.setMany, value.style, [map]),
-        /Inline style does not support (pseudo|selector) declarations/,
+        { name: "TypeError", message: "Inline style requires declarations." },
       );
       assert.deepEqual(snapshot(value, element), before);
     }

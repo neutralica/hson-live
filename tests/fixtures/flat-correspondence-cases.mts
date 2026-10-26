@@ -1,6 +1,8 @@
-import { echo_map_internal } from "../../src/internal/governor-maps.ts";
+import { echo_map_internal, locus_map_internal } from "../../src/internal/governor-maps.ts";
 import { install_fake_document } from "../helpers/fake-document.mts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { replace_structured_fixture, structured_css_fixture } from "../helpers/structured-css-fixture.mts";
+import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.ts";
+import { set_livemap_quid_candidate_source_for_tests as allocator } from "../../src/api/livemap/livemap.quid-allocation.ts";
 import assert from "node:assert/strict";
 import { bind_locus_http, hsonMirror, hsonLiveMap } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
@@ -18,6 +20,9 @@ const page = (map: LiveMap) => { const lib = map.doc.must("page"); if (lib.mode 
 function staged(writer: LiveMapStagedWriter<LiveMap, void>) {
   const selected = writer.doc.must("page"); if (selected.mode !== "document") throw Error("document"); return selected;
 }
+function structured(writer: LiveMapStagedWriter<LiveMap, void>, text: string): void {
+  staged(writer).css({ domain: "css", kind: "replace", stylesheet: structured_css_fixture(text) });
+}
 function state(map: LiveMap) {
   const aggregate = owner(map), id = aggregate.libraries()[0]!;
   return { aggregate, id, overlay: aggregate.documentOverlay(id), ledger: aggregate.identityEpoch().issued() };
@@ -30,13 +35,46 @@ function atomic(map: LiveMap, run: () => void) {
   assert.equal(state(map).ledger, saved.ledger); assert.equal(events, 0);
 }
 export async function flat_correspondence_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  for (const named of [false, true]) await check(`opaque identity-looking CSS preserves text without demanding ${named ? "authored" : "disposable"} correspondence`, async () => {
+    const source = named ? authored({ page: { document: '<main <button @:_000000000 "Before"/>/>' } })
+      : hsonLiveMap.fromLibraries({ page: { document: '<main <button "Before"/>/>' } });
+    const a = state(source), target = path([0,0,0]);
+    const sourceId = named ? lookup(page(source), "_000000000")!.quid : "123456789";
+    if (!named) a.aggregate.acquireLocalDocumentIdentity(a.id, target, sourceId);
+    const raw = ` /* opaque */ ${sel(sourceId)} { CoLoR: red; }\n[hson\\:quad="unbound"] { color: blue; } `;
+    const issued = enumerate_livemap_issued_quids(state(source).ledger), graph = page(source).hson();
+    allocator(a.aggregate.identityEpoch().owner, () => { throw Error("Raw text must not allocate identity"); });
+    try { page(source).css.stylesheet(raw); }
+    finally { allocator(a.aggregate.identityEpoch().owner, undefined); }
+    assert.deepEqual(enumerate_livemap_issued_quids(state(source).ledger), issued);
+    const capture = source.capture(), css = capture.libraries[0]!.css;
+    assert.deepEqual(css, { rules: [], properties: [], keyframes: [], order: [{ kind: "text", text: raw }] });
+    assert.deepEqual(document_css_subject_identities(encode_portable_document_stylesheet(a.aggregate.stylesheet(a.id)), "outbound"), []);
+    assert.equal(lookup(page(source), "unbound"), undefined);
+    assert.deepEqual(capture.libraries[0]!.quads?.map(subject => subject.name) ?? [], named ? ["_000000000"] : []);
+    a.aggregate.restorePortableLibraries({ ...capture, revision: 0 });
+    const restored = state(source), receiver = install_libraries_snapshot(source.capture()).map, receiving = state(receiver);
+    assert.deepEqual(receiver.capture().libraries, source.capture().libraries);
+    assert.equal(page(source).hson(), graph); assert.equal(page(receiver).hson(), graph);
+    assert.equal(page(source).css.snapshot(), raw); assert.equal(page(receiver).css.snapshot(), raw);
+    assert.equal(lookup(page(receiver), "unbound"), undefined);
+    const local = restored.overlay.quidAtPath(target), remote = receiving.overlay.quidAtPath(target);
+    if (named) {
+      assert.ok(local && remote); assert.notEqual(local, sourceId); assert.notEqual(remote, local); assert.notEqual(remote, sourceId);
+      assert.equal(lookup(page(receiver), "_000000000")?.quid, remote);
+    } else {
+      assert.equal(local, undefined); assert.equal(remote, undefined);
+      assert.deepEqual(enumerate_livemap_issued_quids(receiving.ledger), []);
+      assert.equal(receiving.ledger.has(sourceId), false);
+    }
+  });
   for (const named of [false, true]) await check(`flat ${named ? "authored" : "disposable"} final transactions and receiving identities`, async () => {
     const source: LiveMap = named ? authored({ page: { document: '<main <button @:_000000000 "Before"/> <i/> <span/>/>' } })
       : hsonLiveMap.fromLibraries({ page: { document: '<main <button "Before"/> <i/> <span/>/>' } });
     const sourceState = state(source);
     const sourceId = named ? lookup(page(source), "_000000000")!.quid : "123456789";
     if (!named) sourceState.aggregate.acquireLocalDocumentIdentity(sourceState.id, path([0,0,0]), sourceId);
-    page(source).css.stylesheet(`${sel(sourceId)}{color:red}`);
+    replace_structured_fixture(page(source), `${sel(sourceId)}{color:red}`);
     sourceState.aggregate.restorePortableLibraries({ ...source.capture(), revision: 0 });
     const active = state(source), styled = active.overlay.quidAtPath(path([0,0,0]))!;
     active.aggregate.setInitialHostedAuthority({ logicalMapId: `flat-replay-${named}`, incarnationId: "run" });
@@ -87,7 +125,7 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
     const rev = source.rev;
     active.aggregate.acquireLocalDocumentIdentity(active.id, path([0,0,2]), "222222222");
     assert.equal(source.rev, rev); assert.equal(state(receiver).overlay.quidAtPath(path([0,0,2])), undefined);
-    replay(() => source.batch(w => staged(w).css.stylesheet(`${sel(styled)}{color:green}${sel("222222222")}{color:blue}`)));
+    replay(() => source.batch(w => structured(w, `${sel(styled)}{color:green}${sel("222222222")}{color:blue}`)));
     const demanded = state(receiver).overlay.quidAtPath(path([0,0,2]))!;
     assert.ok(demanded); assert.notEqual(demanded, "222222222");
     assert.equal(state(receiver).ledger.has("222222222"), false);
@@ -96,22 +134,22 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
     assert.equal(state(receiver).overlay.quidAtPath(path([0,0,1])), retained);
     for (const cssFirst of [false, true]) {
       replay(() => source.batch(w => {
-        if (cssFirst) staged(w).css.stylesheet("");
+        if (cssFirst) structured(w, "");
         staged(w).at([0]).delete();
-        if (!cssFirst) staged(w).css.stylesheet(`${sel(styled)}{color:green}`);
+        if (!cssFirst) structured(w, `${sel(styled)}{color:green}`);
       }));
       const retired = cssFirst ? retained : demanded;
       assert.equal(state(receiver).overlay.pathForQuid(retired), undefined);
       assert.equal(state(receiver).ledger.has(retired), true);
     }
-    atomic(source, () => page(source).css.stylesheet(`${sel(styled)}{color:red}`));
+    atomic(source, () => replace_structured_fixture(page(source), `${sel(styled)}{color:red}`));
     replay(() => source.batch(w => staged(w).at([]).asElement().insert(0, node('<button "New"/>'))));
     active.aggregate.acquireLocalDocumentIdentity(active.id, path([0,0,0]), "333333333");
-    replay(() => source.batch(w => staged(w).css.stylesheet(`${sel("333333333")}{color:purple}`)));
+    replay(() => source.batch(w => structured(w, `${sel("333333333")}{color:purple}`)));
     const fresh = state(receiver).overlay.quidAtPath(path([0,0,0]))!;
     assert.ok(fresh); assert.notEqual(fresh, retained); assert.notEqual(fresh, demanded);
     atomic(source, () => source.batch(w => staged(w).at([0]).delete()));
-    replay(() => source.batch(w => { staged(w).at([0]).replace(node('<strong "Replacement"/>')); staged(w).css.stylesheet(""); }));
+    replay(() => source.batch(w => { staged(w).at([0]).replace(node('<strong "Replacement"/>')); structured(w, ""); }));
     assert.equal(state(receiver).overlay.pathForQuid(fresh), undefined);
     assert.equal(state(receiver).ledger.has(fresh), true);
     assert.deepEqual(document_css_subject_identities(encode_portable_document_stylesheet(receiving.aggregate.stylesheet(receiving.id)), "outbound"), []);
@@ -126,7 +164,7 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
     try {
       const incoming = node('<button id="fresh" "Styled"/>'); incoming.$_meta = { quid: "555555555" };
       const commit = a.aggregate.commit([
-        { target: a.aggregate.target(a.id, []), kind: "css", operation: { domain: "css", kind: "replace", stylesheet: parse_document_stylesheet(`${sel("555555555")}{color:red}`, []) } },
+        { target: a.aggregate.target(a.id, []), kind: "css", operation: { domain: "css", kind: "replace", stylesheet: structured_css_fixture(`${sel("555555555")}{color:red}`, []) } },
         { target: a.aggregate.target(a.id, []), kind: "graph", operation: { domain: "graph", op: "insert-content", target: { kind: "path", path: path([0,0]) }, index: 1, content: incoming } },
       ]);
       assert.ok(commit.hosted);
@@ -142,6 +180,9 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
   });
   await check("mixed flat subject CSS and scoped delivery remain atomic and projection-owned", async () => {
     const locus = hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: '<b @:label "Scoped"/>', stylesheet: 'b{color:blue}' } }, access: "private" }, "page": { document: '<main <button @:a "Flat"/>/>', stylesheet: '[hson\\:quad="a"]{color:red}', access: "shared" }, "scoped": { document: '<main <hson-part lib="parts" at="p"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    const flatQuid = lookup(locus_map_internal(locus).doc.must("page"), "a")!.quid;
+    await locus.stage(w => w.doc.must("page").css.sel(sel(flatQuid)).set.color("red"));
+    const revision = locus.rev + 1;
     const session = await locus.session.create({ libraries: ["page", "scoped", "parts"] });
     const binding = bind_locus_http(locus, { endpoint: "/flat" });
     const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://flat.test/flat", fetch: (input, init) => binding.handle(new Request(input, init), {}) });
@@ -151,7 +192,7 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
       const id = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(e => e.name === "page")]!;
       const quid = aggregate.documentOverlay(id).quidAtPath(path([0,0,0]));
       const applied = new Promise<void>(resolve => {
-        const stop = echo.commits.observe(() => queueMicrotask(() => { if (echo.sync.appliedRev === 1) { stop(); resolve(); } }));
+        const stop = echo.commits.observe(() => queueMicrotask(() => { if (echo.sync.appliedRev === revision) { stop(); resolve(); } }));
       });
       await locus.stage(w => { w.doc.must("page").at([0]).asElement().attrs.set("title", "flat"); w.doc.must("scoped").at([0]).asElement().flags.set("hidden"); });
       await applied;
@@ -162,9 +203,11 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
       assert.throws(() => echo.parts.must("parts"));
       const before = session.now();
       await assert.rejects(locus.stage(w => { w.doc.must("page").at([0]).delete(); w.doc.must("scoped").at([0]).delete(); }));
-      assert.deepEqual(session.now(), before); assert.equal(echo.sync.appliedRev, 1);
+      assert.deepEqual(session.now(), before); assert.equal(echo.sync.appliedRev, revision);
       assert.throws(() => page(map).document.attrs.set({ kind: "path", path: path([0]) }, "title", "forbidden"));
       await locus.admit({ "added": { document: '<aside @:new "Dynamic"/>', stylesheet: '[hson\\:quad="new"]{color:purple}', access: "shared" } });
+      const addedQuid = lookup(locus_map_internal(locus).doc.must("added"), "new")!.quid;
+      await locus.stage(w => w.doc.must("added").css.sel(sel(addedQuid)).set.color("purple"));
       const admitted = await locus.session.create({ libraries: ["added"] });
       const secondTransport = hsonLiveMap.echo.transport.http({ endpoint: "http://flat.test/flat", fetch: (input, init) => binding.handle(new Request(input, init), {}) });
       const second = await hsonLiveMap.echo.create({ now: admitted.now(), credential: admitted.credential!, transport: secondTransport });

@@ -18,6 +18,9 @@ export type AnimAdapters<TTree> = Readonly<{
   //  one canonical way to set a single CSS property on the selection.
   setStyleProp: (tree: TTree, prop: string, value: string) => TTree;
 
+  // Explicit declaration deletion; legacy adapters may retain their clearing convention.
+  removeStyleProp?: (tree: TTree, prop: string) => TTree;
+
   //  iterate selected DOM elements (for forcing reflow on all if desired).
   forEachDomElement: (tree: TTree, fn: (el: Element) => void) => void;
 

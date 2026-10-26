@@ -26,7 +26,7 @@ try {
   server = createServer(async (req, res) => {
     try {
       const page = pages.find(p => p.path === req.url);
-      if (page) { res.writeHead(200, { 'content-type': 'text/html' }); res.end(page.cut.html); return; }
+      if (page) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(page.cut.html); return; }
       const binding = pages.find(p => req.url.startsWith(p.endpoint))?.binding;
       if (!binding) { res.writeHead(404); res.end(); return; }
       const chunks = []; for await (const chunk of req) chunks.push(chunk);

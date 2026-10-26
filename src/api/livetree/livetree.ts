@@ -175,7 +175,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   /* the HsonNode being referenced */
   declare private nodeRef: NodeRef;
   /* inline style editor */
-  declare private styleApiInternal?: StyleHandle<this>;
+  declare private styleApiInternal?: StyleHandle<this, true>;
   /* dataset property manager */
   declare private dataApiInternal?: DataApi<this>;
   /* accessor api for a node's effective children (skips _VSNs) */
@@ -493,7 +493,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see StyleSetter
    * @see StyleHandle
    */
-  public get style(): StyleHandle<this> {
+  public get style(): StyleHandle<this, true> {
     this.assertActive("access style");
     if (!this.styleApiInternal) {
       const mgr = new StyleManager<this>(this);

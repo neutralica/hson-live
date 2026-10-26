@@ -1,3 +1,4 @@
+import { selector_for_quid } from "../livetree/managers/css-render.js";
 import { canonical_flat_correspondence, flat_document_fingerprint, type DocumentFlatEffect } from "./livemap.document.flat-effects.js";
 import { own_commit_description } from "./livemap.commit-description.js";
 import { encode_scoped_effect_graph_operation } from "./livemap.hosted.js";
@@ -69,7 +70,7 @@ import { validate_hson_schema_graph } from "../../internal/schema-hson-validatio
 import { ANY_DATA, ANY_DOCUMENT, HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
 import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
 import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
-import { decode_portable_document_stylesheet, empty_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal, render_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { decode_portable_document_stylesheet, empty_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal, render_portable_document_stylesheet_carriers } from "../../internal/css/portable-document-stylesheet.js";
 import { document_css_mentions_subject_identity, document_css_subject_identities, translate_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
@@ -1352,7 +1353,12 @@ function make_livemap_registry_engine(
           if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence from initial or local Part construction.");
         }
         if (library.mode !== "document" || target.path.length !== 0) throw new Error("CSS commands require a document Library root.");
-        const operation = lower_document_css_command(cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity), write.cssCommand);
+        const operation = lower_document_css_command(cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity), write.cssCommand, name => {
+          const candidate = candidate_for(library.identity);
+          if (!is_aggregate_document_candidate(candidate)) return undefined;
+          const subject = resolve_document_quad(candidate.root, candidate.overlay, library.documentQuads, name, undefined);
+          return subject === undefined ? undefined : selector_for_quid(subject.quid);
+        });
         if (operation === undefined) continue;
         write = { ...write, operation };
       }
@@ -2199,8 +2205,8 @@ function make_livemap_registry_engine(
           const evidence: ReceivingDocumentHandoff = Object.freeze({ libraryName: name, authority: composition.authority,
             revision: composition.revision, registryDigest: composition.registry.digest, projectionDigest: projection.digest,
             quads: document_css_subject_identities(portable, "inbound").length ? entry.quads : undefined,
-            subjects, identities, scopes: entry.scopes, portableCss: render_portable_document_stylesheet(entry.css),
-            receivingCss: render_portable_document_stylesheet(stylesheet(entry.identity)), assertCurrent });
+            subjects, identities, scopes: entry.scopes, portableCss: render_portable_document_stylesheet_carriers(entry.css),
+            receivingCss: render_portable_document_stylesheet_carriers(stylesheet(entry.identity)), assertCurrent });
           assertCurrent();
           issued.set(evidence, name);
           return evidence;
@@ -4028,8 +4034,8 @@ function make_livemap_registry_engine(
       if (!portable_document_stylesheet_equal(stylesheet(identity), decode_portable_document_stylesheet(translated))) {
         throw new Error("Portable restoration CSS evidence disagrees with the current receiving Library.");
       }
-      const portableCss = render_portable_document_stylesheet(decode_portable_document_stylesheet(portable));
-      const receivingCss = render_portable_document_stylesheet(decode_portable_document_stylesheet(translated));
+      const portableCss = render_portable_document_stylesheet_carriers(decode_portable_document_stylesheet(portable));
+      const receivingCss = render_portable_document_stylesheet_carriers(decode_portable_document_stylesheet(translated));
       restoration.assertCurrent();
       let check = capture_fence(), accepted = false;
       const root = state.root;

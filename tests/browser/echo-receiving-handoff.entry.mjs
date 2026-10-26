@@ -59,8 +59,11 @@ globalThis.receivingHandoffPreflight = async ({ sessions, endpoint }) => {
           assert(nodes.every((e, i) => computed(e) === styles[i]), 'First-paint CSS unchanged');
         }
         receivers.push(evidence.subjects.map(s => s.quid));
-        assert(evidence.receivingCss === selected.css.snapshot(), 'Receiving CSS already installed in Echo');
-        assert(document.querySelector('[data-hson-managed-document-css]').textContent === evidence.portableCss, 'Browser retains portable stylesheet');
+        assert(evidence.receivingCss.join('\n\n') === selected.css.snapshot(), 'Receiving CSS already installed in Echo');
+        const carriers = [...document.querySelectorAll('style[data-hson-managed-document-css]')];
+        assert(JSON.stringify(carriers.map(style => style.textContent)) === JSON.stringify(evidence.portableCss), 'Browser retains exact portable carrier contents and order');
+        assert(carriers.every(style => style.getAttribute('data-hson-managed-document-css') === 'managed' && style.parentElement === document.head), 'Portable carriers retain expected ownership and mount');
+        assert(carriers.every((style, index) => index + 1 === carriers.length || style.nextSibling === carriers[index + 1]), 'Portable carrier order is retained');
         const expired = () => {
           rejectsExpired(() => {
             cap.assert(evidence, 'page');

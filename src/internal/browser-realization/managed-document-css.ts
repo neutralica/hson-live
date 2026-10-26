@@ -9,9 +9,9 @@ import {
 export const MANAGED_DOCUMENT_CSS_MARKER = "data-hson-managed-document-css";
 
 /** Add a parser-safe derived style after authored head content without changing Hson state. */
-export function plan_managed_document_css(plan: BrowserRealizationPlan, css: string): BrowserRealizationPlan {
-  if (!css) return plan;
-  assert_browser_rawtext_text(css, "style", "managed-document-css");
+export function plan_managed_document_css(plan: BrowserRealizationPlan, css: readonly string[]): BrowserRealizationPlan {
+  if (!css.length) return plan;
+  css.forEach(text => assert_browser_rawtext_text(text, "style", "managed-document-css"));
   const root = plan.roots.length === 1 ? plan.roots[0] : undefined;
   if (root?.kind !== "element" || root.namespace !== "html" || root.localName !== "html") {
     throw new Error("Nonempty document CSS requires an explicit html/head document root.");
@@ -28,15 +28,15 @@ export function plan_managed_document_css(plan: BrowserRealizationPlan, css: str
   if (head?.kind !== "element") {
     throw new Error("Nonempty document CSS requires an explicit head element.");
   }
-  const derivedStyle: BrowserRealizationNode = Object.freeze({
-    kind: "wrapper", path: "managed-document-css", namespace: "html", localName: "style",
+  const derivedStyles: BrowserRealizationNode[] = css.map((text, index) => Object.freeze({
+    kind: "wrapper", path: `managed-document-css.${index}`, namespace: "html", localName: "style",
     attrs: Object.freeze([{ name: MANAGED_DOCUMENT_CSS_MARKER, value: "managed" }]),
-    children: Object.freeze([{ kind: "text" as const, path: "managed-document-css.text", value: css,
+    children: Object.freeze(text === "" ? [] : [{ kind: "text" as const, path: `managed-document-css.${index}.text`, value: text,
       parserContext: "rawtext" as const }]),
     childTarget: "element", parserContext: "ordinary",
-  });
+  }));
   const updatedHead: BrowserRealizationElement = Object.freeze({ ...head,
-    children: Object.freeze([...head.children, derivedStyle]) });
+    children: Object.freeze([...head.children, ...derivedStyles]) });
   const children = [...root.children];
   children[headIndex] = updatedHead;
   return Object.freeze({ ...plan, roots: Object.freeze([Object.freeze({ ...root, children: Object.freeze(children) })]) });

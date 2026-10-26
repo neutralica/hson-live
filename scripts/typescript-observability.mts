@@ -37,6 +37,22 @@ export type CoverageAudit = Readonly<{
   editor: EditorParityAudit;
   errors: readonly string[];
 }>;
+export type EditorSelection = Readonly<{
+  primaryProjects: ReadonlyMap<string, string>;
+  editorDiagnostics: ReadonlyMap<string, readonly string[]>;
+  configuredOrdinary: number;
+  classifiedProjects: Readonly<{
+    negative: Readonly<{ configured: number; inferred: number }>;
+    artifact: Readonly<{ configured: number; inferred: number }>;
+  }>;
+  errors: readonly string[];
+}>;
+export type ProjectDiagnosticResult = Readonly<{
+  project: string;
+  files: readonly string[];
+  parityFiles: readonly string[];
+  errors: readonly string[];
+}>;
 
 const TYPESCRIPT_FAMILY = /\.(?:ts|tsx|mts|cts)$/;
 const GENERATED_SCHEMA_DECLARATION = /\.hson-schema\.generated\.ts$/;
@@ -144,13 +160,28 @@ export function audit_editor_parity(
   inventory: ProjectInventory,
   classifiedFiles: Readonly<{ negative: readonly string[]; artifact: readonly string[] }> = { negative: [], artifact: [] },
 ): EditorParityAudit {
+  const selection = select_editor_projects(repositoryRoot, ordinaryFiles, projects, inventory, classifiedFiles);
+  const results = [...new Set(selection.primaryProjects.values())].map((project) => {
+    const files = [...selection.primaryProjects].filter(([, selected]) => selected === project).map(([file]) => file);
+    return compare_project_diagnostics(repositoryRoot, project, files, selection.editorDiagnostics);
+  });
+  return aggregate_project_results(selection, results);
+}
+
+export function select_editor_projects(
+  repositoryRoot: string,
+  ordinaryFiles: readonly string[],
+  projects: readonly ProjectSpec[],
+  inventory: ProjectInventory,
+  classifiedFiles: Readonly<{ negative: readonly string[]; artifact: readonly string[] }> = { negative: [], artifact: [] },
+): EditorSelection {
   const errors: string[] = [];
   const primaryProjects = new Map<string, string>();
+  const editorDiagnostics = new Map<string, readonly string[]>();
   const primarySpecs = new Map(projects.filter((project) => project.role === "primary").map((project) => [project.path, project]));
   const filesByPrimaryProject = new Map<string, string[]>();
   const service = create_project_service(repositoryRoot);
   let configuredOrdinary = 0;
-  let parityOrdinary = 0;
   const classifiedProjects = {
     negative: { configured: 0, inferred: 0 },
     artifact: { configured: 0, inferred: 0 },
@@ -200,33 +231,19 @@ export function audit_editor_parity(
 
     }
 
-    for (const [projectPath, files] of filesByPrimaryProject) {
-      const authoritativeProgram = read_project_program(repositoryRoot, projectPath);
+    for (const files of filesByPrimaryProject.values()) {
       for (const file of files) {
         const absoluteFile = resolve(repositoryRoot, file);
-        const authoritativeSource = authoritativeProgram.getSourceFiles().find((source) => normalized_absolute_path(source.fileName) === normalized_absolute_path(absoluteFile));
         const editorProject = service.getDefaultProjectForFile(ts.server.toNormalizedPath(absoluteFile), true);
-        if (authoritativeSource === undefined || editorProject === undefined) {
-          errors.push(`${file}: cannot resolve diagnostics from primary project ${projectPath}.`);
+        if (editorProject === undefined) {
+          errors.push(`${file}: cannot resolve editor diagnostics from the selected primary project.`);
           continue;
         }
-        const authoritative = diagnostic_keys([
-          ...authoritativeProgram.getSyntacticDiagnostics(authoritativeSource),
-          ...authoritativeProgram.getSemanticDiagnostics(authoritativeSource),
-          ...authoritativeProgram.getDeclarationDiagnostics(authoritativeSource),
-        ]);
         const languageService = editorProject.getLanguageService(true);
-        const editor = diagnostic_keys([
+        editorDiagnostics.set(file, [...diagnostic_keys([
           ...languageService.getSyntacticDiagnostics(absoluteFile),
           ...languageService.getSemanticDiagnostics(absoluteFile),
-        ]);
-        const editorOnly = [...editor].filter((key) => !authoritative.has(key));
-        const authoritativeOnly = [...authoritative].filter((key) => !editor.has(key));
-        if (editorOnly.length > 0 || authoritativeOnly.length > 0) {
-          errors.push(`${file}: editor diagnostics differ from primary project ${projectPath} (editor-only ${editorOnly.length}, authoritative-only ${authoritativeOnly.length}).`);
-          continue;
-        }
-        parityOrdinary += 1;
+        ])]);
       }
     }
   } finally {
@@ -236,8 +253,8 @@ export function audit_editor_parity(
 
   return Object.freeze({
     primaryProjects,
+    editorDiagnostics,
     configuredOrdinary,
-    parityOrdinary,
     classifiedProjects: Object.freeze({
       negative: Object.freeze(classifiedProjects.negative),
       artifact: Object.freeze(classifiedProjects.artifact),
@@ -246,16 +263,211 @@ export function audit_editor_parity(
   });
 }
 
+export function compare_project_diagnostics(
+  repositoryRoot: string,
+  project: string,
+  files: readonly string[],
+  editorDiagnostics: ReadonlyMap<string, readonly string[]>,
+): ProjectDiagnosticResult {
+  const errors: string[] = [];
+  const parityFiles: string[] = [];
+  const program = read_project_program(repositoryRoot, project);
+  const sourceFiles = new Map(program.getSourceFiles().map((source) => [normalized_absolute_path(source.fileName), source]));
+  for (const file of files) {
+    const absoluteFile = resolve(repositoryRoot, file);
+    const source = sourceFiles.get(normalized_absolute_path(absoluteFile));
+    const editor = editorDiagnostics.get(file);
+    if (source === undefined || editor === undefined) {
+      errors.push(`${file}: missing authoritative source or editor diagnostic result for ${project}.`);
+      continue;
+    }
+    const authoritative = diagnostic_keys([
+      ...program.getSyntacticDiagnostics(source),
+      ...program.getSemanticDiagnostics(source),
+      ...program.getDeclarationDiagnostics(source),
+    ]);
+    const editorSet = new Set(editor);
+    const editorOnly = [...editorSet].filter((key) => !authoritative.has(key));
+    const authoritativeOnly = [...authoritative].filter((key) => !editorSet.has(key));
+    if (editorOnly.length > 0 || authoritativeOnly.length > 0) {
+      errors.push(`${file}: editor diagnostics differ from primary project ${project} (editor-only ${editorOnly.length}, authoritative-only ${authoritativeOnly.length}).`);
+    } else {
+      parityFiles.push(file);
+    }
+  }
+  return Object.freeze({ project, files: Object.freeze([...files]), parityFiles: Object.freeze(parityFiles), errors: Object.freeze(errors) });
+}
+
+export function aggregate_project_results(selection: EditorSelection, results: readonly unknown[]): EditorParityAudit {
+  const selectedFilesByProject = new Map<string, string[]>();
+  for (const [file, project] of selection.primaryProjects) {
+    const files = selectedFilesByProject.get(project) ?? [];
+    files.push(file);
+    selectedFilesByProject.set(project, files);
+  }
+  const expectedProjects = new Set(selectedFilesByProject.keys());
+  const seenProjects = new Set<string>();
+  const seenFiles = new Set<string>();
+  const errors = [...selection.errors];
+  let parityOrdinary = 0;
+  for (const result of results) {
+    if (!is_project_diagnostic_result(result)) throw new Error("Malformed TypeScript project diagnostic result.");
+    if (!expectedProjects.has(result.project)) throw new Error(`Unexpected TypeScript project diagnostic result: ${result.project}.`);
+    if (seenProjects.has(result.project)) throw new Error(`Duplicate TypeScript project diagnostic result: ${result.project}.`);
+    seenProjects.add(result.project);
+    const expectedFiles = new Set(selectedFilesByProject.get(result.project) ?? []);
+    if (result.files.length !== expectedFiles.size || result.files.some((file) => !expectedFiles.has(file))) {
+      throw new Error(`Incomplete or unexpected file results for TypeScript project ${result.project}.`);
+    }
+    for (const file of result.files) {
+      if (seenFiles.has(file)) throw new Error(`Duplicate TypeScript diagnostic result for ${file}.`);
+      seenFiles.add(file);
+    }
+    const parity = new Set(result.parityFiles);
+    if (parity.size !== result.parityFiles.length || result.parityFiles.some((file) => !expectedFiles.has(file))) {
+      throw new Error(`Malformed parity file results for TypeScript project ${result.project}.`);
+    }
+    parityOrdinary += parity.size;
+    errors.push(...result.errors);
+  }
+  for (const project of expectedProjects) if (!seenProjects.has(project)) throw new Error(`Missing TypeScript project diagnostic result: ${project}.`);
+  if (seenFiles.size !== selection.configuredOrdinary) throw new Error("TypeScript diagnostic aggregation did not cover every configured ordinary file.");
+  return Object.freeze({
+    primaryProjects: selection.primaryProjects,
+    configuredOrdinary: selection.configuredOrdinary,
+    parityOrdinary,
+    classifiedProjects: selection.classifiedProjects,
+    errors: Object.freeze(errors),
+  });
+}
+
+export function run_selected_project_comparisons(
+  selection: EditorSelection,
+  runChild: (project: string) => ProjectDiagnosticResult,
+): EditorParityAudit {
+  const projects = [...new Set(selection.primaryProjects.values())];
+  const results = projects.map((project) => runChild(project));
+  return aggregate_project_results(selection, results);
+}
+
 export function run_observability_check(repositoryRoot: string): CoverageAudit {
+  const wire = invoke_internal_child(repositoryRoot, "prepare");
+  if (!is_prepared_wire(wire)) throw new Error("Malformed TypeScript observability preparation result.");
+  const prepared = decode_prepared_wire(wire);
+  const editor = run_selected_project_comparisons(prepared.selection, (project) => invoke_project_child(repositoryRoot, project, prepared.selection));
+  return Object.freeze({ classes: prepared.classes, editor, errors: Object.freeze([...prepared.coverageErrors, ...editor.errors]) });
+}
+
+type PreparedPayload = Readonly<{
+  classes: CoverageAudit["classes"];
+  coverageErrors: readonly string[];
+  selection: EditorSelection;
+}>;
+
+function invoke_project_child(repositoryRoot: string, project: string, selection: EditorSelection): ProjectDiagnosticResult {
+  const files = [...selection.primaryProjects].filter(([, selected]) => selected === project).map(([file]) => file);
+  const editorDiagnostics = Object.fromEntries(files.map((file) => [file, selection.editorDiagnostics.get(file)]));
+  const result = invoke_internal_child(repositoryRoot, "compare", JSON.stringify({ project, files, editorDiagnostics }));
+  if (!is_project_diagnostic_result(result) || result.project !== project) {
+    throw new Error(`Malformed TypeScript diagnostic result for ${project}.`);
+  }
+  return result;
+}
+
+function invoke_internal_child(repositoryRoot: string, mode: "prepare" | "compare", input?: string): unknown {
+  const scriptPath = fileURLToPath(import.meta.url);
+  const child = spawnSync(process.execPath, ["--import=tsx", scriptPath, "--internal", mode, repositoryRoot], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    input,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (child.error !== undefined) throw child.error;
+  if (child.status !== 0) throw new Error(child.stderr.trim() || `TypeScript observability ${mode} child exited with status ${child.status}.`);
+  if (child.stdout.trim() === "") throw new Error(`TypeScript observability ${mode} child returned no result.`);
+  try {
+    const parsed: unknown = JSON.parse(child.stdout);
+    return parsed;
+  } catch {
+    throw new Error(`TypeScript observability ${mode} child returned malformed JSON.`);
+  }
+}
+
+function prepare_observability(repositoryRoot: string): PreparedPayload {
   const manifest = read_observability_manifest(resolve(repositoryRoot, "typescript-observability.json"));
   const tracked = tracked_typescript_files(repositoryRoot);
   const inventory = resolved_project_inventory(repositoryRoot, manifest.projects);
   const coverage = audit_coverage(tracked, inventory.owners, manifest.exemptions);
-  const editor = audit_editor_parity(repositoryRoot, coverage.classes.ordinary, manifest.projects, inventory, {
+  const selection = select_editor_projects(repositoryRoot, coverage.classes.ordinary, manifest.projects, inventory, {
     negative: coverage.classes.negative,
     artifact: coverage.classes.artifact,
   });
-  return Object.freeze({ classes: coverage.classes, editor, errors: Object.freeze([...coverage.errors, ...editor.errors]) });
+  return Object.freeze({ classes: coverage.classes, coverageErrors: coverage.errors, selection });
+}
+
+function parse_internal_selection(value: unknown): Readonly<{
+  project: string;
+  files: readonly string[];
+  editorDiagnostics: ReadonlyMap<string, readonly string[]>;
+}> {
+  if (!is_record(value) || typeof value.project !== "string" || !is_string_array(value.files) || !is_record(value.editorDiagnostics)) {
+    throw new Error("Malformed internal TypeScript comparison request.");
+  }
+  const editorDiagnostics = new Map<string, readonly string[]>();
+  for (const [file, diagnostics] of Object.entries(value.editorDiagnostics)) {
+    if (!is_string_array(diagnostics)) throw new Error(`Malformed editor diagnostic data for ${file}.`);
+    editorDiagnostics.set(file, diagnostics);
+  }
+  return { project: value.project, files: value.files, editorDiagnostics };
+}
+
+function is_string_array(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function is_project_diagnostic_result(value: unknown): value is ProjectDiagnosticResult {
+  return is_record(value) && typeof value.project === "string" && is_string_array(value.files)
+    && is_string_array(value.parityFiles) && is_string_array(value.errors);
+}
+
+type PreparedWire = Readonly<{
+  classes: CoverageAudit["classes"];
+  coverageErrors: readonly string[];
+  selection: Readonly<{
+    primaryProjects: Readonly<Record<string, string>>;
+    editorDiagnostics: Readonly<Record<string, readonly string[]>>;
+    configuredOrdinary: number;
+    classifiedProjects: EditorSelection["classifiedProjects"];
+    errors: readonly string[];
+  }>;
+}>;
+
+function is_prepared_wire(value: unknown): value is PreparedWire {
+  if (!is_record(value) || !is_record(value.classes) || !is_string_array(value.coverageErrors) || !is_record(value.selection)) return false;
+  const classes = value.classes;
+  if (!is_string_array(classes.ordinary) || !is_string_array(classes.negative)
+      || !is_string_array(classes.generated) || !is_string_array(classes.artifact)) return false;
+  const selection = value.selection;
+  if (!is_record(selection.primaryProjects) || !is_record(selection.editorDiagnostics)
+      || typeof selection.configuredOrdinary !== "number" || !Number.isInteger(selection.configuredOrdinary)
+      || !is_string_array(selection.errors) || !is_record(selection.classifiedProjects)) return false;
+  const classified = selection.classifiedProjects;
+  if (!is_record(classified.negative) || !is_record(classified.artifact)) return false;
+  for (const kind of [classified.negative, classified.artifact]) {
+    if (typeof kind.configured !== "number" || typeof kind.inferred !== "number") return false;
+  }
+  return Object.values(selection.primaryProjects).every((project) => typeof project === "string")
+    && Object.values(selection.editorDiagnostics).every(is_string_array);
+}
+
+function decode_prepared_wire(wire: PreparedWire): PreparedPayload {
+  const primaryProjects = new Map(Object.entries(wire.selection.primaryProjects));
+  const editorDiagnostics = new Map(Object.entries(wire.selection.editorDiagnostics));
+  return Object.freeze({
+    classes: wire.classes,
+    coverageErrors: wire.coverageErrors,
+    selection: Object.freeze({ ...wire.selection, primaryProjects, editorDiagnostics }),
+  });
 }
 
 function create_project_service(repositoryRoot: string): ts.server.ProjectService {
@@ -344,22 +556,56 @@ function format_diagnostic(diagnostic: ts.Diagnostic): string {
 
 const invokedPath = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
 if (invokedPath === resolve(fileURLToPath(import.meta.url))) {
-  const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-  const audit = run_observability_check(repositoryRoot);
-  const counts = {
-    ordinary: audit.classes.ordinary.length,
-    negative: audit.classes.negative.length,
-    generated: audit.classes.generated.length,
-    artifact: audit.classes.artifact.length,
-    editorConfigured: audit.editor.configuredOrdinary,
-    editorParity: audit.editor.parityOrdinary,
-    inferredNegative: audit.editor.classifiedProjects.negative.inferred,
-    inferredArtifact: audit.editor.classifiedProjects.artifact.inferred,
-  };
-  if (audit.errors.length > 0) {
-    console.error(audit.errors.join("\n"));
-    process.exitCode = 1;
+  const internal = process.argv[2] === "--internal";
+  if (internal) {
+    const mode = process.argv[3];
+    const repositoryRoot = resolve(process.argv[4] ?? dirname(fileURLToPath(import.meta.url)) + "/..");
+    try {
+      if (mode === "prepare") {
+        const prepared = prepare_observability(repositoryRoot);
+        console.log(JSON.stringify({
+          classes: prepared.classes,
+          coverageErrors: prepared.coverageErrors,
+          selection: {
+            ...prepared.selection,
+            primaryProjects: Object.fromEntries(prepared.selection.primaryProjects),
+            editorDiagnostics: Object.fromEntries(prepared.selection.editorDiagnostics),
+          },
+        }));
+      } else if (mode === "compare") {
+        const request: unknown = JSON.parse(readFileSync(0, "utf8"));
+        const parsed = parse_internal_selection(request);
+        console.log(JSON.stringify(compare_project_diagnostics(repositoryRoot, parsed.project, parsed.files, parsed.editorDiagnostics)));
+      } else {
+        throw new Error("Unknown internal TypeScript observability operation.");
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "Internal TypeScript observability operation failed.");
+      process.exitCode = 1;
+    }
   } else {
-    console.log(JSON.stringify({ typescriptObservability: "ok", counts }));
+    try {
+      const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+      const audit = run_observability_check(repositoryRoot);
+      const counts = {
+        ordinary: audit.classes.ordinary.length,
+        negative: audit.classes.negative.length,
+        generated: audit.classes.generated.length,
+        artifact: audit.classes.artifact.length,
+        editorConfigured: audit.editor.configuredOrdinary,
+        editorParity: audit.editor.parityOrdinary,
+        inferredNegative: audit.editor.classifiedProjects.negative.inferred,
+        inferredArtifact: audit.editor.classifiedProjects.artifact.inferred,
+      };
+      if (audit.errors.length > 0) {
+        console.error(audit.errors.join("\n"));
+        process.exitCode = 1;
+      } else {
+        console.log(JSON.stringify({ typescriptObservability: "ok", counts }));
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "TypeScript observability failed.");
+      process.exitCode = 1;
+    }
   }
 }

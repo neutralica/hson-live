@@ -29,9 +29,9 @@ function unchanged(f: { map: Pick<LiveMap, "capture" | "rev" | "commits">; aggre
 function fixture() {
   const map = hsonLiveMap.fromLibraries({ parts: { parts: {
     leaf: { kind: "document", document: '<button @:root <span @:label "Click"/>/>',
-      stylesheet: ':scope{color:blue} @supports(display:grid){[hson\\:quad="label"]{display:grid}}' },
+      css:{color:'blue','@:label':{display:'grid'}}, stylesheet: ':scope{color:blue} @supports(display:grid){[hson\\:quad="label"]{display:grid}}' },
     panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>',
-      stylesheet: '@media screen{:scope{padding:3px}}' },
+      css:{$media:{screen:{padding:3}}}, stylesheet: '@media screen{:scope{padding:3px}}' },
     global: { kind: "document", document: '<i/>',
       stylesheet: ':scope{animation:glow 1s} @keyframes glow{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
     empty: { kind: "document", document: '<em/>' },
@@ -136,7 +136,7 @@ export function scoped_portable_cases(check: (name: string, run: () => void) => 
     const f = receiver(), c = f.restore(twice), text = render(c.stylesheet);
     for (const token of ["@scope", "@media", "@supports", "@keyframes glow", "@property --tone", "margin:7px", "display:grid"]) assert.ok(text.includes(token), token);
     for (const subject of twice.scopes.subjects) {
-      assert.ok(text.includes(c.overlay.quidAtPath(subject.path)!));
+      assert.ok(JSON.stringify(css(c.stylesheet)).includes(c.overlay.quidAtPath(subject.path)!));
       assert.equal(text.includes(subject.name), false);
     }
     const moved = f.aggregate.prepareScopedDocumentOperations(c, [{ domain: "graph", op: "move-content", target: { kind: "path", path: path([0, 0]) }, from: 0, to: 1 }]);

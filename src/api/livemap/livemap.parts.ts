@@ -8,7 +8,8 @@ import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
-import { parse_part_stylesheet, merge_part_stylesheets } from "../../internal/css/part-stylesheet.js";
+import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
+import { merge_part_stylesheets } from "../../internal/css/part-stylesheet.js";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { DocumentCssRecord } from "../../types/document-css.types.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
@@ -79,7 +80,7 @@ export function validate_part_collection(value: OrderedProjectedValue): readonly
     if (fields.has("stylesheet") && typeof rawSheet !== "string") throw new TypeError("Part stylesheet requires text.");
     const names = new Set(authored.declarations.map(item => item.name));
     const records: DocumentCssRecord[] = [];
-    if (typeof rawSheet === "string") records.push(parse_part_stylesheet(rawSheet));
+    if (typeof rawSheet === "string") records.push(opaque_document_stylesheet(rawSheet));
     if (fields.has("css")) records.push(structured_part_stylesheet(materialize_projected_value(fields.get("css")!), names));
     const css = records.length ? encode_portable_document_stylesheet(merge_part_stylesheets(records)) : undefined;
     if (css !== undefined) for (const name of document_css_subject_identities(css, "inbound")) {

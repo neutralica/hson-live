@@ -1,5 +1,5 @@
 import { managed_css_priority, trim_managed_css } from "./managed-css-lexical.js";
-import { canon_to_css_prop, normalize_css_value } from "../../api/transform/utils/attrs-utils/normalize-css.js";
+import { canon_to_css_prop } from "../../api/transform/utils/attrs-utils/normalize-css.js";
 
 /** Order is assigned on first rule write by the owning stylesheet. */
 export type ManagedCssRule = Readonly<{ order: number; text: string }>;
@@ -20,17 +20,18 @@ export function render_global_css_value(value: unknown): string | null {
   return trim_managed_css(String(value));
 }
 
-/** Existing global-rule spelling; parsed rules retain declaration order. */
+/** Project declaration names while optionally retaining authored insertion order. */
 export function render_global_css_rule(selector: string, decls: Readonly<Record<string, string>>, sourceOrder = false): string {
   const keys = Object.keys(decls).filter(Boolean);
   if (!sourceOrder) keys.sort();
   const body = keys
     .map((key) => {
       const value = decls[key] === undefined ? undefined : trim_managed_css(decls[key]);
-      if (!value) return "";
-      const property = sourceOrder ? key : canon_to_css_prop(key);
+      if (value === undefined) return "";
+      const property = canon_to_css_prop(key);
       const { important, value: plain } = managed_css_priority(value);
-      return `${property}:${sourceOrder ? plain : normalize_css_value(property, plain)}${important ? " !important" : ""};`;
+      // Declaration values are authored CSS, including content expressions.
+      return `${property}:${plain}${important ? " !important" : ""};`;
     }).join("");
   return body ? `${selector}{${body}}` : "";
 }

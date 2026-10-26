@@ -85,7 +85,7 @@ function assertValidSelector(at: KeyframeSelector): void {
  *   A map of CSS property → raw CSS value text.
  *
  * @returns
- *   A fresh declaration map containing only non-empty keys and values,
+ *   A fresh declaration map containing only non-empty keys,
  *   with all keys/values trimmed.
  */
 export function normalize_decls(decls: CssDeclMap): CssDeclMap {
@@ -99,7 +99,6 @@ export function normalize_decls(decls: CssDeclMap): CssDeclMap {
 
     // keep value trimming conservative.
     const vv = trim_managed_css(String(v));
-    if (vv === "") continue;
 
     // store.
     out[trim_managed_css(k)] = vv;
@@ -239,7 +238,7 @@ function renderDecls(decls: CssDeclMap, sourceOrder = false): string[] {
  * Assumes `def` has already been normalized:
  * - name is trimmed and non-empty
  * - steps are sorted deterministically
- * - declaration maps contain only trimmed, non-empty entries
+ * - declaration maps contain trimmed values and non-empty keys
  *
  * Rendering style:
  * - Uses a stable indentation scheme

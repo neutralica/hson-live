@@ -34,7 +34,7 @@ for (const [name, contents] of Object.entries(sources)) {
   const raw = await build(options);
   const min = await build({ ...options, minify: true });
   const inputs = Object.values(min.metafile.outputs).flatMap(output => Object.entries(output.inputs)).filter(([, input]) => input.bytesInOutput > 0).map(([path]) => path);
-  results[name] = { raw: raw.outputFiles[0].contents.length, min: min.outputFiles[0].contents.length, gzip: gzipSync(min.outputFiles[0].contents, { level: 9 }).length, inputs, parsed: Object.keys(min.metafile.inputs), code: min.outputFiles[0].text };
+  results[name] = { graph: min.metafile.inputs, raw: raw.outputFiles[0].contents.length, min: min.outputFiles[0].contents.length, gzip: gzipSync(min.outputFiles[0].contents, { level: 9 }).length, inputs, parsed: Object.keys(min.metafile.inputs), code: min.outputFiles[0].text };
 }
 let checks = 0;
 const testEvents = create_test_event_emitter("core.hson-authoring-package");
@@ -55,7 +55,26 @@ function check(name, run) {
 const narrow = results.tag;
 check("actual /hson export resolves to the narrow authoring module", () => assert.ok(narrow.inputs.some(path => path.endsWith("dist/hson-authoring.js"))));
 check("authoring does not traverse aggregate or full LiveMap core", () => assert.ok(narrow.parsed.every(path => !/(?:dist\/hson\.js|livemap\.core\.js|\/livetree\/|\/livehost\/|\/locus\/|\/reflect\/|\/inspect\/)/.test(path))));
-check("authoring has no browser or external parser dependencies", () => assert.ok(narrow.parsed.every(path => !/(?:node_modules|transform\.browser|\/safety\/)/.test(path))));
+// Temporary owner-approved dependency for synchronous inline-style validation.
+// Remove this exception when css-tree is retired; no other package or route is allowed.
+const temporaryCssTreeInput = "node_modules/css-tree/dist/csstree.esm.js";
+function assertAuthoringDependencies(graph) {
+  for (const [path, input] of Object.entries(graph)) {
+    assert.doesNotMatch(path, /(?:transform\.browser|\/safety\/)/);
+    if (path.includes("node_modules")) assert.equal(path, temporaryCssTreeInput);
+    for (const dependency of input.imports) if (dependency.path === temporaryCssTreeInput) {
+      assert.equal(path, "dist/internal/css/inline-css.js", "Unexpected css-tree importer");
+    }
+  }
+}
+check("authoring permits only the temporary inline-CSS parser dependency", () => assertAuthoringDependencies(narrow.graph));
+check("temporary CSS allowance rejects other parsers and unexpected import routes", () => {
+  for (const path of ["node_modules/postcss/lib/parse.js", "node_modules/css-tree/lib/parser/index.js"]) {
+    assert.throws(() => assertAuthoringDependencies({ ...narrow.graph, [path]: { imports: [] } }));
+  }
+  assert.throws(() => assertAuthoringDependencies({ ...narrow.graph,
+    "dist/hson-authoring.js": { imports: [{ path: temporaryCssTreeInput }] } }));
+});
 check("tree-shaken authoring retains no mutation history or session machinery", () => assert.ok(narrow.inputs.every(path => !/livemap\.(?:mutation|replay|history|session|store|install)/.test(path))));
 // The Hson Schema compiler uses source provenance for exact authored diagnostics.
 // No retired capture, provider, lifecycle, or protocol module may join it.
@@ -68,10 +87,20 @@ check("same-object certify retains real Schema validators in tag-only bundle", (
   assert.ok(narrow.inputs.some(path => path.endsWith("internal/canonical-schema/verify.js")));
   assert.ok(narrow.inputs.some(path => path.endsWith("internal/schema-hson-validation/validate-canonical-hson.js")));
 });
-// The former 45,000-byte tripwire was already red before Z3B (45,526 bytes).
-// The current built /hson artifact is 45,970 bytes; retain a close regression
-// guard while leaving room for compressor/version variation.
-check("narrow authoring stays within the approved practical size boundary", () => { assert.ok(narrow.gzip < 48_000, `gzip=${narrow.gzip}`); assert.ok(narrow.gzip < results.aggregate.gzip / 4); });
+// Temporary CSS-inclusive cap: committed HEAD is 112,809 bytes gzipped.
+// Inspect and execute the real bundle above; externalize only css-tree for the
+// relative comparison in both artifacts so the shared parser cost is excluded.
+const coreSizeOptions = { stdin: { contents: sources.tag, resolveDir: root, sourcefile: "tag.js" },
+  bundle: true, write: false, format: "esm", platform: "browser", target: "es2022", treeShaking: true,
+  legalComments: "none", minify: true, external: ["css-tree/dist/csstree.esm"] };
+const authoringCore = await build(coreSizeOptions);
+const aggregateCore = await build({ ...coreSizeOptions, stdin: { ...coreSizeOptions.stdin, contents: sources.aggregate, sourcefile: "aggregate.js" } });
+const aggregateCoreGzip = gzipSync(aggregateCore.outputFiles[0].contents, { level: 9 }).length;
+const authoringCoreGzip = gzipSync(authoringCore.outputFiles[0].contents, { level: 9 }).length;
+check("authoring bounds its temporary CSS-inclusive bundle and retains a narrow core", () => {
+  assert.ok(narrow.gzip < 114_000, `CSS-inclusive gzip=${narrow.gzip}`);
+  assert.ok(authoringCoreGzip < aggregateCoreGzip / 4, `core gzip=${authoringCoreGzip}, aggregate core gzip=${aggregateCoreGzip}`);
+});
 check("referencing certify does not unexpectedly import another subsystem", () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));
 const execution = await import('data:text/javascript;base64,' + Buffer.from(narrow.code).toString('base64'));
 check("production authoring bundle executes without a browser", () => assert.equal(execution.value, "<foo/>"));

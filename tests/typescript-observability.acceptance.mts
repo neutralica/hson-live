@@ -8,9 +8,13 @@ import ts from "typescript";
 import {
   audit_editor_parity,
   audit_coverage,
+  aggregate_project_results,
   read_observability_manifest,
   resolved_project_inventory,
+  run_selected_project_comparisons,
   tracked_typescript_files,
+  type ProjectDiagnosticResult,
+  type EditorSelection,
   type Exemption,
   type ProjectOwnership,
   type ProjectSpec,
@@ -78,6 +82,59 @@ assert.equal(repairedAudit.configuredOrdinary, 12);
 assert.equal(repairedAudit.parityOrdinary, 12);
 assert.deepEqual(repairedAudit.primaryProjects, repairedPrimaryProjects);
 
+const aggregationSelection: EditorSelection = Object.freeze({
+  primaryProjects: new Map([["a.ts", "one/tsconfig.json"], ["b.ts", "one/tsconfig.json"], ["c.ts", "two/tsconfig.json"]]),
+  editorDiagnostics: new Map([["a.ts", []], ["b.ts", []], ["c.ts", []]]),
+  configuredOrdinary: 3,
+  classifiedProjects: { negative: { configured: 0, inferred: 0 }, artifact: { configured: 0, inferred: 0 } },
+  errors: [],
+});
+const projectResult = (project: string, files: readonly string[]): ProjectDiagnosticResult => Object.freeze({
+  project,
+  files,
+  parityFiles: files,
+  errors: [],
+});
+const comparisonCalls: string[] = [];
+const aggregated = run_selected_project_comparisons(aggregationSelection, (project) => {
+  comparisonCalls.push(project);
+  return project === "one/tsconfig.json"
+    ? projectResult(project, ["a.ts", "b.ts"])
+    : projectResult(project, ["c.ts"]);
+});
+assert.deepEqual(comparisonCalls, ["one/tsconfig.json", "two/tsconfig.json"]);
+assert.equal(aggregated.configuredOrdinary, 3);
+assert.equal(aggregated.parityOrdinary, 3);
+assert.deepEqual(aggregated.primaryProjects, aggregationSelection.primaryProjects);
+const mismatch = aggregate_project_results(aggregationSelection, [
+  Object.freeze({ ...projectResult("one/tsconfig.json", ["a.ts", "b.ts"]), parityFiles: ["b.ts"], errors: ["a.ts: editor diagnostics differ"] }),
+  projectResult("two/tsconfig.json", ["c.ts"]),
+]);
+assert.equal(mismatch.parityOrdinary, 2);
+assert.deepEqual(mismatch.errors, ["a.ts: editor diagnostics differ"]);
+assert.throws(() => aggregate_project_results(aggregationSelection, [projectResult("one/tsconfig.json", ["a.ts", "b.ts"])]), /Missing TypeScript project diagnostic result/);
+assert.throws(() => aggregate_project_results(aggregationSelection, [
+  projectResult("one/tsconfig.json", ["a.ts", "b.ts"]),
+  projectResult("one/tsconfig.json", ["a.ts", "b.ts"]),
+  projectResult("two/tsconfig.json", ["c.ts"]),
+]), /Duplicate TypeScript project diagnostic result/);
+assert.throws(() => aggregate_project_results(aggregationSelection, [
+  { project: "one/tsconfig.json" },
+]), /Malformed TypeScript project diagnostic result/);
+const attemptedProjects: string[] = [];
+assert.throws(() => run_selected_project_comparisons(aggregationSelection, (project) => {
+  attemptedProjects.push(project);
+  throw new Error(`child failed: ${project}`);
+}), /child failed: one\/tsconfig\.json/);
+assert.deepEqual(attemptedProjects, ["one/tsconfig.json"]);
+const laterFailureProjects: string[] = [];
+assert.throws(() => run_selected_project_comparisons(aggregationSelection, (project) => {
+  laterFailureProjects.push(project);
+  if (project === "two/tsconfig.json") throw new Error(`child failed: ${project}`);
+  return projectResult(project, ["a.ts", "b.ts"]);
+}), /child failed: two\/tsconfig\.json/);
+assert.deepEqual(laterFailureProjects, ["one/tsconfig.json", "two/tsconfig.json"]);
+
 const pluginConfigPath = join(repositoryRoot, "editors/vscode-hson/src/tsserver-plugin/tsconfig.json");
 const pluginConfig = ts.parseJsonConfigFileContent(ts.readConfigFile(pluginConfigPath, ts.sys.readFile).config, ts.sys, join(repositoryRoot, "editors/vscode-hson/src/tsserver-plugin"));
 assert.equal(pluginConfig.options.module, ts.ModuleKind.CommonJS);
@@ -107,7 +164,7 @@ try {
   rmSync(temporary, { recursive: true, force: true });
 }
 
-console.log(JSON.stringify({ typescriptObservabilityAcceptance: "ok", checks: 20 }));
+console.log(JSON.stringify({ typescriptObservabilityAcceptance: "ok", checks: 33 }));
   testEvents.case_end(observabilityCase, "pass");
   testEvents.terminal("pass");
 } catch (error) {

@@ -82,7 +82,7 @@ export async function flat_library_definition_cases() {
     { parts: { bad: { kind: "data", document: "<p/>" } } }, { parts: {}, schema: Count },
     { data: { count: "bad" }, schema: Count }, { document: "<main/>", schema: Count }, { data: 1, schema: {} },
     { document: '<main <hson-part lib="missing" at="button"/>/>' }, { document: '<main <hson-part/>/>' },
-    { document: quid }, { document: "<main/>", stylesheet: "main{color:;}" }, { data: 1, stylesheet: "main{}" },
+    { document: quid }, { document: "<main/>", stylesheet: 42 }, { data: 1, stylesheet: "main{}" },
     { data: 1, access: "local" }, { data: 1, access: undefined }, { data: 1, ownership: "shared" },
   ]) {
     assert.throws(() => hsonLiveMap.locus.create({ earlier: { data: 1 }, invalid } as never));

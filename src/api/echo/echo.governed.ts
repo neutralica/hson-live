@@ -13,7 +13,7 @@ import type { LiveMap, LiveMapDocumentLibrary, LiveMapDataLibrary, LivePath,
 import type { EchoLibrary } from "../../types/governor.types.js";
 import { client_library_source_internal } from "../livemap/livemap.libraries.js";
 import { echo_document_authority_for, type EchoDocumentAuthority } from "./echo.document-authority.js";
-import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
 import { read_document_quad, register_governed_document, governed_document_element_target, governed_document_slot,
   governed_document_remove_slot, governed_document_insert_slot, governed_document_move_target } from "../../internal/governed-document.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
@@ -171,7 +171,7 @@ export function make_echo_library_selector(
         keyframes: Object.freeze({ ...cssCommands.keyframes, ...cssReads.keyframes }),
         stylesheet: (text: string) => enqueue(() => Object.freeze({ name: "document.css" as const,
           payload: { operation: Object.freeze({ domain: "css" as const, kind: "replace" as const,
-            stylesheet: parse_document_stylesheet(text, []) }) } })) },
+            stylesheet: opaque_document_stylesheet(text) }) } })) },
     );
     const content = Object.assign(() => document.document.content(), {
       replace(where: LiveMapDocumentRequestTarget, index: number, value: LiveMapDocumentContent) {

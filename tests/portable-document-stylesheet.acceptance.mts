@@ -51,8 +51,8 @@ check("selector rules retain first-write order and re-add appends", () => {
   sheet = set_portable_document_declaration(sheet, "a", ".a", "background-color", "black");
   assert.deepEqual(sheet.rules.map((rule) => rule.ruleKey), ["a", "b"]);
   assert.deepEqual(encode_portable_document_stylesheet(sheet).rules[0]?.declarations,
-    [["background-color", "black"], ["color", "red"]]);
-  assert.equal(render_portable_document_stylesheet(sheet), ".a{background-color:black;color:red;}\n\n.b{display:grid;}");
+    [["color", "red"], ["background-color", "black"]]);
+  assert.equal(render_portable_document_stylesheet(sheet), ".a{color:red;background-color:black;}\n\n.b{display:grid;}");
   const same = set_portable_document_declaration(sheet, "a", ".a", "color", "red");
   assert.equal(same, sheet, "semantic no-op returns the existing value");
   const removed = drop_portable_document_rule(sheet, "a");

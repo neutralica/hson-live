@@ -45,17 +45,18 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
   await check("fresh receiving QUIDs, authored/disposable names, original Elements, CSS authority and lifecycle", async () => {
     const f = await page(html, libs), before = visual(f.doc), elements = [f.root, ...f.root.querySelectorAll('*')];
     const style = f.doc.querySelector(marker), authoredStyle = f.doc.querySelector('head style');
+    const authoredText = authoredStyle.textContent;
     const unrelated = f.doc.getElementById('unrelated'), unrelatedHtml = unrelated.outerHTML;
     let quidsBeforeStyleSwitch = false, allCarriersAtStyleSwitch = false;
     const text = Object.getOwnPropertyDescriptor(Node.prototype, 'nodeValue');
     Object.defineProperty(style.firstChild, 'nodeValue', { configurable: true, get() { return text.get.call(this); }, set(value) {
-      if (value === f.handoff.receivingCss) {
+      if (value === f.handoff.receivingCss.join("\n\n")) {
         quidsBeforeStyleSwitch = f.correspondence.associations.every(entry => f.root.querySelector(`[hson\\:quid="${entry.quid}"]`) || f.root.getAttribute('hson:quid') === entry.quid);
         allCarriersAtStyleSwitch = f.doc.querySelectorAll('[hson\\:quad]').length === 7;
         equal(visual(f.doc), before, 'style flush before switch stays portable');
       }
       text.set.call(this, value);
-      if (value === f.handoff.receivingCss) equal(visual(f.doc), before, 'style flush after switch uses receiving identities');
+      if (value === f.handoff.receivingCss.join("\n\n")) equal(visual(f.doc), before, 'style flush after switch uses receiving identities');
     } });
     const elementPrototype = f.doc.defaultView.Element.prototype;
     const originalRemove = elementPrototype.removeAttribute;
@@ -100,8 +101,16 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     });
     assert(!f.doc.getElementById('second') && !lookup(f.selected, 'second'), 'removal retires correspondence');
     assert(continued.mirror.status === 'active', 'Mirror remains active through lifecycle');
+    const other = await page(html, libs), otherContinuation = other.run();
+    const otherStyles = [...other.doc.querySelectorAll(marker)], otherTexts = otherStyles.map(style => style.textContent), otherVisual = visual(other.doc);
     continued.dispose(); assert(continued.mirror.status === 'disposed', 'Mirror disposed');
-    assert(f.doc.querySelectorAll(marker).length === 1, 'disposal adds no duplicate style');
+    assert(f.doc.querySelectorAll(marker).length === 0 && !style.isConnected, 'disposal removes every owned managed carrier');
+    assert(authoredStyle.isConnected && authoredStyle.parentElement === f.doc.head && f.doc.querySelector('head style') === authoredStyle, 'original authored style remains mounted');
+    equal(authoredStyle.textContent, authoredText, 'authored style text unchanged');
+    assert(otherContinuation.mirror.status === 'active' && otherStyles.length > 0 && otherStyles.every((style, index) => other.doc.querySelectorAll(marker)[index] === style), 'unrelated stylesheet owner and carriers remain active');
+    equal([...other.doc.querySelectorAll(marker)].map(style => style.textContent), otherTexts, 'unrelated owned stylesheet texts unchanged');
+    equal(visual(other.doc), otherVisual, 'unrelated owner styling unchanged');
+    otherContinuation.dispose(); other.frame.remove();
     f.frame.remove();
   });
   for (const kind of ['missing', 'extra', 'duplicate', 'wrong-path', 'malformed', 'unexpected-quid', 'mixed']) {
@@ -143,7 +152,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     try { rejects(kind === 'late-interaction' ? () => graft({map:f.map,document:f.selected,root:f.root,interactions:{local:{}}}, f.handoff) : f.run, 'injected fault must reject'); }
     finally { delete element.setAttribute; delete element.removeAttribute; delete style.firstChild.nodeValue; fault(undefined); }
     unchanged(f, before, elements); equal(visual(f.doc), computed, 'rollback preserves usable styling');
-    equal(f.selected.css.snapshot(), f.handoff.receivingCss, 'accepted CSS authority retained');
+    equal(f.selected.css.snapshot(), f.handoff.receivingCss.join("\n\n"), 'accepted CSS authority retained');
     f.correspondence.assertCurrent();
     f.handoff.assertCurrent(); const retry = f.run(); equal(visual(f.doc), computed, 'retry styles preserved'); retry.dispose(); f.frame.remove();
   });
@@ -171,14 +180,14 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const text=Object.getOwnPropertyDescriptor(Node.prototype,'nodeValue'),prototype=f.doc.defaultView.Element.prototype,remove=prototype.removeAttribute;
     let switches=0,removals=0;
     Object.defineProperty(style.firstChild,'nodeValue',{configurable:true,get(){return text.get.call(this);},set(value){
-      if(value===f.handoff.receivingCss){
+      if(value===f.handoff.receivingCss.join("\n\n")){
         switches++;
         assert(f.doc.querySelectorAll('[hson\\:quad]').length===3,'all portable carriers remain at switch');
         assert(f.correspondence.associations.every(entry=>f.doc.querySelector(`[hson\\:quid="${entry.quid}"]`)),'receiving QUIDs written before switch');
         equal(visual(f.doc),before,'synchronous pre-switch computed styles');
       }
       text.set.call(this,value);
-      if(value===f.handoff.receivingCss) equal(visual(f.doc),before,'synchronous post-switch computed styles');
+      if(value===f.handoff.receivingCss.join("\n\n")) equal(visual(f.doc),before,'synchronous post-switch computed styles');
     }});
     prototype.removeAttribute=function(name){remove.call(this,name);if(name==='hson:quad'){removals++;equal(visual(f.doc),before,'synchronous carrier removal style flush');}};
     let continued;
@@ -231,7 +240,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const thirdCut=again.map.cut({data:[],documents:['page'],html:'page'}),third=await page(thirdCut.html,thirdCut.libs),thirdGraft=third.run();
     assert(third.doc.querySelectorAll('section').length===2&&third.correspondence.associations.length===2,'no stale generated rules or identities after re-graft');
     const priorElements=[third.root,...third.root.querySelectorAll('*')],parent=third.correspondence.associations.find(entry=>entry.name==='slot1').path.slice(0,-1);
-    addParts(third.map,'runtimeParts',{x:{kind:'document',document:'<section id="runtime-part" <button id="runtime-button" "Runtime"/>/>',stylesheet:'button{color:rgb(90,91,92)}'}});
+    addParts(third.map,'runtimeParts',{x:{kind:'document',document:'<section id="runtime-part" <button id="runtime-button" "Runtime"/>/>',css:{'& button':{color:'rgb(90,91,92)'}}}});
     const runtimeConnector=hsonTransform.fromHson('<hson-part lib="runtimeParts" at="x"/>').toNode().$_content[0];
     const namespace=runtime_for_tree(thirdGraft.tree),foreignRuntimeId='23456789a';
     namespace.issuedQuids.add(foreignRuntimeId);
@@ -268,7 +277,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     const read = (doc, element) => { const css = doc.defaultView.getComputedStyle(element); return [css.color, css.paddingLeft]; };
     for (const staged of [false, true]) {
       const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-        x: { kind:'document', document:'<button id="live"/>', stylesheet:'button{color:rgb(10,20,30);padding-left:13px}' },
+        x: { kind:'document', document:'<button id="live"/>', css:{color:'rgb(10,20,30)',paddingLeft:'13px'} },
       } }, page: { document:'<html <head/> <body <button id="live"/> <button id="outside"/>/>/>' } });
       const selected = map.doc.must('page'), frame = document.createElement('iframe');
       frame.srcdoc = selected.render(); const loaded = new Promise(resolve => frame.onload = resolve);
@@ -317,7 +326,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
         : selected.document.content.move(parent,0,1);
       assert(moved.changed && doc.body.lastElementChild === button && button.getAttribute('hson:quid') === quid, 'move retains exact Element and carrier');
       equal(read(doc,button),['rgb(10, 20, 30)','13px'],'CSS follows moved root');
-      selected.css.stylesheet(`[hson\\:quid="${quid}"]{color:rgb(40,50,60)}`);
+      selected.css.sel(`[hson\\:quid="${quid}"]`).set.color("rgb(40,50,60)");
       assert(button.getAttribute('hson:quid') === quid, 'independent subject CSS retains carrier');
       selected.css.stylesheet('body{margin:0}');
       assert(button.getAttribute('hson:quid') === null && doc.querySelectorAll('[hson\\:quid]').length === 0, 'last CSS demand removes carrier from surviving Element');

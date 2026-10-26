@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { parse_document_stylesheet } from "../dist/internal/css/parse-document-stylesheet.js";
+import { opaque_document_stylesheet } from "../dist/internal/css/opaque-stylesheet.js";
 import { Hson, encode_ssr_bootstrap, hson, enable_interactions, add_interaction } from "../dist/index.js";
 import { hsonLiveMap } from "hson-live/livemap";
 import { bind_node_locus_websocket } from "../dist/api/locus/node/index.js";
@@ -142,7 +142,7 @@ try {
 
   cssLocus = hsonLiveMap.locus.create({ "page": { document: '<html <head/> <body <p id="hosted-css-target" "hosted"/> <p id="hosted-layer-target" "grouped"/>/>/>', access: "shared" } }, { defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
   await cssLocus.stage(draft => { draft.doc.must("page").css({domain:"css",kind:"append",
-    stylesheet:parse_document_stylesheet('@layer { #hosted-layer-target { CoLoR: red !important; } #hosted-layer-target { color: blue !important; } }', [])}); });
+    stylesheet:opaque_document_stylesheet('@layer { #hosted-layer-target { CoLoR: red !important; } #hosted-layer-target { color: blue !important; } }')}); });
   await cssLocus.stage((draft) => { draft.doc.must("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
     rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(1, 2, 3)"]] } }); });
   const cssSession = await cssLocus.session.create({ libraries: ["page"] });

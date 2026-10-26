@@ -70,8 +70,8 @@ export type PortableDocumentHandoff = Readonly<{
   library: LiveMapLibraryIdentity;
   libraryName: string;
   quads: import("../../types/livemap.types.js").PortableDocumentQuads | undefined;
-  portableCss: string;
-  receivingCss: string;
+  portableCss: readonly string[];
+  receivingCss: readonly string[];
   assertCurrent: () => void;
   /** Accept Library CSS once; refresh the fence only for this owned transition. */
   acceptCss: () => void;
@@ -93,8 +93,8 @@ export type ReceivingDocumentHandoff = Readonly<{
   identities: readonly Readonly<{ path: LiveMapDocumentPath; quid: string }>[];
   /** Original namespaces also identify authored subjects without HTML markers. */
   scopes: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord | undefined;
-  portableCss: string;
-  receivingCss: string;
+  portableCss: readonly string[];
+  receivingCss: readonly string[];
   assertCurrent: () => void;
 }>;
 

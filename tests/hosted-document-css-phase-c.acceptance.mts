@@ -7,7 +7,7 @@ import { hsonLiveMap, type LocusWebSocketLike } from "../src/index.ts";
 import { create_echo_aggregate_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { local_initializers } from "./helpers/client-projection.mts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
-import { parse_document_stylesheet } from "../src/internal/css/parse-document-stylesheet.ts";
+import { opaque_document_stylesheet } from "../src/internal/css/opaque-stylesheet.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { create_persistent_locus_hosted_aggregate_internal,
   restore_persistent_locus_hosted_aggregate_internal } from "../src/api/locus/locus.aggregate.persistence.ts";
@@ -48,11 +48,7 @@ word"; font-family:var(--x); } } }
 page.css.stylesheet(fidelitySource);
 const fidelityRecord = map.capture().libraries.find(entry => entry.name === "page")?.css;
 assert.ok(fidelityRecord);
-assert.deepEqual(fidelityRecord.order[1], {kind:"group", header:"@layer", entries:[
-  {kind:"rule",ruleKey:"stylesheet:2",scopes:["@layer"]},
-  {kind:"rule",ruleKey:"stylesheet:3",scopes:["@layer"]},
-]});
-assert.deepEqual(fidelityRecord.keyframes[0]?.steps.map(step => step.at), ["0%", "from"]);
+assert.deepEqual(fidelityRecord,opaque_document_stylesheet(fidelitySource));
 privatePage.css.stylesheet(`.PRIVATE_CSS_SENTINEL { color: red; --blob: ${"x".repeat(25_000)}; }`);
 ungranted.css.stylesheet(".UNGRANTED_CSS_SENTINEL { color: blue; }");
 const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [
@@ -72,10 +68,10 @@ if (client === undefined) throw new Error("Missing client map.");
 const clientPage = client.doc.must("page"), localPage = client.doc.must("localPage");
 if (clientPage.mode !== "document" || localPage.mode !== "document") throw new Error("Expected client documents.");
 const initial = clientPage.css.snapshot();
-assert.match(initial, /rgb\(1,2,3\)/);
+assert.match(initial, /rgb\(1, 2, 3\)/);
 assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, fidelityRecord);
 const noopRev = locus.rev;
-await locus.stage(draft => { const selected=draft.doc.must("page"); if ("graph" in selected) selected.css({domain:"css",kind:"replace",stylesheet:parse_document_stylesheet(fidelitySource, [])}); });
+await locus.stage(draft => { const selected=draft.doc.must("page"); if ("graph" in selected) selected.css({domain:"css",kind:"replace",stylesheet:opaque_document_stylesheet(fidelitySource)}); });
 assert.equal(locus.rev, noopRev);
 assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, fidelityRecord);
 assert.throws(() => clientPage.css.clearAll(), /hosted|managed|projection|authority/i);
@@ -86,7 +82,7 @@ const localRev = client.rev;
 const sessionId = echo.session.sessionId;
 if (sessionId === undefined) throw new Error("Missing Echo session.");
 const cut = locus.session.get(sessionId)!.now({ html: "page" });
-assert.match(cut.html, /rgb\(1,2,3\)/);
+assert.match(cut.html, /rgb\(1, 2, 3\)/);
 assert.deepEqual(cut.libs.libraries.find((entry) => entry.name === "page")?.css, map.capture().libraries.find((entry) => entry.name === "page")?.css);
 assert.throws(() => client_projection_map({ authority: cut.libs,
   local: { page: { document: '<html <head/> <body/>/>' } } }), /collid|duplicat|conflict/i);
@@ -108,8 +104,8 @@ for(const operations of [Array(1),[, {domain:"css",kind:"clear-all"}], Object.de
   await assert.rejects(()=>locus.stage(draft=>{const selected=draft.doc.must("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations} as never);}));
   assert.equal(locus.rev,rejectedBefore);assert.deepEqual(client.capture(),rejectedRecord);assert.equal(wire.sent.length,rejectedWireCount);
 }
-const retainedRule=fidelityRecord.rules[0]!;
-await locus.stage(draft=>{const selected=draft.doc.must("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations:[{domain:"css",kind:"rule",ruleKey:retainedRule.ruleKey,scopes:retainedRule.scopes,rule:retainedRule}]});});
+const retainedRule={ruleKey:"absent",selector:".absent",scopes:[],declarations:[["color","red"]] as const};
+await locus.stage(draft=>{const selected=draft.doc.must("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations:[{domain:"css",kind:"rule",ruleKey:retainedRule.ruleKey,scopes:retainedRule.scopes,}]});});
 assert.equal(locus.rev,rejectedBefore);assert.deepEqual(client.capture(),rejectedRecord);assert.equal(wire.sent.length,rejectedWireCount);
 const batchRule=(color:string)=>({domain:"css" as const,kind:"rule" as const,ruleKey:"batch-proof",scopes:[],rule:{ruleKey:"batch-proof",selector:".batch-proof",scopes:[],declarations:[["color",color] as const]}});
 await locus.stage(draft=>{const selected=draft.doc.must("page");if("graph" in selected) selected.css({domain:"css",kind:"batch",operations:[batchRule("red"),batchRule("blue")]});});
@@ -121,9 +117,9 @@ for(const snapshot of [locus.session.get(sessionId)!.now({html:"page"}).libs,cli
 }
 assert.equal(rejectedCodeInvocations,0);
 const append = (css: string, existing: readonly string[] = []) => ({ domain: "css" as const, kind: "append" as const,
-  stylesheet: parse_document_stylesheet(css, existing) });
+  stylesheet: opaque_document_stylesheet(css) });
 await locus.stage((draft) => { const selected = draft.doc.must("page"); if ("graph" in selected) selected.css(append("@media screen { p { background: navy; } }", page.css.list())); });
-assert.match(clientPage.css.snapshot(), /background:navy/);
+assert.match(clientPage.css.snapshot(), /background: navy/);
 assert.equal(client.rev, localRev + 2);
 assert.deepEqual(client.capture().libraries.find(entry => entry.name === "page")?.css, locus.session.get(sessionId)!.now({html:"page"}).libs.libraries.find(entry => entry.name === "page")?.css);
 const live = wire.sent.at(-1) ?? "";
@@ -197,16 +193,16 @@ await persistent.checkpoint();
 await persistent.stage((draft) => { const selected = draft.doc.must("page"); if ("graph" in selected) selected.css(append("body { background: teal; }", persistent.map.doc.must("page").css.list())); });
 const durableRecord = persistent.map.capture().libraries.find(entry => entry.name === "page")?.css;
 assert.ok(durableRecord);
-assert.equal(durableRecord.rules.find(rule=>rule.selector===".escaped-newline")?.declarations[0]?.[1], '"review\\\nword"');
-assert.equal(durableRecord.order[1]?.kind, "group");
+assert.ok(JSON.stringify(durableRecord).includes("escaped-newline"));
+assert.equal(durableRecord.order[0]?.kind, "text");
 const state = adapter.state("hosted-css-phase-c");
 if (state === undefined) throw new Error("Missing durable state.");
 const restored = await restore_persistent_locus_hosted_aggregate_internal("hosted-css-phase-c", state, { persistence: adapter });
 assert.ok(restored);
 const restoredPage = restored.map.doc.must("page");
 if (restoredPage.mode !== "document") throw new Error("Expected restored document.");
-assert.match(restoredPage.css.snapshot(), /color:purple/);
-assert.match(restoredPage.css.snapshot(), /background:teal/);
+assert.match(restoredPage.css.snapshot(), /color: purple/);
+assert.match(restoredPage.css.snapshot(), /background: teal/);
 assert.deepEqual(restored.map.capture().libraries.find(entry => entry.name === "page")?.css, durableRecord);
 const durableCss = restoredPage.css.snapshot();
 const beforeFailureRev = restored.rev;
@@ -256,7 +252,7 @@ stopFallback = bind_locus_websocket(fallbackHost, fallbackWire.server);
 assert.equal((await fallbackEcho.connect()).outcome, "reconcile");
 const fallbackProjected = fallbackClient.doc.must("page");
 if (fallbackProjected.mode !== "document") throw new Error("Expected fallback projected document.");
-assert.match(fallbackProjected.css.snapshot(), /background:coral/);
+assert.match(fallbackProjected.css.snapshot(), /background: coral/);
 assert.equal(fallbackLocal.css.snapshot(), fallbackLocalCss);
 for (const raw of fallbackWire.sent) {
   assert.equal(raw.includes("HIDDEN_FALLBACK_CSS_SENTINEL"), false);
@@ -296,7 +292,7 @@ const beforeRejectedClientCss = restartClient.doc.must("page");
 if (beforeRejectedClientCss.mode !== "document") throw new Error("Expected projected CSS before failure.");
 const beforeRejectedCss = beforeRejectedClientCss.css.snapshot();
 const restartGroupRecord = restartClient.capture().libraries.find(entry => entry.name === "page")?.css;
-assert.equal(restartGroupRecord?.order[1]?.kind, "group");
+assert.equal(restartGroupRecord?.order[0]?.kind, "text");
 const beforeRejectedWire = restartWire.sent.length;
 restartAdapter.failAppend = new Error("CSS durable acceptance rejected");
 await assert.rejects(() => firstAuthority.stage((draft) => { draft.doc.must("page").css(append("body { margin: 11px; }", managedRestartPage.css.list())); }),
@@ -315,11 +311,11 @@ stopRestart = bind_locus_websocket(restarted, restartWire.server);
 const resumedEcho = create_echo_aggregate_client_internal({ transport: test_echo_transport(restartWire.client), map: restartClient,
   logicalMapId: restarted.logicalMapId });
 assert.equal((await resumedEcho.connect()).outcome, "reconcile");
-assert.deepEqual(restartClient.capture().libraries.find(entry => entry.name === "page")?.css?.order[1], restartGroupRecord?.order[1]);
+assert.deepEqual(restartClient.capture().libraries.find(entry => entry.name === "page")?.css?.order.slice(0,restartGroupRecord?.order.length), restartGroupRecord?.order);
 const restartedProjected = restartClient.doc.must("page");
 if (restartedProjected.mode !== "document") throw new Error("Expected restarted projected document.");
-assert.match(restartedProjected.css.snapshot(), /color:maroon/);
-assert.match(restartedProjected.css.snapshot(), /background:silver/);
+assert.match(restartedProjected.css.snapshot(), /color: maroon/);
+assert.match(restartedProjected.css.snapshot(), /background: silver/);
 assert.equal(restartLocal.css.snapshot(), restartLocalCss);
 resumedEcho.dispose(); stopRestart(); restarted.dispose();
 

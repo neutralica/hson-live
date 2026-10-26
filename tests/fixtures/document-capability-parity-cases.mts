@@ -114,7 +114,7 @@ export async function document_capability_parity_cases() {
       await reject(writer => { writer.doc.must("page").at([0, 0]).asElement().attrs.setMany({ "$_quid": "forged" }); });
       await reject(writer => { writer.doc.must("page").at([0, 0]).replace("text"); writer.doc.must("page").at([0, 0]).asElement(); });
       await reject(writer => { writer.doc.must("page").at([99]).asElement(); });
-      await reject(writer => { writer.doc.must("page").css.rule("bad", "button").setMany({ color: { bad: "value" } }); });
+      await reject(writer => { Reflect.apply(writer.doc.must("page").css.rule("bad", "button").setMany,undefined,[{ color: { bad: "value" } }]); });
       await stage(writer => { writer.doc.must("page").at([0, 0]).asElement(); });
       assert.equal(selected.rev, before.rev);
       let expired: (() => void) | undefined, expiredCss: (() => void) | undefined, expiredShape: (() => void) | undefined;

@@ -59,6 +59,7 @@ function renderCase(entry: MaterializedCorpusCase): string {
   if (entry.disposition === "accept") {
     lines.push(block("hand-authored expected graph", entry.expectedGraph));
     lines.push(block("exact Hson output", entry.expectedOutputs.hson));
+    if (entry.expectedOutputs.compactHson !== undefined) lines.push(block("exact compact Hson output", entry.expectedOutputs.compactHson));
     lines.push(block("exact JSON output", entry.expectedOutputs.json));
     lines.push(block("exact HTML output", entry.expectedOutputs.html));
     lines.push(block("exact diagnostic output", entry.expectedOutputs.diagnostic));

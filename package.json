@@ -188,6 +188,8 @@
     "test:portable-document-stylesheet": "node --import=tsx tests/portable-document-stylesheet.acceptance.mts",
     "test:livemap-document-css": "node --import=tsx tests/livemap-document-css.acceptance.mts",
     "test:livemap-stylesheet-ingress": "node --import=tsx tests/livemap-stylesheet-ingress.acceptance.mts",
+    "test:document-css-reconciliation-browser": "node scripts/run-document-css-reconciliation-browser.mjs",
+    "test:hosted-css-authority-repairs": "node --import=tsx tests/hosted-css-authority-repairs.acceptance.mts",
     "test:livemap-document-css-browser": "node --import=tsx scripts/run-document-css-browser.mjs",
     "test:stylesheet-ingress-browser": "node --import=tsx scripts/run-stylesheet-ingress-browser.mjs",
     "test:production-dependency-boundary": "node --import=tsx tests/production-dependency-boundary.acceptance.mts",

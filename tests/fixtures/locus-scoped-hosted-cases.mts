@@ -7,8 +7,8 @@ import type { Echo, EchoReplicaTransport } from "hson-live/echo";
 import { test_echo_transport } from "../helpers/public-echo-websocket-transport.mts";
 
 export const parts = { parts: {
-  leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', stylesheet: ':scope{padding:3px}[hson\\:quad="label"]{border:0}' },
-  panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{margin:7px}' },
+  leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', stylesheet: '/* opaque Part text */ .native-label { border: 0; }', css: { padding: "3px", '@:label': { border: 0 } } },
+  panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', css: { margin: "7px" } },
   bare: { kind: "document", document: '<aside @:root "Bare"/>' },
   secret: { kind: "document", document: '<p "PRIVATE_TEMPLATE"/>', stylesheet: 'p{--private:PRIVATE_CSS}' },
 } } as const;
@@ -137,6 +137,9 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         assert.match(a.session.now({ html: "bare" }).html, /Bare/);
         assert.throws(() => document(a.echo).render(), /browser-parser realization/);
         assert.throws(() => locus.cut({ html: "page" }), /scoped|Echo/i);
+        const opaque = '/* opaque Part text */ .native-label { border: 0; }';
+        assert.ok(document(a.echo).css.snapshot().includes(opaque));
+        assert.ok(document(b.echo).css.snapshot().includes(opaque));
         const idsA = subjectIds(document(a.echo).css.snapshot()), idsB = subjectIds(document(b.echo).css.snapshot());
         assert.ok(idsA.length > 0); for (const id of idsA) assert.ok(!idsB.includes(id));
         const revisions: number[] = [];

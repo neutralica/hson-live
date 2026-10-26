@@ -127,6 +127,11 @@ function runAcceptedAuthored(entry: AcceptedCorpusCase, atomic: AtomicAssertions
   atomic.equal(entry.source, before, entry.id + ": input nonmutation");
   const serializedHson = transform.toHson().serialize();
   atomic.equal(serializedHson, entry.expectedOutputs.hson, entry.id + ": exact canonical Hson");
+  if (entry.expectedOutputs.compactHson !== undefined) {
+    const compact = transform.toHson().noBreak().serialize();
+    atomic.equal(compact, entry.expectedOutputs.compactHson, entry.id + ": exact compact Hson");
+    atomic.equal(strictEqual(hsonTransform.fromHson(compact).toNode(), entry.expectedGraph), true, entry.id + ": compact Hson reparse");
+  }
   const reparsed = hsonTransform.fromHson(serializedHson).toNode();
   atomic.equal(strictEqual(reparsed, entry.expectedGraph), true, entry.id + ": Hson reparse");
   atomic.equal(canonicalize(serializedHson), serializedHson, entry.id + ": canonical HsonCanonical idempotence");

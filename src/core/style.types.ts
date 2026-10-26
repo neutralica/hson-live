@@ -15,12 +15,7 @@ export type CssUnit =
   | "deg"
   | "_";
 
-export type CssValue =
-  | string
-  | number
-  | null
-  | undefined
-  | Readonly<{ value: string | number; unit?: string }>;
+export type CssValue = CssDeclarationValue | undefined;
 
 export interface CssText {
   id: string;
@@ -71,21 +66,22 @@ export type CssVarName = `--${string}`;
 export type CssDeclarationValue = string | number | Readonly<{ value: string | number; unit?: string | undefined }>;
 type Declarations = Readonly<Partial<Record<AllowedStyleKey | CssPropertyName | CssVarName | "float", CssDeclarationValue | undefined>>>;
 export type CssMapBase = Declarations;
-export interface CssRelativeMap extends Declarations, Readonly<Partial<Record<CssPseudoKey, CssRelativeMap | undefined>>> {
+interface CssRelativeMap extends Declarations, Readonly<Partial<Record<CssPseudoKey, CssRelativeMap | undefined>>> {
   readonly [selector: `&${string}`]: CssRelativeMap | undefined;
 }
-export type CssSubjectMap = CssRelativeMap & Readonly<Partial<Record<`@:${string}`, CssRelativeMap | undefined>>>;
+type CssSubjectMap = CssRelativeMap & Readonly<Partial<Record<`@:${string}`, CssRelativeMap | undefined>>>;
 export type CssMap = CssSubjectMap & Readonly<{ $media?: Readonly<Record<string, CssSubjectMap | undefined>> | undefined }>;
+
+type CssDeclarationsValid<T> = T extends Declarations ? true : [Extract<keyof T, keyof Declarations>] extends [never] ? true : false;
 
 /** Preserve excess-key checking through generic library-definition inference. */
 export type CssMapInputCheck<T, Quad extends boolean = true, Media extends boolean = true> =
-  T extends undefined ? unknown : T extends object ? { readonly [K in keyof T]:
-    K extends keyof Declarations ? T[K] extends CssDeclarationValue | undefined ? unknown : never
-    : K extends CssPseudoKey | `&${string}` ? CssMapInputCheck<T[K], false, false>
-    : K extends `@:${string}` ? Quad extends true ? CssMapInputCheck<T[K], false, false> : never
-    : K extends '$media' ? Media extends true ? CssMediaInputCheck<T[K], Quad> : never
-    : never
-  } : never;
+  T extends undefined ? unknown : T extends object
+    // Retain each union member: a declaration-only branch must not collapse to {}.
+    ? CssDeclarationsValid<T> extends true ? T & CssStructuredInputCheck<Omit<T, keyof Declarations>, Quad, Media> : never
+    : never;
+
+type CssStructuredInputCheck<T, Quad extends boolean, Media extends boolean> = { readonly [K in keyof T]: K extends CssPseudoKey | `&${string}` ? CssMapInputCheck<T[K], false, false> : K extends `@:${string}` ? Quad extends true ? CssMapInputCheck<T[K], false, false> : never : K extends '$media' ? Media extends true ? CssMediaInputCheck<T[K], Quad> : never : never };
 
 type CssMediaInputCheck<T, Quad extends boolean> = T extends undefined ? unknown : T extends object
   ? { readonly [C in keyof T]: CssMapInputCheck<T[C], Quad, false> } : never;

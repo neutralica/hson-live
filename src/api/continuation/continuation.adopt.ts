@@ -40,11 +40,12 @@ import {
 import { plan_browser_realization } from "../../internal/browser-realization/browser-realization-plan.js";
 import { plan_managed_document_css, MANAGED_DOCUMENT_CSS_MARKER } from "../../internal/browser-realization/managed-document-css.js";
 import { plan_portable_document_subjects } from "../../internal/browser-realization/portable-document-subjects.js";
-import type { PortableDocumentQuads } from "../../types/livemap.types.js";
+import type { PortableDocumentQuads, LiveMapDocumentLibrary } from "../../types/livemap.types.js";
+import { capture_document_css_reuse, type DocumentCssReuse, type DocumentCssReusePreparation } from "../livetree/managers/bound-document-css.js";
 
 export type ExactDocumentAdoption = Readonly<{
   tree: LiveTree;
-  managedStyle: HTMLStyleElement | undefined;
+  managedStyles: readonly HTMLStyleElement[];
   portableSubjects: readonly Readonly<{ element: Element; name: string; quid: string }>[];
   commit: (currentTree?: () => LiveTree) => void;
   abort: (currentTree?: LiveTree) => void;
@@ -63,13 +64,14 @@ export function set_document_adoption_fault_hook_for_tests(
 
 type AdoptedRootEntry = {
   readonly tree: LiveTree;
+  readonly prepareCssReuse: DocumentCssReuse | undefined;
   stopTerminalObservation: () => void;
   stopRealizations: () => void;
 };
 
 const ADOPTED_ROOTS = new WeakMap<Element, AdoptedRootEntry>();
 
-function exact_managed_style(root: Element, css: string): HTMLStyleElement | undefined {
+function exact_managed_styles(root: Element, css: readonly string[]): readonly HTMLStyleElement[] {
   const marked: Element[] = [];
   const visit = (element: Element): void => {
     if (element.hasAttribute(MANAGED_DOCUMENT_CSS_MARKER)) marked.push(element);
@@ -79,19 +81,13 @@ function exact_managed_style(root: Element, css: string): HTMLStyleElement | und
     }
   };
   visit(root);
-  if (marked.length !== (css ? 1 : 0)) {
-    throw new Error(css
-      ? `Expected exactly one managed document style; found ${marked.length}.`
-      : "Unexpected managed document style in an empty stylesheet realization.");
-  }
-  const style = marked[0];
-  if (style === undefined) return undefined;
-  if (style.localName !== "style" || style.namespaceURI !== "http://www.w3.org/1999/xhtml"
-    || style.getAttribute(MANAGED_DOCUMENT_CSS_MARKER) !== "managed") {
-    throw new Error("Managed document style marker is invalid.");
-  }
-  if (style.textContent !== css) throw new Error("Managed document style text does not match the selected document Library.");
-  return style as HTMLStyleElement;
+  if (marked.length !== css.length) throw new Error(`Expected ${css.length} managed document styles; found ${marked.length}.`);
+  return marked.map((style, index) => {
+    if (style.localName !== "style" || style.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || style.getAttribute(MANAGED_DOCUMENT_CSS_MARKER) !== "managed") throw new Error("Managed document style marker is invalid.");
+    if (style.textContent !== css[index]) throw new Error("Managed document style text does not match the selected document Library.");
+    return style as HTMLStyleElement;
+  });
 }
 
 function evict_adopted_root(target: Element, entry: AdoptedRootEntry): void {
@@ -109,6 +105,7 @@ function commit_adopted_root(target: Element, currentTree: () => LiveTree): void
   const prior = ADOPTED_ROOTS.get(target);
   const entry: AdoptedRootEntry = {
     get tree() { return currentTree(); },
+    prepareCssReuse: capture_document_css_reuse(tree),
     stopTerminalObservation: () => {},
     stopRealizations: () => {},
   };
@@ -129,8 +126,32 @@ function commit_adopted_root(target: Element, currentTree: () => LiveTree): void
   prior?.stopRealizations();
 }
 
-function reusable_cached_tree(target: Element, canonicalRoot: HsonNode, css: string,
-  managedStyle: HTMLStyleElement | undefined): LiveTree | undefined {
+/** Re-realize only a live cache owner's released CSS before exact admission.
+ * Initial SSR adoption remains no-write and still rejects missing carriers. @internal */
+export function prepare_retained_document_css(
+  canonicalRoot: HsonNode, target: Element, document: LiveMapDocumentLibrary, css: readonly string[],
+): DocumentCssReusePreparation | undefined {
+  const entry = ADOPTED_ROOTS.get(target);
+  if (!css.length || entry?.prepareCssReuse === undefined) return undefined;
+  // Validate the retained graph/mappings and the receiving candidate before
+  // allowing its previous CSS owner to touch any detached native resource.
+  const tree = reusable_cached_tree(target, canonicalRoot, [], []);
+  if (tree === undefined) return undefined;
+  const subject = active_subject_for_tree(tree), runtime = runtime_for_tree(tree);
+  plan_managed_document_css(plan_browser_realization(canonicalRoot, {
+    parentNamespace: browser_parent_namespace_for_target(target, subject.$_tag),
+  }), css);
+  return entry.prepareCssReuse(document, target, () => {
+    if (ADOPTED_ROOTS.get(target) !== entry || entry.tree !== tree || runtime.disposed
+      || is_livetree_node_disposed(subject) || get_el_for_node(subject) !== target
+      || get_node_for_el(target) !== subject || !runtime_owns_document(runtime, target.ownerDocument)) {
+      throw new Error("Retained document CSS lost its existing root ownership.");
+    }
+  });
+}
+
+function reusable_cached_tree(target: Element, canonicalRoot: HsonNode, css: readonly string[],
+  managedStyles: readonly HTMLStyleElement[]): LiveTree | undefined {
   const entry = ADOPTED_ROOTS.get(target);
   if (entry === undefined) return undefined;
   const tree = entry.tree;
@@ -161,7 +182,7 @@ function reusable_cached_tree(target: Element, canonicalRoot: HsonNode, css: str
     parentNamespace: browser_parent_namespace_for_target(target, canonicalOrdinaryRoot.$_tag),
   }), css);
   match_browser_realization_root(canonicalPlan, target, {
-    allowRuntimeInfrastructure: true, retainRuntimeInfrastructure: managedStyle,
+    allowRuntimeInfrastructure: true, retainRuntimeInfrastructure: managedStyles,
   });
   return tree;
 }
@@ -191,16 +212,16 @@ function cleanup_new_adoption(
 export function adopt_exact_existing_document(
   canonicalDocumentRoot: HsonNode,
   target: Element,
-  css = "",
+  css: readonly string[] = [],
   portable?: Readonly<{ quads: PortableDocumentQuads | undefined }>,
 ): ExactDocumentAdoption {
-  const managedStyle = exact_managed_style(target, css);
-  const priorTree = portable === undefined ? reusable_cached_tree(target, canonicalDocumentRoot, css, managedStyle) : undefined;
+  const managedStyles = exact_managed_styles(target, css);
+  const priorTree = portable === undefined ? reusable_cached_tree(target, canonicalDocumentRoot, css, managedStyles) : undefined;
   if (priorTree !== undefined) {
     let finished = false;
     return Object.freeze({
       tree: priorTree,
-      managedStyle,
+      managedStyles,
       portableSubjects: Object.freeze([]),
       commit(currentTree = () => priorTree): void {
         if (finished) return;
@@ -275,10 +296,10 @@ export function adopt_exact_existing_document(
 
   const adoptedTree = tree;
   if (adoptedTree === undefined) throw new Error("Exact document adoption did not construct a LiveTree.");
-  if (managedStyle !== undefined) mark_runtime_infrastructure(managedStyle);
+  managedStyles.forEach(mark_runtime_infrastructure);
   return Object.freeze({
     tree: adoptedTree,
-    managedStyle,
+    managedStyles,
     portableSubjects: Object.freeze(portableSubjects),
     commit(currentTree = () => adoptedTree): void {
       if (finished) return;
@@ -288,7 +309,7 @@ export function adopt_exact_existing_document(
     abort(currentTree = adoptedTree): void {
       if (finished) return;
       finished = true;
-      if (managedStyle !== undefined) unmark_runtime_infrastructure(managedStyle);
+      managedStyles.forEach(unmark_runtime_infrastructure);
       const currentRoot = subject_for_tree(currentTree);
       const currentNodes = collect_subtree_nodes(currentRoot, "post");
       const failures: unknown[] = [];

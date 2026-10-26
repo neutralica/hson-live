@@ -75,7 +75,6 @@ export async function parts_member_cases() {
     { kind: "data", document: "<p/>" }, { kind: "document", document: 3 },
     { kind: "document", document: "<p/><p/>" }, { kind: "document", document: "<p" },
     { kind: "document", document: "<p/>", stylesheet: 1 },
-    { kind: "document", document: "<p/>", stylesheet: "p {" },
     { kind: "document", document: "<p/>", schema: undefined },
   ]) {
     const capture = map.capture();
@@ -87,6 +86,10 @@ export async function parts_member_cases() {
     }));
     assert.deepEqual(map.capture(), capture);
   }
+  const opaqueStylesheet = hsonLiveMap.fromLibraries({ components: { parts: {
+    malformedText: { kind: "document", document: "<p/>", stylesheet: "p {" },
+  } } });
+  assert.equal(opaqueStylesheet.parts.components.malformedText.snap()?.stylesheet, "p {");
   let expired: (() => unknown)[] = [];
   const revision = map.rev;
   map.batch(writer => {

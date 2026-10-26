@@ -7,7 +7,7 @@ import { prepare_hosted_livemap_library_add_internal as prepare, replay_durable_
 import { encode_authoritative_topology_commit as encode, make_hosted_topology_commit } from "../../src/api/livemap/livemap.hosted.ts";
 import { create_persistent_locus_hosted_aggregate_internal as persist, load_persistent_locus_hosted_aggregate_internal as resume,
   checkpoint_libraries_equal, durable_aggregate_commit } from "../../src/api/locus/locus.aggregate.persistence.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { opaque_document_stylesheet } from "../../src/internal/css/opaque-stylesheet.ts";
 import { decode_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
 import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
 import { review_admission_management } from "./h0b-review-admission-management.mts";
@@ -44,7 +44,7 @@ export async function topology_contract_fixture() {
     await l.add_libraries_internal({ flat: { document: '<article @:root/>' } }, undefined, [{ name: "flat", ownership: "shared" }]);
     await l.add_libraries_internal({ page }, undefined, [{ name: "page", ownership: "shared" }]);
     await l.add_libraries_internal({ styled: page }, undefined, [{ name: "styled", ownership: "shared" }],
-      { styled: parse_document_stylesheet('main{color:purple}', []) });
+      { styled: opaque_document_stylesheet('main{color:purple}') });
   } finally { l.dispose(); }
   // Use the existing canonical managed owner to author explicitly present empty
   // scoped evidence; the public definition grammar intentionally has no such API.
@@ -52,7 +52,7 @@ export async function topology_contract_fixture() {
   try {
     const p = a.prepareAddLibrariesManaged(owner, [{ name: "empty", family: "document", hsonSchema: Hson.schema`<type "document">`,
       root: hsonTransform.fromHson('<main/>').toNode(), scopes: { document: [], occurrences: [], subjects: [] },
-      css: decode_portable_document_stylesheet(parse_document_stylesheet('', [])) }]);
+      css: decode_portable_document_stylesheet(opaque_document_stylesheet('')) }]);
     assert.ok(p.transition.commit.hosted);
     const release = a.reserve(p.transition);
     try {
@@ -112,7 +112,7 @@ export async function topology_repair_cases(check: (name: string, run: () => Pro
             assert.throws(() => a.prepareAddLibrariesManaged(owner, definitions), /management|authority|changed/i);
           } else {
             const css: NonNullable<Parameters<typeof prepare>[3]> = surface === "css"
-              ? { get page() { revoke(); return parse_document_stylesheet('main{color:red}', []); } } : {};
+              ? { get page() { revoke(); return opaque_document_stylesheet('main{color:red}'); } } : {};
             assert.throws(() => prepare(map, owner, inputs, css), /management|authority|changed/i);
           }
           assert.ok(entered); verify(); assert.throws(() => map.data.must("earlier")); assert.throws(() => map.doc.must("page"));

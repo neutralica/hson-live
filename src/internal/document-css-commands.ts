@@ -1,3 +1,4 @@
+import { canonical_css_selector } from "./css/relative-selector.js";
 import { managed_css_rule_key, trim_managed_css } from "./css/managed-css-lexical.js";
 import type { DocumentCssCommands, DocumentCssRuleCommands, DocumentCssRead, DocumentCssHandle, DocumentCssValue } from "../types/document-css.types.js";
 import type { LiveMapCssOp } from "../types/livemap.types.js";
@@ -23,13 +24,13 @@ export function dispatch_document_css_command(css: DocumentCssHandle | DocumentC
 /** Capture arguments now; validate with the same authoring normalization as local CSS. */
 export function capture_document_css_command(command: DocumentCssCommand): DocumentCssCommand {
   const captured = clone_node(command);
-  dispatch_document_css_command(make_livemap_document_css(empty_portable_document_stylesheet, () => {}), captured);
+  dispatch_document_css_command(make_livemap_document_css(empty_portable_document_stylesheet, () => {}, name => `[hson\\:quad="${name}"]`), captured);
   return captured;
 }
 
-export function lower_document_css_command(current: PortableDocumentStylesheet, command: DocumentCssCommand): LiveMapCssOp | undefined {
+export function lower_document_css_command(current: PortableDocumentStylesheet, command: DocumentCssCommand, resolveSubject?: (name: string) => string | undefined): LiveMapCssOp | undefined {
   const operations: LiveMapCssOp[] = [];
-  dispatch_document_css_command(make_livemap_document_css(() => current, operation => operations.push(operation)), command);
+  dispatch_document_css_command(make_livemap_document_css(() => current, operation => operations.push(operation), resolveSubject), command);
   if (operations.length > 1) throw new Error("A CSS authoring command must publish one semantic operation.");
   return operations[0];
 }
@@ -51,7 +52,7 @@ export function document_css_commands<TResult>(send: (command: DocumentCssComman
       const rawSelector = args[method === "rule" ? 1 : 0], rawKey = args[0];
       if (typeof rawSelector !== "string" || typeof rawKey !== "string") throw new TypeError("Document CSS keys and selectors must be strings.");
       const selector = trim_managed_css(rawSelector);
-      const ruleKey = method === "rule" ? managed_css_rule_key(rawKey) : `sel:${selector}`;
+      const ruleKey = method === "rule" ? managed_css_rule_key(rawKey) : `sel:${canonical_css_selector(selector)}`;
       if (!ruleKey || !selector || ruleKey.startsWith("stylesheet:")) throw new TypeError("Invalid document CSS rule key or selector.");
       const setProp = (...args: [string, DocumentCssValue]) => command(selected, "setProp", args);
       return Object.freeze({
@@ -59,7 +60,7 @@ export function document_css_commands<TResult>(send: (command: DocumentCssComman
         set: new Proxy({} as ReturnType<DocumentCssRuleCommands<TResult>["rule"]>["set"], { get: (_target, key) => key === "var"
           ? (name: string, value: DocumentCssValue) => command(selected, "var", [name, value], "set")
           : typeof key === "string" ? (value: DocumentCssValue) => setProp(key, value) : undefined }),
-        setProp, setMany: (...args) => command(selected, "setMany", args),
+        setProp, setMany: (...args: [object]) => command(selected, "setMany", args),
         remove: (...args) => command(selected, "remove", args), clear: () => command(selected, "clear", []), drop: () => command(selected, "drop", []),
       });
     };

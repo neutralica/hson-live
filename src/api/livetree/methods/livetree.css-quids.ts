@@ -1,18 +1,24 @@
-import { relative_css_selector, scope_css_selector } from "../../../internal/css/relative-selector.js";
+import { mediaToAtRule, convertSupportsToAt } from "../../../internal/css/global-css-scopes.js";
+import { visit_structured_css } from "../../../internal/css/structured-css.js";
+import { lookup_document_quad_internal } from "../../livemap/livemap.document.quad.js";
+import { selector_for_quid } from "../managers/css-render.js";
+import { css_declaration } from "../../../core/css-map.js";
+import { normalizeName, normalizeSpec } from "./anim.js";
+import { scope_css_selector } from "../../../internal/css/relative-selector.js";
 import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 // css-for-quid.ts
 
 
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
-import { CssTreeHandle, CssHandleBase, CssPseudoKey, CssMapBase, StyleHandle, CssKey, MediaQueryInput, SupportsQueryInput, CssRuleFacade } from "../../../types/css.types.js";
+import { CssTreeHandle, CssHandleBase, StyleHandle, CssKey, MediaQueryInput, SupportsQueryInput, CssRuleFacade } from "../../../types/css.types.js";
 import { LiveTree } from "../livetree.js";
 import { CssRuntimeManager } from "../managers/css-manager.js";
 import { bound_document_css_api, bound_document_css_for_tree } from "../managers/bound-document-css.js";
-import { pseudo_to_suffix } from "../managers/css-render.js";
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter, StyleGetterAdapters } from "../managers/style-getter.js";
-import { compose_style_branch, style_branch_pattern, prepare_style_map, make_css_var_facade, make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
+import { prepare_style_map, make_css_var_facade, make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
+import type { NormalizedCssMap } from "../../../core/css-map.js";
 import { PERSISTED_QUID_LENGTH } from "../../../core/hson-node-quid.js";
-import { default_livetree_runtime, runtime_for_tree } from "../runtime/livetree-runtime.js";
+import { active_subject_for_tree, default_livetree_runtime, runtime_for_tree } from "../runtime/livetree-runtime.js";
 
 function manager_for_host(host: LiveTree): CssRuntimeManager {
   const runtime = runtime_for_tree(host);
@@ -45,65 +51,41 @@ function cache_surface_value<TValue>(
   return value;
 }
 
-// one canonical adapter builder for CssManager-backed setters.
-// This is the “make it impossible to forget applyPseudo” piece.
-const mkCssQuidAdapter = (
-  host: LiveTree,
-  mgr: CssRuntimeManager,
-  quid: string,
-): StyleSetterAdapters & {
-  applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => void;
-} => {
-  const resolveBranch = (key: string): string => relative_css_selector(style_branch_pattern(key), quidSelector(quid, mgr));
-  return {
-    resolveBranch,
-    apply: (propCanon, value) => {
-      assert_css_write_available(host, quid);
-      mgr.setForQuid(quid, propCanon, value);
-    },
+/** Prepare every recursive branch before any runtime rule or identity is written. */
+function prepare_tree_css(
+  host: LiveTree, quid: string, selector: string, map: NormalizedCssMap,
+  apply: (property: string, value: string | undefined) => void,
+  scopeKey = "", ruleApi: CssRuleFacade = api_for_host(host),
+): () => void {
+  const writes: (() => void)[] = [];
+  visit_structured_css(map, selector, [], (target, scopes, property, value) => {
+    if (target === selector && scopes.length === 0) { writes.push(() => apply(property, value)); return; }
+    let api = ruleApi, key = scopeKey;
+    for (const header of scopes) {
+      api = api.media(header);
+      key = joinScopeKey(key, scopeKeyFor("media", header));
+    }
+    const handle = api.rule(selectorRuleKey(host, quid, target, key), target);
+    writes.push(() => handle.setProp(property, value));
+  }, name => {
+    const binding = bound_document_css_for_tree(host);
+    const subject = binding && lookup_document_quad_internal(binding.document, name);
+    return subject ? selector_for_quid(subject.quid) : undefined;
+  });
+  return () => { assert_css_write_available(host, quid); for (const write of writes) write(); };
+}
 
-    remove: (propCanon) => {
-      assert_css_write_available(host, quid);
-      mgr.unsetForQuid(quid, propCanon);
-    },
-
-    clear: () => {
-      assert_css_write_available(host, quid);
-      mgr.clearQuid(quid);
-
-      // CHANGED: pseudos and nested selector blocks are now selector-backed
-      // rules. Clearing a css handle should clear selector rules owned by this
-      // same handle, but not selector rules owned by child nodes.
-      mgr.dropGlobalRulesByPrefix(selectorRuleOwnerKey(host, quid));
-    },
-    applySelector: (pattern, decls) => {
-      assert_css_write_available(host, quid);
-      // Shared setMany preflight already requires anchored nesting on every arm.
-      const selector = resolveBranch(pattern);
-      // CHANGED: selector rules are keyed by their resolved selector, not the raw
-      // pattern. This keeps set/get addressing identical for selector CSS.
-      const ruleKey = selectorRuleKey(host, quid, selector);
-      const handle = api_for_host(host).rule(ruleKey, selector);
-
-      handle.setMany(decls);
-    },
-    // pseudo routing for quid-scoped rules
-    applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
-      assert_css_write_available(host, quid);
-      // CHANGED: pseudo shorthand keys are now selector-rule sugar. This makes
-      // `__before` and `css.selector("&::before")` address the same rule store.
-      const selector = resolveBranch(pseudo);
-      const ruleKey = selectorRuleKey(host, quid, selector);
-      const handle = api_for_host(host).rule(ruleKey, selector);
-
-      handle.setMany(pseudoDecls);
-      // auto-content for ::before/::after if omitted
-      if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
-        handle.setProp("content", `""`);
-      }
-    },
-  };
-};
+const mkCssQuidAdapter = (host: LiveTree, mgr: CssRuntimeManager, quid: string): StyleSetterAdapters => ({
+  prepareStructured: map => prepare_tree_css(host, quid, quidSelector(quid, mgr), map,
+    (property, value) => value === undefined ? mgr.unsetForQuid(quid, normalize_css_key(property)) : mgr.setForQuid(quid, normalize_css_key(property), value)),
+  apply: (property, value) => { assert_css_write_available(host, quid); mgr.setForQuid(quid, property, value); },
+  remove: property => { assert_css_write_available(host, quid); mgr.unsetForQuid(quid, property); },
+  clear: () => {
+    assert_css_write_available(host, quid);
+    mgr.clearQuid(quid);
+    mgr.dropGlobalRulesByPrefix(selectorRuleOwnerKey(host, quid));
+  },
+});
 
 function quidSelector(quid: string, manager: CssRuntimeManager): string {
   const q = quid.trim();
@@ -122,9 +104,8 @@ function resolveSelector(
   return scope_css_selector(pattern, quidSelector(quid, manager));
 }
 
-function scopeKeyFor(kind: "media" | "supports" | "layer", input: unknown): string {
-  if (typeof input === "string") return `${kind}:${input.trim()}`;
-  return `${kind}:${JSON.stringify(input)}`;
+function scopeKeyFor(kind: "media" | "supports" | "layer", header: string): string {
+  return `${kind}:${header.trim()}`;
 }
 
 function joinScopeKey(parent: string, child: string): string {
@@ -183,7 +164,7 @@ function readManyFromRendered(rendered: string | undefined): StyleGetMany {
 
     const rawKey = part.slice(0, ix).trim();
     const value = part.slice(ix + 1).trim();
-    if (!rawKey || !value) continue;
+    if (!rawKey) continue;
 
     // CHANGED: getMany() returns a setMany-compatible declaration map.
     // Preserve custom properties exactly; normalize normal CSS keys to the
@@ -319,49 +300,35 @@ function mkSelectorStyleSetter(
   scopeKey = "",
   ruleApi?: CssRuleFacade,
 ): StyleSetter<LiveTree> {
+  const selector = resolveSelector(quid, patternRaw, manager_for_host(ret));
+  return mkResolvedSelectorStyleSetter(ret, quid, selector, scopeKey, ruleApi);
+}
+
+/** Keep the resolved receiver and canonical selector/scope key through every branch. */
+function mkResolvedSelectorStyleSetter(
+  ret: LiveTree,
+  quid: string,
+  selector: string,
+  scopeKey = "",
+  ruleApi?: CssRuleFacade,
+): StyleSetter<LiveTree> {
   const gcss = api_for_host(ret);
   const runtimeRuleApi = ruleApi ?? gcss;
-
-  const selector = resolveSelector(quid, patternRaw, manager_for_host(ret));
   // CHANGED: setter and getter must address the selector rule by the same
   // resolved selector+scope key.
   const ruleKey = selectorRuleKey(ret, quid, selector, scopeKey);
 
   const handle = runtimeRuleApi.rule(ruleKey, selector);
 
-  const resolveBranch = (key: string): string => compose_style_branch(selector, key);
   return make_style_setter<LiveTree>(ret, {
-    resolveBranch,
-    apply: (propCanon, value) => {
-      assert_css_write_available(ret, quid);
-      handle.setProp(propCanon as CssKey, value);
-    },
-
-    remove: (propCanon) => {
-      assert_css_write_available(ret, quid);
-      handle.remove(propCanon);
-    },
-
+    prepareStructured: map => prepare_tree_css(ret, quid, selector, map,
+      (property, value) => handle.setProp(property, value), scopeKey, runtimeRuleApi),
+    apply: (property, value) => { assert_css_write_available(ret, quid); handle.setProp(property, value); },
+    remove: property => { assert_css_write_available(ret, quid); handle.remove(property); },
     clear: () => {
       assert_css_write_available(ret, quid);
-      // CHANGED: clear both the rule handle's local declaration closure and the
-      // manager-backed rendered rule. Dropping only the manager rule leaves this
-      // handle's local `decls` copy stale, so a later setMany(all) with the same
-      // values can be skipped as "unchanged" and fail to re-render the rule.
       handle.clear();
       gcss.drop(ruleKey);
-    },
-
-    // keep pseudo support working on selector-scoped rules too
-    applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
-      assert_css_write_available(ret, quid);
-      const suf = pseudo_to_suffix(pseudo);
-      const pseudoHandle = runtimeRuleApi.rule(`${ruleKey}${suf}`, resolveBranch(pseudo));
-      pseudoHandle.setMany(pseudoDecls);
-
-      if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
-        pseudoHandle.setProp("content", `""`);
-      }
     },
   });
 }
@@ -378,44 +345,15 @@ function mkScopedQuidStyleHandle(
   const ruleKey = selectorRuleKey(ret, quid, selector, scopeKey);
   const handle = ruleApi.rule(ruleKey, selector);
 
-  const resolveBranch = (key: string): string => relative_css_selector(style_branch_pattern(key), quidSelector(quid, manager));
   const setter = make_style_setter<LiveTree>(ret, {
-    resolveBranch,
-    apply: (propCanon, value) => {
-      assert_css_write_available(ret, quid);
-      handle.setProp(propCanon as CssKey, value);
-    },
-
-    remove: (propCanon) => {
-      assert_css_write_available(ret, quid);
-      handle.remove(propCanon);
-    },
-
+    prepareStructured: map => prepare_tree_css(ret, quid, selector, map,
+      (property, value) => handle.setProp(property, value), scopeKey, ruleApi),
+    apply: (property, value) => { assert_css_write_available(ret, quid); handle.setProp(property, value); },
+    remove: property => { assert_css_write_available(ret, quid); handle.remove(property); },
     clear: () => {
       assert_css_write_available(ret, quid);
       handle.clear();
       manager.dropGlobalRulesByPrefix(selectorRuleOwnerKey(ret, quid, scopeKey));
-    },
-
-    applySelector: (pattern, decls) => {
-      assert_css_write_available(ret, quid);
-      const scopedSelector = resolveBranch(pattern);
-      const scopedRuleKey = selectorRuleKey(ret, quid, scopedSelector, scopeKey);
-      const scopedHandle = ruleApi.rule(scopedRuleKey, scopedSelector);
-
-      scopedHandle.setMany(decls);
-    },
-
-    applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
-      assert_css_write_available(ret, quid);
-      const pseudoSelector = resolveBranch(pseudo);
-      const pseudoRuleKey = selectorRuleKey(ret, quid, pseudoSelector, scopeKey);
-      const pseudoHandle = ruleApi.rule(pseudoRuleKey, pseudoSelector);
-
-      pseudoHandle.setMany(pseudoDecls);
-      if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
-        pseudoHandle.setProp("content", `""`);
-      }
     },
   });
 
@@ -441,8 +379,8 @@ function mkScopedQuidStyleHandle(
       return cache_surface_value(this, "anim", manager.animForQuids([quid]));
     },
     selector: (pattern: string) => mkSelectorStyleHandle(ret, quid, pattern, scopeKey, ruleApi),
-    media: (query: MediaQueryInput) => mkScopedQuidStyleHandle(ret, quid, joinScopeKey(scopeKey, scopeKeyFor("media", query)), ruleApi.media(query)),
-    supports: (cond: SupportsQueryInput) => mkScopedQuidStyleHandle(ret, quid, joinScopeKey(scopeKey, scopeKeyFor("supports", cond)), ruleApi.supports(cond)),
+    media: (query: MediaQueryInput) => mkScopedQuidStyleHandle(ret, quid, joinScopeKey(scopeKey, scopeKeyFor("media", mediaToAtRule(query))), ruleApi.media(query)),
+    supports: (cond: SupportsQueryInput) => mkScopedQuidStyleHandle(ret, quid, joinScopeKey(scopeKey, scopeKeyFor("supports", convertSupportsToAt(cond))), ruleApi.supports(cond)),
     layer: (layerName: string) => mkScopedQuidStyleHandle(ret, quid, joinScopeKey(scopeKey, scopeKeyFor("layer", layerName)), ruleApi.layer(layerName)),
   };
 }
@@ -461,8 +399,8 @@ function scopedMethods(
   const gcss = api_for_host(ret);
 
   return {
-    media: (query: MediaQueryInput) => mkScopedQuidStyleHandle(ret, quid, scopeKeyFor("media", query), gcss.media(query)),
-    supports: (cond: SupportsQueryInput) => mkScopedQuidStyleHandle(ret, quid, scopeKeyFor("supports", cond), gcss.supports(cond)),
+    media: (query: MediaQueryInput) => mkScopedQuidStyleHandle(ret, quid, scopeKeyFor("media", mediaToAtRule(query)), gcss.media(query)),
+    supports: (cond: SupportsQueryInput) => mkScopedQuidStyleHandle(ret, quid, scopeKeyFor("supports", convertSupportsToAt(cond)), gcss.supports(cond)),
     layer: (layerName: string) => mkScopedQuidStyleHandle(ret, quid, scopeKeyFor("layer", layerName), gcss.layer(layerName)),
   };
 }
@@ -485,8 +423,44 @@ export function css_for_tree(host: LiveTree): CssTreeHandle {
   // never issued, stored or published. Warm handles prepare in their own setter.
   const preparationQuid = "0".repeat(PERSISTED_QUID_LENGTH);
   const setMany: CssTreeHandle["setMany"] = map => {
-    if (!scoped) prepare_style_map(map, mkCssQuidAdapter(host, manager_for_host(host), preparationQuid));
+    if (!scoped) {
+      const prepared = prepare_style_map(map, mkCssQuidAdapter(host, manager_for_host(host), preparationQuid));
+      const hasWrite = (value: NormalizedCssMap): boolean => Object.values(value).some(item =>
+        typeof item === "string" || item !== undefined && hasWrite(item));
+      // No subject identity is needed to delete from an untouched contribution.
+      const subject = active_subject_for_tree(host);
+      if (!hasWrite(prepared) && subject.$_meta?.quid === undefined) {
+        assert_mutation_publication_available(subject);
+        return host;
+      }
+    }
     return withQuid().setMany(map);
+  };
+  // Author values must qualify before resolving the identity-bearing receiver.
+  const setter = make_style_setter(host, {
+    apply: (property, value) => { withQuid().setProp(property, value); },
+    remove: property => {
+      const subject = active_subject_for_tree(host);
+      if (scoped || subject.$_meta?.quid !== undefined) withQuid().remove(property);
+      else assert_mutation_publication_available(subject);
+    },
+    clear: () => { withQuid().clear(); },
+  });
+  const variables = make_css_var_facade(host,
+    (name, value) => setter.set.var(name, value),
+    name => {
+      const subject = active_subject_for_tree(host);
+      return scoped || subject.$_meta?.quid !== undefined ? withQuid().var.value(name) : undefined;
+    });
+  const animation: CssTreeHandle["anim"] = {
+    begin: spec => { const prepared = normalizeSpec(spec); return withQuid().anim.begin(prepared); },
+    restart: spec => { const prepared = normalizeSpec(spec); return withQuid().anim.restart(prepared); },
+    beginName: name => { const prepared = normalizeName(name); return withQuid().anim.beginName(prepared); },
+    restartName: name => { const prepared = normalizeName(name); return withQuid().anim.restartName(prepared); },
+    setPlayState: state => { css_declaration(state); return withQuid().anim.setPlayState(state); },
+    end: mode => withQuid().anim.end(mode),
+    pause: () => withQuid().anim.pause(),
+    resume: () => withQuid().anim.resume(),
   };
   const selector = (pattern: string): StyleHandle<LiveTree> => {
     if (!scoped) resolveSelector(preparationQuid, pattern, manager_for_host(host));
@@ -512,6 +486,10 @@ export function css_for_tree(host: LiveTree): CssTreeHandle {
       }
       if (key === "snapshot") return snapshot;
       if (key === "setMany") return setMany;
+      if (key === "set") return setter.set;
+      if (key === "setProp") return setter.setProp;
+      if (key === "var") return variables;
+      if (key === "anim") return animation;
       if (key === "selector") return selector;
       return Reflect.get(withQuid(), key);
     },

@@ -5,6 +5,7 @@ import { appendFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 import { isMainThread, threadId } from "node:worker_threads";
+import { promisify } from "node:util";
 
 const eventFile = process.env.HSON_VALIDATION_EVENTS;
 if (eventFile) {
@@ -28,7 +29,7 @@ if (eventFile) {
   process.once("exit", code => emit({ type: "process-end", exitStatus: code, wallMs: performance.now() - started, rootBuild }));
   for (const method of ["spawn", "spawnSync", "execFile", "execFileSync", "exec", "execSync"]) {
     const original = childProcess[method];
-    childProcess[method] = function (...parameters) {
+    const observe = (invoke, receiver, parameters, promised = false) => {
       const id = `${process.pid}:${threadId}:${++sequence}`;
       const begin = performance.now();
       emit({ type: "command-start", id, method, command: safe(parameters[0]),
@@ -36,18 +37,27 @@ if (eventFile) {
       let finished = false;
       const end = data => { if (!finished) { finished = true; emit({ type: "command-end", id, wallMs: performance.now() - begin, ...data }); } };
       try {
-        const result = Reflect.apply(original, this, parameters);
+        const result = Reflect.apply(invoke, receiver, parameters);
         if (method.endsWith("Sync")) end({ exitStatus: method === "spawnSync" ? result.status : 0, signal: result?.signal ?? null,
           error: result?.error ? safe(result.error.message) : null });
         else {
           // errorMonitor observes without handling 'error': Node still throws
           // when the original caller has not installed its own error listener.
-          result.once(errorMonitor, error => end({ exitStatus: null, error: safe(error.message) }));
-          result.once("close", (code, signal) => end({ exitStatus: code, signal }));
+          const child = promised ? result.child : result;
+          child.once(errorMonitor, error => end({ exitStatus: null, error: safe(error.message) }));
+          child.once("close", (code, signal) => end({ exitStatus: code, signal }));
         }
         return result;
       } catch (error) { end({ exitStatus: error.status ?? null, error: safe(error.message) }); throw error; }
     };
+    const wrapped = function (...parameters) { return observe(original, this, parameters); };
+    // exec/execFile's custom promisifier returns { stdout, stderr } and exposes
+    // the child on the promise. Preserve both contracts and still observe it.
+    const custom = original[promisify.custom];
+    if (custom !== undefined) Object.defineProperty(wrapped, promisify.custom, {
+      value: function (...parameters) { return observe(custom, this, parameters, true); },
+    });
+    childProcess[method] = wrapped;
   }
   syncBuiltinESMExports();
 }

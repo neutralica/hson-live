@@ -1,3 +1,5 @@
+import { lookup_document_quad_internal } from "../livemap/livemap.document.quad.js";
+import { selector_for_quid } from "./managers/css-render.js";
 import {
   active_subject_for_tree,
 } from "./runtime/livetree-runtime.js";
@@ -10,7 +12,8 @@ import type {
 import { document_binding_for_node, type DocumentBoundAttrsMutation } from "./lifecycle/document-binding-state.js";
 import { parent_for_node } from "./lifecycle/graph-ownership.js";
 import type { LiveTree } from "./livetree.js";
-import type { DocumentCssHandle, DocumentCssMap, DocumentCssValue } from "../../types/document-css.types.js";
+import type { DocumentCssHandle, DocumentCssValue } from "../../types/document-css.types.js";
+import type { CssMap, CssMapInputCheck } from "../../core/style.types.js";
 import { make_livemap_document_css } from "../livemap/livemap.css.js";
 import { commit_document_css_internal, document_css_state_internal } from "../livemap/livemap.libraries.js";
 import { bound_document_css_for_tree } from "./managers/bound-document-css.js";
@@ -64,7 +67,7 @@ export type AsyncLiveTreeForm<TOwner extends LiveTree> = Readonly<{
 
 export type AsyncLiveTreeCssRule<TOwner extends LiveTree> = Readonly<{
   setProp(property: string, value: DocumentCssValue): Promise<AsyncLiveTree<TOwner>>;
-  setMany(values: DocumentCssMap): Promise<AsyncLiveTree<TOwner>>;
+  setMany<const T extends CssMap>(values: T & CssMapInputCheck<NoInfer<T>>): Promise<AsyncLiveTree<TOwner>>;
   remove(property: string): Promise<AsyncLiveTree<TOwner>>;
   clear(): Promise<AsyncLiveTree<TOwner>>;
   drop(): Promise<AsyncLiveTree<TOwner>>;
@@ -122,6 +125,10 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
             if (operation !== undefined) throw new Error("Async CSS edit must produce one semantic transition.");
             operation = next;
           },
+          name => {
+            const subject = lookup_document_quad_internal(binding.document, name);
+            return subject === undefined ? undefined : selector_for_quid(subject.quid);
+          },
         );
         const returned: unknown = write(css);
         if (returned instanceof Promise) throw new Error("Async CSS edit callback must complete synchronously.");
@@ -131,7 +138,17 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
         const authority = echo_document_authority_for(binding.document);
         if (authority === undefined) throw new Error("Hosted document CSS authority is unavailable.");
         await authority.enqueue(() => {
+          const assertCurrent = (): void => {
+            if (!binding.active || bound_document_css_for_tree(owner) !== binding) {
+              throw new Error("Async document CSS requires an active bound document.");
+            }
+            if (echo_document_authority_for(binding.document) !== authority) {
+              throw new Error("Hosted document CSS authority is unavailable.");
+            }
+          };
+          assertCurrent(); // The binding may have been revoked while this write waited.
           const operation = build();
+          assertCurrent(); // A synchronous author callback can dispose its own binding.
           return operation === undefined ? undefined : { name: "document.css", payload: { operation } };
         });
       } else {
@@ -141,7 +158,8 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
     });
     const cssRule = (select: (css: DocumentCssHandle) => ReturnType<DocumentCssHandle["rule"]>): AsyncLiveTreeCssRule<TOwner> => Object.freeze({
       setProp: (property, value) => editCss((css) => { select(css).setProp(property, value); }),
-      setMany: (values) => editCss((css) => { select(css).setMany(values); }),
+      setMany: (values: Parameters<ReturnType<DocumentCssHandle["rule"]>["setMany"]>[0]) =>
+        editCss((css) => { select(css).setMany(values); }),
       remove: (property) => editCss((css) => { select(css).remove(property); }),
       clear: () => editCss((css) => { select(css).clear(); }),
       drop: () => editCss((css) => { select(css).drop(); }),

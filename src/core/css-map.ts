@@ -1,3 +1,4 @@
+import { assert_css_declaration_syntax } from "../internal/css/declaration-syntax.js";
 import { is_known_css_property, css_property_identity } from "./css-properties.js";
 import { is_typed_css_value, render_css_declaration_value } from "./inline-style.js";
 import { normalize_css_key, canon_to_css_prop } from "../api/transform/utils/attrs-utils/normalize-css.js";
@@ -9,7 +10,8 @@ export const CSS_PSEUDOS: Readonly<Record<string, string>> = Object.freeze({
   _disabled: ':disabled', __before: '::before', __after: '::after',
 });
 const CSS_UNITS: ReadonlySet<string> = new Set(('px cm mm q in pc pt em ex cap ch ic lh rlh rem rex rcap rch ric vw vh vi vb vmin vmax svw svh svi svb svmin svmax lvw lvh lvi lvb lvmin lvmax dvw dvh dvi dvb dvmin dvmax cqw cqh cqi cqb cqmin cqmax deg grad rad turn s ms hz khz dpi dpcm dppx x fr % _').split(' '));
-export type NormalizedCssMap = { readonly [key: string]: string | NormalizedCssMap };
+/** Own string leaves set declarations; own undefined leaves delete; absent keys do nothing. */
+export type NormalizedCssMap = { readonly [key: string]: string | undefined | NormalizedCssMap };
 
 /** Inspect own data only, never evaluate author accessors. */
 export function css_data_entries(value: unknown): readonly (readonly [string, unknown])[] {
@@ -31,7 +33,7 @@ export function css_property(key: string): string {
   return property;
 }
 
-/** Declarative values exclude imperative null deletion and boolean coercion. */
+/** Defined declaration values exclude null and boolean coercion. */
 export function css_declaration(value: unknown): string {
   if (typeof value === 'object' && value !== null) {
     const fields = css_data_entries(value);
@@ -41,8 +43,12 @@ export function css_declaration(value: unknown): string {
   } else if (typeof value !== 'string' && !(typeof value === 'number' && Number.isFinite(value))) {
     throw new TypeError('CSS declarations require strings, finite numbers, or typed values.');
   }
+  // Inspect authored strings before boundary trimming or typed-value rendering.
+  if (typeof value === 'string') assert_css_declaration_syntax('', value);
+  else if (is_typed_css_value(value) && typeof value.value === 'string') assert_css_declaration_syntax('', value.value);
   const rendered = render_css_declaration_value(value);
   if (typeof rendered !== 'string') throw new TypeError('Invalid CSS declaration.');
+  assert_css_declaration_syntax('', rendered);
   return rendered;
 }
 
@@ -55,7 +61,7 @@ export function normalize_css_map(input: unknown, subjects = true): NormalizedCs
     if (typeof value !== 'object' || value === null || active.has(value)) throw new TypeError('Invalid or cyclic CSS map.');
     active.add(value);
     try {
-      const output: Record<string, string | NormalizedCssMap> = Object.create(null);
+      const output: Record<string, string | undefined | NormalizedCssMap> = Object.create(null);
       const identities = new Set<string>();
       for (const [key, item] of css_data_entries(value)) {
         if (item === undefined) {
@@ -63,9 +69,9 @@ export function normalize_css_map(input: unknown, subjects = true): NormalizedCs
           else if (key.startsWith('@:')) {
             if (!quad || !is_document_quad_name(key.slice(2))) throw new TypeError(`Invalid local CSS QUAD reference: ${key}`);
           } else if (!Object.hasOwn(CSS_PSEUDOS, key) && !key.startsWith('&')) css_property(key);
-          continue;
+          if (key === '$media' || key.startsWith('@:') || Object.hasOwn(CSS_PSEUDOS, key) || key.startsWith('&')) continue;
         }
-        let result: string | NormalizedCssMap;
+        let result: string | undefined | NormalizedCssMap;
         let name = key;
         if (key === '$media') {
           if (!media) throw new TypeError('$media is supported only at the root.');
@@ -81,7 +87,7 @@ export function normalize_css_map(input: unknown, subjects = true): NormalizedCs
           result = visit(item, false, false, depth + 1);
         } else {
           name = css_property(key);
-          result = css_declaration(item);
+          result = item === undefined ? undefined : css_declaration(item);
         }
         const identity = name.startsWith("--") ? css_property_identity(name) : name;
         if (identities.has(identity)) throw new TypeError(`CSS property normalization collision: ${key}`);

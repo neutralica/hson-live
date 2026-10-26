@@ -8,14 +8,14 @@ import { validate_document_path } from "../../src/api/livemap/livemap.document.p
 import { set_livemap_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.quid-allocation.ts";
 import { selector_for_quid } from "../../src/api/livetree/managers/css-render.ts";
 import { document_css_subject_identities, document_css_mentions_subject_identity, translate_document_css_identities as translate, type CssIdentityCorrespondence } from "../../src/internal/css/css-identity-translation.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, render_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
 
 const quid = "abcde1234", second = "9abcdefgh", receiving = "xyz987654";
 const runtime = selector_for_quid(quid), quad = '[hson\\:quad="_abcde1234"]';
 const association = { name: `_${quid}`, quid, disposition: "disposable" as const };
 const correspondence = (associations: CssIdentityCorrespondence["associations"] = [association]): CssIdentityCorrespondence => ({ associations, assertCurrent() {} });
-const sheet = (source: string) => parse_document_stylesheet(source, []);
+const sheet = (source: string) => structured_css_fixture(source, []);
 const css = (value: ReturnType<typeof sheet>) => render_portable_document_stylesheet(decode_portable_document_stylesheet(value));
 function neutral_selectors(source: string): string {
   const ast = parse(source, { context: "selectorList", onParseError(error) { throw error; } });

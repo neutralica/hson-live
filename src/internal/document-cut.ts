@@ -3,7 +3,7 @@ import type { AuthorityProjectionSnapshot } from "../types/locus.projection.type
 import type { BrowserRealizationHtml } from "../api/ssr/ssr.types.js";
 import { plan_browser_realization } from "./browser-realization/browser-realization-plan.js";
 import { plan_managed_document_css } from "./browser-realization/managed-document-css.js";
-import { decode_portable_document_stylesheet, render_portable_document_stylesheet } from "./css/portable-document-stylesheet.js";
+import { decode_portable_document_stylesheet, render_portable_document_stylesheet_carriers } from "./css/portable-document-stylesheet.js";
 import { serialize_browser_realization } from "./browser-realization/browser-realization-serialize.js";
 import { DocumentSsrError } from "./document-cut.error.js";
 import type { PortableDocumentQuads } from "../types/livemap.types.js";
@@ -24,7 +24,7 @@ export function realize_captured_document(library: Readonly<{
   } catch (cause) {
     throw new DocumentSsrError("bootstrap", "The session document could not be decoded.", cause);
   }
-  const css = render_portable_document_stylesheet(decode_portable_document_stylesheet(library.css));
+  const css = render_portable_document_stylesheet_carriers(decode_portable_document_stylesheet(library.css));
   // Scoped capture supplies portable CSS labels and exact paths. The captured
   // topology stays intact; only its correspondence feeds the HTML marker planner.
   const quads = library.scopes === undefined ? library.quads
@@ -33,7 +33,7 @@ export function realize_captured_document(library: Readonly<{
     document_css_subject_identities(library.css!, "inbound").length ? { quads } : undefined);
 }
 
-export function realize_document(root: HsonNode, css = "", subjects?: Readonly<{ quads?: PortableDocumentQuads }>): BrowserRealizationHtml {
+export function realize_document(root: HsonNode, css: readonly string[] = [], subjects?: Readonly<{ quads?: PortableDocumentQuads }>): BrowserRealizationHtml {
   try {
     const browser = plan_browser_realization(root);
     const addressed = subjects === undefined ? browser : plan_portable_document_subjects(browser, root, subjects.quads);

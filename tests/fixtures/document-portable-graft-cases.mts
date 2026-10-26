@@ -25,9 +25,9 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
     for (const quid of issued) assert.equal(sourceIssued.includes(quid), false);
     const candidate = f.aggregate.preparePortableDocumentHandoff(f.library, f.correspondence);
     assert.equal(f.aggregate.identityEpoch().issued(), ledger);
-    assert.match(candidate.portableCss, /hson\\:quad/); assert.match(candidate.receivingCss, /hson\\:quid/);
+    assert.match(candidate.portableCss.join("\n\n"), /hson\\:quad/); assert.match(candidate.receivingCss.join("\n\n"), /hson\\:quid/);
     candidate.acceptCss(); candidate.assertCurrent(); candidate.acceptCss();
-    assert.equal(f.document.css.snapshot(), candidate.receivingCss);
+    assert.equal(f.document.css.snapshot(), candidate.receivingCss.join("\n\n"));
     assert.equal(f.aggregate.identityEpoch().issued(), ledger);
     assert.deepEqual(f.source.map.capture(), before);
     f.correspondence.assertCurrent(); // Ordinary restoration already accepted the rebound stylesheet.
@@ -106,7 +106,7 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
     assert.notEqual(receiver.correspondence.associations[0]!.quid, receiver.correspondence.associations[1]!.quid);
     for (const entry of receiver.correspondence.associations) {
       assert.equal(entry.disposition, "disposable"); assert.equal(lookup(receiver.map.doc.must("final"), entry.name), undefined);
-      assert.ok(candidate.receivingCss.includes(entry.quid)); assert.equal(demanded.includes(entry.quid), false);
+      assert.ok(candidate.receivingCss.join("\n\n").includes(entry.quid)); assert.equal(demanded.includes(entry.quid), false);
     }
     const next = install_libraries_snapshot(receiver.map.cut({ documents: ["final"], data: [] }).libs).map;
     assert.equal(next.capture().libraries.length, 1); assert.equal(next.capture().libraries[0]!.quads!.length, 2);

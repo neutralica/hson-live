@@ -46,10 +46,18 @@ assert.deepEqual(nested.__proto__, { polluted: true });
 assert.equal(nested.constructor, "nested-constructor");
 assert.equal(nested.prototype, "nested-prototype");
 
-const parsed = parse_style_string("ordinary: red; __proto__: safe; constructor: own-constructor; prototype: own-prototype");
-assert_safe_record(parsed);
-assert.equal(parsed.__proto__, "safe");
+// Object decoders accept arbitrary keys; CSS text must also project unchanged.
+assert.throws(
+  () => parse_style_string("ordinary: red; __proto__: safe; constructor: own-constructor; prototype: own-prototype"),
+  { code: "INLINE_CSS_UNSUPPORTED", message: "CSS property name would change during projection." },
+);
+const parsed = parse_style_string("--__proto__: safe; constructor: own-constructor; prototype: own-prototype");
+assert.equal(Object.getPrototypeOf(parsed), Object.prototype);
+assert.equal(Object.hasOwn(parsed, "--__proto__"), true);
+assert.equal(parsed["--__proto__"], "safe");
 assert.equal(parsed.constructor, "own-constructor");
 assert.equal(parsed.prototype, "own-prototype");
+assert.equal(Object.hasOwn(parsed, "__proto__"), false);
+assert.equal(({} as Record<string, unknown>).polluted, undefined);
 
-process.stdout.write("ok 1 - arbitrary style names remain safe own properties in all style decoders\n1..1\n");
+process.stdout.write("ok 1 - arbitrary object keys stay safe and CSS names must project unchanged\n1..1\n");

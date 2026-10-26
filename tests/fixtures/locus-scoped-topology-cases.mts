@@ -22,7 +22,7 @@ import { local_initializers } from "../helpers/client-projection.mts";
 import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
 import { create_persistent_locus_hosted_aggregate_internal as persist, load_persistent_locus_hosted_aggregate_internal as resume,
   checkpoint_libraries_equal } from "../../src/api/locus/locus.aggregate.persistence.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 
 const parts = { parts: {
   leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>',
@@ -32,7 +32,7 @@ const parts = { parts: {
   secret: { kind: "document", document: '<p "PRIVATE_UNUSED_PART"/>' },
 } } as const;
 const page = { document: '<main @:root <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <hson-part lib="parts" at="global"/> <footer @:footer/>/>' };
-const css = parse_document_stylesheet('[hson\\:quad="footer"]{color:purple}main{display:block}', []);
+const css = structured_css_fixture('[hson\\:quad="footer"]{color:purple}main{display:block}');
 const initialCatalog = [{ name: "parts", ownership: "private" }, { name: "initial", ownership: "shared" }, { name: "hidden", ownership: "private" }] as const;
 const additions = [{ name: "page", ownership: "shared" }, { name: "data", ownership: "shared" }] as const;
 const catalog = [...initialCatalog, ...additions];
@@ -69,7 +69,8 @@ export async function topology_tail_fixture() {
   assert.ok(oldIds.every(q => a.identityEpoch().issued().has(q))); assert.ok(equal(initialState, state(map, "initial")));
   assert.deepEqual(commit.topology!.operation.libraries.map(e => e.name), ["page", "data"]);
   assert.equal(state(map).scopes.occurrences.length, 5);
-  assert.equal(state(map).css.keyframes.length, 1); assert.equal(state(map).css.properties.length, 1);
+  assert.equal(state(map).css.keyframes.length, 0); assert.equal(state(map).css.properties.length, 0);
+  assert.match(JSON.stringify(state(map).css.order), /@keyframes/);
   assert.deepEqual(state(map).scopes.occurrences.map(o => o.parent), [null, [0, 0, 0], null, [0, 0, 1], null]);
   assert.deepEqual(state(map).scopes.document.map(b => [b.name, b.kind]), [["footer", "element"], ["left", "part"], ["root", "element"]]);
   assert.throws(() => make_portable_aggregate_commit(commit), /Echo/);

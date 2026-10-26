@@ -1,4 +1,5 @@
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
+import { resolve_document_css_action_subjects } from "../../internal/css/document-css-action-subjects.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import { ExactDataCarrier, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
 import type {
@@ -1444,7 +1445,30 @@ export function create_locus_hosted_aggregate_authority_internal<
           executeDocument: (draft: LocusHostedAggregateStageWriter) => {
             const target = draft.doc.must(libraryName);
             if (!("graph" in target)) throw new Error("Hosted document action library is not a document Library.");
-            resolution.execute(document_action_target(target, aggregate, identity));
+            const actionTarget = document_action_target(target, aggregate, identity);
+            resolution.execute({ ...actionTarget, css: (operation, subjectContext) => {
+              // Authority work survives transport detach, but never session revocation
+              // or removal of the selected Library's current projection/write grant.
+              const projection = origin.kind === "session" ? sessions.projection(origin.sessionId) : undefined;
+              if (origin.kind === "session" && (projection === undefined
+                || !projection.includesLibrary(libraryName) || !projection.canAuthorDocument(libraryName))) {
+                throw new Error("Document CSS authoring is unavailable for this session.");
+              }
+              if (subjectContext === undefined) return target.css(operation);
+              const at = subjectContext.at;
+              if (origin.kind !== "session" || at.sessionId !== origin.sessionId || projection === undefined
+                || at.logicalMapId !== locus.logicalMapId || at.incarnationId !== locus.incarnationId
+                || at.projectionSequence !== sessions.projection_sequence(origin.sessionId) || at.revision !== locus.rev) {
+                throw new Error("Document CSS subject correspondence position is stale or unauthorized.");
+              }
+              const assertCurrent = aggregate.captureFence();
+              const translated = resolve_document_css_action_subjects(operation, subjectContext, {
+                owner: identity, root: aggregate.root(identity), overlay: aggregate.documentOverlay(identity),
+                issued: aggregate.identityEpoch().issued(), scopes: aggregate.documentScopes(identity), assertCurrent,
+              });
+              assertCurrent();
+              return target.css(translated);
+            } });
           },
         });
       } else if (options.actions?.[request.name] === undefined) {

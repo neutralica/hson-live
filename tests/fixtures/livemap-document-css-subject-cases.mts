@@ -1,3 +1,4 @@
+import { replace_structured_fixture, structured_css_fixture as fixture_sheet } from "../helpers/structured-css-fixture.mts";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
@@ -8,7 +9,7 @@ import { make_livemap_from_authored_libraries_internal as authored } from "../..
 import { lookup_document_quad_internal as lookup } from "../../src/api/livemap/livemap.document.quad.ts";
 import { validate_document_path as path } from "../../src/api/livemap/livemap.document.path.ts";
 import { set_livemap_quid_candidate_source_for_tests as allocations } from "../../src/api/livemap/livemap.quid-allocation.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
 import { document_css_subject_identities } from "../../src/internal/css/css-identity-translation.ts";
 import { assert_subject_free_portable_css_operation } from "../../src/internal/css/portable-document-operations.ts";
@@ -33,7 +34,7 @@ function fixture(full = false) {
   const map = hsonLiveMap.fromLibraries({ page: { document: full ? '<html <head/> <body <button/> <aside/> <span/>/>/>' : '<main <button/> <aside/> <span/>/>' } });
   const aggregate = owner(map), library = aggregate.libraries()[0]!;
   aggregate.acquireLocalDocumentIdentity(library, path(full ? [0, 0, 1, 0, 0] : [0, 0, 0]), "123456789");
-  page(map).css.stylesheet(`${selector("123456789")}{color:red}.ordinary{color:blue}`);
+  replace_structured_fixture(page(map), `${selector("123456789")}{color:red}.ordinary{color:blue}`);
   return map;
 }
 function assertCurrentCss(map: LiveMap, expectedPaths: readonly (readonly number[])[] = [[0, 0, 0]]) {
@@ -65,7 +66,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     const ordinary = '::part(hson\\:quid){color:red}.hson\\:quid{color:red}:future(foo){color:blue}';
     for (const styled of [false, true]) {
       let map: LiveMap = styled ? fixture() : hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' } });
-      page(map).css.stylesheet(`${ordinary}${styled ? `${selector("123456789")}::part(hson\\:quad){color:green}` : ""}`);
+      replace_structured_fixture(page(map), `${ordinary}${styled ? `${selector("123456789")}::part(hson\\:quad){color:green}` : ""}`);
       const initial = page(map).css.snapshot();
       for (let cycle = 0; cycle < 3; cycle++) {
         const snapshot = map.capture();
@@ -77,7 +78,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
         }
         map = install_libraries_snapshot(snapshot).map;
       }
-      atomic(map, () => page(map).css.stylesheet(':future([hson\\:quid="123456789"]){color:red}'));
+      atomic(map, () => replace_structured_fixture(page(map), ':future([hson\\:quid="123456789"]){color:red}'));
     }
   });
   await check("ordinary CSS subjects survive recurring fresh restore without retained disposable bindings or issuance on observation", () => {
@@ -107,7 +108,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     let map = authored({ page: { document: '<main <button @:named/> <aside @:_123456789/> <span/>/>' } });
     const aggregate = owner(map), library = aggregate.libraries()[0]!;
     aggregate.acquireLocalDocumentIdentity(library, path([0, 0, 2]), "987654321");
-    page(map).css.stylesheet([lookup(page(map), "named")!.quid, lookup(page(map), "_123456789")!.quid, "987654321"]
+    replace_structured_fixture(page(map), [lookup(page(map), "named")!.quid, lookup(page(map), "_123456789")!.quid, "987654321"]
       .map(quid => `${selector(quid)}{color:red}`).join(""));
     const receiving = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/> <span/>/>' } });
     const receiver = owner(receiving), candidates = ["123456789", "aaaaaaaaa", "bbbbbbbbb"];
@@ -129,7 +130,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     const map = fixture(), document = page(map);
     map.batch(draft => { const selected = draft.doc.must("page");
       selected.attrs.set(target(0), "title", "atomic");
-      selected.css.stylesheet(`${selector("123456789")}{color:green}.ordinary{color:blue}`);
+      selected.css({domain:"css",kind:"replace",stylesheet:fixture_sheet(`${selector("123456789")}{color:green}.ordinary{color:blue}`)});
     });
     document.document.content.move(target(0, 0), 0, 1);
     assertCurrentCss(map, [[0, 0, 1]]);
@@ -137,7 +138,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     atomic(map, () => document.document.content.replace(target(0, 0), 1, { $_tag: "section", $_content: [] }));
     atomic(map, () => map.batch(draft => {
       draft.doc.must("page").at([1]).delete();
-      draft.doc.must("page").css.stylesheet(`${selector("999999999")}{color:red}`);
+      draft.doc.must("page").css({domain:"css",kind:"replace",stylesheet:fixture_sheet(`${selector("999999999")}{color:red}`)});
     }));
     for (const cssFirst of [false, true]) {
       const candidate = install_libraries_snapshot(map.capture()).map, aggregate = owner(candidate);
@@ -146,9 +147,9 @@ export async function document_css_subject_cases(check: (name: string, run: () =
       try { candidate.batch(draft => {
         const selected = draft.doc.must("page");
         if (selected.mode !== "document") throw Error("document");
-        if (cssFirst) selected.css.stylesheet(".ordinary{color:blue}");
+        if (cssFirst) selected.css({domain:"css",kind:"replace",stylesheet:fixture_sheet(".ordinary{color:blue}")});
         selected.at([1]).delete();
-        if (!cssFirst) selected.css.stylesheet(".ordinary{color:blue}");
+        if (!cssFirst) selected.css({domain:"css",kind:"replace",stylesheet:fixture_sheet(".ordinary{color:blue}")});
       }); } finally { stop(); }
       assert.equal(events, 1); assert.equal(aggregate.documentOverlay(aggregate.libraries()[0]!).pathForQuid(quid), undefined);
       assert.equal(aggregate.identityEpoch().issued().has(quid), true);
@@ -161,29 +162,29 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     for (const reference of [selector("999999999"), selector(foreignQuid), '[hson\\:quad="_123456789"]',
       '[hson\\:quid]', '[hson\\:quid^="123456789"]', '[hson\\:quid="123456789" i]',
       '[HSON\\:QUID="123456789"]', '[ns|hson\\:quid="123456789"]', ':future([hson\\:quid="123456789"])']) {
-      atomic(map, () => page(map).css.stylesheet(`${reference}{color:red}`));
+      atomic(map, () => replace_structured_fixture(page(map), `${reference}{color:red}`));
     }
-    const scopes = parse_document_stylesheet(`@scope (${selector("123456789")}){.a{color:red}}@scope ([hson\\3a quid="123456789"]){.b{color:blue}}`, []);
+    const scopes = structured_css_fixture(`@scope (${selector("123456789")}){.a{color:red}}@scope ([hson\\3a quid="123456789"]){.b{color:blue}}`, []);
     const collision = { ...scopes, rules: scopes.rules.map(rule => ({ ...rule, ruleKey: "same" })),
       order: scopes.order.map(entry => entry.kind === "group" ? { ...entry,
         entries: entry.entries.map(child => child.kind === "rule" ? { ...child, ruleKey: "same" } : child) } : entry) };
     atomic(map, () => map.batch(draft => draft.doc.must("page").css({ domain: "css", kind: "replace", stylesheet: collision })));
-    map.batch(draft => { draft.doc.must("page").css.stylesheet(""); draft.doc.must("page").at([0]).delete(); });
-    atomic(map, () => page(map).css.stylesheet(`${selector("123456789")}{color:red}`));
+    map.batch(draft => { draft.doc.must("page").css({domain:"css",kind:"replace",stylesheet:fixture_sheet("")}); draft.doc.must("page").at([0]).delete(); });
+    atomic(map, () => replace_structured_fixture(page(map), `${selector("123456789")}{color:red}`));
     const names = authored({ page: { document: '<main <button @:_123456789/> <aside/>/>' } });
     const aggregate = owner(names); aggregate.acquireLocalDocumentIdentity(aggregate.libraries()[0]!, path([0, 0, 1]), "123456789");
-    atomic(names, () => page(names).css.stylesheet(`${selector("123456789")}{color:red}`));
+    atomic(names, () => replace_structured_fixture(page(names), `${selector("123456789")}{color:red}`));
   });
   await check("negative selector lists and scope boundaries retain strict demands while syntax feature tests and declared lookalikes do not", () => {
     const map = fixture();
     for (const source of [`:not(${selector("123456789")}),.ordinary{color:red}`,
       `@scope (${selector("123456789")}) to (:not(${selector("123456789")})){.ordinary{color:red}}`]) {
-      page(map).css.stylesheet(source); assertCurrentCss(map);
+      replace_structured_fixture(page(map), source); assertCurrentCss(map);
       atomic(map, () => page(map).document.content.remove(target(0, 0), 0));
       assertCurrentCss(install_libraries_snapshot(map.capture()).map);
     }
     const ordinary = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } });
-    page(ordinary).css.stylesheet(`@supports selector(${selector("999999999")}){.ordinary{color:red}}.x{content:'[hson\\:quid="123456789"]'}`);
+    replace_structured_fixture(page(ordinary), `@supports selector(${selector("999999999")}){.ordinary{color:red}}.x{content:'[hson\\:quid="123456789"]'}`);
     const snapshot = ordinary.capture();
     assert.equal(snapshot.libraries[0]!.quads, undefined);
     assert.deepEqual(install_libraries_snapshot(snapshot).map.capture(), snapshot);
@@ -192,7 +193,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
       ruleKey: featureRule.ruleKey, scopes: featureRule.scopes, rule: featureRule }));
     page(ordinary).document.content.remove(target(0, 0), 0);
     assert.equal(owner(ordinary).identityEpoch().issued().size, 0);
-    atomic(ordinary, () => page(ordinary).css.stylesheet(`@supports selector(:future(${selector("999999999")})){.x{color:red}}`));
+    atomic(ordinary, () => replace_structured_fixture(page(ordinary), `@supports selector(:future(${selector("999999999")})){.x{color:red}}`));
   });
   await check("ordinary same-topology topology-changing exact and semantic checkpoint restoration rebind before publication", () => {
     const source = fixture(), snapshot = source.capture();
@@ -232,8 +233,8 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     const source = fixture(), aggregate = owner(source);
     source.addLibraries({ other: { document: '<main <button/> <aside/>/>' } });
     const other = aggregate.libraries()[1]!; aggregate.acquireLocalDocumentIdentity(other, path([0, 0, 0]), "987654321");
-    page(source, "other").css.stylesheet(`${selector("987654321")}{color:blue}`);
-    atomic(source, () => page(source).css.stylesheet(`${selector("987654321")}{color:red}`));
+    replace_structured_fixture(page(source, "other"), `${selector("987654321")}{color:blue}`);
+    atomic(source, () => replace_structured_fixture(page(source), `${selector("987654321")}{color:red}`));
     const receiver = hsonLiveMap.create(), receiving = owner(receiver), candidates = ["987654321", "123456789", "aaaaaaaaa", "bbbbbbbbb"];
     let calls = 0; allocations(receiving.identityEpoch().owner, () => candidates[calls++] ?? "ccccccccc");
     try { receiving.restorePortableLibraries(source.capture()); } finally { allocations(receiving.identityEpoch().owner, undefined); }
@@ -264,7 +265,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     JSON.stringify = function(value, replacer, space) {
       if (value?.format === "hson-livemap-libraries-snapshot" && !mutated) {
         mutated = true;
-        map.batch(draft => { draft.doc.must("page").at([0]).delete(); draft.doc.must("page").css.stylesheet(""); });
+        map.batch(draft => { draft.doc.must("page").at([0]).delete(); draft.doc.must("page").css({domain:"css",kind:"replace",stylesheet:fixture_sheet("")}); });
       }
       return Reflect.apply(stringify, JSON, [value, replacer, space]);
     };
@@ -290,7 +291,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
   await check("hosted flat correspondence survives durable append, tail restoration and fresh receiver issuance", async () => {
     for (const named of [false, true]) {
       const map = named ? authored({ page: { document: '<main <button @:authored/> <aside/> <span/>/>' } }) : fixture();
-      if (named) page(map).css.stylesheet(`${selector(lookup(page(map), "authored")!.quid)}{color:red}`);
+      if (named) replace_structured_fixture(page(map), `${selector(lookup(page(map), "authored")!.quid)}{color:red}`);
       owner(map).restorePortableLibraries({ ...map.capture(), revision: 0 });
       const initial = map.capture(), sender = assertCurrentCss(map)[0]!, adapter = new MemoryCheckpointAdapter();
       const logicalMapId = `flat-tail-${named}`;
@@ -367,7 +368,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
       assert.equal(echo.diagnostics().status, "live"); assert.throws(() => client.doc.must("extra")); assertCurrentCss(client);
       const aggregate = owner(client), registry = aggregate.hostedRegistry();
       const css = { domain: "css" as const, kind: "replace" as const,
-        stylesheet: parse_document_stylesheet(`${selector(sourceQuid)}{color:red}`, []) };
+        stylesheet: structured_css_fixture(`${selector(sourceQuid)}{color:red}`, []) };
       assert.throws(() => decode_portable_aggregate_commit({ format: "hson-portable-aggregate-commit",
         authority: aggregate.hostedPosition().authority, registryDigest: registry.digest,
         prevRev: 0, rev: 1, operations: [{ library: "page", domain: "css", kind: "replace", format: "hson-document-css-op", payload: JSON.stringify(css) }] },

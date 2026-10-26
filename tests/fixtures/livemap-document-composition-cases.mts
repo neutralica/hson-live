@@ -97,9 +97,8 @@ export function document_composition_cases(check: (name: string, run: () => void
     };
     const exhausted=fixture();allocator(owner(exhausted).identityEpoch().owner,()=>"invalid");
     try{atomic(exhausted,()=>replace(exhausted),/No available destination QUID for Part CSS subject/);}finally{allocator(owner(exhausted).identityEpoch().owner,undefined);}
-    const conflict=fixture('@keyframes clash{from{opacity:0}}');doc(conflict).css.stylesheet('@keyframes clash{from{opacity:1}}');let calls=0;
-    allocator(owner(conflict).identityEpoch().owner,()=>{calls++;return "123456789";});
-    try{atomic(conflict,()=>replace(conflict),/Duplicate @keyframes/);}finally{allocator(owner(conflict).identityEpoch().owner,undefined);}assert.equal(calls,0);
+    const coexist=fixture('@keyframes clash{from{opacity:0}}');doc(coexist).css.stylesheet('@keyframes clash{from{opacity:1}}');
+    assert.equal(replace(coexist).changed,true);assert.equal(doc(coexist).css.keyframes.has('clash'),false);
     const managed=fixture(),manager={};owner(managed).claimManagement(manager);
     try{atomic(managed,()=>replace(managed),batch?/batch is unavailable while this map is managed/:/exclusive Locus authority/);}finally{owner(managed).releaseManagement(manager);}
     const reentrant=fixture(),beforeGraph=doc(reentrant).root();let entered=false,after:ReturnType<LiveMap["capture"]>|undefined,commits=0;
@@ -157,7 +156,7 @@ export function document_composition_cases(check: (name: string, run: () => void
       const root = doc(map).root(), outer = root.$_content[0]; if (!is_Node(outer)) throw Error("outer");
       assert.equal(outer.$_attrs?.title, value); assert.equal(outer.$_attrs?.["data-note"], `prefix:${value}:end`);
       assert.deepEqual(leaves(root), [String(value)]);
-      const html = realize_document(root, ""); assert.doesNotMatch(html, /<雪|<script|hson-part/);
+      const html = realize_document(root, []); assert.doesNotMatch(html, /<雪|<script|hson-part/);
       assert.equal(doc(map).render(), html);
       if (typeof value === "string" && value) { assert.match(html, /&lt;/); assert.match(html, /&amp;/); assert.match(html, /&quot;/); }
     }
@@ -406,8 +405,8 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
       assert.notEqual(a,b);assert.notEqual(a.$_attrs,b.$_attrs);assert.notEqual(a.$_attrs?.style,b.$_attrs?.style);assert.notEqual(a.$_content,b.$_content);
       assert.throws(()=>doc(map).document.attrs.set({kind:"path",path:[0,0,0]},'title','Edited'),/complete scoped effects/);
       assert.equal(doc(map).document.attrs.get({kind:"path",path:[0,0,1]},'title'),undefined);
-      if(!css){assert.equal(doc(map).render(),realize_document(doc(map).root(),""));assert.match(doc(map).render(),/color.*blue/);}
-      else assert.match(doc(map).css.snapshot(),/@layer first/);
+      if(css === undefined){assert.equal(doc(map).render(),realize_document(doc(map).root(),[]));assert.match(doc(map).render(),/color.*blue/);}
+      else {assert.equal(doc(map).css.snapshot(),[css,css].join("\n\n"));assert.throws(()=>doc(map).render());}
       assert.equal(aggregate.documentOverlay(aggregate.libraries()[1]!).size,2);
     }
     const structural=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<section <style "p{color:red}"/>/>')} },page:{document:'<hson-part lib="parts" at="x"/>'}});

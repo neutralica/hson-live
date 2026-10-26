@@ -19,6 +19,8 @@ import {
 import { create_echo_aggregate_client_internal } from "./echo.aggregate-replica.js";
 import { encode_locus_portable_graph_content } from "../locus/locus.graph-content-codec.js";
 import type { EchoEndpointConnection } from "./echo.client.js";
+import { prepare_document_css_action_subjects } from "../../internal/css/document-css-action-subjects.js";
+import { document_css_subjects_internal } from "../livemap/livemap.libraries.js";
 import type {
   LocusHostedAggregateCanonicalPublication,
   LocusHostedAggregateSynchronizationOutput,
@@ -61,7 +63,17 @@ export function create_registry_echo<
       const entry = { name };
       const authority = make_echo_document_authority(
         async (action, expectedIdentity) => {
-          const payload: JsonValue = (action.name === "document.content.insert"
+          const aggregate = internal_livemap_aggregate_authority(options.map);
+          const prepareCss = () => {
+            const assertCurrent = aggregate.captureFence();
+            if (options.map.doc.must(entry.name) !== map) throw new Error("CSS subject Library was retired.");
+            if (action.name !== "document.css") throw new Error("Expected a document CSS action.");
+            const prepared = prepare_document_css_action_subjects(action.payload.operation,
+              document_css_subjects_internal(map), endpoint.captureCssActionPosition);
+            assertCurrent();
+            return Object.freeze({ library: entry.name, ...prepared });
+          };
+          const payload: JsonValue = (action.name === "document.css" ? prepareCss() : action.name === "document.content.insert"
             ? Object.freeze({ ...action.payload, library: entry.name, content: encode_locus_portable_graph_content(action.payload.content) })
             : action.name === "document.content.replace"
               ? Object.freeze({ ...action.payload, library: entry.name, replacement: encode_locus_portable_graph_content(action.payload.replacement) })

@@ -1,3 +1,4 @@
+import { legacy_flat_styled_map } from "../tests/fixtures/livemap-styled-composition-cases.mts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -37,14 +38,22 @@ const expected = {
   treeCss: nodeTree.css.snapshot(),
 };
 assert.equal(expected.mapCss, expected.treeCss);
-assert.match(expected.mapCss, /margin-left:5px;margin:0;/);
-assert.match(expected.mapCss, /content:var\(--message\);/);
+assert.equal(expected.mapCss, source);
+assert.match(expected.mapCss, /content: var\(--message\);/);
 assert.match(expected.mapCss, /padding-left: 5px;\s+padding: 0;/);
 nodeTree.remove();
+
+const mixedSource=legacy_flat_styled_map({parts:{parts:{x:{kind:'document',document:'<section <button class="target"/>/>',
+    stylesheet:'.target { border-left: 9px solid red; } /* unclosed',css:{'& button':{color:'green'}}}}},
+    page:{document:'<html <head/> <body <hson-part @:one lib="parts" at="x"/> <hson-part @:two lib="parts" at="x"/> <button class="target" id="outside"/>/>/>',stylesheet:'.target { color:red; }'}});
+const mixedCut=mixedSource.cut({html:'page',documents:['page'],data:[]});
 
 const entry = `
   import { hsonLiveMap } from "./src/api/livemap/index.ts";
   import { hsonLiveTree } from "./src/api/livetree/index.ts";
+  import { restore_portable_document_receiver_internal } from "./src/api/livemap/livemap.libraries.ts";
+  import { internal_livemap_aggregate_authority } from "./src/api/livemap/livemap.internal.ts";
+  import { continue_portable_document_internal } from "./src/api/continuation/continue-document.ts";
   import { continue_document } from "./src/api/continuation/continue-document.ts";
   import { runtime_for_tree, create_livetree_runtime, subject_for_tree, dispose_livetree_runtime } from "./src/api/livetree/runtime/livetree-runtime.ts";
   import { reflect_document_in_runtime } from "./src/api/mirror/mirror.document.ts";
@@ -88,23 +97,12 @@ const entry = `
   });
   const operations = [];
   const orderedMap=hsonLiveMap.fromLibraries({page:{document:${JSON.stringify(documentSource)}}}), orderedPage=orderedMap.doc.must("page");
-  const operationOracle={property:"color",className:"x"};
-  orderedPage.css.stylesheet('@layer { .x { color: red !important; } .x { color: blue !important; } }');
-  orderedPage.css.drop("stylesheet:1");
-  operations.push({name:'drop one anonymous member keeps the other in its occurrence',actual:nativeValue(orderedPage.css.snapshot(),operationOracle),expected:nativeValue('@layer { .x { color: blue !important; } }',operationOracle)});
-  const recreated=orderedPage.css.scope("independent","@layer").rule("recreated",".x"); recreated.set.color("red!important");
-  operations.push({name:'recreation appends a distinct anonymous occurrence',actual:nativeValue(orderedPage.css.snapshot(),operationOracle),expected:nativeValue('@layer { .x { color: blue !important; } } @layer { .x { color: red !important; } }',operationOracle)});
-  orderedPage.css.drop("stylesheet:2");recreated.set.color("green!important");
-  operations.push({name:'update after member deletion preserves new occurrence',actual:nativeValue(orderedPage.css.snapshot(),operationOracle),expected:nativeValue('@layer {} @layer { .x { color: green !important; } }',operationOracle)});
-  orderedPage.css.stylesheet('@layer { .x { color: blue !important; } .x { color: red !important; } }');
-  operations.push({name:'replacement removes prior occurrence ordering',actual:nativeValue(orderedPage.css.snapshot(),operationOracle),expected:nativeValue('@layer { .x { color: red !important; } }',operationOracle)});
+  const raw='/* native */ .x{color:red;color:blue}';
+  orderedPage.css.stylesheet(raw);orderedPage.css.drop("stylesheet:1");
+  operations.push({name:'raw text has whole contribution ownership',actual:orderedPage.css.snapshot(),expected:raw});
+  orderedPage.css.sel('.x').set.color('green');orderedPage.css.drop('sel:.x');
+  operations.push({name:'structured deletion preserves raw',actual:orderedPage.css.snapshot(),expected:raw});
   orderedPage.css.clearAll();operations.push({name:'clear removes complete managed CSS',actual:orderedPage.css.snapshot(),expected:""});
-  const reuse=hsonLiveTree.fromNode({$_tag:"main",$_content:[]},{isolated:true});
-  reuse.css.global.stylesheet('@layer { .x { color: red !important; } .x { color: blue !important; } }');
-  reuse.css.global.drop("stylesheet:2");
-  reuse.css.global.stylesheet('@layer { .x { color: blue !important; } }');
-  operations.push({name:'runtime key reuse cannot resurrect deleted anonymous membership',actual:nativeValue(reuse.css.snapshot(),operationOracle),expected:nativeValue('@layer { .x { color: red !important; } } @layer { .x { color: blue !important; } }',operationOracle)});
-  reuse.remove();
 
   // Independent native targets: the two escaped terminal characters previously shared one key.
   const selectorPairs = ${JSON.stringify([['#t\\ ', 't '], ['#t\\\u00a0','t\u00a0'], ['#t\\20 x','t x']])};
@@ -140,8 +138,8 @@ const entry = `
   const lazyCss = lazyTree.css, lazyGlobal = lazyCss.global;
   const noDemand = () => lazyTree.node.$_meta?.quid===undefined && lazyRuntime.issuedQuids.size===0 && lazyRuntime.quidToNode.size===0 && lazyMap.rev===lazyRev && lazyCommits===0 && JSON.stringify(lazyMap.capture())===lazyRecord;
   continuation.push({name:'plain mounted Mirror passive CSS/global/snapshot stays QUID-free',pass:lazyTree.css===lazyCss && lazyCss.global===lazyGlobal && lazyCss.snapshot()==='' && noDemand()});
-  let lazyRejected=false;try{lazyGlobal.stylesheet('@import url(forbidden.css);')}catch{lazyRejected=true;}
-  continuation.push({name:'rejected runtime global CSS does not issue or publish identity',pass:lazyRejected && noDemand()});
+  lazyGlobal.stylesheet('@unknown-native anything;');
+  continuation.push({name:'opaque runtime global CSS does not issue or publish identity',pass:noDemand()});
   lazyGlobal.stylesheet('.lazy{color:red}'); lazyGlobal.stylesheet('.lazy{color:green}'); lazyRuntime.cssManager.syncNow();
   const wrapper = lazyDoc.head.querySelector('hson-_style'), runtimeStyle = wrapper?.querySelector('style');
   continuation.push({name:'plain Mirror runtime-global append computes correctly in retained wrapper',pass:noDemand() && lazyFrame.contentWindow.getComputedStyle(lazyElement).color==='rgb(0, 128, 0)' && lazyMap.doc.must('page').css.snapshot()==='' && wrapper?.parentNode===lazyDoc.head && runtimeStyle?.parentNode===wrapper});
@@ -169,8 +167,8 @@ const entry = `
   adopted.tree.css.global.stylesheet(replacement);
   continuation.push({name:'bound replacement preserves owned native style identity and grouping',pass:doc.head.querySelector('style[data-hson-managed-document-css]')===style && framed.contentWindow.getComputedStyle(button).color==='rgb(0, 128, 0)' && page.css.snapshot()===adopted.tree.css.snapshot()});
   const rev=continuedMap.rev, native=style.textContent, record=JSON.stringify(continuedMap.capture());
-  let rejected=false;try{adopted.tree.css.global.stylesheet('@import "forbidden.css";');}catch{rejected=true;}
-  continuation.push({name:'rejected continued stylesheet publishes nothing',pass:rejected&&continuedMap.rev===rev&&style.textContent===native&&JSON.stringify(continuedMap.capture())===record});
+  let rejected=false;try{Reflect.apply(adopted.tree.css.global.stylesheet,undefined,[42]);}catch{rejected=true;}
+  continuation.push({name:'non-text continued stylesheet publishes nothing',pass:rejected&&continuedMap.rev===rev&&style.textContent===native&&JSON.stringify(continuedMap.capture())===record});
 
   let restoreInvocations=0;
   const getterItems=[];Object.defineProperty(getterItems,"0",{get(){restoreInvocations++;return {kind:"group",header:"@layer",entries:[]}},enumerable:true});
@@ -184,6 +182,41 @@ const entry = `
   button.click();
   continuation.push({name:'managed no-op, listener and sparse identity continuity',pass:continuedMap.rev===rev&&clicks===1&&runtime.issuedQuids.size===issued&&doc.querySelector('button')===button});
   adopted.dispose();framed.remove();
+  const mixedCut=${JSON.stringify(mixedCut)};
+  const receiver=restore_portable_document_receiver_internal(mixedCut.libs), mixed=receiver.map;
+  const ma=internal_livemap_aggregate_authority(mixed), handoff=ma.preparePortableDocumentHandoff(ma.libraries()[0],receiver.correspondence);
+  const mpage=mixed.doc.must('page'), mf=document.createElement('iframe');document.body.append(mf);
+  const md=mf.contentDocument;md.open();md.write(mixedCut.html);md.close();
+  const targets=()=>Array.from(md.querySelectorAll('section button'));
+  const texts=()=>Array.from(md.querySelectorAll('style[data-hson-managed-document-css]')).map(style=>style.textContent);
+  const firstTexts=texts(), color=el=>mf.contentWindow.getComputedStyle(el).color;
+  continuation.push({name:'opaque boundaries protect structured SSR first paint with native global raw selectors',pass:firstTexts.length===5 && firstTexts[1]==='.target { border-left: 9px solid red; } /* unclosed' && targets().every(el=>color(el)==='rgb(0, 128, 0)') && color(md.querySelector('#outside'))==='rgb(255, 0, 0)' && mf.contentWindow.getComputedStyle(md.querySelector('#outside')).borderLeftWidth==='9px'});
+  const textDescriptor=Object.getOwnPropertyDescriptor(mf.contentWindow.Node.prototype,'nodeValue'), faultText=md.querySelectorAll('style[data-hson-managed-document-css]')[4].firstChild;
+  let faulted=false,rejectedHandoff=false;
+  Object.defineProperty(mf.contentWindow.Node.prototype,'nodeValue',{...textDescriptor,set(value){textDescriptor.set.call(this,value);if(this===faultText && value===handoff.receivingCss[4] && !faulted){faulted=true;throw Error('late carrier write fault');}}});
+  try {continue_portable_document_internal({map:mixed,document:mpage,root:md.documentElement},handoff);}catch{rejectedHandoff=true;}finally{Object.defineProperty(mf.contentWindow.Node.prototype,'nodeValue',textDescriptor);}
+  continuation.push({name:'late multi-carrier handoff failure restores every carrier and portable identity',pass:faulted && rejectedHandoff && JSON.stringify(texts())===JSON.stringify(firstTexts) && !Array.from(md.querySelectorAll('*')).some(el=>el.hasAttribute('hson:quid'))});
+  const mixedContinuation=continue_portable_document_internal({map:mixed,document:mpage,root:md.documentElement},handoff);
+  continuation.push({name:'mixed continuation exactly adopts every raw and structured carrier',pass:texts().length===firstTexts.length && texts()[1]===firstTexts[1] && targets().every(el=>color(el)==='rgb(0, 128, 0)')});
+  const preserved=targets()[1];mpage.q('one').delete();
+  continuation.push({name:'Part retirement preserves sibling contribution order and native element',pass:texts().length===3 && targets()[0]===preserved && color(preserved)==='rgb(0, 128, 0)'});
+  mpage.css.rule('late','.target').set.color('blue!important');
+  continuation.push({name:'structured append stays after opaque and owned contributions',pass:color(preserved)==='rgb(0, 0, 255)' && texts().length===3});
+  mpage.css.drop('late');mpage.q('two').delete();
+  continuation.push({name:'retiring all Parts leaves independent Document raw carrier',pass:texts().length===1 && texts()[0]==='.target { color:red; }'});
+  mpage.css.stylesheet('/* malformed');mpage.css.sel('.target').set.color('purple');
+  continuation.push({name:'malformed replacement cannot consume later structured carrier',pass:texts().length===2 && color(md.querySelector('#outside'))==='rgb(128, 0, 128)'});
+  mpage.css.stylesheet('');
+  continuation.push({name:'empty opaque carrier survives exact continuation and replacement',pass:texts().length===1 && texts()[0]===''});
+  mixedContinuation.dispose();mf.remove();
+  const runtimeFrame=document.createElement('iframe');document.body.append(runtimeFrame);const rd=runtimeFrame.contentDocument;
+  const rt=hsonLiveTree.fromHson('<main class="standalone"/>',{isolated:true});rd.body.append(project_livetree(subject_for_tree(rt),"html",runtime_for_tree(rt),rd));
+  rt.css.global.stylesheet('/* unclosed');rt.css.global.sel('.standalone').set.color('green');rt.css.global.stylesheet('.standalone { padding-left:13px; }');rt.css.global.rule('late','.standalone').set.opacity('.5');
+  runtime_for_tree(rt).cssManager.syncNow();
+  const rs=Array.from(rd.querySelectorAll('hson-_style style'));
+  continuation.push({name:'standalone append isolates malformed text and retains call order',pass:rs.length===4 && rs[0].textContent==='/* unclosed' && rs[2].textContent==='.standalone { padding-left:13px; }' && runtimeFrame.contentWindow.getComputedStyle(rt.dom.el()).color==='rgb(0, 128, 0)' && runtimeFrame.contentWindow.getComputedStyle(rt.dom.el()).paddingLeft==='13px'});
+  rt.remove();runtimeFrame.remove();
+
   requestAnimationFrame(() => {
     const result = {
       semantics, continuation, operations, selectorChecks,
@@ -194,7 +227,7 @@ const entry = `
     };
     document.body.setAttribute("data-result", encodeURIComponent(JSON.stringify(result)));
   });
-  })().catch(error => document.body.dataset.error=encodeURIComponent(String(error.stack ?? error)));
+  })().catch(error => document.body.dataset.error=encodeURIComponent(String(error.stack ?? error)+" CAUSE: "+String(error.cause?.stack ?? error.cause)+" INNER: "+String(error.cause?.cause?.stack ?? error.cause?.cause)));
 `;
 const snapshot = process.argv.find(arg => arg.startsWith("--source-snapshot="))?.slice("--source-snapshot=".length);
 const plugins = snapshot ? [{name:"original-source", setup(b) { b.onLoad({filter:/\/src\/.*\.ts$/}, async ({path}) => ({contents:await readFile(join(snapshot,relative(resolve("."),path)),"utf8"),loader:"ts"})); }}] : [];

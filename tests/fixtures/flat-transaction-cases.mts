@@ -7,7 +7,7 @@ import { internal_livemap_aggregate_authority as owner } from "../../src/api/liv
 import { lookup_document_quad_internal as lookup } from "../../src/api/livemap/livemap.document.quad.ts";
 import { enumerate_livemap_issued_quids as issued } from "../../src/api/livemap/livemap.identity-epoch.ts";
 import { encode_authoritative_scoped_commit } from "../../src/api/livemap/livemap.hosted.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 import { echo_map_internal } from "../../src/internal/governor-maps.ts";
 import { create_persistent_locus_hosted_aggregate_internal as persist,
   load_persistent_locus_hosted_aggregate_internal as load, checkpoint_libraries_equal, durable_aggregate_commit } from "../../src/api/locus/locus.aggregate.persistence.ts";
@@ -44,7 +44,7 @@ async function fixture() {
   const map = make_livemap_libraries({ page: { document }, other: { document }, data: { data: { n: 0 } },
     parts: { parts: { p: { kind: "document", document: '<i "Scoped"/>', stylesheet: 'i{color:green}' } } },
     scoped: { document: '<aside <hson-part lib="parts" at="p"/>/>' } }, [], undefined,
-  { page: parse_document_stylesheet(css, []), other: parse_document_stylesheet(css, []) });
+  { page: structured_css_fixture(css), other: structured_css_fixture(css) });
   const adapter = new MemoryCheckpointAdapter(), locus = await persist({ map, persistence: adapter, scopedDocuments: true });
   const lib = map.doc.must("page"); assert.ok(lib.mode === "document");
   const quid = lookup(lib, "a")!.quid;

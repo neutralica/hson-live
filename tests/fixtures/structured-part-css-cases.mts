@@ -1,4 +1,5 @@
 import { structured_css_review_cases } from "./structured-css-review-cases.mts";
+import { universal_css_map_cases } from "./universal-css-map-cases.mts";
 import { Hson } from "../../src/hson-authoring.ts";
 import assert from 'node:assert/strict';
 import { hsonLiveMap } from '../../src/api/livemap/index.ts';
@@ -33,7 +34,7 @@ export async function structured_css_cases(check: (name: string, run: () => void
     assert.deepEqual(css.rules[0]!.declarations, [['color','red']]);
     assert.ok(css.rules.some(r => r.selector === ':scope :is(a,span)'));
     assert.ok(css.rules.some(r => r.selector.includes('quad="current"')));
-    assert.ok(css.rules.some(r => r.declarations.some(([k,v]) => k === 'content' && v === '""')));
+    assert.ok(css.rules.every(r => r.declarations.every(([k]) => k !== 'content')));
     assert.ok(css.rules.some(r => r.scopes.includes('@media (max-width:480px)')));
     assert.ok(css.rules.some(r => r.scopes.includes('@media (prefers-reduced-motion:reduce)')));
     assert.equal(relative_css_selector('& :is(a,b)', '[data-owner="x"]'), '[data-owner="x"] :is(a,b)');
@@ -81,7 +82,7 @@ export async function structured_css_cases(check: (name: string, run: () => void
       assert.equal(calls,0); assert.deepEqual(m.capture(),before);
     }
   });
-  await check('undefined omission precedes initial, dynamic, direct, staged and collection replacement admission', async () => {
+  await check('undefined deletion against empty Part contributions precedes initial, dynamic, direct, staged and collection replacement admission', async () => {
     const css = { color:undefined, width:{value:2,unit:undefined}, '& a':undefined,
       $media:{screen:{color:undefined,display:'block'}, print:undefined} };
     const expected = { width:{value:2}, $media:{screen:{display:'block'}} };
@@ -132,14 +133,16 @@ export async function structured_css_cases(check: (name: string, run: () => void
     assert.throws(()=>hsonLiveMap.fromLibraries({page:{document:'<main/>',css:'main{color:red}'}} as never));
     assert.throws(()=>admit('p{color:red}'));
   });
-  await check('LiveTree setMany shares declaration validation and preserves imperative null deletion', () => {
+  await check('LiveTree setters share declaration validation and undefined deletion', () => {
     const t=hsonLiveTree.fromHson('<nav/>',{isolated:true});
     t.css.setMany({color:'red','& :is(a,b)':{fontSize:2},_hover:{color:'blue'}});
-    for(const css of [{$media:{screen:{color:'red'}}},{'@:label':{color:'red'}},
+    t.css.setMany({$media:{screen:{color:'red'}}});
+    for(const css of [{'@:label':{color:'red'}},
       {color:null},{color:true},{colour:'red'},{a:{color:'red'}},{'& a, body':{color:'red'}}]) {
       const before=t.css.snapshot();assert.throws(()=>t.css.setMany(css as never));assert.equal(t.css.snapshot(),before);
     }
-    t.css.setProp('color',null);assert.equal(t.css.get.color(),undefined);
+    assert.throws(() => Reflect.apply(t.css.setProp, t.css, ['color', null]));
+    t.css.setProp('color',undefined);assert.equal(t.css.get.color(),undefined);
   });
   await check('hosted snapshots carry scoped structured contributions without private source', async () => {
     const l=hsonLiveMap.locus.create({parts:{parts:{nav:{kind:'document',document:nav,css:style}}},
@@ -155,5 +158,6 @@ export async function structured_css_cases(check: (name: string, run: () => void
       await l.stage(w=>w.doc.page.at([1,0]).delete());assert.equal(locus_map_internal(l).doc.must('page').css.snapshot(),'');
     } finally {l.dispose();}
   });
+  await universal_css_map_cases(check);
   await structured_css_review_cases(check);
 }

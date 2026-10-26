@@ -1,3 +1,4 @@
+import type { CssMap, CssMapInputCheck, CssDeclarationValue } from "../core/style.types.js";
 import type { PropertyManager } from "./at-property.types.js";
 import type { KeyframesManager } from "./keyframes.types.js";
 import type { PropertyRegistration } from "./at-property.types.js";
@@ -11,6 +12,7 @@ export type DocumentCssOrderEntry = Readonly<{
   | { kind: "rule"; ruleKey: string; scopes: readonly string[] }
   | { kind: "property"; name: string }
   | { kind: "keyframes"; name: string }
+  | { kind: "text"; text: string }
   | { kind: "group"; header: string; entries: readonly DocumentCssOrderEntry[] }
 )>;
 
@@ -29,9 +31,7 @@ export type DocumentCssRecord = Readonly<{
 }>;
 
 /** Browser-independent value vocabulary used by document stylesheet authoring. */
-export type DocumentCssValue = string | number | boolean | null | undefined
-  | Readonly<{ value: string | number; unit?: string }>;
-export type DocumentCssMap = Readonly<Record<string, DocumentCssValue | Readonly<Record<string, DocumentCssValue>>>>;
+export type DocumentCssValue = CssDeclarationValue | undefined;
 export type DocumentCssMediaQuery = string | Readonly<{
   maxWidth?: string | number; minWidth?: string | number;
   maxHeight?: string | number; minHeight?: string | number;
@@ -49,7 +49,7 @@ export type DocumentCssRuleHandle = Readonly<{
   readonly selector: string;
   set: DocumentCssSetSurface;
   setProp: (property: string, value: DocumentCssValue) => void;
-  setMany: (declarations: DocumentCssMap) => void;
+  setMany: <const T extends CssMap>(declarations: T & CssMapInputCheck<NoInfer<T>>) => void;
   remove: (property: string) => void;
   clear: () => void;
   drop: () => void;
@@ -77,7 +77,7 @@ export type DocumentCssRuleFacade = Readonly<{
 
 /** Root-only, document-wide portable stylesheet capability. */
 export type DocumentCssHandle = DocumentCssRuleFacade & Readonly<{
-  /** Parse and replace the complete managed stylesheet as one semantic transition. */
+  /** Replace the complete managed stylesheet with one opaque text contribution. */
   stylesheet: (cssText: string) => void;
   drop: (ruleKey: string) => void;
   clearAll: () => void;
@@ -92,7 +92,8 @@ export type DocumentCssHandle = DocumentCssRuleFacade & Readonly<{
 /** The existing stylesheet authoring vocabulary with command results and no state reads. */
 type CssCommandMethods<T, TResult> = { readonly [K in keyof T]: T[K] extends (...args: infer TArgs) => unknown ? (...args: TArgs) => TResult : never };
 export type DocumentCssRuleCommands<TResult> = Readonly<{
-  rule: (ruleKey: string, selector: string) => CssCommandMethods<Pick<DocumentCssRuleHandle, "setProp" | "setMany" | "remove" | "clear" | "drop">, TResult>
+  rule: (ruleKey: string, selector: string) => CssCommandMethods<Pick<DocumentCssRuleHandle, "setProp" | "remove" | "clear" | "drop">, TResult>
+    & { readonly setMany: <const T extends CssMap>(declarations: T & CssMapInputCheck<NoInfer<T>>) => TResult }
     & Pick<DocumentCssRuleHandle, "ruleKey" | "selector"> & { readonly set: CssCommandMethods<DocumentCssSetSurface, TResult> };
   sel: (selector: string) => ReturnType<DocumentCssRuleCommands<TResult>["rule"]>;
   var: CssCommandMethods<Pick<DocumentCssVarFacade, "set" | "remove" | "clear">, TResult>;

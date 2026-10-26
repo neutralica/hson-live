@@ -10,9 +10,9 @@ import { expand_document_composition, document_composition_options } from "../..
 import { prepare_document_scoped_composition } from "../../src/api/livemap/livemap.document.scoped-composition.ts";
 import { set_livemap_quid_candidate_source_for_tests as allocator } from "../../src/api/livemap/livemap.quid-allocation.ts";
 import { encode_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
-import { parse_part_stylesheet } from "../../src/internal/css/part-stylesheet.ts";
+import { structured_part_stylesheet } from "../../src/internal/css/structured-css.ts";
 import { merge_part_stylesheets } from "../../src/internal/css/part-stylesheet.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 import { document_scoped_quads_equal, prepare_document_scoped_operations } from "../../src/api/livemap/livemap.document.scoped-composition.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
 import type { LiveMapGraphOp } from "../../src/types/livemap.types.ts";
@@ -84,7 +84,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
     const f = fixture(), c = f.initial(), root = at(c, [0, 0, 0]);
     unpublished(f, () => {
       const stylesheet = merge_part_stylesheets([encode_portable_document_stylesheet(c.stylesheet),
-        parse_document_stylesheet(`[hson\\:quid="${root.rootQuid}"]{opacity:.5}`, [])]);
+        structured_css_fixture(`[hson\\:quid="${root.rootQuid}"]{opacity:.5}`)]);
       const before = { ...c, stylesheet };
       const candidate = prepare_document_scoped_operations(before, before.scopes, [remove([0, 0], 0)], {
         identityOwner: f.aggregate.identityEpoch().owner, assertCurrent: c.assertCurrent,
@@ -110,7 +110,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
         quads: selected.quads,
       }), /changed during capture/);
     } finally { allocator(f.aggregate.identityEpoch().owner, undefined); }
-    assert.equal(calls, 0); assert.equal(f.page.css.snapshot(), 'main{padding:3px;}');
+    assert.equal(calls, 0); assert.equal(f.page.css.snapshot(), 'main{padding:3px}');
     assert.equal(f.map.parts.must("parts").at(["leaf", "document"]).snap(), '<strong @:root/>');
   });
   check("Library preparation owns complete nested named/unnamed candidates without publishing flat/scoped dual state", () => {
@@ -125,7 +125,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
       assert.equal(at(c, [0, 0, 0, 0, 0, 0, 0]).parent, left.lifetime);
       assert.equal(c.scopes.document[0]!.quid, left.rootQuid);
       assert.ok(css(c).includes('padding')); assert.ok(css(c).includes('blue')); assert.ok(css(c).includes('red'));
-      assert.equal(f.page.q("left"), undefined); assert.equal(f.page.css.snapshot(), 'main{padding:3px;}');
+      assert.equal(f.page.q("left"), undefined); assert.equal(f.page.css.snapshot(), 'main{padding:3px}');
     });
   });
   check("later insertion and movement use existing occurrence boundaries and keep exact CSS ownership", () => {
@@ -213,7 +213,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
     finally { allocator(f.aggregate.identityEpoch().owner, undefined); }
     assert.equal(f.map.rev, rev + 1); assert.equal(f.aggregate.identityEpoch().issued().size, ledger.size);
     assert.equal(f.aggregate.identityEpoch().issued().has("d00000001"), false);
-    assert.equal(f.page.css.snapshot(), 'main{padding:3px;}');
+    assert.equal(f.page.css.snapshot(), 'main{padding:3px}');
   });
   check("observation and no-op preparation issue no identities", () => {
     const f = fixture(), c = f.initial(); let calls = 0;
@@ -232,7 +232,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
     unpublished(f, () => {
       // An operation-local unit seam, not caller-authored replacement lineage.
       const composed = expand_document_composition("shell", () => source('<hson-part lib="parts" at="leaf"/>'),
-        document_composition_options(undefined), () => ({ ...source('<b @:root/>'), css: parse_part_stylesheet(':scope{color:green}') }));
+        document_composition_options(undefined), () => ({ ...source('<b @:root/>'), css: structured_part_stylesheet({color:'green'}, new Set()) }));
       const authority = { identityOwner: f.aggregate.identityEpoch().owner, assertCurrent: old.assertCurrent,
         readPart: () => { throw Error("unused"); } };
       const fresh = prepare_document_scoped_composition({ ...old, root: composed.root }, composed, authority);

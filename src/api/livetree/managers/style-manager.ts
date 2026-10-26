@@ -17,18 +17,28 @@ import { document_binding_for_node } from "../lifecycle/document-binding-state.j
 import { begin_mutation_publication } from "../lifecycle/mutation-publication.js";
 import { parse_style_string } from "../../transform/utils/attrs-utils/parse-style.js";
 import { serialize_style, inline_css_native_name } from "../../transform/utils/attrs-utils/serialize-style.js";
-import { assert_inline_css_order, assert_inline_css_value, assert_inline_css_trim_safe, InlineCssError } from "../../../internal/css/inline-css.js";
+import { assert_inline_css_order, assert_inline_css_value, assert_inline_css_contained, assert_inline_css_trim_safe, InlineCssError } from "../../../internal/css/inline-css.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../../core/public-attrs.js";
 import { render_css_declaration_value, is_typed_css_value } from "../../../core/inline-style.js";
+import { css_property_identity } from "../../../core/css-properties.js";
+
+/** Match authored/storage aliases to the decoded property emitted by inline parsing. */
+const inlinePropertyIdentity = (key: string): string => css_property_identity(inline_css_native_name(key));
 
 export const parse_style_attr = (raw: string | undefined): Map<string, string> =>
     new Map(Object.entries(parse_style_string(raw ?? "")).map(([key, value]) =>
         [inline_css_native_name(key), value]));
 
 function assertInlineProjectionSafe(value: unknown): void {
-    if (typeof value === "string") assert_inline_css_trim_safe(value);
+    if (typeof value === "string") {
+        assert_inline_css_contained(value);
+        assert_inline_css_trim_safe(value);
+    }
     else if (is_typed_css_value(value)) {
-        if (typeof value.value === "string") assert_inline_css_trim_safe(value.value);
+        if (typeof value.value === "string") {
+            assert_inline_css_contained(value.value);
+            assert_inline_css_trim_safe(value.value);
+        }
         if ("unit" in value && typeof value.unit === "string" && value.unit !== "_") {
             assert_inline_css_trim_safe(String(value.value) + value.unit);
         }
@@ -40,14 +50,14 @@ function readStyleFromNode(node: HsonNode, propCanon: string): string | undefine
     const attrs = node.$_attrs as HsonAttrs | undefined;
     const raw = attrs?.style;
 
-    const kebabKey = inline_css_native_name(propCanon);
+    const kebabKey = inlinePropertyIdentity(propCanon);
 
     if (raw && typeof raw === "object") {
         const styleObj = raw as CanonicalStyleMap;
 
         const direct = styleObj[propCanon as keyof CanonicalStyleMap];
         if (typeof direct === "string") return direct;
-        const alias = Object.keys(styleObj).find(key => inline_css_native_name(key) === kebabKey);
+        const alias = Object.keys(styleObj).find(key => inlinePropertyIdentity(key) === kebabKey);
         const value = alias === undefined ? undefined : styleObj[alias];
         return typeof value === "string" ? value : undefined;
     }
@@ -109,7 +119,7 @@ function readCanonicalStyleFromNode(node: HsonNode): CanonicalStyleMap {
  */
 export class StyleManager<TTree extends LiveTree> {
     private readonly tree: TTree;
-    public readonly setter: StyleSetter<TTree>;
+    public readonly setter: StyleSetter<TTree, true>;
 
     // read surface mirrors setter pattern
     public readonly getter: StyleGetter;
@@ -181,14 +191,14 @@ export class StyleManager<TTree extends LiveTree> {
      *     except for custom properties starting with `--`, which are left
      *     as-is.
      * - `value`:
-     *   - `null` or `undefined` → treated as `""` and removes the declaration.
+     *   - `undefined` removes the declaration; `null` rejects at the public boundary.
      *   - string/number → converted to string and applied as-is (units are
      *     the caller's responsibility).
      * - Preflights one CSS value and its ordering before publishing the
      *   complete style attribute and retained graph state.
      *
      * @param propertyName - CSS property name in camelCase or kebab-case.
-     * @param value - New value for the property, or `null` to remove it.
+     * @param value - New value for the property, or `undefined` to remove it.
      * @returns The underlying `LiveTree` instance, for chaining.
      */
     private apply(propertyName: string, value: string | number | null): LiveTree {
@@ -198,7 +208,7 @@ export class StyleManager<TTree extends LiveTree> {
     }
 
     /** Preflight the complete batch, then publish one graph/native final state. */
-    private applyMany(values: Readonly<Record<string, string>>): LiveTree {
+    private applyMany(values: Readonly<Record<string, string | undefined>>): LiveTree {
         const subject = active_subject_for_tree(this.tree);
         assert_mutation_publication_available(subject);
         if (Object.keys(values).length === 0) return this.tree;
@@ -207,15 +217,24 @@ export class StyleManager<TTree extends LiveTree> {
             throw new InlineCssError("INLINE_CSS_UNSUPPORTED", "Scalar style storage is not a declaration map; use attribute replacement or style.clear().");
         }
         const changes = new Map<string, string>();
-        for (const [name, value] of Object.entries(values)) {
+        for (const [name, inputValue] of Object.entries(values)) {
+            const value = inputValue ?? "";
             const input = name.trim();
             const property = /^(?:cssfloat|css-float)$/i.test(input) ? "float" : inline_css_native_name(input);
-            if (changes.has(property)) throw new InlineCssError("INLINE_CSS_UNSUPPORTED", "Inline CSS batch property names collide at the native property boundary.");
+            const identity = inlinePropertyIdentity(property);
+            if (changes.has(identity)) throw new InlineCssError("INLINE_CSS_UNSUPPORTED", "Inline CSS batch property names collide at the native property boundary.");
             if (value !== "") {
                 assert_inline_css_value(property, value);
+                const entries = Object.entries(parse_style_string(`${property}:${value}`));
+                const declaration = entries[0];
+                if (entries.length !== 1 || !declaration || inlinePropertyIdentity(declaration[0]) !== identity
+                    || typeof declaration[1] !== "string") {
+                    throw new InlineCssError("INLINE_CSS_UNSUPPORTED", "Inline CSS declaration identity cannot be preserved.");
+                }
+                changes.set(identity, declaration[1]);
+            } else {
+                changes.set(identity, "");
             }
-            const key = property.startsWith("-") ? property : kebab_to_camel(property);
-            changes.set(property, value === "" ? "" : parse_style_string(`${property}:${value}`)[key]);
         }
         const plan = (current: CanonicalStyleMap): CanonicalStyleMap => {
             const remaining = { ...current };
@@ -223,7 +242,7 @@ export class StyleManager<TTree extends LiveTree> {
             const additions: string[] = [];
             const writes: [string, string][] = [];
             for (const [property, value] of changes) {
-                const aliases = Object.keys(current).filter(key => inline_css_native_name(key) === property);
+                const aliases = Object.keys(current).filter(key => inlinePropertyIdentity(key) === property);
                 if (aliases.length === 1 && current[aliases[0]] === value || aliases.length === 0 && value === "") continue;
                 changed = true;
                 for (const key of aliases) delete remaining[key];
@@ -234,7 +253,7 @@ export class StyleManager<TTree extends LiveTree> {
             }
             if (!changed) return remaining;
             for (const value of Object.values(remaining)) assertInlineProjectionSafe(value);
-            const retained = Object.keys(remaining).filter(key => Boolean(render_css_declaration_value(remaining[key]))).map(inline_css_native_name).sort();
+            const retained = Object.keys(remaining).filter(key => Boolean(render_css_declaration_value(remaining[key]))).map(inlinePropertyIdentity).sort();
             if (new Set([...retained, ...additions]).size !== retained.length + additions.length) {
                 throw new InlineCssError("INLINE_CSS_UNSUPPORTED", "Style property names collide during CSS projection.");
             }
@@ -293,7 +312,7 @@ export class StyleManager<TTree extends LiveTree> {
     *   for `--custom` variables).
     * - Publishes the remaining complete style map to graph and DOM.
     *
-    * This is equivalent to calling `setProperty(propertyName, null)` but
+    * This is equivalent to calling `setProp(propertyName, undefined)` but
     * uses the dedicated removal pathway.
     *
     * @param propertyName - CSS property name in camelCase or kebab-case.

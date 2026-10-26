@@ -1,3 +1,5 @@
+import { trim_css_value_boundary } from "../../core/css-value-boundary.js";
+import { assert_css_declaration_syntax } from "./declaration-syntax.js";
 /// <reference path="../../types/css-tree-browser.d.ts" />
 import { ident, lexer, parse, tokenize, tokenTypes, walk } from "css-tree/dist/csstree.esm";
 import type { CssNode, Declaration } from "css-tree";
@@ -23,16 +25,9 @@ const unsupported = (message: string, offset = 0): never => { throw new InlineCs
 /** The existing projection uses JS trim. Refuse to feed it a value when that
  * would remove any CSS token content, at either boundary. */
 export function assert_inline_css_trim_safe(raw: string, offset = 0): void {
-  const leading = raw.length - raw.trimStart().length;
-  const trailing = raw.trimEnd().length;
-  // A prefix prevents the tokenizer treating a value-leading BOM as a
-  // stylesheet-leading BOM. Here it is declaration content, not source trivia.
-  tokenize(`:${raw}`, (type, from, to) => {
-    if (from === 0) return;
-    const start = from - 1, end = to - 1;
-    if (type !== tokenTypes.WhiteSpace && type !== tokenTypes.Comment
-      && (start < leading || end > trailing)) unsupported("Significant CSS boundary content would be lost during projection.", offset + start);
-  });
+  if (raw.trim() !== trim_css_value_boundary(raw)) {
+    unsupported("Significant CSS boundary content would be lost during projection.", offset);
+  }
 }
 
 /** Only these distinct physical longhands are proven to commute here. Other
@@ -327,13 +322,12 @@ export function assert_inline_css_order(properties: readonly string[]): void {
 }
 
 /** A setter supplies one value, never an additional declaration list. */
-export function assert_inline_css_value(property: string, value: string): void {
-  let depth = 0;
-  tokenize(value, (type, start) => {
-    if (type === tokenTypes.Function || type === tokenTypes.LeftParenthesis || type === tokenTypes.LeftSquareBracket || type === tokenTypes.LeftCurlyBracket) depth++;
-    else if (type === tokenTypes.RightParenthesis || type === tokenTypes.RightSquareBracket || type === tokenTypes.RightCurlyBracket) depth--;
-    else if (type === tokenTypes.Semicolon && depth === 0) syntax("A style setter requires one declaration value.", start);
-  });
-  const items = declarations(`${property}:${value}`);
-  if (items.length !== 1 || items[0].property !== property) syntax("A style setter requires one declaration.");
+export function assert_inline_css_value(_property: string, value: string): void {
+  assert_inline_css_contained(value);
+}
+
+/** Preserve inline diagnostics while sharing the parser-independent slot gate. */
+export function assert_inline_css_contained(value: string): void {
+  try { assert_css_declaration_syntax('', value); }
+  catch { unsupported("CSS value is outside the contained declaration language."); }
 }

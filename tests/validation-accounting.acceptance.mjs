@@ -249,6 +249,32 @@ console.log(JSON.stringify({ validationAccounting: "passed", suites: inventory.s
 const observer = pathToFileURL(resolve(root, "scripts/validation-observer.mjs")).href;
 const plainEnv = { ...process.env };
 for (const key of ["NODE_OPTIONS", "HSON_VALIDATION_EVENTS", "HSON_VALIDATION_STAGE", "HSON_VALIDATION_ROOT"]) delete plainEnv[key];
+for (const method of ["exec", "execFile"]) {
+  const code = `import assert from 'node:assert/strict';
+    import { ${method} } from 'node:child_process'; import { promisify } from 'node:util';
+    const args = ${method === "execFile"
+      ? "[process.execPath, ['-e', 'process.stdout.write(\"out\");process.stderr.write(\"err\")']]"
+      : "[JSON.stringify(process.execPath) + ' -e ' + JSON.stringify('process.stdout.write(\"out\");process.stderr.write(\"err\")')]"};
+    const promise = promisify(${method})(...args);
+    assert.equal(typeof promise.child.pid, 'number');
+    assert.deepEqual(await promise, { stdout: 'out', stderr: 'err' });
+    const failing = ${method === "execFile" ? "[process.execPath, ['-e', 'process.stdout.write(\"before\");process.stderr.write(\"bad\");process.exit(7)']]"
+      : "[JSON.stringify(process.execPath) + ' -e ' + JSON.stringify('process.stdout.write(\"before\");process.stderr.write(\"bad\");process.exit(7)')]"};
+    await assert.rejects(promisify(${method})(...failing), error => error.code === 7 && error.stdout === 'before' && error.stderr === 'bad');`;
+  const eventPath = resolve(executionRoot, `promisify-${method}.jsonl`);
+  writeFileSync(eventPath, "");
+  for (const instrumented of [false, true]) {
+    const result = spawnSync(process.execPath, [...(instrumented ? [`--import=${observer}`] : []), "--input-type=module", "-e", code], {
+      encoding: "utf8", env: instrumented ? { ...plainEnv, HSON_VALIDATION_EVENTS: eventPath, HSON_VALIDATION_ROOT: root } : plainEnv,
+    });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const events = readFileSync(eventPath, "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const commands = events.filter(event => event.type === "command-start" && event.method === method);
+  assert.equal(commands.length, 2);
+  const ids = new Set(commands.map(event => event.id));
+  assert.deepEqual(events.filter(event => event.type === "command-end" && ids.has(event.id)).map(event => event.exitStatus), [0, 7]);
+}
 const failureCases = [
   ["missing", "import {spawn} from 'node:child_process'; const child=spawn('/nonexistent-validation-fixture-command'); if(child.listenerCount('error')) process.exit(88);", 1],
   ["handled", "import {spawn} from 'node:child_process'; spawn('/nonexistent-validation-fixture-command').once('error',e=>{process.exitCode=e.code==='ENOENT'?23:88});", 23],

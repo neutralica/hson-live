@@ -6,7 +6,7 @@ import { css_property, normalize_css_map } from '../../src/core/css-map.ts';
 import { trim_css_value_boundary } from '../../src/core/css-value-boundary.ts';
 import { normalize_css_key, canon_to_css_prop } from '../../src/api/transform/utils/attrs-utils/normalize-css.ts';
 import { structured_part_stylesheet } from '../../src/internal/css/structured-css.ts';
-import { parse_part_stylesheet } from '../../src/internal/css/part-stylesheet.ts';
+import { structured_css_fixture } from '../helpers/structured-css-fixture.mts';
 import { trim_managed_css } from '../../src/internal/css/managed-css-lexical.ts';
 import { css_property_inventory } from '../../scripts/css-property-inventory.mts';
 import { internal_livemap_aggregate_authority as authority } from '../../src/api/livemap/livemap.internal.ts';
@@ -19,8 +19,8 @@ export async function structured_css_review_cases(check: (name: string, run: () 
   await check('review 1: CSS token boundaries survive structured rendering and match textual declarations', () => {
     const values=['\u00a0red\u00a0','\\ ','\\31 ','red\\  ','  red  ','\u2003red\u2003','λ','"λ \u00a0"','/*lead*/ red /*tail*/ ','calc(1px + 2px)','var(--x, "a,b")'];
     for (const property of ['--x','font-family']) for (const value of values) {
-      const structured=record({[property]:value}), textual=parse_part_stylesheet(`:scope{${property}:${value}}`);
-      assert.deepEqual(structured.rules[0]!.declarations,textual.rules[0]!.declarations,`${property}:${value}`);
+      const structured=record({[property]:value});
+      assert.deepEqual(structured.rules[0]!.declarations,[[property,trim_css_value_boundary(value)]],`${property}:${value}`);
       assert.equal(trim_css_value_boundary(value),trim_managed_css(value));
     }
     assert.deepEqual(record({width:{value:' 2 ',unit:'rem'},height:2}).rules.map(r=>r.declarations),[[['width','2rem']],[['height','2']]]);
@@ -77,10 +77,9 @@ export async function structured_css_review_cases(check: (name: string, run: () 
   await check('structured flat output retains textual selector, declaration, media and order behavior', () => {
     const css={color:'red','&:is(:hover,a)':{WebkitTransform:'none',__before:{color:'blue'}},
       '@:label':{'& [data-x="a,b"]':{'--x':'\\31 '}},$media:{'screen, print':{opacity:1,'@:label':{color:'green'}}}};
-    assert.deepEqual(record(css),parse_part_stylesheet(`:scope{color:red}
+    assert.deepEqual(record(css),structured_css_fixture(`:scope{color:red}
        :scope:is(:hover,a){-webkit-transform:none}
       :scope:is(:hover,a)::before{color:blue}
-      :scope:is(:hover,a)::before{content:""}
       [hson\\:quad="label"] [data-x="a,b"]{--x:\\31 }
       @media screen,print{:scope{opacity:1}[hson\\:quad="label"]{color:green}}`));
   });

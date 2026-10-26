@@ -14,10 +14,10 @@ const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection 
   libraries: connection?.principalId === "denied" ? ["data"] : requested.libraries,
 });
 export const definition = [{ "parts": { parts: {
-    panel: { kind: "document", document: '<section @:root id="%{id}" <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{border:3px solid black}' },
-    leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>',
+    panel: { kind: "document", document: '<section @:root id="%{id}" <hson-part @:child at="leaf"/>/>', stylesheet: 'section{border:3px solid black}' },
+    leaf: { kind: "document", document: '<button @:root class="raw-leaf" <span @:label "Visible"/>/>',
       // Equivalent textual controls exercise CSS-significant values before and after adoption.
-      stylesheet: ':scope{--text-nbsp:\u00a0red\u00a0;--text-space:\\ ;--text-hex:\\31 } :scope span{font-family:\u00a0review\u00a0}',
+      stylesheet: '.raw-leaf{--text-nbsp:\u00a0red\u00a0;--text-space:\\ ;--text-hex:\\31 } .raw-leaf span{font-family:\u00a0review\u00a0}',
       css: { '--review-nbsp': '\u00a0red\u00a0', '--review-space': '\\ ', '--review-hex': '\\31 ', fontFamily: '\u00a0review\u00a0', '--tone': 'rgb(10,20,30)', padding: '7px', '@:label': { color: 'var(--tone)' }, $media: { '(min-width: 0px)': { '@:label': { '--structured-media': 'present' } } } } },
     global: { kind: "document", document: '<aside "Bare"/>', stylesheet: '@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
     bare: { kind: "document", document: '<aside "Bare"/>' },
@@ -89,7 +89,7 @@ export async function scoped_ssr_cases(check: (name: string, run: () => Promise<
       assert.match(cut.html, /<section[^>]*id="left"><button[^>]*><span/);
       assert.match(cut.html, /<aside[^>]*>Bare<\/aside>/);
       assert.match(cut.html, /@keyframes pulse/); assert.match(cut.html, /@property --tone/);
-      assert.ok(cut.html.indexOf('p{color:red;}') < cut.html.indexOf('p{color:rgb(40,50,60);}'));
+      assert.ok(cut.html.indexOf('p{color:red}') < cut.html.indexOf('p{CoLoR:rgb(40,50,60)}'));
       const flat = session.now({ html: "flat" }); assert_cut(flat);
       assert.equal(flat.libs.libraries.find(e => e.name === "flat")!.scopes, undefined);
       assert.equal(flat.html, locus.doc.must("flat").render());

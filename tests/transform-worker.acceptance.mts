@@ -281,6 +281,11 @@ check("fully rejected untrusted markup reports sanitization failure", () => {
 });
 
 check("Worker-safe authored diagnostics retain portable codes and related positions", () => {
+  assert.equal(hsonTransform.fromHson(`"a\tb"`).toNode().$_content[0], "a\tb");
+  assert.throws(
+    () => hsonTransform.fromHson(`<a title="a\tb"/>`).toNode(),
+    (cause) => cause instanceof TransformError && cause.code === "HSON_STRING_CONTROL_UNESCAPED",
+  );
   let observed: TransformError | undefined;
   assert.throws(
     () => hsonTransform.fromHson(`<a 1 a 2>`).toNode(),
@@ -301,7 +306,7 @@ check("Worker-safe authored diagnostics retain portable codes and related positi
     }],
   });
   assert.throws(
-    () => hsonTransform.fromHson(`"a\tb"`).toNode(),
+    () => hsonTransform.fromHson(`"a\u0001b"`).toNode(),
     (cause) => cause instanceof TransformError
       && cause.code === "HSON_STRING_CONTROL_UNESCAPED"
       && cause.source?.index === 2,

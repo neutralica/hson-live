@@ -13,7 +13,7 @@ import { cut_document_ssr_internal } from "../src/api/livemap/livemap.libraries.
 import { second_repair_fixture, selector_fixture, styled_fixture } from "../tests/fixtures/livemap-styled-composition-cases.mts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { document_css_subject_identities } from "../src/internal/css/css-identity-translation.ts";
-import { encode_portable_document_stylesheet } from "../src/internal/css/portable-document-stylesheet.ts";
+import { encode_portable_document_stylesheet, decode_portable_document_stylesheet, render_portable_document_stylesheet_carriers } from "../src/internal/css/portable-document-stylesheet.ts";
 import { fixture as scoped_fixture, node as scoped_node } from "../tests/fixtures/locus-scoped-ssr-cases.mts";
 import { hosted_flat_subject_fixture } from "../tests/fixtures/hosted-styled-part-ssr-cases.mts";
 
@@ -196,7 +196,7 @@ try {
     assert.deepEqual(visual.left, empty || retired ? null : {border:'3px',margin:'11px',padding:changed?'11px':'7px',color:changed?'rgb(70, 80, 90)':'rgb(10, 20, 30)'});
     assert.deepEqual(visual.right, empty ? null : {border:'3px',margin:'13px',padding:'7px',color:'rgb(10, 20, 30)'});
     assert.equal(visual.outside, 'rgb(40, 50, 60)');
-    assert.equal(visual.connectors, 0); assert.equal(visual.executed, null); assert.equal(visual.foreign, false); assert.equal(visual.styles, 1);
+    assert.equal(visual.connectors, 0); assert.equal(visual.executed, null); assert.equal(visual.foreign, false); assert.equal(visual.styles, render_portable_document_stylesheet_carriers(decode_portable_document_stylesheet(captured.libs.libraries.find(e=>e.name==='page').css)).length);
     assert.deepEqual(visual.markers.sort(), captured.libs.libraries.find(e=>e.name==='page').scopes.subjects.map(s=>s.name).sort());
     console.log(`Chrome scoped hosted JavaScript-disabled first paint ${path}: ${JSON.stringify(visual)}`);
   }

@@ -13,7 +13,8 @@ import {
   is_locus_json_value,
 } from "./locus.protocol.js";
 import { decode_locus_portable_graph_content } from "./locus.graph-content-codec.js";
-import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
+import { assert_subject_free_portable_css_operation, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
+import { decode_document_css_action_subject_context, type DocumentCssActionSubjectContext } from "../../internal/css/document-css-action-subjects.js";
 
 export type LocusDocumentActionResolution =
   | Readonly<{ kind: "not-document-action" }>
@@ -25,7 +26,7 @@ export type LocusDocumentActionResolution =
 export type LocusDocumentActionTarget = Readonly<{
   mode: "document";
   css?: import("../../types/document-css.types.js").DocumentCssHandle
-    | ((operation: import("../../types/livemap.types.js").LiveMapCssOp) => unknown);
+    | ((operation: import("../../types/livemap.types.js").LiveMapCssOp, subjectContext?: DocumentCssActionSubjectContext) => unknown);
   document: Readonly<{
     attrs: Readonly<{
       set: (...args: Parameters<LiveMapDocumentApi["attrs"]["set"]>) => unknown;
@@ -74,14 +75,19 @@ export function resolve_locus_document_action(
   }
 
   if (name === "document.css") {
-    if (!has_exact_keys(payload, ["operation"])) return invalid_fields(name);
+    if (!has_exact_keys(payload, Object.hasOwn(payload, "subjectContext") ? ["operation", "subjectContext"] : ["operation"])) return invalid_fields(name);
     let operation: import("../../types/livemap.types.js").LiveMapCssOp;
-    try { operation = canonical_portable_document_css_op(payload.operation); }
+    let subjectContext: DocumentCssActionSubjectContext | undefined;
+    try {
+      operation = canonical_portable_document_css_op(payload.operation);
+      if (Object.hasOwn(payload, "subjectContext")) subjectContext = decode_document_css_action_subject_context(payload.subjectContext);
+      else assert_subject_free_portable_css_operation(operation);
+    }
     catch { return Object.freeze({ kind: "invalid", message: "Locus document CSS operation is invalid." }); }
-    return Object.freeze({ kind: "ready", payload: decoded_action_payload({ operation }),
+    return Object.freeze({ kind: "ready", payload: decoded_action_payload({ operation, ...(subjectContext === undefined ? {} : { subjectContext }) }),
       execute: (targetMap = map) => {
         if (typeof targetMap.css !== "function") throw new Error("Hosted document CSS requires its authority draft.");
-        return targetMap.css(operation);
+        return targetMap.css(operation, subjectContext);
       } });
   }
 

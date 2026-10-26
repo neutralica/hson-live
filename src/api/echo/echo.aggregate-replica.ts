@@ -34,6 +34,7 @@ import {
   type EchoAggregateReplicaCapability,
 } from "./echo.aggregate-replica.lifecycle.js";
 import type { EchoSynchronizationOutput } from "../../types/echo.transport.types.js";
+import type { DocumentCssActionPosition } from "../../internal/css/document-css-action-subjects.js";
 
 
 type HostedPlanOutcome = "current" | "replay" | "reconcile" | "reject";
@@ -80,6 +81,7 @@ export type EchoAggregateClient = Readonly<{
   readonly registryDigest: string | undefined;
   readonly lastAppliedRev: number | undefined;
   readonly lastRecoveryOutcome: Exclude<HostedPlanOutcome, "reject"> | undefined;
+  captureCssActionPosition: () => Readonly<{ at: DocumentCssActionPosition; assertCurrent: () => void }>;
   observeAuthorityPosition: (listener: (revision: number) => void) => LocusDisposer;
   /** @internal Exact aggregate replica owner used by full-Echo composition. */
   readonly replica: EchoAggregateReplicaCapability;
@@ -920,6 +922,26 @@ function create_registry_echo_semantic_client_internal<
     get registryDigest() { return registryDigest; },
     get lastAppliedRev() { return authorityRev; },
     get lastRecoveryOutcome() { return lastRecoveryOutcome; },
+    captureCssActionPosition() {
+      const assertReplica = replica.captureRestorationFence();
+      const sessionId = endpoint.session.sessionId, epoch = endpoint.session.epoch;
+      if (!endpoint.ready || !replica.ready || authorityRev === undefined || incarnationId === undefined || sessionId === undefined) {
+        throw new Error("CSS subject correspondence requires a current authenticated replica.");
+      }
+      const at = Object.freeze({ logicalMapId: clientLogicalMapId, incarnationId, sessionId,
+        revision: authorityRev, projectionSequence });
+      const digest = projectionDigest;
+      const assertCurrent = () => {
+        assertReplica();
+        if (!endpoint.ready || !replica.ready || endpoint.session.sessionId !== sessionId || endpoint.session.epoch !== epoch
+          || incarnationId !== at.incarnationId || authorityRev !== at.revision
+          || projectionSequence !== at.projectionSequence || projectionDigest !== digest) {
+          throw new Error("CSS subject correspondence projection changed before dispatch.");
+        }
+      };
+      assertCurrent();
+      return Object.freeze({ at, assertCurrent });
+    },
     observeAuthorityPosition(listener) {
       authorityPositionListeners.add(listener);
       return () => authorityPositionListeners.delete(listener);

@@ -25,6 +25,7 @@ export type CorpusTaxonomy = Readonly<{
 
 export type CorpusExpectedOutputs = Readonly<{
   hson?: string;
+  compactHson?: string;
   json?: string;
   html?: string;
   diagnostic?: string;

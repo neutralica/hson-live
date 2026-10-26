@@ -1,15 +1,16 @@
+import { selector_for_quid } from "../livetree/managers/css-render.js";
 import { assert_part_public_path } from "../../core/part-css-access.js";
 import { normalize_part_css_authoring, part_object_boundary } from "../../core/part-css-authoring.js";
 import { document_markup, document_hson } from "../../internal/document-representation.js";
 import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
 import { attach_part_write, write_part_invocation } from "../../internal/part-write.js";
-import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
 import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
 import { data_path_kind, data_location_check, require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { project_interaction_state_internal } from "../interactions/interactions.projection.js";
-import { render_portable_document_stylesheet, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { render_portable_document_stylesheet_carriers, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { LiveMapCutOptions, LiveMapCut, LiveMapHtmlCut } from "../../types/livemap.types.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import { clone_node } from "../../core/clone-node.js";
@@ -251,6 +252,7 @@ export function add_livemap_canonical_libraries_internal(
 const PUBLIC_MULTI_LIBRARY_MAPS = new WeakMap<object, (name: string) => FamilySelection<LiveMapDataLibrary | LiveMapDocumentLibrary> | undefined>();
 const CLIENT_LIBRARY_SOURCES = new WeakMap<object, "authority-projected" | "client-local">();
 const DOCUMENT_CSS_STATE = new WeakMap<object, () => import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet>();
+const DOCUMENT_CSS_SUBJECTS = new WeakMap<object, () => import("../../internal/css/document-css-action-subjects.js").DocumentCssActionDocument>();
 const DOCUMENT_CSS_COMMIT = new WeakMap<object, (operation: import("../../types/livemap.types.js").LiveMapCssOp) => void>();
 const DOCUMENT_SSR_CAPTURE = new WeakMap<object, (demanded: readonly string[]) => import("./livemap.internal.js").DocumentSsrCandidate>();
 const DOCUMENT_SSR_CUT = new WeakMap<object, (options: LiveMapCutOptions, demanded: readonly string[]) => LiveMapHtmlCut>();
@@ -265,7 +267,7 @@ export function capture_document_ssr_internal(document: object, demanded: readon
 /** Opt-in render using one detached graph/CSS/correspondence candidate. @internal */
 export function render_document_ssr_internal(document: object, demanded: readonly string[]) {
   const candidate = capture_document_ssr_internal(document, demanded);
-  return realize_document(candidate.root, render_portable_document_stylesheet(decode_portable_document_stylesheet(candidate.css)), { quads: candidate.quads });
+  return realize_document(candidate.root, render_portable_document_stylesheet_carriers(decode_portable_document_stylesheet(candidate.css)), { quads: candidate.quads });
 }
 
 /** Opt-in local SSR cut; its portable siblings share the selected candidate. @internal */
@@ -282,13 +284,37 @@ export function document_css_state_internal(document: LiveMapDocumentLibrary): i
   return read();
 }
 
+/** Borrow current subject evidence from the selected Library's existing owner. @internal */
+export function document_css_subjects_internal(document: LiveMapDocumentLibrary): import("../../internal/css/document-css-action-subjects.js").DocumentCssActionDocument {
+  const read = DOCUMENT_CSS_SUBJECTS.get(document);
+  if (read === undefined) throw new Error("Document CSS subject authority is unavailable.");
+  return read();
+}
+
 /** @internal Commit an already-canonical local CSS operation through its owning LiveMap. */
-export function commit_document_css_internal(document: LiveMapDocumentLibrary, operation: import("../../types/livemap.types.js").LiveMapCssOp): void {
+export function commit_document_css_internal(document: object, operation: import("../../types/livemap.types.js").LiveMapCssOp): void {
   const commit = DOCUMENT_CSS_COMMIT.get(document);
   if (commit === undefined) throw new Error("Document CSS authority is unavailable.");
   commit(operation);
 }
 const CLIENT_LIBRARY_RETIREMENT = new WeakMap<object, Set<() => void>>();
+const DOCUMENT_CSS_RECONCILIATION = new WeakMap<object, Set<() => void>>();
+
+/** Retry pending native work at existing CSS handle boundaries, including semantic no-ops. @internal */
+export function observe_document_css_reconciliation_internal(document: object, retry: () => void): () => void {
+  const listeners = DOCUMENT_CSS_RECONCILIATION.get(document) ?? new Set<() => void>();
+  listeners.add(retry);
+  DOCUMENT_CSS_RECONCILIATION.set(document, listeners);
+  return () => { listeners.delete(retry); };
+}
+
+function reconcile_document_css(document: object): void {
+  const failures: unknown[] = [];
+  for (const retry of [...(DOCUMENT_CSS_RECONCILIATION.get(document) ?? [])]) {
+    try { retry(); } catch (cause) { failures.push(cause); }
+  }
+  if (failures.length) throw new AggregateError(failures, "Document CSS native reconciliation is incomplete.");
+}
 const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot, scoped?: boolean, assertAcceptance?: () => void) => void>();
 const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (definitions: readonly CanonicalLibraryDefinition[],
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>, installed?: () => void, assertAcceptance?: () => void) => LiveMapCommit>();
@@ -683,9 +709,9 @@ function make_livemap_library_receiver(
     const document = captured.libraries.find(library => library.name === html);
     if (document?.css === undefined) throw new Error("Cut document stylesheet is unavailable.");
     const realization = ssr !== undefined
-      ? realize_document(ssr.root, render_portable_document_stylesheet(decode_portable_document_stylesheet(ssr.css)), { quads: ssr.quads })
+      ? realize_document(ssr.root, render_portable_document_stylesheet_carriers(decode_portable_document_stylesheet(ssr.css)), { quads: ssr.quads })
       : realize_document(decode_hosted_root(document.root, HOSTED_MAX_SNAPSHOT_BYTES),
-        render_portable_document_stylesheet(decode_portable_document_stylesheet(document.css)),
+        render_portable_document_stylesheet_carriers(decode_portable_document_stylesheet(document.css)),
         document_css_subject_identities(document.css, "inbound").length ? { quads: document.quads } : undefined);
     return Object.freeze({ libs, document: html, html: realization });
   }
@@ -806,7 +832,9 @@ function make_livemap_library_receiver(
         staged.close();
       }
     });
-    return public_commit(aggregate.commit(writes));
+    const accepted = aggregate.commit(writes);
+    if (!accepted.changed) for (const facade of selectedFacades.values()) reconcile_document_css(facade);
+    return public_commit(accepted);
   };
 
   const libraries = Object.freeze({
@@ -1648,14 +1676,22 @@ function make_document_library(
 
   const snap = () => document_markup(root())!;
   const hson = () => document_hson(root())!;
+  const commitCss = (operation: import("../../types/livemap.types.js").LiveMapCssOp): void => {
+    reconcile_document_css(facade);
+    aggregate.commitStylesheet(library.identity, operation);
+  };
   const facade: LiveMapDocumentLibrary = {
     mode: "document" as const,
     snap, hson, must: required_reads(snap, hson),
     watch: listener => raw_at([]).watch(() => listener(snap())),
     get rev() { aggregate.librarySchema(library.identity); return aggregate.inspect().revision; },
     css: make_livemap_document_css(
-      () => aggregate.stylesheet(library.identity),
-      (operation) => { aggregate.commitStylesheet(library.identity, operation); },
+      () => { reconcile_document_css(facade); return aggregate.stylesheet(library.identity); },
+      commitCss,
+      name => {
+        const subject = aggregate.documentQuad(library.identity, name, undefined);
+        return subject === undefined ? undefined : selector_for_quid(subject.quid);
+      },
     ),
     root: () => clone_node(root()),
     at: (path) => wrap_location(raw_at(path)),
@@ -1716,7 +1752,13 @@ function make_document_library(
   const selected = Object.freeze(facade);
   DOCUMENT_SSR_CAPTURE.set(selected, demanded => aggregate.captureDocumentSsr(library.identity, demanded));
   DOCUMENT_CSS_STATE.set(selected, () => aggregate.stylesheet(library.identity));
-  DOCUMENT_CSS_COMMIT.set(selected, (operation) => { aggregate.commitStylesheet(library.identity, operation); });
+  DOCUMENT_CSS_SUBJECTS.set(selected, () => {
+    const assertCurrent = aggregate.captureFence();
+    return { owner: library.identity, root: aggregate.root(library.identity),
+      overlay: aggregate.documentOverlay(library.identity), issued: aggregate.identityEpoch().issued(),
+      scopes: aggregate.documentScopes(library.identity), assertCurrent };
+  });
+  DOCUMENT_CSS_COMMIT.set(selected, commitCss);
   register_internal_authority_position_observer(selected, aggregate.observeAuthorityPosition);
   return selected;
 }
@@ -1766,7 +1808,7 @@ function must_library_input(name: string, value: unknown, metadata?: {
     if (Object.hasOwn(selected, "stylesheet") && !hasDocument) throw new TypeError("Initial CSS requires a document definition.");
     if (selected.stylesheet !== undefined) {
       if (typeof selected.stylesheet !== "string") throw new TypeError("Document CSS requires stylesheet text.");
-      metadata.css[name] = parse_document_stylesheet(selected.stylesheet, []);
+      metadata.css[name] = opaque_document_stylesheet(selected.stylesheet);
     }
     delete selected.access;
     delete selected.stylesheet;

@@ -7,8 +7,7 @@ import { encode_portable_document_stylesheet } from "../../src/internal/css/port
 import { document_css_subject_identities, translate_document_css_identities } from "../../src/internal/css/css-identity-translation.ts";
 import { make_portable_aggregate_commit, type HostedAggregateCommit } from "../../src/api/livemap/livemap.hosted.ts";
 import { durable_aggregate_commit } from "../../src/api/locus/locus.aggregate.persistence.ts";
-import { parse_part_stylesheet } from "../../src/internal/css/part-stylesheet.ts";
-import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
+import { opaque_document_stylesheet } from "../../src/internal/css/opaque-stylesheet.ts";
 import { read_livemap_part_internal as readPart, make_livemap_mirror_from_semantic_checkpoint_internal } from "../../src/api/livemap/livemap.libraries.ts";
 import { parse_authored_document_library, document_quad_disposition } from "../../src/api/livemap/livemap.document.quad.ts";
 import { expand_document_composition, document_composition_options } from "../../src/api/livemap/livemap.document.composition.ts";
@@ -41,345 +40,111 @@ function atomic(map: LiveMap, run: () => unknown, reason?: RegExp) {
   try { if (reason) assert.throws(run, reason); else assert.throws(run); } finally { off(); }
   assert.deepEqual(map.capture(), before); assert.equal(owner(map).identityEpoch().issued(), ledger); assert.equal(events, 0);
 }
+const styled_part = (document: string, css: import('../../src/core/style.types.ts').CssMap) => ({kind:'document' as const,document,css});
 export function styled_fixture(count = 3) {
   const connectors = Array.from({ length: count }, (_, i) => `<hson-part ${i < 2 ? `@:slot${i}` : ""} lib="parts" at="button" id="instance${i}"/>`).join(" ");
-  return legacy_flat_styled_map({ parts: { parts: { button: part('<section @:root id="%{id}" <span @:label class="label" "Label"/> <i @:unused/> <hson-part at="child" label="%{id}"/>/>',
-    'section{border:3px solid rgb(1,2,3);--tone:rgb(10,20,30)} span{color:var(--tone);@media screen{padding-left:7px}} @layer buttons{@supports(display:grid){section{button{color:rgb(60,70,80);&.active{padding-left:11px}}}}}'), child: part('<button id="%{label}-button" class="active" "Nested"/>', '') } },
-    page: { document: `<html <head/> <body <main ${connectors}/> <aside id="unrelated" <span class="label" "Unrelated"/> <button class="active" id="outside-button" "Outside"/>/>/>/>` } });
+  return legacy_flat_styled_map({ parts: { parts: { button: styled_part('<section @:root id="%{id}" <span @:label class="label" "Label"/> <i @:unused/> <hson-part at="child" label="%{id}"/>/>',
+    {border:'3px solid rgb(1,2,3)','--tone':'rgb(10,20,30)','& span':{color:'var(--tone)'},$media:{screen:{'& span':{paddingLeft:'7px'}}},'& button':{color:'rgb(60,70,80)','&.active':{paddingLeft:'11px'}}}),
+    child:{kind:'document',document:'<button id="%{label}-button" class="active" "Nested"/>'} } },
+    page:{document:`<html <head/> <body <main ${connectors}/> <aside id="unrelated" <span class="label" "Unrelated"/> <button class="active" id="outside-button" "Outside"/>/>/>/>`} });
 }
-/** Shared by Node/Worker admission and JavaScript-disabled real Chrome assertions. */
+/** Browser scoping oracles use structured authoring; raw text has separate isolation oracles. */
 export function selector_fixture() {
-  return legacy_flat_styled_map({ parts: { parts: {
-    bare: part('<button id="%{id}" class="bare" "Bare"/>', 'button{color:rgb(10,20,30);padding-left:13px}:is(button,.other){border-top:2px solid rgb(1,2,3)}button::before{content:"ok"}button,#never{padding-right:22px}.bare{padding-right:24px}'),
-    ancestor: part('<section id="%{id}" class="a" <button id="%{id}-child" class="b" "Child"/> <div class="local" <button id="%{id}-deep" class="deep" "Deep"/>/> <hson-part at="leaf" id="%{id}-nested"/>/>',
-      'section{border-top:5px solid rgb(1,2,3)}section button{color:rgb(40,50,60)}button{margin-left:17px}' +
-      '.a{button{padding-left:14px}.b{border-top:4px solid rgb(4,5,6)}button,&>.b{padding-right:15px}&>.b,button{margin-top:16px}' +
-      '.local,.unused{button,.unused{word-spacing:6px}}}' +
-      '@media screen{.a{@supports(display:grid){button{padding-bottom:18px}.b,&>.b{padding-top:19px}}}}' +
-      '.a,#never{.b{margin-right:23px}}.a .b{margin-right:1px}' +
-      '@scope (.local){div{border-top:7px solid rgb(7,8,9)}div button{letter-spacing:3px}}'),
-    leaf: part('<button id="%{id}" "Nested"/>', ''),
-    sibling: part('<section id="sibling" class="a" <button id="sibling-child" class="b" "Sibling"/>/>', 'section{border-top:8px solid rgb(8,9,10)}section button{color:rgb(70,80,90);padding-left:21px}'),
-    explicit: part('<button id="explicit" "Explicit"/>', '&{color:rgb(70,80,90);padding-left:19px}'),
-  } }, page: { document: '<html <head/> <body <main <hson-part lib="parts" at="bare" id="bare0"/> <hson-part lib="parts" at="bare" id="bare1"/> <hson-part @:ancestor lib="parts" at="ancestor" id="ancestor"/> <hson-part lib="parts" at="sibling"/> <hson-part lib="parts" at="explicit"/>/> <section id="outside-section" class="a" <button id="outside" class="b" "Outside"/>/>/>/>' } });
+  return legacy_flat_styled_map({parts:{parts:{
+    bare:styled_part('<button id="%{id}" class="bare" "Bare"/>',{color:'rgb(10,20,30)',paddingLeft:'13px',borderTop:'2px solid rgb(1,2,3)',__before:{content:'"ok"'},paddingRight:'24px'}),
+    ancestor:styled_part('<section id="%{id}" class="a" <button id="%{id}-child" class="b" "Child"/> <div class="local" <button id="%{id}-deep" class="deep" "Deep"/>/> <hson-part at="leaf" id="%{id}-nested"/>/>',
+      {borderTop:'5px solid rgb(1,2,3)','& button':{color:'rgb(40,50,60)',marginLeft:'17px',paddingLeft:'14px',paddingRight:'15px',marginTop:'16px'},'& .b':{borderTop:'4px solid rgb(4,5,6)',marginRight:'23px'},
+        '& .local':{borderTop:'7px solid rgb(7,8,9)'},'& .local button':{wordSpacing:'6px',letterSpacing:'3px'},$media:{screen:{'& button':{paddingBottom:'18px'},'& .b':{paddingTop:'19px'}}}}),
+    leaf:{kind:'document',document:'<button id="%{id}" "Nested"/>'},
+    sibling:styled_part('<section id="sibling" class="a" <button id="sibling-child" class="b" "Sibling"/>/>',{borderTop:'8px solid rgb(8,9,10)','& button':{color:'rgb(70,80,90)',paddingLeft:'21px'}}),
+    explicit:styled_part('<button id="explicit" "Explicit"/>',{color:'rgb(70,80,90)',paddingLeft:'19px'}),
+  }},page:{document:'<html <head/> <body <main <hson-part lib="parts" at="bare" id="bare0"/> <hson-part lib="parts" at="bare" id="bare1"/> <hson-part @:ancestor lib="parts" at="ancestor" id="ancestor"/> <hson-part lib="parts" at="sibling"/> <hson-part lib="parts" at="explicit"/>/> <section id="outside-section" class="a" <button id="outside" class="b" "Outside"/>/>/>/>'}});
 }
-/** Equivalent replacements and colon-bearing nesting share the Chrome/Worker fixture. */
 export function second_repair_fixture() {
-  const map=legacy_flat_styled_map({parts:{ parts: {
-    equivalent:part('<button id="%{id}"/>','button{color:rgb(10,20,30);padding-left:13px}'),
-    colon:part('<section id="%{id}" class="colon" <button id="%{id}-button" class="b" "Child"/>/>',
-      'section{button:is(.b){color:rgb(10,20,30);margin-right:23px}button:not(.x){padding-left:13px}button:first-child{border-top:5px solid rgb(1,2,3)}button::before{content:"hello"}' +
-      'button:is(.b),&>.b{padding-right:17px}&>.b,button:is(.b){margin-left:19px}}section button{margin-right:1px}' +
-      '@layer colon{@media screen{section{@supports(display:grid){button:is(.b){letter-spacing:3px}}}}}'),
-    sibling:part('<section id="colon-sibling" class="colon" <button id="colon-sibling-button" class="b" "Sibling"/>/>','button{color:rgb(70,80,90);padding-left:21px}'),
-  } },page:{document:'<html <head/> <body <main <button id="equivalent0"/> <button @:eq1 id="equivalent1"/> <button id="equivalent2"/> <button @:eq3 id="equivalent3"/> <hson-part lib="parts" at="colon" id="colon0"/> <hson-part lib="parts" at="colon" id="colon1"/> <hson-part lib="parts" at="sibling"/>/> <section class="colon" <button id="colon-outside" class="b" "Outside"/>/>/>/>'}});
+  const map=legacy_flat_styled_map({parts:{parts:{
+    equivalent:styled_part('<button id="%{id}"/>',{color:'rgb(10,20,30)',paddingLeft:'13px'}),
+    colon:styled_part('<section id="%{id}" class="colon" <button id="%{id}-button" class="b" "Child"/>/>',
+      {'& button:is(.b)':{color:'rgb(10,20,30)',marginRight:'23px',paddingRight:'17px',marginLeft:'19px'},'& button:not(.x)':{paddingLeft:'13px'},'& button:first-child':{borderTop:'5px solid rgb(1,2,3)'},'& button::before':{content:'"hello"'},'& button':{marginRight:'1px'},$media:{screen:{'& button:is(.b)':{letterSpacing:'3px'}}}}),
+    sibling:styled_part('<section id="colon-sibling" class="colon" <button id="colon-sibling-button" class="b" "Sibling"/>/>',{'& button':{color:'rgb(70,80,90)',paddingLeft:'21px'}}),
+  }},page:{document:'<html <head/> <body <main <button id="equivalent0"/> <button @:eq1 id="equivalent1"/> <button id="equivalent2"/> <button @:eq3 id="equivalent3"/> <hson-part lib="parts" at="colon" id="colon0"/> <hson-part lib="parts" at="colon" id="colon1"/> <hson-part lib="parts" at="sibling"/>/> <section class="colon" <button id="colon-outside" class="b" "Outside"/>/>/>/>'}});
   const p=page(map),before=p.root();
   for(let index=0;index<4;index++) {
-    const replacement=hsonTransform.fromHson(`<hson-part lib="parts" at="equivalent" id="equivalent${index}"/>`).toNode().$_content[0];if(!is_Node(replacement))throw Error("connector");
-    const target:LiveMapDocumentCommitTarget={kind:"path",path:path([0,0,1,0,0,0])};
-    const result=index<2?p.document.content.replace(target,index,replacement)
-      :map.batch(draft=>{const document=draft.doc.must("page");if(document.mode!=="document")throw Error("document");document.graph({domain:"graph",op:"replace-content",target,index,replacement});});
+    const replacement=hsonTransform.fromHson(`<hson-part lib="parts" at="equivalent" id="equivalent${index}"/>`).toNode().$_content[0];if(!is_Node(replacement))throw Error('connector');
+    const target:LiveMapDocumentCommitTarget={kind:'path',path:path([0,0,1,0,0,0])};
+    const result=index<2?p.document.content.replace(target,index,replacement):map.batch(w=>w.doc.must('page').graph({domain:'graph',op:'replace-content',target,index,replacement}));
     assert.equal(result.changed,true);assert.equal(result.rev,index+1);assert.deepEqual(p.root(),before);
   }
   return map;
 }
 export function styled_composition_cases(check: (name: string, run: () => void) => void) {
-  check("colon-bearing implicit nesting equals explicit nesting in either list order and preserves declaration serialization", () => {
-    for(const selector of ['button:is(.b)','button:not(.x)','button:first-child','button::before','button:is(.b),&>.b','&>.b,button:is(.b)',
-      'button:future(.b)','button:future(.b),&>.b','&>.b,button:future(.b)']) {
-      const explicit=selector.split(',').map(item=>item.startsWith('&')?item:`& ${item}`).join(',');
-      const declarations=selector.includes('::before')?'content:"hello"':'color:rgb(10,20,30)';
-      assert.deepEqual(parse_part_stylesheet(`section{${selector}{${declarations}}}`),parse_part_stylesheet(`section{${explicit}{${declarations}}}`),selector);
-    }
-    for(const [implicit,explicit] of [
-      ['section{button:is(.b,.c):not([data-note="x:y"]){content:"a:b;{}"}}','section{& button:is(.b,.c):not([data-note="x:y"]){content:"a:b;{}"}}'],
-      ['section{button :is(.b){color:red}button /* keep the descendant */ :not(.x){padding:1px}}','section{& button :is(.b){color:red}& button :not(.x){padding:1px}}'],
-      ['section{color:red;button:first-child{color:blue}background:green;button::before{content:"hello"}--tail:"x:y"}', 'section{color:red;& button:first-child{color:blue}background:green;& button::before{content:"hello"}--tail:"x:y"}'],
-      ['@layer base{@media screen{section{@supports(display:grid){button:is(.b),&>.b{color:red}}}}}', '@layer base{@media screen{section{@supports(display:grid){& button:is(.b),&>.b{color:red}}}}}'],
-      ['@container box (width>1px){section{button:not(.x){color:red}}}@starting-style{section{button:is(.b){opacity:0}}}@scope (.local){section{button:first-child{padding:1px}}}',
-        '@container box (width>1px){section{& button:not(.x){color:red}}}@starting-style{section{& button:is(.b){opacity:0}}}@scope (.local){section{& button:first-child{padding:1px}}}'],
-      [String.raw`section{button\:kind:is(.b){color:red}}`,String.raw`section{& button\:kind:is(.b){color:red}}`],
-    ])assert.deepEqual(parse_part_stylesheet(implicit),parse_part_stylesheet(explicit),implicit);
-    const declarations=String.raw`section{content:"hello:world;{}";background-image:url("data:image/svg+xml;a:b");--payload:{x:y};--nested:is(.b){color:red};--escaped:"\\\"x:y";color:var(--tone,red)}`;
-    assert.deepEqual(parse_part_stylesheet(declarations),parse_document_stylesheet(declarations,[]));
-    assert.equal(parse_part_stylesheet('section{button:future(.b){color:red}}').rules[0]!.selector,':is(section) button:future(.b)');
-    const invalid:readonly (readonly [string,RegExp])[]=[
-      ['section{button:is(.b){color red}}',/Colon is expected/],
-      ['section{button:is(.b{color:red}}',/Unmatched Part CSS delimiter/],
-      ['section{button:future(&){color:red}}',/Opaque CSS argument hides nesting or scope syntax/],
-      ['section{button:future(:scope){color:red}}',/Opaque CSS argument hides nesting or scope syntax/],
-      [String.raw`section{button:future([hson\:quad="label"]){color:red}}`,/Opaque CSS argument hides a subject identity reference/],
-      ['section{button:is(.b){@scope(.x){button{color:red}}}}',/Nested @scope inside a Part style rule is unsupported/],
-      ['section{color:rgb(1,2,{bad})}',/expected|Unexpected input/],
-    ];
-    const rejected=hsonLiveMap.fromLibraries({});
-    for(const [css,reason] of invalid){
-      assert.throws(()=>parse_part_stylesheet(css),reason,css);
-      atomic(rejected,()=>rejected.addLibraries({parts:{ parts: {x:part('<section <button class="b"/>/>',css)} },page:{document:'<hson-part lib="parts" at="x"/>'}}).commit,reason);
-    }
+  check("raw Part text stays literal while structured CssMap keeps local scope and identity", () => {
+    const raw=String.raw`/* native */ button { & :future([hson\:quad="missing"]) {color:red;color:blue} } @import "x"; .empty{}`;
+    const map=hsonLiveMap.fromLibraries({parts:{parts:{x:{kind:'document',document:'<section @:root <button @:child/>/>',stylesheet:raw,
+      css:{color:'green','@:child':{padding:7}}}}},page:{document:'<html <head/> <body <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>/>'}});
+    const a=owner(map),record=encode_portable_document_stylesheet(a.stylesheet(identity(map)));
+    assert.deepEqual(record.order.filter(entry=>entry.kind==='text').map(entry=>entry.text),[raw,raw]);
+    assert.equal(record.rules.length,4);assert.equal(record.properties.length,0);assert.equal(record.keyframes.length,0);
+    assert.ok(record.rules.every(rule=>rule.scopes.some(scope=>scope.startsWith('@scope ([hson\\:quid='))));
+    assert.ok(record.rules.some(rule=>rule.selector.includes('hson\\:quid')));
+    assert.equal(record.rules.some(rule=>rule.selector.includes('missing')),false);
+    const html=page(map).render();assert.equal(html.split(raw).length-1,2);assert.doesNotMatch(html,/hson:quid=/);
+    assert.equal(new Set(record.order.map(entry=>entry.owner)).size,2);
   });
-  check("unfamiliar textual pseudo arguments retain occurrence scoping, ownership and rendered correspondence", () => {
-    const map=hsonLiveMap.fromLibraries({parts:{parts:{
-      implicit:part('<section <button class="b"/>/>','section{button:future(.b){color:red}}'),
-      explicit:part('<section <button class="b"/>/>','section{& button:future(.b){color:red}}'),
-    }}});
-    let commits=0;
-    const verify=() => {
-      const aggregate=owner(map),id=identity(map),scopes=aggregate.documentScopes(id);
-      assert.ok(scopes);assert.equal(scopes.occurrences.length,3);
-      const roots=scopes.occurrences.map(scope=>scope.rootQuid);
-      assert.equal(new Set(roots).size,3);assert.equal(aggregate.documentOverlay(id).size,3);
-      const record=encode_portable_document_stylesheet(aggregate.stylesheet(id));
-      assert.deepEqual(document_css_subject_identities(record,"outbound"),roots);
-      assert.equal(record.rules.length,3);
-      for(const [index,rule] of record.rules.entries()) {
-        assert.equal(rule.selector,':is(section):where(:scope,:scope *) button:future(.b)');
-        assert.deepEqual(rule.declarations,[['color','red']]);
-        assert.deepEqual(rule.scopes,[`@scope ([hson\\:quid="${roots[index]}"])`]);
-        assert.equal(record.order[index]!.owner,`[hson\\:quid="${roots[index]}"]`);
-      }
-      const state=aggregate.scopedDocumentState(id),html=page(map).render();
-      assert.ok(state.css);assert.equal(state.scopes.subjects.length,3);
-      for(const [index,subject] of state.scopes.subjects.entries()) {
-        assert.deepEqual(subject.path,state.scopes.occurrences[index]!.root);
-        assert.equal(aggregate.documentOverlay(id).quidAtPath(subject.path),roots[index]);
-        assert.deepEqual(state.css.rules[index]!.scopes,[`@scope ([hson\\:quad="${subject.name}"])`]);
-        assert.equal(state.css.order[index]!.owner,`[hson\\:quad="${subject.name}"]`);
-        assert.ok(html.includes(`@scope ([hson\\:quad="${subject.name}"])`));
-        assert.ok(html.includes(`<section hson:quad="${subject.name}">`));
-      }
-      assert.ok(html.includes('<section><button class="b"></button></section>'));
-      assert.doesNotMatch(html,/hson:quid|hson-part/);
-    };
-    const off=map.commits.observe(()=>{commits++;verify();});
-    try {
-      map.addLibraries({page:{document:'<html <head/> <body <main <hson-part lib="parts" at="implicit"/> <hson-part lib="parts" at="implicit"/> <hson-part lib="parts" at="explicit"/> <section <button class="b"/>/>/>/>/>'}});
-    } finally {off();}
-    assert.equal(commits,1);
-    const ledger=owner(map).identityEpoch().issued();
-    verify();assert.equal(owner(map).identityEpoch().issued(),ledger);
+  check("raw definitions do not conflict with one another or structured registries", () => {
+    const source='@keyframes owned{from{opacity:0}}@property --tone{syntax:"*";inherits:false}';
+    const map=legacy_flat_styled_map({parts:{parts:{x:part('<p/>',source)}},page:{document:'<main <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>'}});
+    const p=page(map);assert.equal(p.css.keyframes.has('owned'),false);assert.equal(p.css.atProperty.has('--tone'),false);
+    map.batch(w=>{w.doc.must('page').css.keyframes.set({name:'owned',steps:{from:{opacity:'1'}}});w.doc.must('page').css.atProperty.register({name:'--tone',syn:'*',inh:false});});
+    assert.equal(p.css.keyframes.has('owned'),true);map.batch(w=>w.doc.must('page').css.keyframes.delete('owned'));
+    assert.equal(p.css.snapshot().split(source).length-1,2);
   });
-  check("equivalent replacement and colon-bearing nested selectors share source-free scoped ownership", () => {
-    const map=second_repair_fixture(),aggregate=owner(map),record=encode_portable_document_stylesheet(aggregate.stylesheet(identity(map)));
-    assert.equal(map.rev,4);assert.equal(aggregate.documentOverlay(identity(map)).size,7);
-    assert.equal(document_css_subject_identities(record,"outbound").length,7);assert.equal(page(map).q("eq1"),undefined);assert.equal(page(map).q("eq3"),undefined);
-    assert.ok(record.rules.some(rule=>rule.selector.includes('button:is(.b)')));assert.ok(record.rules.some(rule=>rule.selector.includes('button::before')));
-    const next=install_libraries_snapshot(map.cut({data:[],documents:["page"]}).libs).map;
-    assert.equal(owner(next).documentOverlay(identity(next)).size,7);assert.match(page(next).css.snapshot(),/content:"hello"/);
+  check("moving roots retains both contributions and retirement removes only the owning occurrence", () => {
+    const map=legacy_flat_styled_map({parts:{parts:{outer:{kind:'document',document:'<section <hson-part at="inner"/>/>',stylesheet:'/* outer */',css:{color:'red'}},
+      inner:{kind:'document',document:'<button/>',stylesheet:'/* inner */',css:{padding:7}}}},
+      page:{document:'<html <head/> <body <hson-part @:first lib="parts" at="outer"/> <hson-part @:second lib="parts" at="outer"/>/>/>'}});
+    const p=page(map);map.batch(w=>w.doc.must('page').css.rule('unrelated','.unrelated').set.color('blue'));
+    const first=p.q('first')!,before=p.css.snapshot();
+    p.document.content.move({kind:'path',path:path([0,0,1,0])},0,1);assert.equal(p.css.snapshot(),before);
+    let commits=0;const off=map.commits.observe(()=>{commits++;const record=encode_portable_document_stylesheet(owner(map).stylesheet(identity(map)));
+      assert.equal(record.order.filter(entry=>entry.kind==='text').length,2);assert.equal(record.rules.length,3);});
+    try {first.delete();} finally {off();}assert.equal(commits,1);assert.ok(p.q('second'));assert.equal(p.q('first'),undefined);
+    assert.equal(p.css.snapshot().split('/* outer */').length-1,1);assert.ok(p.css.has('unrelated'));
+    p.q('second')!.delete();assert.match(p.css.snapshot(),/unrelated/);assert.doesNotMatch(p.css.snapshot(),/outer|inner|padding/);
   });
-  check("retained styled coverage: configured cross-collection selection preserves stylesheet preorder and connector/root identity equality", () => {
-    const local=(name:string)=>`[hson\\:quad="${name}"]`;
-    const map=hsonLiveMap.fromLibraries({parts:{ parts: {
-      outer:part('<section @:root <hson-part @:child at="inner"/> <hson-part at="inner"/>/>',`${local("child")}{--parent-selected:yes}section{--order:outer}`),
-      inner:part('<button @:root/>',`${local("root")}{--order:inner}`),
-    } },other:{ parts: {cross:part('<aside @:root/>',`${local("root")}{--order:cross}`)} }});
-    const shell=parse_authored_document_library('<main <hson-part @:slot lib="parts" at="outer"/>/>');
-    const result=expand_document_composition("shell",()=>({root:shell.root,quads:shell.declarations}),
-      document_composition_options({configuration:{at:{slot:{at:{child:{use:{lib:"other",at:"cross"}}}}}}}),(lib,at)=>readPart(map,lib,at));
-    assert.deepEqual(result.styles.flatMap(style=>style.css.rules.flatMap(rule=>rule.declarations.filter(([name])=>name==='--order').map(([,value])=>value))),['outer','cross','inner']);
-    const parentChild=result.styles[0]!.subjects.find(subject=>subject.name==='child')!,selectedRoot=result.styles[1]!.subjects.find(subject=>subject.name==='root')!;
-    assert.deepEqual(parentChild.path,selectedRoot.path);
-    // The retained private traversal proves configured stylesheet selection.
-    // Admit the same selected topology through ordinary automatic admission to
-    // check actual receiving identity reuse without retaining an inert shell.
-    map.parts.must("parts").at(["outer","document"]).set('<section @:root <hson-part @:child lib="other" at="cross"/> <hson-part at="inner"/>/>');
-    map.addLibraries({page:{document:'<main <hson-part @:slot lib="parts" at="outer"/>/>'}});
-    assert.deepEqual(page(map).root(),result.root);
-    const aggregate=owner(map),id=identity(map),record=encode_portable_document_stylesheet(aggregate.stylesheet(id));
-    const selectedQuid=aggregate.documentOverlay(id).quidAtPath(path(selectedRoot.path));assert.ok(selectedQuid);
-    const parentRule=record.rules.find(rule=>rule.declarations.some(([name])=>name==='--parent-selected'))!,childRule=record.rules.find(rule=>rule.declarations.some(([,value])=>value==='cross'))!;
-    assert.equal(parentRule.selector,childRule.selector);assert.ok(parentRule.selector.includes(selectedQuid));
-    assert.equal(childRule.scopes[0],`@scope ([hson\\:quid="${selectedQuid}"])`);
-    assert.equal(page(map).document.byQuid(selectedQuid)?.$_tag,'aside');assert.equal(aggregate.documentOverlay(id).size,3);
-    assert.deepEqual(record.rules.flatMap(rule=>rule.declarations.filter(([name])=>name==='--order').map(([,value])=>value)),['outer','cross','inner']);
-  });
-  check("implicit type/class nesting and either mixed-list order equal explicit nesting, including nested conditions and declaration order", () => {
-    for (const [implicit, explicit] of [
-      ['.a{button{color:red}}', '.a{& button{color:red}}'],
-      ['.a{.b{color:red}}', '.a{& .b{color:red}}'],
-      ['.a{--widget{color:red}}', '.a{& --widget{color:red}}'],
-      ['.a{button,&>span{color:red}}', '.a{& button,&>span{color:red}}'],
-      ['.a{&>span,button{color:red}}', '.a{&>span,& button{color:red}}'],
-      ['.a,#never{.b,.c{button,&>.d{color:red}}}', '.a,#never{& .b,& .c{& button,&>.d{color:red}}}'],
-      ['@media screen{.a{@supports(display:grid){button{color:red}.b{padding:1px}}}}', '@media screen{.a{@supports(display:grid){& button{color:red}& .b{padding:1px}}}}'],
-      ['.a{color:blue;button{color:red}color:green;.b{padding:1px}background:black}', '.a{color:blue;& button{color:red}color:green;& .b{padding:1px}background:black}'],
-      ['.a{--payload:{x:y};button{content:";{}"}--tail:"{}"}', '.a{--payload:{x:y};& button{content:";{}"}--tail:"{}"}'],
-    ]) assert.deepEqual(parse_part_stylesheet(implicit), parse_part_stylesheet(explicit), implicit);
-    for (const source of ['.a{.b{color red}}', '.a{button{color:red}', '.a{.b{:future(&){color:red}}}', '.a{button{@scope(.x){b{color:red}}}}']) assert.throws(() => parse_part_stylesheet(source), source);
-  });
-  check("ordinary selectors include anonymous occurrence roots with zero added specificity and retain portable owned teardown", () => {
-    let map: LiveMap = selector_fixture();
-    const seen = new Set<string>();
-    for (let cycle = 0; cycle < 3; cycle++) {
-      const aggregate = owner(map), p = page(map), record = encode_portable_document_stylesheet(aggregate.stylesheet(identity(map)));
-      const ids = document_css_subject_identities(record, "outbound"); assert.equal(ids.length, 5);
-      for (const id of ids) { assert.equal(seen.has(id), false); seen.add(id); }
-      assert.equal(aggregate.documentOverlay(identity(map)).size, 5); assert.equal(p.q("part_root"), undefined);
-      assert.ok(record.rules.some(rule => rule.selector === 'button:where(:scope,:scope *)'));
-      assert.ok(record.rules.some(rule => rule.selector === 'section:where(:scope,:scope *) button'));
-      assert.ok(record.rules.some(rule => rule.selector === 'button:where(:scope,:scope *)::before'));
-      assert.ok(record.rules.some(rule => rule.selector.includes(':is(.a,#never):where(:scope,:scope *) .b')));
-      assert.ok(record.rules.every(rule => rule.scopes[0]!.startsWith('@scope ([hson\\:quid=')));
-      const css = p.css.snapshot(), root = p.q("ancestor")!, old = root.path();
-      p.document.content.move({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 2, 0);
-      assert.notDeepEqual(root.path(), old); assert.equal(p.css.snapshot(), css);
-      p.document.content.move({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0, 2);
-      const next = install_libraries_snapshot(map.cut({ data: [], documents: ["page"] }).libs).map;
-      root.delete(); assert.doesNotMatch(p.css.snapshot(), /padding-bottom:18px/);
-      assert.equal(aggregate.documentOverlay(identity(map)).size, 4);
-      assert.match(p.css.snapshot(), /padding-left:13px/); assert.match(p.css.snapshot(), /padding-left:21px/);
-      map = next;
+  check("whole replacement and structured deletion preserve unrelated text and explicit ownership", () => {
+    const map=legacy_flat_styled_map({parts:{parts:{button:part('<section/>','section{color:red}')}},page:{document:'<html <head/> <body <main <hson-part @:slot0 lib="parts" at="button"/>/>/>/>'}}),p=page(map);p.css.rule('independent','.i').set.color('red');
+    const before=p.css.snapshot();p.css.drop('stylesheet:1');assert.equal(p.css.snapshot(),before);
+    p.css.drop('independent');assert.doesNotMatch(p.css.snapshot(),/\.i\{/);
+    const quid=owner(map).documentQuad(identity(map),'slot0',undefined)!.quid;
+    p.css.sel(`[hson\\:quid="${quid}"]`).setProp('color','red');atomic(map,()=>p.q('slot0')!.delete());
+    for(const cssFirst of [false,true]) {
+      const candidate=styled_fixture(1),q=page(candidate);const subject=owner(candidate).documentQuad(identity(candidate),'slot0',undefined)!.quid;
+      q.css.sel(`[hson\\:quid="${subject}"]`).setProp('color','red');
+      candidate.batch(w=>{const d=w.doc.must('page');if(cssFirst)d.css.stylesheet(' untouched ');d.at([1,0,0]).delete();if(!cssFirst)d.css.stylesheet(' untouched ');});
+      assert.equal(q.css.snapshot(),' untouched ');
     }
   });
-  check("styled occurrences use distinct roots without requiring or promoting local QUADs", () => {
-    const map = styled_fixture(), aggregate = owner(map), id = identity(map), p = page(map);
-    assert.equal(aggregate.documentOverlay(id).size, 3);
-    const record = encode_portable_document_stylesheet(aggregate.stylesheet(id));
-    assert.equal(document_css_subject_identities(record, "outbound").length, 3);
-    assert.equal(new Set(record.order.map(entry => entry.owner)).size, 3);
-    assert.ok(p.q("slot0")); assert.ok(p.q("slot1")); assert.equal(p.q("root"), undefined); assert.equal(p.q("label"), undefined);
-    const ledger = aggregate.identityEpoch().issued();
-    allocator(aggregate.identityEpoch().owner, () => { throw Error("read allocated"); });
-    try { p.render(); map.capture(); map.cut({ documents: ["page"], data: [], html: "page" }); } finally { allocator(aggregate.identityEpoch().owner, undefined); }
-    assert.equal(aggregate.identityEpoch().issued(), ledger);
-    const anonymous = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button/>', 'button{color:red}') } }, page: { document: '<hson-part lib="parts" at="x"/>' } });
-    assert.equal(owner(anonymous).documentOverlay(identity(anonymous)).size, 1); assert.equal(page(anonymous).q("root"), undefined);
-  });
-  check("nested CSS, selector lists, conditions, layers and supported globals retain owned structure", () => {
-    const css = '@layer base{button,.active{color:red;&:is(:hover,:focus),span{color:blue}@supports(display:grid){padding:1px}}}@container box (width>1px){button{margin-left:2px}}@scope (.local) to (.stop){button{margin-right:3px}}@starting-style{button{opacity:0}}@keyframes once{from{opacity:0}to{opacity:1}}@property --tone{syntax:"*";inherits:false}';
-    const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section <button/>/>', css) } }, page: { document: '<hson-part lib="parts" at="x"/>' } });
-    const record = encode_portable_document_stylesheet(owner(map).stylesheet(identity(map)));
-    assert.equal(record.properties.length, 1); assert.equal(record.keyframes.length, 1);
-    assert.ok(record.rules.some(rule => rule.selector.includes(':is(button,.active)')));
-    assert.ok(record.rules.every(rule => rule.scopes[0]!.startsWith('@scope ([hson\\:quid=')));
-    for (const name of ["@supports", "@container", "@scope (.local)", "@starting-style"]) assert.ok(record.rules.some(rule => rule.scopes.some(scope => scope.startsWith(name))));
-    page(map).document.content.remove({ kind: "path", path: [] }, 0); assert.equal(page(map).css.snapshot(), "");
-    for (const css of ['@import "x";', '@font-face{font-family:x;src:url(x)}', '@layer a,b;', 'a{:future(&){color:red}}', 'a{@scope (.x){b{color:red}}}', 'a{color:red']) assert.throws(() => parse_part_stylesheet(css));
-  });
-  check("local root and descendant CSS identity references share the occurrence scope without alias collisions", () => {
-    const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section @:root <button @:child/>/>', '[hson\\:quad="root"]{padding:1px}[hson\\:quad="child"]{color:red}') } },
-      page: { document: '<main <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>' } });
-    assert.equal(owner(map).documentOverlay(identity(map)).size, 4);
-    assert.equal(page(map).q("root"), undefined); assert.equal(page(map).q("child"), undefined);
-    assert.equal(install_libraries_snapshot(map.cut({ documents: ["page"], data: [] }).libs).map.doc.must("page").mode, "document");
-    assert.throws(() => hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>', '[hson\\:quad="absent"]{color:red}') } } }), /missing local QUAD/);
-  });
-  check("replacing an occurrence retires its old globals before admitting the new contribution", () => {
-    const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section <button/>/>', 'button{color:red}@keyframes owned{from{opacity:0}}') } },
-      page: { document: '<main <hson-part lib="parts" at="x"/>/>' } });
-    const prior = document_css_subject_identities(encode_portable_document_stylesheet(owner(map).stylesheet(identity(map))), "outbound")[0]!;
-    const connector = hsonTransform.fromHson('<hson-part lib="parts" at="x"/>').toNode().$_content[0]; if (!is_Node(connector)) throw Error("connector");
-    page(map).document.content.replace({ kind: "path", path: [0, 0] }, 0, connector);
-    assert.doesNotMatch(page(map).css.snapshot(), new RegExp(prior));
-    assert.equal(encode_portable_document_stylesheet(owner(map).stylesheet(identity(map))).keyframes.length, 1);
-    atomic(map, () => page(map).css.keyframes.set({ name: "owned", steps: { from: { opacity: "1" } } }), /conflict/);
-  });
-  check("failed realized Schema checks and identity-only reentrancy never publish the outer candidate", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button/>', 'button{color:red}') } }, page: { document: '<aside/>' } });
-    atomic(map, () => map.addLibraries({ bad: { document: '<main <hson-part lib="parts" at="x"/>/>', schema: Hson.schema`<type "document" tag "main" content "empty">` } }).commit);
-    let entered = false; const aggregate = owner(map);
-    allocator(aggregate.identityEpoch().owner, () => {
-      if (!entered) { entered = true; aggregate.acquireLocalDocumentIdentity(identity(map), path([0]), "987654321"); }
-      return "123456789";
-    });
-    try { assert.throws(() => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }), /changed/); }
-    finally { allocator(aggregate.identityEpoch().owner, undefined); }
-    assert.equal(aggregate.identityEpoch().issued().size, 1); assert.equal(aggregate.documentOverlay(identity(map)).quidAtPath(path([0])), "987654321"); assert.throws(() => map.doc.must("bad"));
-  });
-  check("styled local topology is durable while public incremental delivery stays guarded", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button/>', 'button{color:red}') } } });
-    let commit: HostedAggregateCommit | undefined; const off = owner(map).observe(value => { commit = value.hosted; });
-    try { map.addLibraries({ page: { document: '<hson-part lib="parts" at="x"/>' } }); } finally { off(); }
-    assert.ok(commit); assert.throws(() => make_portable_aggregate_commit(commit!), /Echo/);
-    assert.ok(durable_aggregate_commit(commit!, [{ name: "page", ownership: "shared" }]).commit.topology!.operation.libraries[0]!.scopes);
-  });
-  check("moving roots retains style; nested owned contributions retire atomically with their parent", () => {
-    const map = legacy_flat_styled_map({ parts: { parts: { outer: part('<section <hson-part at="inner"/>/>', 'button{color:red}'), inner: part('<button/>', '&{padding:7px}') } },
-      page: { document: '<main <hson-part @:first lib="parts" at="outer"/> <hson-part @:second lib="parts" at="outer"/>/>' } });
-    const p = page(map), first = p.q("first")!, second = p.q("second")!, css = p.css.snapshot(), old = first.path();
-    p.document.content.move({ kind: "path", path: [0, 0] }, 0, 1);
-    assert.notDeepEqual(first.path(), old); assert.equal(p.css.snapshot(), css);
-    let seen = 0; const off = map.commits.observe(() => { seen++; assert.equal(document_css_subject_identities(encode_portable_document_stylesheet(owner(map).stylesheet(identity(map))), "outbound").length, 2); });
-    try { first.delete(); } finally { off(); }
-    assert.equal(seen, 1); assert.equal(p.q("first"), undefined); assert.ok(p.q("second"));
-    assert.equal(owner(map).documentOverlay(identity(map)).size, 2);
-    assert.equal(encode_portable_document_stylesheet(owner(map).stylesheet(identity(map))).rules.length, 2);
-  });
-  check("independent authored subject CSS retains strict unsafe-retirement rejection", () => {
-    const map = styled_fixture(1), p = page(map), quad = p.q("slot0")!;
-    const quid = owner(map).documentQuad(identity(map), "slot0", undefined)!.quid;
-    p.css.sel(`[hson\\:quid="${quid}"]`).setProp("color", "red");
-    atomic(map, () => quad.delete());
-    p.css.clearAll(); quad.delete(); assert.equal(owner(map).documentOverlay(identity(map)).size, 0);
-  });
-  check("runtime styled insertion, removal and portable A to B to C preserve ownership without sources", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<section <button/>/>', 'button{color:red}') } }, page: { document: '<html <head/> <body <i/>/>/>' } });
-    const connector = hsonTransform.fromHson('<hson-part lib="parts" at="x"/>').toNode().$_content[0]; if (!is_Node(connector)) throw Error("connector");
-    page(map).document.content.insert({ kind: "path", path: [0, 0, 1, 0] }, 1, connector);
-    let previous: LiveMap = map; const seen = new Set<string>();
-    for (let i = 0; i < 3; i++) {
-      const current = i === 0 ? previous : install_libraries_snapshot(previous.cut({ data: [], documents: ["page"] }).libs).map;
-      const ids = document_css_subject_identities(encode_portable_document_stylesheet(owner(current).stylesheet(identity(current))), "outbound");
-      assert.equal(ids.length, 1); assert.equal(seen.has(ids[0]!), false); seen.add(ids[0]!);
-      assert.match(page(current).render(), /color:red/); assert.doesNotMatch(JSON.stringify(page(current).root()), /hson-part/);
-      if (i) assert.throws(() => current.parts.must("parts")); previous = current;
+  check("portable A to B to C retains text and owner relationships with fresh identities", () => {
+    let map: LiveMap=legacy_flat_styled_map({parts:{parts:{x:{kind:'document',document:'<section <button/>/>',stylesheet:'/* unclosed',css:{'& button':{color:'red'}}}}},
+      page:{document:'<html <head/> <body <hson-part lib="parts" at="x"/> <i/>/>/>'}});
+    const issued=new Set<string>();
+    for(let cycle=0;cycle<3;cycle++) {
+      const a=owner(map),record=encode_portable_document_stylesheet(a.stylesheet(identity(map))),ids=document_css_subject_identities(record,'outbound');
+      assert.equal(ids.length,1);assert.equal(issued.has(ids[0]!),false);issued.add(ids[0]!);
+      const raw=record.order.find(entry=>entry.kind==='text');assert.equal(raw?.text,'/* unclosed');
+      assert.equal(raw?.owner,record.order.find(entry=>entry.kind==='group')?.owner);
+      const cut=map.cut({html:'page',documents:['page'],data:[]});assert.match(cut.html,/\/\* unclosed<\/style><style/);
+      map=install_libraries_snapshot(cut.libs).map;
     }
-    page(previous).document.content.remove({ kind: "path", path: [0, 0, 1, 0] }, 1);
-    assert.equal(page(previous).css.snapshot(), ""); assert.equal(owner(previous).documentOverlay(identity(previous)).size, 0);
-    assert.equal(install_libraries_snapshot(previous.capture()).map.doc.must("page").mode, "document");
+    page(map).at([1,0]).delete();assert.equal(page(map).css.snapshot(),'');
   });
-  check("global conflicts, exhausted allocation and reentrant inner work reject the outer candidate", () => {
-    for (const global of ['@keyframes repeated{from{opacity:0}}', '@property --repeated{syntax:"*";inherits:false}']) {
-      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>', `p{color:red}${global}`) } } });
-      let allocations = 0; allocator(owner(map).identityEpoch().owner, () => { allocations++; throw Error("unexpected allocation"); });
-      try { atomic(map, () => map.addLibraries({ bad: { document: '<main <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>' } }).commit, /Duplicate @/); }
-      finally { allocator(owner(map).identityEpoch().owner, undefined); }
-      assert.equal(allocations, 0);
-    }
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>', 'p{color:red}') } }, state: { data: { count: 0 } } });
-    allocator(owner(map).identityEpoch().owner, () => "invalid");
-    try { atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /QUID/); }
-    finally { allocator(owner(map).identityEpoch().owner, undefined); }
-    let inner = false;
-    allocator(owner(map).identityEpoch().owner, () => { if (!inner) { inner = true; const state = map.data.must("state"); state.at(["count"]).set(1); } return "123456789"; });
-    try { assert.throws(() => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }), /changed/); }
-    finally { allocator(owner(map).identityEpoch().owner, undefined); }
-    assert.equal(map.data.must("state").at(["count"]).snap(), 1); assert.throws(() => map.doc.must("bad"));
-    assert.equal(owner(map).identityEpoch().issued().size, 0);
-  });
-  check("retained styled coverage: escaped identity syntax literals supports tests and preorder contributions survive restoration", () => {
-    const local=(name:string)=>`[hson\\:quad="${name}"]`;
-    const map=legacy_flat_styled_map({parts:{ parts: {outer:part('<section @:root <hson-part @:child at="inner"/>/>',
-      String.raw`[hson\3a quad="root"]:has(>${local("child")}),${local("child")}:not([data-look="hson:quid"]){--literal:"hson:quad"}@supports selector([hson\:quad="syntaxOnly"]){${local("root")}{--order:outer}}`),
-      inner:part('<button @:root/>',`${local("root")}{--order:inner}`),unused:part('<p/>','p{--order:UNVISITED}') } },
-      page:{document:'<main <hson-part lib="parts" at="outer"/> <hson-part lib="parts" at="outer"/>/>'}});
-    const record=encode_portable_document_stylesheet(owner(map).stylesheet(identity(map)));
-    assert.equal(document_css_subject_identities(record,"outbound").length,4);
-    assert.ok(record.rules.some(rule=>rule.scopes.includes('@supports selector([hson\\:quad="syntaxOnly"])')));
-    assert.deepEqual(record.rules[0]!.declarations,[["--literal",'"hson:quad"']]);
-    const css=page(map).css.snapshot();assert.ok(css.indexOf('--order:outer')<css.indexOf('--order:inner'));assert.doesNotMatch(css,/UNVISITED/);
-    const next=install_libraries_snapshot(map.cut({data:[],documents:["page"]}).libs).map;
-    assert.equal(document_css_subject_identities(encode_portable_document_stylesheet(owner(next).stylesheet(identity(next))),"outbound").length,4);
-    assert.match(page(next).css.snapshot(),/syntaxOnly/);
-    for(const invalid of [local("absent"),'[hson\\:quid="123456789"]','[hson\\:quad]','[hson\\:quad^="label"]','[hson\\:quad="label" i]','[x|hson\\:quad="label"]',':future([hson\\:quad="label"])']) {
-      const m=hsonLiveMap.fromLibraries({});
-      let calls=0;allocator(owner(m).identityEpoch().owner,()=>{calls++;return "123456789";});
-      try{atomic(m,()=>m.addLibraries({parts:{ parts: {x:part('<p @:label/>',invalid+'{color:red}')} },bad:{document:'<hson-part lib="parts" at="x"/>'}}).commit);}finally{allocator(owner(m).identityEpoch().owner,undefined);}
-      assert.equal(calls,0);
-    }
-  });
-  check("retained styled coverage: independent rules permit explicit atomic CSS takeover in either graph/CSS order", () => {
-    for(const first of [false,true]) {
-      const map=styled_fixture(1),p=page(map),quid=owner(map).documentQuad(identity(map),"slot0",undefined)!.quid;
-      p.css.sel(`[hson\\:quid="${quid}"]`).setProp('color','red');
-      const parent=owner(map).documentQuad(identity(map),"slot0",undefined)!.path.slice(0,-1);let commits=0;
-      const off=map.commits.observe(()=>commits++);
-      try{map.batch(draft=>{const selected=draft.doc.must("page");if(selected.mode!=="document")throw Error("document");
-        if(first)selected.css.stylesheet('body{color:blue}');
-        selected.content.replace({kind:"path",path:path(parent)},0,{$_tag:"i",$_content:[]});
-        if(!first)selected.css.stylesheet('body{color:blue}');
-      });}finally{off();}
-      assert.equal(commits,1);assert.equal(owner(map).documentOverlay(identity(map)).size,0);assert.doesNotMatch(p.css.snapshot(),new RegExp(quid));
-    }
+  check("failed Schema, exhausted allocation and reentrant inner work remain atomic", () => {
+    const map=hsonLiveMap.fromLibraries({parts:{parts:{x:part('<p/>','anything {')}},state:{data:{count:0}},page:{document:'<aside/>'}});
+    atomic(map,()=>map.addLibraries({bad:{document:'<main <hson-part lib="parts" at="x"/>/>',schema:Hson.schema`<type "document" tag "main" content "empty">`}}));
+    allocator(owner(map).identityEpoch().owner,()=> 'invalid');
+    try {atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>'}}),/QUID/);} finally {allocator(owner(map).identityEpoch().owner,undefined);}
+    let inner=false;allocator(owner(map).identityEpoch().owner,()=>{if(!inner){inner=true;map.data.must('state').at(['count']).set(1);}return '123456789';});
+    try {assert.throws(()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>'}}),/changed/);} finally {allocator(owner(map).identityEpoch().owner,undefined);}
+    assert.equal(map.data.must('state').at(['count']).snap(),1);assert.throws(()=>map.doc.must('bad'));
   });
 }

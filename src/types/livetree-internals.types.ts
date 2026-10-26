@@ -74,7 +74,7 @@ export interface LiveTreeStyleAccess<TSelf> {
     /**
      * Inline style helper bound to this node.
      */
-    readonly style: StyleHandle<TSelf>;
+    readonly style: StyleHandle<TSelf, true>;
 }
 
 export interface LiveTreeContent<TSelf> {

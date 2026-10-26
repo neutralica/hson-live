@@ -1,3 +1,4 @@
+import { replace_structured_fixture } from "../helpers/structured-css-fixture.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform, enable_interactions, add_interaction } from "../../src/index.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
@@ -36,16 +37,16 @@ const listener = { event: "click", target: "element" as const, capture: false, o
 
 async function fixture() {
   const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-    leaf: { kind: "document", document: '<b @:root <span @:label "visible"/>/>', stylesheet: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
-    panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: '@media screen{:scope{color:red}}' },
-    green: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: ':scope{color:green}' },
+    leaf: { kind: "document", document: '<b @:root <span @:label "visible"/>/>', css: { color: "blue", "@:label": { opacity: ".5" } } },
+    panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: { $media: { screen: { color: "red" } } } },
+    green: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: { color: "green" } },
     plain: { kind: "document", document: '<i/>' },
     secret: { kind: "document", document: '<strong "PRIVATE_DEFINITION_SENTINEL"/>' },
   } }, page: { document: '<main @:page <footer @:_abcdefghj/>/>' }, other: { data: { n: 0 } }, hidden: { document: '<aside/>' } });
   const a = authority(map), library = a.libraries()[1]!;
   const footer = a.documentOverlay(library).quidAtPath(path([0, 0, 0]))!;
   enable_interactions(map);
-  map.doc.must("page").css.stylesheet(`main{padding:7px} [hson\\:quid="${footer}"]{border:0}`);
+  replace_structured_fixture(map.doc.must("page"), `main{padding:7px} [hson\\:quid="${footer}"]{border:0}`);
   add_interaction(map, { id: "shared-footer", subject: { library: "page", path: [0, 0, 0] }, listener, kind: "browser", key: "footer", args: null });
   const initial = a.captureHosted();
   const policy = make_locus_hosted_projection_policy(initial.registry, initial.authority,

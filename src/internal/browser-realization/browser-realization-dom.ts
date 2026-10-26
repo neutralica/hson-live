@@ -92,7 +92,7 @@ function assert_retained_kind(plan: BrowserRealizationNode, retained: Node, owne
 export function match_browser_realization_root(
   plan: BrowserRealizationPlan,
   target: Element,
-  options: Readonly<{ allowRuntimeInfrastructure?: boolean; retainRuntimeInfrastructure?: Node }> = {},
+  options: Readonly<{ allowRuntimeInfrastructure?: boolean; retainRuntimeInfrastructure?: readonly Node[] }> = {},
 ): BrowserRealizationMatch {
   if (plan.roots.length !== 1 || plan.roots[0]?.kind !== "element") {
     throw new Error("Exact browser realization requires one planned Element root.");
@@ -189,7 +189,7 @@ function match_node(
   ownerDocument: Document,
   links: Array<Readonly<{ canonicalNode: HsonNode; domNode: Node }>>,
   allowRuntimeInfrastructure: boolean,
-  retainRuntimeInfrastructure?: Node,
+  retainRuntimeInfrastructure?: readonly Node[],
 ): void {
   if ((actual as { ownerDocument?: Document }).ownerDocument !== ownerDocument) {
     throw new Error("Existing browser realization spans more than one owner Document.");
@@ -221,7 +221,7 @@ function match_node(
   if (plan.kind === "element") links.push(Object.freeze({ canonicalNode: plan.canonicalNode, domNode: element }));
   const target = child_target(element, plan);
   const actualChildren = Array.from(target.childNodes).filter((child) => (
-    !allowRuntimeInfrastructure || !is_runtime_infrastructure(child) || child === retainRuntimeInfrastructure
+    !allowRuntimeInfrastructure || !is_runtime_infrastructure(child) || retainRuntimeInfrastructure?.includes(child) === true
   ));
   if (actualChildren.length !== plan.children.length) {
     throw new Error(`Existing <${plan.localName}> child count does not match its realization plan.`);

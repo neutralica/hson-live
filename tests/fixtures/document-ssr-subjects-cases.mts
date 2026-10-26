@@ -1,3 +1,4 @@
+import { replace_structured_fixture, structured_css_fixture as fixture_sheet } from "../helpers/structured-css-fixture.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { make_livemap_from_authored_libraries_internal as authored,
@@ -44,7 +45,7 @@ export function ssr_subject_fixture(): DocumentSsrSubjectFixture {
   aggregate.acquireLocalDocumentIdentity(library, path([0, 0, 1, 0, 0, 0, 1]), demanded[0]!);
   aggregate.acquireLocalDocumentIdentity(library, path([0, 0, 1, 0, 1, 0, 1]), demanded[1]!);
   const selector = (name: string) => `[hson\\:quid="${lookup(page, name)!.quid}"]`;
-  page.css.stylesheet(`@layer before{}@layer{${selector("firstChild")}{padding-left:7px}${selector("secondChild")}{padding-left:9px}}
+  replace_structured_fixture(page, `@layer before{}@layer{${selector("firstChild")}{padding-left:7px}${selector("secondChild")}{padding-left:9px}}
     ${selector("_987654321")}{background-color:rgb(1,2,3)}
     ${selector("first")},${selector("second")}{border-top:3px solid rgb(4,5,6)}
     :is(${selector("firstChild")}){color:rgb(11,22,33)}
@@ -71,7 +72,7 @@ export function flat_final_subject_fixture(): DocumentSsrSubjectFixture {
   const demanded = ["345678901", "456789012"];
   aggregate.acquireLocalDocumentIdentity(library, path([0,0,1,0,0]), demanded[0]!);
   aggregate.acquireLocalDocumentIdentity(library, path([0,0,1,0,1]), demanded[1]!);
-  page.css.stylesheet('[hson\\:quid="345678901"]{color:red}[hson\\:quid="456789012"]{color:blue}');
+  replace_structured_fixture(page, '[hson\\:quid="345678901"]{color:red}[hson\\:quid="456789012"]{color:blue}');
   return { map, page, aggregate, library, demanded };
 }
 
@@ -81,7 +82,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     const map = authored({ page: { document: '<html @:page <head/> <body <p @:firstChild "Flat"/>/>/>' } });
     const page = map.doc.must("page"), aggregate = owner(map), library = aggregate.libraries()[0]!;
     if (page.mode !== "document") throw Error("document");
-    page.css.stylesheet(`[hson\\:quid="${lookup(page,"firstChild")!.quid}"]{color:red}`);
+    replace_structured_fixture(page, `[hson\\:quid="${lookup(page,"firstChild")!.quid}"]{color:red}`);
     assert.equal(aggregate.documentScopes(library), undefined);
     const snapshot = map.capture(), result = map.cut({ html: "page" });
     assert.deepEqual(result.libs, snapshot);
@@ -176,7 +177,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
         mutated = true;
         TextEncoder.prototype.encode = encode;
         page.at([0]).asElement()!.attrs.set("data-after-capture","yes");
-        page.css.stylesheet("p{color:red}");
+        replace_structured_fixture(page, "p{color:red}");
       }
       return encode.call(this,input);
     };
@@ -189,18 +190,18 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
   });
   check("identity-free CSS keeps selectors layer occurrences and ordering", () => {
     const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <p class="ordinary"/>/>/>'}}), page = map.doc.must("page");
-    page.css.stylesheet('@layer before{}@layer{.ordinary:is(.x,.y){color:red}}@layer{.ordinary{color:blue}}.ordinary{color:red}.ordinary{color:green}');
+    replace_structured_fixture(page, '@layer before{}@layer{.ordinary:is(.x,.y){color:red}}@layer{.ordinary{color:blue}}.ordinary{color:red}.ordinary{color:green}');
     const before = page.css.snapshot(), candidate = capture(page, []);
     assert.equal(render_portable_document_stylesheet(decode_portable_document_stylesheet(candidate.css)), before);
     assert.equal(render(page, []), page.render()); assert.deepEqual(candidate.correspondence, []);
-    page.css.stylesheet(':future("literal"){color:red}[title=\'[hson\\:quid="012345678"]\']{color:blue}');
+    replace_structured_fixture(page, ':future("literal"){color:red}[title=\'[hson\\:quid="012345678"]\']{color:blue}');
     assert.equal(render(page, []), page.render(), "Identity-free future selectors keep their established serialization.");
   });
   check("independent Library instances keep distinct addressed roots and descendants", () => {
     const map = authored({one:{document:'<html @:one <head/> <body <p @:oneChild/>/>/>'},two:{document:'<html @:two <head/> <body <p @:twoChild/>/>/>'}});
     for (const [library, rootName, childName] of [["one","one","oneChild"],["two","two","twoChild"]]) {
       const page = map.doc.must(library!); if (page.mode !== "document") throw Error("document");
-      page.css.stylesheet(`[hson\\:quid="${lookup(page,rootName!)!.quid}"]{color:red}[hson\\:quid="${lookup(page,childName!)!.quid}"]{color:blue}`);
+      replace_structured_fixture(page, `[hson\\:quid="${lookup(page,rootName!)!.quid}"]{color:red}[hson\\:quid="${lookup(page,childName!)!.quid}"]{color:blue}`);
       const html = render(page, []);
       assert.match(html, new RegExp(`<html hson:quad="${rootName}">`));
       assert.ok(html.includes(`[hson\\:quad="${childName}"]`));
@@ -228,7 +229,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
       {selector:'[hson\\:quad="first"]',name:"SyntaxError",message:/^Unsupported or mixed CSS identity attribute selector\.$/},
     ]) {
       const before = map.capture(), ledger = aggregate.identityEpoch().issued(), overlay = aggregate.documentOverlay(library);
-      assert.throws(() => page.css.stylesheet(`${selector}{color:red}`), selector.includes("999999999") ? /owner-issued QUID/ : {name,message});
+      assert.throws(() => replace_structured_fixture(page, `${selector}{color:red}`), selector.includes("999999999") ? /owner-issued QUID/ : {name,message});
       assert.deepEqual(map.capture(),before); assert.equal(aggregate.identityEpoch().issued(),ledger); assert.equal(aggregate.documentOverlay(library),overlay);
     }
     assert.throws(() => capture(page,["999999999"]), /^Error: Correspondence requires an owner-issued QUID\.$/);
@@ -236,7 +237,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
   check("omitted live anonymous demand rejects unresolved correspondence in otherwise admissible CSS", () => {
     const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <p/>/>/>'}}), page = map.doc.must("page"), aggregate = owner(map);
     aggregate.acquireLocalDocumentIdentity(aggregate.libraries()[0]!, path([0,0,1,0,0]), "012345678");
-    page.css.stylesheet('[hson\\:quid="012345678"]{color:red}');
+    replace_structured_fixture(page, '[hson\\:quid="012345678"]{color:red}');
     assert.match(render(page,["012345678"]), /hson:quad="_012345678"/);
     const before = map.capture(), ledger = aggregate.identityEpoch().issued();
     for (const attempt of [() => render(page,[]), () => cut(map,{html:"page"},[])]) {
@@ -246,7 +247,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
   });
   check("opaque identity selector rejects at the translator opaque-syntax guard", () => {
     const { map, page, demanded } = ssr_subject_fixture();
-    assert.throws(() => page.css.stylesheet(':future([hson\\:quid="012345678"]){color:red}'),
+    assert.throws(() => replace_structured_fixture(page, ':future([hson\\:quid="012345678"]){color:red}'),
       {name:"SyntaxError",message:/^Opaque CSS selector or group prelude cannot be identity-translated\.$/});
   });
   check("lowercase portable carrier rejects at exact Library node admission", () => {
@@ -259,22 +260,22 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     const candidate = capture(page,[]);
     assert.doesNotThrow(() => hsonLiveMap.fromLibraries({page:{document:candidate.root}}));
     for (const css of ["", "p{color:red}"]) {
-      page.css.stylesheet(css);
+      replace_structured_fixture(page, css);
       rejects_realization_at(() => render(page,[]), /^Authored markup uses the reserved portable document subject carrier\.$/);
     }
   });
   check("managed marker collision reaches managed CSS planning", () => {
     const map = hsonLiveMap.fromLibraries({page:{document:'<html data-hson-managed-document-css="authored" <head/> <body/>/>'}}), page = map.doc.must("page");
-    page.css.stylesheet('p{color:red}');
+    replace_structured_fixture(page, 'p{color:red}');
     rejects_realization_at(() => render(page,[]), /^Authored markup uses the reserved managed document CSS marker\.$/);
   });
   check("unsafe style sentinel rejects CSS admission and rawtext SSR realization", () => {
     const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}}), page = map.doc.must("page");
     const before = map.capture(), candidate = capture(page,[]), unsafe = 'p{content:"</style>"}';
-    assert.throws(() => page.css.stylesheet(unsafe), {name:"DocumentStylesheetError",code:"CSS_ADMISSION",
-      message:/style RAWTEXT contains a parser-significant closing sentinel/});
-    assert.deepEqual(map.capture(),before);
-    rejects_realization_at(() => realize_document(candidate.root,unsafe,{}), /style RAWTEXT contains a parser-significant closing sentinel/);
+    page.css.stylesheet(unsafe);
+    assert.equal(page.css.snapshot(),unsafe);
+    rejects_realization_at(() => page.render(), /style RAWTEXT contains a parser-significant closing sentinel/);
+    rejects_realization_at(() => realize_document(candidate.root,[unsafe],{}), /style RAWTEXT contains a parser-significant closing sentinel/);
   });
   check("managed CSS requires an html shell and incomplete full documents reject earlier in browser planning", () => {
     const fragment = hsonLiveMap.fromLibraries({page:{document:'<main/>'}}).doc.must("page");
@@ -297,7 +298,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
         if (key === "0" && !mutated) {
           mutated = true;
           if (kind === "identity") aggregate.acquireLocalDocumentIdentity(library,path([0,0,1,0,2]),"234567890");
-          else if (kind === "css") page.css.stylesheet("p{color:red}");
+          else if (kind === "css") replace_structured_fixture(page, "p{color:red}");
           else page.at([0]).asElement()!.attrs.set("data-reentrant","yes");
         }
         return get(target,key);

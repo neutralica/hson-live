@@ -1,3 +1,4 @@
+import { canonical_css_selector } from "./relative-selector.js";
 import { enumerable_own_data_array_items } from "../../core/node-storage.js";
 import type { DocumentCssOrderEntry } from "../../types/document-css.types.js";
 import { managed_css_rule_key, managed_css_group_header, native_managed_property, structured_managed_property, trim_managed_css } from "./managed-css-lexical.js";
@@ -10,8 +11,8 @@ import { render_global_css_value, render_scoped_global_css_rule } from "./global
 
 /**
  * Canonical document-global CSS state. The rule array is authored first-write
- * order; parsed declarations retain source order, while structured authoring
- * keeps its canonical name order. The two global registries are name ordered.
+ * order; declarations retain authored insertion order. Opaque text lives
+ * directly in the order list, with no extracted declarations or identities.
  * There is no render cache, order counter, DOM host, QUID, or owner ledger.
  */
 export type PortableDocumentStylesheet = Readonly<{
@@ -51,6 +52,7 @@ export type PortableDocumentStylesheetRecord = Readonly<{
 }>;
 
 export function css_entry_identity(entry: PortableDocumentCssLeaf): string {
+  if (entry.kind === "text") throw new TypeError("Opaque contributions are addressed only by their position and owner.");
   return entry.kind === "rule" ? JSON.stringify(["rule", entry.scopes, entry.ruleKey]) : JSON.stringify([entry.kind, entry.name]);
 }
 
@@ -72,6 +74,7 @@ export function reconcile_stylesheet_order(
   const available = new Set(candidates.map(css_entry_identity));
   const seen = new Set<string>();
   const keep = (entries: readonly PortableDocumentCssEntry[]): PortableDocumentCssEntry[] => entries.flatMap((item): PortableDocumentCssEntry[] => {
+    if (item.kind === "text") return [item];
     // Removing a rule removes only that member. The structural wrapper remains until clear/replacement.
     if (item.kind === "group") return [{ ...item, entries: keep(item.entries) }];
     const identity = css_entry_identity(item);
@@ -150,7 +153,9 @@ function declaration_pairs(input: unknown): Readonly<Record<string, string>> {
     const pair = css_array_items(rawPair);
     if (pair.length !== 2) throw new TypeError("Invalid declaration pair.");
     const property = native_managed_property(nonempty(pair[0]));
-    const value = nonempty(pair[1]);
+    const rawValue = pair[1];
+    if (typeof rawValue !== "string") throw new TypeError("Expected stylesheet declaration string.");
+    const value = trim_managed_css(rawValue);
     if (values.has(property)) throw new TypeError("Duplicate stylesheet declaration.");
     values.set(property, value);
   }
@@ -230,6 +235,11 @@ export function decode_portable_document_stylesheet(input: unknown): PortableDoc
   const decode_order = (items: unknown, parents: readonly string[] = []): PortableDocumentCssEntry[] => css_array_items(items).map((item: unknown) => {
     if (item === null || typeof item !== "object") throw new TypeError("Invalid stylesheet order entry.");
     if (active.has(item) || parents.length >= 128) throw new TypeError("Cyclic or excessive stylesheet grouping.");
+    if (Object.hasOwn(item, "text")) {
+      const entry = record(item, ["kind", "text", ...(Object.hasOwn(item, "owner") ? ["owner"] : [])]);
+      if (entry.kind !== "text" || typeof entry.text !== "string" || parents.length) throw new TypeError("Invalid opaque stylesheet contribution.");
+      return Object.freeze({ kind: "text", text: entry.text, ...css_owner(entry) });
+    }
     if (Object.hasOwn(item, "header")) {
       const entry = record(item, ["kind", "header", "entries", ...(Object.hasOwn(item, "owner") ? ["owner"] : [])]);
       if (entry.kind !== "group") throw new TypeError("Invalid stylesheet group.");
@@ -253,7 +263,7 @@ export function decode_portable_document_stylesheet(input: unknown): PortableDoc
   });
   const order = decode_order(value.order);
   const expected = stylesheet_order_leaves(stylesheet_order_for({ rules, properties, keyframes })).map(css_entry_identity);
-  const actual = stylesheet_order_leaves(order).map(css_entry_identity);
+  const actual = stylesheet_order_leaves(order).filter(entry => entry.kind !== "text").map(css_entry_identity);
   if (actual.length !== expected.length || new Set(actual).size !== actual.length || actual.some((item) => !expected.includes(item))) {
     throw new TypeError("Stylesheet order disagrees with entries.");
   }
@@ -289,13 +299,27 @@ export function portable_document_stylesheet_equal(a: PortableDocumentStylesheet
 }
 
 export function render_portable_document_stylesheet(value: PortableDocumentStylesheet): string {
+  return render_portable_document_stylesheet_carriers(value).join("\n\n");
+}
+
+/** Publication boundaries. Never concatenate these strings for browser interpretation. */
+export function render_portable_document_stylesheet_carriers(value: PortableDocumentStylesheet): readonly string[] {
   const canonical = decode_portable_document_stylesheet(encode_portable_document_stylesheet(value));
-  return render_stylesheet_order(canonical.order, (entry, parents) => {
-    if (entry.kind === "property") return render_property_registration(canonical.properties.find((item) => item.name === entry.name)!);
-    if (entry.kind === "keyframes") return render_keyframes_definition(canonical.keyframes.find((item) => item.name === entry.name)!, entry.name, true);
-    const rule = canonical.rules.find((item) => item.ruleKey === entry.ruleKey && JSON.stringify(item.scopes) === JSON.stringify(entry.scopes))!;
-    return render_scoped_global_css_rule(rule.selector, rule.declarations, rule.scopes.slice(parents.length), true);
-  });
+  const carriers: string[] = [];
+  let structured = false;
+  for (const contribution of canonical.order) {
+    const text = contribution.kind === "text" ? contribution.text : render_stylesheet_order([contribution], (entry, parents) => {
+      if (entry.kind === "text") throw new TypeError("Opaque text cannot be nested in a structured group.");
+      if (entry.kind === "property") return render_property_registration(canonical.properties.find((item) => item.name === entry.name)!);
+      if (entry.kind === "keyframes") return render_keyframes_definition(canonical.keyframes.find((item) => item.name === entry.name)!, entry.name, true);
+      const rule = canonical.rules.find((item) => item.ruleKey === entry.ruleKey && JSON.stringify(item.scopes) === JSON.stringify(entry.scopes))!;
+      return render_scoped_global_css_rule(rule.selector, rule.declarations, rule.scopes.slice(parents.length), true);
+    });
+    if (contribution.kind !== "text" && structured) carriers[carriers.length - 1] += `\n\n${text}`;
+    else carriers.push(text);
+    structured = contribution.kind !== "text";
+  }
+  return carriers;
 }
 
 /** Set one declaration; existing rule position survives updates, removal/re-add appends. */
@@ -304,7 +328,7 @@ export function set_portable_document_declaration(
   ruleKeyRaw: string,
   selectorRaw: string,
   propertyRaw: string,
-  rawValue: CssValue | boolean,
+  rawValue: CssValue | boolean | null,
   scopesRaw: readonly string[] = [],
 ): PortableDocumentStylesheet {
   const ruleKey = nonempty(ruleKeyRaw);
@@ -315,15 +339,16 @@ export function set_portable_document_declaration(
   const identity = JSON.stringify([scopes, ruleKey]);
   const index = value.rules.findIndex((rule) => JSON.stringify([rule.scopes, rule.ruleKey]) === identity);
   const prior = index < 0 ? undefined : value.rules[index];
-  const declarations = prior?.selector === selector ? { ...prior.declarations } : {};
-  if (rendered) declarations[property] = rendered;
+  const sameSelector = prior !== undefined && canonical_css_selector(prior.selector) === canonical_css_selector(selector);
+  const declarations = sameSelector ? { ...prior.declarations } : {};
+  if (rendered !== null) declarations[property] = rendered;
   else delete declarations[property];
   const rules = [...value.rules];
   if (Object.keys(declarations).length === 0) {
     if (index < 0) return value;
     rules.splice(index, 1);
   } else {
-    const next = { ruleKey, selector, scopes, declarations: Object.fromEntries(sorted_pairs(declarations)) };
+    const next = { ruleKey, selector: sameSelector ? prior.selector : selector, scopes, declarations };
     if (index < 0) rules.push(next);
     else rules[index] = next;
   }

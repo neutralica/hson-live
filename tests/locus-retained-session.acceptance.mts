@@ -48,7 +48,7 @@ const html = session.now({ html: "page" });
 assert.deepEqual(Object.keys(html).sort(), ["document", "format", "html", "initializerDigest", "libs", "local", "sessionBinding"]);
 assert.deepEqual(html.libs, state.libs);
 assert.match(html.html, /SSR_FIRST/);
-assert.match(html.html, /color:red/);
+assert.match(html.html, /<style data-hson-managed-document-css="managed">p \{ color: red; \}<\/style>/);
 assert.equal(session.credential, "server-first-credential-0001");
 for (const forbidden of ["PRIVATE", "UNREQUESTED", "htmlDocument", session.credential!]) assert.equal(JSON.stringify(html).includes(forbidden), false);
 for (const name of ["unknown", "secret", "state", "extra"]) assert.throws(() => session.now({ html: name }), /unavailable/i);

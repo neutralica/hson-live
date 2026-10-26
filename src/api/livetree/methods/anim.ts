@@ -1,6 +1,8 @@
+import { trim_css_value_boundary } from "../../../core/css-value-boundary.js";
 // anim.ts
 
 import { AnimAdapters, AnimApi, AnimApiCore, AnimSpec, AnimationName, AnimationEndMode } from "../../../types/animate.types.js";
+import { assert_css_declaration_syntax } from "../../../internal/css/declaration-syntax.js";
 
 // single type parameter; output API matches the core + target type
 export function bind_anim_api<TTarget>(
@@ -39,7 +41,8 @@ export function bind_anim_api<TTarget>(
  *   If the trimmed name is empty.
  */
 export function normalizeName(name: string): string {
-  const n = name.trim();
+  assert_css_declaration_syntax("animation-name", name);
+  const n = trim_css_value_boundary(name);
   if (n === "") throw new Error(`animation name cannot be empty.`);
   return n;
 }
@@ -89,26 +92,30 @@ function applyNameOnly<TTree>(tree: TTree, name: string, a: AnimAdapters<TTree>)
  *
  * @throws {Error}
  *   If `name` is empty after trimming, or if `duration` is empty after trimming.
+ * @internal Shared preflight for lazy identity-bearing animation adapters.
  */
-function normalizeSpec(spec: AnimSpec): AnimSpec {
-  const name = normalizeName(spec.name);
-
-  const duration = spec.duration.trim();
-  if (duration === "") {
+export function normalizeSpec(spec: AnimSpec): AnimSpec {
+  // Snapshot each field once; late fields qualify before any subject is written.
+  const { name, duration, timingFunction, delay, iterationCount, direction, fillMode, playState } = spec;
+  const prepare = (value: string | undefined): string | undefined => {
+    if (value === undefined) return undefined;
+    assert_css_declaration_syntax('', value);
+    return trim_css_value_boundary(value);
+  };
+  const normalized = {
+    name: normalizeName(name),
+    duration: prepare(duration) ?? '',
+    timingFunction: prepare(timingFunction),
+    delay: prepare(delay),
+    iterationCount: prepare(iterationCount),
+    direction: prepare(direction),
+    fillMode: prepare(fillMode),
+    playState: prepare(playState),
+  };
+  if (normalized.duration === "") {
     throw new Error(`begin_animation: spec.duration cannot be empty.`);
   }
-
-  return {
-    ...spec,
-    name,
-    duration,
-    timingFunction: spec.timingFunction?.trim(),
-    delay: spec.delay?.trim(),
-    iterationCount: spec.iterationCount?.trim(),
-    direction: spec.direction?.trim(),
-    fillMode: spec.fillMode?.trim(),
-    playState: spec.playState?.trim(),
-  };
+  return normalized;
 }
 
 /**
@@ -149,31 +156,31 @@ function applyAnimationProps<TTree>(
   tree = a.setStyleProp(tree, "animation-name", spec.name);
 
   if (spec.duration !== undefined) {
-    tree = a.setStyleProp(tree, "animation-duration", spec.duration.trim());
+    tree = a.setStyleProp(tree, "animation-duration", spec.duration);
   }
 
   if (spec.timingFunction !== undefined) {
-    tree = a.setStyleProp(tree, "animation-timing-function", spec.timingFunction.trim());
+    tree = a.setStyleProp(tree, "animation-timing-function", spec.timingFunction);
   }
 
   if (spec.delay !== undefined) {
-    tree = a.setStyleProp(tree, "animation-delay", spec.delay.trim());
+    tree = a.setStyleProp(tree, "animation-delay", spec.delay);
   }
 
   if (spec.iterationCount !== undefined) {
-    tree = a.setStyleProp(tree, "animation-iteration-count", spec.iterationCount.trim());
+    tree = a.setStyleProp(tree, "animation-iteration-count", spec.iterationCount);
   }
 
   if (spec.direction !== undefined) {
-    tree = a.setStyleProp(tree, "animation-direction", spec.direction.trim());
+    tree = a.setStyleProp(tree, "animation-direction", spec.direction);
   }
 
   if (spec.fillMode !== undefined) {
-    tree = a.setStyleProp(tree, "animation-fill-mode", spec.fillMode.trim());
+    tree = a.setStyleProp(tree, "animation-fill-mode", spec.fillMode);
   }
 
   if (spec.playState !== undefined) {
-    tree = a.setStyleProp(tree, "animation-play-state", spec.playState.trim());
+    tree = a.setStyleProp(tree, "animation-play-state", spec.playState);
   }
 
   return tree;
@@ -260,13 +267,12 @@ export function apply_animation<TTarget>(
       target = adapters.setStyleProp(target, "animation-name", "none");
 
       if (mode === "clear-all") {
-        target = adapters.setStyleProp(target, "animation-duration", "");
-        target = adapters.setStyleProp(target, "animation-timing-function", "");
-        target = adapters.setStyleProp(target, "animation-delay", "");
-        target = adapters.setStyleProp(target, "animation-iteration-count", "");
-        target = adapters.setStyleProp(target, "animation-direction", "");
-        target = adapters.setStyleProp(target, "animation-fill-mode", "");
-        target = adapters.setStyleProp(target, "animation-play-state", "");
+        for (const prop of ["animation-duration", "animation-timing-function", "animation-delay",
+          "animation-iteration-count", "animation-direction", "animation-fill-mode", "animation-play-state"]) {
+          target = adapters.removeStyleProp
+            ? adapters.removeStyleProp(target, prop)
+            : adapters.setStyleProp(target, prop, "");
+        }
       }
 
       return target;
@@ -284,12 +290,13 @@ export function apply_animation<TTarget>(
     },
 
     restartName(target: TTarget, name: AnimationName): TTarget {
+      const normalized = normalizeName(name);
       target = adapters.setStyleProp(target, "animation-name", "none");
 
       const first = adapters.getFirstDomElement(target);
       if (first) forceReflow(target, first);
 
-      return applyNameOnly(target, name, adapters);
+      return applyNameOnly(target, normalized, adapters);
     },
 
     setPlayState(target: TTarget, state: "running" | "paused"): TTarget {

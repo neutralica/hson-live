@@ -237,7 +237,7 @@ check("headless scoped rules retain independent identities and same-scope update
   css.media({ maxWidth: 600 }).sel(".deck").set.backgroundColor("navy");
   const rendered = manager.renderCss();
   assert.match(rendered, /\.deck\{color:red;\}/);
-  assert.match(rendered, /@media \(max-width: 600px\) \{[\s\S]*?\.deck\{background-color:navy;color:blue;\}/);
+  assert.match(rendered, /@media \(max-width: 600px\) \{[\s\S]*?\.deck\{color:blue;background-color:navy;\}/);
   assert.match(rendered, /@media \(max-width: 900px\) \{[\s\S]*?\.deck\{color:green;\}/);
   assert.match(rendered, /@supports \(display: grid\) \{[\s\S]*?\.deck\{display:grid;\}/);
   assert.match(rendered, /@layer components \{[\s\S]*?\.deck\{font-weight:bold;\}/);
@@ -501,13 +501,17 @@ check("managed browser style text equals the headless complete renderer", () => 
   assert.equal(headlessCss, manager.renderCss());
   assert.equal(document.styleTexts().length, 0);
   projectInto(runtime, tree, document);
-  assert.deepEqual(document.styleTexts(), [headlessCss]);
-  assert.match(document.styleTexts()[0] ?? "", /\.from-text\{display:grid;\}/);
+  assert.equal(document.styleTexts().join("\n\n"), headlessCss);
+  assert.equal(document.styleTexts().length, 3);
+  assert.equal(document.styleTexts()[1], ".from-text { display: grid; } @layer components { .from-text { color: red; } }");
   css.sel(".deck").set.backgroundColor("white");
   tree.css.set.color("blue");
   css.stylesheet(".after-projection { opacity: .5; }");
   manager.syncNow();
-  assert.deepEqual(document.styleTexts(), [tree.css.snapshot()]);
+  assert.equal(document.styleTexts().join("\n\n"), tree.css.snapshot());
+  assert.equal(document.styleTexts().length, 4);
+  assert.equal(document.styleTexts()[1], ".from-text { display: grid; } @layer components { .from-text { color: red; } }");
+  assert.equal(document.styleTexts()[3], ".after-projection { opacity: .5; }");
   tree.remove();
 });
 

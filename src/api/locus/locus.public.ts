@@ -8,7 +8,7 @@ import type { LocusLibraryCatalogEntry } from "../../types/locus.projection.type
 import { admit_public_livemap_definitions, make_livemap_libraries } from "../livemap/livemap.libraries.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { enable_interactions, add_interaction } from "../interactions/interactions.js";
-import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
 import { create_registry_locus } from "./locus.registry.js";
 import { resume_registry_locus, checkpoint_registry_locus } from "./locus.registry.persistence.js";
 
@@ -47,7 +47,7 @@ function construct_locus_definition<D extends LocusDefinitions, A extends LocusA
       }
       names.add(entry.name);
       catalog.push({ name: entry.name, ownership: "local", initializer: entry.initializer,
-        ...(entry.stylesheet === undefined ? {} : { css: parse_document_stylesheet(entry.stylesheet, []) }) });
+        ...(entry.stylesheet === undefined ? {} : { css: opaque_document_stylesheet(entry.stylesheet) }) });
     }
   }
   const map = make_livemap_libraries(captured.definitions, [], undefined, captured.css);

@@ -48,7 +48,10 @@ export type LocusDocumentActionName =
 export type LocusDocumentTargetPayload = LiveMapDocumentRequestTarget;
 
 export type LocusDocumentActionPayloads = Readonly<{
-  "document.css": { operation: import("./livemap.types.js").LiveMapCssOp };
+  "document.css": {
+    operation: import("./livemap.types.js").LiveMapCssOp;
+    subjectContext?: import("../internal/css/document-css-action-subjects.js").DocumentCssActionSubjectContext;
+  };
   "document.attrs.set": {
     target: LocusDocumentTargetPayload;
     name: string;

@@ -46,6 +46,11 @@ export function parse_style_selector(source: string, allowLeadingCombinator = fa
   return ast;
 }
 
+/** Selector identity uses the same structural spelling after recursive or direct authoring. */
+export function canonical_css_selector(source: string): string {
+  return generate(parse_style_selector(source));
+}
+
 /** Append a recognized pseudo suffix to each arm without changing its specificity. */
 export function append_css_pseudo(selector: string, suffix: string): string {
   const ast = parse_style_selector(selector);

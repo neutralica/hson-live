@@ -224,7 +224,7 @@ for (const route of ["insert", "replace", "attrs"] as const) await check(`Docume
 });
 
 
-await check("Document Library addition protects stylesheet rules and declarations across recipients", () => {
+await check("Document Library addition protects opaque stylesheet contributions across recipients", () => {
   const map = hsonLiveMap.create();
   let expected: LiveMapCommit | undefined, first: LiveMapCommit | undefined, later: LiveMapCommit | undefined;
   let publications = 0;
@@ -235,9 +235,11 @@ await check("Document Library addition protects stylesheet rules and declaration
     const operation = commit.operations[0]?.operation;
     assert.ok(operation !== undefined && "kind" in operation && operation.kind === "library-add");
     const css = operation.libraries[0]?.css;
-    assert.ok(css !== undefined && css.rules[0] !== undefined);
-    attempt(() => Reflect.set(css.rules[0]!.declarations[0]!, 1, "corrupted"));
-    attempt(() => Array.prototype.splice.call(css.rules, 0, css.rules.length));
+    assert.ok(css !== undefined && css.order[0]?.kind === "text");
+    assert.deepEqual(css, { rules: [], properties: [], keyframes: [], order: [{ kind: "text", text: "main { color: red; }" }] });
+    attempt(() => Reflect.set(css.order[0], "text", "corrupted"));
+    attempt(() => Array.prototype.splice.call(css.order, 0, css.order.length));
+    attack(css);
   });
   map.commits.observe(commit => { publications += 1; later = commit; });
   const returned = map.addLibraries({ page: { document: "<main/>", stylesheet: "main { color: red; }" } }).commit;
@@ -247,14 +249,14 @@ await check("Document Library addition protects stylesheet rules and declaration
   immutable(returned);
   const page = map.doc.must("page"), root = page.root(), retained = structuredClone(returned);
   assert.equal(page.hson(), "<main/>");
-  assert.equal(page.css.snapshot(), "main{color:red;}");
+  assert.equal(page.css.snapshot(), "main { color: red; }");
   assert.deepEqual([map.rev, returned.prevRev, returned.rev, publications], [1, 0, 1, 1]);
   attack(returned);
   assert.deepEqual(page.root(), root);
-  assert.equal(page.css.snapshot(), "main{color:red;}");
+  assert.equal(page.css.snapshot(), "main { color: red; }");
   page.css.sel("main").set.color("blue");
   page.at([]).asElement()!.attrs.set("title", "later");
-  assert.match(page.css.snapshot(), /color:blue/);
+  assert.equal(page.css.snapshot(), "main { color: red; }\n\nmain{color:blue;}");
   assert.match(page.hson(), /later/);
   assert.deepEqual([map.rev, publications], [3, 3]);
   assert.deepEqual(returned, retained);
@@ -262,7 +264,7 @@ await check("Document Library addition protects stylesheet rules and declaration
   const replayed = replay.replay(returned);
   immutable(replayed);
   assert.deepEqual(replayed, returned);
-  assert.equal(replay.doc.must("page").css.snapshot(), "main{color:red;}");
+  assert.equal(replay.doc.must("page").css.snapshot(), "main { color: red; }");
 });
 
 await check("multi-Library Data, Parts and scoped Document topology owns nested publication storage", async () => {

@@ -1,13 +1,39 @@
 import { hostedFailures } from "./hosted-continuation-failures.mjs";
+import { hostedCssQueueRevocation } from "./hosted-css-queue.mjs";
+import { hostedCssAdmission } from "./hosted-css-admission.mjs";
+globalThis.hostedCssAdmission = hostedCssAdmission;
 globalThis.hostedFailures = hostedFailures;
+globalThis.hostedCssQueueRevocation = hostedCssQueueRevocation;
 import { internal_livemap_aggregate_authority } from '../../src/api/livemap/livemap.internal.ts';
 import { echo_map_internal } from "../../src/internal/governor-maps.ts";
 import { lookup_document_quad_internal } from "../../src/api/livemap/livemap.document.quad.ts";
 import { hsonLiveMap, continue_hosted_document } from '../../src/index.ts';
 import { get_node_for_el } from '../../src/api/livetree/utils/node-map-helpers.ts';
 import { echo_receiving_document_handoff_internal } from '../../src/api/echo/echo.replica-preparation.ts';
+import { document_css_state_internal } from '../../src/api/livemap/livemap.libraries.ts';
+import { render_portable_document_stylesheet_carriers } from '../../src/internal/css/portable-document-stylesheet.ts';
 
 const assert = (value, message) => { if (!value) throw Error(message); };
+const managedSelector = 'style[data-hson-managed-document-css]';
+function checkCarriers(c, doc, previous) {
+  // Derive the target from accepted receiver authority, independently of native styles.
+  const state = document_css_state_internal(echo_map_internal(c.echo).doc.must('page'));
+  const expected = render_portable_document_stylesheet_carriers(state);
+  const count = state.order.reduce((total, entry, index) => total
+    + (entry.kind === 'text' || index === 0 || state.order[index - 1].kind === 'text' ? 1 : 0), 0);
+  assert(expected.length === count, 'Each raw contribution and contiguous structured run has its own carrier');
+  assert(c.map.css.snapshot() === expected.join('\n\n'), 'Accepted stylesheet snapshot retains contribution order');
+  const styles = [...doc.querySelectorAll(managedSelector)];
+  assert(styles.length === count, 'Exact accepted managed carrier count');
+  styles.forEach((style, index) => {
+    assert(style.parentElement === doc.head && style.getAttribute('data-hson-managed-document-css') === 'managed', 'Managed carrier ownership and head placement');
+    assert(style.textContent === expected[index], 'Exact ordered receiving contribution text');
+    if (index) assert(styles[index - 1].nextSibling === style, 'Managed carriers are contiguous and ordered');
+    if (index < previous.length) assert(style === previous[index], 'Surviving owned carrier retained in order');
+  });
+  previous.slice(count).forEach(style => assert(!style.isConnected, 'Retired owned carrier removed'));
+  return styles;
+}
 const receivers = [];
 const computed = element => { const s = element.ownerDocument.defaultView.getComputedStyle(element);
   return JSON.stringify([s.color,s.marginLeft,s.paddingLeft,s.borderTopWidth,s.backgroundColor]); };
@@ -25,7 +51,8 @@ globalThis.hostedContinuationStart = async ({ sessions, endpoint, url, scoped })
   for (const session of sessions) {
     const host = await frame(url), doc = host.contentDocument, root = doc.documentElement;
     const nodes = [root, ...root.querySelectorAll('*')], styles = nodes.map(computed);
-    const originalManagedStyle = doc.querySelector('[data-hson-managed-document-css]');
+    const originalManagedStyles = [...doc.querySelectorAll(managedSelector)];
+    const originalPredecessor = originalManagedStyles[0]?.previousSibling;
     const reviewTokenParity = () => {
       if (!scoped) return;
       const button = doc.querySelector('button'), label = button.querySelector('span');
@@ -77,7 +104,10 @@ globalThis.hostedContinuationStart = async ({ sessions, endpoint, url, scoped })
     const resume = () => { http = hsonLiveMap.echo.transport.http({ endpoint }); stopInner = observe(notify); };
     const options = { now: session.cut, credential: session.credential, transport, root };
     const c = await continue_hosted_document(options);
-    receivers.push({ c, host, doc, root, nodes, text, transport, options, scoped, notify, pause, resume, ended, listenerCheck() { const before = clicks; button.dispatchEvent(new Event('click')); assert(clicks === before + 1, 'Original listener retained through live move'); }, armReject, rejected: () => rejection, reconcile: () => { omitCursor = true; } });
+    const receiver = { c, host, doc, root, nodes, text, transport, options, scoped, notify, pause, resume, ended, listenerCheck() { const before = clicks; button.dispatchEvent(new Event('click')); assert(clicks === before + 1, 'Original listener retained through live move'); }, armReject, rejected: () => rejection, reconcile: () => { omitCursor = true; } };
+    receiver.cssRule = c.tree.css.global.sel('.cut3a');
+    receiver.asyncCssRule = c.tree.async.css.global.sel('.cut3a');
+    receivers.push(receiver);
     assert(c.mirror.status === 'active', 'Mirror active');
     assert(c.tree.dom.el() === root, 'Original root adopted');
     assert(nodes.every((n, index) => [root, ...root.querySelectorAll('*')][index] === n), 'Every original Element retained');
@@ -85,9 +115,12 @@ globalThis.hostedContinuationStart = async ({ sessions, endpoint, url, scoped })
     assert(nodes.every((n, index) => computed(n) === styles[index]), 'First paint styles unchanged');
     reviewTokenParity();
     assert(!nodes.some(n => n.hasAttribute('hson:quad')), 'Portable markers consumed');
-    assert(doc.querySelectorAll('[data-hson-managed-document-css]').length === 1, 'One managed stylesheet');
-    assert(doc.querySelector('[data-hson-managed-document-css]') === originalManagedStyle, 'Original managed stylesheet retained');
-    assert(doc.querySelector('[data-hson-managed-document-css]').textContent === c.map.css.snapshot(), 'Receiving stylesheet installed');
+    const sourceCss = session.cut.libs.libraries.find(entry => entry.name === 'page').css;
+    const rawTexts = css => css.order.filter(entry => entry.kind === 'text').map(entry => entry.text);
+    assert(JSON.stringify(rawTexts(document_css_state_internal(echo_map_internal(c.echo).doc.must('page')))) === JSON.stringify(rawTexts(sourceCss)), 'Accepted raw contributions preserve exact authored text and order');
+    receiver.carriers = checkCarriers(c, doc, originalManagedStyles);
+    assert(receiver.carriers.length === originalManagedStyles.length && originalManagedStyles.every(style => style.isConnected), 'Every original owned carrier preserved during adoption');
+    assert(receiver.carriers[0]?.previousSibling === originalPredecessor, 'Managed carriers retain placement after authored head content');
     for (const node of nodes) {
       const id = node.getAttribute('hson:quid');
       if (id) assert(c.tree.find.byQuid(id)?.dom.el() === node && get_node_for_el(node)?.$_meta?.quid === id, 'Exact receiving identity correspondence');
@@ -108,6 +141,63 @@ globalThis.hostedContinuationStart = async ({ sessions, endpoint, url, scoped })
 };
 globalThis.hostedContinuationDispose = () => {
   for (const r of receivers.splice(0)) { r.c.dispose(); r.c.echo.dispose(); r.transport.dispose(); r.host.remove(); }
+};
+globalThis.hostedCssMap = async (writable = true) => {
+  const receiver = receivers[0], tree = receiver.c.tree;
+  const before = receiver.c.map.rev;
+  const rule = tree.async.css.global.sel('.cut3a');
+  const css = { '--cut3a': 'base', _hover: { '& > .child': { _focus: { '--cut3a': 'nested' } } },
+    $media: { screen: { '& > .child': { __before: { '--cut3a': 'media' } } } } };
+  await rejects(() => tree.css.global.sel('.cut3a').setMany(css), 'Hosted recursive CSS requires async authority');
+  if (!writable) {
+    const snapshot = receiver.c.map.css.snapshot();
+    await rejects(() => rule.setMany(css), 'Read-only hosted sessions reject recursive CSS through authority');
+    assert(receiver.c.map.rev === before && receiver.c.map.css.snapshot() === snapshot, 'Authority denial publishes no recursive branches');
+    return { denied: true };
+  }
+  await rule.setMany(css);
+  assert(receiver.c.map.rev === before + 1, 'One hosted recursive map produces one governed revision');
+  await rule.setMany(css);
+  assert(receiver.c.map.rev === before + 1, 'Hosted recursive no-op does not revise');
+  const snapshot = receiver.c.map.css.snapshot();
+  await rejects(() => rule.setMany({ '--cut3a': 'rejected', '& > .child': { _hover: { color: null } } }), 'Hosted later invalid nested branch rejects');
+  assert(receiver.c.map.rev === before + 1 && receiver.c.map.css.snapshot() === snapshot, 'Hosted nested rejection is atomic');
+  await Promise.all([
+    rule.setMany({ _hover: { '& > .child': { _focus: { '--cut3a': 'first' } } } }),
+    rule.setMany({ _hover: { '& > .child': { _focus: { '--cut3a': 'second' } } } }),
+  ]);
+  assert(receiver.c.map.rev === before + 3 && receiver.c.map.css.snapshot().includes('--cut3a:second'), 'Hosted recursive writes preserve async submission order');
+  await rule.setMany({ '--cut3a': undefined, _hover: { '& > .child': { _focus: { '--cut3a': undefined } } },
+    $media: { screen: { '& > .child': { __before: { '--cut3a': undefined } } } } });
+  assert(receiver.c.map.rev === before + 4 && !receiver.c.map.css.snapshot().includes('.cut3a'), 'Hosted deletion retires the final declaration of every recursive rule');
+  return { revisions: receiver.c.map.rev - before };
+};
+globalThis.hostedCssSubjects = async () => {
+  const r = receivers[0], { c, doc } = r, before = c.echo.sync.appliedRev;
+  const a = doc.querySelector('#hosted-a'), b = doc.querySelector('#hosted-b');
+  const nodes = [a, b], identities = nodes.map(node => node.getAttribute('hson:quid'));
+  const css = { '@:a': { '--subject-first': 'one', '--subject-second': 'two',
+    _hover: { '& > i': { '--subject-nested': 'nested' } } },
+    $media: { screen: { '@:b': { '--subject-media': 'right', __before: { '--subject-pseudo': 'pseudo' } } } } };
+  const rule = c.tree.async.css.global.sel('.subject-browser');
+  await rule.setMany(css);
+  assert(c.echo.sync.appliedRev === before + 1, 'Multiple CSS subjects publish one authority transition');
+  await globalThis.hostedRevision(before + 1);
+  for (const receiver of receivers) {
+    const left = receiver.doc.querySelector('#hosted-a'), right = receiver.doc.querySelector('#hosted-b');
+    assert(receiver.doc.defaultView.getComputedStyle(left).getPropertyValue('--subject-first').trim() === 'one', 'Contextual CSS reaches each receiving subject');
+    assert(receiver.doc.defaultView.getComputedStyle(right).getPropertyValue('--subject-media').trim() === 'right', 'Media reference reaches the other subject');
+    assert(receiver.c.map.css.snapshot().includes(left.getAttribute('hson:quid')), 'Replay uses receiving-local identities');
+    receiver.carriers = checkCarriers(receiver.c, receiver.doc, receiver.carriers);
+  }
+  await rule.setMany(css);
+  assert(c.echo.sync.appliedRev === before + 1, 'Contextual CSS no-op retains canonical rule identity');
+  assert(nodes.every((node, index) => node.getAttribute('hson:quid') === identities[index]), 'Subject authoring preserves native Elements and identities');
+  await rule.setMany({ '@:a': { '--subject-first': undefined, '--subject-second': undefined,
+    _hover: { '& > i': { '--subject-nested': undefined } } },
+    $media: { screen: { '@:b': { '--subject-media': undefined, __before: { '--subject-pseudo': undefined } } } } });
+  assert(c.echo.sync.appliedRev === before + 2, 'Complete contextual deletion publishes once');
+  return { subjects: 2, receivers: receivers.length, revisions: 2 };
 };
 globalThis.hostedRevision = async rev => {
   await Promise.all(receivers.map(({ c }) => new Promise((resolve, reject) => {
@@ -169,8 +259,7 @@ globalThis.hostedCheckLive = phase => {
     assert(computed(b) === r.siblingStyle, 'Repeated sibling styles remain isolated');
     assert(doc.defaultView.getComputedStyle(doc.querySelector(scoped ? '#outside' : '#hosted-outside')).color
       === (scoped ? 'rgb(40, 50, 60)' : 'rgb(0, 0, 0)'), 'Unrelated subject retains its styles');
-    assert(doc.querySelectorAll('[data-hson-managed-document-css]').length === 1, 'Exactly one managed stylesheet after update');
-    assert(doc.querySelector('[data-hson-managed-document-css]').textContent === c.map.css.snapshot(), 'CSS and receiving graph agree');
+    r.carriers = checkCarriers(c, doc, r.carriers);
     assert(c.tree.dom.el() === r.root, 'Root continuity');
   }
   return phase;
@@ -191,7 +280,7 @@ globalThis.hostedResume = async rev => {
     assert(r.c.echo.sync.appliedRev === rev && r.c.mirror.sourceRevision === r.c.map.rev, 'Recovery revisions coherent');
     assert(r.c.mirror.status === 'active' && r.c.tree.dom.el() === r.root, 'Recovery retains adopted root');
     assert(r.doc.querySelector(r.scoped ? '#right' : '#hosted-b').getAttribute('title') === 'missed', 'Missed update recovered');
-    assert(r.doc.querySelector('[data-hson-managed-document-css]').textContent === r.c.map.css.snapshot(), 'Recovery CSS coherent');
+    r.carriers = checkCarriers(r.c, r.doc, r.carriers);
   }
   assert(receivers[0].c.echo.sync.strategy === 'reconcile', 'Forced full reconciliation exercised');
   assert(receivers[1].c.echo.sync.strategy === 'replay', 'Missed revision replay exercised');
@@ -225,7 +314,19 @@ globalThis.hostedTopologies = async ({ variants, endpoint }) => {
 };
 
 globalThis.hostedRevoked = async () => {
-  const r = receivers[1], before = r.root.outerHTML;
+  const r = receivers[1], owned = new Set(r.carriers);
+  const authoredStyle = r.doc.createElement('style');
+  authoredStyle.textContent = '/* authored revocation sentinel */'; r.doc.head.prepend(authoredStyle);
+  // Exclude only the known owned carriers; every other node, including text,
+  // must survive with its exact identity, attributes, order and native mapping.
+  const capture = node => ({ node, value: node.nodeValue,
+    attrs: node.nodeType === 1 ? [...node.attributes].map(attr => [attr.name, attr.value]) : undefined,
+    mapped: node.nodeType === 1 ? get_node_for_el(node) : undefined,
+    children: [...node.childNodes].filter(child => !owned.has(child)).map(capture) });
+  const before = capture(r.root), unrelated = capture(receivers[0].root);
+  const button = r.doc.querySelector(r.scoped ? '#right button' : '#hosted-b');
+  let clicks = 0; const listener = () => clicks++;
+  button.addEventListener('click', listener);
   await r.ended;
   assert(r.c.echo.session.status !== 'attached', 'Revoked session loses attachment');
   await rejects(() => r.c.echo.action('document.attrs.set', {
@@ -235,7 +336,25 @@ globalThis.hostedRevoked = async () => {
   const queued = r.c.tree.async.attrs.set('title', 'forbidden');
   const rejected = rejects(() => queued, 'Disposal settles queued stale tree work');
   r.c.dispose(); r.c.echo.dispose(); await rejected;
-  assert(r.root.outerHTML === before, 'Revocation does not reconstruct the adopted page');
+  const revokedRevision = r.c.echo.sync.appliedRev;
+  const revokedCss = { '& > .child': { _hover: { '--cut3a': 'forbidden' } } };
+  await rejects(() => r.cssRule.setMany(revokedCss), 'Revoked hosted binding rejects retained recursive sync authoring');
+  await rejects(() => r.asyncCssRule.setMany(revokedCss), 'Revoked hosted binding rejects retained recursive async authoring');
+  assert(r.c.echo.sync.appliedRev === revokedRevision, 'Revoked recursive CSS cannot advance the replica');
+  const preserved = (expected, node) => {
+    assert(node === expected.node && node.nodeValue === expected.value, 'Revocation retains exact authored nodes and text');
+    if (expected.attrs) {
+      assert(JSON.stringify([...node.attributes].map(attr => [attr.name, attr.value])) === JSON.stringify(expected.attrs), 'Revocation preserves all authored and QUID/QUAD attributes');
+      assert(get_node_for_el(node) === expected.mapped, 'Revocation retains native node correspondence');
+    }
+    assert(node.childNodes.length === expected.children.length, 'Only owned carriers are removed');
+    expected.children.forEach((child, index) => preserved(child, node.childNodes[index]));
+  };
+  assert(r.doc.querySelectorAll(managedSelector).length === 0 && [...owned].every(style => !style.isConnected), 'Revocation disposal retires every owned managed carrier');
+  assert(r.doc.documentElement === r.root && r.root.isConnected && receivers[0].doc.documentElement === receivers[0].root, 'Adopted and unrelated document roots remain mounted');
+  preserved(before, r.root); preserved(unrelated, receivers[0].root);
+  button.dispatchEvent(new Event('click')); assert(clicks === 1, 'Surviving authored listener remains attached after revocation disposal');
+  button.removeEventListener('click', listener);
 };
 
 globalThis.hostedArmRejection = () => receivers.forEach((r,i) => r.armReject(i === 0));

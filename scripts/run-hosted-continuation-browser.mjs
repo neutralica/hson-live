@@ -16,6 +16,10 @@ import { lookup_document_quad_internal } from '../src/api/livemap/livemap.docume
 import { internal_livemap_aggregate_authority as owner } from '../src/api/livemap/livemap.internal.ts';
 import { validate_document_path } from '../src/api/livemap/livemap.document.path.ts';
 import { hosted_flat_subject_fixture } from '../tests/fixtures/hosted-styled-part-ssr-cases.mts';
+import { structured_css_fixture } from '../tests/helpers/structured-css-fixture.mts';
+
+// These cases exercise governed subject references, not opaque stylesheet text.
+const replaceSubjectCss = (document, text) => document.css({ domain: 'css', kind: 'replace', stylesheet: structured_css_fixture(text) });
 
 async function topology_fixture() {
   const locus = hsonLiveMap.locus.create({ "parts": { parts: { bare: { kind: 'document', document: '<aside "Bare"/>' } }, access: "private" }, "page": { document: '<html <head/> <body <hson-part lib="parts" at="bare"/>/>/>', access: "shared" }, "flat": { document: '<html <head/> <body <p "Flat"/>/>/>', access: "shared" }, "live": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ['flat', 'page', 'live'] }) });
@@ -25,13 +29,19 @@ async function topology_fixture() {
 }
 async function flat_fixture(rollback = false) {
   const parents = ['p', 'q'].map(id => `<section id="rollback-${id}" <span id="${id}-one" "One"/> <span id="${id}-two" "Two"/> <span id="${id}-three" "Three"/>/>`).join(' ');
-  const fixture = await hosted_flat_subject_fixture('<button @:a id="hosted-a" "Styled"/> <button @:b id="hosted-b" "Styled"/> <em id="hosted-disposable" "Disposable"/>' + (rollback ? parents : ''));
+  const fixture = await hosted_flat_subject_fixture('<button @:a id="hosted-a" "Styled"/> <button @:b id="hosted-b" "Styled"/> <em id="hosted-disposable" "Disposable"/>' + (rollback ? parents : ''), !rollback);
   const aggregate = owner(locus_map_internal(fixture.locus)), identity = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(e => e.name === 'page')];
   aggregate.acquireLocalDocumentIdentity(identity, validate_document_path([0,0,1,0,2]), '123456789');
   await fixture.locus.stage(w => w.doc.must('page').css.sel('[hson\\:quid="123456789"]').setProp('color','rgb(90,80,70)'));
   return { ...fixture, cut: fixture.session.now({ html: 'page' }) };
 }
-const fixtures = [await receiving_handoff_fixture(), await flat_fixture(), await receiving_handoff_fixture(), await topology_fixture(), await flat_fixture(true)];
+async function cardinality_fixture() {
+  const locus = hsonLiveMap.locus.create({ page: { document: `<html <head/> <body ${Array.from({ length: 65 }, (_, index) => `<p @:subject${index} id="subject${index}"/>`).join(' ')}/>/>`, access: 'shared' } },
+    { authorizeProjection: () => ({ libraries: ['page'], writableDocuments: ['page'] }) });
+  const session = await locus.session.create({ libraries: ['page'] });
+  return { locus, session, cut: session.now({ html: 'page' }) };
+}
+const fixtures = [await receiving_handoff_fixture(), await flat_fixture(), await receiving_handoff_fixture(), await topology_fixture(), await flat_fixture(true), await cardinality_fixture()];
 const pages = await Promise.all(fixtures.map(async (fixture, i) => {
   const second = await fixture.locus.session.create({ libraries: fixture.session.now().libs.libraries.map(e => e.name) });
   const endpoint = `/echo-${i}`;
@@ -93,6 +103,16 @@ try {
   };
   await command('Page.enable');
   for (const [i, page] of pages.entries()) {
+    if (i === 5) {
+      await command('Page.navigate', { url: base + '/harness' });
+      for (let j = 0; j < 100; j++) { if (await evaluate("location.pathname === '/harness' && document.readyState === 'complete'")) break; await delay(50); }
+      await evaluate(bundle.outputFiles[0].text);
+      const ownerQuid = lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'subject0').quid;
+      const before = page.locus.rev;
+      console.log('Chrome hosted CSS admission/cardinality:', await evaluate(`hostedCssAdmission(${JSON.stringify({ session: page.sessions[0], endpoint: base + page.endpoint, url: base + page.path, ownerQuid })})`));
+      assert.equal(page.locus.rev, before + 2);
+      continue;
+    }
     if (i === 4) {
       await command('Page.navigate', { url: base + '/harness' });
       for (let j = 0; j < 100; j++) { if (await evaluate("location.pathname === '/harness' && document.readyState === 'complete'")) break; await delay(50); }
@@ -106,7 +126,7 @@ try {
         w.doc.must('page').at([1,0,0]).replace('Recovered text');
         w.doc.must('page').at([1,2]).delete();
         w.doc.must('page').at([1]).asElement().insert(2,node('<p id="recovery-insert" "Inserted during recovery"/>'));
-        w.doc.must('page').css.stylesheet('[hson\\:quid="444444444"]{color:rgb(77,88,99)}');
+        replaceSubjectCss(w.doc.must('page'), '[hson\\:quid="444444444"]{color:rgb(77,88,99)}');
       });
       await page.locus.stage(w => {
         for (const [index, id] of [[3, 'p'], [4, 'q']]) {
@@ -168,7 +188,16 @@ try {
       console.log(await evaluate(`hostedFailures(${JSON.stringify({ ...args, recovered: true })})`));
       continue;
     }
+    if (i === 1) {
+      const session = await page.locus.session.create({ libraries: ['page'] }), revision = page.locus.rev;
+      console.log('Chrome hosted CSS queue revocation:', await evaluate(`hostedCssQueueRevocation(${JSON.stringify({ session: { cut: session.now({ html: 'page' }), credential: session.credential }, endpoint: base + page.endpoint, url: base + page.path })})`));
+      assert.equal(page.locus.rev, revision, 'Revoked browser CSS writes do not advance authority');
+      session.revoke();
+    }
     const result = await evaluate(`hostedContinuationStart(${JSON.stringify({ sessions: page.sessions, endpoint: base + page.endpoint, url: base + page.path, scoped: i !== 1 })})`);
+    console.log('Chrome hosted recursive CssMap:', await evaluate(`hostedCssMap(${i === 1})`));
+    if (i === 1) console.log('Chrome hosted CSS subjects:', await evaluate(`hostedCssSubjects()`));
+    await evaluate(`hostedRevision(${page.locus.rev})`);
     const changed = async (phase, run) => {
       console.log(`Chrome ${i}: ${phase}`);
       await run(); await evaluate(`hostedRevision(${page.locus.rev})`);
@@ -183,7 +212,7 @@ try {
     await changed('content', () => page.locus.stage(w => {
       w.doc.must('page').at(i !== 1 ? [1,0,0,0,0] : [1,0,0]).replace('Changed');
       w.doc.must('page').at([1]).asElement().insert(2, node('<p id="inserted" "Inserted"/>'));
-      if (i === 1) w.doc.must('page').css.stylesheet(`[hson\\:quid="${subject.quid}"]{color:rgb(21,43,65)}[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="123456789"]{color:rgb(90,80,70)}${flatDemand ? '[hson\\:quid="222222222"]{color:rgb(22,44,66)}' : ''}`);
+      if (i === 1) replaceSubjectCss(w.doc.must('page'), `[hson\\:quid="${subject.quid}"]{color:rgb(21,43,65)}[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="123456789"]{color:rgb(90,80,70)}${flatDemand ? '[hson\\:quid="222222222"]{color:rgb(22,44,66)}' : ''}`);
       else w.doc.must('page').css.sel(`[hson\\:quid="${subject.quid}"]`).setProp('color','rgb(21,43,65)');
     }));
     if (i === 1) {
@@ -196,7 +225,7 @@ try {
     }
     await changed('move', () => page.locus.stage(w => w.doc.must('page').at([1]).asElement().move(0,1)));
     await changed('remove', () => page.locus.stage(w => {
-      if (i === 1) w.doc.must('page').css.stylesheet(`[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="123456789"]{color:rgb(90,80,70)}${flatDemand ? '[hson\\:quid="222222222"]{color:rgb(22,44,66)}' : ''}`);
+      if (i === 1) replaceSubjectCss(w.doc.must('page'), `[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="123456789"]{color:rgb(90,80,70)}${flatDemand ? '[hson\\:quid="222222222"]{color:rgb(22,44,66)}' : ''}`);
       else w.doc.must('page').css.sel(`[hson\\:quid="${subject.quid}"]`).drop();
       w.doc.must('page').at([1,1]).delete();
     }));
@@ -205,7 +234,7 @@ try {
     if (i === 1) {
       await changed('graph-first-cleanup', () => page.locus.stage(w => {
         w.doc.must('page').at([1,3]).delete();
-        w.doc.must('page').css.stylesheet(`[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="222222222"]{color:rgb(22,44,66)}`);
+        replaceSubjectCss(w.doc.must('page'), `[hson\\:quid="${lookup_document_quad_internal(locus_map_internal(page.locus).doc.must('page'), 'b').quid}"]{color:rgb(12,34,56)}[hson\\:quid="222222222"]{color:rgb(22,44,66)}`);
       }));
       await evaluate('hostedArmRejection()');
       await page.locus.stage(w => w.doc.must('page').at([1,0]).asElement().attrs.set('data-rejected', 'accepted-authority'));

@@ -144,8 +144,8 @@ export async function receiving_handoff_cases(check: (name: string, run: () => P
           assert.ok(JSON.stringify(r.cut.libs.libraries.find(e => e.name === "page")!.css).includes(subject.name));
           assert.ok(JSON.stringify(r.a.stylesheet(r.id)).includes(subject.quid));
         }
-        assert.equal(evidence.receivingCss, r.document.css.snapshot());
-        assert.notEqual(evidence.portableCss, evidence.receivingCss);
+        assert.equal(evidence.receivingCss.join("\n\n"), r.document.css.snapshot());
+        assert.notEqual(evidence.portableCss.join("\n\n"), evidence.receivingCss.join("\n\n"));
         const installed = r.a.documentScopes(r.id)!;
         assert.equal(installed.occurrences.length, 6); assert.equal(new Set(installed.occurrences.map(e => e.lifetime)).size, 6);
         for (const binding of original.document) {
@@ -303,7 +303,7 @@ export async function receiving_handoff_cases(check: (name: string, run: () => P
         const subject = evidence.subjects.find(s => s.name === name)!;
         assert.equal(subject.disposition, "disposable"); assert.notEqual(subject.quid, name.slice(1));
         assert.equal(aggregate.documentQuad(library, name, undefined), undefined);
-        assert.ok(evidence.receivingCss.includes(subject.quid));
+        assert.ok(evidence.receivingCss.join("\n\n").includes(subject.quid));
       }
       assert.equal(evidence.subjects.find(s => s.name === "_987654321")!.disposition, "authored");
       assert.ok(aggregate.documentQuad(library, "_987654321", undefined));
@@ -316,7 +316,7 @@ export async function receiving_handoff_cases(check: (name: string, run: () => P
       const e = r.cap.prepare("page"); assert.equal(e.scopes, undefined);
       assert.deepEqual(e.quads, f.cut.libs.libraries[0]!.quads);
       assert.ok(e.subjects.some(s => s.name === "a" && s.disposition === "authored"));
-      assert.notEqual(e.portableCss, e.receivingCss); assert.equal(e.receivingCss, r.document.css.snapshot());
+      assert.notEqual(e.portableCss.join("\n\n"), e.receivingCss.join("\n\n")); assert.equal(e.receivingCss.join("\n\n"), r.document.css.snapshot());
       for (const subject of e.subjects) {
         assert.ok(f.cut.html.includes(`hson:quad="${subject.name}"`));
         assert.equal(r.a.documentOverlay(r.id).quidAtPath(subject.path), subject.quid);

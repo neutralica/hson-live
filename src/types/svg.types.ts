@@ -44,7 +44,7 @@ export type SvgLiveTree = Omit<
   create: SvgCreateHelper;
   id: IdApi<SvgLiveTree>;
   classlist: ClassApi<SvgLiveTree>;
-  style: StyleHandle<SvgLiveTree>;
+  style: StyleHandle<SvgLiveTree, true>;
   css: CssTreeHandle<SvgLiveTree>;
   attrs: AttrHandle<SvgLiveTree>;
   flags: FlagHandle<SvgLiveTree>;

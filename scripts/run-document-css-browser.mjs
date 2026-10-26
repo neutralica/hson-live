@@ -7,6 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
 import { hsonLiveMap } from "../src/index.ts";
+import { document_css_state_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { render_portable_document_stylesheet_carriers } from "../src/internal/css/portable-document-stylesheet.ts";
 
 const candidates = [process.env.HSON_CHROME_BIN,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -30,7 +32,8 @@ word"; font-family:var(--x); } } }
 map.doc.must("page").css.scope("escaped", "@layer").media("screen").sel("#escaped-newline").setProp("--x", '"review\\\nword"');
 map.doc.must("page").css.scope("escaped", "@layer").media("screen").sel("#escaped-newline").setProp("font-family", "var(--x)");
 const html = map.doc.must("page").render();
-assert.equal((html.match(/data-hson-managed-document-css/g) ?? []).length, 1);
+const expectedCarriers = render_portable_document_stylesheet_carriers(document_css_state_internal(map.doc.must("page")));
+assert.equal((html.match(/data-hson-managed-document-css/g) ?? []).length, expectedCarriers.length);
 
 const server = createServer((_request, response) => {
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -105,7 +108,9 @@ try {
   const { nodeIds: managed } = await send("DOM.querySelectorAll", {
     nodeId: root.nodeId, selector: "style[data-hson-managed-document-css='managed']",
   });
-  assert.equal(managed.length, 1);
+  assert.equal(managed.length, expectedCarriers.length);
+  const actualCarriers = await send("Runtime.evaluate", { expression: "JSON.stringify([...document.querySelectorAll('style[data-hson-managed-document-css=managed]')].map(style => style.textContent))", returnByValue: true });
+  assert.deepEqual(JSON.parse(actualCarriers.result.value), expectedCarriers);
   const { nodeId: htmlNode } = await send("DOM.querySelector", { nodeId: root.nodeId, selector: "html" });
   const { attributes } = await send("DOM.getAttributes", { nodeId: htmlNode });
   assert.equal(attributes.includes("data-script-ran"), false, "script execution is explicitly disabled");

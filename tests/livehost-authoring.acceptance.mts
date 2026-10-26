@@ -115,7 +115,7 @@ try {
   const second = await response(deck.requests[0]!);
   const updated = await second.text();
   assert.match(updated, /data-version="new"/);
-  assert.match(updated, /color:blue/);
+  assert.match(updated, /<style data-hson-managed-document-css="managed">main \{ color: blue; \}<\/style>/);
   assert.equal(is_browser_html_producer(home.render), true);
   assert.equal(is_browser_html_producer(() => "plain string"), false);
   const inert = standaloneHost.GET("/direct", home.render);

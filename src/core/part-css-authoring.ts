@@ -2,7 +2,9 @@ import { assert_part_public_path, assert_part_object_access } from "./part-css-a
 import { is_ordered_projected_value } from './ordered-projected-value.js';
 import { css_data_entries, normalize_css_map } from './css-map.js';
 
-/** Detach authoring data, retaining values/spellings while omitting undefined. */
+/** Prepare declaration operations first, then detach the complete contribution.
+ * Deletion against this initially empty definition leaves no stored declaration.
+ * Retain authored spellings/values; no deletion markers enter portable Part data. */
 function capture_css_authoring(input: unknown): unknown {
   normalize_css_map(input);
   const active = new WeakSet<object>();

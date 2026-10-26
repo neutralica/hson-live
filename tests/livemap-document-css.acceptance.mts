@@ -22,7 +22,7 @@ if (false) {
 const dynamic: LiveMapDynamicLibrary = map.doc.must("page" as string);
 if (dynamic.mode === "document") {
   assert.equal(dynamic.css.snapshot(), "");
-  dynamic.css.stylesheet("");
+  dynamic.css.clearAll();
 }
 assert.throws(() => Reflect.get(map.data.must("data" as string), "css"), /data Library; document CSS is unavailable/);
 assert.equal("css" in page.at([]), false);
@@ -153,7 +153,7 @@ assert.equal(addMap.rev, 2);
 assert.equal(addedCommits.length, 1);
 assert.equal(addedCommits[0]?.operations.some((entry) =>
   "domain" in entry.operation && entry.operation.domain === "css"), true);
-assert.match(document_html(addMap.doc.must("page")), /body\{[^}]*margin:0;/);
+assert.match(document_html(addMap.doc.must("page")), /body \{ margin: 0; \}/);
 const worker = await new Promise<Readonly<{ capture: ReturnType<typeof map.capture>; css: string; html: string }>>((resolve, reject) => {
   const instance = repository_typescript_worker(new URL("./fixtures/livemap-document-css.worker.mts", import.meta.url));
   instance.once("message", resolve);

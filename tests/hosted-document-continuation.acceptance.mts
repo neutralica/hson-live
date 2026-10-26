@@ -680,7 +680,7 @@ function socketPair(): Readonly<{
     assert.equal(tree.css, css); assert.equal(tree.css.global, global);
     assert.equal(css.snapshot(), "");
     assert.throws(() => global.stylesheet("button{color:red}"), /async authority/);
-    await assert.rejects(asyncGlobal.stylesheet('@import url(forbidden.css);'), /@import/);
+    await assert.rejects(Reflect.apply(asyncGlobal.stylesheet,asyncGlobal,[42]), /text/i);
     assert.equal(locus.rev, rev); assert.equal(pair.delivered.length, frames);
     assert.equal(tree.node.$_meta?.quid, undefined); assert.deepEqual([...runtime.issuedQuids], issued);
     const source = "button{color:red}";
@@ -688,7 +688,7 @@ function socketPair(): Readonly<{
     assert.equal(completed.sync, tree);
     assert.equal(locus.rev, rev + 1); assert.equal(continuation.map.rev, rev + 1);
     assert.equal(css.snapshot(), continuation.map.css.snapshot());
-    assert.match(css.snapshot(), /button\{color:red;/);
+    assert.match(css.snapshot(), /button\{color:red/);
     const style = head.childNodes.find(node => node instanceof FakeElement && node.tagName === "style");
     assert.ok(style instanceof FakeElement); assert.equal(Reflect.get(style, "textContent"), css.snapshot());
     assert.equal(tree.dom.el(), button as unknown as Element);
@@ -704,10 +704,10 @@ function socketPair(): Readonly<{
     const delayed = continuation.tree.css;
     const rootBefore = continuation.tree.node;
     const activeClaims = [...runtime.quidToNode.keys()], pendingClaims = [...runtime.pendingQuidClaims.keys()];
-    const pending = asyncGlobal.stylesheet("button{color:purple}");
+    const pending = assert.rejects(asyncGlobal.stylesheet("button{color:purple}"), /disposed|active bound/);
     continuation.dispose();
     await pending;
-    assert.equal(locus.rev, rev + 3);
+    assert.equal(locus.rev, rev + 2);
     assert.deepEqual([...runtime.issuedQuids], issued);
     const replicaRev = continuation.map.rev, delivered = pair.delivered.length;
     const acceptedCss = continuation.map.css.snapshot();
@@ -725,7 +725,7 @@ function socketPair(): Readonly<{
     assert.deepEqual([...runtime.issuedQuids], issued);
     assert.throws(() => global.clearAll(), /disposed/);
     await assert.rejects(asyncGlobal.stylesheet(source), /disposed|active bound/);
-    assert.equal(locus.rev, rev + 3);
+    assert.equal(locus.rev, rev + 2);
   } finally { continuation.dispose(); continuation.echo.dispose(); detach(); locus.dispose(); }
 }
 

@@ -1,18 +1,18 @@
 import { managed_css_rule_key, structured_managed_property, trim_managed_css } from "../../internal/css/managed-css-lexical.js";
-import type { CssPseudoKey } from "../../types/css.types.js";
-import type { DocumentCssHandle, DocumentCssMap, DocumentCssRuleFacade, DocumentCssRuleHandle, DocumentCssValue } from "../../types/document-css.types.js";
+import type { CssMap } from "../../types/css.types.js";
+import { css_declaration, css_property, normalize_css_map } from "../../core/css-map.js";
+import { visit_structured_css } from "../../internal/css/structured-css.js";
+import type { DocumentCssHandle, DocumentCssRuleFacade, DocumentCssRuleHandle, DocumentCssValue } from "../../types/document-css.types.js";
 import type { LiveMapCssOp, LiveMapCssUnitOp } from "../../types/livemap.types.js";
 import type { PropertyInput, PropertyRegistration, CssCustomPropName } from "../../types/at-property.types.js";
 import type { KeyframesInput, KeyframesDef } from "../../types/keyframes.types.js";
-import { is_css_declaration_value } from "../../core/inline-style.js";
 import { normalize_css_var_name } from "../../internal/css/css-var-name.js";
-import { pseudo_to_suffix } from "../../internal/css/pseudo-suffix.js";
-import { append_css_pseudo, parse_style_selector } from "../../internal/css/relative-selector.js";
+import { canonical_css_selector, parse_style_selector } from "../../internal/css/relative-selector.js";
 import { mediaToAtRule, convertSupportsToAt as convertSupportsToAtRule } from "../../internal/css/global-css-scopes.js";
 import { canonical_property_registration } from "../../internal/css/property-registration.js";
 import { canonical_keyframes_definition } from "../../internal/css/keyframes-definition.js";
 import { render_scoped_global_css_rule } from "../../internal/css/global-css-text.js";
-import { parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
+import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
 import {
   encode_portable_document_stylesheet,
   render_portable_document_stylesheet,
@@ -23,13 +23,13 @@ import {
 } from "../../internal/css/portable-document-stylesheet.js";
 
 const VAR_RULE_KEY = "global-vars::root";
-const PSEUDOS = new Set(["_hover", "_active", "_focus", "_focusWithin", "_focusVisible", "_visited", "_checked", "_disabled", "__before", "__after"]);
 type RuleRecord = PortableDocumentStylesheetRecord["rules"][number];
 
 /** LiveMap owns the state and transition; this facade owns no revision or CSS cache. */
 export function make_livemap_document_css(
   read: () => PortableDocumentStylesheet,
   commit: (operation: LiveMapCssOp) => void,
+  resolveSubject?: (name: string) => string | undefined,
 ): DocumentCssHandle {
   const rule_identity = (rule: RuleRecord): string => JSON.stringify([rule.scopes, rule.ruleKey]);
   const changed_units = (before: PortableDocumentStylesheet, after: PortableDocumentStylesheet): LiveMapCssUnitOp[] => {
@@ -51,6 +51,18 @@ export function make_livemap_document_css(
     if (units.length === 1) commit(units[0]!);
     else if (units.length > 1) commit({ domain: "css", kind: "batch", operations: units });
   };
+  // Portable identity translation preserves opaque rule keys. Reuse the
+  // receiving record selected by the canonical selector/scopes, including
+  // selector-generated keys whose subject spelling belongs to its source runtime.
+  const selector_key = (state: PortableDocumentStylesheet, selector: string, scopes: readonly string[]): string => {
+    const canonical = canonical_css_selector(selector), context = JSON.stringify(scopes);
+    const key = `sel:${canonical}`;
+    if (state.rules.some(rule => rule.ruleKey === key && JSON.stringify(rule.scopes) === context)) return key;
+    const matches = state.rules.filter(rule => rule.ruleKey.startsWith("sel:")
+      && JSON.stringify(rule.scopes) === context && canonical_css_selector(rule.selector) === canonical);
+    if (matches.length > 1) throw new TypeError("Ambiguous canonical CSS selector rule.");
+    return matches[0]?.ruleKey ?? key;
+  };
   const rule = (rawKey: string, rawSelector: string, scopes: readonly string[]): DocumentCssRuleHandle => {
     const ruleKey = managed_css_rule_key(rawKey);
     const selector = trim_managed_css(rawSelector);
@@ -59,7 +71,8 @@ export function make_livemap_document_css(
     if (ruleKey.startsWith("stylesheet:")) throw new TypeError("The stylesheet: rule key prefix is reserved for parsed CSS rules.");
     const write = (property: string, value: DocumentCssValue): void => {
       const before = read();
-      const after = set_portable_document_declaration(before, ruleKey, selector, property, value, scopes);
+      const after = set_portable_document_declaration(before, ruleKey, selector, css_property(property),
+        value === undefined ? undefined : css_declaration(value), scopes);
       publish_rules(before, after);
     };
     const api: DocumentCssRuleHandle = {
@@ -72,29 +85,17 @@ export function make_livemap_document_css(
         return typeof key === "string" ? (value: DocumentCssValue) => write(key, value) : undefined;
       } }),
       setProp: (property, value) => { write(property, value); },
-      remove: (property) => { write(property, null); },
+      remove: (property) => { write(property, undefined); },
       clear: () => { commit({ domain: "css", kind: "rule", ruleKey, scopes }); },
       drop: () => { commit({ domain: "css", kind: "rule", ruleKey, scopes }); },
-      setMany: (map: DocumentCssMap) => {
-        if (map === null || typeof map !== "object" || Array.isArray(map)) throw new TypeError("CSS declarations must be an object.");
+      setMany: (map: CssMap) => {
+        const normalized = normalize_css_map(map);
         const before = read();
         let after = before;
-        for (const [key, value] of Object.entries(map)) {
-          if (PSEUDOS.has(key) && value !== null && typeof value === "object" && !Array.isArray(value)) {
-            const suffix = pseudo_to_suffix(key as CssPseudoKey);
-            const pseudoSelector = append_css_pseudo(selector, suffix);
-            for (const [property, nested] of Object.entries(value)) {
-              if (!is_css_declaration_value(nested)) throw new TypeError("Invalid pseudo declaration value.");
-              after = set_portable_document_declaration(after, `${ruleKey}${suffix}`, pseudoSelector, property, nested, scopes);
-            }
-            if ((key === "__before" || key === "__after") && !("content" in value)) {
-              after = set_portable_document_declaration(after, `${ruleKey}${suffix}`, pseudoSelector, "content", '""', scopes);
-            }
-            continue;
-          }
-          if (!is_css_declaration_value(value)) throw new TypeError("Invalid CSS declaration value.");
-          after = set_portable_document_declaration(after, ruleKey, selector, key, value, scopes);
-        }
+        visit_structured_css(normalized, selector, scopes, (target, context, property, value) => {
+          const key = canonical_css_selector(target) === canonical_css_selector(selector) ? ruleKey : selector_key(after, target, context);
+          after = set_portable_document_declaration(after, key, target, property, value, context);
+        }, resolveSubject);
         publish_rules(before, after);
       },
     };
@@ -124,7 +125,7 @@ export function make_livemap_document_css(
   };
   const scoped = (scopes: readonly string[]): DocumentCssRuleFacade => ({
     rule: (key, selector) => rule(key, selector, scopes),
-    sel: (selector) => rule(`sel:${trim_managed_css(selector)}`, selector, scopes),
+    sel: (selector) => rule(selector_key(read(), selector, scopes), selector, scopes),
     var: vars,
     scope: (_name, atRule) => scoped([...scopes, trim_managed_css(atRule)]),
     media: (query) => scoped([...scopes, mediaToAtRule(query)]),
@@ -167,7 +168,7 @@ export function make_livemap_document_css(
   };
   return Object.freeze({ ...root, var: vars, atProperty, keyframes,
     stylesheet: (cssText: string): void => {
-      commit({ domain: "css", kind: "replace", stylesheet: parse_document_stylesheet(cssText, []) });
+      commit({ domain: "css", kind: "replace", stylesheet: opaque_document_stylesheet(cssText) });
     },
     drop: (ruleKey: string) => {
       const units = read().rules.filter((item) => item.ruleKey === managed_css_rule_key(ruleKey)).map((item): LiveMapCssUnitOp =>

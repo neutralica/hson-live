@@ -188,7 +188,7 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
     assertHandoff();
     try {
       disposeCssBinding = bind_document_css_tree(reflect.tree, resolved.selected,
-        adoption.managedStyle, true, () => reflect!.tree);
+        adoption.managedStyles, true, () => reflect!.tree);
     } catch (cause) {
       throw new DocumentContinuationError("adopt", cause);
     }

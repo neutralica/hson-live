@@ -1,3 +1,4 @@
+import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform, encode_ssr_bootstrap, decode_ssr_bootstrap } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
@@ -10,11 +11,11 @@ import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.id
 import { normalize_document_root } from "../../src/api/livemap/livemap.document.ts";
 import { encode_hosted_root } from "../../src/api/livemap/livemap.hosted.ts";
 
-async function hosted_subject_fixture(page: string, css?: string) {
+async function hosted_subject_fixture(page: string, css?: string, writable = false) {
   const locus = hsonLiveMap.locus.create({ "PRIVATE_PARTS_SENTINEL": { ...{ parts: {
       button: { kind: "document", document: '<button id="%{id}" "Styled"/>', css: { color: 'rgb(12,34,56)' } },
       unused: { kind: "document", document: '<i "PRIVATE_UNUSED_SENTINEL"/>', stylesheet: 'i{color:rgb(98,76,54)}' },
-    } }, access: "private" }, "page": { document: page, ...(css === undefined ? {} : { stylesheet: css }), access: "shared" }, "ungranted": { document: '<aside "UNGRANTED_DOCUMENT_SENTINEL"/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    } }, access: "private" }, "page": { document: page, ...(css === undefined ? {} : { stylesheet: css }), access: "shared" }, "ungranted": { document: '<aside "UNGRANTED_DOCUMENT_SENTINEL"/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, ...(writable ? { writableDocuments: ["page"] } : {}) }) });
   try {
     const session = await locus.session.create({ libraries: ["page", "PRIVATE_PARTS_SENTINEL"] });
     return { locus, session };
@@ -31,9 +32,11 @@ export function hosted_styled_part_fixture() {
 
 /** Authored flat subjects, not a conversion of scoped state. Keep public
  * snapshot/bootstrap/Echo and Chrome first-paint coverage on this supported path. */
-export async function hosted_flat_subject_fixture(document = '<button @:a id="hosted-a" "Styled"/> <button @:b id="hosted-b" "Styled"/>') {
-  const fixture = await hosted_subject_fixture(`<html <head/> <body ${document} <button id="hosted-outside" "Outside"/>/>/>`,
-    '@scope ([hson\\:quad="a"]){:scope{color:rgb(12,34,56)}}@scope ([hson\\:quad="b"]){:scope{color:rgb(12,34,56)}}');
+export async function hosted_flat_subject_fixture(document = '<button @:a id="hosted-a" "Styled"/> <button @:b id="hosted-b" "Styled"/>', writable = false) {
+  const fixture = await hosted_subject_fixture(`<html <head/> <body ${document} <button id="hosted-outside" "Outside"/>/>/>`, undefined, writable);
+  const map=locus_map_internal(fixture.locus), a=owner(map), id=a.libraries()[a.hostedRegistry().libraries.findIndex(entry=>entry.name==='page')]!;
+  const scope=(name:string)=>`@scope ([hson\\:quid="${a.documentQuad(id,name,undefined)!.quid}"]){:scope{color:rgb(12,34,56)}}`;
+  await fixture.locus.stage(w=>w.doc.must('page').css({domain:'css',kind:'replace',stylesheet:structured_css_fixture(scope('a')+scope('b'))}));
   try { return { ...fixture, cut: fixture.session.now({ html: "page" }) }; }
   catch (cause) { fixture.locus.dispose(); throw cause; }
 }
@@ -203,7 +206,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
     const locus = hsonLiveMap.locus.create({ "page": { document: '<html <head/> <body <button @:ordinary "Ordinary"/>/>/>', stylesheet: 'button{color:red}', access: "shared" } }, { authorizeProjection: () => ({ libraries: ["page"] }) });
     try {
       const session = await locus.session.create({ libraries: ["page"] }), cut = session.now({ html: "page" });
-      assert.doesNotMatch(cut.html, /hson:quad/); assert.match(cut.html, /button\{color:red;\}/);
+      assert.doesNotMatch(cut.html, /hson:quad/); assert.match(cut.html, /button\{color:red\}/);
       assert.equal(cut.html, locus_map_internal(locus).cut({ html: "page" }).html);
     } finally { locus.dispose(); }
   });
