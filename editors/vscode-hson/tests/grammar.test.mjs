@@ -423,3 +423,6 @@ for (const scopeName of ["source.hson", "text.html.markdown"]) {
   assert.deepEqual(brackets, ["<", "«", "<", ">", "»", ">"], scopeName);
 }
 process.stdout.write("ok - native standalone and Markdown bracket metadata excludes quoted names and multiline strings\n");
+
+const partDeclaration = await tokenize('source.hson', '<button hson:part disabled/>');
+assert.deepEqual(partDeclaration.filter(token => token.text === 'hson:part').map(token => token.scopes), [['source.hson', 'keyword.declaration.part.hson']]);

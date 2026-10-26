@@ -124,7 +124,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     const connector = Hson.document`<hson-part @:content lib="parts" at="content"/>`;
     const shell = Hson.document`<html <head/> <body <main ${connector}/>/>/>`;
     const html = doc(hsonLiveMap.fromLibraries({
-      parts: { parts: { content: { kind: 'document', document: Hson.document`<article @:article "Body"/>` } } },
+      parts: { parts: { content: { kind: 'document', document: Hson.document`<article hson:part @:article "Body"/>` } } },
       page: { document: shell },
     }));
     assert.ok(html.q('content'));
@@ -364,7 +364,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
   });
   check("recursive Part composition preserves shell QUADs and leaves Part addresses local", () => {
     const map = authored({ layout: { document: '<main @:page <hson-part lib="parts" at="header"/> <hson-part lib="parts" at="header"/>/>' },
-      parts: { parts: { header: { kind: "document", document: '<header @:header <hson-part at="button"/>/>' }, button: { kind: "document", document: '<button @:button "Go"/>' } } } });
+      parts: { parts: { header: { kind: "document", document: '<header hson:part @:header <hson-part at="button"/>/>' }, button: { kind: "document", document: '<button hson:part @:button "Go"/>' } } } });
     const source = subject(doc(map, "layout"), "page"), original = map.parts.must("parts").root();
     const ledger = enumerate_livemap_issued_quids(internal_livemap_aggregate_authority(map).identityEpoch().issued());
     const page = compose_livemap_document_internal(map, "layout", "result");

@@ -31,7 +31,7 @@ try {
   const editorFile = join(temporary, "editor.ts");
   const source = `import { hsonLiveMap } from "hson-live/livemap";
 const loc = hsonLiveMap.locus.create({ components: { parts: {
-  heading: { kind: "document", document: "<h1/>" }, submit: { kind: "document", document: "<button/>" }
+  heading: { kind: "document", document: "<h1 hson:part/>" }, submit: { kind: "document", document: "<button hson:part/>" }
 } } });
 loc.parts.components.`;
   writeFileSync(editorFile, source);
@@ -54,16 +54,16 @@ import assert from 'node:assert/strict';
 import { hsonLiveMap as root } from 'hson-live';
 import { hsonLiveMap } from 'hson-live/livemap';
 assert.equal(root, hsonLiveMap);
-const map = hsonLiveMap.fromLibraries({components: {parts: {submit: {kind: 'document', document: '<button/>'}}}});
-assert.equal(map.parts.components.submit.snap().document, '<button/>');
+const map = hsonLiveMap.fromLibraries({components: {parts: {submit: {kind: 'document', document: '<button hson:part/>'}}}});
+assert.equal(map.parts.components.submit.snap().document, '<button hson:part/>');
 assert.equal('render' in map.parts.components.submit, false);
 const invocation = map.parts.components.submit.write();
 assert.equal(invocation, map.parts.components.at(['submit']).write());
 map.addLibraries({page: {document: invocation}});
 assert.match(JSON.stringify(map.doc.must('page').root()), /button/);
 const styled = hsonLiveMap.fromLibraries({parts:{parts:{
-  ordinary:{kind:'document',document:'<b/>',stylesheet:'b{color:blue}'},
-  optional:{kind:'document',document:'<p part:optional d:data="%{payload}" "#{d.title}"/>',stylesheet:'p{color:red}'},
+  ordinary:{kind:'document',document:'<b hson:part/>',stylesheet:'b{color:blue}'},
+  optional:{kind:'document',document:'<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>',stylesheet:'p{color:red}'},
 }},page:{document:'<main <i/>/>'}});
 const page = styled.doc.must('page'), target = {kind:'path',path:[0,0]};
 const replacement = (at, payload) => ({$_tag:'hson-part',$_attrs:{lib:'parts',at,...(payload===undefined?{}:{'data:payload':payload})},$_content:[]});
@@ -72,9 +72,9 @@ assert.deepEqual(sequence(page.document.content.replace(target,0,replacement('or
 page.document.content.replace(target,0,replacement('optional','<title 0>'));
 assert.deepEqual(sequence(page.document.content.replace(target,0,replacement('optional','<>'))),['graph/remove-content','css/replace']);
 assert.equal(page.css.snapshot(),'');
-const loc = hsonLiveMap.locus.create({components: {parts: {submit: {kind: 'document', document: '<button/>'}}}});
-await loc.parts.components.submit.set({document: '<button "Updated"/>'});
-assert.equal(loc.parts.components.submit.snap().document, '<button "Updated"/>');
+const loc = hsonLiveMap.locus.create({components: {parts: {submit: {kind: 'document', document: '<button hson:part/>'}}}});
+await loc.parts.components.submit.set({document: '<button hson:part "Updated"/>'});
+assert.equal(loc.parts.components.submit.snap().document, '<button hson:part "Updated"/>');
 loc.dispose();
 `);
   execFileSync(process.execPath, [join(temporary, "runtime.mjs")], { stdio: "inherit" });

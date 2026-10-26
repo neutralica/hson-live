@@ -390,7 +390,7 @@ async function runTypingConveniences(workspace: string): Promise<void> {
 async function runPartCompletions(workspace: string): Promise<void> {
   const uri = vscode.Uri.file(join(workspace, "declarative-schema", "part-authoring.ts"));
   const producer = vscode.Uri.file(join(workspace, "declarative-schema", "parts.ts"));
-  const parts = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav "%{current}"/>` } } as const;';
+  const parts = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 hson:part title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav hson:part "%{current}"/>` } } as const;';
   await vscode.workspace.fs.writeFile(producer, Buffer.from(parts));
   const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { parts } from "./parts.js";\r\nconst loc = hsonLiveMap.locus.create({ components: { parts } });\r\nconst page = Hson.document`';
   const suffix = '`;\r\nconst untouched = "keep";';
@@ -599,7 +599,7 @@ import { UserSchema } from "./schema.js";
 const loc = hsonLiveMap.locus.create({
   deck: { data: { user: { age: 37 } }, schema: UserSchema },
   page: { document: Hson.document\`<main/>\` },
-  components: { parts: { submit: { kind: "document", document: Hson.document\`<button/>\` } } },
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button hson:part/>\` } } },
 });
 `;
   await vscode.workspace.fs.writeFile(libraryUri, Buffer.from(libraryPrefix));

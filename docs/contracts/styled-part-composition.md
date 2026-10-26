@@ -11,9 +11,15 @@ portable registry/topology state and is enforced on reconstruction as well as
 mutation. A lookalike ordinary data object is not a governed collection. Collection
 admission neither registers separate member Libraries nor issues runtime identity
 for Part definitions. The marker and low-level collection-admission helpers remain internal. Public admission is
-`{ components: { parts: { heading: { kind: "document", document: '<h2 "%{content}"/>' } } } }`.
+`{ components: { parts: { heading: { kind: "document", document: '<h2 hson:part "%{content}"/>' } } } }`.
 `kind: "document"` is required on every member. Neither the Parts Library nor its
 members accept a supplemental `schema`, including an explicitly present undefined key.
+Every definition's single authored root requires the valueless `hson:part` flag.
+Missing, valued, nested, and connector declarations reject complete-candidate admission,
+including uninvoked and optional definitions. The declaration stays in stored source;
+governed realization strips it before canonical publication, HTML, DOM, or transport.
+It supplies no name, authority, Library selection, or identity. `.write()` remains deferred.
+
 Select the Library through `map.parts.must("components")`, not `.data` or `.doc`.
 
 Authored Library admission (`fromLibraries`, local `addLibraries`, and initial
@@ -62,7 +68,7 @@ import { Hson, hsonLiveMap } from "hson-live";
 
 const map = hsonLiveMap.fromLibraries({
   components: { parts: {
-    heading: { kind: "document", document: '<h2 "%{content}"/>', css: { color: "navy" } },
+    heading: { kind: "document", document: '<h2 hson:part "%{content}"/>', css: { color: "navy" } },
   } },
 });
 const invocation = map.parts.must("components").heading.write({ content: "Hello" });

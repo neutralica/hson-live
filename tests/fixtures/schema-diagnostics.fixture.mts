@@ -159,7 +159,7 @@ export function run_schema_diagnostic_cases(): void {
   const page: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;
   const pageCompiled = compiled_hson_schema_of(page);
   const shell = '<main <hson-part lib="bits" at="title" text="Hello"/>/>';
-  const parts = { title: { kind: "document", document: '<h1 "%{text}"/>' } } satisfies LiveMapPartCollection;
+  const parts = { title: { kind: "document", document: '<h1 hson:part "%{text}"/>' } } satisfies LiveMapPartCollection;
   const inventory = new Map<string, unknown>([["bits", parts]]);
   const candidateDoc = { source: shell, family: "document" } as const;
   assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc).kind, "unknown");
@@ -167,7 +167,7 @@ export function run_schema_diagnostic_cases(): void {
   assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, inventory).kind, "valid");
   assert.equal(evaluate_static_schema_candidate(pageCompiled, { source: shell, family: "canonical" }, inventory).kind, "valid");
   const invalid = evaluate_static_schema_candidate(pageCompiled, candidateDoc,
-    new Map([["bits", { title: { kind: "document", document: '<p "%{text}"/>' } }]]));
+    new Map([["bits", { title: { kind: "document", document: '<p hson:part "%{text}"/>' } }]]));
   assert.equal(invalid.kind, "invalid");
   if (invalid.kind === "invalid") {
     assert.equal(invalid.issue.expected, '"h1"'); assert.equal(invalid.issue.received, '"p"');
@@ -175,12 +175,12 @@ export function run_schema_diagnostic_cases(): void {
   }
   // The existing complete collection validator also checks unused members.
   for (const unavailable of [undefined, {}, { title: parts.title, broken: { kind: "document", document: "<h1" } },
-    { title: { kind: "document", document: '<h1 <hson-part at="title"/>/>' } }]) {
+    { title: { kind: "document", document: '<h1 hson:part <hson-part at="title"/>/>' } }]) {
     assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, new Map([["bits", unavailable]])).kind, "unknown");
   }
   const nested = new Map<string, unknown>([["bits", {
-    title: { kind: "document", document: '<h1 <hson-part at="child"/>/>' },
-    child: { kind: "document", document: '<span/>' },
+    title: { kind: "document", document: '<h1 hson:part <hson-part at="child"/>/>' },
+    child: { kind: "document", document: '<span hson:part/>' },
   }]]);
   assert.equal(evaluate_static_schema_candidate(pageCompiled,
     { source: '<main <hson-part lib="bits" at="title"/>/>', family: "document" }, nested).kind, "valid");

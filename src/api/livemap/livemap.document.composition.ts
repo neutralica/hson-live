@@ -1,5 +1,6 @@
+import { part_receiving_interface, transform_part_parameter_strings } from "../../internal/part-definition.js";
 import { qualify_hson_document_root } from "../document/hson-document.js";
-import { PART_OPTIONAL, part_reference_text, part_receiving_interface, part_structural_reference, type PartArgumentKind, is_part_argument_attribute, part_argument_name, part_placeholder_matches, whole_part_reference, type PartReference, transform_part_parameter_strings } from "../../internal/part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, part_reference_text, part_structural_reference, type PartArgumentKind, is_part_argument_attribute, part_argument_name, part_placeholder_matches, whole_part_reference, type PartReference } from "../../internal/part-placeholder.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { decode_public_attrs, is_public_attr_name } from "../../core/public-attrs.js";
@@ -505,6 +506,7 @@ export function expand_document_composition(
     }
     if (++nodes > limits.maxNodes) throw new Error("Document composition node limit exceeded.");
     if (frame.occurrence.parameters?.omitted?.(item)) { chargeOmitted(item, true); continue; }
+    if (Object.hasOwn(item.$_attrs ?? {}, PART_DECLARATION)) throw new TypeError("hson:part is only allowed on a governed Part definition root.");
     if (Object.hasOwn(item.$_attrs ?? {}, PART_OPTIONAL)) throw new TypeError("part:optional is only allowed within a governed Part definition.");
     let configuration: Configuration | undefined;
     let configuredPath: readonly number[] | undefined;
@@ -854,7 +856,7 @@ export function has_part_connector(root: HsonNode): boolean {
   const stack = [root];
   while (stack.length) {
     const node = stack.pop()!;
-    if (node.$_tag.toLowerCase() === "hson-part" || Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)) return true;
+    if (node.$_tag.toLowerCase() === "hson-part" || Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL) || Object.hasOwn(node.$_attrs ?? {}, PART_DECLARATION)) return true;
     for (const child of node.$_content) if (is_Node(child)) stack.push(child);
   }
   return false;

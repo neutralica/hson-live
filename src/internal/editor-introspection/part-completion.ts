@@ -3,7 +3,7 @@ import { is_ordered_projected_object, type OrderedProjectedValue } from "../../c
 import type { HsonGrammarCheckpoint } from "../../api/transform/parsers/tokenize-hson.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
-import { PART_OPTIONAL, has_part_reference, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_placement_issue } from "../part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, has_part_reference, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_placement_issue } from "../part-placeholder.js";
 import type { PartSourceFacts, PartDocumentSource } from "../hson-schema/part-source.js";
 import type { HsonEditorCandidate } from "./query.js";
 
@@ -18,6 +18,12 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
   const memberSource = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"
     && library.members.some(member => member.documents.includes(document))));
   const optionalCandidate: HsonEditorCandidate[] = [];
+  if (checkpoint.kind === "header" && memberSource && element.contentTags.length === 1
+    && element.tag.toLowerCase() !== "hson-part" && PART_DECLARATION.startsWith(prefix)
+    && !element.attributes.some(attr => attr.name === PART_DECLARATION && (attr.start.index < checkpoint.range.start || attr.start.index >= checkpoint.range.end))) {
+    optionalCandidate.push({ label: PART_DECLARATION, kind: "member", insertText: PART_DECLARATION,
+      detail: "Required Part definition root declaration", certainty: "certain", sortText: "0000" });
+  }
   if (checkpoint.kind === "header" && memberSource && PART_OPTIONAL.startsWith(prefix)
     && !element.attributes.some(attr => attr.name === PART_OPTIONAL && (attr.start.index < checkpoint.range.start || attr.start.index >= checkpoint.range.end))) {
     optionalCandidate.push({ label: PART_OPTIONAL, kind: "member", insertText: PART_OPTIONAL,
@@ -32,7 +38,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
   let contextCount = document.receivers.length;
   let detail: string;
   if (checkpoint.kind === "parameter") {
-    if (attribute === PART_OPTIONAL) return [];
+    if (attribute === PART_OPTIONAL || attribute === PART_DECLARATION) return [];
     if (checkpoint.parameter?.structural && element.attributes.some(attr => attr.name !== PART_OPTIONAL && !attr.name.startsWith("#{"))) return [];
     const rawAttribute = checkpoint.parameter?.rawAttribute;
     if (checkpoint.parameter === undefined || !checkpoint.parameter.structural && attribute !== rawAttribute?.name) return [];

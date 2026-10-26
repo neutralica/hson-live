@@ -2,7 +2,7 @@ import { hsonLiveMap, type HsonSchema, type LocusDefinitions } from "../src/inde
 import type { JsonValue } from "../src/core/types.js";
 declare const schema: HsonSchema<{ rows: readonly { title: string }[]; optional?: number }, "data">;
 const definitions = { deck: { data: { rows: [] }, schema }, page: { document: "<main/>", stylesheet: "main{color:red}", access: "shared" },
-  components: { parts: { button: { kind: "document", document: "<button/>", stylesheet: "button{color:red}" } } } } as const satisfies LocusDefinitions;
+  components: { parts: { button: { kind: "document", document: "<button hson:part/>", stylesheet: "button{color:red}" } } } } as const satisfies LocusDefinitions;
 const loc = hsonLiveMap.locus.create(definitions);
 loc.data.deck.schema.get() satisfies typeof schema;
 loc.data.deck.at(["rows", 0, "title"]).snap() satisfies string | undefined;
@@ -88,4 +88,4 @@ declare const uncertainShape: { document: string } | { document: string; data: u
 // @ts-expect-error A possible contradictory definition must not be hidden by a valid union branch.
 loc.admit({ bad: uncertainShape });
 // @ts-expect-error Parts member Schema claims remain forbidden under either optional mode.
-loc.admit({ bad: { parts: { button: { kind: "document", document: "<button/>", schema: undefined } } } });
+loc.admit({ bad: { parts: { button: { kind: "document", document: "<button hson:part/>", schema: undefined } } } });

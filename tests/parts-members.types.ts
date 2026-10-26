@@ -4,12 +4,12 @@ import type { LocusActionContext, LocusDataLocation, ReadDataLocation } from "hs
 import type { Echo } from "hson-live/echo";
 
 const definitions = { components: { parts: {
-  heading: { kind: "document", document: Hson.document`<h1/>` },
-  submit: { kind: "document", document: Hson.document`<button/>` },
-  snap: { kind: "document", document: "<p/>" },
-  call: { kind: "document", document: "<p/>" },
-  __defineGetter__: { kind: "document", document: "<p/>" },
-  then: { kind: "document", document: "<p/>" },
+  heading: { kind: "document", document: Hson.document`<h1 hson:part/>` },
+  submit: { kind: "document", document: Hson.document`<button hson:part/>` },
+  snap: { kind: "document", document: "<p hson:part/>" },
+  call: { kind: "document", document: "<p hson:part/>" },
+  __defineGetter__: { kind: "document", document: "<p hson:part/>" },
+  then: { kind: "document", document: "<p hson:part/>" },
 } } } as const;
 const map = hsonLiveMap.fromLibraries(definitions);
 const parts = map.parts.components;
@@ -20,8 +20,8 @@ parts.heading.at(["stylesheet"]).snap() satisfies string | undefined;
 parts.heading.at(["kind"]).snap() satisfies "document" | undefined;
 parts.heading.watch(value => value?.document satisfies string | undefined);
 parts.heading.asObject()?.object.keys();
-parts.heading.set({ kind: "document", document: "<h1/>", stylesheet: "h1{color:red}" });
-parts.heading.replace({ kind: "document", document: "<h2/>" });
+parts.heading.set({ kind: "document", document: "<h1 hson:part/>", stylesheet: "h1{color:red}" });
+parts.heading.replace({ kind: "document", document: "<h2 hson:part/>" });
 parts.heading.delete();
 parts.call.snap(); // Parts facades are objects, not functions.
 parts.snap() satisfies LiveMapPartCollection;
@@ -85,14 +85,14 @@ uncertain.parts.components?.heading;
 
 const locus = hsonLiveMap.locus.create(definitions);
 locus.parts.components.heading.snap() satisfies LiveMapDocumentPart | undefined;
-void locus.parts.components.heading.set({ kind: "document", document: "<h1/>", stylesheet: "" });
+void locus.parts.components.heading.set({ kind: "document", document: "<h1 hson:part/>", stylesheet: "" });
 void locus.stage(writer => {
-  writer.parts.components.heading.replace({ kind: "document", document: "<h3/>" });
+  writer.parts.components.heading.replace({ kind: "document", document: "<h3 hson:part/>" });
   // @ts-expect-error Stages have no observation API.
   writer.parts.components.heading.snap();
 });
 map.batch(writer => {
-  writer.parts.components.heading.set({ kind: "document", document: "<h1/>", stylesheet: "" });
+  writer.parts.components.heading.set({ kind: "document", document: "<h1 hson:part/>", stylesheet: "" });
   writer.parts.components.heading.asObject().object.setMany({ document: "<h3/>" });
   // @ts-expect-error Stage expiration is not bypassed by standalone document realization.
   writer.parts.components.heading.render();
@@ -287,8 +287,8 @@ parts.heading.write({ slide: Hson.data`<title "Visible">`, index: Hson.data`0` }
 
 // Document edits return the aggregate stream, including CSS installation/retirement.
 const optionalParts = hsonLiveMap.fromLibraries({ parts: { parts: {
-  optional: { kind: 'document', document: Hson.document`<p part:optional d:data="%{payload}" "#{d.title}"/>`, stylesheet: 'p{color:red}' },
-  ordinary: { kind: 'document', document: Hson.document`<b/>`, stylesheet: 'b{color:blue}' },
+  optional: { kind: 'document', document: Hson.document`<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>`, stylesheet: 'p{color:red}' },
+  ordinary: { kind: 'document', document: Hson.document`<b hson:part/>`, stylesheet: 'b{color:blue}' },
 } }, page: { document: Hson.document`<main <i/>/>` } });
 const replacementCommit = optionalParts.doc.must('page').document.content.replace({ kind: 'path', path: [0, 0] }, 0,
   { $_tag: 'hson-part', $_attrs: { lib: 'parts', at: 'optional', 'data:payload': '<>' }, $_content: [] });

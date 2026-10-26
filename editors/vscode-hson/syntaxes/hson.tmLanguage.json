@@ -32,6 +32,7 @@
         { "include": "#reserved-names" },
         { "include": "#quads" },
         { "include": "#quids" },
+        { "name": "keyword.declaration.part.hson", "match": "hson:part(?![A-Za-z0-9:._-]|[ \\t]*=)" },
         { "include": "#attribute-assignments" },
         { "name": "constant.language.flag.hson", "match": "[A-Za-z_:][A-Za-z0-9:._-]*(?![A-Za-z0-9:._-]|[ \\t]*=)" }
       ]

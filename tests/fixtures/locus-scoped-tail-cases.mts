@@ -45,7 +45,7 @@ export async function scoped_tail_fixture() {
     const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(3);
     page(w).content.insert(target, 2, node('<hson-part lib="parts" at="leaf"/>'));
     const parts = w.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
-    parts.at(["secret", "document"]).set('<strong "UPDATED_PRIVATE_PART"/>');
+    parts.at(["secret", "document"]).set('<strong hson:part "UPDATED_PRIVATE_PART"/>');
     page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "tail");
   });
   assert.ok(mixed);

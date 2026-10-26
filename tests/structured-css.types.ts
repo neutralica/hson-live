@@ -5,16 +5,16 @@ import type { Echo } from 'hson-live/echo';
 const css: CssMap = { color:'red', backgroundColor:'blue', 'border-radius':'50%', '-webkit-user-select':'none', msTransform:'none', '--tone':'red',
   '& a, & b': { _hover: { color:'red' } }, '@:current': { fontWeight:'bold' }, $media:{screen:{gap:1,color:undefined}} };
 const shared: import('hson-live/livemap').CssMap = css;
-const defs = {parts:{parts:{nav:{kind:'document',document:'<nav @:current/>',css:shared,stylesheet:':scope{color:blue}'}}},
+const defs = {parts:{parts:{nav:{kind:'document',document:'<nav hson:part @:current/>',css:shared,stylesheet:':scope{color:blue}'}}},
   page:{document:'<html <head/> <body <hson-part lib="parts" at="nav"/>/>/>',stylesheet:'body{margin:0}'}} as const;
 hsonLiveMap.fromLibraries(defs);
 // Flat keyed Parts contextually type CSS without an author-supplied annotation.
-hsonLiveMap.fromLibraries({parts:{parts:{nav:{kind:'document',document:'<nav @:current/>',css:{
+hsonLiveMap.fromLibraries({parts:{parts:{nav:{kind:'document',document:'<nav hson:part @:current/>',css:{
   color:'red',backgroundColor:undefined,width:{value:2,unit:undefined},_hover:{opacity:.5},
   '& > a':{textDecoration:'none'},'@:current':{fontWeight:'bold'},
   $media:{screen:{gap:1,'@:current':{color:'blue'}}},
 }}}}});
-hsonLiveMap.locus.create({parts:{parts:{nav:{kind:'document',document:'<nav @:current/>',css:{
+hsonLiveMap.locus.create({parts:{parts:{nav:{kind:'document',document:'<nav hson:part @:current/>',css:{
   color:undefined,_focus:{outline:'0'},'@:current':{fontWeight:900},$media:{screen:{gap:1}},
 }}}}});
 // @ts-expect-error unsupported property
@@ -32,7 +32,7 @@ const recursiveMedia: CssMap = { $media:{screen:{$media:{print:{color:'red'}}}} 
 // @ts-expect-error nested QUAD references are outside V0
 const nestedQuad: CssMap = { '@:current':{'@:other':{color:'red'}} };
 // @ts-expect-error old textual css field
-hsonLiveMap.fromLibraries({parts:{parts:{p:{kind:'document',document:'<p/>',css:'p{color:red}'}}}});
+hsonLiveMap.fromLibraries({parts:{parts:{p:{kind:'document',document:'<p hson:part/>',css:'p{color:red}'}}}});
 // @ts-expect-error whole Documents have no structured default subject
 hsonLiveMap.fromLibraries({page:{document:'<main/>',css:{color:'red'}}});
 // @ts-expect-error old textual Document css input
@@ -40,34 +40,34 @@ hsonLiveMap.fromLibraries({page:{document:'<main/>',css:'main{color:red}'}});
 void [badProperty,bare,nullable,bool,supports,recursiveMedia,nestedQuad];
 
 // @ts-expect-error generic library inference must also reject a typo alongside a known property
-hsonLiveMap.fromLibraries({parts:{parts:{p:{kind:'document',document:'<p/>',css:{color:'red',colour:'blue'}}}}});
+hsonLiveMap.fromLibraries({parts:{parts:{p:{kind:'document',document:'<p hson:part/>',css:{color:'red',colour:'blue'}}}}});
 
 // Review 5: single-member writes must retain the same recursive evidence as collection writes.
-const single = hsonLiveMap.fromLibraries({parts:{parts:{p:{kind:'document',document:'<p/>'}}}});
-single.parts.parts.p.set({kind:'document',document:'<p/>',css:{color:undefined,width:{value:2,unit:undefined}}});
-single.parts.parts.p.replace({kind:'document',document:'<p/>',css:{'& a':{color:'red'}}});
+const single = hsonLiveMap.fromLibraries({parts:{parts:{p:{kind:'document',document:'<p hson:part/>'}}}});
+single.parts.parts.p.set({kind:'document',document:'<p hson:part/>',css:{color:undefined,width:{value:2,unit:undefined}}});
+single.parts.parts.p.replace({kind:'document',document:'<p hson:part/>',css:{'& a':{color:'red'}}});
 // @ts-expect-error single member set must reject a typo beside a valid property
-single.parts.parts.p.set({kind:'document',document:'<p/>',css:{color:'red',colour:'blue'}});
+single.parts.parts.p.set({kind:'document',document:'<p hson:part/>',css:{color:'red',colour:'blue'}});
 // @ts-expect-error single member replacement must reject unsupported selectors
-single.parts.parts.p.replace({kind:'document',document:'<p/>',css:{color:'red',a:{color:'blue'}}});
+single.parts.parts.p.replace({kind:'document',document:'<p hson:part/>',css:{color:'red',a:{color:'blue'}}});
 // @ts-expect-error member update must preserve recursive checking
 single.parts.parts.p.update(()=>({css:{color:'red',colour:'blue'}}));
 single.batch(writer=>{
-  writer.parts.parts.p.set({kind:'document',document:'<p/>',css:{color:undefined,width:{value:2,unit:undefined}}});
+  writer.parts.parts.p.set({kind:'document',document:'<p hson:part/>',css:{color:undefined,width:{value:2,unit:undefined}}});
   // @ts-expect-error staged member set must reject misspelled properties
-  writer.parts.parts.p.set({kind:'document',document:'<p/>',css:{color:'red',colour:'blue'}});
+  writer.parts.parts.p.set({kind:'document',document:'<p hson:part/>',css:{color:'red',colour:'blue'}});
   // @ts-expect-error staged member replacement must reject nested media
-  writer.parts.parts.p.replace({kind:'document',document:'<p/>',css:{$media:{screen:{$media:{print:{color:'red'}}}}}});
+  writer.parts.parts.p.replace({kind:'document',document:'<p hson:part/>',css:{$media:{screen:{$media:{print:{color:'red'}}}}}});
 });
-const governed=hsonLiveMap.locus.create({parts:{parts:{p:{kind:'document',document:'<p/>'}}}});
-void governed.parts.parts.p.set({kind:'document',document:'<p/>',css:{color:undefined}});
+const governed=hsonLiveMap.locus.create({parts:{parts:{p:{kind:'document',document:'<p hson:part/>'}}}});
+void governed.parts.parts.p.set({kind:'document',document:'<p hson:part/>',css:{color:undefined}});
 // @ts-expect-error Locus member set must reject the reported typo
-void governed.parts.parts.p.set({kind:'document',document:'<p/>',css:{color:'red',colour:'blue'}});
+void governed.parts.parts.p.set({kind:'document',document:'<p hson:part/>',css:{color:'red',colour:'blue'}});
 // @ts-expect-error Locus member replacement must reject unsupported groups
-void governed.parts.parts.p.replace({kind:'document',document:'<p/>',css:{$supports:{color:'red'}}});
+void governed.parts.parts.p.replace({kind:'document',document:'<p hson:part/>',css:{$supports:{color:'red'}}});
 void governed.stage(writer=>{
   // @ts-expect-error Locus stage must reject misspelled properties
-  writer.parts.parts.p.set({kind:'document',document:'<p/>',css:{color:'red',colour:'blue'}});
+  writer.parts.parts.p.set({kind:'document',document:'<p hson:part/>',css:{color:'red',colour:'blue'}});
 });
 // Review 2 and 6: modern properties and established vendor capitalization aliases.
 const aliases: CssMap = {textBoxTrim:'trim-both',textBoxEdge:'cap alphabetic',viewTransitionClass:'card',readingFlow:'flex-visual',readingOrder:1,
@@ -77,9 +77,9 @@ const aliases: CssMap = {textBoxTrim:'trim-both',textBoxEdge:'cap alphabetic',vi
 const badAlias: CssMap = {webkitTransfrm:'none'};
 void [aliases,badAlias];
 
-single.parts.parts.at([]).asObject()!.object.setKey('other',{kind:'document',document:'<p/>',css:{color:undefined}});
+single.parts.parts.at([]).asObject()!.object.setKey('other',{kind:'document',document:'<p hson:part/>',css:{color:undefined}});
 // @ts-expect-error collection member writes reuse the recursive CssMap check
-single.parts.parts.at([]).asObject()!.object.setKey('other',{kind:'document',document:'<p/>',css:{color:'red',colour:'blue'}});
+single.parts.parts.at([]).asObject()!.object.setKey('other',{kind:'document',document:'<p hson:part/>',css:{color:'red',colour:'blue'}});
 
 // Authenticated Parts alone restrict field paths and partial CSS proposals.
 // @ts-expect-error CSS fields have no public location
@@ -108,15 +108,15 @@ single.batch(writer=>{
 });
 // @ts-expect-error Locus preserves path restrictions
 void governed.parts.parts.p.at(['stylesheet']);
-const ordinary=hsonLiveMap.fromLibraries({data:{data:{kind:'document',document:'<p/>',css:{color:true},stylesheet:false}}});
+const ordinary=hsonLiveMap.fromLibraries({data:{data:{kind:'document',document:'<p hson:part/>',css:{color:true},stylesheet:false}}});
 ordinary.data.data.at([]).set({css:{color:false}});
 ordinary.data.data.at(['css','color']).set(false);
 ordinary.data.data.at(['stylesheet']).set(true);
 // @ts-expect-error Ordinary Data does not acquire declarative omission
 ordinary.data.data.at([]).set({css:{color:undefined}});
 // @ts-expect-error Ordinary Data replacement remains JSON
-ordinary.data.data.at([]).replace({kind:'document',document:'<p/>',css:{color:undefined},stylesheet:false});
-const cssNamed=hsonLiveMap.fromLibraries({parts:{parts:{css:{kind:'document',document:'<p/>'}}}});
+ordinary.data.data.at([]).replace({kind:'document',document:'<p hson:part/>',css:{color:undefined},stylesheet:false});
+const cssNamed=hsonLiveMap.fromLibraries({parts:{parts:{css:{kind:'document',document:'<p hson:part/>'}}}});
 cssNamed.parts.parts.at(['css']).write();
 
 // @ts-expect-error Even non-exact optional mode cannot admit partial CSS undefined writes.
@@ -155,18 +155,18 @@ single.batch(writer => {
 
 // Part-shaped generic Data must still satisfy JSON proposals in both optional modes.
 declare const dataPart: LiveMapLibraryPathHandle<LiveMapDocumentPart>;
-dataPart.replace({kind:'document',document:'<p/>',css:{color:'red'}});
+dataPart.replace({kind:'document',document:'<p hson:part/>',css:{color:'red'}});
 // @ts-expect-error A Part-shaped Data value cannot use Part omission semantics.
-dataPart.replace({kind:'document',document:'<p/>',css:{color:undefined}});
+dataPart.replace({kind:'document',document:'<p hson:part/>',css:{color:undefined}});
 // @ts-expect-error Generic proposal aliases cannot admit nested undefined either.
-const invalidData: LiveMapWriteValue<LiveMapDocumentPart> = {kind:'document',document:'<p/>',css:{width:{value:2,unit:undefined}}};
+const invalidData: LiveMapWriteValue<LiveMapDocumentPart> = {kind:'document',document:'<p hson:part/>',css:{width:{value:2,unit:undefined}}};
 dataPart.at(['css','color']).set('blue');
 declare const dataParts: LiveMapLibraryPathHandle<LiveMapPartCollection>;
-dataParts.replace({p:{kind:'document',document:'<p/>',css:{color:'red'}}});
+dataParts.replace({p:{kind:'document',document:'<p hson:part/>',css:{color:'red'}}});
 // @ts-expect-error Collections of Part-shaped Data also remain ordinary JSON.
-dataParts.replace({p:{kind:'document',document:'<p/>',css:{color:undefined}}});
-single.parts.parts.p.replace({kind:'document',document:'<p/>',css:{width:{value:2,unit:undefined},color:undefined}});
-single.parts.parts.at([]).object.setMany({newPart:{kind:'document',document:'<p/>',css:{color:undefined}}});
+dataParts.replace({p:{kind:'document',document:'<p hson:part/>',css:{color:undefined}}});
+single.parts.parts.p.replace({kind:'document',document:'<p hson:part/>',css:{width:{value:2,unit:undefined},color:undefined}});
+single.parts.parts.at([]).object.setMany({newPart:{kind:'document',document:'<p hson:part/>',css:{color:undefined}}});
 
 // LiveTree reuses declarations and relative selectors without Part subjects/media.
 const tree = hsonLiveTree.fromHson('<p/>');

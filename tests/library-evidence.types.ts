@@ -130,7 +130,7 @@ hsonLiveMap.locus.create(maybeDefinitions, { actions: { inspect(context) {
 // @ts-expect-error Flat construction retains the existing duplicate-name check.
 hsonLiveMap.locus.create({ "duplicate": { ...definition, access: "shared" } }, { local: [{ name: "duplicate", initializer: definition }] });
 // @ts-expect-error Flat construction retains Parts validation, including explicit undefined Schema claims.
-hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: "<p/>", schema: undefined } }, access: "shared" } });
+hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: "<p hson:part/>", schema: undefined } }, access: "shared" } });
 const uncertainLocal = hsonLiveMap.fromLibraries({ state: definition }).data.state.at(["choice"]).asArray()!;
 uncertainLocal.watch(value => {
   value satisfies number[] | undefined;

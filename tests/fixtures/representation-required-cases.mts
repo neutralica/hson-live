@@ -7,7 +7,7 @@ export async function representation_required_cases() {
   const map = hsonLiveMap.fromLibraries({
     state: { data: { value: [1], nullable: null } },
     page: { document: '<main @:page <b @:subject "before"/>/>' },
-    parts: { parts: { submit: { kind: "document", document: "<button/>" } } },
+    parts: { parts: { submit: { kind: "document", document: "<button hson:part/>" } } },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
   const before = map.capture(), issued = enumerate_livemap_issued_quids(aggregate.identityEpoch().issued());
@@ -37,14 +37,14 @@ export async function representation_required_cases() {
 
   const part = map.parts.parts.submit, partMust = part.must;
   const definition = partMust.snap(); Reflect.set(definition, "document", "<aside/>");
-  assert.equal(partMust.snap().document, "<button/>");
-  assert.deepEqual(Hson.data.materialize(partMust.hson()), { kind: "document", document: "<button/>" });
+  assert.equal(partMust.snap().document, "<button hson:part/>");
+  assert.deepEqual(Hson.data.materialize(partMust.hson()), { kind: "document", document: "<button hson:part/>" });
   assert.equal("render" in part, false); assert.equal("data" in part, false);
   part.delete(); assert.equal(part.snap(), undefined); assert.throws(partMust.hson, /absent/);
-  map.parts.parts.at([]).object.setKey("submit", { kind: "document", document: "<input/>" });
-  assert.equal(partMust.snap().document, "<input/>");
+  map.parts.parts.at([]).object.setKey("submit", { kind: "document", document: "<input hson:part/>" });
+  assert.equal(partMust.snap().document, "<input hson:part/>");
   map.restore(before);
-  assert.equal(partMust.snap().document, "<button/>");
+  assert.equal(partMust.snap().document, "<button hson:part/>");
 
   const page = map.doc.page, location = page.at([0]), must = location.must;
   const documentBefore = map.capture(), documentIssued = enumerate_livemap_issued_quids(aggregate.identityEpoch().issued());

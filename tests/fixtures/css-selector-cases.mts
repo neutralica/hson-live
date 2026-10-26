@@ -40,7 +40,7 @@ export function css_selector_cases(check: (name: string, run: () => void) => voi
     const off = map.commits.observe(() => commits++);
     try {
       for (const key of unsupported) {
-        assert.throws(() => map.addLibraries({ parts: { parts: { sample: { kind: 'document', document: '<main/>',
+        assert.throws(() => map.addLibraries({ parts: { parts: { sample: { kind: 'document', document: '<main hson:part/>',
           css: { color: 'red', '& .valid': { color: 'green' }, [key]: { color: 'blue' } } as never } } } }), key);
         assert.deepEqual(map.capture(), before); assert.equal(map.rev, rev); assert.equal(commits, 0);
       }
@@ -53,16 +53,16 @@ export function css_selector_cases(check: (name: string, run: () => void) => voi
     assert.equal(textual.rules[0]!.selector, ':is(.a,#b)>.child');
     assert.equal(parse_part_stylesheet('.a,#b { > .child {color:red} }').rules[0]!.selector, textual.rules[0]!.selector);
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      child: { kind: 'document', document: '<button @:label/>',
+      child: { kind: 'document', document: '<button hson:part @:label/>',
         css: { '@:label': { '&:future("a&b",inner(a,b))': { color: 'red' } } } },
-      outer: { kind: 'document', document: '<main <hson-part at="child"/>/>', stylesheet: '.a,#b { & > .child {opacity:.5} }' },
+      outer: { kind: 'document', document: '<main hson:part <hson-part at="child"/>/>', stylesheet: '.a,#b { & > .child {opacity:.5} }' },
     } }, page: { document: '<html <head/> <body <hson-part lib="parts" at="outer"/> <hson-part lib="parts" at="outer"/>/>/>' } });
     const page = map.doc.must('page'), snapshot = page.css.snapshot();
     assert.equal(rules(snapshot).filter(rule => rule.selector.includes(':future(')).length, 2);
     assert.ok(rules(snapshot).every(rule => rule.scopes.some(scope => scope.startsWith('@scope '))));
     assert.doesNotMatch(page.render(), /hson:quid/);
     const runtime = authority(map), ledger = runtime.identityEpoch().issued(), before = map.parts.must('parts').snap(), rev = map.rev;
-    assert.throws(() => map.parts.must('parts').at(['child']).replace({ kind: 'document', document: '<button/>',
+    assert.throws(() => map.parts.must('parts').at(['child']).replace({ kind: 'document', document: '<button hson:part/>',
       stylesheet: String.raw`.x:future([hson\:quad="label"]){color:red}` }));
     assert.deepEqual(map.parts.must('parts').snap(), before); assert.equal(page.css.snapshot(), snapshot);
     assert.equal(map.rev, rev); assert.equal(runtime.identityEpoch().issued(), ledger);

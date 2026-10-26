@@ -9,6 +9,7 @@ Latest reconciled surfaces:
 - Locus uses flat keyed definitions with `access` metadata and separate configuration; dynamic admission is `await locus.admit(definitions)`.
 - LiveMap, Locus, Echo replicas, read contexts, and writers select `data`, `doc`, and `parts`; the former `.lib(...)` selector is removed.
 - Local `addLibraries()` returns `{ commit, libraries }`; shape commands use `.object` and `.array`.
+- Part definitions require the valueless `hson:part` flag on their single root; governed realization removes it before publication. Definitions without it are invalid.
 - Part members require `kind: "document"`, authored `document`, optional structured `css: CssMap`, and separate textual `stylesheet`; protected CSS fields require whole definitions.
 - `part.write(args?)` authors a deferred receiver-relative invocation; `Hson.document` returns `HsonAuthored`. Quoted interpolation supports prefixes, suffixes, and multiple scalar slots.
 - Authorized hosted scoped SSR, continuation, and recovery are supported. Public local capture/cut and full-authority `locus.cut()` still reject scoped documents.

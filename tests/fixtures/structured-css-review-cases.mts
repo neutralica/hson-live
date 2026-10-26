@@ -11,7 +11,7 @@ import { trim_managed_css } from '../../src/internal/css/managed-css-lexical.ts'
 import { css_property_inventory } from '../../scripts/css-property-inventory.mts';
 import { internal_livemap_aggregate_authority as authority } from '../../src/api/livemap/livemap.internal.ts';
 
-const part = { kind:'document' as const, document:'<p @:label/>', css:{width:1,'& a':{color:'red'},'@:label':{color:'red'},$media:{screen:{color:'red'}}} };
+const part = { kind:'document' as const, document:'<p hson:part @:label/>', css:{width:1,'& a':{color:'red'},'@:label':{color:'red'},$media:{screen:{color:'red'}}} };
 const define = () => hsonLiveMap.fromLibraries({parts:{parts:{p:part}}});
 const record = (input: unknown) => structured_part_stylesheet(input,new Set(['label']));
 
@@ -118,7 +118,7 @@ export async function structured_css_review_cases(check: (name: string, run: () 
       assert.throws(()=>p.replace({...part,css} as never));assert.deepEqual(m.capture(),before);
     }
     assert.equal(reads,0);
-    const data=hsonLiveMap.fromLibraries({data:{data:{kind:'document',document:'<p/>',css:{color:true},stylesheet:false}},parts:{parts:{css:part}}});
+    const data=hsonLiveMap.fromLibraries({data:{data:{kind:'document',document:'<p hson:part/>',css:{color:true},stylesheet:false}},parts:{parts:{css:part}}});
     data.data.data.at(['css','color']).set(false);data.data.data.at(['stylesheet']).set(true);
     assert.equal(data.data.data.snap(['css','color']),false);assert.equal(data.parts.parts.at(['css']).snap()?.kind,'document');
     assert.throws(()=>data.parts.parts.at(['css','css'] as never),/field access/);

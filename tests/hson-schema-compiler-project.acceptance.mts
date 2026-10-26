@@ -392,8 +392,8 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
   const directory = prepare("part-reference-policy");
   writeFileSync(join(directory, "part-references.ts"), 'import { Hson, hsonLiveMap } from "hson-live";\n'
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="absent" at="heading"/>` } });\n'
-    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="absent"/>` }, components: { parts: { heading: { kind: "document", document: "<h1/>" } } } });\n'
-    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="heading" extra="x"/>` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 "%{content}"/>` } } } });\n');
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="absent"/>` }, components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="heading" extra="x"/>` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } } } });\n');
   const before = snapshot(directory);
   succeed(generate(directory));
   const config = join(directory, "tsconfig.json");

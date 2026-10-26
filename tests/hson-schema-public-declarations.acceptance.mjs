@@ -102,7 +102,7 @@ export const optional = map.data("main", S);
 export const loc = hsonLiveMap.locus.create({
   deck: { data: certificate, schema: S },
   page: { document: documentCertificate, schema: Page, access: "shared" },
-  components: { parts: { submit: { kind: "document", document: Hson.document\`<button/>\` } } },
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button hson:part/>\` } } },
 });
 export const governed = loc.data.must("deck", S);
 export const governedPage = loc.doc.page;
@@ -120,7 +120,7 @@ declare const optionalDefinitions: { deck?: { data: { name: string; format: "hso
 export const uncertainMap = hsonLiveMap.fromLibraries(optionalDefinitions);
 export const uncertain = uncertainMap.data.deck;
 const privateLocus = hsonLiveMap.locus.create({ deck: { data: certificate, schema: S },
-  components: { parts: { submit: { kind: "document", document: Hson.document\`<button/>\` } } } });
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button hson:part/>\` } } } });
 export const privatePart = privateLocus.parts.components.submit;
 export const privateGoverned = privateLocus.data.deck;
 `);
@@ -333,13 +333,13 @@ export class Loader {
   async *generateAsync() { yield "first"; return value; }
 }
 export const loc = hsonLiveMap.locus.create({ components: { parts: {
-  submit: { kind: "document", document: Hson.document\`<button/>\` },
+  submit: { kind: "document", document: Hson.document\`<button hson:part/>\` },
 } } });
 export const direct = loc.parts.components.submit;
 export const requiredPart = loc.parts.must("components").submit;
 export const bracketPart = loc["parts"]["must"]("components")["submit"];
 const privateLoc = hsonLiveMap.locus.create({ components: { parts: {
-  submit: { kind: "document", document: Hson.document\`<button/>\` },
+  submit: { kind: "document", document: Hson.document\`<button hson:part/>\` },
 } } });
 export const privateRequiredPart = privateLoc.parts.must("components").submit;
 `;
@@ -386,7 +386,7 @@ const loc = hsonLiveMap.locus.create({
     parts: {
       submit: {
         kind: "document",
-        document: Hson.document\`<button/>\`,
+        document: Hson.document\`<button hson:part/>\`,
       },
     },
   },

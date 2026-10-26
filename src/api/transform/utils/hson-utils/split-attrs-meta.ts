@@ -5,6 +5,7 @@ import type { RawAttr } from "../../token.types.js";
 import { parse_style_string } from "../attrs-utils/parse-style.js";
 import { unescape_hson_string } from "./unescape-hson.js";
 import { Primitive } from "../../../../core/types.js";
+import { PART_DECLARATION, part_declaration_issue } from "../../../../internal/part-placeholder.js";
 
 /*******
  * Decode an attribute/meta value coming from the Hson tokenizer.
@@ -71,6 +72,9 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
 
   for (const ra of raw) {
     const k: string = ra.name;
+    if (k.toLowerCase() === PART_DECLARATION && (k !== PART_DECLARATION || ra.value !== undefined)) {
+      throw new TypeError(part_declaration_issue(undefined, true));
+    }
 
     // style → decode (if quoted) → parse to object
     if (k === "style") {

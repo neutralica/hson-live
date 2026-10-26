@@ -46,6 +46,7 @@ function capture_scoped_pages(suffix = "") {
   const captured = scoped.session.now({html:"page"});
   const html = scoped.locus.doc.must("page").render();
   assert.equal(html, captured.html);
+  assert.doesNotMatch(JSON.stringify(captured), /hson:part/);
   scopedPages.set(`/hosted-scoped${suffix}`, captured);
   scopedPages.set(`/library-scoped${suffix}`, { ...captured, html });
 }
@@ -205,6 +206,7 @@ try {
       if (loaded) break; await delay(50);
     }
     assert.equal(loaded, true);
+    assert.equal(await evaluate("[...document.querySelectorAll('*')].some(element => element.hasAttribute('hson:part'))"), false);
     const visual = await evaluate(`(() => {
       const read = id => { const element = document.getElementById(id); if (!element) return null;
         const css = getComputedStyle(element), button = element.querySelector('button'), label = element.querySelector('span');

@@ -1,4 +1,4 @@
-import { part_structural_reference } from "../internal/part-placeholder.js";
+import { PART_DECLARATION, part_structural_reference } from "../internal/part-placeholder.js";
 // assert-invariants.ts
 
 import {
@@ -132,7 +132,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   if (!isVSN(n.$_tag) && n.$_attrs) {
     for (const key of Object.keys(n.$_attrs)) {
       const lowerKey = key.toLowerCase();
-      const metadataCandidate = hson_metadata_candidate_key(key);
+      const metadataCandidate = key === PART_DECLARATION && n.$_attrs[key] === PART_DECLARATION ? undefined : lowerKey === PART_DECLARATION ? "part" : hson_metadata_candidate_key(key);
       if (metadataCandidate !== undefined) {
         const policy = hson_metadata_policy(n.$_tag, metadataCandidate);
         push(

@@ -7,7 +7,7 @@ import { validate_document_path as path } from "../../src/api/livemap/livemap.do
 import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
 import type { DocumentQuadOccurrenceScope } from "../../src/api/livemap/livemap.document.scoped-quad.ts";
 
-const components = { parts: { button: { kind: "document", document: '<button @:source/>' } } } as const;
+const components = { parts: { button: { kind: "document", document: '<button hson:part @:source/>' } } } as const;
 const layout = { document: '<html <head/> <body <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>/>' };
 const first = path([0,0,1,0,0]), second = path([0,0,1,0,1]);
 

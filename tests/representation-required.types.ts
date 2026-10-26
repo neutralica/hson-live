@@ -12,7 +12,7 @@ declare const Page: HsonSchema<PageGraph, "document">;
 const definitions = {
   page: { document: '<main <b "text"/>/>', schema: Page },
   state: { data: { count: 1 }, schema: State },
-  components: { parts: { submit: { kind: "document" as const, document: "<button/>" } } },
+  components: { parts: { submit: { kind: "document" as const, document: "<button hson:part/>" } } },
 };
 const map = hsonLiveMap.fromLibraries(definitions);
 map.doc.page.snap() satisfies string;

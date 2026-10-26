@@ -14,8 +14,8 @@ import { review_admission_management } from "./h0b-review-admission-management.m
 import { review_missing_scopes } from "./h0b-review-missing-scopes.mts";
 
 const parts = { parts: {
-  leaf: { kind: "document", document: '<button @:root/>' },
-  panel: { kind: "document", document: '<section @:root <hson-part at="leaf"/>/>' },
+  leaf: { kind: "document", document: '<button hson:part @:root/>' },
+  panel: { kind: "document", document: '<section hson:part @:root <hson-part at="leaf"/>/>' },
 } } as const;
 const page = { document: '<main @:root <hson-part @:slot lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/>/>' };
 function initial() { return hsonLiveMap.fromLibraries({ parts, initial: { data: 0 } }); }

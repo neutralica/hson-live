@@ -18,7 +18,7 @@ import { validate_document_path } from '../src/api/livemap/livemap.document.path
 import { hosted_flat_subject_fixture } from '../tests/fixtures/hosted-styled-part-ssr-cases.mts';
 
 async function topology_fixture() {
-  const locus = hsonLiveMap.locus.create({ "parts": { parts: { bare: { kind: 'document', document: '<aside "Bare"/>' } }, access: "private" }, "page": { document: '<html <head/> <body <hson-part lib="parts" at="bare"/>/>/>', access: "shared" }, "flat": { document: '<html <head/> <body <p "Flat"/>/>/>', access: "shared" }, "live": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ['flat', 'page', 'live'] }) });
+  const locus = hsonLiveMap.locus.create({ "parts": { parts: { bare: { kind: 'document', document: '<aside hson:part "Bare"/>' } }, access: "private" }, "page": { document: '<html <head/> <body <hson-part lib="parts" at="bare"/>/>/>', access: "shared" }, "flat": { document: '<html <head/> <body <p "Flat"/>/>/>', access: "shared" }, "live": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ['flat', 'page', 'live'] }) });
   await locus.stage(w => w.doc.must('page').at([1,0]).delete());
   const session = await locus.session.create({ libraries: ['page','flat','live'] });
   return { locus, session, cut: session.now({ html: 'page' }) };

@@ -1,3 +1,4 @@
+import { part_receiving_interface, transform_part_parameter_strings } from "../part-definition.js";
 import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
@@ -11,7 +12,7 @@ import { qualify_authored_document_source } from "../../api/document/hson-author
 import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { PART_OPTIONAL, has_part_reference, part_receiving_interface, part_optional_issue, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, transform_part_parameter_strings } from "../part-placeholder.js";
+import { PART_DECLARATION, part_declaration_issue, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 
@@ -37,6 +38,8 @@ export type PartDocumentSource = Readonly<{
   parameterSpellings: readonly PartParameterSource[];
   parameterCompleteness: "complete" | "unknown";
   receivingDeclarations: readonly Readonly<{ name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }>[];
+  definitionRoot?: PartSourceLocation;
+  partDeclarations: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string }>[];
   optionalStructures: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string; references?: number }>[];
   referenceIssues: readonly Readonly<{ location: PartSourceLocation; message: string }>[];
   /** Payload ranges, never guessed decoded-substring offsets. No type or optionality is implied. */
@@ -173,6 +176,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; structured: boolean; supply?: "data" | "doc" }[] = [];
     const receivingDeclarations: { name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }[] = [];
     const optionalStructures: { location: PartSourceLocation; root: boolean; issue?: string; references?: number }[] = [];
+    const partDeclarations: { location: PartSourceLocation; root: boolean; issue?: string }[] = [];
+    const roots: PartSourceLocation[] = [];
     const referenceIssues: { location: PartSourceLocation; message: string }[] = [];
     const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute" | "structure", typed?: "data" | "doc"): void => {
       const mapped = range === undefined ? undefined : map(range);
@@ -199,9 +204,19 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         },
         elementHeader(tag, range, attrs, complete) {
           const connector = tag.toLowerCase() === "hson-part";
+          const rootLocation = tags.length === 0 && complete ? map(range) : undefined;
+          if (rootLocation !== undefined) roots.push(rootLocation);
           for (const attr of attrs) {
             if (observedAttributes.has(attr)) continue;
             observedAttributes.add(attr);
+            if (attr.name.toLowerCase() === PART_DECLARATION) {
+              const range = attributeRanges.get(attr)?.name;
+              const where = range === undefined ? undefined : map(range);
+              const issue = part_declaration_issue(attr.name, attr.value !== undefined)
+                ?? (tags.length !== 0 || connector ? "hson:part is only allowed on the single Part definition root." : undefined);
+              if (where !== undefined) partDeclarations.push({ location: where, root: tags.length === 0, ...(issue === undefined ? {} : { issue }) });
+              continue;
+            }
             const value = split_attrs_meta([attr]).attrs[attr.name];
             if (attr.name.startsWith("#{")) {
               observeUses(attr.name, attributeRanges.get(attr)?.value, "structure");
@@ -240,7 +255,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const ranges = attributeRanges.get(attr), name = ranges?.name === undefined ? undefined : map(ranges.name);
             if (name === undefined) return [];
             const valueRange = ranges?.value === undefined ? undefined : map(ranges.value);
-            const value = split_attrs_meta([attr]).attrs[attr.name];
+            const value = attr.name.toLowerCase() === PART_DECLARATION ? undefined : split_attrs_meta([attr]).attrs[attr.name];
             return [{ name: attr.name, nameLocation: name, ...(valueRange === undefined ? {} : { valueLocation: valueRange }),
               ...(attr.value?.direct === true || typeof value !== "string" || has_part_reference(value) && !attr.name.startsWith("data:") && !attr.name.startsWith("doc:") ? {} : { value }) }];
           }) });
@@ -307,6 +322,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         receivingDeclarations.some(declaration => use.namespace === "local" && declaration.incoming === name && declaration.name === use.name)
         || use.namespace === "incoming" && use.name === name) })),
       parameterSpellings: spellingEligible ? [...new Set(uses.map(use => use.name))].map(name => ({ name, uses: uses.filter(use => use.name === name) })) : [],
+      ...(scanned && roots.length === 1 ? { definitionRoot: roots[0]! } : {}), partDeclarations,
       parameterCompleteness, optionalStructures, receivingDeclarations: spellingEligible ? receivingDeclarations : [], referenceIssues, receivers };
     documents.set(producer, result);
     relationships.set(result, receivers);

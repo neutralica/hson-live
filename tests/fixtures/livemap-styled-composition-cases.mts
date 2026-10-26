@@ -43,15 +43,15 @@ function atomic(map: LiveMap, run: () => unknown, reason?: RegExp) {
 }
 export function styled_fixture(count = 3) {
   const connectors = Array.from({ length: count }, (_, i) => `<hson-part ${i < 2 ? `@:slot${i}` : ""} lib="parts" at="button" id="instance${i}"/>`).join(" ");
-  return legacy_flat_styled_map({ parts: { parts: { button: part('<section @:root id="%{id}" <span @:label class="label" "Label"/> <i @:unused/> <hson-part at="child" label="%{id}"/>/>',
-    'section{border:3px solid rgb(1,2,3);--tone:rgb(10,20,30)} span{color:var(--tone);@media screen{padding-left:7px}} @layer buttons{@supports(display:grid){section{button{color:rgb(60,70,80);&.active{padding-left:11px}}}}}'), child: part('<button id="%{label}-button" class="active" "Nested"/>', '') } },
+  return legacy_flat_styled_map({ parts: { parts: { button: part('<section hson:part @:root id="%{id}" <span @:label class="label" "Label"/> <i @:unused/> <hson-part at="child" label="%{id}"/>/>',
+    'section{border:3px solid rgb(1,2,3);--tone:rgb(10,20,30)} span{color:var(--tone);@media screen{padding-left:7px}} @layer buttons{@supports(display:grid){section{button{color:rgb(60,70,80);&.active{padding-left:11px}}}}}'), child: part('<button hson:part id="%{label}-button" class="active" "Nested"/>', '') } },
     page: { document: `<html <head/> <body <main ${connectors}/> <aside id="unrelated" <span class="label" "Unrelated"/> <button class="active" id="outside-button" "Outside"/>/>/>/>` } });
 }
 /** Absent subject atoms must keep their attribute specificity in every wrapper. */
 export function optional_subject_fixture() {
   const gone = '[hson\\:quad="gone"]';
   return legacy_flat_styled_map({ parts: { parts: { optional: part(
-    '<section d:data="%{payload}" <b @:gone part:optional "#{d.missing}"/> <p id="optional-not" class="target"/> <p id="optional-is" class="is-target"/> <p id="optional-where" class="where-target"/> <div id="optional-has" class="has-target" <i/>/> <div id="optional-positive" class="positive-target" <i/>/> <p id="optional-list" class="list-target"/> <p id="optional-multi" class="multi-target"/> <p id="optional-nth" class="nth-target"/>/>',
+    '<section hson:part d:data="%{payload}" <b @:gone part:optional "#{d.missing}"/> <p id="optional-not" class="target"/> <p id="optional-is" class="is-target"/> <p id="optional-where" class="where-target"/> <div id="optional-has" class="has-target" <i/>/> <div id="optional-positive" class="positive-target" <i/>/> <p id="optional-list" class="list-target"/> <p id="optional-multi" class="multi-target"/> <p id="optional-nth" class="nth-target"/>/>',
     `.target:not(${gone}){color:red}.target{color:blue}` +
     `.is-target:not(.never){color:blue}.is-target:is(${gone},p){color:red}` +
     `p.where-target{color:blue}.where-target:where(:not(${gone})){color:red}` +
@@ -65,28 +65,28 @@ export function optional_subject_fixture() {
 /** Shared by Node/Worker admission and JavaScript-disabled real Chrome assertions. */
 export function selector_fixture() {
   return legacy_flat_styled_map({ parts: { parts: {
-    bare: part('<button id="%{id}" class="bare" "Bare"/>', 'button{color:rgb(10,20,30);padding-left:13px}:is(button,.other){border-top:2px solid rgb(1,2,3)}button::before{content:"ok"}button,#never{padding-right:22px}.bare{padding-right:24px}'),
-    ancestor: part('<section id="%{id}" class="a" <button id="%{id}-child" class="b" "Child"/> <div class="local" <button id="%{id}-deep" class="deep" "Deep"/>/> <hson-part at="leaf" id="%{id}-nested"/>/>',
+    bare: part('<button hson:part id="%{id}" class="bare" "Bare"/>', 'button{color:rgb(10,20,30);padding-left:13px}:is(button,.other){border-top:2px solid rgb(1,2,3)}button::before{content:"ok"}button,#never{padding-right:22px}.bare{padding-right:24px}'),
+    ancestor: part('<section hson:part id="%{id}" class="a" <button id="%{id}-child" class="b" "Child"/> <div class="local" <button id="%{id}-deep" class="deep" "Deep"/>/> <hson-part at="leaf" id="%{id}-nested"/>/>',
       'section{border-top:5px solid rgb(1,2,3)}section button{color:rgb(40,50,60)}button{margin-left:17px}' +
       '.a{button{padding-left:14px}.b{border-top:4px solid rgb(4,5,6)}button,&>.b{padding-right:15px}&>.b,button{margin-top:16px}' +
       '.local,.unused{button,.unused{word-spacing:6px}}}' +
       '@media screen{.a{@supports(display:grid){button{padding-bottom:18px}.b,&>.b{padding-top:19px}}}}' +
       '.a,#never{.b{margin-right:23px}}.a .b{margin-right:1px}' +
       '@scope (.local){div{border-top:7px solid rgb(7,8,9)}div button{letter-spacing:3px}}'),
-    leaf: part('<button id="%{id}" "Nested"/>', ''),
-    sibling: part('<section id="sibling" class="a" <button id="sibling-child" class="b" "Sibling"/>/>', 'section{border-top:8px solid rgb(8,9,10)}section button{color:rgb(70,80,90);padding-left:21px}'),
-    explicit: part('<button id="explicit" "Explicit"/>', '&{color:rgb(70,80,90);padding-left:19px}'),
+    leaf: part('<button hson:part id="%{id}" "Nested"/>', ''),
+    sibling: part('<section hson:part id="sibling" class="a" <button id="sibling-child" class="b" "Sibling"/>/>', 'section{border-top:8px solid rgb(8,9,10)}section button{color:rgb(70,80,90);padding-left:21px}'),
+    explicit: part('<button hson:part id="explicit" "Explicit"/>', '&{color:rgb(70,80,90);padding-left:19px}'),
   } }, page: { document: '<html <head/> <body <main <hson-part lib="parts" at="bare" id="bare0"/> <hson-part lib="parts" at="bare" id="bare1"/> <hson-part @:ancestor lib="parts" at="ancestor" id="ancestor"/> <hson-part lib="parts" at="sibling"/> <hson-part lib="parts" at="explicit"/>/> <section id="outside-section" class="a" <button id="outside" class="b" "Outside"/>/>/>/>' } });
 }
 /** Equivalent replacements and colon-bearing nesting share the Chrome/Worker fixture. */
 export function second_repair_fixture() {
   const map=legacy_flat_styled_map({parts:{ parts: {
-    equivalent:part('<button id="%{id}"/>','button{color:rgb(10,20,30);padding-left:13px}'),
-    colon:part('<section id="%{id}" class="colon" <button id="%{id}-button" class="b" "Child"/>/>',
+    equivalent:part('<button hson:part id="%{id}"/>','button{color:rgb(10,20,30);padding-left:13px}'),
+    colon:part('<section hson:part id="%{id}" class="colon" <button id="%{id}-button" class="b" "Child"/>/>',
       'section{button:is(.b){color:rgb(10,20,30);margin-right:23px}button:not(.x){padding-left:13px}button:first-child{border-top:5px solid rgb(1,2,3)}button::before{content:"hello"}' +
       'button:is(.b),&>.b{padding-right:17px}&>.b,button:is(.b){margin-left:19px}}section button{margin-right:1px}' +
       '@layer colon{@media screen{section{@supports(display:grid){button:is(.b){letter-spacing:3px}}}}}'),
-    sibling:part('<section id="colon-sibling" class="colon" <button id="colon-sibling-button" class="b" "Sibling"/>/>','button{color:rgb(70,80,90);padding-left:21px}'),
+    sibling:part('<section hson:part id="colon-sibling" class="colon" <button id="colon-sibling-button" class="b" "Sibling"/>/>','button{color:rgb(70,80,90);padding-left:21px}'),
   } },page:{document:'<html <head/> <body <main <button id="equivalent0"/> <button @:eq1 id="equivalent1"/> <button id="equivalent2"/> <button @:eq3 id="equivalent3"/> <hson-part lib="parts" at="colon" id="colon0"/> <hson-part lib="parts" at="colon" id="colon1"/> <hson-part lib="parts" at="sibling"/>/> <section class="colon" <button id="colon-outside" class="b" "Outside"/>/>/>/>'}});
   const p=page(map),before=p.root();
   for(let index=0;index<4;index++) {
@@ -101,8 +101,8 @@ export function second_repair_fixture() {
 export function styled_composition_cases(check: (name: string, run: () => void) => void) {
   check("styled replacement returns graph and CSS operations for ordinary replacement and optional retirement", () => {
     const map = hsonLiveMap.fromLibraries({parts:{parts:{
-      ordinary:part('<b/>', 'b{color:blue}'),
-      optional:part('<p part:optional d:data="%{payload}" "#{d.title}"/>', 'p{color:red}'),
+      ordinary:part('<b hson:part/>', 'b{color:blue}'),
+      optional:part('<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>', 'p{color:red}'),
     }},page:{document:'<main <i/>/>'}});
     const p=page(map), initial=p.root(), target={kind:'path' as const,path:path([0,0])};
     const connector=(name:string,payload='<>')=>{
@@ -159,13 +159,13 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     const rejected=hsonLiveMap.fromLibraries({});
     for(const [css,reason] of invalid){
       assert.throws(()=>parse_part_stylesheet(css),reason,css);
-      atomic(rejected,()=>rejected.addLibraries({parts:{ parts: {x:part('<section <button class="b"/>/>',css)} },page:{document:'<hson-part lib="parts" at="x"/>'}}).commit,reason);
+      atomic(rejected,()=>rejected.addLibraries({parts:{ parts: {x:part('<section hson:part <button class="b"/>/>',css)} },page:{document:'<hson-part lib="parts" at="x"/>'}}).commit,reason);
     }
   });
   check("unfamiliar textual pseudo arguments retain occurrence scoping, ownership and rendered correspondence", () => {
     const map=hsonLiveMap.fromLibraries({parts:{parts:{
-      implicit:part('<section <button class="b"/>/>','section{button:future(.b){color:red}}'),
-      explicit:part('<section <button class="b"/>/>','section{& button:future(.b){color:red}}'),
+      implicit:part('<section hson:part <button class="b"/>/>','section{button:future(.b){color:red}}'),
+      explicit:part('<section hson:part <button class="b"/>/>','section{& button:future(.b){color:red}}'),
     }}});
     let commits=0;
     const verify=() => {
@@ -214,9 +214,9 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
   check("retained styled coverage: configured cross-collection selection preserves stylesheet preorder and connector/root identity equality", () => {
     const local=(name:string)=>`[hson\\:quad="${name}"]`;
     const map=hsonLiveMap.fromLibraries({parts:{ parts: {
-      outer:part('<section @:root <hson-part @:child at="inner"/> <hson-part at="inner"/>/>',`${local("child")}{--parent-selected:yes}section{--order:outer}`),
-      inner:part('<button @:root/>',`${local("root")}{--order:inner}`),
-    } },other:{ parts: {cross:part('<aside @:root/>',`${local("root")}{--order:cross}`)} }});
+      outer:part('<section hson:part @:root <hson-part @:child at="inner"/> <hson-part at="inner"/>/>',`${local("child")}{--parent-selected:yes}section{--order:outer}`),
+      inner:part('<button hson:part @:root/>',`${local("root")}{--order:inner}`),
+    } },other:{ parts: {cross:part('<aside hson:part @:root/>',`${local("root")}{--order:cross}`)} }});
     const shell=parse_authored_document_library('<main <hson-part @:slot lib="parts" at="outer"/>/>');
     const result=expand_document_composition("shell",()=>({root:shell.root,quads:shell.declarations}),
       document_composition_options({configuration:{at:{slot:{at:{child:{use:{lib:"other",at:"cross"}}}}}}}),(lib,at)=>readPart(map,lib,at));
@@ -226,7 +226,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     // The retained private traversal proves configured stylesheet selection.
     // Admit the same selected topology through ordinary automatic admission to
     // check actual receiving identity reuse without retaining an inert shell.
-    map.parts.must("parts").at(["outer","document"]).set('<section @:root <hson-part @:child lib="other" at="cross"/> <hson-part at="inner"/>/>');
+    map.parts.must("parts").at(["outer","document"]).set('<section hson:part @:root <hson-part @:child lib="other" at="cross"/> <hson-part at="inner"/>/>');
     map.addLibraries({page:{document:'<main <hson-part @:slot lib="parts" at="outer"/>/>'}});
     assert.deepEqual(page(map).root(),result.root);
     const aggregate=owner(map),id=identity(map),record=encode_portable_document_stylesheet(aggregate.stylesheet(id));
@@ -286,12 +286,12 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     allocator(aggregate.identityEpoch().owner, () => { throw Error("read allocated"); });
     try { p.render(); map.capture(); map.cut({ documents: ["page"], data: [], html: "page" }); } finally { allocator(aggregate.identityEpoch().owner, undefined); }
     assert.equal(aggregate.identityEpoch().issued(), ledger);
-    const anonymous = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button/>', 'button{color:red}') } }, page: { document: '<hson-part lib="parts" at="x"/>' } });
+    const anonymous = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button hson:part/>', 'button{color:red}') } }, page: { document: '<hson-part lib="parts" at="x"/>' } });
     assert.equal(owner(anonymous).documentOverlay(identity(anonymous)).size, 1); assert.equal(page(anonymous).q("root"), undefined);
   });
   check("nested CSS, selector lists, conditions, layers and supported globals retain owned structure", () => {
     const css = '@layer base{button,.active{color:red;&:is(:hover,:focus),span{color:blue}@supports(display:grid){padding:1px}}}@container box (width>1px){button{margin-left:2px}}@scope (.local) to (.stop){button{margin-right:3px}}@starting-style{button{opacity:0}}@keyframes once{from{opacity:0}to{opacity:1}}@property --tone{syntax:"*";inherits:false}';
-    const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section <button/>/>', css) } }, page: { document: '<hson-part lib="parts" at="x"/>' } });
+    const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section hson:part <button/>/>', css) } }, page: { document: '<hson-part lib="parts" at="x"/>' } });
     const record = encode_portable_document_stylesheet(owner(map).stylesheet(identity(map)));
     assert.equal(record.properties.length, 1); assert.equal(record.keyframes.length, 1);
     assert.ok(record.rules.some(rule => rule.selector.includes(':is(button,.active)')));
@@ -301,15 +301,15 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     for (const css of ['@import "x";', '@font-face{font-family:x;src:url(x)}', '@layer a,b;', 'a{:future(&){color:red}}', 'a{@scope (.x){b{color:red}}}', 'a{color:red']) assert.throws(() => parse_part_stylesheet(css));
   });
   check("local root and descendant CSS identity references share the occurrence scope without alias collisions", () => {
-    const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section @:root <button @:child/>/>', '[hson\\:quad="root"]{padding:1px}[hson\\:quad="child"]{color:red}') } },
+    const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section hson:part @:root <button @:child/>/>', '[hson\\:quad="root"]{padding:1px}[hson\\:quad="child"]{color:red}') } },
       page: { document: '<main <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>' } });
     assert.equal(owner(map).documentOverlay(identity(map)).size, 4);
     assert.equal(page(map).q("root"), undefined); assert.equal(page(map).q("child"), undefined);
     assert.equal(install_libraries_snapshot(map.cut({ documents: ["page"], data: [] }).libs).map.doc.must("page").mode, "document");
-    assert.throws(() => hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>', '[hson\\:quad="absent"]{color:red}') } } }), /missing local QUAD/);
+    assert.throws(() => hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part/>', '[hson\\:quad="absent"]{color:red}') } } }), /missing local QUAD/);
   });
   check("replacing an occurrence retires its old globals before admitting the new contribution", () => {
-    const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section <button/>/>', 'button{color:red}@keyframes owned{from{opacity:0}}') } },
+    const map = legacy_flat_styled_map({ parts: { parts: { x: part('<section hson:part <button/>/>', 'button{color:red}@keyframes owned{from{opacity:0}}') } },
       page: { document: '<main <hson-part lib="parts" at="x"/>/>' } });
     const prior = document_css_subject_identities(encode_portable_document_stylesheet(owner(map).stylesheet(identity(map))), "outbound")[0]!;
     const connector = hsonTransform.fromHson('<hson-part lib="parts" at="x"/>').toNode().$_content[0]; if (!is_Node(connector)) throw Error("connector");
@@ -319,7 +319,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     atomic(map, () => page(map).css.keyframes.set({ name: "owned", steps: { from: { opacity: "1" } } }), /conflict/);
   });
   check("failed realized Schema checks and identity-only reentrancy never publish the outer candidate", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button/>', 'button{color:red}') } }, page: { document: '<aside/>' } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button hson:part/>', 'button{color:red}') } }, page: { document: '<aside/>' } });
     atomic(map, () => map.addLibraries({ bad: { document: '<main <hson-part lib="parts" at="x"/>/>', schema: Hson.schema`<type "document" tag "main" content "empty">` } }).commit);
     let entered = false; const aggregate = owner(map);
     allocator(aggregate.identityEpoch().owner, () => {
@@ -331,14 +331,14 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     assert.equal(aggregate.identityEpoch().issued().size, 1); assert.equal(aggregate.documentOverlay(identity(map)).quidAtPath(path([0])), "987654321"); assert.throws(() => map.doc.must("bad"));
   });
   check("styled local topology is durable while public incremental delivery stays guarded", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button/>', 'button{color:red}') } } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button hson:part/>', 'button{color:red}') } } });
     let commit: HostedAggregateCommit | undefined; const off = owner(map).observe(value => { commit = value.hosted; });
     try { map.addLibraries({ page: { document: '<hson-part lib="parts" at="x"/>' } }); } finally { off(); }
     assert.ok(commit); assert.throws(() => make_portable_aggregate_commit(commit!), /Echo/);
     assert.ok(durable_aggregate_commit(commit!, [{ name: "page", ownership: "shared" }]).commit.topology!.operation.libraries[0]!.scopes);
   });
   check("moving roots retains style; nested owned contributions retire atomically with their parent", () => {
-    const map = legacy_flat_styled_map({ parts: { parts: { outer: part('<section <hson-part at="inner"/>/>', 'button{color:red}'), inner: part('<button/>', '&{padding:7px}') } },
+    const map = legacy_flat_styled_map({ parts: { parts: { outer: part('<section hson:part <hson-part at="inner"/>/>', 'button{color:red}'), inner: part('<button hson:part/>', '&{padding:7px}') } },
       page: { document: '<main <hson-part @:first lib="parts" at="outer"/> <hson-part @:second lib="parts" at="outer"/>/>' } });
     const p = page(map), first = p.q("first")!, second = p.q("second")!, css = p.css.snapshot(), old = first.path();
     p.document.content.move({ kind: "path", path: [0, 0] }, 0, 1);
@@ -357,7 +357,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     p.css.clearAll(); quad.delete(); assert.equal(owner(map).documentOverlay(identity(map)).size, 0);
   });
   check("runtime styled insertion, removal and portable A to B to C preserve ownership without sources", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<section <button/>/>', 'button{color:red}') } }, page: { document: '<html <head/> <body <i/>/>/>' } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<section hson:part <button/>/>', 'button{color:red}') } }, page: { document: '<html <head/> <body <i/>/>/>' } });
     const connector = hsonTransform.fromHson('<hson-part lib="parts" at="x"/>').toNode().$_content[0]; if (!is_Node(connector)) throw Error("connector");
     page(map).document.content.insert({ kind: "path", path: [0, 0, 1, 0] }, 1, connector);
     let previous: LiveMap = map; const seen = new Set<string>();
@@ -374,13 +374,13 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
   });
   check("global conflicts, exhausted allocation and reentrant inner work reject the outer candidate", () => {
     for (const global of ['@keyframes repeated{from{opacity:0}}', '@property --repeated{syntax:"*";inherits:false}']) {
-      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>', `p{color:red}${global}`) } } });
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part/>', `p{color:red}${global}`) } } });
       let allocations = 0; allocator(owner(map).identityEpoch().owner, () => { allocations++; throw Error("unexpected allocation"); });
       try { atomic(map, () => map.addLibraries({ bad: { document: '<main <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>' } }).commit, /Duplicate @/); }
       finally { allocator(owner(map).identityEpoch().owner, undefined); }
       assert.equal(allocations, 0);
     }
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>', 'p{color:red}') } }, state: { data: { count: 0 } } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part/>', 'p{color:red}') } }, state: { data: { count: 0 } } });
     allocator(owner(map).identityEpoch().owner, () => "invalid");
     try { atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /QUID/); }
     finally { allocator(owner(map).identityEpoch().owner, undefined); }
@@ -393,9 +393,9 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
   });
   check("retained styled coverage: escaped identity syntax literals supports tests and preorder contributions survive restoration", () => {
     const local=(name:string)=>`[hson\\:quad="${name}"]`;
-    const map=legacy_flat_styled_map({parts:{ parts: {outer:part('<section @:root <hson-part @:child at="inner"/>/>',
+    const map=legacy_flat_styled_map({parts:{ parts: {outer:part('<section hson:part @:root <hson-part @:child at="inner"/>/>',
       String.raw`[hson\3a quad="root"]:has(>${local("child")}),${local("child")}:not([data-look="hson:quid"]){--literal:"hson:quad"}@supports selector([hson\:quad="syntaxOnly"]){${local("root")}{--order:outer}}`),
-      inner:part('<button @:root/>',`${local("root")}{--order:inner}`),unused:part('<p/>','p{--order:UNVISITED}') } },
+      inner:part('<button hson:part @:root/>',`${local("root")}{--order:inner}`),unused:part('<p hson:part/>','p{--order:UNVISITED}') } },
       page:{document:'<main <hson-part lib="parts" at="outer"/> <hson-part lib="parts" at="outer"/>/>'}});
     const record=encode_portable_document_stylesheet(owner(map).stylesheet(identity(map)));
     assert.equal(document_css_subject_identities(record,"outbound").length,4);
@@ -408,7 +408,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     for(const invalid of [local("absent"),'[hson\\:quid="123456789"]','[hson\\:quad]','[hson\\:quad^="label"]','[hson\\:quad="label" i]','[x|hson\\:quad="label"]',':future([hson\\:quad="label"])']) {
       const m=hsonLiveMap.fromLibraries({});
       let calls=0;allocator(owner(m).identityEpoch().owner,()=>{calls++;return "123456789";});
-      try{atomic(m,()=>m.addLibraries({parts:{ parts: {x:part('<p @:label/>',invalid+'{color:red}')} },bad:{document:'<hson-part lib="parts" at="x"/>'}}).commit);}finally{allocator(owner(m).identityEpoch().owner,undefined);}
+      try{atomic(m,()=>m.addLibraries({parts:{ parts: {x:part('<p hson:part @:label/>',invalid+'{color:red}')} },bad:{document:'<hson-part lib="parts" at="x"/>'}}).commit);}finally{allocator(owner(m).identityEpoch().owner,undefined);}
       assert.equal(calls,0);
     }
   });

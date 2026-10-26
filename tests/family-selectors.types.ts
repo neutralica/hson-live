@@ -7,7 +7,7 @@ declare const maybeSchema: typeof Deck | undefined;
 declare const broadSchema: HsonSchema | undefined;
 const map = hsonLiveMap.fromLibraries({
   page: { document: '<main/>' }, deck: { data: { slides: [] }, schema: Deck },
-  components: { parts: { button: { kind: "document", document: '<button/>' } } },
+  components: { parts: { button: { kind: "document", document: '<button hson:part/>' } } },
   name: { document: '<aside/>' }, must: { document: '<aside/>' }, then: { document: '<aside/>' },
   array: { data: [1] },
   __defineGetter__: { document: "<main/>" }, __defineSetter__: { document: "<main/>" },
@@ -108,14 +108,14 @@ if (parts.source === "client-local") {
   parts.source satisfies "client-local";
   // @ts-expect-error Client-local Parts cannot attach supplemental Schemas.
   parts.schema.use(ANY_DATA);
-  parts.at(["button"]).set({ kind: "document", document: "<button/>" });
-  parts.at(["button", "document"]).set("<button/>");
-  parts.at(["button"]).replace({ kind: "document", document: "<button/>" });
+  parts.at(["button"]).set({ kind: "document", document: "<button hson:part/>" });
+  parts.at(["button", "document"]).set("<button hson:part/>");
+  parts.at(["button"]).replace({ kind: "document", document: "<button hson:part/>" });
   parts.at(["button"]).delete();
 } else {
   parts.source satisfies "authority-projected";
   // @ts-expect-error Projected Parts remain read-only.
-  parts.at(["button"]).set({ kind: "document", document: "<button/>" });
+  parts.at(["button"]).set({ kind: "document", document: "<button hson:part/>" });
   // @ts-expect-error Projected Parts cannot attach Schemas.
   parts.schema.use(ANY_DATA);
 }
@@ -125,25 +125,25 @@ for (const checked of [replica.parts.must("widgets", ANY_DATA), replica.parts.mu
   if (checked.source === "client-local") {
     // @ts-expect-error Checked selection and source narrowing cannot grant Schema attachment.
     checked.schema.use(ANY_DATA);
-    checked.at(["button", "document"]).set("<button/>");
+    checked.at(["button", "document"]).set("<button hson:part/>");
   } else {
     checked.source satisfies "authority-projected";
     // @ts-expect-error Checked projected selection remains read-only.
-    checked.at(["button", "document"]).set("<button/>");
+    checked.at(["button", "document"]).set("<button hson:part/>");
   }
 }
 const optionalParts = replica.parts("widgets", ANY_DATA);
 if (optionalParts?.source === "client-local") {
   // @ts-expect-error Optional checked lookup preserves the Parts restriction.
   optionalParts.schema.use(ANY_DATA);
-  optionalParts.at(["button", "document"]).set("<button/>");
+  optionalParts.at(["button", "document"]).set("<button hson:part/>");
 }
 declare const knownReplica: Echo<typeof map>;
 const knownParts = knownReplica.parts.components;
 if (knownParts.source === "client-local") {
   // @ts-expect-error Literal inventory selection preserves the Parts restriction.
   knownParts.schema.use(ANY_DATA);
-  knownParts.at(["button", "document"]).set("<button/>");
+  knownParts.at(["button", "document"]).set("<button hson:part/>");
 }
 const localData = replica.data.must("ordinary", ANY_DATA);
 if (localData.source === "client-local") localData.schema.use(ANY_DATA);

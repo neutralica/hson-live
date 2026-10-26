@@ -60,7 +60,7 @@ const prefixFailures = new Set(["HSON_NUMBER_LEADING_PLUS", "HSON_NUMBER_LEADING
 // content slots. They must not disappear through the conservative prefix filter.
 const declarationFailures = new Set(["HSON_LIBRARY_QUAD_INVALID", "HSON_LIBRARY_QUAD_DUPLICATE",
   "HSON_LIBRARY_QUAD_INELIGIBLE", "HSON_ELEMENT_QUID_INVALID", "HSON_ELEMENT_HEADER_AFTER_CONTENT",
-  "PORTABLE_RUNTIME_QUID_FORBIDDEN"]);
+  "PORTABLE_RUNTIME_QUID_FORBIDDEN", "HSON_PART_DECLARATION_INVALID"]);
 
 export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate, literalQuadsOnly = false): readonly DocumentDiagnosticSpec[] {
   const site = interpolation_site(source, source.fileName);

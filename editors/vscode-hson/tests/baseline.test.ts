@@ -21,6 +21,27 @@ async function run(): Promise<void> {
   const check = (name: string, body: () => void) => { body(); console.log(`ok ${++checks} - ${name}`); };
   const source = (body: string, imported = "Hson", tag = "Hson", pkg = "hson-live/hson") => `import { ${imported} } from "${pkg}";\nconst source = ${tag}.canonical\`${body}\`;`;
   const tokens = (text: string, fileName = "/workspace/baseline.ts") => hson_highlights(grammar, fileName, text);
+  check("Part declaration has a distinct declaration scope and semantic token", () => {
+    const text = 'import { Hson } from "hson-live/hson"; Hson.document`<button hson:part disabled title="Save"/>`;';
+    const declaration = tokens(text).filter(token => text.slice(token.range.start, token.range.end) === 'hson:part');
+    assert.equal(declaration.length, 1);
+    assert.equal(declaration[0]!.type, 'hsonDeclaration');
+    assert.ok(declaration[0]!.scopes.includes('keyword.declaration.part.hson'));
+    assert.ok(tokens(text).some(token => text.slice(token.range.start, token.range.end) === 'disabled' && token.scopes.includes('constant.language.flag.hson')));
+  });
+  check("standalone declarations diagnose form and placement without guessing ownership", () => {
+    for (const text of ['<p hson:part="hson:part"/>', '<p HSON:PART/>', '<main <p hson:part/>/>', '<hson-part hson:part/>']) {
+      const diagnostics = produce_document_diagnostics({ languageId: 'hson', fileName: '/workspace/part.hson', text });
+      assert.equal(diagnostics.length, 1);
+      assert.equal(diagnostics[0]!.code, 'HSON_PART_DECLARATION_INVALID');
+      assert.equal(diagnostics[0]!.range.start, text.toLowerCase().indexOf('hson:part'));
+    }
+    for (const body of ['<main ${fragment} <p hson:part/>/>', '<p hson:part="${value}"/>']) {
+      const text = 'import { Hson } from "hson-live/hson"; Hson.document`' + body + '`;';
+      assert.ok(produce_document_diagnostics({ languageId: 'typescript', fileName: '/workspace/part.ts', text }).some(issue => issue.code === 'HSON_PART_DECLARATION_INVALID'));
+    }
+    for (const text of ['<p/>', '<p hson:part/>']) assert.deepEqual(produce_document_diagnostics({ languageId: 'hson', fileName: '/workspace/part.hson', text }), []);
+  });
   check("authored QUAD highlighting retains declaration positions around protected expressions", () => {
     const text = 'import { Hson } from "hson-live/hson"; Hson.document`<main @:main ${fragment} <hson-part @:content lib="parts" at="content"/>/>`;';
     const highlights = tokens(text);

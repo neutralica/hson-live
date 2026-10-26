@@ -353,7 +353,7 @@ check("authored document formatting preserves nested QUADs, connector admission,
     const formattedBody = result.slice(hostPrefix.length, -2);
     assert.deepEqual(parse_authored_document_library(formattedBody), parse_authored_document_library(body));
     const map = hsonLiveMap.fromLibraries({
-      parts: { parts: { content: { kind: "document", document: '<article "Body"/>' } } },
+      parts: { parts: { content: { kind: "document", document: '<article hson:part "Body"/>' } } },
       page: { document: formattedBody },
     });
     const page = map.doc.must("page");

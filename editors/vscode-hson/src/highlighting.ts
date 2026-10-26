@@ -29,6 +29,7 @@ export async function load_hson_grammar(extensionRoot: string): Promise<IGrammar
 
 function tokenType(scopes: readonly string[]): HsonHighlight["type"] | undefined {
   for (const scope of [...scopes].reverse()) {
+    if (scope === HSON_APPEARANCE.themeDerived.partDeclaration) return "hsonDeclaration";
     if (scope === HSON_APPEARANCE.themeDerived.interpolationPercent) return "hsonKeyword";
     if (scope === HSON_APPEARANCE.themeDerived.interpolationHash) return "hsonProperty";
     if (scope === "meta.part.incoming.hson") return "hsonKeyword";

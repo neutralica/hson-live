@@ -141,7 +141,7 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
     } finally { mirror.dispose(); }
   });
   await check("mixed flat subject CSS and scoped delivery remain atomic and projection-owned", async () => {
-    const locus = hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: '<b @:label "Scoped"/>', stylesheet: 'b{color:blue}' } }, access: "private" }, "page": { document: '<main <button @:a "Flat"/>/>', stylesheet: '[hson\\:quad="a"]{color:red}', access: "shared" }, "scoped": { document: '<main <hson-part lib="parts" at="p"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    const locus = hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: '<b hson:part @:label "Scoped"/>', stylesheet: 'b{color:blue}' } }, access: "private" }, "page": { document: '<main <button @:a "Flat"/>/>', stylesheet: '[hson\\:quad="a"]{color:red}', access: "shared" }, "scoped": { document: '<main <hson-part lib="parts" at="p"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     const session = await locus.session.create({ libraries: ["page", "scoped", "parts"] });
     const binding = bind_locus_http(locus, { endpoint: "/flat" });
     const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://flat.test/flat", fetch: (input, init) => binding.handle(new Request(input, init), {}) });

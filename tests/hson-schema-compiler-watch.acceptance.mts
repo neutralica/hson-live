@@ -134,7 +134,7 @@ await check("Part source changes rejudge unchanged receiving consumers without e
   writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [], paths: {
     "hson-live": [join(root, "dist/index.d.ts")],
   } }, files: ["part.ts", "consumer.ts"] }));
-  const part = 'import { Hson } from "hson-live"; export const title = Hson.document`<h1 "Hello"/>`;';
+  const part = 'import { Hson } from "hson-live"; export const title = Hson.document`<h1 hson:part "Hello"/>`;';
   const consumer = 'import { Hson, hsonLiveMap } from "hson-live"; import { title } from "./part.js";\n'
     + 'const Page = Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;\n'
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <hson-part lib="bits" at="title"/>/>`, schema: Page }, bits: { parts: { title: { kind: "document", document: title } } } });\n';
@@ -185,7 +185,7 @@ await check("Part reference editor errors do not enter Schema Watch failure poli
     "hson-live": [join(root, "dist/index.d.ts")],
   } }, files: ["consumer.ts"] }));
   const text = (body: string) => 'import { Hson, hsonLiveMap } from "hson-live";\n'
-    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`' + body + '` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 "%{content}"/>` } } } });';
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`' + body + '` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } } } });';
   const watch = create_schema_compiler_project_watch(config, (_config, program) => ({ schemas: [], overlays: [],
     diagnostics: static_schema_candidate_diagnostics(ts, program).map(diagnostic => diagnostic.message) }), () => {});
   try {

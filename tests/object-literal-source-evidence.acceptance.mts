@@ -40,7 +40,7 @@ const service = ts.createLanguageService(host), editorHost = { ...host };
 const editor = create_schema_language_service(ts, ts.createLanguageService(editorHost), editorHost, join(directory, "tsconfig.json"));
 const completion = new HsonEditorCompletionCache();
 const imports = 'import { Hson, hsonLiveMap as maps } from "hson-live";\n';
-const parts = '{ heading: { kind: "document", document: Hson.document`<h1 "%{content}"/>` } }';
+const parts = '{ heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } }';
 function inspect(source: string) {
   text = source; revision++;
   const program = service.getProgram()!, facts = collect_part_source_facts(ts, program);
@@ -112,7 +112,7 @@ check("known own entries and forward Parts retain certainty beside either protot
 });
 check("computed Part keys keep complete inventories and contextual completion", () => {
   const result = inspect(imports + 'maps.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="__proto__"/>` }, '
-    + 'components: { parts: { ["__proto__"]: { kind: "document", document: Hson.document`<h1 "%{content}"/>` } } } });');
+    + 'components: { parts: { ["__proto__"]: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } } } });');
   assert.equal(result.facts.batches[0]!.libraries[1]!.memberCompleteness, 'complete');
   assert.deepEqual(result.references.map(diagnostic => diagnostic.code), ['HSON_PART_ARGUMENT_MISSING']);
   assert.equal(result.published.length, 1);

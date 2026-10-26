@@ -1,6 +1,7 @@
+import { part_receiving_interface } from "./part-definition.js";
 import type { HsonAuthored } from "../api/transform/transform.types.js";
 import { qualify_authored_document_source, serialize_authored_document } from "../api/document/hson-authored.js";
-import { part_argument_name, part_receiving_interface } from "./part-placeholder.js";
+import { part_argument_name } from "./part-placeholder.js";
 import { is_public_attr_name } from "../core/public-attrs.js";
 import type { HsonNode } from "../core/types.js";
 

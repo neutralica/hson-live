@@ -25,11 +25,11 @@ import { create_persistent_locus_hosted_aggregate_internal as persist, load_pers
 import { parse_document_stylesheet } from "../../src/internal/css/parse-document-stylesheet.ts";
 
 const parts = { parts: {
-  leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>',
+  leaf: { kind: "document", document: '<button hson:part @:root <span @:label "Visible"/>/>',
     stylesheet: 'button{color:red;span{opacity:.5}}[hson\\:quad="label"]{border:0}@media screen{@supports(display:grid){:scope{padding:2px}}}' },
-  global: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', stylesheet: ':scope{--tone:red}@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
-  panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{margin:3px}' },
-  secret: { kind: "document", document: '<p "PRIVATE_UNUSED_PART"/>' },
+  global: { kind: "document", document: '<button hson:part @:root <span @:label "Visible"/>/>', stylesheet: ':scope{--tone:red}@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
+  panel: { kind: "document", document: '<section hson:part @:root <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{margin:3px}' },
+  secret: { kind: "document", document: '<p hson:part "PRIVATE_UNUSED_PART"/>' },
 } } as const;
 const page = { document: '<main @:root <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <hson-part lib="parts" at="global"/> <footer @:footer/>/>' };
 const css = parse_document_stylesheet('[hson\\:quad="footer"]{color:purple}main{display:block}', []);
@@ -217,7 +217,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
   await check("H0b CSS-free Deck-shaped documents and local same-batch forward references retain scopes", async () => {
     const map = hsonLiveMap.create();
     map.addLibraries({ page: { document: '<main @:root <hson-part @:slot lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/>/>' },
-      parts: { parts: { panel: { kind: "document", document: '<section @:root <hson-part at="leaf"/>/>' }, leaf: { kind: "document", document: '<button @:root/>' } } } });
+      parts: { parts: { panel: { kind: "document", document: '<section hson:part @:root <hson-part at="leaf"/>/>' }, leaf: { kind: "document", document: '<button hson:part @:root/>' } } } });
     assert.equal(state(map).scopes.occurrences.length, 4); assert.equal(state(map).css.order.length, 0);
     const doc = map.doc.must("page"); if (doc.mode !== "document") throw Error(); assert.doesNotMatch(doc.render(), /hson-part|hson:quid/);
   });

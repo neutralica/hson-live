@@ -1,4 +1,4 @@
-import { part_reference_checkpoint, scan_part_reference, part_structural_reference } from "../../../internal/part-placeholder.js";
+import { PART_DECLARATION, part_declaration_issue, part_reference_checkpoint, scan_part_reference, part_structural_reference } from "../../../internal/part-placeholder.js";
 import { admit_hson_number } from "../../../core/hson-number.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../../core/hson-content-string.js";
@@ -697,6 +697,11 @@ class HsonScanner {
 
     const emitOpen = (): void => {
       if (openEmitted) return;
+      for (const attr of attrs) if (attr.name.toLowerCase() === PART_DECLARATION) {
+        const issue = part_declaration_issue(attr.name, attr.value !== undefined)
+          ?? (depth !== this.initialDepth || tag.toLowerCase() === "hson-part" ? "hson:part is only allowed on the single Part definition root." : undefined);
+        if (issue !== undefined) this.fail(issue, attr.start, "HSON_PART_DECLARATION_INVALID");
+      }
       if (attrs.some(attr => attr.name.startsWith("#{"))) part_structural_reference({ $_tag: tag,
         $_attrs: Object.fromEntries(attrs.map(attr => [attr.name, attr.value?.text ?? attr.name])), $_content: [] });
       observeHeader(true);
@@ -839,7 +844,7 @@ class HsonScanner {
         const separatedAfterName = this.skipTrivia();
         if (this.slotHere() !== undefined && !separatedAfterName) this.rejectSlot("an attribute or flag name");
         separatedBeforeSlot = separatedAfterName;
-        if (name.startsWith("hson:")) {
+        if (name.startsWith("hson:") && name.toLowerCase() !== PART_DECLARATION) {
           this.fail(
             `authored Hson metadata must not use element attribute syntax`,
             namePos,

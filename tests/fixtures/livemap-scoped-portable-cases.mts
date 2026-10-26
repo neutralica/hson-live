@@ -28,13 +28,13 @@ function unchanged(f: { map: Pick<LiveMap, "capture" | "rev" | "commits">; aggre
 }
 function fixture() {
   const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-    leaf: { kind: "document", document: '<button @:root <span @:label "Click"/>/>',
+    leaf: { kind: "document", document: '<button hson:part @:root <span @:label "Click"/>/>',
       stylesheet: ':scope{color:blue} @supports(display:grid){[hson\\:quad="label"]{display:grid}}' },
-    panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>',
+    panel: { kind: "document", document: '<section hson:part @:root <div @:body <hson-part @:child at="leaf"/>/>/>',
       stylesheet: '@media screen{:scope{padding:3px}}' },
-    global: { kind: "document", document: '<i/>',
+    global: { kind: "document", document: '<i hson:part/>',
       stylesheet: ':scope{animation:glow 1s} @keyframes glow{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
-    empty: { kind: "document", document: '<em/>' },
+    empty: { kind: "document", document: '<em hson:part/>' },
   } }, page: { document: '<main/>' } });
   map.doc.must("page").css.stylesheet('main{margin:7px}');
   const aggregate = authority(map), owner = aggregate.libraries()[1]!;
@@ -64,8 +64,8 @@ export function scoped_portable_roundtrip(input: unknown): PortableDocumentScope
 export function scoped_portable_cases(check: (name: string, run: () => void) => void) {
   check("structured Part portable capture restores in a fresh runtime without source or argument environments", () => {
     const map = hsonLiveMap.fromLibraries({ parts: {parts: {
-      panel: {kind:'document', document:'<section slide:data="%{slide}" @:root <hson-part @:child at="leaf" data:x="#{slide.details}"/>/>'},
-      leaf: {kind:'document', document:'<b x:data="%{x}" @:root title="#{x.title}" "#{x.no}"/>', stylesheet:':scope{color:red}'},
+      panel: {kind:'document', document:'<section hson:part slide:data="%{slide}" @:root <hson-part @:child at="leaf" data:x="#{slide.details}"/>/>'},
+      leaf: {kind:'document', document:'<b hson:part x:data="%{x}" @:root title="#{x.title}" "#{x.no}"/>', stylesheet:':scope{color:red}'},
     }}, page:{document:'<main/>'} });
     const a = authority(map), owner = a.libraries()[a.hostedRegistry().libraries.findIndex(entry => entry.name === 'page')]!;
     const data = Hson.data`<details <title "%{literal}" no -0> private "PRIVATE_ARGUMENT">`;

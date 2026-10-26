@@ -8,10 +8,10 @@ import type { Echo, EchoReplicaTransport } from "hson-live/echo";
 import { test_echo_transport } from "../helpers/public-echo-websocket-transport.mts";
 
 export const parts = { parts: {
-  leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', stylesheet: ':scope{padding:3px}[hson\\:quad="label"]{border:0}' },
-  panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{margin:7px}' },
-  bare: { kind: "document", document: '<aside @:root "Bare"/>' },
-  secret: { kind: "document", document: '<p "PRIVATE_TEMPLATE"/>', stylesheet: 'p{--private:PRIVATE_CSS}' },
+  leaf: { kind: "document", document: '<button hson:part @:root <span @:label "Visible"/>/>', stylesheet: ':scope{padding:3px}[hson\\:quad="label"]{border:0}' },
+  panel: { kind: "document", document: '<section hson:part @:root <hson-part @:child at="leaf"/>/>', stylesheet: ':scope{margin:7px}' },
+  bare: { kind: "document", document: '<aside hson:part @:root "Bare"/>' },
+  secret: { kind: "document", document: '<p hson:part "PRIVATE_TEMPLATE"/>', stylesheet: 'p{--private:PRIVATE_CSS}' },
 } } as const;
 export const page = { document: '<main @:page <hson-part @:left lib="parts" at="panel"/> <hson-part @:right lib="parts" at="panel"/> <footer @:footer/>/>' };
 const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection }) => ({
@@ -118,7 +118,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
   for (const kind of ["http", "websocket"] as const) await check(`optional Part ${kind}: SSR, atomic omission, source-free replay and restoration`, async () => {
     const input = (value: object) => node(Hson.document`<hson-part lib="parts" at="optional" data:payload="${Hson.data.from(value)}"/>`);
     const locus = hsonLiveMap.locus.create({ parts: { access: 'private', parts: {
-      optional: { kind: 'document', document: '<article @:root part:optional d:data="%{payload}" <h1 "#{d.title}"/> <p @:note part:optional "#{d.note}"/>/>', stylesheet: ':scope{color:navy}[hson\\:quad="note"]{color:pink}' },
+      optional: { kind: 'document', document: '<article hson:part @:root part:optional d:data="%{payload}" <h1 "#{d.title}"/> <p @:note part:optional "#{d.note}"/>/>', stylesheet: ':scope{color:navy}[hson\\:quad="note"]{color:pink}' },
     } }, count: { access: 'shared', data: { n: 0 } }, flat: { access: 'shared', document: '<main/>' }, page: { access: 'shared', document: '<html <head/> <body <hson-part @:gone lib="parts" at="optional" data:payload="<>"/> <hson-part @:left lib="parts" at="optional" data:payload="<title \\"Left\\">"/> <hson-part @:right lib="parts" at="optional" data:payload="<title \\"Right\\">"/>/>/>' } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     const client = await receiver(locus, kind, ['page']);
     try {
@@ -134,7 +134,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
       await caught(client.echo, locus);
       const before = client.session.now({ html: 'page' });
       assert.match(before.html, /Left/); assert.match(before.html, /Right/);
-      assert.doesNotMatch(JSON.stringify(before), /part:optional|data:payload|hson-part|%\{|"gone"|"note"/);
+      assert.doesNotMatch(JSON.stringify(before), /hson:part|part:optional|data:payload|hson-part|%\{|"gone"|"note"/);
       assert.equal(before.libs.libraries[0]!.scopes!.occurrences.length, 2);
       assert.equal(document(client.echo).q('gone'), undefined);
       const left = document(client.echo).q('left')!, right = document(client.echo).q('right')!;
@@ -160,7 +160,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         assert.match(painted.html, /Recovered/); assert.match(painted.html, /Note/);
         assert.equal(painted.libs.libraries[0]!.scopes!.occurrences.length, 2);
       } finally { restored.dispose(); }
-      for (const frame of client.frames) assert.doesNotMatch(frame, /part:optional|data:payload|hson-part|%\{/);
+      for (const frame of client.frames) assert.doesNotMatch(frame, /hson:part|part:optional|data:payload|hson-part|%\{/);
       await locus.stage(w => w.doc.must('page').at([1, 0]).replace(input({})));
       await locus.stage(w => w.doc.must('page').at([1, 0]).replace(input({})));
       await caught(client.echo, locus);
@@ -173,8 +173,8 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
     const data = Hson.data`<title "Visible" extra "PRIVATE_ARGUMENT">`;
     const control = (data: string) => Hson.document`<hson-part lib="parts" at="y" data:payload="${data}"/>`;
     const locus = hsonLiveMap.locus.create({ parts: {access:'private',parts:{
-      x:{kind:'document',document:'<section control:doc="%{control}" @:root <hson-part @:child #{control}/>/>'},
-      y:{kind:'document',document:'<b payload:data="%{payload}" @:root "#{payload.title}"/>'},
+      x:{kind:'document',document:'<section hson:part control:doc="%{control}" @:root <hson-part @:child #{control}/>/>'},
+      y:{kind:'document',document:'<b hson:part payload:data="%{payload}" @:root "#{payload.title}"/>'},
     }}, page:{access:'shared',document:Hson.document`<main <hson-part @:left lib="parts" at="x" doc:control="${control(data)}"/>/>`} }, { authorizeProjection: ({requested}) => ({libraries:requested.libraries}) });
     const client = await receiver(locus, kind, ['page']);
     try {

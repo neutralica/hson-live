@@ -6,9 +6,9 @@ import { make_livemap_client_composition_from_portable_aggregate_internal } from
 import { make_portable_aggregate_snapshot, make_portable_aggregate_commit } from "../../src/api/livemap/livemap.hosted.js";
 import { PARTS_FACADE_RESERVED } from "../../src/internal/parts-facade.js";
 
-const heading = { kind: "document", document: Hson.document`<h1 "Initial"/>`, stylesheet: "h1{color:red}" } as const;
-const replacement = { kind: "document", document: '<h2 "Replacement"/>', stylesheet: "h2{color:blue}" } as const;
-const definitions = { components: { parts: { heading, submit: { kind: "document" as const, document: "<button/>" } } } };
+const heading = { kind: "document", document: Hson.document`<h1 hson:part "Initial"/>`, stylesheet: "h1{color:red}" } as const;
+const replacement = { kind: "document", document: '<h2 hson:part "Replacement"/>', stylesheet: "h2{color:blue}" } as const;
+const definitions = { components: { parts: { heading, submit: { kind: "document" as const, document: "<button hson:part/>" } } } };
 
 export async function parts_member_cases() {
   const map = hsonLiveMap.fromLibraries(definitions), parts = map.parts.components;
@@ -73,16 +73,16 @@ export async function parts_member_cases() {
 
   for (const invalid of [
     { kind: "data", document: "<p/>" }, { kind: "document", document: 3 },
-    { kind: "document", document: "<p/><p/>" }, { kind: "document", document: "<p" },
-    { kind: "document", document: "<p/>", stylesheet: 1 },
-    { kind: "document", document: "<p/>", stylesheet: "p {" },
-    { kind: "document", document: "<p/>", schema: undefined },
+    { kind: "document", document: "<p hson:part/><p/>" }, { kind: "document", document: "<p" },
+    { kind: "document", document: "<p hson:part/>", stylesheet: 1 },
+    { kind: "document", document: "<p hson:part/>", stylesheet: "p {" },
+    { kind: "document", document: "<p hson:part/>", schema: undefined },
   ]) {
     const capture = map.capture();
     assert.throws(() => Reflect.apply(member.replace, undefined, [invalid]));
     assert.deepEqual(map.capture(), capture);
     assert.throws(() => map.batch(writer => {
-      writer.parts.components.submit.set({ document: '<button "valid prefix"/>' });
+      writer.parts.components.submit.set({ document: '<button hson:part "valid prefix"/>' });
       Reflect.apply(writer.parts.components.heading.replace, undefined, [invalid]);
     }));
     assert.deepEqual(map.capture(), capture);
@@ -94,7 +94,7 @@ export async function parts_member_cases() {
     assert.equal("snap" in location, false);
     assert.throws(() => Reflect.get(library, "missing"), /Unknown Part member/);
     location.set({ ...replacement, stylesheet: "h2{color:green}" });
-    writer.parts.components.submit.set({ document: '<button "Changed"/>' });
+    writer.parts.components.submit.set({ document: '<button hson:part "Changed"/>' });
     expired = [() => library.heading, () => location.delete(), () => location.at(["document"])];
   });
   assert.equal(map.rev, revision + 1);
@@ -140,7 +140,7 @@ export async function parts_member_cases() {
     assert.equal("set" in location, false); assert.equal("delete" in location, false);
     assert.equal("setMany" in location.asObject()!.object, false);
     assert.equal("schema" in location, false);
-    context.stage.parts.components.submit.set({ document: '<button "Action"/>' });
+    context.stage.parts.components.submit.set({ document: '<button hson:part "Action"/>' });
   } } });
   try {
     assert.equal((await locus.dispatchAction({ type: "action", id: "inspect", name: "inspect" })).type, "ack");
@@ -151,7 +151,7 @@ export async function parts_member_cases() {
     assert.deepEqual(location.snap(), replacement); assert.deepEqual(retainedRead!.snap(), replacement);
     const capture = locus.cut().libs;
     await assert.rejects(locus.stage(writer => {
-      writer.parts.components.submit.set({ document: "<button/>" });
+      writer.parts.components.submit.set({ document: "<button hson:part/>" });
       Reflect.apply(writer.parts.components.heading.set, undefined, [{ kind: "data" }]);
     }));
     assert.deepEqual(locus.cut().libs, capture);

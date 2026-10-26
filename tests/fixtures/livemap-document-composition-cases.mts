@@ -53,13 +53,52 @@ function leaves(root: HsonNode): readonly unknown[] {
   return root.$_tag === STR_TAG || root.$_tag === VAL_TAG ? root.$_content : root.$_content.flatMap(child => is_Node(child) ? leaves(child) : [child]);
 }
 export function document_composition_cases(check: (name: string, run: () => void) => void) {
+  check("Part declaration: mandatory root flag, retained source, deferred write and canonical removal", () => {
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button hson:part @:root "%{label}"/>', ':scope{color:red}') } },
+      page: { document: '<main/>' } });
+    const definition = map.parts.parts.x.snap()!;
+    assert.match(definition.document, /hson:part/);
+    const before = owner(map).captureSemanticCheckpoint(), issued = owner(map).identityEpoch().issued();
+    const connector = map.parts.parts.x.write({ label: 'Save' });
+    assert.equal(connector, Hson.document`<hson-part lib="parts" at="x" label="Save"/>`);
+    assert.deepEqual(owner(map).captureSemanticCheckpoint(), before);
+    assert.equal(owner(map).identityEpoch().issued(), issued);
+    assert.deepEqual(map.parts.parts.x.snap(), definition);
+    map.addLibraries({ final: { document: Hson.document`<html <head/> <body ${connector}/>/>` } });
+    const final = doc(map, 'final'), canonical = Hson.document.fromNode(final.root());
+    assert.doesNotMatch(JSON.stringify(final.root()), /hson:part/);
+    assert.doesNotMatch(final.render(), /hson:part/);
+    const transform = hsonTransform.fromHson(canonical);
+    for (const output of [canonical, transform.toJson().serialize(),
+      hsonTransform.fromBinary(transform.toBinary().serialize()).toHson().serialize()]) assert.doesNotMatch(output, /hson:part/);
+    assert.match(map.parts.parts.x.snap()!.document, /hson:part/);
+    for (const document of ['<p/>', '<p part:optional/>', '<p part:optional <b hson:part/>/>',
+      '<p hson:part=""/>', '<p hson:part="true"/>', '<p hson:part="hson:part"/>', '<p hson:part=hson:part/>',
+      '<p hson:part=/>', '<p HSON:PART/>', '<p hson:part <b HSON:PART/>/>', '<p hson:part hson:part/>', '<p hson:part <b hson:part/>/>',
+      '<p hson:part <hson-part hson:part at="x"/>/>']) {
+      atomic(map, () => map.addLibraries({ invalid: { parts: { unused: { kind: 'document', document } } } }));
+      atomic(map, () => map.parts.parts.x.replace({ kind: 'document', document }));
+    }
+    // Omission cannot hide invalid definitions, including an uninvoked sibling.
+    atomic(map, () => map.addLibraries({ invalid: { parts: {
+      omitted: part('<p hson:part part:optional/>'), unused: { kind: 'document', document: '<p/>' },
+    } }, omitted: { document: '<hson-part lib="invalid" at="omitted"/>' } }), /hson:part/);
+    for (const document of ['<p hson:part/>', '<p HSON:PART/>', '<p Hson:part="x"/>', '<main <p hson:part/>/>', '<hson-part hson:part lib="parts" at="x" label="x"/>']) {
+      atomic(map, () => map.addLibraries({ invalid: { document } }), /hson:part/);
+    }
+    atomic(map, () => doc(map).document.flags.set({ kind: 'path', path: [0] }, 'hson:part'), /construction|reserved|metadata/);
+    atomic(map, () => map.addLibraries({ invalid: { document: hsonTransform.fromHson('<p hson:part/>').toNode() } }), /construction|hson:part/);
+    const uppercase: HsonNode = { $_tag: ROOT_TAG, $_content: [{ $_tag: 'p', $_attrs: { 'HSON:PART': 'HSON:PART' }, $_content: [] }] };
+    atomic(map, () => map.addLibraries({ invalid: { document: uppercase } }), /reserved/);
+    assert.throws(() => Hson.document`<p hson:part="hson:part"/>`, /hson:part/);
+  });
   check("Part interfaces: prefix-free authoring, explicit transports, namespaces and canonical closure", () => {
     const map = hsonLiveMap.fromLibraries({ components: { parts: {
-      button: part('<button @:root "%{label}"/>', ':scope{color:red}'),
-      page: part('<main model:data="%{model}" control:doc="%{control}" other:data="%{other}" title="%{title}" <h1 "#{model.title}:#{other[0]}"/><hson-part @:slot #{control}/>/>' ),
+      button: part('<button hson:part @:root "%{label}"/>', ':scope{color:red}'),
+      page: part('<main hson:part model:data="%{model}" control:doc="%{control}" other:data="%{other}" title="%{title}" <h1 "#{model.title}:#{other[0]}"/><hson-part @:slot #{control}/>/>' ),
     } } });
     const control = map.parts.components.button.write({ label: 'Save %{title} #{model.title}' });
-    map.parts.components.button.replace(part('<button @:root "%{label}"/>', ':scope{color:blue}'));
+    map.parts.components.button.replace(part('<button hson:part @:root "%{label}"/>', ':scope{color:blue}'));
     const model = Hson.data.from({ title: 'Dashboard' }), other = Hson.data.from([false]);
     const source = map.parts.components.page.write({ model, other, control, title: 'Page' });
     assert.equal(source, Hson.document`<hson-part lib="components" at="page" data:model="${model}" data:other="${other}" doc:control="${control}" title="Page"/>`);
@@ -76,15 +115,15 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.doesNotMatch(canonical, /hson-part|:data|:doc/);
     for (const args of [{ 'data:model': model }, { control: false }, { unknown: 'x' }]) assert.throws(() => Reflect.apply(map.parts.components.page.write, undefined, [args]));
     const captured = source;
-    map.parts.components.page.replace(part('<main "%{control}"/>'));
+    map.parts.components.page.replace(part('<main hson:part "%{control}"/>'));
     atomic(map, () => map.addLibraries({ bad: { document: captured } }), /receiving interface|Unknown Part parameter/);
   });
 
   check("Part Document structure: ordinary source isolation, independent QUAD scopes and repeated invocation", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      pair: part('<main control:doc="%{control}" <hson-part #{control}/><hson-part #{control}/>/>' ),
-      leaf: part('<b @:root "%{text}"/>', ':scope{color:blue}'),
-      forward: part('<section control:doc="%{control}" <hson-part at="pair" doc:control="#{control}"/>/>' ),
+      pair: part('<main hson:part control:doc="%{control}" <hson-part #{control}/><hson-part #{control}/>/>' ),
+      leaf: part('<b hson:part @:root "%{text}"/>', ':scope{color:blue}'),
+      forward: part('<section hson:part control:doc="%{control}" <hson-part at="pair" doc:control="#{control}"/>/>' ),
     } } });
     const ordinary = Hson.document`<article @:root <b @:label "%{literal}:#{literal}"/>/>`;
     map.addLibraries({ page: { document: map.parts.parts.pair.write({ control: ordinary }) } });
@@ -101,7 +140,7 @@ export function document_composition_cases(check: (name: string, run: () => void
   });
 
   check("Part Document structure: strict admission, required bindings and atomic recovery", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<main control:doc="%{control}" <hson-part part:optional #{control}/>/>' ) } } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<main hson:part control:doc="%{control}" <hson-part part:optional #{control}/>/>' ) } } });
     const before = owner(map).captureSemanticCheckpoint(), issued = owner(map).identityEpoch().issued();
     for (const control of ['', '"text"', '<b/><i/>', '<broken', '<b @000000001/>', '<b @:same <i @:same/>/>', '<hson-part #{outside}/>', '<hson-part lib="parts" at="missing"/>', '<hson-part at="x"/>', '<b part:optional/>']) {
       const source = map.parts.parts.x.write({ control });
@@ -111,7 +150,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.deepEqual(owner(map).captureSemanticCheckpoint(), before); assert.equal(owner(map).identityEpoch().issued(), issued);
     map.addLibraries({ page: { document: map.parts.parts.x.write({ control: '<b "Recovered"/>' }) } });
     assert.equal(doc(map).render(), '<main><b>Recovered</b></main>');
-    for (const template of ['<main <hson-part #{control}/>/>' , '<main c:data="%{payload}" <hson-part #{c}/>/>' , '<main c:doc="%{payload}" "#{c.title}"/>', '<main d:data="%{payload}" "%{d.title}"/>', '<main c:doc="%{payload}" c:data="%{other}" <hson-part #{c}/>/>' ]) {
+    for (const template of ['<main hson:part <hson-part #{control}/>/>' , '<main hson:part c:data="%{payload}" <hson-part #{c}/>/>' , '<main hson:part c:doc="%{payload}" "#{c.title}"/>', '<main hson:part d:data="%{payload}" "%{d.title}"/>', '<main hson:part c:doc="%{payload}" c:data="%{other}" <hson-part #{c}/>/>' ]) {
       atomic(map, () => map.addLibraries({ invalid: { parts: { x: part(template) } }, bad: { document: '<hson-part lib="invalid" at="x" doc:payload="<b/>" data:other="null"/>' } }));
     }
     for (const source of ['<b #{x}/>', '<hson-part #{x} lib="p" at="x"/>', '<hson-part #{x} title="x"/>', '<hson-part #{x} #{y}/>', '<hson-part #{x} "text"/>', '<hson-part #{x.path}/>']) assert.throws(() => Reflect.apply(Hson.document.fromHson, undefined, [source]));
@@ -130,8 +169,8 @@ export function document_composition_cases(check: (name: string, run: () => void
 
   check("Part Document structure: optional zero output retires anchors and CSS without dummy occurrences", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      outer: part('<main c:doc="%{control}" <hson-part @:slot #{c}/>/>' , '[hson\\:quad="slot"]{color:red}'),
-      empty: part('<b part:optional d:data="%{payload}" "#{d.missing}"/>', ':scope{color:blue}'),
+      outer: part('<main hson:part c:doc="%{control}" <hson-part @:slot #{c}/>/>' , '[hson\\:quad="slot"]{color:red}'),
+      empty: part('<b hson:part part:optional d:data="%{payload}" "#{d.missing}"/>', ':scope{color:blue}'),
     } } });
     const control = map.parts.parts.empty.write({ payload: Hson.data.from({}) });
     map.addLibraries({ page: { document: map.parts.parts.outer.write({ control }) } });
@@ -141,7 +180,7 @@ export function document_composition_cases(check: (name: string, run: () => void
   });
 
   check("Part Document structure: scoped replacements preserve lifecycle and late failure is atomic", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<section c:doc="%{control}" <hson-part #{c}/>/>' ), leaf: part('<b @:root "Live"/>', ':scope{color:red}') } }, page: { document: '<main <i/>/>' } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<section hson:part c:doc="%{control}" <hson-part #{c}/>/>' ), leaf: part('<b hson:part @:root "Live"/>', ':scope{color:red}') } }, page: { document: '<main <i/>/>' } });
     const source = map.parts.parts.x.write({ control: map.parts.parts.leaf.write() });
     doc(map).document.content.replace({ kind: 'path', path: [0, 0] }, 0, element(source));
     assert.ok(leaves(doc(map).root()).includes('Live')); assert.match(doc(map).css.snapshot(), /color:red/);
@@ -155,9 +194,9 @@ export function document_composition_cases(check: (name: string, run: () => void
 
   check("Part Document structure: shared budgets, active selections and alias collisions remain strict", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      pair: part('<main c:doc="%{control}" <hson-part #{c}/><hson-part #{c}/>/>' ),
-      loop: part('<main c:doc="%{control}" <hson-part #{c}/>/>' ),
-      collision: part('<b @:root <i @:alias/>/>' ),
+      pair: part('<main hson:part c:doc="%{control}" <hson-part #{c}/><hson-part #{c}/>/>' ),
+      loop: part('<main hson:part c:doc="%{control}" <hson-part #{c}/>/>' ),
+      collision: part('<b hson:part @:root <i @:alias/>/>' ),
     } } });
     const control = '<article "' + 'x'.repeat(300) + '"/>';
     const authored = parse_authored_document_library(map.parts.parts.pair.write({ control }));
@@ -176,8 +215,8 @@ export function document_composition_cases(check: (name: string, run: () => void
   check("optional connector argument checks follow the existing configured Part selection", () => {
     for (const flag of ['', 'part:optional']) {
       const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-        outer: part(`<section d:data="%{payload}" <hson-part @:slot ${flag} at="unselected" label="#{d.label}"/>/>`),
-        chosen: part('<b "%{label}"/>'),
+        outer: part(`<section hson:part d:data="%{payload}" <hson-part @:slot ${flag} at="unselected" label="#{d.label}"/>/>`),
+        chosen: part('<b hson:part "%{label}"/>'),
       } } });
       const source = parse_authored_document_library('<hson-part @:entry lib="parts" at="outer" data:payload="<label 0>"/>');
       const result = expand_document_composition('test', () => ({ root: source.root, quads: source.declarations }),
@@ -188,8 +227,8 @@ export function document_composition_cases(check: (name: string, run: () => void
 
   check("optional omission preserves cardinality, resource budgets and canonical metadata fences", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      empty: part('<section part:optional ' + '<b/>'.repeat(20) + '/>'),
-      deep: part('<section part:optional <a <b <i/>/>/>/>'),
+      empty: part('<section hson:part part:optional ' + '<b/>'.repeat(20) + '/>'),
+      deep: part('<section hson:part part:optional <a <b <i/>/>/>/>'),
     } }, page: { document: '<main/>' } });
     const source = parse_authored_document_library('<hson-part lib="parts" at="empty"/>');
     for (const limits of [{ maxNodes: 5 }, { maxCharacters: 20 }]) assert.throws(() => expand_document_composition('test', () => ({ root: source.root }), document_composition_options(limits), (lib, at) => readPart(map, lib, at)), /limit/);
@@ -202,7 +241,7 @@ export function document_composition_cases(check: (name: string, run: () => void
   });
 
   check("optional Parts: strict presence, OR semantics, static content and direct whole-value omission", () => {
-    const template = '<section d:data="%{payload}" <p part:optional title="#{d.a}" "#{d.b}"/> <aside part:optional <h2 "Static"/> <i part:optional "#{d.a}"/> <b part:optional "#{d.b}"/>/> <footer part:optional "Never"/>/>';
+    const template = '<section hson:part d:data="%{payload}" <p part:optional title="#{d.a}" "#{d.b}"/> <aside part:optional <h2 "Static"/> <i part:optional "#{d.a}"/> <b part:optional "#{d.b}"/>/> <footer part:optional "Never"/>/>';
     for (const data of [{}, { a: 'a' }, { b: 'b' }, { a: 'a', b: 'b' }]) {
       const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part(template) } }, page: { document: Hson.document`<hson-part lib="parts" at="x" data:payload="${Hson.data.from(data)}"/>` } });
       const rendered = doc(map).render();
@@ -215,13 +254,13 @@ export function document_composition_cases(check: (name: string, run: () => void
     }
     for (const value of [null, false, 0, -0, '', {}, []]) {
       const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-        x: part('<section d:data="%{payload}" <aside part:optional "Static" <hson-part part:optional at="drop" data:payload="#{d.value}"/>/>/>'),
-        drop: part('<b part:optional d:data="%{payload}" "Never"/>'),
+        x: part('<section hson:part d:data="%{payload}" <aside part:optional "Static" <hson-part part:optional at="drop" data:payload="#{d.value}"/>/>/>'),
+        drop: part('<b hson:part part:optional d:data="%{payload}" "Never"/>'),
       } }, page: { document: Hson.document`<hson-part lib="parts" at="x" data:payload="${Hson.data.from({ value })}"/>` } });
       assert.match(doc(map).render(), /<aside>Static<\/aside>/);
       assert.doesNotMatch(doc(map).render(), /Never|part:optional/);
       if (value === null || typeof value !== 'object') {
-        map.addLibraries({ direct: { parts: { x: part('<p part:optional d:data="%{payload}" "#{d.value}"/>') } },
+        map.addLibraries({ direct: { parts: { x: part('<p hson:part part:optional d:data="%{payload}" "#{d.value}"/>') } },
           scalar: { document: Hson.document`<hson-part lib="direct" at="x" data:payload="${Hson.data.from({ value })}"/>` } });
         assert.deepEqual(leaves(doc(map, 'scalar').root()), [String(value)]);
       }
@@ -230,9 +269,9 @@ export function document_composition_cases(check: (name: string, run: () => void
 
   check("optional Parts: atomic zero-or-one roots and no-placeholder roots allocate nothing", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      x: part('<pre @:root part:optional code:data="%{payload}" <code @:code "#{code.source}"/>/>', ':scope{color:red}[hson\\:quad="code"]{color:blue}'),
-      empty: part('<aside @:root part:optional "Static"/>', ':scope{color:pink}'),
-      declaration: part('<aside part:optional d:data="%{payload}" "Static"/>'),
+      x: part('<pre hson:part @:root part:optional code:data="%{payload}" <code @:code "#{code.source}"/>/>', ':scope{color:red}[hson\\:quad="code"]{color:blue}'),
+      empty: part('<aside hson:part @:root part:optional "Static"/>', ':scope{color:pink}'),
+      declaration: part('<aside hson:part part:optional d:data="%{payload}" "Static"/>'),
     } } });
     const a = owner(map), issued = a.identityEpoch().issued();
     let allocations = 0;
@@ -255,17 +294,17 @@ export function document_composition_cases(check: (name: string, run: () => void
     for (const optionalSender of [false, true]) for (const optionalReceiver of [false, true]) {
       if (!optionalSender && !optionalReceiver) continue;
       const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-        outer: part(`<section d:data="%{payload}" <hson-part at="middle" data:payload="#{d}"/> <hson-part at="leaf" ${optionalSender ? 'part:optional' : ''} data:payload="#{d.absent}"/>/>`),
-        middle: part('<article d:data="%{payload}" <hson-part at="leaf" data:payload="#{d.first}"/> <hson-part at="leaf" data:payload="#{d.second}"/>/>'),
-        leaf: part(`<p ${optionalReceiver ? 'part:optional' : ''} d:data="%{payload}" "#{d.label}"/>`),
+        outer: part(`<section hson:part d:data="%{payload}" <hson-part at="middle" data:payload="#{d}"/> <hson-part at="leaf" ${optionalSender ? 'part:optional' : ''} data:payload="#{d.absent}"/>/>`),
+        middle: part('<article hson:part d:data="%{payload}" <hson-part at="leaf" data:payload="#{d.first}"/> <hson-part at="leaf" data:payload="#{d.second}"/>/>'),
+        leaf: part(`<p hson:part ${optionalReceiver ? 'part:optional' : ''} d:data="%{payload}" "#{d.label}"/>`),
       } }, page: { document: Hson.document`<hson-part lib="parts" at="outer" data:payload="${Hson.data.from({ first: { label: 'one' }, second: { label: 'two' } })}"/>` } });
       assert.deepEqual(leaves(doc(map).root()), ['one', 'two']);
       assert.equal(owner(map).documentScopes(owner(map).libraries()[1]!)?.occurrences.length, 4);
     }
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      outer: part('<main d:data="%{payload}" <hson-part at="middle" data:payload="#{d.missing}"/>/>'),
-      middle: part('<article part:optional d:data="%{payload}" <hson-part at="leaf" data:payload="#{d.next}"/>/>'),
-      leaf: part('<b d:data="%{payload}" "#{d.value}"/>'),
+      outer: part('<main hson:part d:data="%{payload}" <hson-part at="middle" data:payload="#{d.missing}"/>/>'),
+      middle: part('<article hson:part part:optional d:data="%{payload}" <hson-part at="leaf" data:payload="#{d.next}"/>/>'),
+      leaf: part('<b hson:part d:data="%{payload}" "#{d.value}"/>'),
     } }, page: { document: '<hson-part lib="parts" at="outer" data:payload="<>"/>' } });
     assert.deepEqual(leaves(doc(map).root()), []);
     assert.equal(owner(map).documentScopes(owner(map).libraries()[1]!)?.occurrences.length, 1);
@@ -289,35 +328,35 @@ export function document_composition_cases(check: (name: string, run: () => void
       '<p part:optional d:data="%{payload}" <hson-part part:optional at="leaf" data:payload="#{d.missing}" payload="x"/>/>',
       '<p d:data="%{payload}" <hson-part part:optional at="leaf" data:payload="#{d.null}" extra="#{d.missing}"/>/>',
     ];
-    for (const template of invalid) atomic(map, () => map.addLibraries({ parts: { parts: { x: part(template), leaf: part('<i d:data="%{payload}" "#{d}"/>') } },
+    for (const template of invalid) atomic(map, () => map.addLibraries({ parts: { parts: { x: part(template), leaf: part('<i hson:part d:data="%{payload}" "#{d}"/>') } },
       bad: { document: Hson.document`<hson-part lib="parts" at="x" data:payload="${Hson.data.from({ null: null, array: [], obj: {} })}"/>` } }));
-    for (const template of ['<p part:optional="false"/>', '<p <b part:optional=""/>/>']) {
+    for (const template of ['<p hson:part part:optional="false"/>', '<p hson:part <b part:optional=""/>/>']) {
       atomic(map, () => map.addLibraries({ parts: { parts: { x: part(template) } } }), /part:optional/);
     }
     for (const document of ['<p part:optional/>', '<hson-part lib="parts" at="x" part:optional/>']) {
       atomic(map, () => map.addLibraries({ bad: { document } }), /part:optional/);
     }
-    atomic(map, () => map.addLibraries({ parts: { parts: { x: part('<p part:optional d:data="%{payload}" "#{d.title}"/>') } },
+    atomic(map, () => map.addLibraries({ parts: { parts: { x: part('<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>') } },
       bad: { document: '<hson-part lib="parts" at="x"/>' } }), /Missing Part parameter/);
   });
 
   check("optional Parts: included structures keep strict descendants, partial strings and required inputs", () => {
     const map = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
     for (const template of [
-      '<p part:optional d:data="%{payload}" title="#{d.yes}" "prefix#{d.missing}"/>',
-      '<p part:optional d:data="%{payload}" title="#{d.yes}" <b "#{d.missing}"/>/>',
-      '<p part:optional d:data="%{payload}" "#{d.obj}"/>',
-      '<p d:data="%{payload}" <hson-part part:optional at="leaf" data:a="#{d.yes}" data:b="#{d.missing}"/>/>',
-      '<p d:data="%{payload}" <hson-part part:optional at="leaf" data:a="#{d.yes}"/>/>',
-    ]) atomic(map, () => map.addLibraries({ parts: { parts: { x: part(template), leaf: part('<b part:optional a:data="%{a}" b:data="%{b}" title="#{a}" "#{b}"/>') } },
+      '<p hson:part part:optional d:data="%{payload}" title="#{d.yes}" "prefix#{d.missing}"/>',
+      '<p hson:part part:optional d:data="%{payload}" title="#{d.yes}" <b "#{d.missing}"/>/>',
+      '<p hson:part part:optional d:data="%{payload}" "#{d.obj}"/>',
+      '<p hson:part d:data="%{payload}" <hson-part part:optional at="leaf" data:a="#{d.yes}" data:b="#{d.missing}"/>/>',
+      '<p hson:part d:data="%{payload}" <hson-part part:optional at="leaf" data:a="#{d.yes}"/>/>',
+    ]) atomic(map, () => map.addLibraries({ parts: { parts: { x: part(template), leaf: part('<b hson:part part:optional a:data="%{a}" b:data="%{b}" title="#{a}" "#{b}"/>') } },
       bad: { document: Hson.document`<hson-part lib="parts" at="x" data:payload="${Hson.data.from({ yes: true, obj: {} })}"/>` } }));
   });
 
   check("optional Parts: exact selectors, opaque data and replacement output are not reinterpreted", () => {
     const reference = '#{d["odd}key"][0]["a.b"]}';
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      x: part('<section d:data="%{payload}" <p part:optional ' + JSON.stringify(reference) + '/> <aside part:optional <hson-part at="leaf" data:payload="\\\"%{unknown}\\\""/>/>/>'),
-      leaf: part('<b d:data="%{payload}" "#{d}"/>'),
+      x: part('<section hson:part d:data="%{payload}" <p part:optional ' + JSON.stringify(reference) + '/> <aside part:optional <hson-part at="leaf" data:payload="\\\"%{unknown}\\\""/>/>/>'),
+      leaf: part('<b hson:part d:data="%{payload}" "#{d}"/>'),
     } }, page: { document: Hson.document`<hson-part lib="parts" at="x" data:payload="${Hson.data.from({ 'odd}key': [{ 'a.b': '%{unknown}' }] })}"/>` } });
     assert.deepEqual(leaves(doc(map).root()), ['%{unknown}']);
     assert.doesNotMatch(doc(map).render(), /aside/);
@@ -330,8 +369,8 @@ export function document_composition_cases(check: (name: string, run: () => void
 
   check("optional Parts: omitted QUAD subjects never acquire identity or CSS correspondence", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      x: part('<section @:root d:data="%{payload}" <b @:gone part:optional "#{d.missing}"/> <hson-part @:child at="empty"/> <i @:kept "Keep"/>/>', '[hson\\:quad="gone"]{color:red}:not([hson\\:quad="gone"]){color:blue}[hson\\:quad="child"]{color:pink}[hson\\:quad="kept"]{color:green}'),
-      empty: part('<span part:optional/>', ':scope{color:orange}'),
+      x: part('<section hson:part @:root d:data="%{payload}" <b @:gone part:optional "#{d.missing}"/> <hson-part @:child at="empty"/> <i @:kept "Keep"/>/>', '[hson\\:quad="gone"]{color:red}:not([hson\\:quad="gone"]){color:blue}[hson\\:quad="child"]{color:pink}[hson\\:quad="kept"]{color:green}'),
+      empty: part('<span hson:part part:optional/>', ':scope{color:orange}'),
     } }, page: { document: '<hson-part lib="parts" at="x" data:payload="<>"/>' } });
     const a = owner(map), id = a.libraries()[1]!, state = a.scopedDocumentState(id);
     assert.equal(state.scopes.occurrences.length, 1);
@@ -347,11 +386,11 @@ export function document_composition_cases(check: (name: string, run: () => void
 
   check("optional Parts: dynamic same-batch insertion, omission, retirement and late failure are atomic", () => {
     for (const consumerFirst of [true, false]) {
-      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p d:data="%{payload}" "#{d.title}"/>') } }, page: { document: '<main <i/>/>' }, other: { document: '<footer @:stable/>' } });
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part d:data="%{payload}" "#{d.title}"/>') } }, page: { document: '<main <i/>/>' }, other: { document: '<footer @:stable/>' } });
       const input = (data: object) => element(Hson.document`<hson-part lib="parts" at="x" data:payload="${Hson.data.from(data)}"/>`);
       const target = { kind: 'path' as const, path: validate_document_path([0, 0]) };
       map.batch(draft => {
-        const edit = () => draft.parts.must('parts').at(['x', 'document']).set('<p @:root part:optional d:data="%{payload}" "#{d.title}"/>');
+        const edit = () => draft.parts.must('parts').at(['x', 'document']).set('<p hson:part @:root part:optional d:data="%{payload}" "#{d.title}"/>');
         const insert = () => draft.doc.must('page').content.insert(target, 1, input({}));
         if (consumerFirst) { insert(); edit(); } else { edit(); insert(); }
       });
@@ -382,8 +421,8 @@ export function document_composition_cases(check: (name: string, run: () => void
 
   check("structured Part receiving interface: aliases, root-only declarations and atomic rejection", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      parent: part('<nav title="#{slide.title}" slide:data="%{payload}" tally:data="%{count}" <strong "#{slide.title}:#{tally}"/> <hson-part at="child" data:data="#{slide.details}" label="%{label}"/>/>'),
-      child: part('<span slide:data="%{data}" "#{slide.title}:%{label}"/>'),
+      parent: part('<nav hson:part title="#{slide.title}" slide:data="%{payload}" tally:data="%{count}" <strong "#{slide.title}:#{tally}"/> <hson-part at="child" data:data="#{slide.details}" label="%{label}"/>/>'),
+      child: part('<span hson:part slide:data="%{data}" "#{slide.title}:%{label}"/>'),
     } }, page: { document: '<main/>' } });
     const data = Hson.data`<title "parent" details <title "child">>`;
     const invocation = Hson.document`<hson-part lib="parts" at="parent" data:payload="${data}" data:count="0" label="scalar"/>`;
@@ -416,7 +455,7 @@ export function document_composition_cases(check: (name: string, run: () => void
       rejected: { document: `<hson-part lib="rejectedParts" at="x" ${attrs}/>` },
     }));
     // An ordinary scalar reference still binds directly without a declaration.
-    map.addLibraries({ legacyParts: { parts: { x: part('<p title="%{x}" "%{x}"/>') } },
+    map.addLibraries({ legacyParts: { parts: { x: part('<p hson:part title="%{x}" "%{x}"/>') } },
       legacy: { document: '<hson-part lib="legacyParts" at="x" x="scalar"/>' } });
     assert.deepEqual(leaves(doc(map, 'legacy').root()), ['scalar']);
   });
@@ -426,7 +465,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     const keyed = Hson.data.from(Object.fromEntries(odd.map((key, index) => [key, `v${index}`])));
     const paths = ['slide.title', 'slide.no', 'slide.items[0].label', 'slide.items[1].label', 'slide.yes', 'slide.absent', 'slide.zero', 'slide.empty',
       ...odd.map(key => `keys[${JSON.stringify(key)}]`)];
-    const template = '<section slide:data="%{slide}" keys:data="%{keys}" ' + paths.map((path, index) => `<b title=${JSON.stringify(`#{${path}}`)} ${JSON.stringify(`#{${path}}`)}/>`).join(' ') + ' <i "%{legacy}"/>/>';
+    const template = '<section hson:part slide:data="%{slide}" keys:data="%{keys}" ' + paths.map((path, index) => `<b title=${JSON.stringify(`#{${path}}`)} ${JSON.stringify(`#{${path}}`)}/>`).join(' ') + ' <i "%{legacy}"/>/>';
     const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part(template) } }, page: { document: Hson.document`<hson-part lib="parts" at="x" data:slide="${data}" data:keys="${keyed}" legacy="scalar"/>` } });
     const root = doc(map).root();
     assert.deepEqual(leaves(root), ['Hello', '0', 'first', 'second', 'true', 'null', '0', '', ...odd.map((_, i) => `v${i}`), 'scalar']);
@@ -439,7 +478,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.doesNotMatch(portable, /hson-part|data:slide/);
     for (const value of ['string', '<broken', '', 0, -0, 3.5, true, false, null]) {
       const rootData = Hson.data.from(value);
-      const one = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p x:data="%{x}" title="#{x}" "#{x}"/>') } },
+      const one = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part x:data="%{x}" title="#{x}" "#{x}"/>') } },
         page: { document: Hson.document`<hson-part lib="parts" at="x" data:x="${rootData}"/>` } });
       const output = doc(one).root().$_content[0]; assert.ok(is_Node(output));
       assert.equal(output.$_attrs?.title, String(value)); assert.deepEqual(leaves(output), [String(value)]);
@@ -448,17 +487,17 @@ export function document_composition_cases(check: (name: string, run: () => void
   check("structured Part arguments: immutable forwarding, opacity, isolation and shadowing", () => {
     const source = Hson.data`<details <'10' "ten" '2' "two" '1' "one" n -0 text "%{other}" items «false,null,0»> ignored "private">`;
     const definitions = {
-      outer: part('<section slide:data="%{slide}" <hson-part at="middle" data:payload="#{slide.details}"/> <hson-part at="middle" data:payload="#{slide.details}"/>/>'),
-      middle: part('<article payload:data="%{payload}" <hson-part at="leaf" data:slide="#{payload}"/> <hson-part at="primitive" data:x="#{payload.items[0]}"/>/>'),
-      leaf: part(String.raw`<b slide:data="%{slide}" title="#{slide.text}" "#{slide[\"10\"]}:#{slide[\"2\"]}:#{slide[\"1\"]}:#{slide.n}:#{slide.text}"/>`),
-      primitive: part('<i x:data="%{x}" "#{x}"/>'),
-      scalarLeaf: part('<i "%{x}"/>'),
-      literal: part(Hson.document`<p <hson-part at="primitive" data:x="${Hson.data.from('%{unknown}')}"/>/>`),
-      scalar: part('<p <hson-part at="primitive" data:x="%{x}"/>/>'),
-      ordinary: part('<p x:data="%{x}" <hson-part at="scalarLeaf" x="#{x}"/>/>'),
-      array: part('<p items:data="%{items}" <hson-part at="arrayLeaf" data:items="#{items}"/>/>'),
-      arrayLeaf: part('<i items:data="%{items}" "#{items[0]}:#{items[1]}:#{items[2]}:#{items[3]}"/>'),
-      mixed: part('<p <hson-part at="primitive" data:x="<a %{x}>"/>/>'),
+      outer: part('<section hson:part slide:data="%{slide}" <hson-part at="middle" data:payload="#{slide.details}"/> <hson-part at="middle" data:payload="#{slide.details}"/>/>'),
+      middle: part('<article hson:part payload:data="%{payload}" <hson-part at="leaf" data:slide="#{payload}"/> <hson-part at="primitive" data:x="#{payload.items[0]}"/>/>'),
+      leaf: part(String.raw`<b hson:part slide:data="%{slide}" title="#{slide.text}" "#{slide[\"10\"]}:#{slide[\"2\"]}:#{slide[\"1\"]}:#{slide.n}:#{slide.text}"/>`),
+      primitive: part('<i hson:part x:data="%{x}" "#{x}"/>'),
+      scalarLeaf: part('<i hson:part "%{x}"/>'),
+      literal: part(Hson.document`<p hson:part <hson-part at="primitive" data:x="${Hson.data.from('%{unknown}')}"/>/>`),
+      scalar: part('<p hson:part <hson-part at="primitive" data:x="%{x}"/>/>'),
+      ordinary: part('<p hson:part x:data="%{x}" <hson-part at="scalarLeaf" x="#{x}"/>/>'),
+      array: part('<p hson:part items:data="%{items}" <hson-part at="arrayLeaf" data:items="#{items}"/>/>'),
+      arrayLeaf: part('<i hson:part items:data="%{items}" "#{items[0]}:#{items[1]}:#{items[2]}:#{items[3]}"/>'),
+      mixed: part('<p hson:part <hson-part at="primitive" data:x="<a %{x}>"/>/>'),
     };
     const map = hsonLiveMap.fromLibraries({ parts: { parts: definitions }, page: { document: Hson.document`<hson-part lib="parts" at="outer" data:slide="${source}"/>` } });
     assert.deepEqual(leaves(doc(map).root()), ['ten:two:one:0:%{other}', 'false', 'ten:two:one:0:%{other}', 'false']);
@@ -469,13 +508,13 @@ export function document_composition_cases(check: (name: string, run: () => void
     atomic(map, () => add('container', '<hson-part lib="parts" at="ordinary" data:x="<>"/>'), /primitive/);
     assert.deepEqual(add('array', Hson.document`<hson-part lib="parts" at="array" data:items="${Hson.data`«false,false,null,-0»`}"/>`), ['false:false:null:0']);
     atomic(map, () => add('mixed', '<hson-part lib="parts" at="mixed" x="1"/>'), /Unknown Part parameter|Invalid Part data/);
-    map.parts.must('parts').at(['leaf', 'document']).set('<b "later"/>');
+    map.parts.must('parts').at(['leaf', 'document']).set('<b hson:part "later"/>');
     assert.deepEqual(leaves(doc(map).root()), ['ten:two:one:0:%{other}', 'false', 'ten:two:one:0:%{other}', 'false']);
   });
   check("structured Part arguments: all invalid inputs reject atomically and recover", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p x:data="%{x}" "#{x}"/>'), path: part('<p x:data="%{x}" "#{x.a}"/>'),
-      nested: part('<section x:data="%{x}" <hson-part at="x" data:x="#{x.missing}"/>/>'),
-      unused: part('<p/>'), inherited: part('<p <hson-part at="x"/>/>') } }, page: { document: '<main/>' } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part x:data="%{x}" "#{x}"/>'), path: part('<p hson:part x:data="%{x}" "#{x.a}"/>'),
+      nested: part('<section hson:part x:data="%{x}" <hson-part at="x" data:x="#{x.missing}"/>/>'),
+      unused: part('<p hson:part/>'), inherited: part('<p hson:part <hson-part at="x"/>/>') } }, page: { document: '<main/>' } });
     const invoke = (source: string, member = 'x') => Hson.document`<hson-part lib="parts" at="${member}" data:x="${source}"/>`;
     for (const source of ['', ' ', 'bare', '<broken', '<a 1 a 2>', '<a 1> <b 2>', '<p/>', '<a title="bad" 1>', 'NaN', 'Infinity', '%{x} trailing', '%{missing}', '<a #123456789 1>']) {
       atomic(map, () => map.addLibraries({ bad: { document: invoke(source) } }), /Part|Hson|hson/);
@@ -500,21 +539,21 @@ export function document_composition_cases(check: (name: string, run: () => void
     const invalid = ['x[-1]', 'x[1.5]', 'x[1e2]', 'x[01]', 'x[9007199254740992]', 'x[*]', 'x()', 'x..a', 'x.', 'x["unterminated]', 'x[ 0]', 'x.a + 1'];
     const wrong = ['x.nope', 'x.a.b', 'x.items["0"]', 'x[0]', 'x.items[2]'];
     for (const ref of [...invalid, ...wrong]) {
-      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part(`<p x:data="%{x}" ${JSON.stringify(`#{${ref}}`)}/>` ) } } });
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part(`<p hson:part x:data="%{x}" ${JSON.stringify(`#{${ref}}`)}/>` ) } } });
       atomic(map, () => map.addLibraries({ bad: { document: Hson.document`<hson-part lib="parts" at="x" data:x="${Hson.data`<a null items «0>>`}"/>` } }));
     }
     for (const template of ['<p title="%{x}"/>', '<p title="prefix:%{x}"/>', '<p "prefix:%{x}"/>', '<script "%{x.a}"/>', '<style "%{x.a}"/>', '<p onclick="%{x.a}"/>']) {
-      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part(template.replace(/^(<[^ ]+)/, '$1 x:data="%{x}"')) } } });
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part(template.replace(/^(<[^ ]+)/, '$1 hson:part x:data="%{x}"')) } } });
       atomic(map, () => map.addLibraries({ bad: { document: Hson.document`<hson-part lib="parts" at="x" data:x="${Hson.data`<a 1>`}"/>` } }));
     }
     const dangerous = '"</p><script>alert(1)</script> & \\ %{unbound}';
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p x:data="%{x}" title="#{x}" "#{x}"/>') } },
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part x:data="%{x}" title="#{x}" "#{x}"/>') } },
       page: { document: Hson.document`<hson-part lib="parts" at="x" data:x="${Hson.data.from(dangerous)}"/>` } });
     assert.deepEqual(leaves(doc(map).root()), [dangerous]); assert.match(doc(map).render(), /&lt;script>/);
   });
   check("structured Part arguments: many named inputs and ordinary data-prefixed attributes", () => {
     const entries = Array.from({length:64}, (_, index) => [`data:arg${index}`, Hson.data.from(index)] as const);
-    const template = '<p ' + entries.map((_, index) => `arg${index}:data="%{arg${index}}"`).join(' ') + ' data:ordinary="#{arg0}" ' + JSON.stringify(entries.map((_, index) => `#{arg${index}}`).join(':')) + '/>';
+    const template = '<p hson:part ' + entries.map((_, index) => `arg${index}:data="%{arg${index}}"`).join(' ') + ' data:ordinary="#{arg0}" ' + JSON.stringify(entries.map((_, index) => `#{arg${index}}`).join(':')) + '/>';
     const map = hsonLiveMap.fromLibraries({parts:{parts:{x:part(template)}}});
     const invocation = map.parts.must('parts').at(['x']).write(Object.fromEntries(entries.map(([name, value]) => [name.slice(5), value])));
     map.addLibraries({page:{document:invocation}});
@@ -523,7 +562,7 @@ export function document_composition_cases(check: (name: string, run: () => void
   });
   check("structured Part arguments: input budget, direct forwarding and original-template checks", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-      x: part('<section x:data="%{x}" <hson-part at="y" data:x="#{x}"/>/>'), y: part('<article x:data="%{x}" <hson-part at="z" data:x="#{x}"/>/>'), z: part('<p x:data="%{x}" "#{x.title}"/>'),
+      x: part('<section hson:part x:data="%{x}" <hson-part at="y" data:x="#{x}"/>/>'), y: part('<article hson:part x:data="%{x}" <hson-part at="z" data:x="#{x}"/>/>'), z: part('<p hson:part x:data="%{x}" "#{x.title}"/>'),
     } } });
     const data = Hson.data.from({ title: 'ok', ignored: 'z'.repeat(2000) });
     const source = parse_authored_document_library(Hson.document`<hson-part lib="parts" at="x" data:x="${data}"/>`);
@@ -551,11 +590,11 @@ export function document_composition_cases(check: (name: string, run: () => void
   });
   check("structured Part arguments: dynamic and same-batch edits preserve occurrence lifetimes", () => {
     for (const consumerFirst of [true, false]) {
-      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p x:data="%{x}" @:root "#{x.title}"/>') } }, page: { document: '<main <i/>/>' } });
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part x:data="%{x}" @:root "#{x.title}"/>') } }, page: { document: '<main <i/>/>' } });
       const input = (title: string) => element(Hson.document`<hson-part lib="parts" at="x" data:x="${Hson.data.from({ title })}"/>`);
       map.batch(draft => {
         const consumer = () => draft.doc.must('page').content.insert({ kind: 'path', path: validate_document_path([0, 0]) }, 1, input('first'));
-        const definition = () => draft.parts.must('parts').at(['x', 'document']).set('<p x:data="%{x}" @:root title="#{x.title}" "#{x.title}"/>');
+        const definition = () => draft.parts.must('parts').at(['x', 'document']).set('<p hson:part x:data="%{x}" @:root title="#{x.title}" "#{x.title}"/>');
         if (consumerFirst) { consumer(); definition(); } else { definition(); consumer(); }
       });
       const page = doc(map); assert.deepEqual(leaves(page.root()), ['first']);
@@ -573,7 +612,7 @@ export function document_composition_cases(check: (name: string, run: () => void
   });
 
   for (const batch of [false, true]) check(`${batch ? "batch" : "direct"} equal Part replacement retires addressed identity and preserves unaddressed no-ops`, () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { plain: part('<button/>'), styled: part('<button/>', 'button{color:red}') } },
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { plain: part('<button hson:part/>'), styled: part('<button hson:part/>', 'button{color:red}') } },
       page: { document: '<button @:keep/>' } });
     const page = doc(map), aggregate = owner(map), id = aggregate.libraries()[1]!, old = page.q("keep")!;
     const oldQuid = lookup(page, "keep")!.quid, graph = page.root();
@@ -593,7 +632,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.ok(aggregate.identityEpoch().issued().has(oldQuid)); assert.ok(aggregate.identityEpoch().issued().has(styledQuid));
   });
   check("Part replacement retires its old QUAD while retaining independent ancestor CSS", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { styled: part('<button/>', 'button{color:red}') } },
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { styled: part('<button hson:part/>', 'button{color:red}') } },
       page: { document: '<main @:ancestor <button @:keep/>/>' } });
     const page = doc(map), ancestor = page.q("ancestor")!, old = page.q("keep")!, quid = lookup(page, "ancestor")!.quid;
     page.css.sel(`[hson\\:quid="${quid}"]`).setProp("border-top", "5px solid red");
@@ -608,7 +647,7 @@ export function document_composition_cases(check: (name: string, run: () => void
 
 
   for (const batch of [false,true]) check(`${batch ? "batch graph" : "direct"} graph-equivalent Part effects fail atomically and retain reentrant inner work`, () => {
-    const fixture=(extraCss='')=>hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<button/>',`button{color:red}${extraCss}`)} },state:{data:{n:0}},page:{document:'<button/>'}});
+    const fixture=(extraCss='')=>hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<button hson:part/>',`button{color:red}${extraCss}`)} },state:{data:{n:0}},page:{document:'<button/>'}});
     const replace=(map:LiveMap)=>{
       const replacement=element('<hson-part lib="parts" at="x"/>');
       return batch?map.batch(draft=>{const selected=draft.doc.must("page");if(selected.mode!=="document")throw Error("document");return selected.graph({domain:"graph",op:"replace-content",target:{kind:"path",path:validate_document_path([])},index:0,replacement});})
@@ -632,8 +671,8 @@ export function document_composition_cases(check: (name: string, run: () => void
   check("Part collections are inert; authored documents eagerly realize nested exact coordinates", () => {
     const key = 'n/a "& 雪', lib = 'p/art 雪';
     const map = hsonLiveMap.fromLibraries({
-      [lib]: { parts: { [key]: part('<nav @:local <hson-part at="leaf" value="%{value}"/>/>'), leaf: part('<button @:local "%{value}"/>'),
-        missing: part('<p <hson-part lib="absent" at="x"/>/>') } },
+      [lib]: { parts: { [key]: part('<nav hson:part @:local <hson-part at="leaf" value="%{value}"/>/>'), leaf: part('<button hson:part @:local "%{value}"/>'),
+        missing: part('<p hson:part <hson-part lib="absent" at="x"/>/>') } },
       page: { document: `<main @:page <hson-part @:first lib=${JSON.stringify(lib)} at=${JSON.stringify(key)} value="one"/> <hson-part lib=${JSON.stringify(lib)} at=${JSON.stringify(key)} value="two"/>/>` },
     });
     const page = doc(map), first = page.q("first")!;
@@ -643,7 +682,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.equal("template" in map, false); assert.equal("compose" in map, false);
     const before = page.root(), ledger = owner(map).identityEpoch().issued();
     const parts = map.parts.must(lib);
-    parts.at(["leaf", "document"]).set('<i "edited definition"/>');
+    parts.at(["leaf", "document"]).set('<i hson:part "edited definition"/>');
     assert.deepEqual(page.root(), before); assert.equal(owner(map).identityEpoch().issued().size, ledger.size);
     const scoped = owner(map).scopedDocumentState(owner(map).libraries()[1]!);
     assert.deepEqual(leaves(scoped.root), ["one", "two"]);
@@ -657,21 +696,21 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.doesNotMatch(JSON.stringify(doc(map).root()), /hson-part/);
   });
   check("missing and unavailable Parts fail immediately and do not publish a delayed consumer", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>') } } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part/>') } } });
     for (const connector of ['<hson-part lib="missing" at="x"/>', '<hson-part lib="parts" at="missing"/>', '<hson-part at="x"/>', '<hson-part lib="parts"/>']) {
       atomic(map, () => map.addLibraries({ bad: { document: connector } }).commit); assert.throws(() => map.doc.must("bad"));
     }
-    map.addLibraries({ missing: { parts: { x: part('<i/>') } } }); assert.throws(() => map.doc.must("bad"));
+    map.addLibraries({ missing: { parts: { x: part('<i hson:part/>') } } }); assert.throws(() => map.doc.must("bad"));
     // One topology candidate resolves definitions regardless of entry order.
-    map.addLibraries({ page: { document: '<hson-part lib="later" at="x"/>' }, later: { parts: { x: part('<aside/>') } } });
+    map.addLibraries({ page: { document: '<hson-part lib="later" at="x"/>' }, later: { parts: { x: part('<aside hson:part/>') } } });
     const realized = doc(map).root().$_content[0]; assert.ok(is_Node(realized)); assert.equal(realized.$_tag, "aside");
   });
   check("parameters preserve whole scalar types, nested forwarding, partial strings and exact escaping", () => {
     for (const value of ['"<& 雪💚', "", 7, true, false, null]) {
       const connector: HsonNode = { $_tag: "hson-part", $_attrs: { lib: "parts", at: "outer", value }, $_content: [] };
       const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-        outer: part('<section title="%{value}" data-note="prefix:%{value}:end" <hson-part at="leaf" value="%{value}"/>/>'),
-        leaf: part('<button title="%{value}" "%{value}"/>'),
+        outer: part('<section hson:part title="%{value}" data-note="prefix:%{value}:end" <hson-part at="leaf" value="%{value}"/>/>'),
+        leaf: part('<button hson:part title="%{value}" "%{value}"/>'),
       } }, page: { document: { $_tag: ROOT_TAG, $_content: [connector] } } });
       const root = doc(map).root(), outer = root.$_content[0]; if (!is_Node(outer)) throw Error("outer");
       assert.equal(outer.$_attrs?.title, value); assert.equal(outer.$_attrs?.["data-note"], `prefix:${value}:end`);
@@ -682,17 +721,17 @@ export function document_composition_cases(check: (name: string, run: () => void
     }
   });
   check("parameters reject missing, unknown, malformed, structural and invalid placement inputs atomically", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p title="%{required}" "%{required}"/>'),
-      malformed: part('<p "%{bad..name}"/>'), script: part('<script "%{code}"/>'), handler: part('<p onclick="%{code}"/>') } } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part title="%{required}" "%{required}"/>'),
+      malformed: part('<p hson:part "%{bad..name}"/>'), script: part('<script hson:part "%{code}"/>'), handler: part('<p hson:part onclick="%{code}"/>') } } });
     for (const source of ['<hson-part lib="parts" at="x"/>', '<hson-part lib="parts" at="x" required="ok" extra="x"/>',
       '<hson-part lib="parts" at="malformed"/>',
       '<hson-part lib="parts" at="x" required="ok" "content"/>', '<hson-part lib="parts" at="script" code="bad"/>', '<hson-part lib="parts" at="handler" code="bad"/>']) atomic(map, () => map.addLibraries({ bad: { document: source } }).commit);
-    assert.throws(() => collection({ style: part('<p style="color:%{color}"/>') }));
+    assert.throws(() => collection({ style: part('<p hson:part style="color:%{color}"/>') }));
     const opaque: HsonNode = { $_tag: "hson-part", $_attrs: { lib: "parts", at: "x", style: { color: "red" } }, $_content: [] };
     atomic(map, () => map.addLibraries({ bad: { document: { $_tag: ROOT_TAG, $_content: [opaque] } } }).commit, /parameter/);
   });
   check("ordinary runtime insertion and replacement realize before the first publication", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<section <button "%{value}"/>/>') } }, page: { document: '<main <i/>/>' } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<section hson:part <button "%{value}"/>/>') } }, page: { document: '<main <i/>/>' } });
     let seen = 0; const off = map.commits.observe(() => { seen++; assert.doesNotMatch(JSON.stringify(doc(map).root()), /hson-part/); });
     try {
       doc(map).document.content.insert({ kind: "path", path: [0, 0] }, 1, element('<hson-part lib="parts" at="x" value="inserted"/>'));
@@ -706,7 +745,7 @@ export function document_composition_cases(check: (name: string, run: () => void
 
 
   check("reentrant connector input capture rejects the outer edit and preserves accepted inner data work", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p/>') } }, state: { data: { n: 0 } }, page: { document: '<main <i/>/>' } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part/>') } }, state: { data: { n: 0 } }, page: { document: '<main <i/>/>' } });
     const before = doc(map).root(); let entered = false;
     const connector = new Proxy(element('<hson-part lib="parts" at="x"/>'), { ownKeys(target) {
       if (!entered) { entered = true; map.data.must("state").at(["n"]).set(1); }
@@ -718,19 +757,19 @@ export function document_composition_cases(check: (name: string, run: () => void
   });
   check("batch construction reads coherent final Part definitions in either operation order", () => {
     for (const consumerFirst of [true, false]) {
-      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p "old"/>') } }, page: { document: '<main <i/>/>' } });
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part "old"/>') } }, page: { document: '<main <i/>/>' } });
       map.batch(draft => {
         const consumer = () => draft.doc.must("page").content.insert({ kind: "path", path: validate_document_path([0, 0]) }, 1, element('<hson-part lib="parts" at="x"/>'));
-        const definition = () => draft.parts.must("parts").at(["x", "document"]).set('<p "new"/>');
+        const definition = () => draft.parts.must("parts").at(["x", "document"]).set('<p hson:part "new"/>');
         if (consumerFirst) { consumer(); definition(); } else { definition(); consumer(); }
       });
       assert.deepEqual(leaves(doc(map).root()), ["new"]);
     }
   });
   check("cycles, malformed Part roots, schemas and bounded traversal fail atomically", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p <hson-part at="y"/>/>'), y: part('<i <hson-part at="x"/>/>') } } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part <hson-part at="y"/>/>'), y: part('<i hson:part <hson-part at="x"/>/>') } } });
     atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /cycle/);
-    assert.throws(() => collection({ bad: part('<p/> <q/>') }), /one ordinary/);
+    assert.throws(() => collection({ bad: part('<p hson:part/> <q/>') }), /one ordinary/);
     const shell = parse_authored_document_library('<main <hson-part lib="parts" at="x"/>/>');
     assert.throws(() => expand_document_composition("shell", () => ({ root: shell.root }), document_composition_options({ maxDepth: 2 }),
       () => ({ root: parse_authored_document_library('<section <b/>/>').root })), /depth/);
@@ -740,7 +779,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.equal(document_composition_options({ configuration: { q: "new" } }).configuration?.q, "new");
   });
   check("private structural q promotion remains explicit and the former control fails at every depth", () => {
-    const parts = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<section @:body as="authored" <b @:label "Text"/>/>') } } });
+    const parts = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<section hson:part @:body as="authored" <b @:label "Text"/>/>') } } });
     const shell = parse_authored_document_library('<main @:shell <hson-part @:slot lib="parts" at="x"/>/>');
     const result = expand_document_composition("shell", () => ({ root: shell.root, quads: shell.declarations }),
       document_composition_options({ configuration: { at: { slot: { at: { label: { q: "caption" } } } } } }), (lib, at) => readPart(parts, lib, at));
@@ -847,12 +886,12 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
     assert.doesNotMatch(JSON.stringify(stripped.root),/quid|00000900/);
   });
   check("retained admission coverage: direct indirect and cross-collection cycles exact controls and ungoverned sources", () => {
-    for (const [a,b] of [['<section <hson-part at="a"/>/>','<aside/>'], ['<section <hson-part at="b"/>/>','<aside <hson-part at="a"/>/>'],
-      ['<section <hson-part lib="other" at="b"/>/>','<aside <hson-part lib="parts" at="a"/>/>']]) {
+    for (const [a,b] of [['<section hson:part <hson-part at="a"/>/>','<aside hson:part/>'], ['<section hson:part <hson-part at="b"/>/>','<aside hson:part <hson-part at="a"/>/>'],
+      ['<section hson:part <hson-part lib="other" at="b"/>/>','<aside hson:part <hson-part lib="parts" at="a"/>/>']]) {
       const map=hsonLiveMap.fromLibraries({parts:{ parts: {a:part(a),b:part(b)} },other:{ parts: {b:part(b)} }});
       atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="a"/>'}}).commit,/cycle/);
     }
-    const map=hsonLiveMap.fromLibraries({parts:{ parts: {one:part('<p/>')} },ordinary:{data:{one:part('<p/>')}},other:{document:'<p/>'}});
+    const map=hsonLiveMap.fromLibraries({parts:{ parts: {one:part('<p hson:part/>')} },ordinary:{data:{one:part('<p hson:part/>')}},other:{document:'<p/>'}});
     for(const controls of ['lib="ordinary" at="one"','lib="other" at="one"','LIB="parts" AT="one"','lib="parts" at="One"','lib="parts" quad="one"','lib="" at="one"']) atomic(map,()=>map.addLibraries({bad:{document:`<hson-part ${controls}/>`}}).commit);
     assert.throws(()=>map.addLibraries({bad:{document:'<hson-part lib="parts" lib="other" at="one"/>'}}));
     const privateCycle=source('<section <hson-part @:loop at="safe"/>/>');
@@ -860,11 +899,11 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
       document_composition_options({configuration:{at:{slot:{at:{loop:{use:{at:"outer"}}}}}}}),(_lib,at)=>at==="outer"?privateCycle:source('<p/>')),/cycle/);
   });
   check("retained admission coverage: unselected collection corruption fails before publication and valid Schema remains governing", () => {
-    const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p/>')} },page:{document:'<main/>'}}),aggregate=owner(map);
+    const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p hson:part/>')} },page:{document:'<main/>'}}),aggregate=owner(map);
     const raw=aggregate.root(aggregate.libraries()[0]!), original=map.parts.must("parts").root();
     const before=map.capture(),ledger=aggregate.identityEpoch().issued(),position=aggregate.hostedPosition();let published=0;
     const stop=map.commits.observe(()=>published++);
-    overwrite_hson_node(raw,hsonTransform.fromJson({x:part('<p/>'),late:part('<p')}).toNode());
+    overwrite_hson_node(raw,hsonTransform.fromJson({x:part('<p hson:part/>'),late:part('<p')}).toNode());
     try {assert.throws(()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>'}}));}
     finally {overwrite_hson_node(raw,original);stop();}
     assert.deepEqual(map.capture(),before);assert.equal(aggregate.identityEpoch().issued(),ledger);assert.deepEqual(aggregate.hostedPosition(),position);assert.equal(published,0);
@@ -872,11 +911,11 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
     map.addLibraries({valid:{document:'<hson-part lib="parts" at="x"/>',schema}});
     assert.equal(doc(map,"valid").schema.get(),schema);
     atomic(map,()=>doc(map,"valid").document.content.replace({kind:"path",path:[]},0,element('<i/>')));
-    map.parts.must("parts").at(["x","document"]).set('<i/>');
+    map.parts.must("parts").at(["x","document"]).set('<i hson:part/>');
     atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>',schema}}).commit);
   });
   check("retained authority coverage: prepared discard stale reuse exclusive management and both incomplete identity phases", () => {
-    const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p/>')} },page:{document:'<main/>'}}),aggregate=owner(map),manager={};
+    const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p hson:part/>')} },page:{document:'<main/>'}}),aggregate=owner(map),manager={};
     aggregate.claimManagement(manager);
     try {
       atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>'}}).commit,/exclusive/);
@@ -908,7 +947,7 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
   });
   check("retained admission coverage: one complete addition independent inline storage and selected empty/ordering/global CSS", () => {
     for(const css of [undefined,'','@layer first{}@layer second{}','@property --tone{syntax:"*";inherits:false}','@keyframes once{from{opacity:0}}']) {
-      const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<a style="color:blue" "Text"/>',css),unused:part('<p/>','p{--unvisited:yes}')} }}),aggregate=owner(map);
+      const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<a hson:part style="color:blue" "Text"/>',css),unused:part('<p hson:part/>','p{--unvisited:yes}')} }}),aggregate=owner(map);
       const before=map.capture(),root=aggregate.root(aggregate.libraries()[0]!);let commits=0;
       const off=map.commits.observe(()=>{commits++;assert.doesNotMatch(JSON.stringify(doc(map).root()),/hson-part/);});
       try{map.addLibraries({page:{document:'<main <hson-part lib="parts" at="x"/> <hson-part lib="parts" at="x"/>/>'}});}
@@ -929,15 +968,15 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
       else assert.match(doc(map).css.snapshot(),/@layer first/);
       assert.equal(aggregate.documentOverlay(aggregate.libraries()[1]!).size,2);
     }
-    const structural=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<section <style "p{color:red}"/>/>')} },page:{document:'<hson-part lib="parts" at="x"/>'}});
+    const structural=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<section hson:part <style "p{color:red}"/>/>')} },page:{document:'<hson-part lib="parts" at="x"/>'}});
     assert.deepEqual(leaves(doc(structural).root()),['p{color:red}']);assert.equal(doc(structural).css.snapshot(),'');
   });
   check("retained authority coverage: configuration reflection and source reads fence every independently accepted inner change", () => {
     for(const phase of ["configuration","source"]) for(const change of ["data","identity","authority","topology"]) {
-      const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p/>')} },page:{document:'<main/>'}}),aggregate=owner(map);
+      const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p hson:part/>')} },page:{document:'<main/>'}}),aggregate=owner(map);
       let entered=false,after:ReturnType<LiveMap["capture"]>|undefined;
       const inner=()=>{entered=true;
-        if(change==="data")map.parts.must("parts").at(["x","document"]).set('<i/>');
+        if(change==="data")map.parts.must("parts").at(["x","document"]).set('<i hson:part/>');
         else if(change==="identity")aggregate.acquireLocalDocumentIdentity(aggregate.libraries()[1]!,validate_document_path([0]),mint_hson_node_quid());
         else if(change==="authority")aggregate.setInitialHostedAuthority({...aggregate.hostedPosition().authority});
         else map.addLibraries({inner:{document:'<aside/>'}});
@@ -958,32 +997,32 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
     }
   });
   check("retained authority coverage: detached private candidates keep coherent values and late management/staleness retains inner work", () => {
-    const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p/>')} },page:{document:'<main "Before"/>'}});
+    const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p hson:part/>')} },page:{document:'<main "Before"/>'}});
     const descriptor=Object.getOwnPropertyDescriptor(Object,"freeze")!,freeze=Object.freeze;let entered=false;
     Object.defineProperty(Object,"freeze",{...descriptor,value<T>(value:T):Readonly<T>{
       if(!entered&&typeof value==="object"&&value!==null&&Reflect.get(value,"name")==="derived"&&Object.hasOwn(value,"hsonSchema")){
-        entered=true;map.parts.must("parts").at(["x","document"]).set('<i/>');
+        entered=true;map.parts.must("parts").at(["x","document"]).set('<i hson:part/>');
       }return freeze(value);
     }});
     try{assert.deepEqual(leaves(compose(map,"page","derived").root()),["Before"]);}
     finally{Object.defineProperty(Object,"freeze",descriptor);}
     assert.equal(entered,true);assert.equal(map.rev,2);
     for(const management of [true,false]) {
-      const m=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p/>')} }}),aggregate=owner(m),manager={};
+      const m=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p hson:part/>')} }}),aggregate=owner(m),manager={};
       const descriptor=Object.getOwnPropertyDescriptor(Object.prototype,"toJSON");let entered=false;
       Object.defineProperty(Object.prototype,"toJSON",{configurable:true,value(this:unknown){
         if(!entered&&typeof this==="object"&&this!==null&&Reflect.get(this,"kind")==="library-add"){
-          entered=true;if(management)aggregate.claimManagement(manager);else m.parts.must("parts").at(["x","document"]).set('<i/>');
+          entered=true;if(management)aggregate.claimManagement(manager);else m.parts.must("parts").at(["x","document"]).set('<i hson:part/>');
         }return this;
       }});
       try{assert.throws(()=>m.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>'}}),/exclusive|changed|stale|revisions/);}
       finally{if(descriptor===undefined)Reflect.deleteProperty(Object.prototype,"toJSON");else Object.defineProperty(Object.prototype,"toJSON",descriptor);if(management)aggregate.releaseManagement(manager);}
       assert.equal(entered,true);assert.throws(()=>m.doc.must("bad"));
-      assert.equal(m.rev,management?0:1);if(!management)assert.equal(m.parts.must("parts").at(["x","document"]).snap(),'<i/>');
+      assert.equal(m.rev,management?0:1);if(!management)assert.equal(m.parts.must("parts").at(["x","document"]).snap(),'<i hson:part/>');
     }
   });
   check("retained authority coverage: a completed inner styled admission survives outer allocation rejection", () => {
-    const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p/>','p{color:red}')} }}),aggregate=owner(map);
+    const map=hsonLiveMap.fromLibraries({parts:{ parts: {x:part('<p hson:part/>','p{color:red}')} }}),aggregate=owner(map);
     let entered=false,after:ReturnType<typeof aggregate.captureSemanticCheckpoint>|undefined;
     allocator(aggregate.identityEpoch().owner,()=>{
       if(!entered){entered=true;map.addLibraries({inner:{document:'<hson-part lib="parts" at="x"/>'}});after=aggregate.captureSemanticCheckpoint();}

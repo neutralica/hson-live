@@ -41,10 +41,10 @@ const service = ts.createLanguageService(host);
 const cache = new HsonEditorCompletionCache();
 const imports = 'import { Hson, hson, hsonLiveMap as maps } from "hson-live";\nimport { parts } from "./parts.js";\ndeclare const dynamic: any, condition: boolean;\n';
 const parts = 'import { Hson } from "hson-live/hson";\nexport const parts = {\n'
-  + 'heading: { kind: "document", document: Hson.document`<h1 title="%{Title-Case}" "%{content}"/>` },\n'
-  + 'para: { kind: "document", document: Hson.document`<p "%{content}"/>` },\n'
-  + 'title: { kind: "document", document: Hson.document`<h1 "%{content}"/>` },\n'
-  + 'nav: { kind: "document", document: Hson.document`<nav title="%{prev}" "%{current} %{next}"/>` },\n'
+  + 'heading: { kind: "document", document: Hson.document`<h1 hson:part title="%{Title-Case}" "%{content}"/>` },\n'
+  + 'para: { kind: "document", document: Hson.document`<p hson:part "%{content}"/>` },\n'
+  + 'title: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` },\n'
+  + 'nav: { kind: "document", document: Hson.document`<nav hson:part title="%{prev}" "%{current} %{next}"/>` },\n'
   + '} as const;';
 edit("parts.ts", parts);
 const application = '\nconst loc = hson.liveMap.locus.create({ components: { parts } });';
@@ -172,12 +172,12 @@ check("connector argument names preserve case and hyphens and exclude complete h
 });
 
 check("known receiving contexts remain certain; plausible contexts deduplicate without promoting certainty", () => {
-  const fresh = '\nconst loc = maps.fromLibraries({ page: { document: page }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 "%{content}"/>` } } } });';
+  const fresh = '\nconst loc = maps.fromLibraries({ page: { document: page }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } } } });';
   const known = complete(authored('<hson-part lib="|"/>', fresh));
   assert.equal(known.entries[0]?.candidate.certainty, "certain");
   const alternatives = fresh.replace('document: page', 'document: condition ? page : dynamic');
   assert.ok(complete(authored('<hson-part lib="|"/>', alternatives)).entries.every(entry => entry.candidate.certainty === "possible"));
-  const multiple = application + '\nconst other = maps.fromLibraries({ components: { parts: { extra: { kind: "document", document: "<p/>" } } } });';
+  const multiple = application + '\nconst other = maps.fromLibraries({ components: { parts: { extra: { kind: "document", document: "<p hson:part/>" } } } });';
   const possible = complete(authored('<hson-part lib="components" at="|"/>', multiple));
   assert.deepEqual(possible.labels, ["extra", "heading", "nav", "para", "title"]);
   assert.ok(possible.entries.every(entry => entry.candidate.certainty === "possible"));
@@ -185,7 +185,7 @@ check("known receiving contexts remain certain; plausible contexts deduplicate w
 });
 
 check("partial collections offer grounded members and parameters while keeping unknown members unknown", () => {
-  const partial = '\nconst loc = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Hson.document`<h1 "%{content}"/>` }, ...dynamic } } });';
+  const partial = '\nconst loc = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` }, ...dynamic } } });';
   const result = complete(authored('<hson-part lib="components" at="|"/>', partial));
   assert.deepEqual(result.labels, ["heading"]); assert.equal(result.entries[0]?.candidate.certainty, "possible");
   assert.deepEqual(complete(authored('<hson-part lib="components" at="heading" co|/>', partial)).labels, ["content"]);
@@ -205,9 +205,9 @@ check("fake, malformed and unsupported producers cannot contribute member sugges
     '\nconst fake: typeof maps = dynamic; fake.fromLibraries({ components: { parts } });',
     '\nconst loc = maps.fromLibraries({ components: { parts } },); // supported call',
     '\nconst loc = maps.fromLibraries({ components: { parts }, broken: });',
-    '\nconst loc = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Hson?.document`<p/>` } } } });',
+    '\nconst loc = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Hson?.document`<p hson:part/>` } } } });',
     '\nconst loc = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Hson.canonical`<p/>` } } } });',
-    '\nconst loc = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Hson.document`<p/><p/>` } } } });',
+    '\nconst loc = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Hson.document`<p hson:part/><p/>` } } } });',
   ]) {
     const result = complete(authored('<hson-part lib="components" at="he|"/>', suffix));
     assert.deepEqual(result.labels, suffix.includes('supported call') ? ["heading"] : [], suffix);
@@ -273,7 +273,7 @@ check("Program revisions, upstream-only edits, forget and clear invalidate facts
   edit("parts.ts", parts);
 });
 check("structured arguments complete normalized names and proven selectors without inventing shape", () => {
-  const definition = '{ x: {kind:"document", document:Hson.document`<p slide:data="%{payload}" title="#{slide.title}" "#{slide.items[0].label}"/>`} }';
+  const definition = '{ x: {kind:"document", document:Hson.document`<p hson:part slide:data="%{payload}" title="#{slide.title}" "#{slide.items[0].label}"/>`} }';
   const app = (body: string) => imports + 'const loc = maps.fromLibraries({ components:{parts:' + definition + '}, page:{document:Hson.document`' + body + '`} });';
   assert.ok(complete(app('<hson-part lib="components" at="x" |/>')).labels.includes('data:payload'));
   assert.deepEqual(complete(app('<hson-part lib="components" at="x" payload="old" |/>')).labels, []);
@@ -312,9 +312,19 @@ check("structured receiving declarations keep incoming and local completion name
   assert.deepEqual(complete(prefix + '<p slide:data="%{payload}" <b nested:data="%{pay|}"/>/>' + suffix).labels, []);
   const forwarded = complete(prefix + '<p slide:data="%{payload}" <hson-part at="child" data:data="#{sl|}"/>/>' + suffix);
   assert.ok(forwarded.labels.includes('slide'));
-  const whole = '{ x: {kind:"document", document:Hson.document`<p local:data="%{incoming}" "#{local}"/>`} }';
+  const whole = '{ x: {kind:"document", document:Hson.document`<p hson:part local:data="%{incoming}" "#{local}"/>`} }';
   const app = imports + 'const loc = maps.fromLibraries({components:{parts:' + whole + '},page:{document:Hson.document`<hson-part lib="components" at="x" |/>`}});';
   assert.deepEqual(complete(app).labels, ['data:incoming']);
+});
+check("Part declaration completes only at a known definition root", () => {
+  const result = complete(authored('<button hson:pa|/>', memberApplication));
+  assert.deepEqual(result.labels, ['hson:part']);
+  assert.equal(applied(result, 'hson:part'), authored('<button hson:part/>', memberApplication));
+  for (const body of ['<button hson:part hson:pa|/>', '<main <b hson:pa|/>/>',
+    '<hson-part hson:pa|/>', '<main hson:part="hson:pa|"/>']) {
+    assert.deepEqual(complete(authored(body, memberApplication)).labels, []);
+  }
+  assert.deepEqual(complete(authored('<button hson:pa|/>')).labels, []);
 });
 check("optional flags complete only in governed Part headers and preserve argument suggestions", () => {
   for (const body of ['<p part:op|/>', '<p <b part:op|/>/>', '<p <hson-part at="leaf" part:op|/>/>']) {
@@ -345,7 +355,7 @@ check("local Document references complete in structural frames and prefix-free w
   assert.deepEqual(complete(prefix + '<main c:doc="%{control}" <hson-part#{c|}/>/>' + suffix).labels, []);
   assert.deepEqual(complete(prefix + '<main c:doc="%{control}" <hson-part at="y" data:value="#{c|}"/>/>' + suffix).labels, []);
   assert.deepEqual(complete(prefix + '<main d:data="%{payload}" <hson-part at="y" doc:value="#{d|}"/>/>' + suffix).labels, []);
-  const app = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p d:data="%{payload}" c:doc="%{control}" title="%{title}" "#{d.label}" <hson-part #{c}/>/ >`}}}});';
+  const app = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p hson:part d:data="%{payload}" c:doc="%{control}" title="%{title}" "#{d.label}" <hson-part #{c}/>/ >`}}}});';
   const record = complete(app.replace('/ >', '/>') + 'const components=loc.parts.components;components.x.write({ tit| });');
   assert.deepEqual(record.labels, ['title']);
   assert.equal(record.entries[0]!.candidate.certainty, 'possible');
@@ -362,7 +372,7 @@ check("Data paths use observed authored input shapes and withhold unknown proper
   assert.ok(bare.labels.includes('#{c}'));
 });
 check("write key edits preserve JavaScript names, values, quotes, ranges and cursors", () => {
-  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{page:{kind:"document",document:Hson.document`<p "%{Title-Case}:%{title}:%{default}:%{await}"/>`}}}});loc.parts.components.page.write({ ';
+  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{page:{kind:"document",document:Hson.document`<p hson:part "%{Title-Case}:%{title}:%{default}:%{await}"/>`}}}});loc.parts.components.page.write({ ';
   for (const [input, label, expected, replaced] of [
     ['Tit|', 'Title-Case', '"Title-Case": "|"', 'Tit'],
     ['|', 'Title-Case', '"Title-Case": "|"', ''],
@@ -401,7 +411,7 @@ check("write key edits preserve JavaScript names, values, quotes, ranges and cur
   assert.deepEqual(service.getSyntacticDiagnostics(file('app.ts')), []);
 });
 check("write keys exclude methods and accessors without editing neighboring members", () => {
-  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{page:{kind:"document",document:Hson.document`<p "%{Title-Case} %{title}"/>`}}}});loc.parts.components.page.write({ ';
+  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{page:{kind:"document",document:Hson.document`<p hson:part "%{Title-Case} %{title}"/>`}}}});loc.parts.components.page.write({ ';
   for (const input of [
     'Tit|() { return "kept"; }', 'get Tit|() { return "kept"; }', 'set Tit|(value: string) { void value; }',
     '"Tit|"() { return "kept"; }', 'get "Tit|"() { return "kept"; }', "set 'Tit|'(value: string) { void value; }",
@@ -441,7 +451,7 @@ check("write keys exclude methods and accessors without editing neighboring memb
   }
 });
 check("write key contexts reject recovered punctuation and modifiers", () => {
-  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{page:{kind:"document",document:Hson.document`<p "%{Title-Case} %{title}"/>`}}}});loc.parts.components.page.write({ ';
+  const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{page:{kind:"document",document:Hson.document`<p hson:part "%{Title-Case} %{title}"/>`}}}});loc.parts.components.page.write({ ';
   for (const input of [
     'Tit|?', 'Tit|!', 'Tit| = "kept"', 'Tit| =', 'Tit|?: "kept"', 'Tit|!: "kept"',
     '"Tit|"?', "'Tit|'!: 1", 'readonly Tit|', 'public Tit|: 1', 'async Tit|',
@@ -470,7 +480,7 @@ check("write key contexts reject recovered punctuation and modifiers", () => {
   }
 });
 check("TypeScript language service publishes prefix-free write key evidence", () => {
-  const marked = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p "%{label}"/>`}}}});loc.parts.components.x.write({ lab| });';
+  const marked = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p hson:part "%{label}"/>`}}}});loc.parts.components.x.write({ lab| });';
   const offset = marked.indexOf('|'); edit('app.ts', marked.replace('|',''));
   const integrated = create_schema_language_service(ts, ts.createLanguageService(host), host, join(directory, 'tsconfig.json'));
   try {
@@ -480,7 +490,7 @@ check("TypeScript language service publishes prefix-free write key evidence", ()
   } finally { integrated.dispose(); }
 });
 check("TypeScript write completion applies quoted assignments with and without snippet support", () => {
-  const marked = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p "%{Title-Case}"/>`}}}});loc.parts.components.x.write({ Tit| });';
+  const marked = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p hson:part "%{Title-Case}"/>`}}}});loc.parts.components.x.write({ Tit| });';
   const offset = marked.indexOf('|'); edit('app.ts', marked.replace('|', ''));
   const integrated = create_schema_language_service(ts, ts.createLanguageService(host), host, join(directory, 'tsconfig.json'));
   try {

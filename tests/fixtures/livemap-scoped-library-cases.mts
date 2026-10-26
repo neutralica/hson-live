@@ -22,10 +22,10 @@ const source = (text: string) => {
 };
 const part = (document: string, css?: string) => ({ kind: "document" as const, document, ...(css === undefined ? {} : { stylesheet: css }) });
 const definitions = {
-  leaf: part('<b @:root/>', ':scope{color:blue}'),
-  panel: part('<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', ':scope{color:red}'),
-  green: part('<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', ':scope{color:green}'),
-  blank: part('<span/>'),
+  leaf: part('<b hson:part @:root/>', ':scope{color:blue}'),
+  panel: part('<section hson:part @:root <div @:body <hson-part @:child at="leaf"/>/>/>', ':scope{color:red}'),
+  green: part('<section hson:part @:root <div @:body <hson-part @:child at="leaf"/>/>/>', ':scope{color:green}'),
+  blank: part('<span hson:part/>'),
 };
 const shell = '<main <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/>/>';
 const target = (p: readonly number[]) => ({ kind: "path" as const, path: path(p) });
@@ -106,12 +106,12 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
     allocator(f.aggregate.identityEpoch().owner, () => { calls++; return "d00000001"; });
     try {
       assert.throws(() => f.aggregate.prepareScopedDocument(f.owner, {
-        get root() { f.map.parts.must("parts").at(["leaf", "document"]).set('<strong @:root/>'); return selected.root; },
+        get root() { f.map.parts.must("parts").at(["leaf", "document"]).set('<strong hson:part @:root/>'); return selected.root; },
         quads: selected.quads,
       }), /changed during capture/);
     } finally { allocator(f.aggregate.identityEpoch().owner, undefined); }
     assert.equal(calls, 0); assert.equal(f.page.css.snapshot(), 'main{padding:3px;}');
-    assert.equal(f.map.parts.must("parts").at(["leaf", "document"]).snap(), '<strong @:root/>');
+    assert.equal(f.map.parts.must("parts").at(["leaf", "document"]).snap(), '<strong hson:part @:root/>');
   });
   check("Library preparation owns complete nested named/unnamed candidates without publishing flat/scoped dual state", () => {
     const f = fixture(); unpublished(f, () => {

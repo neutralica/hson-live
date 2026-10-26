@@ -12,8 +12,8 @@ import { encode_hosted_root } from "../../src/api/livemap/livemap.hosted.ts";
 
 async function hosted_subject_fixture(page: string, css?: string) {
   const locus = hsonLiveMap.locus.create({ "PRIVATE_PARTS_SENTINEL": { ...{ parts: {
-      button: { kind: "document", document: '<button id="%{id}" "Styled"/>', css: { color: 'rgb(12,34,56)' } },
-      unused: { kind: "document", document: '<i "PRIVATE_UNUSED_SENTINEL"/>', stylesheet: 'i{color:rgb(98,76,54)}' },
+      button: { kind: "document", document: '<button hson:part id="%{id}" "Styled"/>', css: { color: 'rgb(12,34,56)' } },
+      unused: { kind: "document", document: '<i hson:part "PRIVATE_UNUSED_SENTINEL"/>', stylesheet: 'i{color:rgb(98,76,54)}' },
     } }, access: "private" }, "page": { document: page, ...(css === undefined ? {} : { stylesheet: css }), access: "shared" }, "ungranted": { document: '<aside "UNGRANTED_DOCUMENT_SENTINEL"/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
   try {
     const session = await locus.session.create({ libraries: ["page", "PRIVATE_PARTS_SENTINEL"] });
@@ -56,7 +56,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       assert.deepEqual(state.scopes.occurrences.map(scope => scope.root), [[0,0,1,0,0], [0,0,1,0,1]]);
       const expected = normalize_document_root(hsonTransform.fromHson('<html <head/> <body <button id="hosted-a" "Styled"/> <button id="hosted-b" "Styled"/> <button id="hosted-outside" "Outside"/>/>/>').toNode());
       assert.deepEqual(state.root, expected);
-      assert.doesNotMatch(JSON.stringify(state.root), /hson-part|%\{id\}|PRIVATE_UNUSED_SENTINEL/);
+      assert.doesNotMatch(JSON.stringify(state.root), /hson:part|hson-part|%\{id\}|PRIVATE_UNUSED_SENTINEL/);
       for (const [index, name] of ["a", "b"].entries()) {
         const subject = aggregate.documentQuad(identity, name, undefined);
         assert.ok(subject); assert.equal(subject.quid, scopes.occurrences[index]!.rootQuid);
@@ -82,7 +82,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       const rendered = session.now({ html: "page" });
       assert.deepEqual(rendered.libs, now.libs);
       assert.match(rendered.html, /<button hson:quad=/);
-      assert.doesNotMatch(rendered.html, /hson-part|hson:quid|PRIVATE_UNUSED_SENTINEL/);
+      assert.doesNotMatch(rendered.html, /hson:part|hson-part|hson:quid|PRIVATE_UNUSED_SENTINEL/);
       assert.throws(() => map.capture(), /Scoped document capture/);
       assert.throws(() => map.cut({ documents: ["page"], data: [], html: "page" }), /Scoped document/);
       assert.throws(() => aggregate.captureDocumentSsr(identity, []), /Scoped document SSR/);
@@ -148,7 +148,7 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       const transport = JSON.stringify(decoded.bootstrap);
       for (const artifact of [cut.html, JSON.stringify(cut), transport]) {
         for (const hidden of ["PRIVATE_PARTS_SENTINEL", "PRIVATE_UNUSED_SENTINEL", "UNGRANTED_DOCUMENT_SENTINEL",
-          "hson-part", "%{id}", "hson:quid", "hson\\:quid", "identityEpoch", "issuedQuids"]) {
+          "hson:part", "hson-part", "%{id}", "hson:quid", "hson\\:quid", "identityEpoch", "issuedQuids"]) {
           assert.equal(artifact.includes(hidden), false, hidden);
         }
         for (const quid of enumerate_livemap_issued_quids(owner(map).identityEpoch().issued())) {
