@@ -351,7 +351,10 @@
       { "id": "hsonDelimiter", "superType": "operator", "description": "Hson grammar delimiter" },
       { "id": "hsonOperator", "superType": "operator", "description": "Hson grammar punctuation" },
       { "id": "hsonEscape", "superType": "string", "description": "Hson grammar escape" },
-      { "id": "hsonInvalid", "description": "Hson grammar invalid token" }
+      { "id": "hsonInvalid", "description": "Hson grammar invalid token" },
+      { "id": "hsonReference", "superType": "property", "description": "Hson Part reference path" },
+      { "id": "hsonInterpolationDelimiter", "superType": "operator", "description": "Hson reference braces" },
+      { "id": "hsonQuote", "superType": "string", "description": "Hson string quotes" }
     ],
     "semanticTokenScopes": [{ "scopes": {
       "hsonType": ["entity.name.type.hson", "entity.name.type.quoted.hson"],
@@ -366,7 +369,10 @@
       "hsonDelimiter": ["punctuation.definition.tag.begin.hson", "punctuation.definition.tag.end.hson", "punctuation.definition.tag.self-closing.hson", "punctuation.section.array.begin.hson", "punctuation.section.array.end.hson", "punctuation.separator.sequence.hson", "punctuation.definition.comment.hson", "punctuation.definition.string.begin.hson", "punctuation.definition.string.end.hson", "punctuation.definition.template-expression.begin.hson", "punctuation.definition.template-expression.end.hson", "punctuation.definition.identity.hson", "punctuation.separator.identity.hson"],
       "hsonOperator": ["keyword.operator.assignment.hson", "keyword.operator.interpolation.dollar.hson"],
       "hsonEscape": ["constant.character.escape.hson"],
-      "hsonInvalid": ["invalid.illegal.hson"]
+      "hsonInvalid": ["invalid.illegal.hson"],
+      "hsonReference": ["variable.other.property.hson"],
+      "hsonInterpolationDelimiter": ["punctuation.definition.template-expression.begin.hson", "punctuation.definition.template-expression.end.hson"],
+      "hsonQuote": ["string.quoted.double.hson punctuation.definition.string.begin.hson", "string.quoted.double.hson punctuation.definition.string.end.hson"]
     }}]
   },
   "dependencies": {

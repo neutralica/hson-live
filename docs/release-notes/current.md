@@ -1,10 +1,4 @@
-# Development change chronology
-
-This file records successive development cuts; earlier bullets describe their
-stage, not compatibility guarantees. Current callable contracts are in the
-[public API map](../public-api.md) and subsystem references.
-
-Latest reconciled surfaces:
+# Hson release notes - vX
 
 - Locus uses flat keyed definitions with `access` metadata and separate configuration; dynamic admission is `await locus.admit(definitions)`.
 - LiveMap, Locus, Echo replicas, read contexts, and writers select `data`, `doc`, and `parts`; the former `.lib(...)` selector is removed.
@@ -73,7 +67,7 @@ Latest reconciled surfaces:
 - Expanded VS Code Hson tooling with structural indentation, embedded delimiter-depth highlighting, and standalone .hson formatting support.
 - Advanced Deck as an integration application, exercising governed data, Schema-derived types, live authority, SSR/continuation, and Hson-native rendering patterns.
 
-### Hson — Templating & QUADs v0.1
+## Templating & QUADs v0.1
 A major push into templating patterns as a first-class operation. Developed composable markup templates, a `Collection` library type for template `Parts`, and QUADS, Quantum Unique Addresses - the authorable, portable, external analogue to QUIDs. 
 - Governed Part collections: Reusable, validated document definitions with optional CSS, stored as inert data Libraries.
 - Automatic Part composition: `<hson-part>` connectors expand recursively during document admission and supported mutations, without a separate templating API.
@@ -86,7 +80,7 @@ A major push into templating patterns as a first-class operation. Developed comp
 - LiveTree/Mirror improvements: Existing DOM Elements retain identity and receive updated CSS identity carriers without replacement.
 - Expanded validation: Additional Node, Worker, and real-Chrome acceptance coverage for composition, CSS, identity, mutation atomicity, and no-JavaScript rendering.
 
-## Hson Live — Library Changelog
+## Templating & Quads Part 2
 
 - Added governed Part collections and recursive document composition. Introduced reusable document definitions, `<hson-part>` connectors, scalar placeholder substitution, nested composition, and atomic realization during document admission.
 
@@ -133,3 +127,74 @@ A major push into templating patterns as a first-class operation. Developed comp
 - Strengthened browser-continuation startup rollback. Added native DOM checkpoint restoration across failed adoption, recovery, and attachment, including failures during cleanup, preservation of original node references and listeners, and safe retry on the same document.
 
 - Completed hosted continuation lifecycle integration. Established coherent reconnection, missed-revision recovery, reconciliation, projection reduction, revocation, disposal, and identity-lifetime behavior across the authoritative state, receiving runtime, and browser DOM.
+
+
+## Templating & Quads Part 3
+
+### Part definitions and structural composition
+- Explicit Part declarations: Added the mandatory `hson:part` flag on the root of every governed Parts Library definition, visibly distinguishing Part source from ordinary Hson Documents.
+- Structured Data inputs: Parts can receive complete HsonData values, including nested objects and arrays, through explicit `data:` receiving declarations.
+- Authored Document inputs: Added corresponding `doc:` receiving declarations for supplying authored Hson Documents and deferred Part invocations.
+- Local binding syntax: Introduced `#{name}` and `#{path.to.value}` for references to locally declared Part data and documents, distinct from incoming `%{name}` parameters.
+- Structural Document placeholders: Added `<hson-part #{control}/>` for inserting supplied authored Documents or Part invocations directly into a Part's structure.
+- Optional composition: Added `part:optional` for conditionally realizing elements, subtrees, and nested Parts according to the presence of referenced values.
+- Nested structural composition: Supports recursively composed Parts with independent occurrence identities, authored QUAD scopes, and managed stylesheet ownership.
+
+### Part authoring ergonomics
+- Prefix-free `.write()` arguments: Part invocations now accept ordinary JavaScript argument names, such as `.write({ payload, control, title })`, with their Data/Document representation determined by the receiving Part definition.
+- Deferred Part invocation: `.write()` produces an authored connector rather than eagerly expanding a definition. The receiving admission process resolves and realizes the Part.
+- Explicit receiving interfaces: Structured Data and Document arguments are declared at the Part root, providing unambiguous interpretation and validation.
+- Presence-based optionality: Optional composition distinguishes missing values from present values such as `null`, `false`, `0`, and empty strings or collections.
+
+## Changed
+
+### Admission, realization, and ownership
+- Part definitions now require exactly one valueless `hson:part` declaration on their authored root.
+- Missing, malformed, duplicated, valued, misplaced, or incorrectly cased declarations are rejected atomically during governed Part admission, including for definitions that have not yet been invoked.
+- Part-specific declaration attributes are retained in authored source but removed during governed realization, never appearing in canonical Documents, rendered HTML, SSR output, or document transport.
+- Structured receiving interfaces are validated before realization, including cases where optional content would otherwise be omitted.
+- Structural insertions are realized under their appropriate Part occurrence and authority, preserving local QUAD/QUID identity and CSS scoping.
+- Placeholder substitutions preserve authoring boundaries rather than recursively interpreting arbitrary inserted content.
+
+### VS Code authoring experience
+- Added context-aware Part argument completion, including completion inside `.write({ ... })` calls.
+- Added completion support for identifier, quoted, escaped, and hyphenated argument names.
+- Added diagnostics for missing or invalid `hson:part` declarations, unsupported bindings, and invalid reference contexts.
+- Expanded shared source-fact analysis for Part receiving declarations, local references, structural insertions, and contextual editor assistance.
+- Improved structural editing, delimiter insertion, closing-delimiter handling, and associated command-level editing behavior.
+
+## Improved syntax highlighting
+
+Expanded TextMate and semantic-token support to visually distinguish:
+
+- `hson:part` declarations and ordinary flags.
+- Tags, attribute names, assignment operators, and quoted values.
+- Incoming `%{}` versus local `#{}` placeholders.
+- Placeholder sigils, braces, and property paths.
+- Structural Document insertion syntax.
+- QUAD/QUID identity punctuation and identifiers.
+- Escaped property selectors and multiline attributes.
+
+Updated existing theme integration, including the Dark 2026 theme, to provide more differentiated syntax coloring without introducing a separate highlighting system.
+
+## Fixed and hardened
+
+- Corrected Part argument completion in malformed or partially typed TypeScript, preventing unsafe edits to methods, accessors, and recovered shorthand members.
+- Corrected TextMate scope leakage involving escaped selectors, keyword-like attribute names, and multiline attribute assignments.
+- Strengthened strict validation for malformed structured inputs, structural placeholders, and Part declaration placement.
+- Expanded regression coverage for optional composition, nested Parts, identity scoping, CSS ownership, admission atomicity, source retention, and realized output.
+- Expanded Node, Worker, hosted, SSR, and browser acceptance coverage for the new Part authoring features.
+
+## Runtime and bundle improvements
+
+- Separated Part-definition validation and receiving-interface processing from the eagerly loaded placeholder parser.
+- Deferred definition-processing code outside the initial Echo endpoint bundle.
+- Reduced the measured initial Echo bundle from 41,098 to 40,017 gzip bytes, restoring compliance with the existing 40 KiB budget without raising the limit.
+- Added a dependency-boundary regression guard that detects accidental eager inclusion of Part-definition processing independently of filename, chunk layout, or compressed size.
+
+## Migration notes
+
+- Breaking authoring change: Every Part definition in a governed Parts Library must now include `hson:part` on its single root element.
+- Existing maintained Part definitions and stored-source expectations were migrated; ordinary Documents and `<hson-part>` invocation connectors do not use this declaration.
+- Part `.write()` callers use plain argument names; typed receiving declarations determine how values are transported.
+- No compatibility path was added for unmarked Part definitions.

@@ -57,14 +57,14 @@
     },
     "part-references": {
       "patterns": [
-        { "name": "meta.part.incoming.hson",
+        { "name": "meta.part.incoming.hson", "contentName": "variable.other.property.hson",
           "begin": "(%)(\\{)",
           "beginCaptures": { "1": { "name": "keyword.operator.interpolation.percent.hson" }, "2": { "name": "punctuation.definition.template-expression.begin.hson" } },
           "end": "\\}|(?=\")|(?=\\r?$)",
           "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.hson" } },
           "patterns": [{ "include": "#part-selector-strings" }]
         },
-        { "name": "meta.part.local.hson",
+        { "name": "meta.part.local.hson", "contentName": "variable.other.property.hson",
           "begin": "(#)(\\{)",
           "beginCaptures": { "1": { "name": "keyword.operator.interpolation.hash.hson" }, "2": { "name": "punctuation.definition.template-expression.begin.hson" } },
           "end": "\\}|(?=\")|(?=\\r?$)",

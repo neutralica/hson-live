@@ -249,7 +249,7 @@ for (const [sigil, scope] of [['$', 'dollar'], ['%', 'percent'], ['#', 'hash']])
   assert.deepEqual(actual.slice(actual.findIndex(token => token.text === sigil), actual.findIndex(token => token.text === sigil) + 4).map(({ text, scopes }) => ({ text, scopes })), [
     { text: sigil, scopes: [...base, `keyword.operator.interpolation.${scope}.hson`] },
     { text: '{', scopes: [...base, 'punctuation.definition.template-expression.begin.hson'] },
-    { text: 'value', scopes: base },
+    { text: 'value', scopes: sigil === '$' ? base : [...base, 'variable.other.property.hson'] },
     { text: '}', scopes: [...base, 'punctuation.definition.template-expression.end.hson'] },
   ]);
   assert.ok(has(actual, sigil, `keyword.operator.interpolation.${scope}.hson`));
@@ -426,3 +426,88 @@ process.stdout.write("ok - native standalone and Markdown bracket metadata exclu
 
 const partDeclaration = await tokenize('source.hson', '<button hson:part disabled/>');
 assert.deepEqual(partDeclaration.filter(token => token.text === 'hson:part').map(token => token.scopes), [['source.hson', 'keyword.declaration.part.hson']]);
+
+const visible = await tokenize('source.hson', await readFile(new URL('./fixtures/visible-highlighting.hson', import.meta.url), 'utf8'));
+for (const path of ['data', 'slide.href', 'slide2.value']) {
+  assert.ok(has(visible, path, 'variable.other.property.hson'), path);
+}
+for (const [text, scope] of [['tag', 'entity.name.type.hson'], ['hson:part', 'keyword.declaration.part.hson'],
+  ['slide:data', 'entity.other.attribute-name.hson'], ['=', 'keyword.operator.assignment.hson'],
+  ['enabled', 'constant.language.flag.hson'], ['svg', 'entity.name.type.hson'], ['path', 'entity.name.type.hson'],
+  ['M2 10h4', 'string.quoted.double.hson'], ['/', 'punctuation.definition.tag.self-closing.hson']]) {
+  assert.ok(has(visible, text, scope), text);
+}
+
+// Resolve the installed VS Code themes through the native TextMate engine.
+// Opt in with HSON_VSCODE_THEMES pointing at theme-defaults/themes; no theme
+// palette is copied into Hson. This checks scope fallbacks, not user overrides
+// or a theme's explicit semantic-token rules.
+if (process.env.HSON_VSCODE_THEMES) {
+  const { resolve, dirname } = await import('node:path');
+  const { parseConfigFileTextToJson } = require('typescript');
+  async function readTheme(file) {
+    const parsed = parseConfigFileTextToJson(file, await readFile(file, 'utf8'));
+    assert.equal(parsed.error, undefined, file);
+    const theme = parsed.config;
+    const base = theme.include ? await readTheme(resolve(dirname(file), theme.include)) : { colors: {}, tokenColors: [] };
+    return { colors: { ...base.colors, ...theme.colors }, tokenColors: [...base.tokenColors, ...theme.tokenColors ?? []] };
+  }
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const fallbacks = manifest.contributes.semanticTokenScopes[0].scopes;
+  const cases = [
+    ['data', 'hsonReference'], ['slide.href', 'hsonReference'], ['slide2.value', 'hsonReference'],
+    ['%', 'hsonOperator'], ['#', 'hsonOperator'], ['{', 'hsonInterpolationDelimiter'], ['}', 'hsonInterpolationDelimiter'],
+    ['"', 'hsonQuote'], ['=', 'hsonOperator'], ['M2 10h4', 'hsonString'],
+    ['tag', 'hsonType'], ['slide:data', 'hsonProperty'], ['enabled', 'hsonKeyword'], ['hson:part', 'hsonDeclaration'],
+  ];
+  const stacks = [...cases.map(([text]) => visible.find(token => token.text === text).scopes),
+    ...Object.values(fallbacks).flat().map(scope => scope.split(' '))];
+  for (const name of ['2026-light', '2026-dark', 'light_plus', 'dark_plus']) {
+    const theme = await readTheme(resolve(process.env.HSON_VSCODE_THEMES, name + '.json'));
+    // A sentinel exposes an absent fallback instead of silently mistaking the
+    // editor default (or the host template's string color) for a match.
+    const sentinel = '#010203';
+    const themed = new Registry({
+      theme: { settings: [{ settings: { foreground: sentinel } }, ...theme.tokenColors] },
+      onigLib: Promise.resolve({ createOnigScanner: p => new OnigScanner(p), createOnigString: s => new OnigString(s) }),
+      loadGrammar: async scope => scope === 'source.ts'
+        ? parseRawGrammar(await readFile(resolve(process.env.HSON_VSCODE_THEMES, '../../typescript-basics/syntaxes/TypeScript.tmLanguage.json'), 'utf8'), 'typescript.json')
+        : { scopeName: 'source.scope-probe', patterns: stacks.map((stack, index) => ({ match: '^p' + index + '$', name: stack.join(' ') })) },
+    });
+    const probe = await themed.loadGrammar('source.scope-probe');
+    const foreground = stack => {
+      const index = stacks.findIndex(candidate => candidate.join(' ') === stack.join(' '));
+      assert.ok(index >= 0);
+      const metadata = probe.tokenizeLine2('p' + index, INITIAL).tokens[1];
+      return themed.getColorMap()[(metadata >>> 15) & 511];
+    };
+    const resolved = new Map();
+    for (const [text, type] of cases) {
+      const standalone = foreground(visible.find(token => token.text === text).scopes);
+      const embedded = fallbacks[type].map(scope => foreground(scope.split(' '))).find(color => color !== sentinel);
+      assert.ok(embedded, `${name}: missing ${type} fallback`);
+      assert.equal(embedded, standalone, `${name}: standalone/embedded ${text}`);
+      resolved.set(text, standalone);
+    }
+    for (const path of ['data', 'slide.href', 'slide2.value']) assert.notEqual(resolved.get(path), resolved.get('M2 10h4'), `${name}: path versus string`);
+    assert.notEqual(resolved.get('{'), resolved.get('data'), `${name}: braces versus path`);
+    assert.notEqual(resolved.get('%'), resolved.get('{'), `${name}: sigil versus brace`);
+    const host = await themed.loadGrammar('source.ts');
+    const line = 'const value = Hson.document`<tag slide2:data="${data2}"/>`;';
+    const lexical = host.tokenizeLine(line, INITIAL).tokens;
+    const binary = host.tokenizeLine2(line, INITIAL).tokens;
+    for (const [offset, scope] of [[line.indexOf('${'), 'punctuation.definition.template-expression.begin.ts'],
+      [line.indexOf('}'), 'punctuation.definition.template-expression.end.ts']]) {
+      assert.ok(lexical.find(token => token.startIndex <= offset && token.endIndex > offset).scopes.includes(scope));
+      let metadata;
+      for (let index = 0; index < binary.length; index += 2) {
+        if (binary[index] <= offset && (binary[index + 2] ?? line.length) > offset) metadata = binary[index + 1];
+      }
+      assert.equal(themed.getColorMap()[(metadata >>> 15) & 511], resolved.get('{'), `${name}: native host interpolation`);
+    }
+    console.log('ok - native theme scope foregrounds ' + name + ': ' + JSON.stringify(Object.fromEntries(resolved)));
+    themed.dispose();
+  }
+} else {
+  console.log('skip - installed theme foreground checks (set HSON_VSCODE_THEMES to theme-defaults/themes)');
+}

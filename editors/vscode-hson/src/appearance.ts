@@ -72,6 +72,7 @@ export const HSON_APPEARANCE = {
     interpolationHash: "keyword.operator.interpolation.hash.hson",
     interpolationBegin: "punctuation.definition.template-expression.begin.hson",
     interpolationEnd: "punctuation.definition.template-expression.end.hson",
+    referencePath: "variable.other.property.hson",
     escape: "constant.character.escape.hson",
     invalid: "invalid.illegal.hson",
   },
@@ -107,4 +108,7 @@ export const hsonTokenScopes = {
   hsonOperator: [scope.assignment, scope.interpolationDollar],
   hsonEscape: [scope.escape],
   hsonInvalid: [scope.invalid],
+  hsonReference: [scope.referencePath],
+  hsonInterpolationDelimiter: [scope.interpolationBegin, scope.interpolationEnd],
+  hsonQuote: [scope.quotedString + " " + scope.quoteBegin, scope.quotedString + " " + scope.quoteEnd],
 } as const;

@@ -81,7 +81,6 @@ Rules for an individual setter call:
 - CSS boundary whitespace is trimmed without discarding significant escapes, strings, comments, or Unicode separators.
 - Finite numbers are stringified; booleans and non-finite numbers reject.
 - `{ value, unit }` renders as `${value}${unit ?? ""}`.
-- Empty strings remove properties in `CssManager` QUID rules and global rules.
 
 `setMany()` is declarative: authored `undefined` entries are omitted, while `null`
 and booleans reject before publication. Keys use the maintained CSS property
